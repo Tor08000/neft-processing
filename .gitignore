@@ -7,7 +7,6 @@ build/
 .env
 logs/
 data/
-alembic.ini
 .vscode/
 .idea/
 .DS_Store
