@@ -1,167 +1,50 @@
-# Архитектура NEFT Processing v1
+# NEFT Processing: архитектура и структура монорепозитория
 
-## Обзор
-NEFT Processing реализован как монорепозиторий с набором Python-сервисов и общими компонентами. Архитектура оптимизирована для локального старта через Docker Desktop (в том числе на Windows/CMD), масштабирования через микросервисы и повторного использования общей библиотеки.
+Эта версия отражает целевую архитектуру из ТЗ: монорепозиторий `neft-processing` с несколькими сервисами и общей библиотекой.
 
-### Ключевые технологии
-- Python 3.11, FastAPI, Pydantic v2, Uvicorn
-- SQLAlchemy 2.0, Alembic, psycopg[binary]
-- Celery 5.3, Redis 7 (broker/backend + кэш)
-- PostgreSQL 16 (DB-first моделирование)
-- httpx, PyJWT
-- Docker, docker-compose, nginx
+## Сервисы и их ответственность
+- **core-api** — основной процессинговый API: CRUD клиентов, операции (authorization/capture), журнал операций, интеграция с Celery и БД.
+- **auth-host** — аутентификация и управление пользователями/клиентами, выдача JWT, валидация токенов.
+- **ai-service** — вспомогательный сервис скоринга (мок-логика сейчас, готовность к замене на реальную модель).
+- **workers** — Celery worker/beat для фоновых задач (пересчёт лимитов, плановые задачи, вызовы ai-service).
+- **shared/python/neft_shared** — общая библиотека: базовые настройки, логирование, утилиты.
+- **nginx** — точка входа (reverse proxy): `/api` → core-api, `/auth` → auth-host, `/ai` → ai-service, отдаёт статическую заглушку если upstream недоступен.
+- **infra** — вспомогательные скрипты/настройки; **db** — локальные данные Postgres/backup.
 
-## Сервисы
+## Стек по сервисам
+- **Язык/база**: Python 3.11, PostgreSQL 16, Redis 7.
+- **core-api**: FastAPI, SQLAlchemy 2.x, Alembic, Pydantic v2, Celery 5, httpx/uvicorn.
+- **auth-host**: FastAPI, SQLAlchemy 2.x, Alembic (при необходимости), JWT (PyJWT), Pydantic v2.
+- **ai-service**: FastAPI, Pydantic v2; внутренняя провайдерная абстракция для скоринга.
+- **workers**: Celery 5 (worker и beat), httpx для вызовов сервисов, общие настройки/логирование из `neft_shared`.
+- **Общее**: Docker/Docker Compose для локального запуска, JSON-логирование через `neft_shared.logging_setup`.
 
-### core-api (Python / FastAPI)
-Главный бизнес-сервис процессинга. Отвечает за health-check, CRUD клиентов и карт (stub), операции, авторизацию и подтверждение транзакций, вызовы Celery и httpx-запросы в ai-service.
-
-Основные эндпоинты:
-- `GET /api/v1/health`
-- `GET|POST|PUT|DELETE /api/v1/clients*`
-- CRUD карт (упрощённо, stub)
-- `POST /api/v1/transactions/authorize`
-- `POST /api/v1/transactions/{id}/capture`
-- `GET|POST|PUT|DELETE /api/v1/operations*`
-
-Технологии и особенности:
-- FastAPI + SQLAlchemy 2.0 + Alembic
-- Redis для кеша и фоновой работы
-- Celery producer (отправка задач в workers)
-- DB-first: PostgreSQL → SQLAlchemy
-
-### auth-host (Python / FastAPI)
-Сервис аутентификации и управления пользователями.
-
-Эндпоинты:
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/auth/me`
-
-Особенности: FastAPI, SQLAlchemy 2.0, JWT через PyJWT или fastapi-jwt-auth.
-
-### ai-service (Python / FastAPI)
-Вспомогательный скоринговый сервис.
-
-Эндпоинты:
-- `GET /api/v1/health`
-- `POST /api/v1/score`
-
-Имитация модели: генерирует `score: float` и `decision: "allow" | "review" | "deny"`.
-
-### workers (Python / Celery)
-Celery worker + beat для фоновых задач:
-- `limits.recalculate_client_limits`
-- `limits.apply_daily_limits` (beat schedule)
-- `ai.score_transaction` (обращается в ai-service)
-- будущие задачи: отчёты, рассылки, клиринг и т.д.
-
-### shared/python/neft_shared
-Общий модуль для всех сервисов:
-- `settings.py` для загрузки конфигурации (.env)
-- `logging_setup.py` для единого JSON-логгера
-- `utils/uuid.py`, `utils/time.py`
-- общие константы
-
-### nginx
-Фронтовой прокси, который маршрутизирует запросы:
-- `/api/` → core-api
-- `/auth/` → auth-host
-- `/ai/` → ai-service
-- при недоступности upstream отдаёт `_upstream_down.html`
-
-### PostgreSQL + Redis
-Инфраструктурные сервисы:
-- PostgreSQL 16 (основное хранилище)
-- Redis 7 (broker/backend для Celery и кеш)
-
-## Структура репозитория
-Монорепозиторий организован по сервисам с общей библиотекой:
-
+## Целевая структура репозитория
 ```
-neft-processing/
-│  README.md
-│  docker-compose.yml
-│  .env.example
-│  .gitignore
-│  .dockerignore
-│  Makefile
-│
-├── shared/
-│   └── python/
-│       └── neft_shared/
-│           │   __init__.py
-│           │   settings.py
-│           │   logging_setup.py
-│           └── utils/
-│               │   __init__.py
-│               │   uuid.py
-│               └── time.py
-│
+.
+├── docker-compose.yml          # единая оркестрация сервисов
+├── .env.example                # шаблон переменных окружения
+├── Makefile / run_tests.cmd    # вспомогательные команды
+├── shared/python/neft_shared   # общая библиотека (settings, logging, utils)
 ├── services/
-│   ├── core-api/
-│   │   │  Dockerfile
-│   │   │  pyproject.toml
-│   │   └── app/
-│   │        │  main.py
-│   │        │  config.py
-│   │        │  db.py
-│   │        │  celery_client.py
-│   │        │  deps.py
-│   │        │  __init__.py
-│   │        ├── models/
-│   │        │     __init__.py
-│   │        │     client.py
-│   │        │     card.py
-│   │        │     operation.py
-│   │        │     user.py
-│   │        ├── schemas/
-│   │        │     __init__.py
-│   │        │     client.py
-│   │        │     operation.py
-│   │        │     transaction.py
-│   │        └── api/
-│   │             └── routes/
-│   │                  │  health.py
-│   │                  │  clients.py
-│   │                  │  transactions.py
-│   │                  │  operations.py
-│   │
-│   ├── auth-host/
-│   │   │  Dockerfile
-│   │   │  pyproject.toml
-│   │   └── app/
-│   │        │  main.py
-│   │        │  config.py
-│   │        │  db.py
-│   │        │  security.py
-│   │        ├── models/
-│   │        ├── schemas/
-│   │        └── api/routes/auth.py
-│   │
-│   ├── ai-service/
-│   │   │  Dockerfile
-│   │   │  pyproject.toml
-│   │   └── app/
-│   │        │  main.py
-│   │        │  config.py
-│   │        │  model_provider.py
-│   │        └── api/routes/score.py
-│   │
-│   └── workers/
-│       │  Dockerfile
-│       │  pyproject.toml
-│       └── app/
-│            │  celery_app.py
-│            │  config.py
-│            └── tasks/
-│                 │  limits.py
-│                 └── ai.py
-│
-└── nginx/
-    │  nginx.conf
-    └── html/
-         └── _upstream_down.html
+│   ├── core-api/               # главный API процессинга (FastAPI + Postgres + Celery)
+│   ├── auth-host/              # сервис аутентификации (FastAPI + JWT + Postgres)
+│   ├── ai-service/             # сервис скоринга (FastAPI)
+│   └── workers/                # Celery worker и beat
+├── nginx/                      # конфигурация и статические файлы gateway
+├── docs/                       # документация, ADR, runbooks, API схемы
+└── db/                         # данные/бэкапы Postgres для локальной разработки
 ```
 
-Структура компактна и легко расширяется (например, для добавления pricing-service или reporting-service) без усложнения запуска.
+## Потоки данных (укрупнённо)
+1. Терминал вызывает `core-api` → `POST /api/v1/transactions/authorize`.
+2. `core-api` пишет операцию в Postgres, отправляет задачу `ai.score_transaction` в Celery через Redis.
+3. Worker вызывает `ai-service` для скоринга, логирует результат/при необходимости обновляет операцию.
+4. Кеширование/брокер: Redis; долговременное хранение: Postgres.
+5. Доступ извне — через Nginx на порту 80 (`/api`, `/auth`, `/ai`).
+
+## Причины выбранного дизайна
+- Монорепозиторий упрощает согласованность версий контрактов и общих библиотек.
+- Разделение сервисов по ответственности облегчает горизонтальное масштабирование и замену компонентов (например, ai-service на ML-модель).
+- Общая библиотека `neft_shared` обеспечивает единообразное логирование и конфигурацию.
+- Celery позволяет вынести тяжёлые и плановые задачи из критического пути API.

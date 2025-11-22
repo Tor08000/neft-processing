@@ -7,7 +7,7 @@ def get_correlation_id() -> str:
 
 def get_redis() -> Redis:
     cfg = get_settings()
-    return Redis.from_url(cfg.REDIS_DSN, decode_responses=True)
+    return Redis.from_url(cfg.redis_url, decode_responses=True)
 
 def get_current_user():
     return {"id": 1, "email": "admin@neft.local"}

@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
-from pydantic import BaseModel
 
-from neft_shared.logging_setup import init_logging, get_logger
+from neft_shared.logging_setup import get_logger, init_logging
+from app.api.routes import auth_router, health_router
+from app.db import init_db
 
 # ---------------------------------------------------------------------------
 #  Логирование и настройки сервиса
@@ -21,41 +22,11 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="NEFT Auth Host", version="1.0.0")
+app.include_router(health_router)
+app.include_router(auth_router)
 
 
-@app.get("/health")
-def health():
-    logger.info("Health check", extra={"endpoint": "/health"})
-    return {"status": "ok", "service": "auth-host"}
-
-
-# --- Модели для authorize (упрощённо) ---
-
-
-class TxAuthorizeRequest(BaseModel):
-    card_token: str
-    amount: int
-    product_code: str
-
-
-class TxAuthorizeResponse(BaseModel):
-    authorized: bool
-    reason: str | None = None
-
-
-@app.post("/v1/tx/authorize", response_model=TxAuthorizeResponse)
-def authorize_tx(payload: TxAuthorizeRequest):
-    """
-    Упрощённая заглушка авторизации.
-    Всегда авторизует, но логирует запрос.
-    """
-    logger.info(
-        "Authorize request",
-        extra={
-            "endpoint": "/v1/tx/authorize",
-            "card_token": payload.card_token,
-            "amount": payload.amount,
-            "product_code": payload.product_code,
-        },
-    )
-    return TxAuthorizeResponse(authorized=True, reason=None)
+@app.on_event("startup")
+async def startup_event() -> None:
+    await init_db()
+    logger.info("Auth-host startup complete")
