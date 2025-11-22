@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 

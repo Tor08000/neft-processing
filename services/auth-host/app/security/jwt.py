@@ -1,12 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-import uuid
-from typing import Tuple
-
-from jose import JWTError, jwt
-from redis import Redis
-
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Tuple

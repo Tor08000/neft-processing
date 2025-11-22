@@ -1,15 +1,9 @@
-# services/core-api/app/schemas/operations.py
-from datetime import datetime
-from typing import List, Optional
-
-from pydantic import BaseModel
-
 from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AuthRequest(BaseModel):
@@ -63,18 +57,15 @@ class OperationBase(BaseModel):
 
     parent_operation_id: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OperationRead(OperationBase):
     """Ответ для одного объекта операции."""
-    pass
 
 
 class OperationListItem(OperationBase):
     """Элемент списка операций."""
-    pass
 
 
 class OperationListResponse(BaseModel):

@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 # Берём DSN из ENV, иначе — дефолт, совпадающий с core-api
 db_url = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://neft:neftpass@postgres:5432/neft",
+    "postgresql+psycopg://neft:neftpass@postgres:5432/neft",
 )
 config.set_main_option("sqlalchemy.url", db_url)
 
