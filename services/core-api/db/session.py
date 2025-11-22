@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 # URL БД берём из переменной окружения (как в alembic.ini)
 # Если переменной нет — дефолт на твой Postgres в docker-compose
-DATABASE_URL = os.getenv(
+_RAW_DATABASE_URL = os.getenv(
     "NEFT_DB_URL",
     "postgresql+psycopg://neft:neft@postgres:5432/neft",
 )
@@ -25,7 +25,7 @@ def _ensure_psycopg_driver(url: str) -> str:
     return str(sa_url)
 
 
-DATABASE_URL = _ensure_psycopg_driver(DATABASE_URL)
+DATABASE_URL = _ensure_psycopg_driver(_RAW_DATABASE_URL)
 
 # Создаём engine
 engine = create_engine(
