@@ -1,12 +1,16 @@
 # services/core-api/app/alembic/env.py
 import os
+import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-from db.base import Base
-from db import models  # noqa: F401  # ВАЖНО: чтобы Alembic увидел Client, User и будущие модели
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.db import Base  # type: ignore  # noqa: E402
+from app import models  # noqa: F401,E402
+from app.models import operation  # noqa: F401,E402
 
 config = context.config
 

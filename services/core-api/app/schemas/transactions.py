@@ -1,8 +1,37 @@
 # services/core-api/app/schemas/operations.py
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+
+class AuthRequest(BaseModel):
+    merchant_id: str
+    terminal_id: str
+    client_id: str
+    card_id: str
+    amount: int
+    currency: str = "RUB"
+
+
+class CaptureRequest(BaseModel):
+    amount: int
+
+
+class RefundRequest(BaseModel):
+    amount: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class ReversalRequest(BaseModel):
+    reason: Optional[str] = None
 
 
 class OperationBase(BaseModel):
@@ -10,7 +39,7 @@ class OperationBase(BaseModel):
     created_at: datetime
 
     operation_type: str  # AUTH / CAPTURE / REFUND / REVERSAL
-    status: str          # AUTHORIZED / CAPTURED / REFUNDED / REVERSED / DECLINED
+    status: str  # AUTHORIZED / CAPTURED / REFUNDED / REVERSED / DECLINED
 
     merchant_id: str
     terminal_id: str

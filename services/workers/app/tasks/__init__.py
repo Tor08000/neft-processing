@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import logging
 from celery import shared_task
 
-logger = logging.getLogger(__name__)
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 @shared_task(
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
-    name="ping",
+    name="workers.ping",
 )
 def ping(self, x: int = 1) -> dict:
     """
@@ -32,5 +33,6 @@ def periodic_ping() -> dict:
 
 
 # ВАЖНО:
-# Импортируем подмодуль limits, чтобы Celery увидел задачи лимитов.
+# Импортируем подмодули задач, чтобы Celery их увидел.
+from . import ai  # noqa: F401
 from . import limits  # noqa: F401

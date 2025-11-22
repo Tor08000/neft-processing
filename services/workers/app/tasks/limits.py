@@ -5,6 +5,10 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
@@ -130,6 +134,16 @@ def recalc_limits_for_all(
         "updated": len(results),
         "details": results,
     }
+
+
+@shared_task(name="limits.apply_daily_limits")
+def apply_daily_limits() -> Dict[str, Any]:
+    """Заглушка для применения дневных лимитов (периодическая задача)."""
+
+    logger.info("Limits: apply_daily_limits triggered")
+    summary = recalc_limits_for_all([])
+    summary["task"] = "limits.apply_daily_limits"
+    return summary
 
 
 @shared_task(name="limits.check_and_reserve")
