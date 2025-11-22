@@ -15,8 +15,8 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r /tmp/requirements.txt && \
     rm /tmp/requirements.txt
 
-COPY shared/python/neft_shared /opt/neft_shared
-ENV PYTHONPATH="/opt/neft_shared:${PYTHONPATH}"
+COPY shared/python /opt/python
+ENV PYTHONPATH="/opt/python:${PYTHONPATH}"
 
 COPY services/ai-service /app
 

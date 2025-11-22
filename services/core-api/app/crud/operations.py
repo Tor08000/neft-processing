@@ -7,7 +7,7 @@ from typing import Optional, Sequence, Tuple
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from db.models.operation import Operation  # каноническая модель журнала операций
+from app.models.operation import Operation  # каноническая модель журнала операций
 
 
 class OperationFilters:

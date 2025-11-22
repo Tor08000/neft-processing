@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-ROLE="${ROLE:-worker}"  # worker или beat
+ROLE="${ROLE:-worker}"  # worker or beat
 QUEUES="${QUEUES:-default,limits,antifraud,reports}"
 
 echo "[entrypoint] starting celery role=${ROLE}"
