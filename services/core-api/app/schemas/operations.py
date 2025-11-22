@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class OperationBase(BaseModel):
@@ -42,9 +42,8 @@ class OperationBase(BaseModel):
     parent_operation_id: Optional[str] = None
     reason: Optional[str] = None
 
-    class Config:
-        # позволяем создавать схему из ORM-объекта SQLAlchemy
-        orm_mode = True
+    # позволяем создавать схему из ORM-объекта SQLAlchemy
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OperationRead(OperationBase):

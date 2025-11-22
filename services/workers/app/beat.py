@@ -1,16 +1,21 @@
-from .tasks import celery
+from .celery_app import celery_app
+from .config import settings
 
-celery.conf.beat_schedule = {
-    "reports-daily-every-60s": {
-        "task": "reports.daily",
+
+# Минимальный расписатель для демо-окружения
+celery_app.conf.beat_schedule = {
+    "periodic-ping": {
+        "task": "periodic.ping",
         "schedule": 60.0,
     },
-    "billing-generate-invoices-every-5m": {
-        "task": "billing.generate_invoices",
-        "schedule": 300.0,
-    },
-    "holds-cleanup-every-2m": {
-        "task": "holds.cleanup_expired",
-        "schedule": 120.0,
+    "apply-daily-limits": {
+        "task": "limits.apply_daily_limits",
+        "schedule": 3600.0,
     },
 }
+
+celery_app.conf.timezone = settings.timezone
+
+celery = celery_app
+
+__all__ = ["celery"]
