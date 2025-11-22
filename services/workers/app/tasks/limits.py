@@ -132,6 +132,16 @@ def recalc_limits_for_all(
     }
 
 
+@shared_task(name="limits.apply_daily_limits")
+def apply_daily_limits() -> Dict[str, Any]:
+    """Заглушка для применения дневных лимитов (периодическая задача)."""
+
+    logger.info("Limits: apply_daily_limits triggered")
+    summary = recalc_limits_for_all([])
+    summary["task"] = "limits.apply_daily_limits"
+    return summary
+
+
 @shared_task(name="limits.check_and_reserve")
 def check_and_reserve_limit(
     # ВАЖНО: все аргументы с default, чтобы Celery спокойно принимал kwargs
