@@ -1,12 +1,19 @@
 # services/core-api/app/models.py
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Float, Boolean, ForeignKey,
-    UniqueConstraint, Index
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Float,
+    Boolean,
+    ForeignKey,
+    UniqueConstraint,
+    Index,
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 
-Base = declarative_base()
+from app.db import Base
 
 class Client(Base):
     __tablename__ = "clients"

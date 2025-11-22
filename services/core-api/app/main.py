@@ -11,7 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from db.session import SessionLocal
+from app.db import SessionLocal
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
@@ -167,8 +167,8 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
     (id BIGINT PK, operation_id VARCHAR(64) и т.п.).
     """
     try:
-        from db.session import SessionLocal  # type: ignore
-        from db.models.operation import Operation  # type: ignore
+        from app.db import SessionLocal  # type: ignore
+        from app.models.operation import Operation  # type: ignore
     except Exception as exc:  # pragma: no cover
         logger.warning("DB Operation model not available yet: %s", exc)
         return
