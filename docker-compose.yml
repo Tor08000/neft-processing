@@ -39,6 +39,7 @@ services:
       - .env
     environment:
       SERVICE_NAME: core-api
+      PYTHONPATH: /opt/python:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +95,7 @@ services:
       - ROLE=worker        # если у тебя entrypoint смотрит на ROLE
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - PYTHONPATH=/opt/python:/app
     depends_on:
       - redis
       - core-api
@@ -106,6 +108,7 @@ services:
       - ROLE=beat
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - PYTHONPATH=/opt/python:/app
     depends_on:
       - redis
       - core-api
