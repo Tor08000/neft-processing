@@ -13,6 +13,9 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # 2. Кладём общую питон-библиотеку и добавляем её в PYTHONPATH
 #    ВАЖНО: копируем всю shared/python, чтобы внутри был /opt/python/neft_shared
 COPY shared/python /opt/python
+# Дублируем пакет в /app, чтобы он был на стандартном sys.path, даже
+# если переменные окружения не попадут в контейнер.
+COPY shared/python/neft_shared /app/neft_shared
 ENV PYTHONPATH="/opt/python:/app"
 
 # 3. Копируем код воркеров
