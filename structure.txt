@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 000000C9 C21C:E066
+Серийный номер тома: 00000078 C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -1410,6 +1410,7 @@ C:\NEFT-PROCESSING
 |   |   \---app
 |   |       |   config.py
 |   |       |   main.py
+|   |       |   model_provider.py
 |   |       |   __init__.py
 |   |       |   
 |   |       +---api
@@ -1423,11 +1424,15 @@ C:\NEFT-PROCESSING
 |   |       |       openai.py
 |   |       |       __init__.py
 |   |       |       
+|   |       +---schemas
+|   |       |       __init__.py
+|   |       |       
 |   |       +---tasks
 |   |       |       summarize.py
 |   |       |       __init__.py
 |   |       |       
 |   |       \---tests
+|   |               conftest.py
 |   |               test_health.py
 |   |               test_score.py
 |   |               __init__.py
@@ -1442,7 +1447,6 @@ C:\NEFT-PROCESSING
 |   |       |   db.py
 |   |       |   idempotency.py
 |   |       |   main.py
-|   |       |   schemas.py
 |   |       |   transactions.py
 |   |       |   validators.py
 |   |       |   __init__.py
@@ -1452,6 +1456,13 @@ C:\NEFT-PROCESSING
 |   |       |       __init__.py
 |   |       |       
 |   |       +---api
+|   |       |   |   __init__.py
+|   |       |   |   
+|   |       |   +---routes
+|   |       |   |       auth.py
+|   |       |   |       health.py
+|   |       |   |       __init__.py
+|   |       |   |       
 |   |       |   \---v1
 |   |       |           auth.py
 |   |       |           health.py
@@ -1459,6 +1470,15 @@ C:\NEFT-PROCESSING
 |   |       |           
 |   |       +---lib
 |   |       |       idempotency.py
+|   |       |       
+|   |       +---models
+|   |       |       user.py
+|   |       |       __init__.py
+|   |       |       
+|   |       +---schemas
+|   |       |       auth.py
+|   |       |       tx.py
+|   |       |       __init__.py
 |   |       |       
 |   |       +---security
 |   |       |       jwt.py
@@ -1577,6 +1597,7 @@ C:\NEFT-PROCESSING
 |           |   __init__.py
 |           |   
 |           \---tasks
+|                   ai.py
 |                   limits.py
 |                   __init__.py
 |                   
