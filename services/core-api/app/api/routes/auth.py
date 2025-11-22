@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
-from ...db import get_db
+from sqlalchemy.orm import Session
+
+from app.deps.db import get_db
 
 router = APIRouter()
 
 @router.post("/internal/pricing/resolve")
-def internal_pricing(azs_id: int, product_id: int, db=Depends(get_db)):
+def internal_pricing(azs_id: int, product_id: int, db: Session = Depends(get_db)):
     row = db.execute(text("""
       SELECT price FROM price_list
       WHERE azs_id=:azs AND product_id=:prod AND status='ACTIVE'
@@ -18,7 +20,7 @@ def internal_pricing(azs_id: int, product_id: int, db=Depends(get_db)):
     return {"price": float(row[0])}
 
 @router.post("/internal/rules/evaluate")
-def internal_rules(event: dict, db=Depends(get_db)):
+def internal_rules(event: dict, db: Session = Depends(get_db)):
     token = event.get("card_token") or ""
     client_id = str(event.get("client_id") or "")
     azs_id = str(event.get("azs_id") or "")

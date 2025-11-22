@@ -1,19 +1,17 @@
-from fastapi import APIRouter
-import random
+from __future__ import annotations
 
-router = APIRouter()
+from fastapi import APIRouter, Depends
 
-@router.post("/")
-def score(payload: dict):
-    event = payload.get("event") or {}
-    hour = int(event.get("hour") or 12)
-    qty = float(event.get("qty") or 0)
-    amount = float(event.get("amount") or 0)
+from ...model_provider import ScoreModelProvider
+from ...schemas import ScoreRequest, ScoreResponse
 
-    base = 0.25
-    if hour in [0,1,2,3,4,5]: base += 0.2
-    if qty >= 200 or amount >= 15000: base += 0.3
-    base += random.uniform(-0.05, 0.05)
-    risk = max(0.05, min(0.95, base))
-    hint = "ALLOW" if risk < 0.75 else "SOFT_DECLINE"
-    return {"risk_score": round(risk,3), "decision_hint": hint, "reason_codes": []}
+router = APIRouter(prefix="/api/v1/score", tags=["score"])
+
+
+def get_provider() -> ScoreModelProvider:
+    return ScoreModelProvider()
+
+
+@router.post("/", response_model=ScoreResponse)
+async def score(payload: ScoreRequest, provider: ScoreModelProvider = Depends(get_provider)) -> ScoreResponse:
+    return provider.score(payload)

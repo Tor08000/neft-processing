@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
-from app.db.base import get_db
+
+from app.deps.db import get_db
 
 router = APIRouter(prefix='/rules', tags=['rules'])
 
