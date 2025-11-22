@@ -6,8 +6,7 @@ from dataclasses import dataclass
 class Settings:
     """Базовые настройки, читаемые из окружения.
 
-    Этот набор переменных используется всеми сервисами монорепозитория и
-    совпадает с .env.example.
+    Переменные совпадают с .env.example и используются всеми сервисами.
     """
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -23,6 +22,15 @@ class Settings:
     refresh_token_expires_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "15"))
     password_pepper: str = os.getenv("PASSWORD_PEPPER", "dev-pepper")
 
+    @property
+    def redis_dsn(self) -> str:
+        """Совместимость с более старым кодом, ожидающим REDIS_DSN."""
+
+        return self.redis_url
+
 
 def get_settings() -> Settings:
     return Settings()
+
+
+__all__ = ["Settings", "get_settings"]

@@ -1,14 +1,16 @@
 
 from __future__ import annotations
 
-import os
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
+from neft_shared.settings import get_settings
 
-DATABASE_URL = os.getenv("POSTGRES_DSN", "sqlite:///./neft_dev.db")
+settings = get_settings()
+
+DATABASE_URL = settings.database_url
 
 engine = create_engine(
     DATABASE_URL,
@@ -21,7 +23,10 @@ Base = declarative_base()
 
 
 def init_db() -> None:
-    from . import models  # noqa: F401  # ensure models are imported for metadata
+    """Создаёт таблицы для декларативных моделей core-api."""
+
+    from app import models  # noqa: F401
+    from app.models import operation  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

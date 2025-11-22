@@ -1,12 +1,16 @@
 # services/core-api/app/alembic/env.py
 import os
+import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-from db.base import Base
-from db import models  # noqa: F401  # ВАЖНО: чтобы Alembic увидел Client, User и будущие модели
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.db import Base  # type: ignore  # noqa: E402
+from app import models  # noqa: F401,E402
+from app.models import operation  # noqa: F401,E402
 
 config = context.config
 
@@ -16,7 +20,7 @@ if config.config_file_name is not None:
 # Берём DSN из ENV, иначе — дефолт, совпадающий с core-api
 db_url = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://neft:neftpass@postgres:5432/neft",
+    "postgresql+psycopg://neft:neftpass@postgres:5432/neft",
 )
 config.set_main_option("sqlalchemy.url", db_url)
 

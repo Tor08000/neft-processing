@@ -18,7 +18,7 @@ from app.schemas.transactions import (
 
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/api/v1", tags=["transactions"])
+router = APIRouter(prefix="", tags=["transactions"])
 
 
 def _raise_not_implemented(endpoint: str) -> None:

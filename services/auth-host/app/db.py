@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+
 import psycopg
 
 from neft_shared.settings import get_settings
