@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+# Provide system psycopg2 wheel so the driver is always importable even if
+# Python package installation is skipped or overridden in some environments.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-psycopg2 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
