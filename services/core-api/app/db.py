@@ -49,7 +49,7 @@ def init_db() -> None:
     """Создаёт таблицы для декларативных моделей core-api."""
 
     from app import models  # noqa: F401
-    from app.models import operation  # noqa: F401
+    from app.models.operation import Operation  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
