@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+.cache/
+.env
+logs/
+data/
+/alembic.ini
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

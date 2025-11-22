@@ -1,0 +1,1 @@
+Admin UI placeholder. Use React Vite template and point API to CORE_API.

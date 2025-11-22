@@ -1,0 +1,142 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: neft-processing-postgres-1
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-neft}
+      POSTGRES_USER: ${POSTGRES_USER:-neft}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neftpass}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: neft-processing-redis-1
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  core-api:
+    image: neft-processing-core-api
+    build:
+      context: .
+      dockerfile: services/core-api/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: core-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth-host:
+    image: neft-processing-auth-host
+    build:
+      context: .
+      dockerfile: services/auth-host/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: auth-host
+    depends_on:
+      core-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ai-service:
+    image: neft-processing-ai-service
+    build:
+      context: .
+      dockerfile: services/ai-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: ai-service
+    depends_on:
+      core-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  workers:
+    build:
+      context: .
+      dockerfile: services/workers/Dockerfile
+    environment:
+      - ROLE=worker        # если у тебя entrypoint смотрит на ROLE
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+      - core-api
+
+  beat:
+    build:
+      context: .
+      dockerfile: services/workers/Dockerfile   # ВАЖНО: тот же образ
+    environment:
+      - ROLE=beat
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+      - core-api
+
+  flower:
+    image: mher/flower:1.2.0
+    container_name: neft-flower
+    env_file:
+      - .env
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27
+    container_name: neft-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      core-api:
+        condition: service_healthy
+      auth-host:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

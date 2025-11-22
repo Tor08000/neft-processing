@@ -1,0 +1,19 @@
+# services/core-api/app/api/routes/__init__.py
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from . import auth, clients, health, prices, rules, transactions, limits
+
+# Чтобы не ломать существующий main.py, объявляем оба имени.
+router = APIRouter()
+api_router = router  # если где-то импортируется api_router — тоже будет работать
+
+# Общий префикс /api/v1 для всех роутеров
+router.include_router(health.router, prefix="/api/v1")
+router.include_router(auth.router, prefix="/api/v1")
+router.include_router(clients.router, prefix="/api/v1")
+router.include_router(prices.router, prefix="/api/v1")
+router.include_router(rules.router, prefix="/api/v1")
+router.include_router(transactions.router, prefix="/api/v1")
+router.include_router(limits.router, prefix="/api/v1")
