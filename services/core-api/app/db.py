@@ -11,8 +11,6 @@ from neft_shared.settings import get_settings
 
 settings = get_settings()
 
-_RAW_DATABASE_URL = settings.database_url
-
 
 def _ensure_psycopg_driver(url: str) -> str:
     """Normalize Postgres URLs to use the psycopg v3 driver.
@@ -26,13 +24,15 @@ def _ensure_psycopg_driver(url: str) -> str:
 
     sa_url = make_url(url)
 
-    if sa_url.drivername.startswith("postgres"):
+    if sa_url.drivername in {"postgresql", "postgres"} or sa_url.drivername.endswith(
+        "+psycopg2"
+    ):
         sa_url = sa_url.set(drivername="postgresql+psycopg")
 
     return str(sa_url)
 
 
-DATABASE_URL = _ensure_psycopg_driver(_RAW_DATABASE_URL)
+DATABASE_URL = _ensure_psycopg_driver(settings.database_url)
 
 engine = create_engine(
     DATABASE_URL,
