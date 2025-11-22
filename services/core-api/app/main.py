@@ -11,8 +11,6 @@ from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from db.session import SessionLocal
-
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
     from app.api.v1.endpoints.operations_read import router as operations_router
@@ -157,6 +155,9 @@ class ReversalRequest(BaseModel):
 # -----------------------------------------------------------------------------
 # In-memory лог операций + сохранение в БД
 # -----------------------------------------------------------------------------
+# NB: глобальный in-memory лог инициализируем при старте, чтобы избежать NameError
+TRANSACTION_LOG: List[TransactionLogEntry] = []
+
 # В main.py ЗАМЕНИ функцию _persist_operation_to_db целиком на эту
 
 def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
