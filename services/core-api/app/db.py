@@ -4,13 +4,33 @@ from __future__ import annotations
 from typing import Generator
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from neft_shared.settings import get_settings
 
 settings = get_settings()
 
-DATABASE_URL = settings.database_url
+
+def _ensure_psycopg_driver(url: str) -> str:
+    """Normalize Postgres URLs to use the psycopg v3 driver.
+
+    If the provided URL points to Postgres (with or without an explicit driver),
+    force the driver to ``postgresql+psycopg`` so we rely on the installed
+    ``psycopg`` package rather than ``psycopg2``. This prevents runtime
+    ``ModuleNotFoundError`` when environments provide a URL without a driver
+    suffix and SQLAlchemy attempts to import ``psycopg2`` by default.
+    """
+
+    sa_url = make_url(url)
+
+    if sa_url.drivername.startswith("postgres"):
+        sa_url = sa_url.set(drivername="postgresql+psycopg")
+
+    return str(sa_url)
+
+
+DATABASE_URL = _ensure_psycopg_driver(settings.database_url)
 
 engine = create_engine(
     DATABASE_URL,
