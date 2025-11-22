@@ -12,13 +12,6 @@ from neft_shared.settings import get_settings
 
 settings = get_settings()
 
-# Read the raw URL from env (preferred NEFT_DB_URL, fallback DATABASE_URL from shared
-# settings) and keep a psycopg (v3) default so we don't fall back to psycopg2.
-_RAW_DATABASE_URL = os.getenv(
-    "NEFT_DB_URL",
-    settings.database_url or "postgresql+psycopg://neft:neft@postgres:5432/neft",
-)
-
 
 def _ensure_psycopg_driver(url: str) -> str:
     """Normalize Postgres URLs to use the psycopg v3 driver.
@@ -32,15 +25,15 @@ def _ensure_psycopg_driver(url: str) -> str:
 
     sa_url = make_url(url)
 
-    if sa_url.drivername.startswith("postgres"):
+    if sa_url.drivername in {"postgresql", "postgres"} or sa_url.drivername.endswith(
+        "+psycopg2"
+    ):
         sa_url = sa_url.set(drivername="postgresql+psycopg")
 
-    # Keep credentials intact; ``str(sa_url)`` hides passwords which breaks
-    # DSNs that embed them.
-    return sa_url.render_as_string(hide_password=False)
+    return str(sa_url)
 
 
-DATABASE_URL = _ensure_psycopg_driver(_RAW_DATABASE_URL)
+DATABASE_URL = _ensure_psycopg_driver(settings.database_url)
 
 engine = create_engine(
     DATABASE_URL,
@@ -56,7 +49,7 @@ def init_db() -> None:
     """Создаёт таблицы для декларативных моделей core-api."""
 
     from app import models  # noqa: F401
-    from app.models import Operation  # noqa: F401
+    from app.models.operation import Operation  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
