@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -11,7 +10,10 @@ from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from db.session import SessionLocal
+from neft_shared.logging_setup import get_logger, init_logging
+
+from app.db import SessionLocal, init_db
+from app.api.routes import router as api_router
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
@@ -20,12 +22,9 @@ except Exception:  # pragma: no cover - в dev может ещё не сущес
     operations_router = None  # type: ignore
 
 
-# -----------------------------------------------------------------------------
-# ЛОГИРОВАНИЕ
-# -----------------------------------------------------------------------------
-logger = logging.getLogger("neft-core-api")
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO)
+SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
+init_logging(service_name=SERVICE_NAME)
+logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -45,6 +44,10 @@ if not DISABLE_CELERY:
 else:
     celery_app = None
     logger.warning("Celery disabled via DISABLE_CELERY=1 – /health/enqueue will be limited")
+
+
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
 
 
 # -----------------------------------------------------------------------------
@@ -167,8 +170,8 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
     (id BIGINT PK, operation_id VARCHAR(64) и т.п.).
     """
     try:
-        from db.session import SessionLocal  # type: ignore
-        from db.models.operation import Operation  # type: ignore
+        from app.db import SessionLocal  # type: ignore
+        from app.models.operation import Operation  # type: ignore
     except Exception as exc:  # pragma: no cover
         logger.warning("DB Operation model not available yet: %s", exc)
         return
@@ -297,10 +300,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
+
 
 # Включаем доп. роутер с чтением операций из БД, если он есть
 if operations_router is not None:
-    app.include_router(operations_router, prefix="/api/v1")
+    app.include_router(operations_router, prefix="")
 
 
 # -----------------------------------------------------------------------------
@@ -321,7 +332,7 @@ def health_enqueue(wait: bool = Query(False, description="Wait for result")) -> 
         # работаем в деградированном режиме без Celery
         return CeleryPingResponse(task="disabled", result={"pong": 1, "celery": "disabled"})
 
-    async_result = celery_app.send_task("ping", kwargs={"x": 1})
+    async_result = celery_app.send_task("workers.ping", kwargs={"x": 1})
     if wait:
         result = async_result.get(timeout=10)
     else:
@@ -350,8 +361,8 @@ def limits_recalc(
             result={"status": "queued", "celery": "disabled"},
         )
 
-    async_result = celery_app.send_task("limits.recalc", kwargs=body.dict())
-    return LimitsTaskResponse(task="limits.recalc", result={"task_id": async_result.id})
+    async_result = celery_app.send_task("limits.recalc_all", kwargs={})
+    return LimitsTaskResponse(task="limits.recalc_all", result={"task_id": async_result.id})
 
 
 # -----------------------------------------------------------------------------
