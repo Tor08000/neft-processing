@@ -172,9 +172,6 @@ class ReversalRequest(BaseModel):
 # -----------------------------------------------------------------------------
 # In-memory лог операций + сохранение в БД
 # -----------------------------------------------------------------------------
-# NB: глобальный in-memory лог инициализируем при старте, чтобы избежать NameError
-TRANSACTION_LOG: List[TransactionLogEntry] = []
-
 # В main.py ЗАМЕНИ функцию _persist_operation_to_db целиком на эту
 
 def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
