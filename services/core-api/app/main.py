@@ -50,6 +50,22 @@ else:
 TRANSACTION_LOG: List["TransactionLogEntry"] = []
 
 
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
+
+
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
+
+
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
+
+
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
+
+
 # -----------------------------------------------------------------------------
 # Pydantic-модели
 # -----------------------------------------------------------------------------
@@ -160,6 +176,9 @@ class ReversalRequest(BaseModel):
 # -----------------------------------------------------------------------------
 # In-memory лог операций + сохранение в БД
 # -----------------------------------------------------------------------------
+# NB: глобальный in-memory лог инициализируем при старте, чтобы избежать NameError
+TRANSACTION_LOG: List[TransactionLogEntry] = []
+
 # В main.py ЗАМЕНИ функцию _persist_operation_to_db целиком на эту
 
 def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
@@ -299,6 +318,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
 
 app.include_router(api_router, prefix="/api/v1")
 
