@@ -58,6 +58,10 @@ TRANSACTION_LOG: List["TransactionLogEntry"] = []
 TRANSACTION_LOG: List["TransactionLogEntry"] = []
 
 
+# In-memory лог операций
+TRANSACTION_LOG: List["TransactionLogEntry"] = []
+
+
 # -----------------------------------------------------------------------------
 # Pydantic-модели
 # -----------------------------------------------------------------------------
@@ -307,6 +311,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+    logger.info("core-api startup complete")
 
 app.include_router(api_router, prefix="/api/v1")
 
