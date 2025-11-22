@@ -1,6 +1,9 @@
 from __future__ import annotations
-import os, json
+
+import json
+import os
 import requests
+
 
 class OpenAIClient:
     def __init__(self, api_key: str | None = None, model: str | None = None):

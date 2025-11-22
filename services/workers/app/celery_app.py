@@ -7,46 +7,38 @@ Celery-приложение для NEFT workers.
 
 from __future__ import annotations
 
-import os
-
 from celery import Celery
 
-from neft_shared.logging_setup import init_logging, get_logger
+from neft_shared.logging_setup import get_logger, init_logging
 
-SERVICE_NAME = os.getenv("SERVICE_NAME", "workers")
+from .config import settings
 
-BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-RESULT_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+SERVICE_NAME = settings.service_name
 
 # Инициализируем логирование как можно раньше
 init_logging(service_name=SERVICE_NAME)
 
-logger = get_logger(__name__, service=SERVICE_NAME)
+logger = get_logger(__name__)
 
 celery_app = Celery(
     "neft-workers",
-    broker=BROKER_URL,
-    backend=RESULT_URL,
+    broker=settings.broker_url,
+    backend=settings.result_backend,
+    include=["services.workers.app.tasks"],
 )
 
 # Базовая конфигурация Celery
 celery_app.conf.update(
     task_default_queue="default",
     broker_connection_retry_on_startup=True,
-    timezone=os.getenv("CELERY_TIMEZONE", "Europe/Moscow"),
+    timezone=settings.timezone,
     enable_utc=True,
+    result_expires=settings.result_expires,
+    task_default_retry_delay=settings.task_default_retry_delay,
+    task_acks_late=True,
+    task_max_retries=settings.task_max_retries,
+    broker_transport_options={"visibility_timeout": settings.visibility_timeout},
 )
 
-# Автоматический поиск задач в пакете services.workers.*
-# (tasks должны лежать, например, в services/workers/tasks/*.py)
-celery_app.autodiscover_tasks(["services.workers"])
-
-
-@celery_app.task(name="workers.ping")
-def ping(x: int = 1) -> dict:
-    """
-    Простой ping-task, чтобы можно было проверить работу очереди:
-        celery -A services.workers.app.celery_app:celery_app call workers.ping --args='[5]'
-    """
-    logger.info("Ping task executed", extra={"extra": {"x": x}})
-    return {"pong": x}
+# Автоматический поиск задач в пакете services.workers.app.tasks
+celery_app.autodiscover_tasks(["services.workers.app.tasks"])

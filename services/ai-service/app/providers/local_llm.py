@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 def local_tx_score(features: dict) -> dict:
     """
     Очень простая эвристика:
@@ -12,7 +13,7 @@ def local_tx_score(features: dict) -> dict:
     reasons = []
     qty = float(features.get("qty", 0) or 0)
     amount = float(features.get("amount", 0) or 0)
-    azs = (features.get("azs_name") or "").strip()
+    azs = (features.get("merchant") or features.get("azs_name") or "").strip()
 
     score += min(qty / 200.0, 0.8)
     if amount > 50000:

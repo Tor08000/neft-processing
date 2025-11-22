@@ -9,11 +9,11 @@ from . import auth, clients, health, prices, rules, transactions, limits
 router = APIRouter()
 api_router = router  # если где-то импортируется api_router — тоже будет работать
 
-# Общий префикс /api/v1 для всех роутеров
-router.include_router(health.router, prefix="/api/v1")
-router.include_router(auth.router, prefix="/api/v1")
-router.include_router(clients.router, prefix="/api/v1")
-router.include_router(prices.router, prefix="/api/v1")
-router.include_router(rules.router, prefix="/api/v1")
-router.include_router(transactions.router, prefix="/api/v1")
-router.include_router(limits.router, prefix="/api/v1")
+# Общий префикс /api/v1 задаётся в app.main
+router.include_router(health.router)
+router.include_router(auth.router)
+router.include_router(clients.router)
+router.include_router(prices.router)
+router.include_router(rules.router)
+router.include_router(transactions.router)
+router.include_router(limits.router)
