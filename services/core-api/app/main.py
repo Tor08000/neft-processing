@@ -194,7 +194,7 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
     """
     try:
         from app.db import SessionLocal  # type: ignore
-        from app.models.operation import Operation  # type: ignore
+        from app.models import Operation  # type: ignore
     except Exception as exc:  # pragma: no cover
         logger.warning("DB Operation model not available yet: %s", exc)
         return
