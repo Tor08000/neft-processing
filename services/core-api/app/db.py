@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -14,48 +13,73 @@ settings = get_settings()
 
 
 def _ensure_psycopg_driver(url: str) -> str:
-    """Normalize Postgres URLs to use the psycopg v3 driver.
-
-    If the provided URL points to Postgres (with or without an explicit driver),
-    force the driver to ``postgresql+psycopg`` so we rely on the installed
-    ``psycopg`` package rather than ``psycopg2``. This prevents runtime
-    ``ModuleNotFoundError`` when environments provide a URL without a driver
-    suffix and SQLAlchemy attempts to import ``psycopg2`` by default.
     """
+    Нормализуем Postgres-URL так, чтобы всегда использовать драйвер psycopg v3.
 
+    ВАЖНО: render_as_string(hide_password=False), иначе SQLAlchemy замаскирует
+    пароль как "***" и коннект всегда будет падать по auth failed.
+    """
     sa_url = make_url(url)
 
-    if sa_url.drivername in {"postgresql", "postgres"} or sa_url.drivername.endswith(
+    if sa_url.drivername in {"postgres", "postgresql"} or sa_url.drivername.endswith(
         "+psycopg2"
     ):
         sa_url = sa_url.set(drivername="postgresql+psycopg")
 
-    return str(sa_url)
+    # не прячем пароль!
+    return sa_url.render_as_string(hide_password=False)
 
 
-DATABASE_URL = _ensure_psycopg_driver(settings.database_url)
+# 1) Берём URL из переменной окружения NEFT_DB_URL (как в alembic.ini)
+# 2) Если её нет — пробуем достать из settings.NEFT_DB_URL
+# 3) Если и там нет — дефолт на локальный Postgres из docker-compose
+raw_db_url = (
+    os.getenv("NEFT_DB_URL")
+    or getattr(settings, "NEFT_DB_URL", None)
+    or "postgresql+psycopg://neft:neft@postgres:5432/neft"
+)
 
+DATABASE_URL: str = _ensure_psycopg_driver(raw_db_url)
+
+
+# Базовый engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
-    if DATABASE_URL.startswith("sqlite")
-    else {},
+    future=True,
+    pool_pre_ping=True,
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# База для декларативных моделей
 Base = declarative_base()
+
+# Фабрика сессий
+SessionLocal = sessionmaker(
+    bind=engine,
+    class_=Session,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+)
 
 
 def init_db() -> None:
-    """Создаёт таблицы для декларативных моделей core-api."""
+    """
+    Инициализация БД при старте приложения:
+    — импортируем все модели, чтобы они зарегистрировались в Base.metadata
+    — создаём таблицы (для dev/локалки)
+    """
 
+    # Импорт нужен только для регистрации моделей, переменные не используются
     from app import models  # noqa: F401
     from app.models.operation import Operation  # noqa: F401
+    # TODO: когда появятся другие модели (Client, Card, Transaction и т.п.),
+    # добавить их импорт сюда по аналогии, либо обеспечить их импорт в app.models.
 
     Base.metadata.create_all(bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Yield a database session and guarantee close."""
+    """Dependency для FastAPI: даёт сессию и гарантирует её закрытие."""
 
     db = SessionLocal()
     try:

@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 00000078 C21C:E066
+Серийный номер тома: 00000024 C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -1336,13 +1336,11 @@ C:\NEFT-PROCESSING
 |   |   \---pg_xact
 |   |           0000
 |   |           
-|   +---init
-|   |       00_extensions.sql
-|   |       01_schema.sql
-|   |       02_seed.sql
-|   |       
-|   +---migrations
-|   \---seeds
+|   \---init
+|           00_extensions.sql
+|           01_schema.sql
+|           02_seed.sql
+|           
 +---docs
 |   |   API.md
 |   |   ARCHITECTURE.md
@@ -1374,12 +1372,6 @@ C:\NEFT-PROCESSING
 |   |       \---prod
 |   |               .keep
 |   |               
-|   +---nginx
-|   |   +---default.conf
-|   |   +---neft-local.crt
-|   |   +---neft-local.key
-|   |   +---nginx.conf
-|   |   \---_upstream_down.html
 |   \---terraform
 |           main.tf
 |           variables.tf
@@ -1391,16 +1383,13 @@ C:\NEFT-PROCESSING
 |   +---conf.d
 |   |       default.conf
 |   |       
-|   +---default.conf
 |   +---html
 |   |       _upstream_down.html
 |   |       
-|   +---tls
-|   |       neft-local.crt
-|   |       neft-local.key
-|   |       
-|   \---_upstream_down.html
-+---scripts
+|   \---tls
+|           neft-local.crt
+|           neft-local.key
+|           
 +---services
 |   +---ai-service
 |   |   |   Dockerfile
@@ -1504,7 +1493,6 @@ C:\NEFT-PROCESSING
 |   |   |   |   error_handlers.py
 |   |   |   |   logging_conf.py
 |   |   |   |   main.py
-|   |   |   |   models.py
 |   |   |   |   schemas.py
 |   |   |   |   services.py
 |   |   |   |   __init__.py
@@ -1545,7 +1533,9 @@ C:\NEFT-PROCESSING
 |   |   |   |       db.py
 |   |   |   |       
 |   |   |   +---models
+|   |   |   |       client.py
 |   |   |   |       operation.py
+|   |   |   |       __init__.py
 |   |   |   |       
 |   |   |   +---repositories
 |   |   |   |       client_repo.py
@@ -1601,26 +1591,21 @@ C:\NEFT-PROCESSING
 |                   limits.py
 |                   __init__.py
 |                   
-+---shared
-|   |   __init__.py
-|   |   
-|   +---contracts
-|   |   \---ai
-|   |           prompts.md
-|   |           
-|   \---python
-|       |   __init__.py
-|       |   
-|       \---neft_shared
-|           |   logging_setup.py
-|           |   settings.py
-|           |   __init__.py
-|           |   
-|           +---models
-|           +---schema
-|           |       __init__.py
-|           |       
-|           \---utils
-\---tls
-    +---neft-local.crt
-    \---neft-local.key
+\---shared
+    |   __init__.py
+    |   
+    +---contracts
+    |   \---ai
+    |           prompts.md
+    |           
+    \---python
+        |   __init__.py
+        |   
+        \---neft_shared
+            |   logging_setup.py
+            |   settings.py
+            |   __init__.py
+            |   
+            \---schema
+                    __init__.py
+                    
