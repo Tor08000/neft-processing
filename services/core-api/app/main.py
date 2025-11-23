@@ -607,7 +607,6 @@ def reverse_transaction(
 # ЧТЕНИЕ in-memory лога
 # -----------------------------------------------------------------------------
 @app.get("/api/v1/operations/log", response_model=TransactionsPage)
-@app.get("/api/v1/operations", response_model=TransactionsPage)
 def list_operations(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -624,9 +623,4 @@ def list_operations(
     )
 
 
-@app.get(
-    "/api/v1/operations/{operation_id}",
-    response_model=TransactionLogEntry,
-)
-def get_operation(operation_id: str = Path(...)) -> TransactionLogEntry:
-    return _get_transaction_or_404(operation_id)
+
