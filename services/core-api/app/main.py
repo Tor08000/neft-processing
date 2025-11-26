@@ -6,14 +6,13 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
-from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from app.db import SessionLocal, get_db, init_db
+from app.db import init_db
 from app.api.routes import router as api_router
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -24,8 +23,6 @@ from app.services.limits import (
     call_limits_check_and_reserve_sync,
     celery_app,
 )
-from app.services.reference_validation import validate_terminal_auth_refs
-from app.services.bootstrap import ensure_default_refs
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
@@ -317,16 +314,7 @@ def limits_recalc(
     "/api/v1/processing/terminal-auth",
     response_model=TransactionLogEntry,
 )
-def terminal_auth(
-    body: TerminalAuthRequest = Body(...), db: Session = Depends(get_db)
-) -> TransactionLogEntry:
-    validate_terminal_auth_refs(
-        db,
-        merchant_id=body.merchant_id,
-        terminal_id=body.terminal_id,
-        card_id=body.card_id,
-        client_id=body.client_id,
-    )
+def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
     limits_result = call_limits_check_and_reserve_sync(CheckAndReserveRequest(**body.dict()))
 
     op_id = str(uuid4())

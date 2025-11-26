@@ -22,7 +22,6 @@ from app.services.limits import (
     CheckAndReserveResult,
     call_limits_check_and_reserve_sync,
 )
-from app.services.reference_validation import validate_terminal_auth_refs
 
 logger = get_logger(__name__)
 
@@ -286,16 +285,7 @@ def _create_reversal_entry(
 # =============================================================================
 
 @router.post("/processing/terminal-auth", response_model=TransactionLogEntry)
-def terminal_auth(
-    body: TerminalAuthRequest = Body(...), db: Session = Depends(get_db)
-) -> TransactionLogEntry:
-    validate_terminal_auth_refs(
-        db,
-        merchant_id=body.merchant_id,
-        terminal_id=body.terminal_id,
-        card_id=body.card_id,
-        client_id=body.client_id,
-    )
+def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
     limits_req = CheckAndReserveRequest(
         merchant_id=body.merchant_id,
         terminal_id=body.terminal_id,
