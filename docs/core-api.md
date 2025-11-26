@@ -25,3 +25,18 @@ On application startup the service ensures the presence of default records used 
 - Card `CARD-001` for `client_id` `CLIENT-123` (`ACTIVE`)
 
 The bootstrap step recreates these entries if they are missing or inactive, so `run_tests.cmd` can execute without manual setup.
+
+### GET /api/v1/transactions/log
+
+Журнал операций по картам (тонкий алиас над таблицей `operations`). Источник данных — модель `Operation`.
+
+Поддерживаемые параметры:
+- `limit` / `offset`
+- `card_id`, `client_id`, `merchant_id`, `terminal_id`
+- `operation_type` (`AUTH`, `CAPTURE`, `REFUND`, `REVERSAL`)
+- `status`
+- `date_from`, `date_to` (ISO8601)
+- `sort_by` (`created_at`, `amount`, `operation_type`, `status`)
+- `sort_order` (`asc` / `desc`)
+
+Ответ: `OperationsPage` (см. раздел `/api/v1/operations`).

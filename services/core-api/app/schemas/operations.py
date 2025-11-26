@@ -47,3 +47,7 @@ class OperationsPage(BaseModel):
 class OperationTimeline(BaseModel):
     root: OperationSchema
     children: List[OperationSchema]
+
+
+# Удобный псевдоним для журнала транзакций
+TransactionLogPage = OperationsPage
