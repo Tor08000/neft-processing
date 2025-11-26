@@ -3,16 +3,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-GroupBy = Literal[
-    "client",
-    "card",
-    "merchant",
-    "terminal",
-    "station",
-    "fuel_category",
-    "mcc",
-    "tx_type",
-]
+GroupBy = Literal["client", "card", "merchant", "terminal", "station"]
 
 
 class TurnoverGroupKey(BaseModel):
@@ -20,10 +11,6 @@ class TurnoverGroupKey(BaseModel):
     card_id: Optional[str] = None
     merchant_id: Optional[str] = None
     terminal_id: Optional[str] = None
-
-    product_category: Optional[str] = None
-    mcc: Optional[str] = None
-    tx_type: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

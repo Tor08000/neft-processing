@@ -46,15 +46,6 @@ def _build_group_key(group_by: GroupBy, tx: TransactionSchema) -> tuple[Hashable
         group_key = TurnoverGroupKey(
             merchant_id=tx.merchant_id, terminal_id=tx.terminal_id
         )
-    elif group_by == "fuel_category":
-        key = ("fuel_category", tx.product_category)
-        group_key = TurnoverGroupKey(product_category=tx.product_category)
-    elif group_by == "mcc":
-        key = ("mcc", tx.mcc)
-        group_key = TurnoverGroupKey(mcc=tx.mcc)
-    elif group_by == "tx_type":
-        key = ("tx_type", tx.tx_type)
-        group_key = TurnoverGroupKey(tx_type=tx.tx_type)
     else:
         raise ValueError(f"Unsupported group_by value: {group_by}")
 
@@ -131,9 +122,6 @@ def get_turnover_report(
     card_id: str | None = None,
     merchant_id: str | None = None,
     terminal_id: str | None = None,
-    product_category: str | None = None,
-    mcc: str | None = None,
-    tx_type: str | None = None,
 ) -> TurnoverReportResponse:
     transactions_page = list_transactions(
         db,
@@ -148,21 +136,8 @@ def get_turnover_report(
         no_pagination=True,
     )
 
-    transactions = transactions_page.items
-
-    if product_category is not None:
-        transactions = [
-            tx for tx in transactions if tx.product_category == product_category
-        ]
-
-    if mcc is not None:
-        transactions = [tx for tx in transactions if tx.mcc == mcc]
-
-    if tx_type is not None:
-        transactions = [tx for tx in transactions if tx.tx_type == tx_type]
-
     return aggregate_transactions_for_turnover(
-        transactions,
+        transactions_page.items,
         group_by=group_by,
         from_created_at=from_created_at,
         to_created_at=to_created_at,

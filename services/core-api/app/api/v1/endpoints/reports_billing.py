@@ -25,14 +25,10 @@ def get_turnover_report_endpoint(
     card_id: str | None = None,
     merchant_id: str | None = None,
     terminal_id: str | None = None,
-    product_category: str | None = None,
-    mcc: str | None = None,
-    tx_type: str | None = None,
     db: Session = Depends(get_db),
 ) -> TurnoverReportResponse:
     """
-    Возвращает агрегированный оборот за период по выбранному измерению,
-    с фильтрами по топливной категории, MCC и типу транзакции.
+    Возвращает агрегированный оборот за период по выбранному измерению.
     """
     return get_turnover_report(
         db,
@@ -43,9 +39,6 @@ def get_turnover_report_endpoint(
         card_id=card_id,
         merchant_id=merchant_id,
         terminal_id=terminal_id,
-        product_category=product_category,
-        mcc=mcc,
-        tx_type=tx_type,
     )
 
 
@@ -58,9 +51,6 @@ def export_turnover_csv_endpoint(
     card_id: str | None = None,
     merchant_id: str | None = None,
     terminal_id: str | None = None,
-    product_category: str | None = None,
-    mcc: str | None = None,
-    tx_type: str | None = None,
     db: Session = Depends(get_db),
 ):
     report = get_turnover_report(
@@ -72,9 +62,6 @@ def export_turnover_csv_endpoint(
         card_id=card_id,
         merchant_id=merchant_id,
         terminal_id=terminal_id,
-        product_category=product_category,
-        mcc=mcc,
-        tx_type=tx_type,
     )
 
     output = StringIO()
@@ -87,9 +74,6 @@ def export_turnover_csv_endpoint(
             "card_id",
             "merchant_id",
             "terminal_id",
-            "product_category",
-            "mcc",
-            "tx_type",
             "transaction_count",
             "authorized_amount",
             "captured_amount",
@@ -110,9 +94,6 @@ def export_turnover_csv_endpoint(
                 key.card_id or "",
                 key.merchant_id or "",
                 key.terminal_id or "",
-                key.product_category or "",
-                key.mcc or "",
-                key.tx_type or "",
                 item.transaction_count,
                 item.authorized_amount,
                 item.captured_amount,
