@@ -6,6 +6,9 @@ from typing import Any, Dict, Optional
 from celery import Celery
 from pydantic import BaseModel
 
+from app.db import SessionLocal
+from app.models.limit_rule import LimitRule
+
 from neft_shared.logging_setup import get_logger
 from app.db import SessionLocal
 from app.models.limit_rule import LimitRule
@@ -42,6 +45,12 @@ class CheckAndReserveRequest(BaseModel):
     terminal_id: Optional[str] = None
     amount: int
     currency: str = "RUB"
+    phase: str = "AUTH"
+    client_group_id: Optional[str] = None
+    card_group_id: Optional[str] = None
+    product_category: Optional[str] = None
+    mcc: Optional[str] = None
+    tx_type: Optional[str] = None
 
     product_category: Optional[str] = None
     mcc: Optional[str] = None
