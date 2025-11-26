@@ -30,6 +30,8 @@ The bootstrap step recreates these entries if they are missing or inactive, so `
 
 Журнал операций по картам (тонкий алиас над таблицей `operations`). Источник данных — модель `Operation`.
 
+Те же данные читаются эндпоинтом `/api/v1/operations`, чтобы журнал и история операций имели единый источник истины.
+
 Поддерживаемые параметры:
 - `limit` / `offset`
 - `card_id`, `client_id`, `merchant_id`, `terminal_id`
@@ -40,3 +42,11 @@ The bootstrap step recreates these entries if they are missing or inactive, so `
 - `sort_order` (`asc` / `desc`)
 
 Ответ: `OperationsPage` (см. раздел `/api/v1/operations`).
+
+### GET /api/v1/operations
+
+Возвращает журнал операций (`Operation`) с пагинацией по данным таблицы `operations` (тот же источник, что и `/api/v1/transactions/log`).
+
+### GET /api/v1/operations/{operation_id}/timeline
+
+Возвращает связанную цепочку операций (AUTH, CAPTURE, REFUND, REVERSAL) по указанному `operation_id`, отсортированную по времени.
