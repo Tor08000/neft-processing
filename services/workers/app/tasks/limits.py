@@ -147,8 +147,16 @@ def check_and_reserve_limit(
     # ВАЖНО: все аргументы с default, чтобы Celery спокойно принимал kwargs
     client_id: Optional[str] = None,
     card_id: Optional[str] = None,
+    merchant_id: Optional[str] = None,
+    terminal_id: Optional[str] = None,
     amount: int = 0,
     currency: str = "RUB",
+    product_category: Optional[str] = None,
+    mcc: Optional[str] = None,
+    tx_type: Optional[str] = None,
+    phase: str = "AUTH",
+    client_group_id: Optional[str] = None,
+    card_group_id: Optional[str] = None,
     used_today: Optional[int] = None,
 ) -> Dict[str, Any]:
     """

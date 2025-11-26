@@ -33,6 +33,7 @@ class OperationSchema(BaseModel):
     mcc: Optional[str] = None
     product_code: Optional[str] = None
     product_category: Optional[str] = None
+    tx_type: Optional[str] = None
 
     class Config:
         # для Pydantic 1.x
