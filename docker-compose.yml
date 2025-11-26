@@ -55,6 +55,7 @@ services:
     container_name: neft-processing-auth-host-1
     environment:
       SERVICE_NAME: auth-host
+      CORE_API_URL: http://core-api:8000/api/v1
     depends_on:
       postgres:
         condition: service_healthy

@@ -26,8 +26,10 @@ async def authorize(payload: dict, Idempotency_Key: str | None = Header(default=
 
         async with httpx.AsyncClient(timeout=3.0, headers=_svc_headers()) as client:
             # 1) pricing
-            pr = await client.post(f"{CORE_API}/v1/auth/internal/pricing/resolve",
-                                   params={"azs_id": payload["azs_id"], "product_id": payload["product_id"]})
+            pr = await client.post(
+                f"{CORE_API}/auth/internal/pricing/resolve",
+                params={"azs_id": payload["azs_id"], "product_id": payload["product_id"]},
+            )
             if pr.status_code != 200:
                 resp = {"approved": False, "code": "PRICE_NOT_FOUND"}
                 if ctx.get("redis"): await ctx["redis"].set(ctx["resp_key"], json.dumps(resp), ex=ctx["ttl"])
@@ -47,7 +49,7 @@ async def authorize(payload: dict, Idempotency_Key: str | None = Header(default=
                 "qty": payload.get("qty"),
                 "amount": payload.get("amount"),
             }
-            rr = await client.post(f"{CORE_API}/v1/auth/internal/rules/evaluate", json=event)
+            rr = await client.post(f"{CORE_API}/auth/internal/rules/evaluate", json=event)
             dec = rr.json().get("decision","ALLOW")
             if dec == "HARD_DECLINE":
                 resp = {"approved": False, "code": "LIMIT_RULE"}
@@ -73,7 +75,7 @@ async def authorize(payload: dict, Idempotency_Key: str | None = Header(default=
                 "currency":"RUB",
                 "meta": {"price": price, "decision": "APPROVE"}
             }
-            await client.post(f"{CORE_API}/v1/transactions", json=trn)
+            await client.post(f"{CORE_API}/transactions", json=trn)
 
             final = payload.get("amount") or (price * (payload.get("qty") or 0))
             resp = {"approved": True, "price": price, "final_amount": final, "risk": rj}
@@ -85,7 +87,7 @@ async def capture(body: dict):
     txn_id = body.get("txn_id")
     if not txn_id: raise HTTPException(400, "missing:txn_id")
     async with httpx.AsyncClient(timeout=3.0, headers=_svc_headers()) as client:
-        await client.patch(f"{CORE_API}/v1/transactions/{txn_id}/capture", json={"amount": body.get("amount")})
+        await client.patch(f"{CORE_API}/transactions/{txn_id}/capture", json={"amount": body.get("amount")})
     return {"ok": True}
 
 @router.post("/reverse")
@@ -93,5 +95,5 @@ async def reverse(body: dict):
     txn_id = body.get("txn_id")
     if not txn_id: raise HTTPException(400, "missing:txn_id")
     async with httpx.AsyncClient(timeout=3.0, headers=_svc_headers()) as client:
-        await client.patch(f"{CORE_API}/v1/transactions/{txn_id}/reverse", json={"reason": body.get("reason","")})
+        await client.patch(f"{CORE_API}/transactions/{txn_id}/reverse", json={"reason": body.get("reason","")})
     return {"ok": True}
