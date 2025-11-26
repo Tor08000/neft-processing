@@ -192,6 +192,7 @@ def list_transactions(
     status: str | None = None,
     from_created_at: datetime | None = None,
     to_created_at: datetime | None = None,
+    no_pagination: bool = False,
 ) -> TransactionsPage:
     auth_query = db.query(Operation).filter(Operation.operation_type == "AUTH")
 
@@ -223,13 +224,23 @@ def list_transactions(
                 transactions.append(transaction)
 
         total = len(transactions)
+
+        if no_pagination:
+            return TransactionsPage(
+                items=transactions, total=total, limit=total, offset=0
+            )
+
         paginated = transactions[offset : offset + limit]
         return TransactionsPage(
             items=paginated, total=total, limit=limit, offset=offset
         )
 
-    total = auth_query.count()
-    auth_operations = auth_query.offset(offset).limit(limit).all()
+    if no_pagination:
+        auth_operations = auth_query.all()
+        total = len(auth_operations)
+    else:
+        total = auth_query.count()
+        auth_operations = auth_query.offset(offset).limit(limit).all()
     auth_ids = [op.operation_id for op in auth_operations]
     operations_by_auth = _fetch_operations_for_auths(db, auth_ids)
 
@@ -241,7 +252,12 @@ def list_transactions(
         if transaction:
             items.append(transaction)
 
-    return TransactionsPage(items=items, total=total, limit=limit, offset=offset)
+    return TransactionsPage(
+        items=items,
+        total=total,
+        limit=total if no_pagination else limit,
+        offset=0 if no_pagination else offset,
+    )
 
 
 def get_transaction(db: Session, transaction_id: str) -> TransactionDetailResponse | None:

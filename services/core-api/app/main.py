@@ -38,6 +38,12 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     transactions_router = None  # type: ignore
 
+# Роутер отчётов по биллингу
+try:
+    from app.api.v1.endpoints.reports_billing import router as reports_billing_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    reports_billing_router = None  # type: ignore
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -243,6 +249,10 @@ if operations_router is not None:
 # Включаем роутер транзакций, если он доступен
 if transactions_router is not None:
     app.include_router(transactions_router, prefix="")
+
+# Включаем роутер отчётов, если он доступен
+if reports_billing_router is not None:
+    app.include_router(reports_billing_router, prefix="")
 
 
 # -----------------------------------------------------------------------------
