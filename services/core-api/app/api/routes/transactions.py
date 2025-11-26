@@ -6,14 +6,23 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, HTTPException, Path
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger
 
-# --- NEW IMPORTS for DB ---
-from app.db import SessionLocal
+from app.db import SessionLocal, get_db
 from app.models.operation import Operation
+from app.services.limits import (
+    CheckAndReserveRequest,
+    CheckAndReserveResult,
+    call_limits_check_and_reserve_sync,
+)
+from app.services.reference_validation import validate_terminal_auth_refs
 
 logger = get_logger(__name__)
 
@@ -64,6 +73,15 @@ class TransactionLogEntry(BaseModel):
     amount: int
     currency: str = "RUB"
 
+    daily_limit: Optional[int] = None
+    limit_per_tx: Optional[int] = None
+    used_today: Optional[int] = None
+    new_used_today: Optional[int] = None
+
+    authorized: bool = False
+    response_code: str = "00"
+    response_message: str = "OK"
+
     parent_operation_id: Optional[str] = None
     reason: Optional[str] = None
 
@@ -92,6 +110,13 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
             card_id=entry.card_id,
             amount=entry.amount,
             currency=entry.currency,
+            daily_limit=entry.daily_limit,
+            limit_per_tx=entry.limit_per_tx,
+            used_today=entry.used_today,
+            new_used_today=entry.new_used_today,
+            authorized=entry.authorized,
+            response_code=entry.response_code,
+            response_message=entry.response_message,
             parent_operation_id=entry.parent_operation_id,
             reason=entry.reason,
         )
@@ -153,19 +178,28 @@ def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEn
 # FACTORIES
 # =============================================================================
 
-def _create_auth_entry(body: TerminalAuthRequest) -> TransactionLogEntry:
-    op_id = str(uuid4())
+def _create_auth_entry(
+    body: TerminalAuthRequest, limits_result: CheckAndReserveResult
+) -> TransactionLogEntry:
+    status = "AUTHORIZED" if limits_result.approved else "DECLINED"
     return TransactionLogEntry(
-        operation_id=op_id,
+        operation_id=str(uuid4()),
         created_at=datetime.utcnow(),
         operation_type="AUTH",
-        status="AUTHORIZED",
+        status=status,
         merchant_id=body.merchant_id,
         terminal_id=body.terminal_id,
         client_id=body.client_id,
         card_id=body.card_id,
         amount=body.amount,
         currency=body.currency,
+        daily_limit=limits_result.daily_limit,
+        limit_per_tx=limits_result.limit_per_tx,
+        used_today=limits_result.used_today,
+        new_used_today=limits_result.new_used_today,
+        authorized=limits_result.approved,
+        response_code=limits_result.response_code,
+        response_message=limits_result.response_message,
     )
 
 
@@ -181,6 +215,13 @@ def _create_capture_entry(auth_tx: TransactionLogEntry, amount: int) -> Transact
         card_id=auth_tx.card_id,
         amount=amount,
         currency=auth_tx.currency,
+        daily_limit=auth_tx.daily_limit,
+        limit_per_tx=auth_tx.limit_per_tx,
+        used_today=auth_tx.used_today,
+        new_used_today=auth_tx.new_used_today,
+        authorized=True,
+        response_code="00",
+        response_message="captured",
         parent_operation_id=auth_tx.operation_id,
     )
 
@@ -201,6 +242,13 @@ def _create_refund_entry(
         card_id=capture_tx.card_id,
         amount=amount,
         currency=capture_tx.currency,
+        daily_limit=capture_tx.daily_limit,
+        limit_per_tx=capture_tx.limit_per_tx,
+        used_today=capture_tx.used_today,
+        new_used_today=capture_tx.new_used_today,
+        authorized=True,
+        response_code="00",
+        response_message="refunded",
         parent_operation_id=capture_tx.operation_id,
         reason=reason,
     )
@@ -221,6 +269,13 @@ def _create_reversal_entry(
         card_id=original_tx.card_id,
         amount=original_tx.amount,
         currency=original_tx.currency,
+        daily_limit=original_tx.daily_limit,
+        limit_per_tx=original_tx.limit_per_tx,
+        used_today=original_tx.used_today,
+        new_used_today=original_tx.new_used_today,
+        authorized=True,
+        response_code="00",
+        response_message="reversed",
         parent_operation_id=original_tx.operation_id,
         reason=reason,
     )
@@ -231,8 +286,26 @@ def _create_reversal_entry(
 # =============================================================================
 
 @router.post("/processing/terminal-auth", response_model=TransactionLogEntry)
-def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
-    entry = _create_auth_entry(body)
+def terminal_auth(
+    body: TerminalAuthRequest = Body(...), db: Session = Depends(get_db)
+) -> TransactionLogEntry:
+    validate_terminal_auth_refs(
+        db,
+        merchant_id=body.merchant_id,
+        terminal_id=body.terminal_id,
+        card_id=body.card_id,
+        client_id=body.client_id,
+    )
+    limits_req = CheckAndReserveRequest(
+        merchant_id=body.merchant_id,
+        terminal_id=body.terminal_id,
+        client_id=body.client_id,
+        card_id=body.card_id,
+        amount=body.amount,
+        currency=body.currency,
+    )
+    limits_result = call_limits_check_and_reserve_sync(limits_req)
+    entry = _create_auth_entry(body, limits_result)
     return _append_log_entry(entry)
 
 

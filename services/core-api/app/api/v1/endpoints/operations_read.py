@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.operation import Operation
-from app.schemas.operations import OperationOut, OperationsPage
+from app.schemas.operations import OperationSchema, OperationTimeline, OperationsPage
 
 router = APIRouter(
     prefix="/api/v1/operations",
@@ -22,12 +22,17 @@ def list_operations(
     client_id: Optional[str] = Query(None),
     merchant_id: Optional[str] = Query(None),
     terminal_id: Optional[str] = Query(None),
-    operation_type: Optional[str] = Query(None, description="AUTH, CAPTURE, REFUND, REVERSAL"),
+    operation_type: Optional[str] = Query(
+        None, description="AUTH, CAPTURE, REFUND, REVERSAL"
+    ),
     status: Optional[str] = Query(
         None, description="AUTHORIZED, DECLINED, CAPTURED, REFUNDED, REVERSED, etc."
     ),
-    from_dt: Optional[datetime] = Query(None),
-    to_dt: Optional[datetime] = Query(None),
+    parent_operation_id: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
     db: Session = Depends(get_db),
 ) -> OperationsPage:
     query = db.query(Operation)
@@ -44,29 +49,65 @@ def list_operations(
         query = query.filter(Operation.operation_type == operation_type)
     if status:
         query = query.filter(Operation.status == status)
-    if from_dt:
-        query = query.filter(Operation.created_at >= from_dt)
-    if to_dt:
-        query = query.filter(Operation.created_at <= to_dt)
+    if parent_operation_id:
+        query = query.filter(Operation.parent_operation_id == parent_operation_id)
+    if date_from:
+        query = query.filter(Operation.created_at >= date_from)
+    if date_to:
+        query = query.filter(Operation.created_at <= date_to)
+
+    sort_column_map = {
+        "created_at": Operation.created_at,
+        "amount": Operation.amount,
+        "operation_type": Operation.operation_type,
+        "status": Operation.status,
+    }
+    sort_column = sort_column_map.get(sort_by, Operation.created_at)
+
+    if sort_order.lower() == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
 
     total = query.count()
-
-    query = query.order_by(Operation.created_at.desc(), Operation.id.desc())
     rows = query.offset(offset).limit(limit).all()
 
     return OperationsPage(
-        items=[OperationOut.from_orm(row) for row in rows],
+        items=[OperationSchema.from_orm(row) for row in rows],
         total=total,
         limit=limit,
         offset=offset,
     )
 
 
-@router.get("/{operation_id}", response_model=OperationOut)
-def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationOut:
+@router.get("/{operation_id}", response_model=OperationSchema)
+def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationSchema:
     op = db.query(Operation).filter(Operation.operation_id == operation_id).first()
     if not op:
         raise HTTPException(status_code=404, detail="operation not found")
 
-    return OperationOut.from_orm(op)
+    return OperationSchema.from_orm(op)
+
+
+@router.get("/{operation_id}/timeline", response_model=OperationTimeline)
+def get_operation_timeline(
+    operation_id: str, db: Session = Depends(get_db)
+) -> OperationTimeline:
+    root = (
+        db.query(Operation).filter(Operation.operation_id == operation_id).first()
+    )
+    if not root:
+        raise HTTPException(status_code=404, detail="operation not found")
+
+    children = (
+        db.query(Operation)
+        .filter(Operation.parent_operation_id == root.operation_id)
+        .order_by(Operation.created_at.asc())
+        .all()
+    )
+
+    return OperationTimeline(
+        root=OperationSchema.from_orm(root),
+        children=[OperationSchema.from_orm(child) for child in children],
+    )
 
