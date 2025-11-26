@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from celery import Celery
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.db import SessionLocal
@@ -14,11 +17,17 @@ from app.db import SessionLocal
 from app.models.limit_rule import LimitRule
 from app.services.limits_engine import calculate_used_amount, evaluate_limits
 
+from app.db import SessionLocal
+from app.models.limits import CardGroupMembership, ClientGroupMembership, LimitRule
+from app.models.operation import Operation
+
 logger = get_logger(__name__)
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
 DISABLE_CELERY = os.getenv("DISABLE_CELERY", "0") == "1"
+DEFAULT_DAILY_LIMIT = 1_000_000
+DEFAULT_LIMIT_PER_TX = 50_000
 
 celery_app: Optional[Celery]
 if not DISABLE_CELERY:
@@ -116,7 +125,7 @@ def call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndR
                 kwargs=req.dict(),
             )
             payload = result.get(timeout=10)  # type: ignore[assignment]
-            return CheckAndReserveResult(**payload)
+            return _normalize_limits_payload(payload, req)
         except Exception as exc:  # pragma: no cover
             logger.warning("Celery limits.check_and_reserve failed, using local stub: %s", exc)
     return _evaluate_locally(req)
