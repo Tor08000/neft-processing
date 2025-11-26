@@ -69,3 +69,4 @@ def get_operation(operation_id: str, db: Session = Depends(get_db)) -> Operation
         raise HTTPException(status_code=404, detail="operation not found")
 
     return OperationOut.from_orm(op)
+

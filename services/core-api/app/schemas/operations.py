@@ -31,8 +31,9 @@ class OperationOut(BaseModel):
     reason: Optional[str] = None
 
     class Config:
-        # поддержка .from_orm(...) и для Pydantic 1.x, и для 2.x
+        # для Pydantic 1.x
         orm_mode = True
+        # для Pydantic 2.x
         from_attributes = True
 
 

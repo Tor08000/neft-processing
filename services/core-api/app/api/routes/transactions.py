@@ -11,14 +11,19 @@ from pydantic import BaseModel
 
 from neft_shared.logging_setup import get_logger
 
+# --- NEW IMPORTS for DB ---
+from app.db import SessionLocal
+from app.models.operation import Operation
+
 logger = get_logger(__name__)
 
 router = APIRouter()
 
 
-# -----------------------------------------------------------------------------
-# Pydantic-модели запросов
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Pydantic запросы
+# =============================================================================
+
 class TerminalAuthRequest(BaseModel):
     merchant_id: str
     terminal_id: str
@@ -33,9 +38,6 @@ class CaptureRequest(BaseModel):
 
 
 class RefundRequest(BaseModel):
-    # amount может быть None:
-    # - None  -> FULL REFUND (на оставшуюся сумму)
-    # - число -> частичный / явный возврат
     amount: Optional[int] = None
     reason: Optional[str] = None
 
@@ -44,20 +46,14 @@ class ReversalRequest(BaseModel):
     reason: Optional[str] = None
 
 
-# -----------------------------------------------------------------------------
-# Pydantic-модель операции (ответ)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Pydantic модель ответа (операция)
+# =============================================================================
+
 class TransactionLogEntry(BaseModel):
-    """
-    Упрощённая модель операции для Core API.
-
-    Важно:
-    - operation_id: str — именно строка, чтобы не было проблем с ResponseValidationError.
-    """
-
     operation_id: str
     created_at: datetime
-    operation_type: str  # AUTH, CAPTURE, REFUND, REVERSAL
+    operation_type: str
     status: str
 
     merchant_id: str
@@ -72,15 +68,52 @@ class TransactionLogEntry(BaseModel):
     reason: Optional[str] = None
 
 
-# -----------------------------------------------------------------------------
-# In-memory журнал операций
-# -----------------------------------------------------------------------------
-# Храним операции в памяти: ключ — operation_id, значение — TransactionLogEntry
+# =============================================================================
+# In-memory LOG + DB persist
+# =============================================================================
+
 _TRANSACTIONS: Dict[str, TransactionLogEntry] = {}
 
 
+def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
+    """
+    Запись операции в таблицу operations (Postgres).
+    """
+    db = SessionLocal()
+    try:
+        db_op = Operation(
+            operation_id=entry.operation_id,
+            created_at=entry.created_at,
+            operation_type=entry.operation_type,
+            status=entry.status,
+            merchant_id=entry.merchant_id,
+            terminal_id=entry.terminal_id,
+            client_id=entry.client_id,
+            card_id=entry.card_id,
+            amount=entry.amount,
+            currency=entry.currency,
+            parent_operation_id=entry.parent_operation_id,
+            reason=entry.reason,
+        )
+        db.add(db_op)
+        db.commit()
+    except Exception as exc:
+        logger.exception("DB persist failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _append_log_entry(entry: TransactionLogEntry) -> TransactionLogEntry:
+    """
+    Унифицированная запись операции:
+    - пишем в память
+    - пишем в БД
+    - логируем
+    """
     _TRANSACTIONS[entry.operation_id] = entry
+    _persist_operation_to_db(entry)
+
     logger.info(
         "Stored %s operation %s for card %s amount=%s",
         entry.operation_type,
@@ -99,38 +132,30 @@ def _get_transaction_or_404(operation_id: str) -> TransactionLogEntry:
 
 
 def _get_children(parent_id: str) -> List[TransactionLogEntry]:
-    return [
-        tx for tx in _TRANSACTIONS.values()
-        if tx.parent_operation_id == parent_id
-    ]
+    return [tx for tx in _TRANSACTIONS.values() if tx.parent_operation_id == parent_id]
 
 
 def _get_captures_for_auth(auth_operation_id: str) -> List[TransactionLogEntry]:
     return [
-        tx
-        for tx in _TRANSACTIONS.values()
+        tx for tx in _TRANSACTIONS.values()
         if tx.operation_type == "CAPTURE" and tx.parent_operation_id == auth_operation_id
     ]
 
 
 def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEntry]:
     return [
-        tx
-        for tx in _TRANSACTIONS.values()
+        tx for tx in _TRANSACTIONS.values()
         if tx.operation_type == "REFUND" and tx.parent_operation_id == capture_operation_id
     ]
 
 
-# -----------------------------------------------------------------------------
-# Вспомогательные фабрики операций
-# -----------------------------------------------------------------------------
+# =============================================================================
+# FACTORIES
+# =============================================================================
+
 def _create_auth_entry(body: TerminalAuthRequest) -> TransactionLogEntry:
-    """
-    AUTH: здесь пока без интеграции с лимитами/Celery.
-    Всегда авторизуем (AUTHORIZED).
-    """
     op_id = str(uuid4())
-    entry = TransactionLogEntry(
+    return TransactionLogEntry(
         operation_id=op_id,
         created_at=datetime.utcnow(),
         operation_type="AUTH",
@@ -142,7 +167,6 @@ def _create_auth_entry(body: TerminalAuthRequest) -> TransactionLogEntry:
         amount=body.amount,
         currency=body.currency,
     )
-    return entry
 
 
 def _create_capture_entry(auth_tx: TransactionLogEntry, amount: int) -> TransactionLogEntry:
@@ -202,68 +226,45 @@ def _create_reversal_entry(
     )
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # ROUTES
-# -----------------------------------------------------------------------------
+# =============================================================================
 
-@router.post(
-    "/processing/terminal-auth",
-    response_model=TransactionLogEntry,
-)
-def terminal_auth(
-    body: TerminalAuthRequest = Body(...),
-) -> TransactionLogEntry:
-    """
-    Авторизация терминала / карты / суммы.
-
-    Возвращает объект с полем operation_id (строка!), которое и забирает run_tests.cmd.
-    """
+@router.post("/processing/terminal-auth", response_model=TransactionLogEntry)
+def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
     entry = _create_auth_entry(body)
-    _append_log_entry(entry)
-    return entry
+    return _append_log_entry(entry)
 
 
-@router.post(
-    "/transactions/{auth_operation_id}/capture",
-    response_model=TransactionLogEntry,
-)
+@router.post("/transactions/{auth_operation_id}/capture", response_model=TransactionLogEntry)
 def capture_transaction(
-    auth_operation_id: str = Path(..., description="AUTH operation id"),
+    auth_operation_id: str = Path(...),
     body: CaptureRequest = Body(...),
 ) -> TransactionLogEntry:
-    """
-    CAPTURE по AUTH.
-    """
+
     auth_tx = _get_transaction_or_404(auth_operation_id)
+
     if auth_tx.operation_type != "AUTH":
         raise HTTPException(status_code=400, detail="only AUTH can be captured")
 
-    # Проверим, что не превышаем авторизованную сумму
     existing_captures = _get_captures_for_auth(auth_operation_id)
-    already_captured_amount = sum(tx.amount for tx in existing_captures)
-    if already_captured_amount + body.amount > auth_tx.amount:
+    already_captured = sum(tx.amount for tx in existing_captures)
+
+    if already_captured + body.amount > auth_tx.amount:
         raise HTTPException(status_code=400, detail="capture amount exceeds authorized amount")
 
     entry = _create_capture_entry(auth_tx, body.amount)
-    _append_log_entry(entry)
-    return entry
+    return _append_log_entry(entry)
 
 
-@router.post(
-    "/transactions/{capture_operation_id}/refund",
-    response_model=TransactionLogEntry,
-)
+@router.post("/transactions/{capture_operation_id}/refund", response_model=TransactionLogEntry)
 def refund_transaction(
-    capture_operation_id: str = Path(..., description="CAPTURE operation id"),
+    capture_operation_id: str = Path(...),
     body: RefundRequest = Body(...),
 ) -> TransactionLogEntry:
-    """
-    REFUND по CAPTURE.
-    Поддерживает:
-    - полный возврат (amount = None -> на оставшуюся сумму),
-    - частичные возвраты.
-    """
+
     capture_tx = _get_transaction_or_404(capture_operation_id)
+
     if capture_tx.operation_type != "CAPTURE":
         raise HTTPException(status_code=400, detail="only CAPTURE can be refunded")
 
@@ -274,47 +275,32 @@ def refund_transaction(
     if remaining <= 0:
         raise HTTPException(status_code=400, detail="nothing to refund")
 
-    # Если amount не передан → FULL REFUND на оставшуюся сумму
-    if body.amount is None:
-        refund_amount = remaining
-    else:
-        refund_amount = body.amount
+    refund_amount = body.amount if body.amount is not None else remaining
 
     if refund_amount <= 0:
         raise HTTPException(status_code=400, detail="refund amount must be positive")
 
-    if already_refunded + refund_amount > capture_tx.amount:
+    if refund_amount + already_refunded > capture_tx.amount:
         raise HTTPException(status_code=400, detail="refund amount exceeds captured amount")
 
     entry = _create_refund_entry(capture_tx, refund_amount, body.reason)
-    _append_log_entry(entry)
-    return entry
+    return _append_log_entry(entry)
 
 
-@router.post(
-    "/transactions/{operation_id}/reversal",
-    response_model=TransactionLogEntry,
-)
+@router.post("/transactions/{operation_id}/reversal", response_model=TransactionLogEntry)
 def reverse_transaction(
-    operation_id: str = Path(..., description="operation id to reverse"),
+    operation_id: str = Path(...),
     body: ReversalRequest = Body(...),
 ) -> TransactionLogEntry:
-    """
-    REVERSAL любой операции (обычно AUTH).
 
-    Ограничения:
-    - нельзя ревёрсить REVERSAL;
-    - нельзя делать два REVERSAL для одной и той же операции.
-    """
     original_tx = _get_transaction_or_404(operation_id)
 
     if original_tx.operation_type == "REVERSAL":
         raise HTTPException(status_code=400, detail="cannot reverse reversal")
 
     children = _get_children(original_tx.operation_id)
-    if any(child.operation_type == "REVERSAL" for child in children):
+    if any(ch.operation_type == "REVERSAL" for ch in children):
         raise HTTPException(status_code=400, detail="reversal already exists for this operation")
 
     entry = _create_reversal_entry(original_tx, body.reason)
-    _append_log_entry(entry)
-    return entry
+    return _append_log_entry(entry)

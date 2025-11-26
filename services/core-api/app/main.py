@@ -557,7 +557,7 @@ def _create_reversal_entry(
     reason: Optional[str],
 ) -> TransactionLogEntry:
     return TransactionLogEntry(
-       operation_id=str(uuid4()),
+        operation_id=str(uuid4()),
         created_at=datetime.utcnow(),
         operation_type="REVERSAL",
         status="REVERSED",
@@ -606,8 +606,8 @@ def reverse_transaction(
 # -----------------------------------------------------------------------------
 # ЧТЕНИЕ in-memory лога
 # -----------------------------------------------------------------------------
-@app.get("/api/v1/operations/log", response_model=TransactionsPage)
-def list_operations(
+@app.get("/api/v1/transactions/log", response_model=TransactionsPage)
+def list_operations_log(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> TransactionsPage:
@@ -621,6 +621,3 @@ def list_operations(
         limit=limit,
         offset=offset,
     )
-
-
-
