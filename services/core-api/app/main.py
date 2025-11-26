@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from app.db import init_db
+from app.db import init_db, SessionLocal
 from app.api.routes import router as api_router
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -23,6 +23,8 @@ from app.services.limits import (
     call_limits_check_and_reserve_sync,
     celery_app,
 )
+from app.services.bootstrap import ensure_default_refs
+
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
