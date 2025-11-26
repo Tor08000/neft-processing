@@ -36,6 +36,9 @@ class DummyOperation:
         self.response_message = "OK"
         self.parent_operation_id = parent_operation_id
         self.reason = None
+        self.mcc = None
+        self.product_code = None
+        self.product_category = None
 
 
 DEFAULT_TIME = datetime.now()

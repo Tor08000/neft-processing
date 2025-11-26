@@ -98,6 +98,11 @@ class TransactionSchema(BaseModel):
     auth_operation: OperationSchema
     last_operation: OperationSchema
 
+    mcc: str | None = None
+    product_code: str | None = None
+    product_category: str | None = None
+    tx_type: str | None = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

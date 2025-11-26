@@ -77,6 +77,33 @@ def _determine_status(
     return "ERROR"
 
 
+def derive_tx_type(auth_op: Operation) -> str | None:
+    """
+    Возвращает тип транзакции на основе product_category / mcc.
+
+    Простая эвристика для v1.1:
+    * если категория начинается с DIESEL/GASOLINE/GAS → "FUEL"
+    * если MCC топливный (5541/5542) → "FUEL"
+    * если есть категория, но она не относится к топливу → "OTHER"
+    * иначе None
+    """
+
+    category = auth_op.product_category.upper() if auth_op.product_category else None
+    mcc = auth_op.mcc
+
+    if category:
+        if category.startswith("DIESEL") or category.startswith("GASOLINE") or category.startswith(
+            "GAS"
+        ):
+            return "FUEL"
+        return "OTHER"
+
+    if mcc in {"5541", "5542"}:
+        return "FUEL"
+
+    return None
+
+
 def build_transaction_from_operations(
     operations: Sequence[Operation],
 ) -> TransactionSchema | None:
@@ -138,6 +165,10 @@ def build_transaction_from_operations(
         operation_types=operation_types,
         auth_operation=OperationSchema.from_orm(auth_operation),
         last_operation=OperationSchema.from_orm(last_operation),
+        mcc=auth_operation.mcc,
+        product_code=auth_operation.product_code,
+        product_category=auth_operation.product_category,
+        tx_type=derive_tx_type(auth_operation),
     )
 
 
@@ -192,6 +223,7 @@ def list_transactions(
     status: str | None = None,
     from_created_at: datetime | None = None,
     to_created_at: datetime | None = None,
+    no_pagination: bool = False,
 ) -> TransactionsPage:
     auth_query = db.query(Operation).filter(Operation.operation_type == "AUTH")
 
@@ -223,13 +255,23 @@ def list_transactions(
                 transactions.append(transaction)
 
         total = len(transactions)
+
+        if no_pagination:
+            return TransactionsPage(
+                items=transactions, total=total, limit=total, offset=0
+            )
+
         paginated = transactions[offset : offset + limit]
         return TransactionsPage(
             items=paginated, total=total, limit=limit, offset=offset
         )
 
-    total = auth_query.count()
-    auth_operations = auth_query.offset(offset).limit(limit).all()
+    if no_pagination:
+        auth_operations = auth_query.all()
+        total = len(auth_operations)
+    else:
+        total = auth_query.count()
+        auth_operations = auth_query.offset(offset).limit(limit).all()
     auth_ids = [op.operation_id for op in auth_operations]
     operations_by_auth = _fetch_operations_for_auths(db, auth_ids)
 
@@ -241,7 +283,12 @@ def list_transactions(
         if transaction:
             items.append(transaction)
 
-    return TransactionsPage(items=items, total=total, limit=limit, offset=offset)
+    return TransactionsPage(
+        items=items,
+        total=total,
+        limit=total if no_pagination else limit,
+        offset=0 if no_pagination else offset,
+    )
 
 
 def get_transaction(db: Session, transaction_id: str) -> TransactionDetailResponse | None:
