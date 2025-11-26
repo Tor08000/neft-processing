@@ -5,6 +5,7 @@ from .tx import (
     ReverseRequest,
     TxnStatus,
 )
+from .terminal_auth import TerminalAuthRequest, TerminalAuthResponse
 from .auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
 
 __all__ = [
@@ -13,6 +14,8 @@ __all__ = [
     "CaptureRequest",
     "ReverseRequest",
     "TxnStatus",
+    "TerminalAuthRequest",
+    "TerminalAuthResponse",
     "RegisterRequest",
     "LoginRequest",
     "TokenResponse",
