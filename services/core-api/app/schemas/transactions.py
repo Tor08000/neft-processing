@@ -15,6 +15,12 @@ class AuthRequest(BaseModel):
     card_id: str
     amount: int
     currency: str = "RUB"
+    product_code: Optional[str] = None
+    product_category: Optional[str] = None
+    mcc: Optional[str] = None
+    tx_type: Optional[str] = None
+    client_group_id: Optional[str] = None
+    card_group_id: Optional[str] = None
 
 
 class CaptureRequest(BaseModel):
@@ -58,6 +64,11 @@ class OperationBase(BaseModel):
     new_used_today: Optional[int] = None
 
     parent_operation_id: Optional[str] = None
+
+    mcc: Optional[str] = None
+    product_code: Optional[str] = None
+    product_category: Optional[str] = None
+    tx_type: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

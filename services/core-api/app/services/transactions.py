@@ -77,7 +77,12 @@ def _determine_status(
     return "ERROR"
 
 
-def derive_tx_type(auth_op: Operation) -> str | None:
+def derive_tx_type(
+    auth_op: Operation | None = None,
+    *,
+    product_category: str | None = None,
+    mcc: str | None = None,
+) -> str | None:
     """
     Возвращает тип транзакции на основе product_category / mcc.
 
@@ -88,8 +93,9 @@ def derive_tx_type(auth_op: Operation) -> str | None:
     * иначе None
     """
 
-    category = auth_op.product_category.upper() if auth_op.product_category else None
-    mcc = auth_op.mcc
+    category = (product_category or (auth_op.product_category if auth_op else None))
+    category = category.upper() if category else None
+    effective_mcc = mcc or (auth_op.mcc if auth_op else None)
 
     if category:
         if category.startswith("DIESEL") or category.startswith("GASOLINE") or category.startswith(
@@ -98,7 +104,7 @@ def derive_tx_type(auth_op: Operation) -> str | None:
             return "FUEL"
         return "OTHER"
 
-    if mcc in {"5541", "5542"}:
+    if effective_mcc in {"5541", "5542"}:
         return "FUEL"
 
     return None
@@ -168,7 +174,8 @@ def build_transaction_from_operations(
         mcc=auth_operation.mcc,
         product_code=auth_operation.product_code,
         product_category=auth_operation.product_category,
-        tx_type=derive_tx_type(auth_operation),
+        tx_type=auth_operation.tx_type
+        or derive_tx_type(auth_operation),
     )
 
 

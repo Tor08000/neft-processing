@@ -49,3 +49,4 @@ class Operation(Base):
     mcc = Column(String(32), nullable=True, index=True)
     product_code = Column(String(64), nullable=True)
     product_category = Column(String(64), nullable=True, index=True)
+    tx_type = Column(String(32), nullable=True, index=True)
