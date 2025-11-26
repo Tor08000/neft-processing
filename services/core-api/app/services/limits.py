@@ -7,6 +7,9 @@ from celery import Celery
 from pydantic import BaseModel
 
 from neft_shared.logging_setup import get_logger
+from app.db import SessionLocal
+from app.models.limit_rule import LimitRule
+from app.services.limits_engine import calculate_used_amount, evaluate_limits
 
 logger = get_logger(__name__)
 
@@ -33,12 +36,21 @@ else:
 
 
 class CheckAndReserveRequest(BaseModel):
-    merchant_id: str
-    terminal_id: str
-    client_id: str
-    card_id: str
+    client_id: Optional[str] = None
+    card_id: Optional[str] = None
+    merchant_id: Optional[str] = None
+    terminal_id: Optional[str] = None
     amount: int
     currency: str = "RUB"
+
+    product_category: Optional[str] = None
+    mcc: Optional[str] = None
+    tx_type: Optional[str] = None
+
+    phase: str = "AUTH"
+
+    client_group_id: Optional[str] = None
+    card_group_id: Optional[str] = None
 
 
 class CheckAndReserveResult(BaseModel):
@@ -49,6 +61,7 @@ class CheckAndReserveResult(BaseModel):
     limit_per_tx: int
     used_today: int
     new_used_today: int
+    applied_rule_id: Optional[int] = None
 
 
 class CheckAndReserveTaskResponse(BaseModel):
@@ -72,6 +85,18 @@ class CeleryUnavailable(Exception):
     pass
 
 
+def _evaluate_locally(req: CheckAndReserveRequest) -> CheckAndReserveResult:
+    db = SessionLocal()
+    try:
+        rules = db.query(LimitRule).filter(LimitRule.active.is_(True)).all()
+        used_today = calculate_used_amount(db, req)
+    finally:
+        db.close()
+
+    payload = evaluate_limits(req, rules, used_today=used_today)
+    return CheckAndReserveResult(**payload)
+
+
 def call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndReserveResult:
     """Call limits.check_and_reserve synchronously or fallback to stub."""
 
@@ -85,18 +110,4 @@ def call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndR
             return CheckAndReserveResult(**payload)
         except Exception as exc:  # pragma: no cover
             logger.warning("Celery limits.check_and_reserve failed, using local stub: %s", exc)
-
-    daily_limit = 1_000_000
-    limit_per_tx = 50_000
-    used_today = 20_000
-    new_used_today = used_today + req.amount
-    approved = req.amount <= limit_per_tx and new_used_today <= daily_limit
-    return CheckAndReserveResult(
-        approved=approved,
-        response_code="00" if approved else "51",
-        response_message="approved" if approved else "limit exceeded",
-        daily_limit=daily_limit,
-        limit_per_tx=limit_per_tx,
-        used_today=used_today,
-        new_used_today=new_used_today,
-    )
+    return _evaluate_locally(req)

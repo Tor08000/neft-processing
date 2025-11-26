@@ -39,6 +39,7 @@ class DummyOperation:
         self.mcc = None
         self.product_code = None
         self.product_category = None
+        self.tx_type = None
 
 
 DEFAULT_TIME = datetime.now()
