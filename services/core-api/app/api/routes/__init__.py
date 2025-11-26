@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import auth, clients, health, prices, rules, transactions, limits
+from . import auth, clients, health, prices, rules, transactions, limits, admin
 from . import merchants, terminals, cards, transactions_log
 
 # Чтобы не ломать существующий main.py, объявляем оба имени.
@@ -22,3 +22,4 @@ router.include_router(limits.router)
 router.include_router(merchants.router)
 router.include_router(terminals.router)
 router.include_router(cards.router)
+router.include_router(admin.router)

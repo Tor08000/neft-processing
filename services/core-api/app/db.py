@@ -75,6 +75,13 @@ def init_db() -> None:
     from app.models.merchant import Merchant  # noqa: F401
     from app.models.terminal import Terminal  # noqa: F401
     from app.models.card import Card  # noqa: F401
+    from app.models.limits import (  # noqa: F401
+        LimitRule,
+        ClientGroup,
+        CardGroup,
+        ClientGroupMembership,
+        CardGroupMembership,
+    )
 
     Base.metadata.create_all(bind=engine)
 
