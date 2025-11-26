@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from celery import Celery
 from celery.exceptions import TimeoutError as CeleryTimeoutError
 from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +14,15 @@ from neft_shared.logging_setup import get_logger, init_logging
 
 from app.db import init_db
 from app.api.routes import router as api_router
+from app.services.limits import (
+    CheckAndReserveRequest,
+    CheckAndReserveResult,
+    CheckAndReserveTaskResponse,
+    LimitsTaskResponse,
+    RecalcLimitsRequest,
+    call_limits_check_and_reserve_sync,
+    celery_app,
+)
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
 try:
@@ -29,31 +37,6 @@ logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# CELERY
-# -----------------------------------------------------------------------------
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
-DISABLE_CELERY = os.getenv("DISABLE_CELERY", "0") == "1"
-
-celery_app: Optional[Celery]
-if not DISABLE_CELERY:
-    celery_app = Celery(
-        "neft-workers",
-        broker=CELERY_BROKER_URL,
-        backend=CELERY_RESULT_BACKEND,
-    )
-    celery_app.conf.update(
-        task_default_queue=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
-        task_default_exchange=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
-        task_default_routing_key=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
-        broker_connection_retry_on_startup=True,
-    )
-else:
-    celery_app = None
-    logger.warning("Celery disabled via DISABLE_CELERY=1 – /health/enqueue will be limited")
-
-
-# -----------------------------------------------------------------------------
 # Pydantic-модели
 # -----------------------------------------------------------------------------
 class HealthResponse(BaseModel):
@@ -61,42 +44,6 @@ class HealthResponse(BaseModel):
 
 
 class CeleryPingResponse(BaseModel):
-    task: str
-    result: Dict[str, Any]
-
-
-class CheckAndReserveRequest(BaseModel):
-    merchant_id: str
-    terminal_id: str
-    client_id: str
-    card_id: str
-    amount: int
-    currency: str = "RUB"
-
-
-class CheckAndReserveResult(BaseModel):
-    approved: bool
-    response_code: str
-    response_message: str
-    daily_limit: int
-    limit_per_tx: int
-    used_today: int
-    new_used_today: int
-
-
-class CheckAndReserveTaskResponse(BaseModel):
-    task: str
-    result: CheckAndReserveResult
-
-
-class RecalcLimitsRequest(BaseModel):
-    merchant_id: str
-    terminal_id: str
-    client_id: str
-    card_id: str
-
-
-class LimitsTaskResponse(BaseModel):
     task: str
     result: Dict[str, Any]
 
@@ -252,43 +199,6 @@ def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEn
 
 
 # -----------------------------------------------------------------------------
-# Лимиты (через Celery или локальная заглушка)
-# -----------------------------------------------------------------------------
-def _call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndReserveResult:
-    """
-    В идеале – вызвать Celery-таск limits.check_and_reserve и дождаться результата.
-    Если Celery выключен или таск не доступен – используем локальную заглушку.
-    """
-    if celery_app:
-        try:
-            result = celery_app.send_task(
-                "limits.check_and_reserve",
-                kwargs=req.dict(),
-            )
-            payload = result.get(timeout=10)  # type: ignore[assignment]
-            # ожидаем, что воркер вернёт dict в формате CheckAndReserveResult
-            return CheckAndReserveResult(**payload)
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Celery limits.check_and_reserve failed, using local stub: %s", exc)
-
-    # Локальная заглушка
-    daily_limit = 1_000_000
-    limit_per_tx = 50_000
-    used_today = 20_000
-    new_used_today = used_today + req.amount
-    approved = req.amount <= limit_per_tx and new_used_today <= daily_limit
-    return CheckAndReserveResult(
-        approved=approved,
-        response_code="00" if approved else "51",
-        response_message="approved" if approved else "limit exceeded",
-        daily_limit=daily_limit,
-        limit_per_tx=limit_per_tx,
-        used_today=used_today,
-        new_used_today=new_used_today,
-    )
-
-
-# -----------------------------------------------------------------------------
 # FASTAPI
 # -----------------------------------------------------------------------------
 app = FastAPI(
@@ -374,7 +284,7 @@ def health_enqueue(
 def limits_check_and_reserve(
     body: CheckAndReserveRequest = Body(...),
 ) -> CheckAndReserveTaskResponse:
-    result = _call_limits_check_and_reserve_sync(body)
+    result = call_limits_check_and_reserve_sync(body)
     return CheckAndReserveTaskResponse(task="limits.check_and_reserve", result=result)
 
 
@@ -400,9 +310,7 @@ def limits_recalc(
     response_model=TransactionLogEntry,
 )
 def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
-    limits_result = _call_limits_check_and_reserve_sync(
-        CheckAndReserveRequest(**body.dict())
-    )
+    limits_result = call_limits_check_and_reserve_sync(CheckAndReserveRequest(**body.dict()))
 
     op_id = str(uuid4())
     status = "AUTHORIZED" if limits_result.approved else "DECLINED"
