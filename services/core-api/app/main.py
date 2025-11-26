@@ -44,6 +44,12 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     reports_billing_router = None  # type: ignore
 
+# Админ-роутер для правил лимитов и групп
+try:
+    from app.api.v1.endpoints.admin_limits import router as admin_limits_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    admin_limits_router = None  # type: ignore
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -253,6 +259,9 @@ if transactions_router is not None:
 # Включаем роутер отчётов, если он доступен
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
+
+if admin_limits_router is not None:
+    app.include_router(admin_limits_router, prefix="")
 
 
 # -----------------------------------------------------------------------------

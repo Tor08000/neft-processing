@@ -6,6 +6,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from neft_shared.settings import get_settings
 
@@ -43,10 +44,20 @@ DATABASE_URL: str = _ensure_psycopg_driver(raw_db_url)
 
 
 # Базовый engine
-engine = create_engine(
-    DATABASE_URL,
+engine_kwargs = dict(
     future=True,
     pool_pre_ping=True,
+)
+
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update(
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+engine = create_engine(
+    DATABASE_URL,
+    **engine_kwargs,
 )
 
 # База для декларативных моделей
@@ -75,6 +86,13 @@ def init_db() -> None:
     from app.models.merchant import Merchant  # noqa: F401
     from app.models.terminal import Terminal  # noqa: F401
     from app.models.card import Card  # noqa: F401
+    from app.models.limit_rule import LimitRule  # noqa: F401
+    from app.models.groups import (  # noqa: F401
+        CardGroup,
+        CardGroupMember,
+        ClientGroup,
+        ClientGroupMember,
+    )
 
     Base.metadata.create_all(bind=engine)
 
