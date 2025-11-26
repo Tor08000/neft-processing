@@ -6,13 +6,16 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, HTTPException, Path
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger
 
-# --- NEW IMPORTS for DB ---
-from app.db import SessionLocal
+from app.db import SessionLocal, get_db
 from app.models.operation import Operation
 from app.services.limits import (
     CheckAndReserveRequest,

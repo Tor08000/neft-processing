@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import auth, clients, health, prices, rules, transactions, limits
+from . import merchants, terminals, cards
 
 # Чтобы не ломать существующий main.py, объявляем оба имени.
 router = APIRouter()
@@ -17,3 +18,6 @@ router.include_router(prices.router)
 router.include_router(rules.router)
 router.include_router(transactions.router)
 router.include_router(limits.router)
+router.include_router(merchants.router)
+router.include_router(terminals.router)
+router.include_router(cards.router)

@@ -220,6 +220,11 @@ app.include_router(api_router, prefix="/api/v1")
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    db = SessionLocal()
+    try:
+        ensure_default_refs(db)
+    finally:
+        db.close()
     logger.info("core-api startup complete")
 
 
