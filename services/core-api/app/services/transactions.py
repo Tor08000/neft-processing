@@ -77,6 +77,33 @@ def _determine_status(
     return "ERROR"
 
 
+def derive_tx_type(auth_op: Operation) -> str | None:
+    """
+    Возвращает тип транзакции на основе product_category / mcc.
+
+    Простая эвристика для v1.1:
+    * если категория начинается с DIESEL/GASOLINE/GAS → "FUEL"
+    * если MCC топливный (5541/5542) → "FUEL"
+    * если есть категория, но она не относится к топливу → "OTHER"
+    * иначе None
+    """
+
+    category = auth_op.product_category.upper() if auth_op.product_category else None
+    mcc = auth_op.mcc
+
+    if category:
+        if category.startswith("DIESEL") or category.startswith("GASOLINE") or category.startswith(
+            "GAS"
+        ):
+            return "FUEL"
+        return "OTHER"
+
+    if mcc in {"5541", "5542"}:
+        return "FUEL"
+
+    return None
+
+
 def build_transaction_from_operations(
     operations: Sequence[Operation],
 ) -> TransactionSchema | None:
@@ -138,6 +165,10 @@ def build_transaction_from_operations(
         operation_types=operation_types,
         auth_operation=OperationSchema.from_orm(auth_operation),
         last_operation=OperationSchema.from_orm(last_operation),
+        mcc=auth_operation.mcc,
+        product_code=auth_operation.product_code,
+        product_category=auth_operation.product_category,
+        tx_type=derive_tx_type(auth_operation),
     )
 
 

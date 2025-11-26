@@ -30,6 +30,10 @@ class OperationSchema(BaseModel):
     parent_operation_id: Optional[str] = None
     reason: Optional[str] = None
 
+    mcc: Optional[str] = None
+    product_code: Optional[str] = None
+    product_category: Optional[str] = None
+
     class Config:
         # для Pydantic 1.x
         orm_mode = True
