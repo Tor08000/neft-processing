@@ -6,13 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.limits import (
-    CardGroup,
-    CardGroupMembership,
-    ClientGroup,
-    ClientGroupMembership,
-    LimitRule,
-)
+from app.models.limits import CardGroup, CardGroupMembership, ClientGroup, ClientGroupMembership
+from app.models.limit_rule import LimitRule
 from app.schemas.admin import (
     CardGroupCreate,
     CardGroupResponse,

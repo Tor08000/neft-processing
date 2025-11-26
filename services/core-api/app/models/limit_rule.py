@@ -1,5 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, String, func
-from sqlalchemy.types import BigInteger
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, String, func
 
 from app.db import Base
 
@@ -7,7 +6,12 @@ from app.db import Base
 class LimitRule(Base):
     __tablename__ = "limits_rules"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True, index=True)
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+        index=True,
+    )
 
     phase = Column(String(16), nullable=False, default="AUTH")
 
@@ -24,8 +28,8 @@ class LimitRule(Base):
     tx_type = Column(String(32), nullable=True, index=True)
 
     currency = Column(String(8), nullable=False, default="RUB")
-    daily_limit = Column(BigInteger, nullable=True)
-    limit_per_tx = Column(BigInteger, nullable=True)
+    daily_limit = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=True)
+    limit_per_tx = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=True)
 
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

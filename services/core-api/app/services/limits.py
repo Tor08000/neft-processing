@@ -13,12 +13,8 @@ from app.db import SessionLocal
 from app.models.limit_rule import LimitRule
 
 from neft_shared.logging_setup import get_logger
-from app.db import SessionLocal
-from app.models.limit_rule import LimitRule
 from app.services.limits_engine import calculate_used_amount, evaluate_limits
 
-from app.db import SessionLocal
-from app.models.limits import CardGroupMembership, ClientGroupMembership, LimitRule
 from app.models.operation import Operation
 
 logger = get_logger(__name__)
@@ -103,19 +99,23 @@ class CeleryUnavailable(Exception):
     pass
 
 
-def _evaluate_locally(req: CheckAndReserveRequest) -> CheckAndReserveResult:
-    db = SessionLocal()
+def _evaluate_locally(req: CheckAndReserveRequest, db: Session | None = None) -> CheckAndReserveResult:
+    owns_session = db is None
+    session = db or SessionLocal()
     try:
-        rules = db.query(LimitRule).filter(LimitRule.active.is_(True)).all()
-        used_today = calculate_used_amount(db, req)
+        rules = session.query(LimitRule).filter(LimitRule.active.is_(True)).all()
+        used_today = calculate_used_amount(session, req)
     finally:
-        db.close()
+        if owns_session:
+            session.close()
 
     payload = evaluate_limits(req, rules, used_today=used_today)
     return CheckAndReserveResult(**payload)
 
 
-def call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndReserveResult:
+def call_limits_check_and_reserve_sync(
+    req: CheckAndReserveRequest, db: Session | None = None
+) -> CheckAndReserveResult:
     """Call limits.check_and_reserve synchronously or fallback to stub."""
 
     if celery_app:
@@ -128,4 +128,10 @@ def call_limits_check_and_reserve_sync(req: CheckAndReserveRequest) -> CheckAndR
             return _normalize_limits_payload(payload, req)
         except Exception as exc:  # pragma: no cover
             logger.warning("Celery limits.check_and_reserve failed, using local stub: %s", exc)
-    return _evaluate_locally(req)
+    return _evaluate_locally(req, db=db)
+
+
+def evaluate_limits_locally(req: CheckAndReserveRequest, db: Session | None = None) -> CheckAndReserveResult:
+    """Public helper for invoking the local limits evaluator."""
+
+    return _evaluate_locally(req, db=db)

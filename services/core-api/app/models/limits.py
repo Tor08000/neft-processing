@@ -54,22 +54,3 @@ class CardGroupMembership(Base):
     card_id = Column(String(64), nullable=False, index=True)
 
     group = relationship("CardGroup", back_populates="memberships")
-
-
-class LimitRule(Base):
-    __tablename__ = "limits_rules"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False, index=True)
-    priority = Column(Integer, nullable=False, default=0)
-    daily_limit = Column(Integer, nullable=False)
-    limit_per_tx = Column(Integer, nullable=False)
-    currency = Column(String(8), nullable=False, default="RUB")
-
-    client_group_id = Column(Integer, ForeignKey("client_groups.id", ondelete="SET NULL"), nullable=True)
-    card_group_id = Column(Integer, ForeignKey("card_groups.id", ondelete="SET NULL"), nullable=True)
-
-    client_group = relationship("ClientGroup")
-    card_group = relationship("CardGroup")
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
