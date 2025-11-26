@@ -32,6 +32,12 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     operations_router = None  # type: ignore
 
+# Роутер транзакций поверх operations
+try:
+    from app.api.v1.endpoints.transactions import router as transactions_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    transactions_router = None  # type: ignore
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -233,6 +239,10 @@ def on_startup() -> None:
 # Включаем доп. роутер с чтением операций из БД, если он есть
 if operations_router is not None:
     app.include_router(operations_router, prefix="")
+
+# Включаем роутер транзакций, если он доступен
+if transactions_router is not None:
+    app.include_router(transactions_router, prefix="")
 
 
 # -----------------------------------------------------------------------------
