@@ -5,7 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.operations import OperationSchema, OperationsPage
-from app.services.operations_query import get_operation_timeline, list_operations
+from app.services.operations_query import (
+    get_operation_timeline,
+    list_operations as query_list_operations,
+)
 
 router = APIRouter(
     prefix="/api/v1/operations",
@@ -19,8 +22,7 @@ def list_operations(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> OperationsPage:
-    rows, total = list_operations(db, limit=limit, offset=offset)
-
+    rows, total = query_list_operations(db, limit=limit, offset=offset)
     return OperationsPage(items=rows, total=total, limit=limit, offset=offset)
 
 
