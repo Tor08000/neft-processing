@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
 
-class OperationOut(BaseModel):
+class OperationSchema(BaseModel):
     operation_id: str
     created_at: datetime
     operation_type: str
@@ -38,7 +38,12 @@ class OperationOut(BaseModel):
 
 
 class OperationsPage(BaseModel):
-    items: List[OperationOut]
+    items: List[OperationSchema]
     total: int
     limit: int
     offset: int
+
+
+class OperationTimeline(BaseModel):
+    root: OperationSchema
+    children: List[OperationSchema]
