@@ -18,11 +18,33 @@ from app.schemas.transactions import (
 def _group_operations_by_auth(
     operations: Iterable[Operation], auth_ids: List[str]
 ) -> Dict[str, List[Operation]]:
+    auth_set = set(auth_ids)
     mapping: Dict[str, List[Operation]] = {auth_id: [] for auth_id in auth_ids}
+
+    by_id: Dict[str, Operation] = {op.operation_id: op for op in operations}
+
     for op in operations:
-        root_id = op.operation_id if op.operation_type == "AUTH" else op.parent_operation_id
-        if root_id in mapping:
+        if op.operation_type == "AUTH" and op.operation_id in auth_set:
+            mapping[op.operation_id].append(op)
+            continue
+
+        current = op
+        visited = 0
+        root_id: str | None = None
+
+        while current.parent_operation_id and visited < 5:
+            parent = by_id.get(current.parent_operation_id)
+            if parent is None:
+                break
+            if parent.operation_type == "AUTH" and parent.operation_id in auth_set:
+                root_id = parent.operation_id
+                break
+            current = parent
+            visited += 1
+
+        if root_id is not None:
             mapping[root_id].append(op)
+
     return mapping
 
 
@@ -136,6 +158,25 @@ def _fetch_operations_for_auths(
         .order_by(Operation.created_at.asc())
         .all()
     )
+
+    capture_ids = [
+        op.operation_id
+        for op in operations
+        if op.operation_type == "CAPTURE" and op.parent_operation_id in auth_ids
+    ]
+
+    if capture_ids:
+        refund_children = (
+            db.query(Operation)
+            .filter(
+                Operation.operation_type == "REFUND",
+                Operation.parent_operation_id.in_(capture_ids),
+            )
+            .order_by(Operation.created_at.asc())
+            .all()
+        )
+        operations.extend(refund_children)
+
     return _group_operations_by_auth(operations, auth_ids)
 
 

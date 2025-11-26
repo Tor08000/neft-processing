@@ -2,7 +2,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
-from app.services.transactions import build_transaction_from_operations
+from app.services.transactions import (
+    _group_operations_by_auth,
+    build_transaction_from_operations,
+)
 
 
 class DummyOperation:
@@ -129,3 +132,28 @@ def test_reversal_status():
 
     assert transaction is not None
     assert transaction.status == "CANCELLED"
+
+
+def test_group_operations_includes_refund_child_of_capture():
+    auth = make_auth(300)
+    capture = make_capture(auth, 300)
+    refund = make_refund(capture, 100)
+
+    mapping = _group_operations_by_auth([auth, capture, refund], [auth.operation_id])
+
+    assert auth.operation_id in mapping
+    assert refund in mapping[auth.operation_id]
+
+
+def test_build_transaction_from_grouped_operations_with_refund_on_capture():
+    auth = make_auth(3000)
+    capture = make_capture(auth, 3000)
+    refund = make_refund(capture, 1000)
+
+    mapping = _group_operations_by_auth([auth, capture, refund], [auth.operation_id])
+    transaction = build_transaction_from_operations(mapping[auth.operation_id])
+
+    assert transaction is not None
+    assert transaction.status == "PARTIALLY_REFUNDED"
+    assert transaction.captured_amount == 3000
+    assert transaction.refunded_amount == 1000
