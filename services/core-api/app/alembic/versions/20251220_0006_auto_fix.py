@@ -114,6 +114,10 @@ def upgrade() -> None:
             "product_code": sa.String(length=32),
             "product_category": sa.String(length=32),
             "tx_type": sa.String(length=16),
+            "currency": sa.String(length=3),
+            "operation_type": sa.String(length=16),
+            "response_code": sa.String(length=8),
+            "response_message": sa.String(length=255),
         }
 
         for name, col_type in desired_columns.items():
@@ -132,10 +136,37 @@ def upgrade() -> None:
             "ix_operations_mcc": ["mcc"],
             "ix_operations_product_category": ["product_category"],
             "ix_operations_tx_type": ["tx_type"],
+            "ix_operations_operation_id": ["operation_id"],
+            "ix_operations_operation_type": ["operation_type"],
+            "ix_operations_status": ["status"],
+            "ix_operations_merchant_id": ["merchant_id"],
+            "ix_operations_terminal_id": ["terminal_id"],
+            "ix_operations_client_id": ["client_id"],
+            "ix_operations_card_id": ["card_id"],
+            "ix_operations_parent_operation_id": ["parent_operation_id"],
+            "ix_operations_created_at": ["created_at"],
         }
         for index_name, columns_list in index_mapping.items():
             if index_name not in existing_indexes:
                 op.create_index(index_name, "operations", columns_list)
+
+    # Align limits_rules table
+    if _table_exists(inspector, "limits_rules"):
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("limits_rules")}
+        limit_rules_indexes = {
+            "ix_limits_rules_client_id": ["client_id"],
+            "ix_limits_rules_card_id": ["card_id"],
+            "ix_limits_rules_merchant_id": ["merchant_id"],
+            "ix_limits_rules_terminal_id": ["terminal_id"],
+            "ix_limits_rules_client_group_id": ["client_group_id"],
+            "ix_limits_rules_card_group_id": ["card_group_id"],
+            "ix_limits_rules_product_category": ["product_category"],
+            "ix_limits_rules_mcc": ["mcc"],
+            "ix_limits_rules_tx_type": ["tx_type"],
+        }
+        for index_name, columns_list in limit_rules_indexes.items():
+            if index_name not in existing_indexes:
+                op.create_index(index_name, "limits_rules", columns_list)
 
     # Align cards table
     if _table_exists(inspector, "cards"):
@@ -231,15 +262,49 @@ def downgrade() -> None:
     if _index_exists(inspector, "cards", "ix_cards_id"):
         op.drop_index("ix_cards_id", table_name="cards")
 
+    if _table_exists(inspector, "limits_rules"):
+        for index_name in (
+            "ix_limits_rules_client_id",
+            "ix_limits_rules_card_id",
+            "ix_limits_rules_merchant_id",
+            "ix_limits_rules_terminal_id",
+            "ix_limits_rules_client_group_id",
+            "ix_limits_rules_card_group_id",
+            "ix_limits_rules_product_category",
+            "ix_limits_rules_mcc",
+            "ix_limits_rules_tx_type",
+        ):
+            if _index_exists(inspector, "limits_rules", index_name):
+                op.drop_index(index_name, table_name="limits_rules")
+
     if _table_exists(inspector, "operations"):
         existing_indexes = [idx["name"] for idx in inspector.get_indexes("operations")]
-        if "ix_operations_tx_type" in existing_indexes:
-            op.drop_index("ix_operations_tx_type", table_name="operations")
-        if "ix_operations_product_category" in existing_indexes:
-            op.drop_index("ix_operations_product_category", table_name="operations")
-        if "ix_operations_mcc" in existing_indexes:
-            op.drop_index("ix_operations_mcc", table_name="operations")
+        for index_name in (
+            "ix_operations_tx_type",
+            "ix_operations_product_category",
+            "ix_operations_mcc",
+            "ix_operations_operation_id",
+            "ix_operations_operation_type",
+            "ix_operations_status",
+            "ix_operations_merchant_id",
+            "ix_operations_terminal_id",
+            "ix_operations_client_id",
+            "ix_operations_card_id",
+            "ix_operations_parent_operation_id",
+            "ix_operations_created_at",
+        ):
+            if index_name in existing_indexes:
+                op.drop_index(index_name, table_name="operations")
 
-        for column in ("tx_type", "product_category", "product_code", "mcc"):
+        for column in (
+            "tx_type",
+            "product_category",
+            "product_code",
+            "mcc",
+            "currency",
+            "operation_type",
+            "response_code",
+            "response_message",
+        ):
             if column in [col["name"] for col in inspector.get_columns("operations")]:
                 op.drop_column("operations", column)
