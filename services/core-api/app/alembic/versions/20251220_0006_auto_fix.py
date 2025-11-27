@@ -1,7 +1,7 @@
 """auto fix schema alignment
 
 Revision ID: 20251220_0006_auto_fix
-Revises: 20251215_0005
+Revises: 20251215_0005_add_created_at_to_cards
 Create Date: 2025-12-20 00:06:00.000000
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = "20251220_0006_auto_fix"
-down_revision = "20251215_0005"
+down_revision = "20251215_0005_add_created_at_to_cards"
 branch_labels = None
 depends_on = None
 

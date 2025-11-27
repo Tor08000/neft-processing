@@ -1,7 +1,7 @@
 """operations product fields
 
-Revision ID: 20251206_0004
-Revises: 20251124_0003
+Revision ID: 20251206_0004_operations_product_fields
+Revises: 20251124_0003_merchants_terminals_cards
 Create Date: 2025-12-06 00:04:00.000000
 """
 
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20251206_0004"
-down_revision = "20251124_0003"
+revision = "20251206_0004_operations_product_fields"
+down_revision = "20251124_0003_merchants_terminals_cards"
 branch_labels = None
 depends_on = None
 

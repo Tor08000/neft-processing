@@ -35,6 +35,7 @@ services:
     container_name: neft-processing-core-api-1
     environment:
       SERVICE_NAME: core-api
+      DATABASE_URL: "postgresql+psycopg://neft:neft@postgres:5432/neft"
     depends_on:
       postgres:
         condition: service_healthy
