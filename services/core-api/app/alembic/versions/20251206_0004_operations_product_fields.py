@@ -1,7 +1,7 @@
 """operations product fields
 
 Revision ID: 20251206_0004
-Revises: 20251124_0003_merchants_terminals_cards
+Revises: 20251124_0003
 Create Date: 2025-12-06 00:04:00.000000
 """
 
