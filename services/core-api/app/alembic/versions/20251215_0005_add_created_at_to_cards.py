@@ -1,7 +1,7 @@
 """add created_at to cards
 
-Revision ID: 20251215_0005
-Revises: 20251206_0004
+Revision ID: 20251215_0005_add_created_at_to_cards
+Revises: 20251206_0004_operations_product_fields
 Create Date: 2025-12-15 00:05:00.000000
 """
 
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20251215_0005"
-down_revision = "20251206_0004"
+revision = "20251215_0005_add_created_at_to_cards"
+down_revision = "20251206_0004_operations_product_fields"
 branch_labels = None
 depends_on = None
 

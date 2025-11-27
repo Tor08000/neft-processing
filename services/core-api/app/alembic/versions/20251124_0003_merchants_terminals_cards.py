@@ -1,6 +1,6 @@
 """merchants terminals
 
-Revision ID: 20251124_0003
+Revision ID: 20251124_0003_merchants_terminals_cards
 Revises: 20251120_0003_limits_rules_v2
 Create Date: 2025-11-24 00:03:00.000000
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20251124_0003"
+revision = "20251124_0003_merchants_terminals_cards"
 down_revision = "20251120_0003_limits_rules_v2"
 branch_labels = None
 depends_on = None
