@@ -51,6 +51,12 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     admin_limits_router = None  # type: ignore
 
+# Админ-дашборд (чтение списков)
+try:
+    from app.api.v1.endpoints.admin_dashboard import router as admin_dashboard_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    admin_dashboard_router = None  # type: ignore
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -278,6 +284,9 @@ if reports_billing_router is not None:
 
 if admin_limits_router is not None:
     app.include_router(admin_limits_router, prefix="")
+
+if admin_dashboard_router is not None:
+    app.include_router(admin_dashboard_router, prefix="")
 
 
 # -----------------------------------------------------------------------------
