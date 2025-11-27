@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 00000024 C21C:E066
+Серийный номер тома: 0000001E C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -1344,6 +1344,8 @@ C:\NEFT-PROCESSING
 +---docs
 |   |   API.md
 |   |   ARCHITECTURE.md
+|   |   auth-host.md
+|   |   core-api.md
 |   |   
 |   +---ADR
 |   |       0001-use-fastapi.md
@@ -1450,6 +1452,7 @@ C:\NEFT-PROCESSING
 |   |       |   +---routes
 |   |       |   |       auth.py
 |   |       |   |       health.py
+|   |       |   |       processing.py
 |   |       |   |       __init__.py
 |   |       |   |       
 |   |       |   \---v1
@@ -1458,6 +1461,7 @@ C:\NEFT-PROCESSING
 |   |       |           __init__.py
 |   |       |           
 |   |       +---lib
+|   |       |       core_api.py
 |   |       |       idempotency.py
 |   |       |       
 |   |       +---models
@@ -1466,6 +1470,7 @@ C:\NEFT-PROCESSING
 |   |       |       
 |   |       +---schemas
 |   |       |       auth.py
+|   |       |       terminal_auth.py
 |   |       |       tx.py
 |   |       |       __init__.py
 |   |       |       
@@ -1505,6 +1510,12 @@ C:\NEFT-PROCESSING
 |   |   |   |   \---versions
 |   |   |   |           20251112_0001_core.py
 |   |   |   |           20251118_0002_operations_journal.py
+|   |   |   |           20251118_0003_admin_limits.py
+|   |   |   |           20251120_0003_limits_rules_v2.py
+|   |   |   |           20251121_0003_limits_rules.py
+|   |   |   |           20251124_0003_merchants_terminals_cards.py
+|   |   |   |           20251206_0004_operations_product_fields.py
+|   |   |   |           20251215_0005_add_created_at_to_cards.py
 |   |   |   |           2025_11_01_init.py
 |   |   |   |           __init__.py
 |   |   |   |           
@@ -1513,18 +1524,27 @@ C:\NEFT-PROCESSING
 |   |   |   |   |   __init__.py
 |   |   |   |   |   
 |   |   |   |   +---routes
+|   |   |   |   |       admin.py
 |   |   |   |   |       auth.py
+|   |   |   |   |       cards.py
 |   |   |   |   |       clients.py
 |   |   |   |   |       health.py
 |   |   |   |   |       limits.py
+|   |   |   |   |       merchants.py
 |   |   |   |   |       prices.py
 |   |   |   |   |       rules.py
+|   |   |   |   |       terminals.py
 |   |   |   |   |       transactions.py
+|   |   |   |   |       transactions_log.py
 |   |   |   |   |       __init__.py
 |   |   |   |   |       
 |   |   |   |   \---v1
 |   |   |   |       \---endpoints
+|   |   |   |               admin_dashboard.py
+|   |   |   |               admin_limits.py
 |   |   |   |               operations_read.py
+|   |   |   |               reports_billing.py
+|   |   |   |               transactions.py
 |   |   |   |               
 |   |   |   +---crud
 |   |   |   |       operations.py
@@ -1533,8 +1553,14 @@ C:\NEFT-PROCESSING
 |   |   |   |       db.py
 |   |   |   |       
 |   |   |   +---models
+|   |   |   |       card.py
 |   |   |   |       client.py
+|   |   |   |       groups.py
+|   |   |   |       limits.py
+|   |   |   |       limit_rule.py
+|   |   |   |       merchant.py
 |   |   |   |       operation.py
+|   |   |   |       terminal.py
 |   |   |   |       __init__.py
 |   |   |   |       
 |   |   |   +---repositories
@@ -1542,8 +1568,16 @@ C:\NEFT-PROCESSING
 |   |   |   |       __init__.py
 |   |   |   |       
 |   |   |   +---schemas
+|   |   |   |       admin.py
+|   |   |   |       admin_dashboard.py
+|   |   |   |       cards.py
 |   |   |   |       client.py
+|   |   |   |       groups_admin.py
+|   |   |   |       limits_admin.py
+|   |   |   |       merchants.py
 |   |   |   |       operations.py
+|   |   |   |       reports.py
+|   |   |   |       terminals.py
 |   |   |   |       transactions.py
 |   |   |   |       __init__.py
 |   |   |   |       
@@ -1553,12 +1587,25 @@ C:\NEFT-PROCESSING
 |   |   |   |       __init__.py
 |   |   |   |       
 |   |   |   +---services
+|   |   |   |       bootstrap.py
 |   |   |   |       client_service.py
+|   |   |   |       limits.py
+|   |   |   |       limits_engine.py
+|   |   |   |       operations_query.py
+|   |   |   |       reference_validation.py
+|   |   |   |       reports.py
+|   |   |   |       transactions.py
 |   |   |   |       __init__.py
 |   |   |   |       
 |   |   |   \---tests
 |   |   |           conftest.py
+|   |   |           test_admin_dashboard_api.py
+|   |   |           test_admin_limits.py
+|   |   |           test_admin_limits_api.py
 |   |   |           test_health.py
+|   |   |           test_limits_v2.py
+|   |   |           test_reports_billing.py
+|   |   |           test_transactions_service.py
 |   |   |           __init__.py
 |   |   |           
 |   |   \---db
