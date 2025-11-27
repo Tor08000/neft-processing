@@ -151,7 +151,95 @@ def upgrade() -> None:
                 op.create_index(index_name, "operations", columns_list)
 
     # Align limits_rules table
-    if _table_exists(inspector, "limits_rules"):
+    limit_rules_exists = _table_exists(inspector, "limits_rules")
+
+    if not limit_rules_exists:
+        op.create_table(
+            "limits_rules",
+            sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+            sa.Column("phase", sa.String(length=16), nullable=False, server_default="AUTH"),
+            sa.Column("client_id", sa.String(length=64), nullable=True),
+            sa.Column("card_id", sa.String(length=64), nullable=True),
+            sa.Column("merchant_id", sa.String(length=64), nullable=True),
+            sa.Column("terminal_id", sa.String(length=64), nullable=True),
+            sa.Column("client_group_id", sa.String(length=64), nullable=True),
+            sa.Column("card_group_id", sa.String(length=64), nullable=True),
+            sa.Column("product_category", sa.String(length=64), nullable=True),
+            sa.Column("mcc", sa.String(length=32), nullable=True),
+            sa.Column("tx_type", sa.String(length=32), nullable=True),
+            sa.Column("currency", sa.String(length=8), nullable=False, server_default="RUB"),
+            sa.Column("daily_limit", sa.BigInteger(), nullable=True),
+            sa.Column("limit_per_tx", sa.BigInteger(), nullable=True),
+            sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("NOW()"),
+                nullable=False,
+            ),
+        )
+        limit_rules_exists = True
+        inspector = inspect(bind)
+
+    if limit_rules_exists:
+        columns = {col["name"]: col for col in inspector.get_columns("limits_rules")}
+        desired_columns = {
+            "phase": {
+                "type": sa.String(length=16),
+                "nullable": False,
+                "server_default": "AUTH",
+            },
+            "client_id": {"type": sa.String(length=64), "nullable": True},
+            "card_id": {"type": sa.String(length=64), "nullable": True},
+            "merchant_id": {"type": sa.String(length=64), "nullable": True},
+            "terminal_id": {"type": sa.String(length=64), "nullable": True},
+            "client_group_id": {"type": sa.String(length=64), "nullable": True},
+            "card_group_id": {"type": sa.String(length=64), "nullable": True},
+            "product_category": {"type": sa.String(length=64), "nullable": True},
+            "mcc": {"type": sa.String(length=32), "nullable": True},
+            "tx_type": {"type": sa.String(length=32), "nullable": True},
+            "currency": {
+                "type": sa.String(length=8),
+                "nullable": False,
+                "server_default": "RUB",
+            },
+            "daily_limit": {"type": sa.BigInteger(), "nullable": True},
+            "limit_per_tx": {"type": sa.BigInteger(), "nullable": True},
+            "active": {
+                "type": sa.Boolean(),
+                "nullable": False,
+                "server_default": sa.text("true"),
+            },
+            "created_at": {
+                "type": sa.DateTime(timezone=True),
+                "nullable": False,
+                "server_default": sa.text("NOW()"),
+            },
+        }
+
+        for name, opts in desired_columns.items():
+            if name in columns:
+                op.alter_column(
+                    "limits_rules",
+                    name,
+                    existing_type=columns[name]["type"],
+                    type_=opts["type"],
+                    nullable=opts.get("nullable", columns[name]["nullable"]),
+                    existing_nullable=columns[name]["nullable"],
+                    server_default=opts.get("server_default"),
+                    existing_server_default=columns[name].get("default"),
+                )
+            else:
+                op.add_column(
+                    "limits_rules",
+                    sa.Column(
+                        name,
+                        opts["type"],
+                        nullable=opts.get("nullable", True),
+                        server_default=opts.get("server_default"),
+                    ),
+                )
+
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("limits_rules")}
         limit_rules_indexes = {
             "ix_limits_rules_client_id": ["client_id"],
