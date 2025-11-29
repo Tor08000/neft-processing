@@ -33,7 +33,7 @@ from app.schemas.limits_admin import (
     LimitRuleRead,
     LimitRuleUpdate,
 )
-from app.security.admin_auth import require_admin
+from app.services.admin_auth import require_admin
 
 
 router = APIRouter(

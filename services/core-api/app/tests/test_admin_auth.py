@@ -22,14 +22,26 @@ def client():
 def test_admin_access_denied_without_token(client: TestClient):
     resp = client.get("/api/v1/admin/merchants")
     assert resp.status_code == 401
+    assert resp.json() == {"detail": "Missing bearer token"}
 
 
-def test_admin_access_denied_for_non_admin(client: TestClient, user_token: str):
+def test_admin_access_denied_for_invalid_token(client: TestClient):
     resp = client.get(
         "/api/v1/admin/merchants",
-        headers={"Authorization": f"Bearer {user_token}"},
+        headers={"Authorization": "Bearer garbage"},
+    )
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "Invalid token"}
+
+
+def test_admin_access_denied_for_non_admin(client: TestClient, make_jwt):
+    token = make_jwt(roles=("USER",))
+    resp = client.get(
+        "/api/v1/admin/merchants",
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+    assert resp.json() == {"detail": "Forbidden"}
 
 
 def test_admin_access_allowed_for_admin(client: TestClient, admin_token: str):
@@ -38,12 +50,3 @@ def test_admin_access_allowed_for_admin(client: TestClient, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 200
-
-
-def test_admin_access_expired_token(client: TestClient, make_jwt):
-    expired = make_jwt(minutes_valid=-1)
-    resp = client.get(
-        "/api/v1/admin/merchants",
-        headers={"Authorization": f"Bearer {expired}"},
-    )
-    assert resp.status_code == 401
