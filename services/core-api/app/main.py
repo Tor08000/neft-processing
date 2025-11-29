@@ -57,6 +57,12 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     admin_dashboard_router = None  # type: ignore
 
+# Админ-роутер для мерчантов и терминалов
+try:
+    from app.api.v1.endpoints.admin_merchants import router as admin_merchants_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    admin_merchants_router = None  # type: ignore
+
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -287,6 +293,8 @@ if admin_limits_router is not None:
 
 if admin_dashboard_router is not None:
     app.include_router(admin_dashboard_router, prefix="")
+if admin_merchants_router is not None:
+    app.include_router(admin_merchants_router, prefix="")
 
 
 # -----------------------------------------------------------------------------
