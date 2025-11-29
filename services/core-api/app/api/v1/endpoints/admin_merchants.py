@@ -20,7 +20,7 @@ from app.schemas.admin_merchants import (
     TerminalRead,
     TerminalUpdate,
 )
-from app.security.admin_auth import require_admin
+from app.services.admin_auth import require_admin
 
 router = APIRouter(
     prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)]
