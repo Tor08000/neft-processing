@@ -20,8 +20,9 @@ def clean_db():
 
 
 @pytest.fixture
-def client():
+def client(admin_auth_headers: dict):
     with TestClient(app) as client:
+        client.headers.update(admin_auth_headers)
         yield client
 
 

@@ -22,7 +22,7 @@ from app.services.limits import (
 
 
 @pytest.fixture()
-def admin_client() -> Tuple[TestClient, sessionmaker]:
+def admin_client(admin_auth_headers: dict) -> Tuple[TestClient, sessionmaker]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -50,7 +50,9 @@ def admin_client() -> Tuple[TestClient, sessionmaker]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    return TestClient(app), TestingSessionLocal
+    client = TestClient(app)
+    client.headers.update(admin_auth_headers)
+    return client, TestingSessionLocal
 
 
 def test_client_and_card_group_crud(admin_client: Tuple[TestClient, sessionmaker]):
