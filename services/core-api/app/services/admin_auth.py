@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from typing import Optional
 
@@ -7,7 +8,10 @@ import requests
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
 
-PUBLIC_KEY_URL = "http://auth-host:8000/api/v1/auth/public-key"
+PUBLIC_KEY_URL = os.getenv(
+    "ADMIN_PUBLIC_KEY_URL",
+    "http://auth-host:8000/api/v1/auth/public-key",
+)
 PUBLIC_KEY_CACHE_TTL = 300
 EXPECTED_ISSUER = "neft-auth"
 EXPECTED_AUDIENCE = "neft-admin"

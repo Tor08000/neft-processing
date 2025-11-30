@@ -13,10 +13,13 @@ from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 from app.db import get_conn
 from app.models import User
+from app.services.keys import get_private_key_pem, get_public_key_pem
 
 settings = get_settings()
 logger = get_logger(__name__)
-ALGORITHM = "HS256"
+ALGORITHM = "RS256"
+ISSUER = "neft-auth"
+AUDIENCE = "neft-admin"
 security_scheme = HTTPBearer(auto_error=False)
 
 
@@ -41,15 +44,29 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return hmac.compare_digest(recalculated.split("$", 1)[1], digest_hex)
 
 
-def create_access_token(sub: str) -> str:
+def create_access_token(sub: str, roles: list[str]) -> str:
     expire = _now_utc() + timedelta(minutes=settings.access_token_expires_min)
-    payload = {"sub": sub, "exp": expire}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
+    payload = {
+        "sub": sub,
+        "exp": expire,
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "roles": roles,
+    }
+    private_key = get_private_key_pem()
+    return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict:
+    public_key = get_public_key_pem()
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        return jwt.decode(
+            token,
+            public_key,
+            algorithms=[ALGORITHM],
+            audience=AUDIENCE,
+            issuer=ISSUER,
+        )
     except JWTError as exc:
         logger.warning("JWT decode failed", extra={"error": str(exc)})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
@@ -62,14 +79,16 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
 
     payload = decode_access_token(credentials.credentials)
-    email = payload.get("sub")
-    if not email:
+    sub = payload.get("sub")
+    try:
+        user_id = int(sub)
+    except (TypeError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
 
     async with get_conn() as (_, cur):
         await cur.execute(
-            "SELECT id, email, full_name, password_hash, is_active, created_at FROM users WHERE email=%s",
-            (email,),
+            "SELECT id, email, full_name, password_hash, is_active, created_at FROM users WHERE id=%s",
+            (user_id,),
         )
         row = await cur.fetchone()
         if not row:
