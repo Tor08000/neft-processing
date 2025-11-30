@@ -231,6 +231,12 @@ def list_transactions(
     from_created_at: datetime | None = None,
     to_created_at: datetime | None = None,
     no_pagination: bool = False,
+    min_amount: int | None = None,
+    max_amount: int | None = None,
+    order_by: str = "created_at_desc",
+    product_category: str | None = None,
+    mcc: str | None = None,
+    tx_type: str | None = None,
 ) -> TransactionsPage:
     auth_query = db.query(Operation).filter(Operation.operation_type == "AUTH")
 
@@ -247,55 +253,54 @@ def list_transactions(
     if to_created_at:
         auth_query = auth_query.filter(Operation.created_at <= to_created_at)
 
-    auth_query = auth_query.order_by(Operation.created_at.desc())
+    auth_operations = auth_query.order_by(Operation.created_at.desc()).all()
 
-    if status:
-        auth_operations = auth_query.all()
-        auth_ids = [op.operation_id for op in auth_operations]
-        operations_by_auth = _fetch_operations_for_auths(db, auth_ids)
-
-        transactions: List[TransactionSchema] = []
-        for auth in auth_operations:
-            tx_operations = operations_by_auth.get(auth.operation_id, [])
-            transaction = build_transaction_from_operations(tx_operations)
-            if transaction and transaction.status == status:
-                transactions.append(transaction)
-
-        total = len(transactions)
-
-        if no_pagination:
-            return TransactionsPage(
-                items=transactions, total=total, limit=total, offset=0
-            )
-
-        paginated = transactions[offset : offset + limit]
-        return TransactionsPage(
-            items=paginated, total=total, limit=limit, offset=offset
-        )
-
-    if no_pagination:
-        auth_operations = auth_query.all()
-        total = len(auth_operations)
-    else:
-        total = auth_query.count()
-        auth_operations = auth_query.offset(offset).limit(limit).all()
     auth_ids = [op.operation_id for op in auth_operations]
     operations_by_auth = _fetch_operations_for_auths(db, auth_ids)
 
-    items: List[TransactionSchema] = []
+    transactions: List[TransactionSchema] = []
     for auth in auth_operations:
         transaction = build_transaction_from_operations(
             operations_by_auth.get(auth.operation_id, [])
         )
         if transaction:
-            items.append(transaction)
+            transactions.append(transaction)
 
-    return TransactionsPage(
-        items=items,
-        total=total,
-        limit=total if no_pagination else limit,
-        offset=0 if no_pagination else offset,
-    )
+    if status:
+        transactions = [tx for tx in transactions if tx.status == status]
+    if product_category:
+        transactions = [
+            tx for tx in transactions if tx.product_category == product_category
+        ]
+    if mcc:
+        transactions = [tx for tx in transactions if tx.mcc == mcc]
+    if tx_type:
+        transactions = [tx for tx in transactions if tx.tx_type == tx_type]
+    if min_amount is not None:
+        transactions = [
+            tx for tx in transactions if tx.authorized_amount >= min_amount
+        ]
+    if max_amount is not None:
+        transactions = [
+            tx for tx in transactions if tx.authorized_amount <= max_amount
+        ]
+
+    ordering = {
+        "created_at_desc": lambda tx: (-tx.created_at.timestamp(), tx.transaction_id),
+        "created_at_asc": lambda tx: (tx.created_at.timestamp(), tx.transaction_id),
+        "amount_desc": lambda tx: (-tx.authorized_amount, tx.transaction_id),
+        "amount_asc": lambda tx: (tx.authorized_amount, tx.transaction_id),
+    }
+    sort_key = ordering.get(order_by, ordering["created_at_desc"])
+    transactions = sorted(transactions, key=sort_key)
+
+    total = len(transactions)
+
+    if no_pagination:
+        return TransactionsPage(items=transactions, total=total, limit=total, offset=0)
+
+    paginated = transactions[offset : offset + limit]
+    return TransactionsPage(items=paginated, total=total, limit=limit, offset=offset)
 
 
 def get_transaction(db: Session, transaction_id: str) -> TransactionDetailResponse | None:
