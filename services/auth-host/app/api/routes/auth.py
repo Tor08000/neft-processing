@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import PlainTextResponse
 
 from neft_shared.logging_setup import get_logger
 from app.db import get_conn
 from app.models import User
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.security import create_access_token, get_current_user, hash_password, verify_password
+from app.services.keys import get_public_key_pem
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = get_logger(__name__)
+
+
+@router.get("/public-key", response_class=PlainTextResponse)
+async def get_public_key():
+    """
+    Return RSA public key (PEM) for verifying JWT (RS256).
+    """
+
+    public_pem = get_public_key_pem()
+    return public_pem
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -61,7 +73,8 @@ async def login(payload: LoginRequest) -> TokenResponse:
     if not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
 
-    token = create_access_token(user.email)
+    roles = ["ADMIN"] if user.email.lower().startswith("admin") else ["USER"]
+    token = create_access_token(str(user.id), roles)
     logger.info("User logged in", extra={"email": user.email})
     return TokenResponse(access_token=token)
 

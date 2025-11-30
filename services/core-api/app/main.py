@@ -14,6 +14,7 @@ from neft_shared.logging_setup import get_logger, init_logging
 
 from app.db import init_db, SessionLocal
 from app.api.routes import router as api_router
+from app.api.v1.endpoints import admin_dashboard, admin_limits, admin_merchants
 from app.services.transactions import derive_tx_type
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -44,25 +45,6 @@ try:
     from app.api.v1.endpoints.reports_billing import router as reports_billing_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     reports_billing_router = None  # type: ignore
-
-# Админ-роутер для правил лимитов и групп
-try:
-    from app.api.v1.endpoints.admin_limits import router as admin_limits_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    admin_limits_router = None  # type: ignore
-
-# Админ-дашборд (чтение списков)
-try:
-    from app.api.v1.endpoints.admin_dashboard import router as admin_dashboard_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    admin_dashboard_router = None  # type: ignore
-
-# Админ-роутер для мерчантов и терминалов
-try:
-    from app.api.v1.endpoints.admin_merchants import router as admin_merchants_router
-except Exception:  # pragma: no cover - в dev может ещё не существовать
-    admin_merchants_router = None  # type: ignore
-
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 init_logging(service_name=SERVICE_NAME)
@@ -288,13 +270,9 @@ if transactions_router is not None:
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
 
-if admin_limits_router is not None:
-    app.include_router(admin_limits_router, prefix="")
-
-if admin_dashboard_router is not None:
-    app.include_router(admin_dashboard_router, prefix="")
-if admin_merchants_router is not None:
-    app.include_router(admin_merchants_router, prefix="")
+app.include_router(admin_limits.router)
+app.include_router(admin_dashboard.router)
+app.include_router(admin_merchants.router)
 
 
 # -----------------------------------------------------------------------------
