@@ -14,7 +14,12 @@ from neft_shared.logging_setup import get_logger, init_logging
 
 from app.db import init_db, SessionLocal
 from app.api.routes import router as api_router
-from app.api.v1.endpoints import admin_dashboard, admin_limits, admin_merchants
+from app.api.v1.endpoints import (
+    admin_dashboard,
+    admin_limits,
+    admin_merchants,
+    admin_operations,
+)
 from app.services.transactions import derive_tx_type
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -271,6 +276,7 @@ if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
 
 app.include_router(admin_limits.router)
+app.include_router(admin_operations.router)
 app.include_router(admin_dashboard.router)
 app.include_router(admin_merchants.router)
 
