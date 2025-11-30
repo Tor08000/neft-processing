@@ -13,6 +13,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    ports:
+      - "5432:5432"
 
   redis:
     image: redis:7
@@ -23,28 +25,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  auth-host:
-    build:
-      context: .
-      dockerfile: services/auth-host/Dockerfile
-    container_name: neft-processing-auth-host-1
-    environment:
-      NEFT_AUTH_DB_URL: postgresql+psycopg2://neft:neft@postgres:5432/neft
-      NEFT_AUTH_ADMIN_JWT_ISSUER: neft-auth
-      NEFT_AUTH_ADMIN_JWT_AUDIENCE: neft-admin
-      NEFT_AUTH_ADMIN_JWT_EXPIRE_MINUTES: 60
-      NEFT_AUTH_ADMIN_JWT_ALG: RS256
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     ports:
-      - "8002:8000"   # <<< ВОТ ЭТО МЫ ДОБАВЛЯЕМ, ЧТОБЫ ДОСТУП С ХОСТА
+      - "6379:6379"
 
   core-api:
     build:
@@ -52,73 +34,113 @@ services:
       dockerfile: services/core-api/Dockerfile
     container_name: neft-processing-core-api-1
     environment:
-      NEFT_DB_URL: postgresql+psycopg2://neft:neft@postgres:5432/neft
-      NEFT_AUTH_PUBLIC_KEY_URL: http://auth-host:8000/api/v1/auth/public-key
-      NEFT_AUTH_ADMIN_JWT_ISSUER: neft-auth
-      NEFT_AUTH_ADMIN_JWT_AUDIENCE: neft-admin
+      SERVICE_NAME: core-api
+      DATABASE_URL: "postgresql+psycopg://neft:neft@postgres:5432/neft"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      auth-host:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "8001:8000"
+
+  auth-host:
+    build:
+      context: .
+      dockerfile: services/auth-host/Dockerfile
+    container_name: neft-processing-auth-host-1
+    environment:
+      SERVICE_NAME: auth-host
+      CORE_API_URL: http://core-api:8000/api/v1
+    depends_on:
+      postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
+    ports:
+      - "8002:8000"
 
   ai-service:
     build:
       context: .
       dockerfile: services/ai-service/Dockerfile
     container_name: neft-processing-ai-service-1
+    environment:
+      SERVICE_NAME: ai-service
     depends_on:
-      core-api:
+      redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
     ports:
-      - "8001:8000"
+      - "8003:8000"
 
   workers:
     build:
       context: .
       dockerfile: services/workers/Dockerfile
     container_name: neft-processing-workers-1
+    environment:
+      SERVICE_NAME: workers
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
-      core-api:
-        condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "services.workers.app.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   beat:
     build:
       context: .
       dockerfile: services/workers/Dockerfile
     container_name: neft-processing-beat-1
-    command: ["celery", "-A", "app.celery_app.celery_app", "beat", "-l", "info"]
+    command: ["celery", "-A", "services.workers.app.celery_app", "beat", "-l", "info"]
+    environment:
+      SERVICE_NAME: beat
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
-      workers:
-        condition: service_started
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "services.workers.app.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   flower:
     image: mher/flower:1.2.0
-    container_name: neft-flower
-    command: ["celery", "--broker=redis://redis:6379/0", "flower"]
+    container_name: neft-processing-flower-1
     depends_on:
-      workers:
-        condition: service_started
-      redis:
-        condition: service_healthy
+      - redis
+      - workers
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: >
+      celery
+      --broker=redis://redis:6379/0
+      --result-backend=redis://redis:6379/1
+      flower
+      --port=5555
     ports:
       - "5555:5555"
+    restart: unless-stopped
 
   nginx:
     image: nginx:1.27
