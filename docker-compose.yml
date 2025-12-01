@@ -156,7 +156,7 @@ services:
       ai-service:
         condition: service_healthy
       admin-web:
-        condition: service_healthy
+        condition: service_started
       flower:
         condition: service_started
     ports:
@@ -168,16 +168,8 @@ services:
     container_name: neft-processing-admin-web-1
     ports:
       - "8080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     depends_on:
-      core-api:
-        condition: service_healthy
-      auth-host:
-        condition: service_healthy
+      - core-api
 
 volumes:
   postgres-data:
