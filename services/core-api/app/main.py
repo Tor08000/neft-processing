@@ -8,7 +8,7 @@ from uuid import uuid4
 from celery.exceptions import TimeoutError as CeleryTimeoutError
 from fastapi import Body, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from neft_shared.logging_setup import get_logger, init_logging
 
@@ -60,10 +60,14 @@ logger = get_logger(__name__)
 # Pydantic-модели
 # -----------------------------------------------------------------------------
 class HealthResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: str = "ok"
 
 
 class CeleryPingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     task: str
     result: Dict[str, Any]
 
