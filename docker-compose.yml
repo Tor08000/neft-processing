@@ -142,11 +142,12 @@ services:
       - "5555:5555"
     restart: unless-stopped
 
-  nginx:
+  gateway:
     image: nginx:1.27
-    container_name: neft-processing-nginx-1
+    container_name: neft-processing-gateway-1
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       core-api:
         condition: service_healthy
@@ -166,7 +167,7 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - nginx
+      - gateway
 
 volumes:
   postgres-data:
