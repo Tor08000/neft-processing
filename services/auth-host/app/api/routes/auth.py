@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 
@@ -12,6 +14,9 @@ from app.services.keys import get_public_key_pem
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = get_logger(__name__)
+
+ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_DEFAULT_EMAIL", "admin@example.com")
+ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "admin")
 
 
 @router.get("/public-key", response_class=PlainTextResponse)
@@ -56,7 +61,7 @@ async def register(payload: RegisterRequest) -> UserResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
-    if payload.email == "admin@example.com" and payload.password == "admin":
+    if payload.email == ADMIN_DEFAULT_EMAIL and payload.password == ADMIN_DEFAULT_PASSWORD:
         token = create_access_token(payload.email, ["ADMIN"])
         logger.info("Admin login (static credentials)", extra={"email": payload.email})
         return TokenResponse(access_token=token)
@@ -69,14 +74,14 @@ async def login(payload: LoginRequest) -> TokenResponse:
         row = await cur.fetchone()
 
     if not row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     user = User.from_row(row)
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_inactive")
 
     if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     roles = ["ADMIN"] if user.email.lower().startswith("admin") else ["USER"]
     token = create_access_token(str(user.id), roles)
