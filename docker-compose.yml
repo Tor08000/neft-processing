@@ -155,6 +155,8 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
+      admin-web:
+        condition: service_started
       flower:
         condition: service_started
     ports:
@@ -165,9 +167,9 @@ services:
       context: ./services/admin-web
     container_name: neft-processing-admin-web-1
     ports:
-      - "8080:80"
+      - "8080:8080"
     depends_on:
-      - gateway
+      - core-api
 
 volumes:
   postgres-data:
