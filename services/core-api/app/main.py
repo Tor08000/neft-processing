@@ -275,10 +275,13 @@ if transactions_router is not None:
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
 
-app.include_router(admin_limits.router)
-app.include_router(admin_operations.router)
-app.include_router(admin_dashboard.router)
-app.include_router(admin_merchants.router)
+# === ВАЖНО: админские ручки должны жить под /api/v1/admin/... ===
+# сами эндпоинты используют prefix="/admin" внутри (см. admin.py),
+# поэтому здесь даём prefix="/api/v1", чтобы в сумме получилось /api/v1/admin/...
+app.include_router(admin_limits.router, prefix="/api/v1")
+app.include_router(admin_operations.router, prefix="/api/v1")
+app.include_router(admin_dashboard.router, prefix="/api/v1")
+app.include_router(admin_merchants.router, prefix="/api/v1")
 
 
 # -----------------------------------------------------------------------------
