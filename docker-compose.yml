@@ -159,5 +159,14 @@ services:
     ports:
       - "80:80"
 
+  admin-web:
+    build:
+      context: ./services/admin-web
+    container_name: neft-processing-admin-web-1
+    ports:
+      - "8080:80"
+    depends_on:
+      - nginx
+
 volumes:
   postgres-data:
