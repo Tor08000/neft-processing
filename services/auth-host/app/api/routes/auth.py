@@ -61,10 +61,7 @@ async def register(payload: RegisterRequest) -> UserResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
-    if payload.email == ADMIN_DEFAULT_EMAIL:
-        if payload.password != ADMIN_DEFAULT_PASSWORD:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
+    if payload.email == ADMIN_DEFAULT_EMAIL and payload.password == ADMIN_DEFAULT_PASSWORD:
         token = create_access_token(payload.email, ["ADMIN"])
         logger.info("Admin login (static credentials)", extra={"email": payload.email})
         return TokenResponse(access_token=token)
