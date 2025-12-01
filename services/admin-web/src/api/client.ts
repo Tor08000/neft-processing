@@ -1,13 +1,19 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? window.location.origin;
-const AUTH_BASE_URL = import.meta.env.VITE_AUTH_BASE_URL ?? `${API_BASE_URL}/auth/api`;
-const ADMIN_API_BASE_URL = import.meta.env.VITE_ADMIN_API_BASE_URL ?? `${API_BASE_URL}/api`;
+// services/admin-web/src/api/client.ts
 
-export interface AdminLoginRequest {
-  email: string;
-  password: string;
-}
+// Базовые URL берём из Vite-ENV, с дефолтом на текущий origin
+const AUTH_BASE_URL =
+  import.meta.env.VITE_AUTH_BASE_URL ||
+  `${window.location.origin}/auth/api`;
 
-export interface AdminLoginResponse {
+const ADMIN_API_BASE_URL =
+  import.meta.env.VITE_ADMIN_API_BASE_URL ||
+  `${window.location.origin}/api`;
+
+// =========================
+// Вспомогательные типы/утилиты
+// =========================
+
+export interface LoginResponse {
   access_token: string;
   token_type: string;
 }
@@ -23,9 +29,9 @@ export interface AdminOperation {
   card_id: string;
   amount: number;
   currency: string;
-  mcc: string | null;
-  product_category: string | null;
-  tx_type: string | null;
+  mcc?: string | null;
+  product_category?: string | null;
+  tx_type?: string | null;
 }
 
 export interface AdminTransaction {
@@ -41,9 +47,9 @@ export interface AdminTransaction {
   captured_amount: number;
   refunded_amount: number;
   currency: string;
-  mcc: string | null;
-  product_category: string | null;
-  tx_type: string | null;
+  mcc?: string | null;
+  product_category?: string | null;
+  tx_type?: string | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -53,70 +59,125 @@ export interface PaginatedResponse<T> {
   offset: number;
 }
 
-export async function adminLogin(
-  payload: AdminLoginRequest,
-): Promise<AdminLoginResponse> {
-  const resp = await fetch(`${AUTH_BASE_URL}/v1/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!resp.ok) {
-    throw new Error(`Login failed: ${resp.status}`);
-  }
-
-  return resp.json();
-}
-
-function buildUrl(base: string, path: string): URL {
-  return new URL(`${base}${path}`, window.location.origin);
-}
-
-export async function getAdminOperations(params: {
+// Параметры для запросов админ-операций
+export interface AdminOperationsQuery {
   token: string;
   limit?: number;
   offset?: number;
   operation_type?: string;
-  order_by?: string;
   client_id?: string;
-}): Promise<PaginatedResponse<AdminOperation>> {
-  const url = buildUrl(ADMIN_API_BASE_URL, "/v1/admin/operations");
-  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
-  if (params.offset != null) url.searchParams.set("offset", String(params.offset));
-  if (params.operation_type) url.searchParams.set("operation_type", params.operation_type);
-  if (params.order_by) url.searchParams.set("order_by", params.order_by);
-  if (params.client_id) url.searchParams.set("client_id", params.client_id);
-
-  const resp = await fetch(url.toString().replace(window.location.origin, ""), {
-    headers: { Authorization: `Bearer ${params.token}` },
-  });
-
-  if (!resp.ok) {
-    throw new Error(`Failed to load operations: ${resp.status}`);
-  }
-
-  return resp.json();
+  order_by?: string;
 }
 
-export async function getAdminTransactions(params: {
+// Параметры для запросов админ-транзакций
+export interface AdminTransactionsQuery {
   token: string;
   limit?: number;
   offset?: number;
   client_id?: string;
-}): Promise<PaginatedResponse<AdminTransaction>> {
-  const url = buildUrl(ADMIN_API_BASE_URL, "/v1/admin/transactions");
-  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
-  if (params.offset != null) url.searchParams.set("offset", String(params.offset));
-  if (params.client_id) url.searchParams.set("client_id", params.client_id);
+  order_by?: string;
+}
 
-  const resp = await fetch(url.toString().replace(window.location.origin, ""), {
-    headers: { Authorization: `Bearer ${params.token}` },
+// Утилита для сборки query-строки
+function buildQuery(params: Record<string, string | number | undefined>) {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      sp.set(key, String(value));
+    }
   });
+  const qs = sp.toString();
+  return qs ? `?${qs}` : "";
+}
 
-  if (!resp.ok) {
-    throw new Error(`Failed to load transactions: ${resp.status}`);
+// Общий helper для fetch c проверкой ошибок
+async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+
+  if (!res.ok) {
+    let detail: unknown = undefined;
+    try {
+      detail = await res.json();
+    } catch {
+      // ignore
+    }
+    const message = `HTTP ${res.status} ${
+      res.statusText || ""
+    }${detail ? `: ${JSON.stringify(detail)}` : ""}`;
+    throw new Error(message);
   }
 
-  return resp.json();
+  return (await res.json()) as T;
+}
+
+// =========================
+// API: логин администратора
+// =========================
+
+export async function adminLogin(
+  email: string,
+  password: string
+): Promise<LoginResponse> {
+  const url = `${AUTH_BASE_URL}/v1/auth/login`;
+
+  return doFetch<LoginResponse>(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// =========================
+// API: админ-операции
+// =========================
+
+export async function getAdminOperations(
+  params: AdminOperationsQuery
+): Promise<PaginatedResponse<AdminOperation>> {
+  const { token, limit, offset, operation_type, client_id, order_by } = params;
+
+  const qs = buildQuery({
+    limit,
+    offset,
+    operation_type,
+    client_id,
+    order_by,
+  });
+
+  const url = `${ADMIN_API_BASE_URL}/v1/admin/operations${qs}`;
+
+  return doFetch<PaginatedResponse<AdminOperation>>(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+// =========================
+// API: админ-транзакции
+// =========================
+
+export async function getAdminTransactions(
+  params: AdminTransactionsQuery
+): Promise<PaginatedResponse<AdminTransaction>> {
+  const { token, limit, offset, client_id, order_by } = params;
+
+  const qs = buildQuery({
+    limit,
+    offset,
+    client_id,
+    order_by,
+  });
+
+  const url = `${ADMIN_API_BASE_URL}/v1/admin/transactions${qs}`;
+
+  return doFetch<PaginatedResponse<AdminTransaction>>(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 }
