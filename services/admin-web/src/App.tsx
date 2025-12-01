@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
 import {
-  login,
+  adminLogin,
   getAdminOperations,
   getAdminTransactions,
   AdminOperation,
   AdminTransaction,
 } from "./api/client";
+import { useAuth } from "./store/auth";
 
 type View = "operations" | "transactions";
 
 const App: React.FC = () => {
-  const [token, setToken] = useState<string | null>(null);
+  const { token, isAuthorized, login, logout } = useAuth();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin123!");
   const [view, setView] = useState<View>("operations");
@@ -28,18 +29,11 @@ const App: React.FC = () => {
   const [offset] = useState(0);
 
   useEffect(() => {
-    const saved = localStorage.getItem("admin_token");
-    if (saved) {
-      setToken(saved);
-    }
-  }, []);
-
-  useEffect(() => {
     if (!token) return;
     if (view === "operations") {
-      loadOperations();
+      loadOperations(token);
     } else {
-      loadTransactions();
+      loadTransactions(token);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, view]);
@@ -49,9 +43,8 @@ const App: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const resp = await login(email, password);
-      setToken(resp.access_token);
-      localStorage.setItem("admin_token", resp.access_token);
+      const resp = await adminLogin({ email, password });
+      login(resp.access_token);
     } catch (err: any) {
       setError(err.message || "Login error");
     } finally {
@@ -59,13 +52,12 @@ const App: React.FC = () => {
     }
   }
 
-  async function loadOperations() {
-    if (!token) return;
+  async function loadOperations(currentToken: string) {
     setLoading(true);
     setError(null);
     try {
       const resp = await getAdminOperations({
-        token,
+        token: currentToken,
         limit,
         offset,
         operation_type: opsType || undefined,
@@ -79,13 +71,12 @@ const App: React.FC = () => {
     }
   }
 
-  async function loadTransactions() {
-    if (!token) return;
+  async function loadTransactions(currentToken: string) {
     setLoading(true);
     setError(null);
     try {
       const resp = await getAdminTransactions({
-        token,
+        token: currentToken,
         limit,
         offset,
         client_id: txClientId || undefined,
@@ -99,13 +90,12 @@ const App: React.FC = () => {
   }
 
   function handleLogout() {
-    setToken(null);
-    localStorage.removeItem("admin_token");
+    logout();
     setOperations([]);
     setTransactions([]);
   }
 
-  if (!token) {
+  if (!isAuthorized) {
     return (
       <div style={styles.page}>
         <div style={styles.card}>
@@ -186,7 +176,11 @@ const App: React.FC = () => {
                   />
                 </label>
               </div>
-              <button style={styles.buttonSmall} onClick={loadOperations} disabled={loading}>
+              <button
+                style={styles.buttonSmall}
+                onClick={() => token && loadOperations(token)}
+                disabled={loading}
+              >
                 Обновить
               </button>
             </div>
@@ -248,7 +242,11 @@ const App: React.FC = () => {
                   />
                 </label>
               </div>
-              <button style={styles.buttonSmall} onClick={loadTransactions} disabled={loading}>
+              <button
+                style={styles.buttonSmall}
+                onClick={() => token && loadTransactions(token)}
+                disabled={loading}
+              >
                 Обновить
               </button>
             </div>

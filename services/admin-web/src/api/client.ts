@@ -1,26 +1,15 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost/api";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? window.location.origin;
+const AUTH_BASE_URL = import.meta.env.VITE_AUTH_BASE_URL ?? `${API_BASE_URL}/auth/api`;
+const ADMIN_API_BASE_URL = import.meta.env.VITE_ADMIN_API_BASE_URL ?? `${API_BASE_URL}/api`;
 
-export interface LoginResponse {
-  access_token: string;
-  token_type: string;
+export interface AdminLoginRequest {
+  email: string;
+  password: string;
 }
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
-  const resp = await fetch(`${API_BASE_URL}/v1/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Login failed: ${resp.status} ${text}`);
-  }
-
-  return resp.json();
+export interface AdminLoginResponse {
+  access_token: string;
+  token_type: string;
 }
 
 export interface AdminOperation {
@@ -57,63 +46,77 @@ export interface AdminTransaction {
   tx_type: string | null;
 }
 
-interface PaginatedResponse<T> {
+export interface PaginatedResponse<T> {
   items: T[];
   total: number;
   limit: number;
   offset: number;
 }
 
-async function authorizedGet<T>(
-  path: string,
-  token: string,
-): Promise<PaginatedResponse<T>> {
-  const resp = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+export async function adminLogin(
+  payload: AdminLoginRequest,
+): Promise<AdminLoginResponse> {
+  const resp = await fetch(`${AUTH_BASE_URL}/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Request failed: ${resp.status} ${text}`);
+    throw new Error(`Login failed: ${resp.status}`);
   }
 
   return resp.json();
 }
 
-export function getAdminOperations(params: {
+function buildUrl(base: string, path: string): URL {
+  return new URL(`${base}${path}`, window.location.origin);
+}
+
+export async function getAdminOperations(params: {
   token: string;
   limit?: number;
   offset?: number;
   operation_type?: string;
+  order_by?: string;
   client_id?: string;
 }): Promise<PaginatedResponse<AdminOperation>> {
-  const search = new URLSearchParams();
-  if (params.limit !== undefined) search.set("limit", String(params.limit));
-  if (params.offset !== undefined) search.set("offset", String(params.offset));
-  if (params.operation_type) search.set("operation_type", params.operation_type);
-  if (params.client_id) search.set("client_id", params.client_id);
+  const url = buildUrl(ADMIN_API_BASE_URL, "/v1/admin/operations");
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+  if (params.offset != null) url.searchParams.set("offset", String(params.offset));
+  if (params.operation_type) url.searchParams.set("operation_type", params.operation_type);
+  if (params.order_by) url.searchParams.set("order_by", params.order_by);
+  if (params.client_id) url.searchParams.set("client_id", params.client_id);
 
-  const query = search.toString();
-  const path = `/v1/admin/operations${query ? "?" + query : ""}`;
+  const resp = await fetch(url.toString().replace(window.location.origin, ""), {
+    headers: { Authorization: `Bearer ${params.token}` },
+  });
 
-  return authorizedGet<AdminOperation>(path, params.token);
+  if (!resp.ok) {
+    throw new Error(`Failed to load operations: ${resp.status}`);
+  }
+
+  return resp.json();
 }
 
-export function getAdminTransactions(params: {
+export async function getAdminTransactions(params: {
   token: string;
   limit?: number;
   offset?: number;
   client_id?: string;
 }): Promise<PaginatedResponse<AdminTransaction>> {
-  const search = new URLSearchParams();
-  if (params.limit !== undefined) search.set("limit", String(params.limit));
-  if (params.offset !== undefined) search.set("offset", String(params.offset));
-  if (params.client_id) search.set("client_id", params.client_id);
+  const url = buildUrl(ADMIN_API_BASE_URL, "/v1/admin/transactions");
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+  if (params.offset != null) url.searchParams.set("offset", String(params.offset));
+  if (params.client_id) url.searchParams.set("client_id", params.client_id);
 
-  const query = search.toString();
-  const path = `/v1/admin/transactions${query ? "?" + query : ""}`;
+  const resp = await fetch(url.toString().replace(window.location.origin, ""), {
+    headers: { Authorization: `Bearer ${params.token}` },
+  });
 
-  return authorizedGet<AdminTransaction>(path, params.token);
+  if (!resp.ok) {
+    throw new Error(`Failed to load transactions: ${resp.status}`);
+  }
+
+  return resp.json();
 }
