@@ -45,10 +45,12 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def create_access_token(sub: str, roles: list[str]) -> str:
-    expire = _now_utc() + timedelta(minutes=settings.access_token_expires_min)
+    now = _now_utc()
+    expire = now + timedelta(minutes=settings.access_token_expires_min)
     payload = {
         "sub": sub,
         "exp": expire,
+        "iat": now,
         "iss": ISSUER,
         "aud": AUDIENCE,
         "roles": roles,
