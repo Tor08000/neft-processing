@@ -7,16 +7,19 @@ export async function fetchOperations(params: {
   operation_type?: string;
   status?: string;
   merchant_id?: string;
-  date_from?: string;
-  date_to?: string;
+  terminal_id?: string;
+  client_id?: string;
+  card_id?: string;
+  from_created_at?: string;
+  to_created_at?: string;
 }): Promise<OperationListResponse> {
-  return apiGet("/api/core/api/v1/admin/operations", params);
+  return apiGet("/api/v1/admin/operations", params);
 }
 
 export async function fetchOperation(id: string): Promise<Operation> {
-  return apiGet(`/api/core/api/v1/admin/operations/${id}`);
+  return apiGet(`/api/v1/admin/operations/${id}`);
 }
 
 export async function fetchOperationChildren(id: string): Promise<Operation[]> {
-  return apiGet(`/api/core/api/v1/admin/operations/${id}/children`);
+  return apiGet(`/api/v1/admin/operations/${id}/children`);
 }

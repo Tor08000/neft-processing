@@ -7,21 +7,21 @@ export async function fetchClearingBatches(params: {
   merchant_id?: string;
   status?: string;
 }): Promise<ClearingBatch[]> {
-  return apiGet("/admin/clearing/batches", params);
+  return apiGet("/api/v1/admin/clearing/batches", params);
 }
 
 export async function fetchClearingBatch(id: string): Promise<ClearingBatch> {
-  return apiGet(`/admin/clearing/batches/${id}`);
+  return apiGet(`/api/v1/admin/clearing/batches/${id}`);
 }
 
 export async function fetchClearingBatchOperations(id: string): Promise<ClearingBatchOperation[]> {
-  return apiGet(`/admin/clearing/batches/${id}/operations`);
+  return apiGet(`/api/v1/admin/clearing/batches/${id}/operations`);
 }
 
 export async function markBatchSent(id: string): Promise<ClearingBatch> {
-  return apiPost(`/admin/clearing/batches/${id}/mark-sent`);
+  return apiPost(`/api/v1/admin/clearing/batches/${id}/mark-sent`);
 }
 
 export async function markBatchConfirmed(id: string): Promise<ClearingBatch> {
-  return apiPost(`/admin/clearing/batches/${id}/mark-confirmed`);
+  return apiPost(`/api/v1/admin/clearing/batches/${id}/mark-confirmed`);
 }

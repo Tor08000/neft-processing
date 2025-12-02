@@ -7,9 +7,9 @@ export async function fetchBillingSummary(params: {
   merchant_id?: string;
   status?: string;
 }): Promise<BillingSummaryItem[]> {
-  return apiGet("/admin/billing/summary", params);
+  return apiGet("/api/v1/admin/billing/summary", params);
 }
 
 export async function finalizeBillingSummary(id: string): Promise<BillingSummaryItem> {
-  return apiPost(`/admin/billing/summary/${id}/finalize`);
+  return apiPost(`/api/v1/admin/billing/summary/${id}/finalize`);
 }

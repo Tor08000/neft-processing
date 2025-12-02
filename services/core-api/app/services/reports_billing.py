@@ -73,11 +73,15 @@ def build_billing_summary_for_date(
     result: list[BillingSummary] = []
 
     for aggregate in aggregates:
-        key = (aggregate.op_date, aggregate.merchant_id)
+        op_date = aggregate.op_date
+        if isinstance(op_date, str):
+            op_date = date.fromisoformat(op_date)
+
+        key = (op_date, aggregate.merchant_id)
         summary = existing.get(key)
 
         payload = {
-            "date": aggregate.op_date.isoformat(),
+            "date": op_date.isoformat(),
             "merchant_id": aggregate.merchant_id,
             "total_captured_amount": int(aggregate.total_amount or 0),
             "operations_count": int(aggregate.total_operations or 0),
@@ -88,7 +92,7 @@ def build_billing_summary_for_date(
 
         if summary is None:
             summary = BillingSummary(
-                date=aggregate.op_date,
+                date=op_date,
                 merchant_id=aggregate.merchant_id,
                 total_captured_amount=payload["total_captured_amount"],
                 operations_count=payload["operations_count"],
@@ -98,6 +102,7 @@ def build_billing_summary_for_date(
             )
             db.add(summary)
         else:
+            summary.date = op_date
             summary.total_captured_amount = payload["total_captured_amount"]
             summary.operations_count = payload["operations_count"]
             summary.status = "PENDING"
@@ -128,10 +133,14 @@ def finalize_billing_summary(db: Session, summary_id: str) -> BillingSummary:
 
 
 def get_or_build_summary(
-    db: Session, date_from: date, date_to: date, merchant_id: str | None = None
+    db: Session,
+    date_from: date,
+    date_to: date,
+    merchant_id: str | None = None,
+    status: str | None = None,
 ) -> list[BillingSummary]:
     summaries = list_billing_summaries(
-        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id, status=status
     )
     if summaries:
         return summaries
@@ -146,6 +155,7 @@ def list_billing_summaries(
     date_from: date,
     date_to: date,
     merchant_id: str | None = None,
+    status: str | None = None,
 ) -> list[BillingSummary]:
     query = (
         db.query(BillingSummary)
@@ -155,5 +165,7 @@ def list_billing_summaries(
 
     if merchant_id:
         query = query.filter(BillingSummary.merchant_id == merchant_id)
+    if status:
+        query = query.filter(BillingSummary.status == status)
 
     return query.order_by(BillingSummary.date).all()

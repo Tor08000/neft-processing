@@ -66,3 +66,5 @@ class BillingSummaryItem(BaseModel):
     finalized_at: datetime | None = None
     id: str | None = None
     hash: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)

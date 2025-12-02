@@ -82,13 +82,21 @@ def get_batch(db: Session, batch_id: str) -> ClearingBatch | None:
 
 
 def list_batches(
-    db: Session, merchant_id: str | None = None, status: str | None = None
+    db: Session,
+    merchant_id: str | None = None,
+    status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> list[ClearingBatch]:
     query = db.query(ClearingBatch)
     if merchant_id:
         query = query.filter(ClearingBatch.merchant_id == merchant_id)
     if status:
         query = query.filter(ClearingBatch.status == status)
+    if date_from:
+        query = query.filter(ClearingBatch.date_from >= date_from)
+    if date_to:
+        query = query.filter(ClearingBatch.date_to <= date_to)
     return query.order_by(ClearingBatch.created_at.desc()).all()
 
 
