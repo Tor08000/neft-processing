@@ -175,7 +175,10 @@ services:
       - "5555:5555"
 
   gateway:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    image: neft-processing-gateway:latest
     container_name: neft-processing-gateway-1
     depends_on:
       core-api:
@@ -184,10 +187,13 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
-    volumes:
-      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-data:
