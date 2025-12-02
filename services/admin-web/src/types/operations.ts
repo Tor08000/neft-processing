@@ -35,3 +35,18 @@ export interface OperationListResponse {
   limit: number;
   offset: number;
 }
+
+export interface OperationQuery extends Record<string, unknown> {
+  limit?: number;
+  offset?: number;
+  operation_type?: string;
+  status?: string;
+  merchant_id?: string;
+  terminal_id?: string;
+  client_id?: string;
+  card_id?: string;
+  date_from?: string;
+  date_to?: string;
+  from_created_at?: string;
+  to_created_at?: string;
+}

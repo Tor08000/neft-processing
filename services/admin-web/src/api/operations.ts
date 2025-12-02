@@ -1,18 +1,7 @@
 import { apiGet } from "./client";
-import { Operation, OperationListResponse } from "../types/operations";
+import { Operation, OperationListResponse, OperationQuery } from "../types/operations";
 
-export async function fetchOperations(params: {
-  limit?: number;
-  offset?: number;
-  operation_type?: string;
-  status?: string;
-  merchant_id?: string;
-  terminal_id?: string;
-  client_id?: string;
-  card_id?: string;
-  from_created_at?: string;
-  to_created_at?: string;
-}): Promise<OperationListResponse> {
+export async function fetchOperations(params: OperationQuery): Promise<OperationListResponse> {
   return apiGet("/api/v1/admin/operations", params);
 }
 
