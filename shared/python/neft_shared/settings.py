@@ -13,7 +13,7 @@ class Settings:
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "plain")
 
     database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql+psycopg://neft:neftpass@postgres:5432/neft"
+        "DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft"
     )
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
