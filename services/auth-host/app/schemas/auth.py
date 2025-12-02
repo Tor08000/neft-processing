@@ -4,6 +4,11 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
 
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
@@ -18,6 +23,8 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    expires_in: int
+    email: EmailStr
 
 
 class UserResponse(BaseModel):

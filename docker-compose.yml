@@ -147,8 +147,8 @@ services:
       context: ./services/admin-web
       dockerfile: Dockerfile
     container_name: neft-processing-admin-web-1
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
@@ -161,14 +161,15 @@ services:
     container_name: neft-processing-gateway-1
     entrypoint: ["nginx", "-g", "daemon off;"]
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
+      - ./services/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       core-api:
         condition: service_healthy
       auth-host:
         condition: service_healthy
       ai-service:
+        condition: service_healthy
+      admin-web:
         condition: service_healthy
       flower:
         condition: service_started
