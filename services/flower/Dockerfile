@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
@@ -10,7 +11,26 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY services/flower/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Ставим зависимости Celery-приложения воркеров и Flower
+COPY services/workers/requirements.txt /tmp/worker-requirements.txt
+COPY services/flower/requirements.txt /tmp/flower-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/worker-requirements.txt \
+    && pip install --no-cache-dir -r /tmp/flower-requirements.txt
 
-CMD ["flower", "--broker=redis://redis:6379/0", "--port=5555", "--address=0.0.0.0"]
+# Кладём общую питон-библиотеку и код воркеров, чтобы Celery app был доступен
+COPY shared/python /opt/python
+COPY shared/python/neft_shared /app/neft_shared
+ENV PYTHONPATH="/opt/python:/app"
+
+COPY services/workers /app/services/workers
+
+CMD [
+  "python",
+  "-m",
+  "celery",
+  "-A",
+  "services.workers.app.celery_app:celery_app",
+  "flower",
+  "--port=5555",
+  "--address=0.0.0.0"
+]
