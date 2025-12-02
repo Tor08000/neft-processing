@@ -38,6 +38,7 @@ services:
       VITE_CORE_API_URL: http://gateway/api/core
       VITE_AUTH_HOST_URL: http://gateway/api/auth
       VITE_AI_SERVICE_URL: http://gateway/api/ai
+      VITE_ADMIN_BASE_PATH: /admin/
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s

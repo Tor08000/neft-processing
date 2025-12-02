@@ -6,8 +6,8 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 Проверка:
 - Core API напрямую: http://localhost:8001/api/v1/health
-- Через gateway: http://localhost/api/v1/health
-- Admin UI: http://localhost:8080/
+- Через gateway: http://localhost/api/core/api/v1/health
+- Admin UI (через gateway с нужным префиксом): http://localhost/admin/
 
 ### Админский токен для локальной разработки
 
@@ -25,7 +25,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 * Запустить окружение:
   * `docker compose up -d --build`
-* Открыть в браузере: `http://localhost:4173`
+* Открыть в браузере: `http://localhost/admin/` (или напрямую в контейнер admin-web: `http://localhost:4173/admin/`)
 * В форме логина ввести:
   * Email: `admin@example.com`
   * Пароль: `admin`

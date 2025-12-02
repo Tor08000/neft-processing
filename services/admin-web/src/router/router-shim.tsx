@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 interface MatchResult {
   params: Record<string, string>;
@@ -16,6 +16,29 @@ interface RouterContextValue {
 }
 
 const RouterContext = createContext<RouterContextValue | null>(null);
+
+function normalizeBasePath(rawBase: string | undefined): string {
+  const withLeading = rawBase?.startsWith("/") ? rawBase : `/${rawBase ?? "admin"}`;
+  const normalized = withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
+  return normalized.replace(/\/+/g, "/");
+}
+
+const BASE_PATH = normalizeBasePath(import.meta.env.VITE_ADMIN_BASE_PATH);
+
+function stripBase(pathname: string): string {
+  if (pathname.startsWith(BASE_PATH)) {
+    const remainder = pathname.slice(BASE_PATH.length);
+    const normalized = `/${remainder}`.replace(/\/+/g, "/");
+    return normalized === "//" || normalized === "" ? "/" : normalized;
+  }
+  return pathname || "/";
+}
+
+function toAbsolutePath(pathname: string): string {
+  if (/^https?:\/\//.test(pathname)) return pathname;
+  const trimmed = pathname.startsWith("/") ? pathname.slice(1) : pathname;
+  return `${BASE_PATH}${trimmed}`.replace(/\/+/g, "/");
+}
 
 function matchPath(pattern: string, pathname: string): MatchResult | null {
   const patternParts = pattern.split("/").filter(Boolean);
@@ -37,24 +60,25 @@ function matchPath(pattern: string, pathname: string): MatchResult | null {
 }
 
 export const BrowserRouter: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [pathname, setPathname] = useState<string>(window.location.pathname);
+  const [pathname, setPathname] = useState<string>(() => stripBase(window.location.pathname));
 
   useEffect(() => {
-    const handler = () => setPathname(window.location.pathname);
+    const handler = () => setPathname(stripBase(window.location.pathname));
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
   }, []);
 
-  const navigate = (to: string) => {
-    if (to !== window.location.pathname) {
-      window.history.pushState({}, "", to);
-      setPathname(to);
+  const navigate = useCallback((to: string) => {
+    const target = toAbsolutePath(to);
+    if (target !== window.location.pathname) {
+      window.history.pushState({}, "", target);
+      setPathname(stripBase(target));
     }
-  };
+  }, []);
 
   const value = useMemo<RouterContextValue>(
     () => ({ pathname, navigate, params: {} }),
-    [pathname],
+    [pathname, navigate],
   );
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
@@ -103,7 +127,7 @@ export function Link({ to, children, ...rest }: React.AnchorHTMLAttributes<HTMLA
   };
 
   return (
-    <a href={to} onClick={handleClick} {...rest}>
+    <a href={toAbsolutePath(to)} onClick={handleClick} {...rest}>
       {children}
     </a>
   );
