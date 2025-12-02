@@ -57,15 +57,6 @@ class CheckAndReserveRequest(BaseModel):
     mcc: Optional[str] = None
     tx_type: Optional[str] = None
 
-    product_category: Optional[str] = None
-    mcc: Optional[str] = None
-    tx_type: Optional[str] = None
-
-    phase: str = "AUTH"
-
-    client_group_id: Optional[str] = None
-    card_group_id: Optional[str] = None
-
 
 class CheckAndReserveResult(BaseModel):
     approved: bool
