@@ -3,24 +3,36 @@
 Диагностика репозитория NEFT Processing.
 
 Запускать ИЗ КОРНЯ репо:
-    python inspect_neft_repo.py > neft_state.txt
+    python inspect_neft_repo.py
 
-Потом можно прислать мне содержимое neft_state.txt.
+Опции:
+    --run-tests   запуск pytest для core-api, auth-host и ai-service
+    --output PATH путь до файла отчёта (по умолчанию docs/diag/neft_state_YYYYMMDD_HHMM.txt)
+
+Отчёт печатается в консоль и сохраняется в docs/diag/.
 """
 
+import argparse
 import os
-import sys
 import subprocess
-from pathlib import Path
+import urllib.error
+import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+LOG_LINES: list[str] = []
+
+
+def log(message: str = ""):
+    print(message)
+    LOG_LINES.append(message)
 
 
 def header(title: str):
-    print("\n" + "=" * 80)
-    print(f"= {title}")
-    print("=" * 80)
+    log("\n" + "=" * 80)
+    log(f"= {title}")
+    log("=" * 80)
 
 
 def safe_run(cmd, cwd=None):
@@ -39,28 +51,24 @@ def safe_run(cmd, cwd=None):
         return -1, "", f"EXCEPTION: {e}"
 
 
-def check_path(p: Path):
-    return p.exists(), str(p.relative_to(ROOT))
-
-
 def list_dir(p: Path, max_items=20):
     if not p.exists():
-        print(f"[!] Каталог не найден: {p}")
+        log(f"[!] Каталог не найден: {p}")
         return
     items = sorted(p.iterdir())
     for item in items[:max_items]:
         kind = "DIR " if item.is_dir() else "FILE"
-        print(f"- {kind:4} {item.name}")
+        log(f"- {kind:4} {item.name}")
     if len(items) > max_items:
-        print(f"... и ещё {len(items) - max_items} элементов")
+        log(f"... и ещё {len(items) - max_items} элементов")
 
 
 def section_basic():
     header("ОБЩАЯ ИНФОРМАЦИЯ")
-    print(f"Текущее время: {datetime.now().isoformat()}")
-    print(f"Корень репозитория: {ROOT}")
-    print(f"Имя папки: {ROOT.name}")
-    print()
+    log(f"Текущее время: {datetime.now().isoformat()}")
+    log(f"Корень репозитория: {ROOT}")
+    log(f"Имя папки: {ROOT.name}")
+    log()
 
     expected_dirs = [
         "services",
@@ -77,36 +85,64 @@ def section_basic():
         "docs",
     ]
 
-    print("Проверка ключевых директорий:")
+    log("Проверка ключевых директорий:")
     for rel in expected_dirs:
         p = ROOT / rel
         exists = p.exists()
         mark = "OK " if exists else "NOK"
-        print(f"[{mark}] {rel}")
+        log(f"[{mark}] {rel}")
 
 
 def section_git():
     header("GIT-СОСТОЯНИЕ")
 
     rc, out, err = safe_run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    print(f"Текущая ветка: {out or 'не удалось определить'}")
+    log(f"Текущая ветка: {out or 'не удалось определить'}")
 
     rc, out, err = safe_run(["git", "status", "--short"])
     if rc == 0:
         if not out:
-            print("Статус: чистый (нет незакоммиченных изменений)")
+            log("Статус: чистый (нет незакоммиченных изменений)")
         else:
-            print("Незакоммиченные изменения:")
-            print(out)
+            log("Незакоммиченные изменения:")
+            log(out)
     else:
-        print("Не удалось получить git status:", err)
+        log(f"Не удалось получить git status: {err}")
 
     rc, out, err = safe_run(["git", "log", "-1", "--oneline"])
     if rc == 0:
-        print("Последний коммит:")
-        print(out)
+        log("Последний коммит:")
+        log(out)
     else:
-        print("Не удалось получить последний коммит:", err)
+        log(f"Не удалось получить последний коммит: {err}")
+
+
+def section_docker_compose(expected_services: list[str]):
+    header("DOCKER COMPOSE")
+
+    rc, out, err = safe_run(["docker", "compose", "config", "--services"])
+    if rc != 0:
+        log(f"[FAIL] docker compose недоступен: {err or 'неизвестная ошибка'}")
+        return False
+
+    declared_services = sorted(line.strip() for line in out.splitlines() if line.strip())
+    log("Доступные сервисы docker compose:")
+    for service in declared_services:
+        log(f"- {service}")
+
+    missing = [s for s in expected_services if s not in declared_services]
+    extra = [s for s in declared_services if s not in expected_services]
+
+    if missing:
+        log(f"[WARN] Отсутствуют ожидаемые сервисы: {', '.join(missing)}")
+    if extra:
+        log(f"[WARN] Обнаружены неожиданные сервисы: {', '.join(extra)}")
+
+    if not missing and not extra:
+        log("[OK] Список сервисов соответствует ожиданиям")
+        return True
+
+    return False
 
 
 def section_services():
@@ -121,9 +157,9 @@ def section_services():
     }
 
     for name, path in services.items():
-        print(f"\n--- {name} ---")
+        log(f"\n--- {name} ---")
         if not path.exists():
-            print(f"[!] Каталог {path} не найден")
+            log(f"[!] Каталог {path} не найден")
             continue
 
         dockerfile = path / "Dockerfile"
@@ -131,22 +167,22 @@ def section_services():
         req = path / "requirements.txt"
         app_dir = path / "app"
 
-        print(f"[{'OK' if dockerfile.exists() else '!!'}] Dockerfile")
-        print(f"[{'OK' if pyproject.exists() else '  '}] pyproject.toml")
-        print(f"[{'OK' if req.exists() else '  '}] requirements.txt")
-        print(f"[{'OK' if app_dir.exists() else '!!'}] app/")
+        log(f"[{'OK' if dockerfile.exists() else '!!'}] Dockerfile")
+        log(f"[{'OK' if pyproject.exists() else '  '}] pyproject.toml")
+        log(f"[{'OK' if req.exists() else '  '}] requirements.txt")
+        log(f"[{'OK' if app_dir.exists() else '!!'}] app/")
 
         if app_dir.exists():
             mains = list(app_dir.glob("main.py"))
             if mains:
-                print("main.py найден в app/:", ", ".join(str(m.relative_to(ROOT)) for m in mains))
+                log("main.py найден в app/: " + ", ".join(str(m.relative_to(ROOT)) for m in mains))
             else:
-                print("[!] main.py в app/ не найден")
+                log("[!] main.py в app/ не найден")
 
             # Немного ключевых подпапок
             for sub in ["api", "schemas", "models", "services", "tests"]:
                 sdir = app_dir / sub
-                print(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
+                log(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
 
 
 def section_migrations():
@@ -154,13 +190,30 @@ def section_migrations():
 
     alembic_dir = ROOT / "services" / "core-api" / "app" / "alembic" / "versions"
     if not alembic_dir.exists():
-        print("[!] Каталог миграций не найден:", alembic_dir)
-        return
+        log(f"[!] Каталог миграций не найден: {alembic_dir}")
+        return False
 
     versions = sorted(alembic_dir.glob("*.py"))
-    print(f"Всего миграций: {len(versions)}")
+    log(f"Всего миграций: {len(versions)}")
     for v in versions:
-        print("-", v.name)
+        log(f"- {v.name}")
+
+    rc, out, err = safe_run(["alembic", "heads"], cwd=ROOT / "services" / "core-api")
+    if rc != 0:
+        log(f"[FAIL] Не удалось выполнить 'alembic heads': {err or 'без подробностей'}")
+        return False
+
+    heads = [line for line in out.splitlines() if line.strip()]
+    log("Вывод 'alembic heads':")
+    for line in heads:
+        log(line)
+
+    if len(heads) == 1:
+        log("[OK] Найден один head Alembic")
+        return True
+
+    log(f"[FAIL] Количество head: {len(heads)}")
+    return False
 
 
 def section_tests():
@@ -176,24 +229,24 @@ def section_tests():
         ("auth-host tests", auth_tests),
         ("ai-service tests", ai_tests),
     ]:
-        print(f"\n--- {name} ---")
+        log(f"\n--- {name} ---")
         if not path.exists():
-            print(f"[!] Каталог тестов не найден: {path}")
+            log(f"[!] Каталог тестов не найден: {path}")
             continue
         tests = sorted(path.glob("test_*.py"))
-        print(f"Количество файлов тестов: {len(tests)}")
+        log(f"Количество файлов тестов: {len(tests)}")
         for t in tests:
-            print("-", t.name)
+            log(f"- {t.name}")
 
-    print("\n--- workers tasks ---")
+    log("\n--- workers tasks ---")
     tasks_dir = workers_dir / "tasks"
     if tasks_dir.exists():
         files = sorted(tasks_dir.glob("*.py"))
-        print(f"Файлы задач Celery ({len(files)}):")
+        log(f"Файлы задач Celery ({len(files)}):")
         for f in files:
-            print("-", f.name)
+            log(f"- {f.name}")
     else:
-        print(f"[!] Каталог задач workers не найден: {tasks_dir}")
+        log(f"[!] Каталог задач workers не найден: {tasks_dir}")
 
 
 def section_endpoints():
@@ -201,7 +254,7 @@ def section_endpoints():
 
     endpoints_dir = ROOT / "services" / "core-api" / "app" / "api" / "v1" / "endpoints"
     if not endpoints_dir.exists():
-        print("[!] Каталог endpoints не найден:", endpoints_dir)
+        log(f"[!] Каталог endpoints не найден: {endpoints_dir}")
         return
 
     list_dir(endpoints_dir, max_items=100)
@@ -212,21 +265,165 @@ def section_db_init():
 
     init_dir = ROOT / "db" / "init"
     if not init_dir.exists():
-        print("[!] db/init не найден")
+        log("[!] db/init не найден")
         return
     list_dir(init_dir, max_items=20)
 
 
+def section_health_checks():
+    header("HEALTH-CHECK СЕРВИСОВ")
+
+    endpoints = {
+        "auth": "http://localhost/api/auth/api/v1/health",
+        "core": "http://localhost/api/core/api/v1/health",
+        "admin": "http://localhost/admin/",
+    }
+
+    results: dict[str, bool] = {}
+
+    for name, url in endpoints.items():
+        log(f"\n--- {name} ---")
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                content = resp.read()
+                status = getattr(resp, "status", None) or resp.getcode()
+                log(f"URL: {url}")
+                log(f"Статус: {status}")
+                log(f"Длина ответа: {len(content)}")
+                results[name] = status == 200
+        except urllib.error.HTTPError as e:
+            log(f"[FAIL] HTTPError {e.code}: {e.reason}")
+            results[name] = False
+        except urllib.error.URLError as e:
+            log(f"[FAIL] URLError: {e.reason}")
+            results[name] = False
+        except Exception as e:  # noqa: BLE001
+            log(f"[FAIL] Ошибка при запросе: {e}")
+            results[name] = False
+
+    overall = all(results.values()) if results else False
+    if overall:
+        log("[OK] Все health-check запросы успешны")
+    else:
+        failed = [name for name, ok in results.items() if not ok]
+        log(f"[FAIL] Проблемы с сервисами: {', '.join(failed)}")
+    return overall
+
+
+def run_pytest_for_service(name: str, path: Path):
+    log(f"\n--- pytest {name} ---")
+    if not path.exists():
+        log(f"[FAIL] Каталог сервиса не найден: {path}")
+        return False
+
+    rc, out, err = safe_run(["pytest"], cwd=path)
+    if rc == 0:
+        log("[OK] pytest passed")
+    else:
+        log("[FAIL] pytest завершился с ошибкой")
+    if out:
+        log(out)
+    if err:
+        log(err)
+    return rc == 0
+
+
+def section_run_tests(run_tests: bool):
+    header("ЗАПУСК ТЕСТОВ")
+
+    if not run_tests:
+        log("Флаг --run-tests не передан, пропускаем запуск pytest")
+        return None
+
+    services = {
+        "core-api": ROOT / "services" / "core-api",
+        "auth-host": ROOT / "services" / "auth-host",
+        "ai-service": ROOT / "services" / "ai-service",
+    }
+
+    results = {name: run_pytest_for_service(name, path) for name, path in services.items()}
+
+    passed = [name for name, ok in results.items() if ok]
+    failed = [name for name, ok in results.items() if not ok]
+    log("\nСводка pytest:")
+    log(f"Passed: {', '.join(passed) if passed else 'нет'}")
+    log(f"Failed: {', '.join(failed) if failed else 'нет'}")
+
+    return all(results.values()) if results else False
+
+
+def write_output(output_path: Path):
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    log(f"\n[СОХРАНЕНО] Отчёт будет записан в {output_path}")
+    output_path.write_text("\n".join(LOG_LINES), encoding="utf-8")
+
+
+def summarize_status(statuses: dict[str, bool | None]):
+    header("ИТОГОВЫЙ ОТЧЁТ")
+    for key, value in statuses.items():
+        if value is True:
+            mark = "OK"
+        elif value is False:
+            mark = "FAIL"
+        else:
+            mark = "SKIP"
+        log(f"[{mark}] {key}")
+
+    overall_ok = all(value for value in statuses.values() if value is not None)
+    if overall_ok:
+        log("\n[ИТОГ] Все проверки OK")
+    else:
+        log("\n[ИТОГ] Есть проблемы в проверках")
+    return overall_ok
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Диагностика репозитория NEFT Processing")
+    parser.add_argument("--run-tests", action="store_true", help="Запустить pytest для основных сервисов")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Путь к файлу отчёта. По умолчанию docs/diag/neft_state_YYYYMMDD_HHMM.txt",
+    )
+    args = parser.parse_args()
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    default_output = ROOT / "docs" / "diag" / f"neft_state_{timestamp}.txt"
+    output_path = args.output or default_output
+
+    log(f"Отчёт будет сохранён в: {output_path}")
+
+    statuses: dict[str, bool | None] = {}
+
     section_basic()
     section_git()
+    statuses["docker compose"] = section_docker_compose(
+        [
+            "postgres",
+            "redis",
+            "admin-web",
+            "auth-host",
+            "core-api",
+            "ai-service",
+            "workers",
+            "beat",
+            "flower",
+            "gateway",
+            "postgres-data",
+        ]
+    )
     section_services()
-    section_migrations()
+    statuses["alembic heads"] = section_migrations()
     section_tests()
+    statuses["health-checks"] = section_health_checks()
+    statuses["pytest"] = section_run_tests(args.run_tests)
     section_endpoints()
     section_db_init()
+    summarize_status(statuses)
 
-    print("\n\n[ДИАГНОСТИКА ЗАВЕРШЕНА]")
+    write_output(output_path)
+
+    log("\n\n[ДИАГНОСТИКА ЗАВЕРШЕНА]")
 
 
 if __name__ == "__main__":
