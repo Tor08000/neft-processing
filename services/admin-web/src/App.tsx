@@ -2,24 +2,33 @@
 
 import React, { useEffect, useState } from "react";
 import {
+  AdminOperation,
+  AdminTransaction,
+  ApiError,
   adminLogin,
   getAdminOperations,
   getAdminTransactions,
-  AdminOperation,
-  AdminTransaction,
 } from "./api/client";
 
 type View = "operations" | "transactions";
 
 const App: React.FC = () => {
   // Логин-форма
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("Admin123!");
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("neft_admin_email") || "admin@example.com";
+    }
+    return "admin@example.com";
+  });
+  const [password, setPassword] = useState("admin123");
 
   // Токен администратора
-  const [token, setToken] = useState<string | null>(() =>
-    typeof window !== "undefined" ? localStorage.getItem("admin_token") : null
-  );
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("neft_admin_token");
+    }
+    return null;
+  });
 
   // Основное состояние UI
   const [view, setView] = useState<View>("operations");
@@ -35,6 +44,16 @@ const App: React.FC = () => {
   // Служебные флаги
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleLogout = () => {
+    setToken(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("neft_admin_token");
+      localStorage.removeItem("neft_admin_email");
+    }
+    setOperations([]);
+    setTransactions([]);
+  };
 
   // Подгрузка данных при смене токена/вида/фильтров
   useEffect(() => {
@@ -65,6 +84,11 @@ const App: React.FC = () => {
         }
       } catch (err: any) {
         console.error(err);
+        if (err instanceof ApiError && err.status === 401) {
+          handleLogout();
+          setError("Сессия истекла. Войдите снова.");
+          return;
+        }
         setError(err?.message ?? "Ошибка при загрузке данных");
       } finally {
         setLoading(false);
@@ -81,12 +105,17 @@ const App: React.FC = () => {
     setLoading(true);
 
     try {
-      const res = await adminLogin(email, password);
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password.trim();
+      const res = await adminLogin(trimmedEmail, trimmedPassword);
       const newToken = res.access_token;
+      const userEmail = res.email || trimmedEmail;
 
       setToken(newToken);
+      setEmail(userEmail);
       if (typeof window !== "undefined") {
-        localStorage.setItem("admin_token", newToken);
+        localStorage.setItem("neft_admin_token", newToken);
+        localStorage.setItem("neft_admin_email", userEmail);
       }
     } catch (err: any) {
       console.error(err);
@@ -94,15 +123,6 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleLogout = () => {
-    setToken(null);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("admin_token");
-    }
-    setOperations([]);
-    setTransactions([]);
   };
 
   const isAuthenticated = Boolean(token);
