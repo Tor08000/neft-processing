@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 class ClearingBatchOperationOut(BaseModel):
     id: UUID
+    batch_id: UUID
     operation_id: str
     amount: int
 

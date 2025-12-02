@@ -1,8 +1,14 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.clearing import BuildBatchRequest, ClearingBatchOut
+from app.schemas.clearing import (
+    BuildBatchRequest,
+    ClearingBatchOperationOut,
+    ClearingBatchOut,
+)
 from app.services.admin_auth import require_admin
 from app.services.clearing import (
     build_clearing_batch_for_period,
@@ -19,9 +25,17 @@ router = APIRouter(prefix="/admin/clearing", tags=["admin"], dependencies=[Depen
 def list_clearing_batches(
     merchant_id: str | None = None,
     status: str | None = None,
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[ClearingBatchOut]:
-    batches = list_batches(db, merchant_id=merchant_id, status=status)
+    batches = list_batches(
+        db,
+        merchant_id=merchant_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
     return [ClearingBatchOut.model_validate(batch) for batch in batches]
 
 
@@ -33,6 +47,17 @@ def get_clearing_batch(batch_id: str, db: Session = Depends(get_db)) -> Clearing
     # ensure operations loaded
     _ = batch.operations  # noqa: F841
     return ClearingBatchOut.model_validate(batch)
+
+
+@router.get("/batches/{batch_id}/operations", response_model=list[ClearingBatchOperationOut])
+def get_clearing_batch_operations(
+    batch_id: str, db: Session = Depends(get_db)
+) -> list[ClearingBatchOperationOut]:
+    batch = get_batch(db, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="batch not found")
+    operations = batch.operations or []
+    return [ClearingBatchOperationOut.model_validate(op) for op in operations]
 
 
 @router.post("/batches/build", response_model=ClearingBatchOut)

@@ -45,8 +45,17 @@ def _serialize_operations(items: List[Operation]) -> List[OperationShort]:
             refunded_amount=item.refunded_amount,
             parent_operation_id=item.parent_operation_id,
             mcc=item.mcc,
+            product_code=item.product_code,
             product_category=item.product_category,
             tx_type=item.tx_type,
+            daily_limit=item.daily_limit,
+            limit_per_tx=item.limit_per_tx,
+            used_today=item.used_today,
+            new_used_today=item.new_used_today,
+            authorized=item.authorized,
+            response_code=item.response_code,
+            response_message=item.response_message,
+            reason=item.reason,
         )
         for item in items
     ]
@@ -64,6 +73,8 @@ def list_operations_admin(
     card_id: str | None = None,
     from_created_at: datetime | None = None,
     to_created_at: datetime | None = None,
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
     min_amount: int | None = Query(None, ge=0),
     max_amount: int | None = Query(None, ge=0),
     order_by: str = Query("created_at_desc"),
@@ -89,6 +100,11 @@ def list_operations_admin(
         query = query.filter(Operation.client_id == client_id)
     if card_id:
         query = query.filter(Operation.card_id == card_id)
+    if date_from and not from_created_at:
+        from_created_at = date_from
+    if date_to and not to_created_at:
+        to_created_at = date_to
+
     if from_created_at:
         query = query.filter(Operation.created_at >= from_created_at)
     if to_created_at:
@@ -192,6 +208,14 @@ def list_transactions_admin(
     ]
 
     return TransactionListResponse(items=serialized, total=total, limit=limit, offset=offset)
+
+
+@router.get("/operations/{operation_id}", response_model=OperationShort)
+def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationShort:
+    operation = db.query(Operation).filter(Operation.operation_id == operation_id).first()
+    if operation is None:
+        raise HTTPException(status_code=404, detail="operation not found")
+    return _serialize_operations([operation])[0]
 
 
 @router.get("/operations/{operation_id}/children", response_model=OperationListResponse)

@@ -12,7 +12,13 @@ export interface Operation {
   card_id: string;
   amount: number;
   currency: string;
+  captured_amount: number;
+  refunded_amount: number;
   parent_operation_id?: string | null;
+  product_code?: string | null;
+  product_category?: string | null;
+  tx_type?: string | null;
+  mcc?: string | null;
   daily_limit?: number;
   limit_per_tx?: number;
   used_today?: number;
@@ -20,6 +26,7 @@ export interface Operation {
   authorized?: boolean;
   response_code?: string;
   response_message?: string;
+  reason?: string | null;
 }
 
 export interface OperationListResponse {

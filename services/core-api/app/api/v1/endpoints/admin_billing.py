@@ -21,14 +21,21 @@ def admin_list_billing_summaries(
     date_from: date = Query(...),
     date_to: date = Query(...),
     merchant_id: str | None = None,
+    status: str | None = None,
     auto_build: bool = False,
     db: Session = Depends(get_db),
 ) -> list[BillingSummaryItem]:
     summaries = (
-        get_or_build_summary(db, date_from=date_from, date_to=date_to, merchant_id=merchant_id)
+        get_or_build_summary(
+            db,
+            date_from=date_from,
+            date_to=date_to,
+            merchant_id=merchant_id,
+            status=status,
+        )
         if auto_build
         else list_billing_summaries(
-            db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+            db, date_from=date_from, date_to=date_to, merchant_id=merchant_id, status=status
         )
     )
     return [BillingSummaryItem.model_validate(item) for item in summaries]

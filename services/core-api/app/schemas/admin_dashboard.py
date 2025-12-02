@@ -50,8 +50,17 @@ class OperationShort(BaseModel):
     refunded_amount: int = 0
     parent_operation_id: Optional[str] = None
     mcc: Optional[str] = None
+    product_code: Optional[str] = None
     product_category: Optional[str] = None
     tx_type: Optional[str] = None
+    daily_limit: Optional[int] = None
+    limit_per_tx: Optional[int] = None
+    used_today: Optional[int] = None
+    new_used_today: Optional[int] = None
+    authorized: Optional[bool] = None
+    response_code: Optional[str] = None
+    response_message: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class OperationListResponse(BaseModel):
