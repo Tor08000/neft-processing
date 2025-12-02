@@ -28,7 +28,7 @@ def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
 
     monkeypatch.setattr(admin_auth, "_cached_public_key", None, raising=False)
     monkeypatch.setattr(admin_auth, "_public_key_cached_at", 0.0, raising=False)
-    monkeypatch.setattr(admin_auth, "get_public_key", lambda: rsa_keys["public"])
+    monkeypatch.setattr(admin_auth, "get_public_key", lambda force_refresh=False: rsa_keys["public"])
 
 
 @pytest.fixture

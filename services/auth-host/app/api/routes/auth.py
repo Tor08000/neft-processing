@@ -5,17 +5,19 @@ import itertools
 import os
 from typing import Dict
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials
 
 from app.schemas.auth import (
+    AuthMeResponse,
     HealthResponse,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
 )
-from app.security import create_access_token
+from app.security import create_access_token, decode_access_token, security_scheme
 from app.services.keys import get_public_key_pem
 from neft_shared.settings import get_settings
 
@@ -107,3 +109,17 @@ async def login(payload: LoginRequest) -> TokenResponse:
         expires_in=expires_in,
         email=user.email,
     )
+
+
+@router.get("/auth/me", response_model=AuthMeResponse)
+async def auth_me(credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme)) -> AuthMeResponse:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+
+    payload = decode_access_token(credentials.credentials)
+    subject = payload.get("sub")
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
+
+    roles = payload.get("roles") or []
+    return AuthMeResponse(email=subject, roles=roles, subject=subject)

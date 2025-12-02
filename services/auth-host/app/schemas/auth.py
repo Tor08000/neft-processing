@@ -33,3 +33,9 @@ class UserResponse(BaseModel):
     full_name: str | None = None
     is_active: bool = True
     created_at: datetime | None = None
+
+
+class AuthMeResponse(BaseModel):
+    email: EmailStr
+    roles: list[str]
+    subject: str

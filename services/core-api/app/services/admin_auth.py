@@ -6,7 +6,7 @@ from typing import Optional
 
 import requests
 from fastapi import Depends, HTTPException, Request
-from jose import JWTError, jwt
+from jose import JWTError, jwk, jwt
 
 PUBLIC_KEY_URL = os.getenv(
     "ADMIN_PUBLIC_KEY_URL",
@@ -20,11 +20,11 @@ _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
 
 
-def get_public_key() -> str:
+def get_public_key(force_refresh: bool = False) -> str:
     global _cached_public_key, _public_key_cached_at
 
     now = time.time()
-    if _cached_public_key and now - _public_key_cached_at < PUBLIC_KEY_CACHE_TTL:
+    if not force_refresh and _cached_public_key and now - _public_key_cached_at < PUBLIC_KEY_CACHE_TTL:
         return _cached_public_key
 
     try:
@@ -61,8 +61,18 @@ def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
             audience=EXPECTED_AUDIENCE,
             issuer=EXPECTED_ISSUER,
         )
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except (JWTError, jwk.JWKError, ValueError):
+        public_key = get_public_key(force_refresh=True)
+        try:
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience=EXPECTED_AUDIENCE,
+                issuer=EXPECTED_ISSUER,
+            )
+        except (JWTError, jwk.JWKError, ValueError):
+            raise HTTPException(status_code=401, detail="Invalid token")
 
     roles = payload.get("roles") or []
     if "ADMIN" not in roles:

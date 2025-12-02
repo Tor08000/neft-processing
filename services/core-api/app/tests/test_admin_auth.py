@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -50,3 +52,28 @@ def test_admin_access_allowed_for_admin(client: TestClient, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 200
+
+
+def test_public_key_refresh_on_validation_error(
+    client: TestClient, make_jwt, monkeypatch: pytest.MonkeyPatch, rsa_keys: dict
+):
+    from app import services
+
+    token = make_jwt(roles=("ADMIN",))
+    calls: list[bool] = []
+
+    def fake_get_public_key(force_refresh: bool = False) -> str:
+        calls.append(force_refresh)
+        return "bad-key" if not force_refresh else rsa_keys["public"]
+
+    monkeypatch.setattr(services.admin_auth, "get_public_key", fake_get_public_key)
+    monkeypatch.setattr(services.admin_auth, "_cached_public_key", "bad-key")
+    monkeypatch.setattr(services.admin_auth, "_public_key_cached_at", time.time())
+
+    resp = client.get(
+        "/api/v1/admin/merchants",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert calls == [False, True]
