@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import itertools
 import os
-import secrets
 from typing import Dict
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import PlainTextResponse
 
 from app.schemas.auth import (
     HealthResponse,
@@ -15,6 +15,9 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.security import create_access_token
+from app.services.keys import get_public_key_pem
+from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/api/v1", tags=["auth"])
 
@@ -54,6 +57,13 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="auth-host")
 
 
+@router.get("/auth/public-key", response_class=PlainTextResponse)
+async def public_key() -> str:
+    """Возвращаем публичный ключ для проверки JWT."""
+
+    return get_public_key_pem()
+
+
 @router.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest) -> UserResponse:
     admin_email, _ = _admin_credentials()
@@ -78,13 +88,16 @@ async def login(payload: LoginRequest) -> TokenResponse:
     if payload.email.lower() == admin_email.lower():
         if payload.password != admin_password:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        roles = ["ADMIN"]
     else:
         expected_hash = _password_hashes.get(payload.email)
         if not expected_hash or expected_hash != _hash_password(payload.password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        roles = []
 
-    expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", "3600"))
-    token = secrets.token_urlsafe(32)
+    settings = get_settings()
+    expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))
+    token = create_access_token(payload.email, roles=roles)
 
     user = _ensure_user_record(payload.email)
 
