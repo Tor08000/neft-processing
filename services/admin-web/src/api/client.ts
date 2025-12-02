@@ -1,194 +1,49 @@
-// services/admin-web/src/api/client.ts
-// Унифицированный клиент для admin web, работающий через gateway
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
-// Все запросы отправляем на gateway по относительным путям,
-// чтобы не зависеть от window.location и окружения браузера
-const AUTH_BASE_URL = "/auth/api/v1";
-const ADMIN_API_BASE_URL = "/api/v1";
-
-export interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  expires_in?: number;
-  email?: string;
-}
-
-export interface AdminOperation {
-  operation_id: string;
-  created_at: string;
-  operation_type: string;
-  status: string;
-  merchant_id: string;
-  terminal_id: string;
-  client_id: string;
-  card_id: string;
-  amount: number;
-  currency: string;
-  mcc?: string | null;
-  product_category?: string | null;
-  tx_type?: string | null;
-}
-
-export interface AdminTransaction {
-  transaction_id: string;
-  created_at: string;
-  updated_at: string;
-  client_id: string;
-  card_id: string;
-  merchant_id: string;
-  terminal_id: string;
-  status: string;
-  authorized_amount: number;
-  captured_amount: number;
-  refunded_amount: number;
-  currency: string;
-  mcc?: string | null;
-  product_category?: string | null;
-  tx_type?: string | null;
-}
-
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-// Параметры для запросов админ-операций
-export interface AdminOperationsQuery {
-  token: string;
-  limit?: number;
-  offset?: number;
-  operation_type?: string;
-  client_id?: string;
-  order_by?: string;
-}
-
-// Параметры для запросов админ-транзакций
-export interface AdminTransactionsQuery {
-  token: string;
-  limit?: number;
-  offset?: number;
-  client_id?: string;
-  order_by?: string;
-}
-
-// Утилита для сборки query-строки
-function buildQuery(params: Record<string, string | number | undefined>) {
-  const sp = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      sp.set(key, String(value));
-    }
-  });
-  const qs = sp.toString();
-  return qs ? `?${qs}` : "";
-}
-
-export class ApiError extends Error {
-  status: number;
-  detail?: unknown;
-
-  constructor(status: number, message: string, detail?: unknown) {
-    super(message);
-    this.status = status;
-    this.detail = detail;
+function buildUrl(path: string, params?: Record<string, unknown>): string {
+  const url = new URL(path, API_BASE_URL.startsWith("http") ? API_BASE_URL : `${window.location.origin}${API_BASE_URL}`);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.append(key, String(value));
+      }
+    });
   }
+  return url.toString();
 }
 
-// Общий helper для fetch c проверкой ошибок
-async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (!headers.has("Accept")) {
-    headers.set("Accept", "application/json");
-  }
-
-  const res = await fetch(url, { ...init, headers });
-
+async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    let detail: unknown = undefined;
+    let detail: unknown;
     try {
       detail = await res.json();
     } catch {
-      // ignore
+      detail = await res.text();
     }
-    const message = `HTTP ${
-      res.status
-    } ${res.statusText || ""}${detail ? `: ${JSON.stringify(detail)}` : ""}`;
-    throw new ApiError(res.status, message, detail);
+    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+    throw new Error(`HTTP ${res.status}: ${message}`);
   }
-
   return (await res.json()) as T;
 }
 
-// =========================
-// API: логин администратора
-// =========================
-export async function adminLogin(
-  email: string,
-  password: string
-): Promise<LoginResponse> {
-  const url = `${AUTH_BASE_URL}/auth/login`;
+export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  const url = buildUrl(path, params);
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  return handleResponse<T>(res);
+}
 
-  return doFetch<LoginResponse>(url, {
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const url = buildUrl(path);
+  const res = await fetch(url, {
     method: "POST",
     headers: {
+      Accept: "application/json",
       "Content-Type": "application/json",
-      Accept: "application/json",
     },
-    body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+    body: body ? JSON.stringify(body) : undefined,
   });
-}
-
-// =========================
-// API: админ-операции
-// =========================
-export async function getAdminOperations(
-  params: AdminOperationsQuery
-): Promise<PaginatedResponse<AdminOperation>> {
-  const { token, limit, offset, operation_type, client_id, order_by } = params;
-
-  const qs = buildQuery({
-    limit,
-    offset,
-    operation_type,
-    client_id,
-    order_by,
-  });
-
-  const url = `${ADMIN_API_BASE_URL}/admin/operations${qs}`;
-
-  return doFetch<PaginatedResponse<AdminOperation>>(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-}
-
-// =========================
-// API: админ-транзакции
-// =========================
-export async function getAdminTransactions(
-  params: AdminTransactionsQuery
-): Promise<PaginatedResponse<AdminTransaction>> {
-  const { token, limit, offset, client_id, order_by } = params;
-
-  const qs = buildQuery({
-    limit,
-    offset,
-    client_id,
-    order_by,
-  });
-
-  const url = `${ADMIN_API_BASE_URL}/admin/transactions${qs}`;
-
-  return doFetch<PaginatedResponse<AdminTransaction>>(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  return handleResponse<T>(res);
 }
