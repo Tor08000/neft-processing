@@ -46,6 +46,9 @@ class OperationShort(BaseModel):
     card_id: Optional[str] = None
     amount: int
     currency: str
+    captured_amount: int = 0
+    refunded_amount: int = 0
+    parent_operation_id: Optional[str] = None
     mcc: Optional[str] = None
     product_category: Optional[str] = None
     tx_type: Optional[str] = None

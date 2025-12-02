@@ -1,5 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
+from datetime import date, datetime
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -44,3 +46,10 @@ class TurnoverReportResponse(BaseModel):
     group_by: GroupBy
     from_created_at: datetime
     to_created_at: datetime
+
+
+class BillingDailyReportItem(BaseModel):
+    date: date
+    merchant_id: str
+    total_captured_amount: int
+    total_operations: int

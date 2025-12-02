@@ -1,13 +1,15 @@
-from datetime import datetime
+from datetime import date, datetime
 import csv
 from io import StringIO
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.db import get_db
-from app.schemas.reports import GroupBy, TurnoverReportResponse
+from app.models.operation import Operation
+from app.schemas.reports import BillingDailyReportItem, GroupBy, TurnoverReportResponse
 from app.services.reports import get_turnover_report
 
 router = APIRouter(
@@ -40,6 +42,42 @@ def get_turnover_report_endpoint(
         merchant_id=merchant_id,
         terminal_id=terminal_id,
     )
+
+
+@router.get("/billing/daily", response_model=list[BillingDailyReportItem])
+def get_daily_billing_report(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    merchant_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[BillingDailyReportItem]:
+    query = (
+        db.query(
+            func.date(Operation.created_at).label("op_date"),
+            Operation.merchant_id,
+            func.coalesce(func.sum(Operation.amount), 0).label("total_amount"),
+            func.count().label("total_operations"),
+        )
+        .filter(Operation.operation_type == "CAPTURE")
+        .filter(Operation.created_at >= datetime.combine(date_from, datetime.min.time()))
+        .filter(Operation.created_at <= datetime.combine(date_to, datetime.max.time()))
+    )
+
+    if merchant_id:
+        query = query.filter(Operation.merchant_id == merchant_id)
+
+    query = query.group_by("op_date", Operation.merchant_id).order_by("op_date")
+    rows = query.all()
+
+    return [
+        BillingDailyReportItem(
+            date=row.op_date,
+            merchant_id=row.merchant_id,
+            total_captured_amount=int(row.total_amount or 0),
+            total_operations=row.total_operations,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/turnover/export")

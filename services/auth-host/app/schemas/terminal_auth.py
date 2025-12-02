@@ -19,3 +19,16 @@ class TerminalAuthResponse(BaseModel):
 
     class Config:
         extra = "allow"
+
+
+class TerminalCaptureRequest(BaseModel):
+    auth_operation_id: str = Field(..., description="Идентификатор AUTH операции")
+    amount: float | None = Field(None, description="Сумма к захвату")
+
+
+class TerminalCaptureResponse(BaseModel):
+    operation_id: str
+    status: str
+    approved: bool
+    response_code: str
+    response_message: str

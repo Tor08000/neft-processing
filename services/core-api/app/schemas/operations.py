@@ -17,6 +17,8 @@ class OperationSchema(BaseModel):
 
     amount: int
     currency: str = "RUB"
+    captured_amount: int = 0
+    refunded_amount: int = 0
 
     daily_limit: Optional[int] = None
     limit_per_tx: Optional[int] = None
