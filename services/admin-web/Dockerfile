@@ -1,20 +1,25 @@
-# Build stage
-FROM node:20-alpine AS builder
+# services/admin-web/Dockerfile
+
+# --------- Этап сборки фронта ---------
+FROM node:22-alpine AS build
+
 WORKDIR /app
 
 COPY package*.json ./
-COPY tsconfig*.json ./
-COPY vite.config.ts ./
-COPY eslint.config.js ./
-COPY index.html ./
-COPY src ./src
+RUN npm install
 
-RUN npm install && npm run build
+COPY . .
+RUN npm run build
 
-# Runtime stage
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
+# --------- Этап nginx ---------
+FROM nginx:1.27
+
+# Кладём наш конфиг nginx
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Статические файлы SPA
+COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
+
 CMD ["nginx", "-g", "daemon off;"]

@@ -142,9 +142,24 @@ services:
       - "5555:5555"
     restart: unless-stopped
 
+  admin-web:
+    build:
+      context: ./services/admin-web
+      dockerfile: Dockerfile
+    container_name: neft-processing-admin-web-1
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
   gateway:
     image: nginx:1.27
     container_name: neft-processing-gateway-1
+    entrypoint: ["nginx", "-g", "daemon off;"]
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
@@ -155,21 +170,12 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
-      admin-web:
-        condition: service_started
       flower:
         condition: service_started
     ports:
       - "80:80"
 
-  admin-web:
-    build:
-      context: ./services/admin-web
-    container_name: neft-processing-admin-web-1
-    ports:
-      - "8080:8080"
-    depends_on:
-      - core-api
+
 
 volumes:
   postgres-data:

@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 000000C8 C21C:E066
+Серийный номер тома: 000000AD C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -7,6 +7,7 @@ C:\NEFT-PROCESSING
 |   .gitignore
 |   admin_login.json
 |   admin_tests.cmd
+|   curl
 |   docker-compose.yml
 |   Makefile
 |   README.md
@@ -1405,6 +1406,7 @@ C:\NEFT-PROCESSING
 |   |   |   eslint.config.js
 |   |   |   index.html
 |   |   |   nginx.conf
+|   |   |   package-lock.json
 |   |   |   package.json
 |   |   |   tsconfig.json
 |   |   |   tsconfig.node.json
@@ -1482,15 +1484,10 @@ C:\NEFT-PROCESSING
 |   |       +---api
 |   |       |   |   __init__.py
 |   |       |   |   
-|   |       |   +---routes
-|   |       |   |       auth.py
-|   |       |   |       health.py
-|   |       |   |       processing.py
-|   |       |   |       __init__.py
-|   |       |   |       
-|   |       |   \---v1
+|   |       |   \---routes
 |   |       |           auth.py
 |   |       |           health.py
+|   |       |           processing.py
 |   |       |           __init__.py
 |   |       |           
 |   |       +---lib
