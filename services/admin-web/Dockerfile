@@ -1,7 +1,7 @@
 # services/admin-web/Dockerfile
 
-# --------- Этап сборки фронта ---------
-FROM node:22-alpine AS build
+# ---------- build stage ----------
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -11,15 +11,15 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# --------- Этап nginx ---------
-FROM nginx:1.27
+# ---------- runtime stage ----------
+FROM nginx:1.27-alpine
 
-# Кладём наш конфиг nginx
+# Кладём собранную SPA в стандартный каталог nginx
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Используем СВОЙ конфиг admin-web
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Статические файлы SPA
-COPY --from=build /app/dist /usr/share/nginx/html
-
-EXPOSE 8080
+EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
