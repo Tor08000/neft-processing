@@ -9,8 +9,17 @@ from sqlalchemy import func
 
 from app.db import get_db
 from app.models.operation import Operation
-from app.schemas.reports import BillingDailyReportItem, GroupBy, TurnoverReportResponse
+from app.schemas.reports import (
+    BillingDailyReportItem,
+    BillingSummaryItem,
+    GroupBy,
+    TurnoverReportResponse,
+)
 from app.services.reports import get_turnover_report
+from app.services.reports_billing import (
+    build_billing_summary_for_date,
+    list_billing_summaries,
+)
 
 router = APIRouter(
     prefix="/api/v1/reports",
@@ -77,6 +86,58 @@ def get_daily_billing_report(
             total_operations=row.total_operations,
         )
         for row in rows
+    ]
+
+
+@router.post(
+    "/billing/summary/rebuild",
+    response_model=list[BillingSummaryItem],
+    summary="Пересчитать агрегаты биллинга за период",
+)
+def rebuild_billing_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    merchant_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[BillingSummaryItem]:
+    summaries = build_billing_summary_for_date(
+        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+    )
+
+    return [
+        BillingSummaryItem(
+            date=item.date,
+            merchant_id=item.merchant_id,
+            total_captured_amount=item.total_captured_amount,
+            operations_count=item.operations_count,
+        )
+        for item in summaries
+    ]
+
+
+@router.get(
+    "/billing/summary",
+    response_model=list[BillingSummaryItem],
+    summary="Получить агрегированные суммы CAPTURE",
+)
+def get_billing_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    merchant_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[BillingSummaryItem]:
+    summaries = list_billing_summaries(
+        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+    )
+
+    return [
+        BillingSummaryItem(
+            date=item.date,
+            merchant_id=item.merchant_id,
+            total_captured_amount=item.total_captured_amount,
+            operations_count=item.operations_count,
+        )
+        for item in summaries
     ]
 
 

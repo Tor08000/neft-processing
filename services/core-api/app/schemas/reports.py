@@ -53,3 +53,10 @@ class BillingDailyReportItem(BaseModel):
     merchant_id: str
     total_captured_amount: int
     total_operations: int
+
+
+class BillingSummaryItem(BaseModel):
+    date: date
+    merchant_id: str
+    total_captured_amount: int
+    operations_count: int
