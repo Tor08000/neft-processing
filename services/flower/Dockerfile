@@ -24,13 +24,4 @@ ENV PYTHONPATH="/opt/python:/app"
 
 COPY services/workers /app/services/workers
 
-CMD [
-  "python",
-  "-m",
-  "celery",
-  "-A",
-  "services.workers.app.celery_app:celery_app",
-  "flower",
-  "--port=5555",
-  "--address=0.0.0.0"
-]
+CMD ["python", "-m", "celery", "-A", "services.workers.app.celery_app:celery_app", "flower", "--port=5555", "--address=0.0.0.0"]
