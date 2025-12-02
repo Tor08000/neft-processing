@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 000000AD C21C:E066
+Серийный номер тома: 000000A9 C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -1669,6 +1669,9 @@ C:\NEFT-PROCESSING
 |   |               user.py
 |   |               __init__.py
 |   |               
+|   +---gateway
+|   |       nginx.conf
+|   |       
 |   \---workers
 |       |   Dockerfile
 |       |   entrypoint.sh
