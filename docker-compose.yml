@@ -184,7 +184,7 @@ services:
       ai-service:
         condition: service_healthy
     volumes:
-      - ./services/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "80:80"
 
