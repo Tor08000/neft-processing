@@ -1,21 +1,16 @@
 // services/admin-web/src/api/client.ts
+// Унифицированный клиент для admin web, работающий через gateway
 
-// Базовые URL берём из Vite-ENV, с дефолтом на текущий origin
-const AUTH_BASE_URL =
-  import.meta.env.VITE_AUTH_BASE_URL ||
-  `${window.location.origin}/auth/api`;
-
-const ADMIN_API_BASE_URL =
-  import.meta.env.VITE_ADMIN_API_BASE_URL ||
-  `${window.location.origin}/api`;
-
-// =========================
-// Вспомогательные типы/утилиты
-// =========================
+// Все запросы отправляем на gateway по относительным путям,
+// чтобы не зависеть от window.location и окружения браузера
+const AUTH_BASE_URL = "/auth/api/v1";
+const ADMIN_API_BASE_URL = "/api/v1";
 
 export interface LoginResponse {
   access_token: string;
   token_type: string;
+  expires_in?: number;
+  email?: string;
 }
 
 export interface AdminOperation {
@@ -101,9 +96,9 @@ async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    const message = `HTTP ${res.status} ${
-      res.statusText || ""
-    }${detail ? `: ${JSON.stringify(detail)}` : ""}`;
+    const message = `HTTP ${
+      res.status
+    } ${res.statusText || ""}${detail ? `: ${JSON.stringify(detail)}` : ""}`;
     throw new Error(message);
   }
 
@@ -113,12 +108,11 @@ async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
 // =========================
 // API: логин администратора
 // =========================
-
 export async function adminLogin(
   email: string,
   password: string
 ): Promise<LoginResponse> {
-  const url = `${AUTH_BASE_URL}/v1/auth/login`;
+  const url = `${AUTH_BASE_URL}/auth/login`;
 
   return doFetch<LoginResponse>(url, {
     method: "POST",
@@ -132,7 +126,6 @@ export async function adminLogin(
 // =========================
 // API: админ-операции
 // =========================
-
 export async function getAdminOperations(
   params: AdminOperationsQuery
 ): Promise<PaginatedResponse<AdminOperation>> {
@@ -146,7 +139,7 @@ export async function getAdminOperations(
     order_by,
   });
 
-  const url = `${ADMIN_API_BASE_URL}/v1/admin/operations${qs}`;
+  const url = `${ADMIN_API_BASE_URL}/admin/operations${qs}`;
 
   return doFetch<PaginatedResponse<AdminOperation>>(url, {
     method: "GET",
@@ -159,7 +152,6 @@ export async function getAdminOperations(
 // =========================
 // API: админ-транзакции
 // =========================
-
 export async function getAdminTransactions(
   params: AdminTransactionsQuery
 ): Promise<PaginatedResponse<AdminTransaction>> {
@@ -172,7 +164,7 @@ export async function getAdminTransactions(
     order_by,
   });
 
-  const url = `${ADMIN_API_BASE_URL}/v1/admin/transactions${qs}`;
+  const url = `${ADMIN_API_BASE_URL}/admin/transactions${qs}`;
 
   return doFetch<PaginatedResponse<AdminTransaction>>(url, {
     method: "GET",

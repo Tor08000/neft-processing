@@ -1,100 +1,96 @@
 from __future__ import annotations
 
+import hashlib
+import itertools
 import os
+import secrets
+from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, HTTPException, status
 
-from neft_shared.logging_setup import get_logger
-from app.db import get_conn
-from app.models import User
-from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
-from app.security import create_access_token, get_current_user, hash_password, verify_password
-from app.services.keys import get_public_key_pem
+from app.schemas.auth import (
+    HealthResponse,
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-logger = get_logger(__name__)
+router = APIRouter(prefix="/api/v1", tags=["auth"])
 
-ADMIN_DEFAULT_EMAIL = os.getenv("ADMIN_DEFAULT_EMAIL", "admin@example.com")
-ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "admin")
-
-
-@router.get("/public-key", response_class=PlainTextResponse)
-async def get_public_key():
-    """
-    Return RSA public key (PEM) for verifying JWT (RS256).
-    """
-
-    public_pem = get_public_key_pem()
-    return public_pem
+_users: Dict[str, UserResponse] = {}
+_password_hashes: Dict[str, str] = {}
+_user_sequence = itertools.count(1)
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest) -> UserResponse:
-    async with get_conn() as (conn, cur):
-        await cur.execute("SELECT id FROM users WHERE email=%s", (payload.email,))
-        if await cur.fetchone():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_exists")
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-        pwd_hash = hash_password(payload.password)
-        await cur.execute(
-            """
-            INSERT INTO users (email, full_name, password_hash)
-            VALUES (%s, %s, %s)
-            RETURNING id, email, full_name, is_active, created_at, password_hash
-            """,
-            (payload.email, payload.full_name, pwd_hash),
-        )
-        row = await cur.fetchone()
-        await conn.commit()
 
-    user = User.from_row(row)
-    logger.info("User registered", extra={"email": user.email})
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        full_name=user.full_name,
-        is_active=user.is_active,
-        created_at=user.created_at,
+def _admin_credentials() -> tuple[str, str]:
+    email = os.getenv("ADMIN_EMAIL", "admin@example.com")
+    password = os.getenv("ADMIN_PASSWORD", "admin123")
+    return email, password
+
+
+def _ensure_user_record(email: str) -> UserResponse:
+    if email in _users:
+        return _users[email]
+
+    next_id = next(_user_sequence)
+    user = UserResponse(
+        id=next_id,
+        email=email,
+        full_name=None,
+        is_active=True,
+        created_at=None,
     )
+    _users[email] = user
+    return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    return HealthResponse(status="ok", service="auth-host")
+
+
+@router.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: RegisterRequest) -> UserResponse:
+    admin_email, _ = _admin_credentials()
+    if payload.email.lower() == admin_email.lower():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="admin_email_reserved")
+
+    if payload.email in _users:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_exists")
+
+    password_hash = _hash_password(payload.password)
+    _password_hashes[payload.email] = password_hash
+
+    user = _ensure_user_record(payload.email)
+    user.full_name = payload.full_name
+    return user
+
+
+@router.post("/auth/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
-    if payload.email == ADMIN_DEFAULT_EMAIL and payload.password == ADMIN_DEFAULT_PASSWORD:
-        token = create_access_token(payload.email, ["ADMIN"])
-        logger.info("Admin login (static credentials)", extra={"email": payload.email})
-        return TokenResponse(access_token=token)
+    admin_email, admin_password = _admin_credentials()
 
-    async with get_conn() as (_, cur):
-        await cur.execute(
-            "SELECT id, email, full_name, password_hash, is_active, created_at FROM users WHERE email=%s",
-            (payload.email,),
-        )
-        row = await cur.fetchone()
+    if payload.email.lower() == admin_email.lower():
+        if payload.password != admin_password:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    else:
+        expected_hash = _password_hashes.get(payload.email)
+        if not expected_hash or expected_hash != _hash_password(payload.password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    if not row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", "3600"))
+    token = secrets.token_urlsafe(32)
 
-    user = User.from_row(row)
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_inactive")
+    user = _ensure_user_record(payload.email)
 
-    if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    roles = ["ADMIN"] if user.email.lower().startswith("admin") else ["USER"]
-    token = create_access_token(str(user.id), roles)
-    logger.info("User logged in", extra={"email": user.email})
-    return TokenResponse(access_token=token)
-
-
-@router.get("/me", response_model=UserResponse)
-async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        is_active=current_user.is_active,
-        created_at=current_user.created_at,
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        expires_in=expires_in,
+        email=user.email,
     )
