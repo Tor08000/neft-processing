@@ -39,7 +39,7 @@ def admin_client(admin_auth_headers: dict) -> Tuple[TestClient, sessionmaker]:
     Base.metadata.create_all(bind=engine)
 
     app = FastAPI()
-    app.include_router(admin_router, prefix="")
+    app.include_router(admin_router, prefix="/api/v1")
 
     def override_get_db():
         db = TestingSessionLocal()
