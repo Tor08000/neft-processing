@@ -43,3 +43,19 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `docker compose build gateway` — собрать образ с конфигом.
   * `docker compose up -d gateway` — поднять только gateway (или `docker compose up -d --build` для всей среды).
   * Альтернативно: `docker build -f services/gateway/Dockerfile -t neft-processing-gateway .`.
+
+## Общий Python-пакет `neft_shared`
+
+В каталоге `shared/python` расположен пакет с общими настройками и логированием.
+
+### Локальная установка
+
+Для разработки установите пакет в editable-режиме из корня репозитория:
+
+```bash
+pip install -e shared/python
+```
+
+### Использование в сервисах
+
+Сервисы `core-api`, `auth-host`, `ai-service` и `workers` подключают пакет как локальную зависимость через `pyproject.toml` (запись `"neft_shared @ file:../../shared/python"`). При установке зависимостей сервисов из корня репозитория пакет будет подтянут автоматически, а импорты доступны в коде как `from neft_shared...`.

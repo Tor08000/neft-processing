@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neft_shared"
+version = "0.1.0"
+description = "Shared Python utilities for NEFT services."
+readme = "../../README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["neft_shared"]
+
+[tool.hatch.build.targets.sdist]
+include = ["neft_shared"]
