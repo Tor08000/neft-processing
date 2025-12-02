@@ -85,9 +85,25 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   return qs ? `?${qs}` : "";
 }
 
+export class ApiError extends Error {
+  status: number;
+  detail?: unknown;
+
+  constructor(status: number, message: string, detail?: unknown) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 // Общий helper для fetch c проверкой ошибок
 async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+
+  const res = await fetch(url, { ...init, headers });
 
   if (!res.ok) {
     let detail: unknown = undefined;
@@ -99,7 +115,7 @@ async function doFetch<T>(url: string, init: RequestInit): Promise<T> {
     const message = `HTTP ${
       res.status
     } ${res.statusText || ""}${detail ? `: ${JSON.stringify(detail)}` : ""}`;
-    throw new Error(message);
+    throw new ApiError(res.status, message, detail);
   }
 
   return (await res.json()) as T;
@@ -118,8 +134,9 @@ export async function adminLogin(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
     },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: email.trim(), password: password.trim() }),
   });
 }
 
@@ -144,6 +161,7 @@ export async function getAdminOperations(
   return doFetch<PaginatedResponse<AdminOperation>>(url, {
     method: "GET",
     headers: {
+      Accept: "application/json",
       Authorization: `Bearer ${token}`,
     },
   });
@@ -169,6 +187,7 @@ export async function getAdminTransactions(
   return doFetch<PaginatedResponse<AdminTransaction>>(url, {
     method: "GET",
     headers: {
+      Accept: "application/json",
       Authorization: `Bearer ${token}`,
     },
   });
