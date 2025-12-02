@@ -1,24 +1,26 @@
-# services/admin-web/Dockerfile
-
-# ---------- build stage ----------
+# ---------- Stage 1: build SPA ----------
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+# 1) Берём package.json именно из подкаталога services/admin-web
+COPY services/admin-web/package*.json ./
 RUN npm install
 
-COPY . .
+# 2) Копируем исходники только из подкаталога services/admin-web
+COPY services/admin-web/. .
+
+# 3) Собираем фронт
 RUN npm run build
 
-# ---------- runtime stage ----------
+# ---------- Stage 2: nginx + статические файлы ----------
 FROM nginx:1.27-alpine
 
-# Кладём собранную SPA в стандартный каталог nginx
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Используем СВОЙ конфиг admin-web (лежит в services/admin-web/nginx.conf в корне контекста)
+COPY services/admin-web/nginx.conf /etc/nginx/nginx.conf
 
-# Используем СВОЙ конфиг admin-web
-COPY nginx.conf /etc/nginx/nginx.conf
+# Кладём собранную статику
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 

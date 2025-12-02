@@ -1,25 +1,31 @@
 FROM python:3.11-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Базовые зависимости для сборки (если что-то компилируется)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl build-essential && \
+    apt-get install -y --no-install-recommends build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-COPY services/auth-host/requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
-
+# Кладём общий код
 COPY shared/python /opt/python
+
+# Очень важно: чтобы neft_shared был виден
 ENV PYTHONPATH="/opt/python:${PYTHONPATH}"
 
+# Ставим зависимости auth-host
+COPY services/auth-host/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Сам сервис
 COPY services/auth-host /app
 
-EXPOSE 8000
+# Наш entrypoint
+COPY services/auth-host/entrypoint.sh /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./entrypoint.sh"]
