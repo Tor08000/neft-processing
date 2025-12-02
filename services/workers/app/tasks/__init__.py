@@ -36,3 +36,4 @@ def periodic_ping() -> dict:
 # Импортируем подмодули задач, чтобы Celery их увидел.
 from . import ai  # noqa: F401
 from . import limits  # noqa: F401
+from . import billing  # noqa: F401
