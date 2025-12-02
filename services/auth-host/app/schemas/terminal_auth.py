@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TerminalAuthRequest(BaseModel):
@@ -17,8 +17,7 @@ class TerminalAuthResponse(BaseModel):
     status: str
     limits: dict | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class TerminalCaptureRequest(BaseModel):
