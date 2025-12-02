@@ -8,3 +8,15 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 - Core API напрямую: http://localhost:8001/api/v1/health
 - Через gateway: http://localhost/api/v1/health
 - Admin UI: http://localhost:8080/
+
+### Админский токен для локальной разработки
+
+1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
+2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
+3) Пример запроса к защищённой ручке через gateway:
+
+```
+call scripts\get_admin_token.cmd
+curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
+  -H "Authorization: Bearer %TOKEN%"
+```
