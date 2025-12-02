@@ -1,13 +1,28 @@
 NEFT Processing — локальная среда: Postgres, Redis, Core API, Auth Host, AI Service, Workers, Nginx.
 
-Быстрый старт:
-1) Скопировать .env.example -> .env (cp -n .env.example .env)
-2) docker compose up -d --build
+## Как поднять систему локально
 
-Проверка:
-- Core API напрямую: http://localhost:8001/api/v1/health
-- Через gateway: http://localhost/api/core/api/v1/health
-- Admin UI (через gateway с нужным префиксом): http://localhost/admin/
+1. Скопируйте переменные окружения: `cp -n .env.example .env`.
+2. Заполните доступы администратора в `.env` (значения хранятся только локально):
+   - `ADMIN_EMAIL`
+   - `ADMIN_PASSWORD`
+3. Соберите и поднимите сервисы: `docker compose up -d --build`.
+4. Проверьте доступность сервисов:
+   - Core API напрямую: `http://localhost:8001/api/v1/health`
+   - Через gateway: `http://localhost/api/core/api/v1/health`
+   - Admin UI: `http://localhost/admin/`
+
+### Вход в админ-панель
+
+- Откройте `http://localhost/admin/`.
+- В форме логина используйте значения из `.env` (`ADMIN_EMAIL` и `ADMIN_PASSWORD`).
+- После входа доступен журнал операций и остальные разделы админки.
+
+### Работа со снапшотами
+
+- Для фиксации состояния используйте `python docs/diag/inspect_neft_repo.py`.
+- Отчёты сохраняются в `docs/diag/neft_state_YYYYMMDD_HHMM.txt` (пример: `docs/diag/neft_state_2025-12-02.txt`).
+- Подробная инструкция: `docs/diag/README.md`.
 
 ### Админский токен для локальной разработки
 
