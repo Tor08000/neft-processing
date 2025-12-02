@@ -141,3 +141,74 @@ p {
 .actions button {
   margin-right: 8px;
 }
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  padding: 24px;
+}
+
+.login-card {
+  background: #fff;
+  width: 100%;
+  max-width: 420px;
+  padding: 28px;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  border: 1px solid #e2e8f0;
+}
+
+.login-card h1 {
+  margin: 0 0 6px 0;
+}
+
+.login-card .muted {
+  margin-bottom: 18px;
+  color: #475569;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-form label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-form input {
+  width: 100%;
+}
+
+.login-form button {
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.login-form button:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.login-form button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 14px;
+}

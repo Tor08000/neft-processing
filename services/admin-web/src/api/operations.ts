@@ -10,13 +10,13 @@ export async function fetchOperations(params: {
   date_from?: string;
   date_to?: string;
 }): Promise<OperationListResponse> {
-  return apiGet("/admin/operations", params);
+  return apiGet("/api/core/api/v1/admin/operations", params);
 }
 
 export async function fetchOperation(id: string): Promise<Operation> {
-  return apiGet(`/admin/operations/${id}`);
+  return apiGet(`/api/core/api/v1/admin/operations/${id}`);
 }
 
 export async function fetchOperationChildren(id: string): Promise<Operation[]> {
-  return apiGet(`/admin/operations/${id}/children`);
+  return apiGet(`/api/core/api/v1/admin/operations/${id}/children`);
 }

@@ -20,3 +20,17 @@ call scripts\get_admin_token.cmd
 curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   -H "Authorization: Bearer %TOKEN%"
 ```
+
+### Admin Web — как зайти
+
+* Запустить окружение:
+  * `docker compose up -d --build`
+* Открыть в браузере: `http://localhost:4173`
+* В форме логина ввести:
+  * Email: `admin@example.com`
+  * Пароль: `admin`
+* После входа:
+  * Отобразится журнал операций с пагинацией.
+  * Все запросы идут через gateway:
+    * `/api/auth/api/v1/auth/login`
+    * `/api/core/api/v1/admin/operations`

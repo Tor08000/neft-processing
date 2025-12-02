@@ -1,5 +1,6 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 
 const navItems = [
   { to: "/", label: "Dashboard" },
@@ -11,6 +12,13 @@ const navItems = [
 
 export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { clearToken } = useAuth();
+
+  const handleLogout = () => {
+    clearToken();
+    navigate("/login");
+  };
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -46,7 +54,22 @@ export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           })}
         </nav>
       </aside>
-      <main style={{ flex: 1, padding: "24px", background: "#f8fafc" }}>{children}</main>
+      <main style={{ flex: 1, background: "#f8fafc" }}>
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: "16px 24px",
+            background: "#fff",
+            borderBottom: "1px solid #e2e8f0",
+          }}
+        >
+          <button onClick={handleLogout} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
+            Выход
+          </button>
+        </header>
+        <div style={{ padding: "24px" }}>{children}</div>
+      </main>
     </div>
   );
 };
