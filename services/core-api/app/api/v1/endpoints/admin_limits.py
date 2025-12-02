@@ -36,9 +36,7 @@ from app.schemas.limits_admin import (
 from app.services.admin_auth import require_admin
 
 
-router = APIRouter(
-    prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)]
-)
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 def _validate_limits(daily_limit: Optional[int], limit_per_tx: Optional[int]) -> None:

@@ -18,9 +18,7 @@ from app.schemas.admin_dashboard import (
 )
 from app.services.admin_auth import require_admin
 
-router = APIRouter(
-    prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)]
-)
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/clients", response_model=ClientListResponse)
