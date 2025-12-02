@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Iterable
+import hashlib
+import json
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -74,17 +76,34 @@ def build_billing_summary_for_date(
         key = (aggregate.op_date, aggregate.merchant_id)
         summary = existing.get(key)
 
+        payload = {
+            "date": aggregate.op_date.isoformat(),
+            "merchant_id": aggregate.merchant_id,
+            "total_captured_amount": int(aggregate.total_amount or 0),
+            "operations_count": int(aggregate.total_operations or 0),
+        }
+        payload_hash = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
         if summary is None:
             summary = BillingSummary(
                 date=aggregate.op_date,
                 merchant_id=aggregate.merchant_id,
-                total_captured_amount=int(aggregate.total_amount or 0),
-                operations_count=int(aggregate.total_operations or 0),
+                total_captured_amount=payload["total_captured_amount"],
+                operations_count=payload["operations_count"],
+                status="PENDING",
+                hash=payload_hash,
+                generated_at=datetime.utcnow(),
             )
             db.add(summary)
         else:
-            summary.total_captured_amount = int(aggregate.total_amount or 0)
-            summary.operations_count = int(aggregate.total_operations or 0)
+            summary.total_captured_amount = payload["total_captured_amount"]
+            summary.operations_count = payload["operations_count"]
+            summary.status = "PENDING"
+            summary.hash = payload_hash
+            summary.generated_at = datetime.utcnow()
+            summary.finalized_at = None
 
         result.append(summary)
 
@@ -94,6 +113,31 @@ def build_billing_summary_for_date(
         db.refresh(item)
 
     return result
+
+
+def finalize_billing_summary(db: Session, summary_id: str) -> BillingSummary:
+    summary = db.query(BillingSummary).filter(BillingSummary.id == summary_id).first()
+    if summary is None:
+        raise ValueError("summary not found")
+    summary.status = "FINALIZED"
+    summary.finalized_at = datetime.utcnow()
+    db.add(summary)
+    db.commit()
+    db.refresh(summary)
+    return summary
+
+
+def get_or_build_summary(
+    db: Session, date_from: date, date_to: date, merchant_id: str | None = None
+) -> list[BillingSummary]:
+    summaries = list_billing_summaries(
+        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+    )
+    if summaries:
+        return summaries
+    return build_billing_summary_for_date(
+        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+    )
 
 
 def list_billing_summaries(

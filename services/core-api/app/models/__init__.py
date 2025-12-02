@@ -5,6 +5,8 @@ from .terminal import Terminal  # noqa: F401
 from .card import Card  # noqa: F401
 from .limit_rule import LimitRule  # noqa: F401
 from .billing_summary import BillingSummary  # noqa: F401
+from .clearing_batch import ClearingBatch  # noqa: F401
+from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
 from .groups import (  # noqa: F401
     CardGroup,
     CardGroupMember,
@@ -19,6 +21,8 @@ __all__ = [
     "Terminal",
     "Card",
     "BillingSummary",
+    "ClearingBatch",
+    "ClearingBatchOperation",
     "LimitRule",
     "ClientGroup",
     "CardGroup",

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Literal, Optional
+from datetime import datetime
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
@@ -60,3 +61,8 @@ class BillingSummaryItem(BaseModel):
     merchant_id: str
     total_captured_amount: int
     operations_count: int
+    status: str | None = None
+    generated_at: datetime | None = None
+    finalized_at: datetime | None = None
+    id: str | None = None
+    hash: str | None = None
