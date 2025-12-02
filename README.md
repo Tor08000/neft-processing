@@ -30,7 +30,16 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * Email: `admin@example.com`
   * Пароль: `admin`
 * После входа:
-  * Отобразится журнал операций с пагинацией.
+ * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
     * `/api/auth/api/v1/auth/login`
     * `/api/core/api/v1/admin/operations`
+
+### Gateway (Nginx)
+
+* Конфигурация: `services/gateway/nginx.conf` (прокси для `/admin/`, `/api/auth/`, `/api/core/`, `/api/ai/`, favicon и health).
+* Dockerfile: `services/gateway/Dockerfile` (основан на `nginx:1.27-alpine`, копирует конфиг в контейнер и перенаправляет логи в stdout/stderr).
+* Сборка и запуск:
+  * `docker compose build gateway` — собрать образ с конфигом.
+  * `docker compose up -d gateway` — поднять только gateway (или `docker compose up -d --build` для всей среды).
+  * Альтернативно: `docker build -f services/gateway/Dockerfile -t neft-processing-gateway .`.
