@@ -6,17 +6,20 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
-from fastapi import Body, FastAPI, HTTPException, Path, Query
+from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from app.db import init_db, SessionLocal
+from app.db import init_db, SessionLocal, get_db
+from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
 from app.api.v1.endpoints import (
     admin_dashboard,
     admin_limits,
+    admin_clearing,
+    admin_billing,
     admin_merchants,
     admin_operations,
 )
@@ -286,6 +289,8 @@ app.include_router(admin_limits.router, prefix="/api/v1")
 app.include_router(admin_operations.router, prefix="/api/v1")
 app.include_router(admin_dashboard.router, prefix="/api/v1")
 app.include_router(admin_merchants.router, prefix="/api/v1")
+app.include_router(admin_clearing.router, prefix="/api/v1")
+app.include_router(admin_billing.router, prefix="/api/v1")
 
 
 # -----------------------------------------------------------------------------
@@ -295,6 +300,28 @@ app.include_router(admin_merchants.router, prefix="/api/v1")
 @app.get("/api/v1/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+@app.get("/health/db", response_model=HealthResponse)
+def health_db(db: Session = Depends(get_db)) -> HealthResponse:
+    try:
+        db.execute("SELECT 1")
+        return HealthResponse(status="ok")
+    except Exception as exc:  # pragma: no cover
+        logger.exception("DB health failed: %s", exc)
+        raise HTTPException(status_code=503, detail="db unavailable")
+
+
+@app.get("/health/celery", response_model=HealthResponse)
+def health_celery() -> HealthResponse:
+    if not celery_app:
+        raise HTTPException(status_code=503, detail="celery disabled")
+    try:
+        celery_app.control.ping(timeout=2)
+        return HealthResponse(status="ok")
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Celery health failed: %s", exc)
+        raise HTTPException(status_code=503, detail="celery unavailable")
 
 
 # -----------------------------------------------------------------------------

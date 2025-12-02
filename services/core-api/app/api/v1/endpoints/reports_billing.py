@@ -106,10 +106,15 @@ def rebuild_billing_summary(
 
     return [
         BillingSummaryItem(
+            id=item.id,
             date=item.date,
             merchant_id=item.merchant_id,
             total_captured_amount=item.total_captured_amount,
             operations_count=item.operations_count,
+            status=item.status,
+            generated_at=item.generated_at,
+            finalized_at=item.finalized_at,
+            hash=item.hash,
         )
         for item in summaries
     ]
@@ -132,10 +137,15 @@ def get_billing_summary(
 
     return [
         BillingSummaryItem(
+            id=item.id,
             date=item.date,
             merchant_id=item.merchant_id,
             total_captured_amount=item.total_captured_amount,
             operations_count=item.operations_count,
+            status=item.status,
+            generated_at=item.generated_at,
+            finalized_at=item.finalized_at,
+            hash=item.hash,
         )
         for item in summaries
     ]

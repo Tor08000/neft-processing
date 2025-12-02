@@ -192,3 +192,17 @@ def list_transactions_admin(
     ]
 
     return TransactionListResponse(items=serialized, total=total, limit=limit, offset=offset)
+
+
+@router.get("/operations/{operation_id}/children", response_model=OperationListResponse)
+def get_operation_children(
+    operation_id: str, db: Session = Depends(get_db)
+) -> OperationListResponse:
+    items: List[Operation] = (
+        db.query(Operation)
+        .filter(Operation.parent_operation_id == operation_id)
+        .order_by(Operation.created_at.asc())
+        .all()
+    )
+    serialized = _serialize_operations(items)
+    return OperationListResponse(items=serialized, total=len(serialized), limit=len(serialized), offset=0)

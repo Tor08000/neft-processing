@@ -17,8 +17,10 @@ from app.schemas.transactions import (
 )
 from app.services.operations_query import get_operation_timeline
 from app.services.transactions import (
-    InvalidOperationState,
+    AmountTooLarge,
+    InvalidState,
     OperationNotFound,
+    ParentNotFound,
     capture_operation,
     get_transaction,
     list_transactions,
@@ -89,10 +91,12 @@ def capture_transaction_endpoint(
 ) -> OperationSchema:
     try:
         operation = capture_operation(db, auth_operation_id=auth_operation_id, amount=body.amount if body else None)
-    except OperationNotFound:
+    except ParentNotFound:
         raise HTTPException(status_code=404, detail="operation not found")
-    except InvalidOperationState as exc:
+    except AmountTooLarge as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except InvalidState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
     return OperationSchema.from_orm(operation)
 
@@ -109,10 +113,12 @@ def refund_transaction_endpoint(
             captured_operation_id=capture_operation_id,
             amount=body.amount if body else None,
         )
-    except OperationNotFound:
+    except ParentNotFound:
         raise HTTPException(status_code=404, detail="operation not found")
-    except InvalidOperationState as exc:
+    except AmountTooLarge as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except InvalidState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
     return OperationSchema.from_orm(operation)
 
@@ -124,9 +130,9 @@ def reverse_transaction_endpoint(
 ) -> OperationSchema:
     try:
         operation = reverse_auth(db, auth_operation_id=auth_operation_id)
-    except OperationNotFound:
+    except ParentNotFound:
         raise HTTPException(status_code=404, detail="operation not found")
-    except InvalidOperationState as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except InvalidState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
     return OperationSchema.from_orm(operation)

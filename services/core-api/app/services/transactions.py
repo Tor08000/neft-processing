@@ -10,12 +10,25 @@ from sqlalchemy.orm import Session
 from app.models.operation import Operation
 
 
-class OperationNotFound(Exception):
-    pass
+class TransactionError(Exception):
+    """Base transaction error."""
 
 
-class InvalidOperationState(Exception):
-    pass
+class ParentNotFound(TransactionError):
+    """Raised when the parent operation cannot be found."""
+
+
+class InvalidState(TransactionError):
+    """Raised when lifecycle action is not allowed."""
+
+
+class AmountTooLarge(TransactionError):
+    """Raised when requested amount exceeds available balance."""
+
+
+# Backwards compatibility for existing imports
+OperationNotFound = ParentNotFound
+InvalidOperationState = InvalidState
 
 from app.schemas.operations import OperationSchema
 from app.schemas.transactions import (
@@ -352,23 +365,25 @@ def _get_operation_or_error(db: Session, operation_id: UUID | str) -> Operation:
         .first()
     )
     if op is None:
-        raise OperationNotFound(f"operation {operation_id} not found")
+        raise ParentNotFound(f"operation {operation_id} not found")
     return op
 
 
 def capture_operation(db: Session, *, auth_operation_id: UUID, amount: int | None = None) -> Operation:
     auth_op = _get_operation_or_error(db, auth_operation_id)
     if auth_op.operation_type != "AUTH":
-        raise InvalidOperationState("only AUTH operations can be captured")
+        raise InvalidState("only AUTH operations can be captured")
     if auth_op.status not in {"AUTHORIZED", "PARTIALLY_CAPTURED"}:
-        raise InvalidOperationState("auth is not in a capturable state")
+        raise InvalidState("auth is not in a capturable state")
 
     remaining = auth_op.amount - (auth_op.captured_amount or 0)
+    if remaining <= 0:
+        raise InvalidState("authorization already fully captured")
     capture_amount = remaining if amount is None else amount
     if capture_amount <= 0:
-        raise InvalidOperationState("capture amount must be positive")
+        raise InvalidState("capture amount must be positive")
     if capture_amount > remaining:
-        raise InvalidOperationState("capture amount exceeds authorized remainder")
+        raise AmountTooLarge("capture amount exceeds authorized remainder")
 
     new_capture = Operation(
         operation_id=str(uuid4()),
@@ -408,16 +423,16 @@ def refund_operation(
 ) -> Operation:
     capture_op = _get_operation_or_error(db, captured_operation_id)
     if capture_op.operation_type != "CAPTURE":
-        raise InvalidOperationState("only CAPTURE operations can be refunded")
+        raise InvalidState("only CAPTURE operations can be refunded")
     if capture_op.status not in {"CAPTURED", "PARTIALLY_REFUNDED"}:
-        raise InvalidOperationState("capture is not refundable")
+        raise InvalidState("capture is not refundable")
 
     remaining = capture_op.amount - (capture_op.refunded_amount or 0)
     refund_amount = remaining if amount is None else amount
     if refund_amount <= 0:
-        raise InvalidOperationState("refund amount must be positive")
+        raise InvalidState("refund amount must be positive")
     if refund_amount > remaining:
-        raise InvalidOperationState("refund amount exceeds captured remainder")
+        raise AmountTooLarge("refund amount exceeds captured remainder")
 
     refund_op = Operation(
         operation_id=str(uuid4()),
@@ -455,7 +470,7 @@ def refund_operation(
 def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
     auth_op = _get_operation_or_error(db, auth_operation_id)
     if auth_op.operation_type != "AUTH":
-        raise InvalidOperationState("only AUTH operations can be reversed")
+        raise InvalidState("only AUTH operations can be reversed")
 
     children = (
         db.query(Operation)
@@ -463,7 +478,7 @@ def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
         .all()
     )
     if any(child.operation_type == "CAPTURE" for child in children):
-        raise InvalidOperationState("cannot reverse auth with captures")
+        raise InvalidState("cannot reverse auth with captures")
 
     reversal_op = Operation(
         operation_id=str(uuid4()),
