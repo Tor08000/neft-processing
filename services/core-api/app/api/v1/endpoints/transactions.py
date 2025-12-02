@@ -3,17 +3,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.operations import OperationSchema
 from app.schemas.transactions import (
+    CaptureRequest,
+    RefundRequest,
     TransactionDetailResponse,
     TransactionsPage,
 )
 from app.services.operations_query import get_operation_timeline
-from app.services.transactions import get_transaction, list_transactions
+from app.services.transactions import (
+    InvalidOperationState,
+    OperationNotFound,
+    capture_operation,
+    get_transaction,
+    list_transactions,
+    refund_operation,
+    reverse_auth,
+)
 
 router = APIRouter(
     prefix="/api/v1/transactions",
@@ -68,3 +79,54 @@ def get_transaction_timeline_endpoint(
         raise HTTPException(status_code=404, detail="transaction not found")
 
     return [OperationSchema.from_orm(op) for op in operations_chain]
+
+
+@router.post("/transactions/{auth_operation_id}/capture", response_model=OperationSchema)
+def capture_transaction_endpoint(
+    auth_operation_id: UUID,
+    body: CaptureRequest = Body(None),
+    db: Session = Depends(get_db),
+) -> OperationSchema:
+    try:
+        operation = capture_operation(db, auth_operation_id=auth_operation_id, amount=body.amount if body else None)
+    except OperationNotFound:
+        raise HTTPException(status_code=404, detail="operation not found")
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return OperationSchema.from_orm(operation)
+
+
+@router.post("/transactions/{capture_operation_id}/refund", response_model=OperationSchema)
+def refund_transaction_endpoint(
+    capture_operation_id: UUID,
+    body: RefundRequest = Body(None),
+    db: Session = Depends(get_db),
+) -> OperationSchema:
+    try:
+        operation = refund_operation(
+            db,
+            captured_operation_id=capture_operation_id,
+            amount=body.amount if body else None,
+        )
+    except OperationNotFound:
+        raise HTTPException(status_code=404, detail="operation not found")
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return OperationSchema.from_orm(operation)
+
+
+@router.post("/transactions/{auth_operation_id}/reverse", response_model=OperationSchema)
+def reverse_transaction_endpoint(
+    auth_operation_id: UUID,
+    db: Session = Depends(get_db),
+) -> OperationSchema:
+    try:
+        operation = reverse_auth(db, auth_operation_id=auth_operation_id)
+    except OperationNotFound:
+        raise HTTPException(status_code=404, detail="operation not found")
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return OperationSchema.from_orm(operation)

@@ -7,10 +7,8 @@ from app.db import Base
 class Operation(Base):
     __tablename__ = "operations"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-
     # Внешний UUID операции, который генерируется в main.py
-    operation_id = Column(String(64), unique=True, index=True, nullable=False)
+    operation_id = Column(String(64), primary_key=True, index=True, nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -27,6 +25,9 @@ class Operation(Base):
 
     amount = Column(Integer, nullable=False)
     currency = Column(String(3), nullable=False, default="RUB")
+
+    captured_amount = Column(Integer, nullable=False, default=0)
+    refunded_amount = Column(Integer, nullable=False, default=0)
 
     # Лимиты – могут быть NULL для REFUND/REVERSAL
     daily_limit = Column(Integer, nullable=True)

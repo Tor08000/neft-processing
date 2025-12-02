@@ -24,7 +24,7 @@ class AuthRequest(BaseModel):
 
 
 class CaptureRequest(BaseModel):
-    amount: int
+    amount: Optional[int] = None
 
 
 class RefundRequest(BaseModel):
@@ -50,6 +50,8 @@ class OperationBase(BaseModel):
 
     amount: int
     currency: str
+    captured_amount: int = 0
+    refunded_amount: int = 0
 
     authorized: bool
     response_code: str

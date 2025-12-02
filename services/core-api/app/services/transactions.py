@@ -2,11 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, Iterable, List, Sequence
+from uuid import UUID, uuid4
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.operation import Operation
+
+
+class OperationNotFound(Exception):
+    pass
+
+
+class InvalidOperationState(Exception):
+    pass
+
 from app.schemas.operations import OperationSchema
 from app.schemas.transactions import (
     TransactionDetailResponse,
@@ -327,3 +337,157 @@ def get_transaction(db: Session, transaction_id: str) -> TransactionDetailRespon
         transaction=transaction,
         operations=[OperationSchema.from_orm(op) for op in operations],
     )
+
+
+# =============================================================================
+# Lifecycle helpers (capture/refund/reversal)
+# =============================================================================
+
+
+def _get_operation_or_error(db: Session, operation_id: UUID | str) -> Operation:
+    op = (
+        db.query(Operation)
+        .filter(Operation.operation_id == str(operation_id))
+        .with_for_update()
+        .first()
+    )
+    if op is None:
+        raise OperationNotFound(f"operation {operation_id} not found")
+    return op
+
+
+def capture_operation(db: Session, *, auth_operation_id: UUID, amount: int | None = None) -> Operation:
+    auth_op = _get_operation_or_error(db, auth_operation_id)
+    if auth_op.operation_type != "AUTH":
+        raise InvalidOperationState("only AUTH operations can be captured")
+    if auth_op.status not in {"AUTHORIZED", "PARTIALLY_CAPTURED"}:
+        raise InvalidOperationState("auth is not in a capturable state")
+
+    remaining = auth_op.amount - (auth_op.captured_amount or 0)
+    capture_amount = remaining if amount is None else amount
+    if capture_amount <= 0:
+        raise InvalidOperationState("capture amount must be positive")
+    if capture_amount > remaining:
+        raise InvalidOperationState("capture amount exceeds authorized remainder")
+
+    new_capture = Operation(
+        operation_id=str(uuid4()),
+        operation_type="CAPTURE",
+        status="CAPTURED" if capture_amount == remaining else "PARTIALLY_CAPTURED",
+        merchant_id=auth_op.merchant_id,
+        terminal_id=auth_op.terminal_id,
+        client_id=auth_op.client_id,
+        card_id=auth_op.card_id,
+        amount=capture_amount,
+        currency=auth_op.currency,
+        parent_operation_id=auth_op.operation_id,
+        captured_amount=0,
+        refunded_amount=0,
+        mcc=auth_op.mcc,
+        product_code=auth_op.product_code,
+        product_category=auth_op.product_category,
+        tx_type=auth_op.tx_type,
+    )
+
+    auth_op.captured_amount = (auth_op.captured_amount or 0) + capture_amount
+    if auth_op.captured_amount >= auth_op.amount:
+        auth_op.status = "CAPTURED"
+    else:
+        auth_op.status = "PARTIALLY_CAPTURED"
+
+    db.add(new_capture)
+    db.add(auth_op)
+    db.commit()
+    db.refresh(new_capture)
+    db.refresh(auth_op)
+    return new_capture
+
+
+def refund_operation(
+    db: Session, *, captured_operation_id: UUID, amount: int | None = None
+) -> Operation:
+    capture_op = _get_operation_or_error(db, captured_operation_id)
+    if capture_op.operation_type != "CAPTURE":
+        raise InvalidOperationState("only CAPTURE operations can be refunded")
+    if capture_op.status not in {"CAPTURED", "PARTIALLY_REFUNDED"}:
+        raise InvalidOperationState("capture is not refundable")
+
+    remaining = capture_op.amount - (capture_op.refunded_amount or 0)
+    refund_amount = remaining if amount is None else amount
+    if refund_amount <= 0:
+        raise InvalidOperationState("refund amount must be positive")
+    if refund_amount > remaining:
+        raise InvalidOperationState("refund amount exceeds captured remainder")
+
+    refund_op = Operation(
+        operation_id=str(uuid4()),
+        operation_type="REFUND",
+        status="REFUNDED" if refund_amount == remaining else "PARTIALLY_REFUNDED",
+        merchant_id=capture_op.merchant_id,
+        terminal_id=capture_op.terminal_id,
+        client_id=capture_op.client_id,
+        card_id=capture_op.card_id,
+        amount=refund_amount,
+        currency=capture_op.currency,
+        parent_operation_id=capture_op.operation_id,
+        captured_amount=0,
+        refunded_amount=0,
+        mcc=capture_op.mcc,
+        product_code=capture_op.product_code,
+        product_category=capture_op.product_category,
+        tx_type=capture_op.tx_type,
+    )
+
+    capture_op.refunded_amount = (capture_op.refunded_amount or 0) + refund_amount
+    if capture_op.refunded_amount >= capture_op.amount:
+        capture_op.status = "REFUNDED"
+    else:
+        capture_op.status = "PARTIALLY_REFUNDED"
+
+    db.add(refund_op)
+    db.add(capture_op)
+    db.commit()
+    db.refresh(refund_op)
+    db.refresh(capture_op)
+    return refund_op
+
+
+def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
+    auth_op = _get_operation_or_error(db, auth_operation_id)
+    if auth_op.operation_type != "AUTH":
+        raise InvalidOperationState("only AUTH operations can be reversed")
+
+    children = (
+        db.query(Operation)
+        .filter(Operation.parent_operation_id == auth_op.operation_id)
+        .all()
+    )
+    if any(child.operation_type == "CAPTURE" for child in children):
+        raise InvalidOperationState("cannot reverse auth with captures")
+
+    reversal_op = Operation(
+        operation_id=str(uuid4()),
+        operation_type="REVERSAL",
+        status="REVERSED",
+        merchant_id=auth_op.merchant_id,
+        terminal_id=auth_op.terminal_id,
+        client_id=auth_op.client_id,
+        card_id=auth_op.card_id,
+        amount=auth_op.amount,
+        currency=auth_op.currency,
+        parent_operation_id=auth_op.operation_id,
+        captured_amount=0,
+        refunded_amount=0,
+        mcc=auth_op.mcc,
+        product_code=auth_op.product_code,
+        product_category=auth_op.product_category,
+        tx_type=auth_op.tx_type,
+    )
+
+    auth_op.status = "REVERSED"
+    db.add(reversal_op)
+    db.add(auth_op)
+    db.commit()
+    db.refresh(reversal_op)
+    db.refresh(auth_op)
+    return reversal_op

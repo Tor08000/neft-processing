@@ -113,3 +113,14 @@ def get(
     """
     stmt: Select = select(Operation).where(Operation.operation_id == operation_id)
     return db.execute(stmt).scalars().first()
+
+
+def list_children(
+    db: Session,
+    *,
+    parent_operation_id: str,
+) -> Sequence[Operation]:
+    stmt: Select = select(Operation).where(
+        Operation.parent_operation_id == parent_operation_id
+    )
+    return db.execute(stmt).scalars().all()
