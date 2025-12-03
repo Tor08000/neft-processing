@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import os
+
 from celery import Celery
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -21,6 +23,7 @@ logger = get_logger(__name__)
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+CELERY_DEFAULT_QUEUE = os.getenv("CELERY_DEFAULT_QUEUE", "celery")
 DISABLE_CELERY = os.getenv("DISABLE_CELERY", "0") == "1"
 DEFAULT_DAILY_LIMIT = 1_000_000
 DEFAULT_LIMIT_PER_TX = 50_000
@@ -33,9 +36,9 @@ if not DISABLE_CELERY:
         backend=CELERY_RESULT_BACKEND,
     )
     celery_app.conf.update(
-        task_default_queue=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
-        task_default_exchange=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
-        task_default_routing_key=os.getenv("CELERY_DEFAULT_QUEUE", "default"),
+        task_default_queue=CELERY_DEFAULT_QUEUE,
+        task_default_exchange=CELERY_DEFAULT_QUEUE,
+        task_default_routing_key=CELERY_DEFAULT_QUEUE,
         broker_connection_retry_on_startup=True,
     )
 else:

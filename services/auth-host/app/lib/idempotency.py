@@ -9,7 +9,9 @@ from redis.asyncio import Redis  # вместо aioredis
 
 logger = logging.getLogger(__name__)
 
-REDIS_DSN = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+REDIS_DSN = os.getenv("REDIS_IDEMPOTENCY_URL") or os.getenv(
+    "REDIS_URL", "redis://redis:6379/2"
+)
 
 
 def get_redis() -> Redis:

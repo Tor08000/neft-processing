@@ -15,7 +15,7 @@ class Settings:
     database_url: str = os.getenv(
         "DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft"
     )
-    redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/2")
 
     jwt_secret: str = os.getenv("JWT_SECRET", "dev-secret")
     access_token_expires_min: int = int(os.getenv("ACCESS_TOKEN_EXPIRES_MIN", "60"))
