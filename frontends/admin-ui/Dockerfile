@@ -19,9 +19,11 @@ FROM nginx:1.27-alpine
 # Используем СВОЙ конфиг admin-web (лежит в frontends/admin-ui/nginx.conf в корне контекста)
 COPY frontends/admin-ui/nginx.conf /etc/nginx/nginx.conf
 
-# Кладём собранную статику под /admin/
-RUN mkdir -p /usr/share/nginx/html/admin
-COPY --from=builder /app/dist/ /usr/share/nginx/html/admin
+# Корень статики – /usr/share/nginx/html
+RUN mkdir -p /usr/share/nginx/html
+
+# Кладём собранный Vite-бандл прямо в корень
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
