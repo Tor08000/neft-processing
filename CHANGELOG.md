@@ -1,5 +1,11 @@
 # Changelog
 
+# v0.1.4
+- Added local observability stack (OTLP collector, Jaeger, Prometheus, Grafana) with provisioned dashboards.
+- Introduced environment profile scaffolding (local/dev/staging) across Python services.
+- Hardened gateway logging with JSON access logs including upstream timings.
+- Added Alembic helper scripts for migration state safety checks.
+
 ## v0.1.3
 - Migrated FastAPI services to the lifespan API, replacing deprecated `startup`/`shutdown` events while preserving initialization flows.
 - Updated test clients to run application lifespan contexts reliably during API-level checks and tightened resource teardown across services.

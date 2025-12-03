@@ -1,0 +1,12 @@
+{
+  "uid": "neft-celery",
+  "title": "Celery",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {"type": "graph", "title": "Queue depth", "datasource": "Prometheus", "targets": [{"expr": "celery_tasks_started_total"}], "id": 1},
+    {"type": "graph", "title": "Tasks per worker", "datasource": "Prometheus", "targets": [{"expr": "rate(celery_tasks_success_total[5m])"}], "id": 2},
+    {"type": "graph", "title": "Failures", "datasource": "Prometheus", "targets": [{"expr": "rate(celery_tasks_failed_total[5m])"}], "id": 3},
+    {"type": "graph", "title": "Duration", "datasource": "Prometheus", "targets": [{"expr": "histogram_quantile(0.9, sum(rate(celery_task_duration_seconds_bucket[5m])) by (le))"}], "id": 4}
+  ]
+}

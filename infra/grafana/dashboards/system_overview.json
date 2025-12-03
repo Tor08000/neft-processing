@@ -1,0 +1,50 @@
+{
+  "uid": "neft-system-overview",
+  "title": "System Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Gateway latency",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "rate(http_request_duration_seconds_sum[5m])/rate(http_request_duration_seconds_count[5m])"}],
+      "id": 1
+    },
+    {
+      "type": "graph",
+      "title": "Core API throughput",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "rate(http_requests_total{service=\"core-api\"}[1m])"}],
+      "id": 2
+    },
+    {
+      "type": "graph",
+      "title": "Auth latency",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.9, sum(rate(http_request_duration_seconds_bucket{service=\"auth-host\"}[5m])) by (le))"}],
+      "id": 3
+    },
+    {
+      "type": "graph",
+      "title": "AI scoring latency",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.9, sum(rate(scoring_latency_seconds_bucket[5m])) by (le))"}],
+      "id": 4
+    },
+    {
+      "type": "graph",
+      "title": "Workers tasks",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "rate(celery_tasks_success_total[5m])"}],
+      "id": 5
+    },
+    {
+      "type": "graph",
+      "title": "DB slow queries",
+      "datasource": "Prometheus",
+      "targets": [{"expr": "rate(db_query_duration_seconds_sum[5m])"}],
+      "id": 6
+    }
+  ]
+}
