@@ -7,8 +7,8 @@ receivers:
 exporters:
   logging:
     loglevel: warn
-  jaeger:
-    endpoint: jaeger:14250
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -20,4 +20,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, logging]
+      exporters: [logging, otlp/jaeger]

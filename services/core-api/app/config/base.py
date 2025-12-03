@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class BaseConfig(BaseSettings):
