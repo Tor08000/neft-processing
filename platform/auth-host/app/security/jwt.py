@@ -7,7 +7,7 @@ import uuid
 from jose import JWTError, jwt
 from redis import Redis
 
-from neft_shared.settings import get_settings
+from app.settings import get_settings
 
 settings = get_settings()
 ALG = "HS256"

@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 async def seed_demo_client_account() -> None:
+    try:
+        await _ensure_demo_client_account()
+    except Exception:
+        logger.warning("Demo client bootstrap failed; continuing without demo user", exc_info=True)
+
+
+async def _ensure_demo_client_account() -> None:
     await init_db()
 
     password_hash = hash_password(DEMO_CLIENT_PASSWORD)

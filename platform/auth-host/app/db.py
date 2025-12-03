@@ -37,6 +37,26 @@ async def init_db() -> None:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS clients (
+                    id UUID PRIMARY KEY,
+                    tenant_id BIGINT NOT NULL,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    full_name TEXT,
+                    status TEXT DEFAULT 'ACTIVE'
+                )
+                """
+            )
+
+            await cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS clients_email_lower_idx
+                ON clients (lower(email))
+                """
+            )
+
+            await cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS users (
                     id BIGSERIAL PRIMARY KEY,
                     email TEXT UNIQUE NOT NULL,

@@ -14,7 +14,7 @@ def _prioritize_service(service_root: Path) -> None:
 
 root = Path(__file__).resolve().parents[4]
 shared_path = root / "shared" / "python"
-service_root = root / "services" / "auth-host"
+service_root = root / "platform" / "auth-host"
 
 for path in (shared_path,):
     if path.exists():
