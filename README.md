@@ -74,3 +74,7 @@ pip install -e shared/python
 ### Использование в сервисах
 
 Сервисы `core-api`, `auth-host`, `ai-service` и `workers` подключают пакет как локальную зависимость через `pyproject.toml` (запись `"neft_shared @ file:../../shared/python"`). При установке зависимостей сервисов из корня репозитория пакет будет подтянут автоматически, а импорты доступны в коде как `from neft_shared...`.
+
+## Releases
+
+- [v0.1.1](https://github.com/Tor08000/neft-processing/releases/tag/v0.1.1) — стабильный билд admin-web с валидацией TypeScript, синхронизированным OperationQuery, SPA-маршрутизацией `/admin/` и подтверждённым end-to-end циклом (Auth → Operations → Billing → Clearing). Точка безопасного отката; подробности в `docs/releases/v0.1.1.md`.

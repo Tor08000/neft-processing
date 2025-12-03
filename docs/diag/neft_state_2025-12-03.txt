@@ -1,0 +1,212 @@
+Отчёт будет сохранён в: docs/diag/neft_state_2025-12-03.txt
+
+================================================================================
+= ОБЩАЯ ИНФОРМАЦИЯ
+================================================================================
+Текущее время: 2025-12-03T08:33:54.563272
+Корень репозитория: /workspace/neft-processing
+Текущий файл диагностики: /workspace/neft-processing/docs/diag/inspect_neft_repo.py
+
+Проверка ключевых директорий:
+[OK ] services
+[OK ] services/core-api
+[OK ] services/auth-host
+[OK ] services/admin-web
+[OK ] services/ai-service
+[OK ] services/workers
+[OK ] shared/python/neft_shared
+[OK ] db
+[OK ] nginx
+[OK ] infra/k8s
+[OK ] infra/terraform
+[OK ] docs
+
+================================================================================
+= GIT-СОСТОЯНИЕ
+================================================================================
+Текущая ветка: work
+Незакоммиченные изменения:
+M CHANGELOG.md
+ M README.md
+?? docs/releases/
+Последний коммит:
+bd3968c Merge pull request #91 from Tor08000/codex/fix-typescript-interfaces-for-date-filters
+
+================================================================================
+= .ENV ФАЙЛЫ
+================================================================================
+[NOK] .env
+[OK ] .env.example
+[WARN] .env отсутствует, переменные проверить невозможно
+
+================================================================================
+= DOCKER COMPOSE
+================================================================================
+Файл docker-compose.yml: OK
+[FAIL] docker compose недоступен: EXCEPTION: [Errno 2] No such file or directory: 'docker'
+
+================================================================================
+= СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web)
+================================================================================
+
+--- core-api ---
+[OK] Dockerfile
+[OK] pyproject.toml
+[OK] requirements.txt
+[OK] app/
+main.py найден в app/: services/core-api/app/main.py
+   [OK] app/api
+   [OK] app/schemas
+   [OK] app/models
+   [OK] app/services
+   [OK] app/tests
+
+--- auth-host ---
+[OK] Dockerfile
+[OK] pyproject.toml
+[OK] requirements.txt
+[OK] app/
+main.py найден в app/: services/auth-host/app/main.py
+   [OK] app/api
+   [OK] app/schemas
+   [OK] app/models
+   [OK] app/services
+   [OK] app/tests
+
+--- workers ---
+[OK] Dockerfile
+[OK] pyproject.toml
+[OK] requirements.txt
+[OK] app/
+main.py найден в app/: services/workers/app/main.py
+   [  ] app/api
+   [  ] app/schemas
+   [  ] app/models
+   [  ] app/services
+   [OK] app/tests
+
+--- ai-service ---
+[OK] Dockerfile
+[OK] pyproject.toml
+[OK] requirements.txt
+[OK] app/
+main.py найден в app/: services/ai-service/app/main.py
+   [OK] app/api
+   [OK] app/schemas
+   [  ] app/models
+   [  ] app/services
+   [OK] app/tests
+
+--- admin-web ---
+[OK] Dockerfile
+[  ] pyproject.toml
+[  ] requirements.txt
+[!!] app/
+
+================================================================================
+= ALEMBIC-МИГРАЦИИ core-api
+================================================================================
+Всего миграций: 13
+- 20251112_0001_core.py
+- 20251118_0002_operations_journal.py
+- 20251120_0003_limits_rules_v2.py
+- 20251124_0003_merchants_terminals_cards.py
+- 20251206_0004_operations_product_fields.py
+- 20251215_0005_add_created_at_to_cards.py
+- 20251220_0006_auto_fix.py
+- 20251230_0007_add_capture_refund_fields_to_operations.py
+- 2025_11_01_init.py
+- 20260101_0008_billing_summary.py
+- 20260110_0009_billing_summary_extend.py
+- 20260110_0010_clearing.py
+- __init__.py
+[FAIL] Не удалось выполнить 'alembic heads': без подробностей
+
+================================================================================
+= ТЕСТЫ
+================================================================================
+
+--- core-api tests ---
+Количество файлов тестов: 11
+- test_admin_auth.py
+- test_admin_dashboard_api.py
+- test_admin_limits.py
+- test_admin_limits_api.py
+- test_admin_merchants_api.py
+- test_admin_operations_api.py
+- test_billing_clearing_e2e.py
+- test_health.py
+- test_limits_v2.py
+- test_reports_billing.py
+- test_transactions_service.py
+
+--- auth-host tests ---
+Количество файлов тестов: 4
+- test_auth.py
+- test_auth_me.py
+- test_keys.py
+- test_processing.py
+
+--- ai-service tests ---
+Количество файлов тестов: 2
+- test_health.py
+- test_score.py
+
+--- workers tasks ---
+Файлы задач Celery (5):
+- __init__.py
+- ai.py
+- billing.py
+- clearing.py
+- limits.py
+
+================================================================================
+= HEALTH-CHECK СЕРВИСОВ
+================================================================================
+
+--- auth ---
+[FAIL] URLError: [Errno 111] Connection refused
+
+--- core ---
+[FAIL] URLError: [Errno 111] Connection refused
+
+--- admin ---
+[FAIL] URLError: [Errno 111] Connection refused
+[FAIL] Проблемы с сервисами: auth, core, admin
+
+================================================================================
+= ЗАПУСК ТЕСТОВ
+================================================================================
+Флаг --run-tests не передан, пропускаем запуск pytest
+
+================================================================================
+= ENDPOINTS core-api (api/v1/endpoints)
+================================================================================
+- FILE admin_billing.py
+- FILE admin_clearing.py
+- FILE admin_dashboard.py
+- FILE admin_limits.py
+- FILE admin_merchants.py
+- FILE admin_operations.py
+- FILE operations_read.py
+- FILE reports_billing.py
+- FILE transactions.py
+
+================================================================================
+= DB INIT СКРИПТЫ (db/init)
+================================================================================
+- FILE 00_extensions.sql
+- FILE 01_schema.sql
+- FILE 02_seed.sql
+
+================================================================================
+= ИТОГОВЫЙ ОТЧЁТ
+================================================================================
+[FAIL] docker compose
+[FAIL] alembic heads
+[FAIL] health-checks
+[SKIP] pytest
+
+[ИТОГ] Есть проблемы в проверках
+
+[СОХРАНЕНО] Отчёт будет записан в docs/diag/neft_state_2025-12-03.txt
