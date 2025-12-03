@@ -9,6 +9,7 @@ import { Layout } from "./components/Layout";
 import type { ClientUser } from "./types";
 import {
   UnauthorizedError,
+  InvalidLoginPayloadError,
   fetchDashboard,
   fetchLimits,
   fetchMe,
@@ -70,6 +71,11 @@ function AppRoutes() {
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         setLoginError("Неверный email или пароль демо-клиента");
+        return;
+      }
+      if (error instanceof InvalidLoginPayloadError) {
+        console.error("Получена ошибка валидации при входе", error);
+        setLoginError("Не удалось выполнить вход. Попробуйте ещё раз.");
         return;
       }
       setLoginError("Не удалось выполнить вход. Попробуйте ещё раз.");
