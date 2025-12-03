@@ -1,13 +1,13 @@
 # Changelog
 
 ## v0.1.3
-- Migrated all FastAPI services to the lifespan API, replacing deprecated `startup`/`shutdown` events and preserving existing
-  initialization flows.
-- Updated test clients to run application lifespan contexts reliably during API-level checks.
-- Cleaned up lingering FastAPI/Pydantic deprecations and refreshed documentation for the migration.
+- Migrated FastAPI services to the lifespan API, replacing deprecated `startup`/`shutdown` events while preserving initialization flows.
+- Updated test clients to run application lifespan contexts reliably during API-level checks and tightened resource teardown across services.
+- Cleaned up lingering FastAPI/Pydantic deprecations and refreshed documentation for the migration (core-api + auth-host/workers/ai-service shims).
 
 ## v0.1.2
 - Admin schemas switched to Pydantic v2-style configuration with `ConfigDict` and `field_validator`, reducing deprecated warnings in tests and preparing the API for framework upgrades.
+- Admin-web optimized with React Query caching, lazy routing, and bundle-size reductions aligned with updated Operation/Billing/Clearing types.
 
 ## v0.1.1
 - Milestone v0.1.1 — Admin UI stable, TS filters synced, gateway stabilized.
