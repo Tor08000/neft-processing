@@ -31,6 +31,7 @@ def test_terminal_auth_happy_path(monkeypatch):
         }
 
     monkeypatch.setattr("app.api.routes.processing.proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr("app.lib.core_api.proxy_terminal_auth", fake_proxy)
 
     response = _client().post("/api/v1/processing/terminal-auth", json=payload)
 
@@ -47,6 +48,7 @@ def test_terminal_auth_error_path(monkeypatch):
         raise HTTPException(status_code=402, detail="limit_exceeded")
 
     monkeypatch.setattr("app.api.routes.processing.proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr("app.lib.core_api.proxy_terminal_auth", fake_proxy)
 
     response = _client().post(
         "/api/v1/processing/terminal-auth",
@@ -73,6 +75,7 @@ def test_terminal_capture_success(monkeypatch):
         return {"operation_id": "op-cap-1", "status": "CAPTURED"}
 
     monkeypatch.setattr("app.api.routes.processing.capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr("app.lib.core_api.capture_operation_via_core_api", fake_capture)
 
     response = _client().post(
         "/api/v1/processing/terminal-capture",
@@ -98,6 +101,7 @@ def test_terminal_capture_error(monkeypatch):
         raise HTTPException(status_code=404, detail="auth_operation_not_found")
 
     monkeypatch.setattr("app.api.routes.processing.capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr("app.lib.core_api.capture_operation_via_core_api", fake_capture)
 
     response = _client().post(
         "/api/v1/processing/terminal-capture",

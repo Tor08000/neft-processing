@@ -45,8 +45,9 @@ def test_auth_me_returns_user_payload():
     )
 
     assert resp.status_code == 200
-    assert resp.json() == {
-        "email": "admin@example.com",
-        "roles": ["ADMIN"],
-        "subject": "admin@example.com",
-    }
+    payload = resp.json()
+    assert payload["email"] == "admin@example.com"
+    assert payload["roles"] == ["ADMIN"]
+    assert payload["subject"] == "admin@example.com"
+    assert payload.get("client_id") is None
+    assert payload.get("subject_type") == "user"
