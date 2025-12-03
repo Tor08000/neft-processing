@@ -24,6 +24,10 @@ from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/api/v1", tags=["auth"])
 
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
 _users: Dict[str, UserResponse] = {}
 _password_hashes: Dict[str, str] = {}
 _user_sequence = itertools.count(1)
@@ -37,13 +41,6 @@ def _bootstrap_demo_client():
     if email not in _password_hashes:
         _password_hashes[email] = _hash_password(password)
     _ensure_client_user(email, client_id=os.getenv("DEMO_CLIENT_ID", "demo-client"))
-
-
-_bootstrap_demo_client()
-
-
-def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 def _admin_credentials() -> tuple[str, str]:
@@ -84,6 +81,9 @@ def _ensure_client_user(email: str, client_id: str | None = None) -> UserRespons
     resolved_client_id = client_id or "demo-client"
     _client_users[email] = (resolved_client_id, user)
     return user
+
+
+_bootstrap_demo_client()
 
 
 @router.get("/health", response_model=HealthResponse)
