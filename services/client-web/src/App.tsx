@@ -31,25 +31,32 @@ function AppRoutes() {
     }
   }, []);
 
-  const { data: profile } = useQuery<ClientUser, Error, ClientUser, [string, string | null]>({
+  const {
+    data: profile,
+    error: profileError,
+    isError: isProfileError,
+    isSuccess: isProfileSuccess,
+  } = useQuery<ClientUser, Error, ClientUser, [string, string | null]>({
     queryKey: ["me", token],
     queryFn: ({ queryKey: [, authToken] }) => fetchMe(authToken ?? ""),
     enabled: Boolean(token),
     retry: false,
-    onError: (err) => {
-      if (err instanceof UnauthorizedError) {
-        localStorage.removeItem("client_token");
-        setToken(null);
-        setUser(undefined);
-      }
-    },
   });
 
   useEffect(() => {
-    if (profile) {
+    if (isProfileSuccess && profile) {
       setUser(profile);
     }
-  }, [profile]);
+  }, [isProfileSuccess, profile]);
+
+  useEffect(() => {
+    if (isProfileError && profileError instanceof UnauthorizedError) {
+      localStorage.removeItem("client_token");
+      setToken(null);
+      setUser(undefined);
+      navigate("/login", { replace: true });
+    }
+  }, [isProfileError, profileError, navigate]);
 
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -70,7 +77,12 @@ function AppRoutes() {
   };
 
   if (!token) {
-    return <LoginPage onLogin={handleLogin} error={loginError ?? undefined} />;
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage onLogin={handleLogin} error={loginError ?? undefined} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
   }
 
   return (
