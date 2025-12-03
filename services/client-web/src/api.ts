@@ -1,6 +1,8 @@
 import type { DashboardSummary, Limit, Operation, ClientUser } from "./types";
 
-const API_BASE = "/client/api/v1";
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost").replace(/\/$/, "");
+const clientBase = (import.meta.env.VITE_CLIENT_BASE_PATH ?? "/client").replace(/\/$/, "");
+const API_BASE = `${apiBase}${clientBase}/api/v1`;
 
 interface TokenResponse {
   access_token: string;
