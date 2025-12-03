@@ -1,11 +1,13 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+import { ReactNode } from "react";
 import type { ClientUser } from "../types";
 
 interface LayoutProps {
   user?: ClientUser;
+  children: ReactNode;
 }
 
-export function Layout({ user }: LayoutProps) {
+export function Layout({ user, children }: LayoutProps) {
   const orgName = user?.organization?.name ?? "NEFT Клиент";
   const userName = user?.fullName ?? "Гость";
   const role = user?.role ?? "VIEWER";
@@ -33,7 +35,7 @@ export function Layout({ user }: LayoutProps) {
         </nav>
 
         <main className="main-area">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>
