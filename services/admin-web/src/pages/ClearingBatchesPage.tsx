@@ -7,11 +7,11 @@ import {
   markBatchSent,
 } from "../api/clearing";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
+import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDate } from "../utils/format";
 import { ClearingBatch, ClearingBatchOperation } from "../types/clearing";
 import { Loader } from "../components/Loader/Loader";
 
-const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
 const DateRangeFilter = React.lazy(() =>
   import("../components/Filters/DateRangeFilter").then((mod) => ({ default: mod.DateRangeFilter })),
 );
@@ -78,6 +78,21 @@ export const ClearingBatchesPage: React.FC = () => {
 
   const updateStatus = (action: "sent" | "confirmed") => updateStatusMutation.mutate(action);
 
+  const batchColumns: Column<ClearingBatch>[] = [
+    { key: "id", title: "ID", render: (row) => row.id },
+    { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
+    { key: "range", title: "Range", render: (row) => `${formatDate(row.date_from)} → ${formatDate(row.date_to)}` },
+    { key: "amount", title: "Amount", render: (row) => formatAmount(row.total_amount) },
+    { key: "ops", title: "Ops", render: (row) => row.operations_count },
+    { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+  ];
+
+  const batchOperationsColumns: Column<ClearingBatchOperation>[] = [
+    { key: "id", title: "ID", render: (row) => row.id },
+    { key: "operation", title: "Operation", render: (row) => row.operation_id },
+    { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
+  ];
+
   return (
     <div>
       <div className="page-header">
@@ -116,18 +131,7 @@ export const ClearingBatchesPage: React.FC = () => {
         <div>
           <h2>Batches</h2>
           <Suspense fallback={<Loader label="Отрисовываем таблицу" />}>
-            <Table<ClearingBatch>
-              columns={[
-                { key: "id", title: "ID", render: (row) => row.id },
-                { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
-                { key: "range", title: "Range", render: (row) => `${formatDate(row.date_from)} → ${formatDate(row.date_to)}` },
-                { key: "amount", title: "Amount", render: (row) => formatAmount(row.total_amount) },
-                { key: "ops", title: "Ops", render: (row) => row.operations_count },
-                { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
-              ]}
-              data={batches}
-              onRowClick={(row) => setSelectedBatch(row)}
-            />
+            <Table columns={batchColumns} data={batches} onRowClick={(row) => setSelectedBatch(row)} />
           </Suspense>
         </div>
         <div>
@@ -167,14 +171,7 @@ export const ClearingBatchesPage: React.FC = () => {
             <p>Select batch to view details</p>
           )}
           <Suspense fallback={<Loader label="Загружаем операции батча" />}>
-            <Table<ClearingBatchOperation>
-              columns={[
-                { key: "id", title: "ID", render: (row) => row.id },
-                { key: "operation", title: "Operation", render: (row) => row.operation_id },
-                { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
-              ]}
-              data={operations}
-            />
+            <Table columns={batchOperationsColumns} data={operations} />
           </Suspense>
         </div>
       </div>

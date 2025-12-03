@@ -12,12 +12,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client", "vitest"],
+    "types": ["vite/client", "./types/vitest", "./types/react-query"],
     "paths": {
-      "react-router-dom": ["./src/router/router-shim"]
+      "react-router-dom": ["./src/router/router-shim"],
+      "@tanstack/react-query": ["./types/react-query"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "types"],
   "exclude": [
     "**/*.test.ts",
     "**/*.test.tsx",
