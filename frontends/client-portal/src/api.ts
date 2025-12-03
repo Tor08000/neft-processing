@@ -6,16 +6,33 @@ const API_BASE = `${apiBase}${clientBase}/api/v1`;
 
 interface TokenResponse {
   access_token: string;
-  email: string;
-  client_id?: string;
-  subject_type?: string;
+  token_type: string;
   expires_in: number;
+  email: string;
+  subject_type: string;
+  client_id?: string | null;
+}
+
+interface LoginResult {
+  token: string;
+  tokenType: string;
+  expiresIn: number;
+  email: string;
+  clientId?: string;
+  subjectType: string;
 }
 
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
     super(message);
     this.name = "UnauthorizedError";
+  }
+}
+
+export class InvalidLoginPayloadError extends Error {
+  constructor(message = "Неверный формат данных для входа") {
+    super(message);
+    this.name = "InvalidLoginPayloadError";
   }
 }
 
@@ -39,16 +56,40 @@ async function parseJsonOrThrow(response: Response, errorMessage: string) {
   return response.json();
 }
 
-export async function login(email: string, password: string): Promise<{ token: string; email: string; clientId?: string }>
-{
+export async function login(email: string, password: string): Promise<LoginResult> {
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
 
-  const body = (await parseJsonOrThrow(response, "Неверные учётные данные")) as TokenResponse;
-  return { token: body.access_token, email: body.email, clientId: body.client_id };
+  if (response.status === 401 || response.status === 403) {
+    throw new UnauthorizedError();
+  }
+
+  if (response.status === 422) {
+    try {
+      const details = await response.json();
+      console.error("Invalid login payload", details);
+    } catch (error) {
+      console.error("Invalid login payload", error);
+    }
+    throw new InvalidLoginPayloadError();
+  }
+
+  if (!response.ok) {
+    throw new Error("Неверные учётные данные");
+  }
+
+  const body = (await response.json()) as TokenResponse;
+  return {
+    token: body.access_token,
+    tokenType: body.token_type,
+    expiresIn: body.expires_in,
+    email: body.email,
+    clientId: body.client_id ?? undefined,
+    subjectType: body.subject_type,
+  };
 }
 
 function authHeaders(token: string): HeadersInit {

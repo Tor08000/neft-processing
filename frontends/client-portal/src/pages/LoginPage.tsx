@@ -26,6 +26,7 @@ export function LoginPage({ onLogin, error }: LoginPageProps) {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="client@neft.local"
             required
           />
         </label>
@@ -36,6 +37,7 @@ export function LoginPage({ onLogin, error }: LoginPageProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="client"
             required
           />
         </label>
