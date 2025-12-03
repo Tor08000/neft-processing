@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.merchant import Merchant
 from app.models.terminal import Terminal
-from app.schemas.admin_merchants import (
+from app.schemas.admin.merchants import (
     MerchantBase,
     MerchantCreate,
     MerchantListResponse,
@@ -20,9 +20,8 @@ from app.schemas.admin_merchants import (
     TerminalRead,
     TerminalUpdate,
 )
-from app.services.admin_auth import require_admin
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="", tags=["admin"])
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200

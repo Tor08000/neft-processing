@@ -15,14 +15,7 @@ from neft_shared.logging_setup import get_logger, init_logging
 from app.db import init_db, SessionLocal, get_db
 from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
-from app.api.v1.endpoints import (
-    admin_dashboard,
-    admin_limits,
-    admin_clearing,
-    admin_billing,
-    admin_merchants,
-    admin_operations,
-)
+from app.routers.admin import router as admin_router
 from app.services.transactions import derive_tx_type
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -282,15 +275,7 @@ if transactions_router is not None:
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
 
-# === ВАЖНО: админские ручки должны жить под /api/v1/admin/... ===
-# сами эндпоинты используют prefix="/admin" внутри (см. admin.py),
-# поэтому здесь даём prefix="/api/v1", чтобы в сумме получилось /api/v1/admin/...
-app.include_router(admin_limits.router, prefix="/api/v1")
-app.include_router(admin_operations.router, prefix="/api/v1")
-app.include_router(admin_dashboard.router, prefix="/api/v1")
-app.include_router(admin_merchants.router, prefix="/api/v1")
-app.include_router(admin_clearing.router, prefix="/api/v1")
-app.include_router(admin_billing.router, prefix="/api/v1")
+app.include_router(admin_router)
 
 
 # -----------------------------------------------------------------------------

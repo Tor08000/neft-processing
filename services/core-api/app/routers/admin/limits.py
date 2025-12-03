@@ -13,7 +13,7 @@ from app.models.groups import (
     ClientGroupMember,
 )
 from app.models.limit_rule import LimitRule
-from app.schemas.groups_admin import (
+from app.schemas.admin.groups import (
     CardGroupCreate,
     CardGroupListResponse,
     CardGroupMemberChange,
@@ -27,16 +27,15 @@ from app.schemas.groups_admin import (
     ClientGroupRead,
     ClientGroupUpdate,
 )
-from app.schemas.limits_admin import (
+from app.schemas.admin.limits import (
     LimitRuleCreate,
     LimitRuleListResponse,
     LimitRuleRead,
     LimitRuleUpdate,
 )
-from app.services.admin_auth import require_admin
 
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="", tags=["admin"])
 
 
 def _validate_limits(daily_limit: Optional[int], limit_per_tx: Optional[int]) -> None:
