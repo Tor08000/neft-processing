@@ -5,7 +5,7 @@ import { fetchOperations } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { Pagination } from "../components/Pagination/Pagination";
 import { formatAmount, formatDateTime } from "../utils/format";
-import { Operation, OperationListResponse } from "../types/operations";
+import { Operation } from "../types/operations";
 import { Loader } from "../components/Loader/Loader";
 
 const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
@@ -17,12 +17,12 @@ export const OperationsListPage: React.FC = () => {
 
   const filters = useMemo(() => ({ limit, offset }), [limit, offset]);
 
-  const { data, isLoading, error, isFetching } = useQuery<OperationListResponse, Error>({
+  const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ["operations", filters],
     queryFn: () => fetchOperations(filters),
     staleTime: 30_000,
     refetchOnMount: false,
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData,
   });
 
   const operations = data?.items ?? [];
@@ -59,3 +59,5 @@ export const OperationsListPage: React.FC = () => {
     </div>
   );
 };
+
+export default OperationsListPage;

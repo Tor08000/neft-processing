@@ -73,3 +73,5 @@ export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     </div>
   );
 };
+
+export default Layout;
