@@ -162,6 +162,21 @@ def is_docker_env_issue(error_message: str) -> bool:
     )
 
 
+def is_alembic_cli_issue(return_code: int, message: str) -> bool:
+    lowered = message.lower()
+    cp866_markers = ["¤«", "ўє«"]
+    return return_code == -1 or any(
+        marker in lowered
+        for marker in [
+            "winerror 2",
+            "no such file or directory",
+            "не является внутренней или внешней командой",
+            "is not recognized as an internal or external command",
+            *cp866_markers,
+        ]
+    )
+
+
 def section_docker_compose(expected_services: list[str]) -> CheckResult:
     header("DOCKER COMPOSE")
 
@@ -284,14 +299,11 @@ def section_migrations() -> CheckResult:
     )
     message = err or out or "без подробностей"
     if rc != 0:
-        lowered = message.lower()
-        if rc == -1 or "winerror 2" in lowered or "no such file or directory" in lowered:
-            log(
-                "[SKIP] alembic heads: Alembic CLI недоступен. "
-                "Активируйте виртуальное окружение или установите Alembic."
-            )
+        if is_alembic_cli_issue(rc, message):
+            log("[SKIP] alembic heads: Alembic CLI недоступен")
             return CheckResult("SKIP", "Alembic CLI недоступен", True)
 
+        lowered = message.lower()
         if "no config file" in lowered:
             log(f"[FAIL] alembic heads: {message}")
             return CheckResult("FAIL", message)
@@ -395,15 +407,30 @@ def section_health_checks() -> CheckResult:
             with urllib.request.urlopen(url, timeout=5) as resp:
                 content = resp.read()
                 status = getattr(resp, "status", None) or resp.getcode()
+                content_type = resp.headers.get("Content-Type", "")
                 log(f"URL: {url}")
                 log(f"Статус: {status}")
                 log(f"Длина ответа: {len(content)}")
+                log(f"Content-Type: {content_type}")
 
             if status >= 400:
                 results[name] = CheckResult(
                     "FAIL",
                     f"сервис {name} вернул код {status}",
+                    name == "admin",
                 )
+                continue
+
+            if name == "admin":
+                if "application/json" in content_type.lower():
+                    log("[FAIL] Ожидался HTML, получен JSON")
+                    results[name] = CheckResult(
+                        "FAIL", "admin-web вернул JSON вместо HTML", True
+                    )
+                    continue
+
+                log("[OK] admin-web доступен (HTML)")
+                results[name] = CheckResult("OK")
                 continue
 
             try:
@@ -433,16 +460,20 @@ def section_health_checks() -> CheckResult:
             log(f"[FAIL] URLError: {reason_text}")
             if "connection refused" in reason_text.lower():
                 results[name] = CheckResult(
-                    "FAIL", f"сервис {name} недоступен (connection refused)"
+                    "FAIL",
+                    f"сервис {name} недоступен (connection refused)",
+                    True,
                 )
             else:
                 results[name] = CheckResult(
-                    "FAIL", f"сервис {name} недоступен: {reason_text}"
+                    "FAIL",
+                    f"сервис {name} недоступен: {reason_text}",
+                    True,
                 )
         except Exception as e:  # noqa: BLE001
             log(f"[FAIL] Ошибка при запросе: {e}")
             results[name] = CheckResult(
-                "FAIL", f"сервис {name} недоступен: {e}"
+                "FAIL", f"сервис {name} недоступен: {e}", True
             )
 
     if all(result.ok for result in results.values()):
@@ -450,8 +481,11 @@ def section_health_checks() -> CheckResult:
         return CheckResult("OK")
 
     failed = [name for name, result in results.items() if not result.ok]
+    env_issue = any(
+        result.is_env_issue for name, result in results.items() if name in failed
+    )
     log(f"[FAIL] Проблемы с сервисами: {', '.join(failed)}")
-    return CheckResult("FAIL", f"Недоступны: {', '.join(failed)}")
+    return CheckResult("FAIL", f"Недоступны: {', '.join(failed)}", env_issue)
 
 
 def run_pytest_for_service(name: str, path: Path):
@@ -512,17 +546,21 @@ def summarize_status(statuses: dict[str, CheckResult]):
     repo_fail = any(
         result.fail and not result.is_env_issue for result in statuses.values()
     )
-    env_fail = any(result.fail and result.is_env_issue for result in statuses.values())
+    env_only_issues = any(
+        (result.fail and result.is_env_issue) or result.skip
+        for result in statuses.values()
+    )
     has_warn = any(result.warn for result in statuses.values())
-    has_skip = any(result.skip for result in statuses.values())
 
     if repo_fail:
         summary = (
             "Есть проблемы в репозитории — требуется исправление конфигурации или кода"
         )
-    elif has_warn or has_skip or env_fail:
+    elif env_only_issues:
+        summary = "Репозиторий корректен, есть проблемы окружения или диагностики"
+    elif has_warn:
         summary = (
-            "Репозиторий выглядит корректно, есть предупреждения и пропуски проверок (см. выше)."
+            "Репозиторий выглядит корректно, есть предупреждения (см. выше)."
         )
     else:
         summary = "Все проверки репозитория успешно пройдены"
