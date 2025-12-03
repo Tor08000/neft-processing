@@ -28,10 +28,28 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
+    container_name: neft-processing-minio-1
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   admin-web:
     build:
       context: .
-      dockerfile: services/admin-web/Dockerfile
+      dockerfile: frontends/admin-ui/Dockerfile
     container_name: neft-processing-admin-web-1
     environment:
       SERVICE_NAME: admin-web
@@ -50,7 +68,7 @@ services:
   client-web:
     build:
       context: .
-      dockerfile: services/client-web/Dockerfile
+      dockerfile: frontends/client-portal/Dockerfile
     container_name: neft-processing-client-web-1
     environment:
       SERVICE_NAME: client-web
@@ -66,7 +84,7 @@ services:
   auth-host:
     build:
       context: .
-      dockerfile: services/auth-host/Dockerfile
+      dockerfile: platform/auth-host/Dockerfile
     container_name: neft-processing-auth-host-1
     env_file:
       - .env.example
@@ -91,7 +109,7 @@ services:
   core-api:
     build:
       context: .
-      dockerfile: services/core-api/Dockerfile
+      dockerfile: platform/processing-core/Dockerfile
     container_name: neft-processing-core-api-1
     env_file:
       - .env.example
@@ -116,7 +134,7 @@ services:
   ai-service:
     build:
       context: .
-      dockerfile: services/ai-service/Dockerfile
+      dockerfile: platform/ai-services/risk-scorer/Dockerfile
     container_name: neft-processing-ai-service-1
     environment:
       SERVICE_NAME: ai-service
@@ -132,10 +150,40 @@ services:
     ports:
       - "8003:8000"
 
+  crm-service:
+    image: alpine:3.20
+    container_name: neft-processing-crm-1
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  logistics-service:
+    image: alpine:3.20
+    container_name: neft-processing-logistics-1
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  document-service:
+    image: alpine:3.20
+    container_name: neft-processing-document-1
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
   workers:
     build:
       context: .
-      dockerfile: services/workers/Dockerfile
+      dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-workers-1
     env_file:
       - .env.example
@@ -153,7 +201,7 @@ services:
   beat:
     build:
       context: .
-      dockerfile: services/workers/Dockerfile
+      dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-beat-1
     env_file:
       - .env.example
@@ -211,7 +259,7 @@ services:
   gateway:
     build:
       context: .
-      dockerfile: services/gateway/Dockerfile
+      dockerfile: gateway/gateway/Dockerfile
     image: neft-processing-gateway:latest
     container_name: neft-processing-gateway-1
     depends_on:
@@ -297,3 +345,4 @@ services:
 
 volumes:
   postgres-data:
+  minio-data:
