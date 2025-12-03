@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchOperations } from "../api";
+import { fetchOperations, handleUnauthorized } from "../api";
 import type { Operation } from "../types";
 
 interface OperationsPageProps {
@@ -20,6 +20,10 @@ export function OperationsPage({ token }: OperationsPageProps) {
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 20));
+
+  if (error && handleUnauthorized(error)) {
+    return null;
+  }
 
   return (
     <div className="card">

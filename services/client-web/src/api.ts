@@ -10,6 +10,33 @@ interface TokenResponse {
   expires_in: number;
 }
 
+export class UnauthorizedError extends Error {
+  constructor(message = "Требуется повторный вход") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+export function handleUnauthorized(error: unknown): boolean {
+  if (error instanceof UnauthorizedError) {
+    // При 401/403 сбрасываем токен и возвращаем пользователя на экран логина.
+    localStorage.removeItem("client_token");
+    window.location.href = "/client/";
+    return true;
+  }
+  return false;
+}
+
+async function parseJsonOrThrow(response: Response, errorMessage: string) {
+  if (response.status === 401 || response.status === 403) {
+    throw new UnauthorizedError();
+  }
+  if (!response.ok) {
+    throw new Error(errorMessage);
+  }
+  return response.json();
+}
+
 export async function login(email: string, password: string): Promise<{ token: string; email: string; clientId?: string }>
 {
   const response = await fetch(`${API_BASE}/auth/login`, {
@@ -18,11 +45,7 @@ export async function login(email: string, password: string): Promise<{ token: s
     body: JSON.stringify({ email, password }),
   });
 
-  if (!response.ok) {
-    throw new Error("Неверные учётные данные");
-  }
-
-  const body = (await response.json()) as TokenResponse;
+  const body = (await parseJsonOrThrow(response, "Неверные учётные данные")) as TokenResponse;
   return { token: body.access_token, email: body.email, clientId: body.client_id };
 }
 
@@ -32,10 +55,7 @@ function authHeaders(token: string): HeadersInit {
 
 export async function fetchMe(token: string): Promise<ClientUser> {
   const response = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders(token) });
-  if (!response.ok) {
-    throw new Error("Не удалось загрузить профиль");
-  }
-  const body = await response.json();
+  const body = await parseJsonOrThrow(response, "Не удалось загрузить профиль");
   return {
     id: body.subject,
     email: body.email,
@@ -56,10 +76,7 @@ export async function fetchDashboard(token: string): Promise<{
   limits: Limit[];
 }> {
   const response = await fetch(`${API_BASE}/dashboard`, { headers: authHeaders(token) });
-  if (!response.ok) {
-    throw new Error("Не удалось загрузить дашборд");
-  }
-  const body = await response.json();
+  const body = await parseJsonOrThrow(response, "Не удалось загрузить дашборд");
   return {
     summary: {
       totalOperations: body.summary.total_operations,
@@ -95,10 +112,7 @@ export async function fetchOperations(token: string, params: { status?: string; 
   const response = await fetch(`${API_BASE}/operations?${search.toString()}`, {
     headers: authHeaders(token),
   });
-  if (!response.ok) {
-    throw new Error("Не удалось загрузить операции");
-  }
-  const body = await response.json();
+  const body = await parseJsonOrThrow(response, "Не удалось загрузить операции");
   return {
     items: (body.items as any[]).map((op) => ({
       id: op.id,
@@ -117,10 +131,7 @@ export async function fetchOperations(token: string, params: { status?: string; 
 
 export async function fetchLimits(token: string): Promise<Limit[]> {
   const response = await fetch(`${API_BASE}/limits`, { headers: authHeaders(token) });
-  if (!response.ok) {
-    throw new Error("Не удалось загрузить лимиты");
-  }
-  const body = await response.json();
+  const body = await parseJsonOrThrow(response, "Не удалось загрузить лимиты");
   return (body.items as any[]).map((item) => ({
     id: item.id,
     type: item.type,

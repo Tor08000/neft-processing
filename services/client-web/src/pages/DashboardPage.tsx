@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchDashboard } from "../api";
+import { fetchDashboard, handleUnauthorized } from "../api";
 import type { DashboardSummary, Operation } from "../types";
 
 interface DashboardPageProps {
@@ -14,6 +14,10 @@ export function DashboardPage({ token }: DashboardPageProps) {
 
   if (isLoading) {
     return <div className="card">Загрузка дашборда...</div>;
+  }
+
+  if (error && handleUnauthorized(error)) {
+    return null;
   }
 
   if (error || !data) {

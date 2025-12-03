@@ -2,11 +2,12 @@ import { FormEvent, useState } from "react";
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => void;
+  error?: string;
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage({ onLogin, error }: LoginPageProps) {
   const [email, setEmail] = useState("demo@client.neft");
-  const [password, setPassword] = useState("demo");
+  const [password, setPassword] = useState("Demo123!");
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -18,6 +19,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <form className="card login-card" onSubmit={handleSubmit}>
         <h1>Вход в клиентский кабинет</h1>
         <p>Используйте email и пароль клиента, чтобы продолжить.</p>
+        {error ? <div className="error" role="alert">{error}</div> : null}
         <label>
           Email
           <input
