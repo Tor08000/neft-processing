@@ -5,12 +5,22 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from jose import jwt
+from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 SHARED_PATH = ROOT_DIR / "shared" / "python"
+SERVICE_ROOT = ROOT_DIR / "services" / "core-api"
 
-if SHARED_PATH.exists():
-    sys.path.append(str(SHARED_PATH))
+for module_name in list(sys.modules):
+    if module_name == "app" or module_name.startswith("app."):
+        sys.modules.pop(module_name)
+
+for path in (SHARED_PATH,):
+    if path.exists():
+        sys.path.insert(0, str(path))
+
+if SERVICE_ROOT.exists():
+    sys.path.insert(0, str(SERVICE_ROOT))
 
 # Use in-memory SQLite for tests to avoid coupling to external Postgres.
 os.environ.setdefault("NEFT_DB_URL", "sqlite+pysqlite:///:memory:")
