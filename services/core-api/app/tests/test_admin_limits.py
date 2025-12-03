@@ -50,9 +50,12 @@ def admin_client(admin_auth_headers: dict) -> Tuple[TestClient, sessionmaker]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    client = TestClient(app)
-    client.headers.update(admin_auth_headers)
-    return client, TestingSessionLocal
+    with TestClient(app) as client:
+        client.headers.update(admin_auth_headers)
+        yield client, TestingSessionLocal
+
+    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
 
 
 def test_client_and_card_group_crud(admin_client: Tuple[TestClient, sessionmaker]):
