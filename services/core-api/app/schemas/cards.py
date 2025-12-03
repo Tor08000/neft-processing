@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CardBase(BaseModel):
@@ -26,8 +26,7 @@ class CardUpdate(BaseModel):
 class CardSchema(CardBase):
     id: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CardsPage(BaseModel):

@@ -6,10 +6,10 @@ export interface Operation {
   created_at: string;
   operation_type: OperationType;
   status: OperationStatus;
-  merchant_id: string;
-  terminal_id: string;
-  client_id: string;
-  card_id: string;
+  merchant_id?: string | null;
+  terminal_id?: string | null;
+  client_id?: string | null;
+  card_id?: string | null;
   amount: number;
   currency: string;
   captured_amount: number;
@@ -19,13 +19,13 @@ export interface Operation {
   product_category?: string | null;
   tx_type?: string | null;
   mcc?: string | null;
-  daily_limit?: number;
-  limit_per_tx?: number;
-  used_today?: number;
-  new_used_today?: number;
-  authorized?: boolean;
-  response_code?: string;
-  response_message?: string;
+  daily_limit?: number | null;
+  limit_per_tx?: number | null;
+  used_today?: number | null;
+  new_used_today?: number | null;
+  authorized?: boolean | null;
+  response_code?: string | null;
+  response_message?: string | null;
   reason?: string | null;
 }
 
@@ -49,4 +49,14 @@ export interface OperationQuery extends Record<string, unknown> {
   date_to?: string;
   from_created_at?: string;
   to_created_at?: string;
+  min_amount?: number;
+  max_amount?: number;
+  order_by?:
+    | "created_at_desc"
+    | "created_at_asc"
+    | "amount_desc"
+    | "amount_asc";
+  mcc?: string;
+  product_category?: string;
+  tx_type?: string;
 }

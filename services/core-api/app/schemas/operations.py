@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class OperationSchema(BaseModel):
@@ -37,11 +37,7 @@ class OperationSchema(BaseModel):
     product_category: Optional[str] = None
     tx_type: Optional[str] = None
 
-    class Config:
-        # для Pydantic 1.x
-        orm_mode = True
-        # для Pydantic 2.x
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OperationsPage(BaseModel):

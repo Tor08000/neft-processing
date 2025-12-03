@@ -63,16 +63,20 @@ export const BillingSummaryPage: React.FC = () => {
     },
     { key: "count", title: "Ops", render: (row) => row.operations_count },
     { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
-    { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+    { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status ?? ""} /> },
     {
       key: "actions",
       title: "Actions",
-      render: (row) =>
-        row.status === "PENDING" ? (
-          <button onClick={() => handleFinalize(row.id)} disabled={finalizeMutation.isPending}>
+      render: (row) => {
+        const summaryId = row.id;
+        if (row.status !== "PENDING" || !summaryId) return null;
+
+        return (
+          <button onClick={() => handleFinalize(summaryId)} disabled={finalizeMutation.isPending}>
             Finalize
           </button>
-        ) : null,
+        );
+      },
     },
   ];
 
