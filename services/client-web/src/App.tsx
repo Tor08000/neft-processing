@@ -27,8 +27,13 @@ function AppRoutes() {
     queryKey: ["me", token],
     queryFn: ({ queryKey: [, authToken] }) => fetchMe(authToken ?? ""),
     enabled: Boolean(token),
-    onSuccess: (data: ClientUser) => setUser(data),
   });
+
+  useEffect(() => {
+    if (profile) {
+      setUser(profile);
+    }
+  }, [profile]);
 
   const handleLogin = async (email: string, password: string) => {
     const auth = await login(email, password);
