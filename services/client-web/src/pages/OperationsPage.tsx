@@ -1,33 +1,31 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchOperations } from "../api";
 import type { Operation } from "../types";
 
 interface OperationsPageProps {
-  operations: Operation[];
+  token: string;
 }
 
-export function OperationsPage({ operations }: OperationsPageProps) {
-  const [typeFilter, setTypeFilter] = useState<string>("");
+export function OperationsPage({ token }: OperationsPageProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [page, setPage] = useState(0);
 
-  const filtered = useMemo(() => {
-    return operations.filter((op) => {
-      const matchesType = typeFilter ? op.type === typeFilter : true;
-      const matchesStatus = statusFilter ? op.status === statusFilter : true;
-      return matchesType && matchesStatus;
-    });
-  }, [operations, statusFilter, typeFilter]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["operations", token, statusFilter, page],
+    queryFn: () => fetchOperations(token, { status: statusFilter, limit: 20, offset: page * 20 }),
+  });
+
+  const operations: Operation[] = data?.items ?? [];
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / 20));
 
   return (
     <div className="card">
       <div className="section-title">
         <h2>Операции</h2>
         <div className="filters">
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="">Все типы</option>
-            <option value="auth">Авторизация</option>
-            <option value="capture">Списание</option>
-            <option value="refund">Возврат</option>
-          </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">Все статусы</option>
             <option value="success">Успешные</option>
@@ -37,34 +35,53 @@ export function OperationsPage({ operations }: OperationsPageProps) {
         </div>
       </div>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Дата</th>
-            <th>Тип</th>
-            <th>Статус</th>
-            <th>Сумма</th>
-            <th>Карта</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((operation) => (
-            <tr key={operation.id}>
-              <td>{new Date(operation.date).toLocaleString("ru-RU")}</td>
-              <td>{operation.type}</td>
-              <td>
-                <span
-                  className={`badge ${operation.status === "success" ? "success" : operation.status === "pending" ? "pending" : "error"}`}
-                >
-                  {operation.status}
-                </span>
-              </td>
-              <td>{operation.amount.toLocaleString("ru-RU")}</td>
-              <td>{operation.cardRef ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {isLoading && <div>Загрузка...</div>}
+      {error && <div className="error">Не удалось загрузить операции</div>}
+
+      {!isLoading && !error && (
+        <>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Статус</th>
+                <th>Сумма</th>
+                <th>Карта</th>
+              </tr>
+            </thead>
+            <tbody>
+              {operations.map((operation) => (
+                <tr key={operation.id}>
+                  <td>{new Date(operation.date).toLocaleString("ru-RU")}</td>
+                  <td>{operation.type}</td>
+                  <td>
+                    <span
+                      className={`badge ${operation.status === "success" ? "success" : operation.status === "pending" ? "pending" : "error"}`}
+                    >
+                      {operation.status}
+                    </span>
+                  </td>
+                  <td>{operation.amount.toLocaleString("ru-RU")}</td>
+                  <td>{operation.cardRef ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="pagination">
+            <button disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              Назад
+            </button>
+            <span>
+              Страница {page + 1} из {totalPages}
+            </span>
+            <button disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+              Вперёд
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

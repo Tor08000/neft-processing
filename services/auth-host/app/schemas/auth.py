@@ -20,11 +20,21 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ClientLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    client_id: str | None = Field(
+        default=None, description="Идентификатор организации клиента, если известен"
+    )
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
     email: EmailStr
+    subject_type: str = Field(default="user", description="Тип субъекта в токене")
+    client_id: str | None = Field(default=None, description="Организация клиента")
 
 
 class UserResponse(BaseModel):
@@ -39,3 +49,5 @@ class AuthMeResponse(BaseModel):
     email: EmailStr
     roles: list[str]
     subject: str
+    subject_type: str = "user"
+    client_id: str | None = None
