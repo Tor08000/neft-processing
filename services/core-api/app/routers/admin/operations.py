@@ -224,7 +224,7 @@ def get_operation_children(
     items: List[Operation] = (
         db.query(Operation)
         .filter(Operation.parent_operation_id == operation_id)
-        .order_by(Operation.created_at.asc())
+        .order_by(Operation.created_at.asc(), Operation.operation_id.asc())
         .all()
     )
     serialized = _serialize_operations(items)

@@ -61,7 +61,7 @@ def list_operations(
     stmt = _apply_filters(stmt, filters)
 
     stmt = (
-        stmt.order_by(Operation.created_at.desc())
+        stmt.order_by(Operation.created_at.desc(), Operation.operation_id.desc())
         .limit(limit)
         .offset(offset)
     )

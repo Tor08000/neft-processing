@@ -9,7 +9,9 @@ from app.models.operation import Operation
 
 
 def list_operations(db: Session, limit: int, offset: int) -> Tuple[List[Operation], int]:
-    query = db.query(Operation).order_by(Operation.created_at.desc())
+    query = db.query(Operation).order_by(
+        Operation.created_at.desc(), Operation.operation_id.desc()
+    )
     total = query.count()
     items = query.offset(offset).limit(limit).all()
 
@@ -31,6 +33,6 @@ def get_operation_timeline(db: Session, operation_id: str) -> List[Operation]:
                 Operation.parent_operation_id == operation_id,
             )
         )
-        .order_by(Operation.created_at.asc())
+        .order_by(Operation.created_at.asc(), Operation.operation_id.asc())
         .all()
     )
