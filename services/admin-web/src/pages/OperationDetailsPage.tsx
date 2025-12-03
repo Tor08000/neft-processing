@@ -3,11 +3,10 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOperation, fetchOperationChildren } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
+import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDateTime } from "../utils/format";
 import { Operation } from "../types/operations";
 import { Loader } from "../components/Loader/Loader";
-
-const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
 
 export const OperationDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -40,6 +39,14 @@ export const OperationDetailsPage: React.FC = () => {
       remaining: authAmount - captured + refunded,
     };
   }, [children, operation]);
+
+  const columns: Column<Operation>[] = [
+    { key: "id", title: "ID", render: (row) => row.operation_id },
+    { key: "type", title: "Type", render: (row) => row.operation_type },
+    { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+    { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
+    { key: "created", title: "Created", render: (row) => formatDateTime(row.created_at) },
+  ];
 
   return (
     <div>
@@ -89,16 +96,7 @@ export const OperationDetailsPage: React.FC = () => {
 
       <h2>Child operations</h2>
       <Suspense fallback={<Loader label="Загружаем операции" />}>
-        <Table<Operation>
-          columns={[
-            { key: "id", title: "ID", render: (row) => row.operation_id },
-            { key: "type", title: "Type", render: (row) => row.operation_type },
-            { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
-            { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
-            { key: "created", title: "Created", render: (row) => formatDateTime(row.created_at) },
-          ]}
-          data={children}
-        />
+        <Table columns={columns} data={children} />
       </Suspense>
     </div>
   );

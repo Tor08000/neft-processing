@@ -2,11 +2,10 @@ import React, { Suspense, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchBillingSummary, finalizeBillingSummary } from "../api/billing";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
+import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDate } from "../utils/format";
 import { BillingSummaryItem } from "../types/billing";
 import { Loader } from "../components/Loader/Loader";
-
-const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
 const DateRangeFilter = React.lazy(() =>
   import("../components/Filters/DateRangeFilter").then((mod) => ({ default: mod.DateRangeFilter })),
 );
@@ -54,6 +53,29 @@ export const BillingSummaryPage: React.FC = () => {
 
   const handleFinalize = (id: string) => finalizeMutation.mutate(id);
 
+  const columns: Column<BillingSummaryItem>[] = [
+    { key: "date", title: "Date", render: (row) => formatDate(row.date) },
+    { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
+    {
+      key: "amount",
+      title: "Captured",
+      render: (row) => formatAmount(row.total_captured_amount),
+    },
+    { key: "count", title: "Ops", render: (row) => row.operations_count },
+    { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
+    { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+    {
+      key: "actions",
+      title: "Actions",
+      render: (row) =>
+        row.status === "PENDING" ? (
+          <button onClick={() => handleFinalize(row.id)} disabled={finalizeMutation.isPending}>
+            Finalize
+          </button>
+        ) : null,
+    },
+  ];
+
   return (
     <div>
       <div className="page-header">
@@ -92,31 +114,7 @@ export const BillingSummaryPage: React.FC = () => {
       </Suspense>
 
       <Suspense fallback={<Loader label="Загружаем таблицу" />}>
-        <Table<BillingSummaryItem>
-          columns={[
-            { key: "date", title: "Date", render: (row) => formatDate(row.date) },
-            { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
-            {
-              key: "amount",
-              title: "Captured",
-              render: (row) => formatAmount(row.total_captured_amount),
-            },
-            { key: "count", title: "Ops", render: (row) => row.operations_count },
-            { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
-            { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
-            {
-              key: "actions",
-              title: "Actions",
-              render: (row) =>
-                row.status === "PENDING" ? (
-                  <button onClick={() => handleFinalize(row.id)} disabled={finalizeMutation.isPending}>
-                    Finalize
-                  </button>
-                ) : null,
-            },
-          ]}
-          data={data}
-        />
+        <Table columns={columns} data={data} />
       </Suspense>
     </div>
   );
