@@ -13,7 +13,7 @@ const queryClient = new QueryClient();
 
 function AppRoutes() {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<ClientUser | null>(null);
+  const [user, setUser] = useState<ClientUser | undefined>(undefined);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,11 +23,11 @@ function AppRoutes() {
     }
   }, []);
 
-  const { data: profile } = useQuery({
+  const { data: profile } = useQuery<ClientUser, Error, ClientUser, [string, string | null]>({
     queryKey: ["me", token],
-    queryFn: () => fetchMe(token ?? ""),
+    queryFn: ({ queryKey: [, authToken] }) => fetchMe(authToken ?? ""),
     enabled: Boolean(token),
-    onSuccess: (data) => setUser(data),
+    onSuccess: (data: ClientUser) => setUser(data),
   });
 
   const handleLogin = async (email: string, password: string) => {
@@ -44,7 +44,7 @@ function AppRoutes() {
   }
 
   return (
-    <Layout user={profile ?? user ?? undefined}>
+    <Layout user={profile ?? user}>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" />} />
         <Route path="/dashboard" element={<DashboardPage token={token} />} />
