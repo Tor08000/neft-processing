@@ -25,9 +25,9 @@ export const DashboardPage: React.FC = () => {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
 
-  const { data, error, isLoading, isFetching } = useQuery<DashboardData, Error>({
+  const { data, error, isLoading, isFetching } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: async () => {
+    queryFn: async (): Promise<DashboardData> => {
       const [opsToday, billingData, clearingData, healthData] = await Promise.all([
         fetchOperations({
           date_from: getIsoDate(today),
@@ -89,3 +89,5 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+
+export default DashboardPage;

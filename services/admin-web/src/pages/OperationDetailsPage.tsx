@@ -11,19 +11,14 @@ const Table = React.lazy(() => import("../components/Table/Table").then((mod) =>
 
 export const OperationDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const {
-    data: operation,
-    error,
-    isLoading,
-    isFetching,
-  } = useQuery<Operation, Error>({
+  const { data: operation, error, isLoading, isFetching } = useQuery({
     queryKey: ["operations", id],
     queryFn: () => fetchOperation(id as string),
     enabled: Boolean(id),
     staleTime: 30_000,
   });
 
-  const { data: children = [], isFetching: isChildrenFetching } = useQuery<Operation[], Error>({
+  const { data: children = [], isFetching: isChildrenFetching } = useQuery({
     queryKey: ["operations", id, "children"],
     queryFn: () => fetchOperationChildren(id as string),
     enabled: Boolean(id),
@@ -108,3 +103,5 @@ export const OperationDetailsPage: React.FC = () => {
     </div>
   );
 };
+
+export default OperationDetailsPage;

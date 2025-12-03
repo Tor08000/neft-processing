@@ -38,18 +38,12 @@ export const ClearingBatchesPage: React.FC = () => {
     [dateRange.from, dateRange.to, merchantId, status],
   );
 
-  const {
-    data: batchesData = [],
-    isFetching,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery<ClearingBatch[], Error>({
+  const { data: batchesData = [], isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["clearing", filters],
     queryFn: () => fetchClearingBatches(filters),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData ?? [],
   });
 
   useEffect(() => {
@@ -59,7 +53,7 @@ export const ClearingBatchesPage: React.FC = () => {
     }
   }, [batchesData, selectedBatch]);
 
-  const { isFetching: isOperationsFetching } = useQuery<ClearingBatchOperation[], Error>({
+  const { isFetching: isOperationsFetching } = useQuery({
     queryKey: ["clearing", selectedBatch?.id, "operations"],
     queryFn: async () => {
       const res = await fetchClearingBatchOperations(selectedBatch!.id);
@@ -187,3 +181,5 @@ export const ClearingBatchesPage: React.FC = () => {
     </div>
   );
 };
+
+export default ClearingBatchesPage;

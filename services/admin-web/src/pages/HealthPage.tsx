@@ -6,7 +6,7 @@ import { ServiceHealth } from "../types/health";
 import { Loader } from "../components/Loader/Loader";
 
 export const HealthPage: React.FC = () => {
-  const { data = [], isFetching, isLoading, error, refetch } = useQuery<ServiceHealth[], Error>({
+  const { data = [], isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["health"],
     queryFn: fetchHealth,
     staleTime: 30_000,
@@ -40,8 +40,10 @@ export const HealthPage: React.FC = () => {
             )}
           </div>
         ))}
-        {data.length === 0 && !loading && <p>No health data</p>}
+        {data.length === 0 && !isLoading && <p>No health data</p>}
       </div>
     </div>
   );
 };
+
+export default HealthPage;

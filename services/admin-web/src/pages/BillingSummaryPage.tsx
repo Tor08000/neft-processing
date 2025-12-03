@@ -34,12 +34,12 @@ export const BillingSummaryPage: React.FC = () => {
     [dateRange.from, dateRange.to, merchantId, status],
   );
 
-  const { data = [], isFetching, isLoading, error, refetch } = useQuery<BillingSummaryItem[], Error>({
+  const { data = [], isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["billing", filters],
     queryFn: () => fetchBillingSummary(filters),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData ?? [],
   });
 
   const finalizeMutation = useMutation({
@@ -121,3 +121,5 @@ export const BillingSummaryPage: React.FC = () => {
     </div>
   );
 };
+
+export default BillingSummaryPage;
