@@ -170,11 +170,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5555/"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS --max-time 5 -u ${FLOWER_BASIC_AUTH:-admin:change-me} http://localhost:5555/api/workers?refresh=1"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
+    ports:
+      - "5555:5555"
     command:
       - python
       - -m
