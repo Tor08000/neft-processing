@@ -2,7 +2,7 @@
 ================================================================================
 = ОБЩАЯ ИНФОРМАЦИЯ
 ================================================================================
-Текущее время: 2025-12-02T15:58:34.587517
+Текущее время: 2025-12-02T23:52:04.271356
 Корень репозитория: C:\neft-processing
 Имя папки: neft-processing
 
@@ -13,26 +13,41 @@
 [OK ] services/admin-web
 [OK ] services/ai-service
 [OK ] services/workers
+[OK ] services/gateway
+[OK ] services/flower
+[OK ] shared
 [OK ] shared/python/neft_shared
+[OK ] shared/contracts/ai
 [OK ] db
+[OK ] db/init
 [OK ] nginx
 [OK ] infra/k8s
 [OK ] infra/terraform
 [OK ] docs
+[OK ] scripts
 
 ================================================================================
 = GIT-СОСТОЯНИЕ
 ================================================================================
 Текущая ветка: main
 Незакоммиченные изменения:
-M structure.txt
-?? inspect_neft_repo.py
-?? neft_state.txt
+M inspect_neft_repo.py
+ M neft_state.txt
+ M structure.txt
+?? index.html
 Последний коммит:
-e27b38f Merge pull request #65 from Tor08000/codex/fix-admin-panel-backend-functionality
+85cef3b Merge pull request #84 from Tor08000/codex/conduct-complete-audit-and-improvements
 
 ================================================================================
-= СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web)
+= DOCKER COMPOSE
+================================================================================
+Найден docker-compose.yml: C:\neft-processing\docker-compose.yml
+Не удалось получить список сервисов docker compose (это не ошибка кода, может быть не установлен docker или docker compose).
+stderr: ""docker compose config --services"" ­Ґ пў«пҐвбп ў­гваҐ­­Ґ© Ё«Ё ў­Ґи­Ґ©
+Є®¬ ­¤®©, ЁбЇ®«­пҐ¬®© Їа®Ја ¬¬®© Ё«Ё Ї ЄҐв­л¬ д ©«®¬.
+
+================================================================================
+= СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web, gateway, flower)
 ================================================================================
 
 --- core-api ---
@@ -46,6 +61,7 @@ main.py найден в app/: services\core-api\app\main.py
    [OK] app/models
    [OK] app/services
    [OK] app/tests
+   [  ] app/tasks
 
 --- auth-host ---
 [OK] Dockerfile
@@ -58,6 +74,7 @@ main.py найден в app/: services\auth-host\app\main.py
    [OK] app/models
    [OK] app/services
    [OK] app/tests
+   [  ] app/tasks
 
 --- workers ---
 [OK] Dockerfile
@@ -69,7 +86,8 @@ main.py найден в app/: services\workers\app\main.py
    [  ] app/schemas
    [  ] app/models
    [  ] app/services
-   [  ] app/tests
+   [OK] app/tests
+   [OK] app/tasks
 
 --- ai-service ---
 [OK] Dockerfile
@@ -82,17 +100,27 @@ main.py найден в app/: services\ai-service\app\main.py
    [  ] app/models
    [  ] app/services
    [OK] app/tests
+   [OK] app/tasks
 
 --- admin-web ---
 [OK] Dockerfile
-[  ] pyproject.toml
-[  ] requirements.txt
-[!!] app/
+[OK] package.json
+[OK] src/
+
+--- gateway ---
+[!!] Dockerfile
+[  ] requirements.txt (если нужен)
+[  ] app/ (если применимо)
+
+--- flower ---
+[OK] Dockerfile
+[OK] requirements.txt (если нужен)
+[  ] app/ (если применимо)
 
 ================================================================================
 = ALEMBIC-МИГРАЦИИ core-api
 ================================================================================
-Всего миграций: 9
+Всего миграций: 13
 - 20251112_0001_core.py
 - 20251118_0002_operations_journal.py
 - 20251120_0003_limits_rules_v2.py
@@ -100,7 +128,11 @@ main.py найден в app/: services\ai-service\app\main.py
 - 20251206_0004_operations_product_fields.py
 - 20251215_0005_add_created_at_to_cards.py
 - 20251220_0006_auto_fix.py
+- 20251230_0007_add_capture_refund_fields_to_operations.py
 - 2025_11_01_init.py
+- 20260101_0008_billing_summary.py
+- 20260110_0009_billing_summary_extend.py
+- 20260110_0010_clearing.py
 - __init__.py
 
 ================================================================================
@@ -121,9 +153,11 @@ main.py найден в app/: services\ai-service\app\main.py
 - test_transactions_service.py
 
 --- auth-host tests ---
-Количество файлов тестов: 2
+Количество файлов тестов: 4
 - test_auth.py
+- test_auth_me.py
 - test_keys.py
+- test_processing.py
 
 --- ai-service tests ---
 Количество файлов тестов: 2
@@ -131,14 +165,18 @@ main.py найден в app/: services\ai-service\app\main.py
 - test_score.py
 
 --- workers tasks ---
-Файлы задач Celery (3):
+Файлы задач Celery (5):
 - __init__.py
 - ai.py
+- billing.py
+- clearing.py
 - limits.py
 
 ================================================================================
 = ENDPOINTS core-api (api/v1/endpoints)
 ================================================================================
+- FILE admin_billing.py
+- FILE admin_clearing.py
 - FILE admin_dashboard.py
 - FILE admin_limits.py
 - FILE admin_merchants.py
@@ -153,6 +191,54 @@ main.py найден в app/: services\ai-service\app\main.py
 - FILE 00_extensions.sql
 - FILE 01_schema.sql
 - FILE 02_seed.sql
+
+================================================================================
+= SHARED-ПАКЕТЫ
+================================================================================
+
+--- shared/python/neft_shared ---
+- FILE __init__.py
+- FILE logging_setup.py
+- DIR  schema
+- FILE settings.py
+
+--- shared/contracts/ai ---
+- FILE prompts.md
+
+Проверка импорта neft_shared (python -m):
+Импорт neft_shared не удался (это не обязательно ошибка, может не быть PYTHONPATH).
+stderr: Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'neft_shared'
+
+================================================================================
+= NGINX КОНФИГИ
+================================================================================
+
+--- /nginx ---
+- DIR  conf.d
+- DIR  html
+- FILE nginx.conf
+- FILE nginx.tls.conf
+- DIR  tls
+
+Файлы в /nginx/conf.d:
+- FILE default.conf
+
+--- services/gateway/nginx.conf ---
+Файл найден: C:\neft-processing\services\gateway\nginx.conf
+
+================================================================================
+= СКРИПТЫ (root и scripts/)
+================================================================================
+
+Файлы *.cmd в корне:
+- admin_tests.cmd
+- run_tests.cmd
+- tree_to_file.cmd
+
+Каталог scripts/:
+- FILE get_admin_token.cmd
 
 
 [ДИАГНОСТИКА ЗАВЕРШЕНА]

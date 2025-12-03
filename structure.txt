@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 000000A9 C21C:E066
+Серийный номер тома: 00000009 C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -9,10 +9,15 @@ C:\NEFT-PROCESSING
 |   admin_tests.cmd
 |   curl
 |   docker-compose.yml
+|   index.html
+|   inspect_neft_repo.py
 |   Makefile
+|   neft_state.txt
+|   pytest.ini
 |   README.md
 |   req.json
 |   run_tests.cmd
+|   sitecustomize.py
 |   structure.txt
 |   tree_to_file.cmd
 |   
@@ -1354,6 +1359,7 @@ C:\NEFT-PROCESSING
 |   |       0001-use-fastapi.md
 |   |       
 |   \---RUNBOOKS
+|           admin_web.md
 |           db_migrations_core_api.md
 |           deploy-prod.md
 |           restore-backup.md
@@ -1395,6 +1401,9 @@ C:\NEFT-PROCESSING
 |           neft-local.crt
 |           neft-local.key
 |           
++---scripts
+|       get_admin_token.cmd
+|       
 +---services
 |   +---admin-web
 |   |   |   .dockerignore
@@ -1422,10 +1431,57 @@ C:\NEFT-PROCESSING
 |   |       |   vite-env.d.ts
 |   |       |   
 |   |       +---api
+|   |       |       auth.ts
+|   |       |       billing.ts
+|   |       |       clearing.ts
 |   |       |       client.ts
+|   |       |       health.ts
+|   |       |       operations.ts
 |   |       |       
-|   |       \---store
-|   |               auth.tsx
+|   |       +---auth
+|   |       |       AuthContext.tsx
+|   |       |       
+|   |       +---components
+|   |       |   +---Filters
+|   |       |   |       DateRangeFilter.tsx
+|   |       |   |       SelectFilter.tsx
+|   |       |   |       
+|   |       |   +---Layout
+|   |       |   |       Layout.tsx
+|   |       |   |       
+|   |       |   +---Pagination
+|   |       |   |       Pagination.tsx
+|   |       |   |       
+|   |       |   +---StatusBadge
+|   |       |   |       StatusBadge.tsx
+|   |       |   |       
+|   |       |   +---SummaryCard
+|   |       |   |       SummaryCard.tsx
+|   |       |   |       
+|   |       |   \---Table
+|   |       |           Table.tsx
+|   |       |           
+|   |       +---pages
+|   |       |       BillingSummaryPage.tsx
+|   |       |       ClearingBatchesPage.tsx
+|   |       |       DashboardPage.tsx
+|   |       |       HealthPage.tsx
+|   |       |       LoginPage.tsx
+|   |       |       OperationDetailsPage.tsx
+|   |       |       OperationsListPage.tsx
+|   |       |       
+|   |       +---router
+|   |       |       index.tsx
+|   |       |       router-shim.tsx
+|   |       |       
+|   |       +---types
+|   |       |       billing.ts
+|   |       |       clearing.ts
+|   |       |       health.ts
+|   |       |       operations.ts
+|   |       |       
+|   |       \---utils
+|   |               format.ts
 |   |               
 |   +---ai-service
 |   |   |   Dockerfile
@@ -1465,6 +1521,7 @@ C:\NEFT-PROCESSING
 |   +---auth-host
 |   |   |   .env
 |   |   |   Dockerfile
+|   |   |   entrypoint.sh
 |   |   |   pyproject.toml
 |   |   |   requirements.txt
 |   |   |   
@@ -1515,8 +1572,9 @@ C:\NEFT-PROCESSING
 |   |       |       
 |   |       \---tests
 |   |               test_auth.py
+|   |               test_auth_me.py
 |   |               test_keys.py
-|   |               __init__.py
+|   |               test_processing.py
 |   |               
 |   +---core-api
 |   |   |   conftest.py
@@ -1551,7 +1609,11 @@ C:\NEFT-PROCESSING
 |   |   |   |           20251206_0004_operations_product_fields.py
 |   |   |   |           20251215_0005_add_created_at_to_cards.py
 |   |   |   |           20251220_0006_auto_fix.py
+|   |   |   |           20251230_0007_add_capture_refund_fields_to_operations.py
 |   |   |   |           2025_11_01_init.py
+|   |   |   |           20260101_0008_billing_summary.py
+|   |   |   |           20260110_0009_billing_summary_extend.py
+|   |   |   |           20260110_0010_clearing.py
 |   |   |   |           __init__.py
 |   |   |   |           
 |   |   |   +---api
@@ -1575,6 +1637,8 @@ C:\NEFT-PROCESSING
 |   |   |   |   |       
 |   |   |   |   \---v1
 |   |   |   |       \---endpoints
+|   |   |   |               admin_billing.py
+|   |   |   |               admin_clearing.py
 |   |   |   |               admin_dashboard.py
 |   |   |   |               admin_limits.py
 |   |   |   |               admin_merchants.py
@@ -1590,7 +1654,10 @@ C:\NEFT-PROCESSING
 |   |   |   |       db.py
 |   |   |   |       
 |   |   |   +---models
+|   |   |   |       billing_summary.py
 |   |   |   |       card.py
+|   |   |   |       clearing_batch.py
+|   |   |   |       clearing_batch_operation.py
 |   |   |   |       client.py
 |   |   |   |       groups.py
 |   |   |   |       limits.py
@@ -1612,6 +1679,7 @@ C:\NEFT-PROCESSING
 |   |   |   |       admin_dashboard.py
 |   |   |   |       admin_merchants.py
 |   |   |   |       cards.py
+|   |   |   |       clearing.py
 |   |   |   |       client.py
 |   |   |   |       groups_admin.py
 |   |   |   |       limits_admin.py
@@ -1631,12 +1699,14 @@ C:\NEFT-PROCESSING
 |   |   |   +---services
 |   |   |   |       admin_auth.py
 |   |   |   |       bootstrap.py
+|   |   |   |       clearing.py
 |   |   |   |       client_service.py
 |   |   |   |       limits.py
 |   |   |   |       limits_engine.py
 |   |   |   |       operations_query.py
 |   |   |   |       reference_validation.py
 |   |   |   |       reports.py
+|   |   |   |       reports_billing.py
 |   |   |   |       transactions.py
 |   |   |   |       __init__.py
 |   |   |   |       
@@ -1669,6 +1739,10 @@ C:\NEFT-PROCESSING
 |   |               user.py
 |   |               __init__.py
 |   |               
+|   +---flower
+|   |       Dockerfile
+|   |       requirements.txt
+|   |       
 |   +---gateway
 |   |       nginx.conf
 |   |       
@@ -1686,10 +1760,15 @@ C:\NEFT-PROCESSING
 |           |   main.py
 |           |   __init__.py
 |           |   
-|           \---tasks
-|                   ai.py
-|                   limits.py
-|                   __init__.py
+|           +---tasks
+|           |       ai.py
+|           |       billing.py
+|           |       clearing.py
+|           |       limits.py
+|           |       __init__.py
+|           |       
+|           \---tests
+|                   test_tasks_smoke.py
 |                   
 \---shared
     |   __init__.py
