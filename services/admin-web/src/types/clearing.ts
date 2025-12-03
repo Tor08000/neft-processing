@@ -10,6 +10,7 @@ export interface ClearingBatch {
   status: ClearingStatus;
   created_at: string;
   updated_at: string;
+  operations?: ClearingBatchOperation[] | null;
 }
 
 export interface ClearingBatchOperation {
