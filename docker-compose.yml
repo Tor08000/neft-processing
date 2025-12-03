@@ -47,6 +47,22 @@ services:
     ports:
       - "4173:80"
 
+  client-web:
+    build:
+      context: .
+      dockerfile: services/client-web/Dockerfile
+    container_name: neft-processing-client-web-1
+    environment:
+      SERVICE_NAME: client-web
+      VITE_CLIENT_BASE_PATH: /client/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "4174:80"
+
   auth-host:
     build:
       context: .

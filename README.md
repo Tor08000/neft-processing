@@ -8,9 +8,10 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
    - `ADMIN_PASSWORD`
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов:
-   - Core API напрямую: `http://localhost:8001/api/v1/health`
-   - Через gateway: `http://localhost/api/core/api/v1/health`
-   - Admin UI: `http://localhost/admin/`
+ - Core API напрямую: `http://localhost:8001/api/v1/health`
+  - Через gateway: `http://localhost/api/core/api/v1/health`
+  - Admin UI: `http://localhost/admin/`
+  - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
 
 ### Вход в админ-панель
@@ -52,6 +53,13 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
     * `/api/core/api/v1/admin/operations`
 * Клиент использует React Query для кэширования (операции: `staleTime=30s`, дашборд: `staleTime=5s`) и динамическую
   подгрузку страниц/тяжёлых компонентов через `React.lazy + Suspense`, чтобы ускорить initial load.
+
+### Client Web — клиентский кабинет
+
+* Запуск окружения с фронтом: `docker compose up -d --build gateway client-web` (или полный стек `docker compose up -d --build`).
+* Открыть в браузере: `http://localhost/client/` (или напрямую через контейнер client-web: `http://localhost:4174/client/`).
+* Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/client/api/v1/...` через gateway.
+* Базовый сценарий: форма логина → получение токена `auth-host` → загрузка дашборда и списков операций/лимитов по организации.
 
 ### Разделение публичного и admin API
 
