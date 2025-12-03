@@ -17,6 +17,7 @@ from app.db import init_db, SessionLocal, get_db
 from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
 from app.routers.admin import router as admin_router
+from app.routers.client import router as client_router
 from app.services.transactions import derive_tx_type
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -279,6 +280,7 @@ if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
 
 app.include_router(admin_router)
+app.include_router(client_router)
 
 
 # -----------------------------------------------------------------------------

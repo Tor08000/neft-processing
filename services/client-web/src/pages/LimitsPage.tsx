@@ -1,10 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
+import { fetchLimits } from "../api";
 import type { Limit } from "../types";
 
 interface LimitsPageProps {
-  limits: Limit[];
+  token: string;
 }
 
-export function LimitsPage({ limits }: LimitsPageProps) {
+export function LimitsPage({ token }: LimitsPageProps) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["limits", token],
+    queryFn: () => fetchLimits(token),
+  });
+  const limits: Limit[] = data ?? [];
+
+  if (isLoading) {
+    return <div className="card">Загрузка лимитов...</div>;
+  }
+
+  if (error) {
+    return <div className="card error">Не удалось загрузить лимиты</div>;
+  }
   return (
     <div className="card">
       <div className="section-title">

@@ -1,11 +1,27 @@
+import { useQuery } from "@tanstack/react-query";
+import { fetchDashboard } from "../api";
 import type { DashboardSummary, Operation } from "../types";
 
 interface DashboardPageProps {
-  summary: DashboardSummary;
-  lastOperations: Operation[];
+  token: string;
 }
 
-export function DashboardPage({ summary, lastOperations }: DashboardPageProps) {
+export function DashboardPage({ token }: DashboardPageProps) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["dashboard", token],
+    queryFn: () => fetchDashboard(token),
+  });
+
+  if (isLoading) {
+    return <div className="card">Загрузка дашборда...</div>;
+  }
+
+  if (error || !data) {
+    return <div className="card error">Не удалось загрузить дашборд</div>;
+  }
+
+  const summary: DashboardSummary = data.summary;
+  const lastOperations: Operation[] = data.recentOperations;
   return (
     <div className="grid">
       <div className="grid two">

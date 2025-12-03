@@ -44,7 +44,13 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return hmac.compare_digest(recalculated.split("$", 1)[1], digest_hex)
 
 
-def create_access_token(sub: str, roles: list[str]) -> str:
+def create_access_token(
+    sub: str,
+    roles: list[str],
+    *,
+    subject_type: str = "user",
+    client_id: str | None = None,
+) -> str:
     now = _now_utc()
     expire = now + timedelta(minutes=settings.access_token_expires_min)
     payload = {
@@ -54,7 +60,10 @@ def create_access_token(sub: str, roles: list[str]) -> str:
         "iss": ISSUER,
         "aud": AUDIENCE,
         "roles": roles,
+        "subject_type": subject_type,
     }
+    if client_id:
+        payload["client_id"] = client_id
     private_key = get_private_key_pem()
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
