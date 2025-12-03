@@ -2,6 +2,7 @@
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "20260701_0009_client_portal"
@@ -22,7 +23,7 @@ def upgrade() -> None:
     op.create_table(
         "client_cards",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("client_id", sa.BigInteger(), nullable=False, index=True),
+        sa.Column("client_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column("card_id", sa.String(), nullable=False, index=True),
         sa.Column("pan_masked", sa.String(), nullable=True),
         sa.Column("status", sa.String(), server_default="ACTIVE", nullable=False),
@@ -35,7 +36,7 @@ def upgrade() -> None:
     op.create_table(
         "client_operations",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("client_id", sa.BigInteger(), nullable=False, index=True),
+        sa.Column("client_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column("card_id", sa.String(), nullable=True, index=True),
         sa.Column("operation_type", sa.String(), nullable=False, index=True),
         sa.Column("status", sa.String(), nullable=False, index=True),
@@ -54,7 +55,7 @@ def upgrade() -> None:
     op.create_table(
         "client_limits",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("client_id", sa.BigInteger(), nullable=False, index=True),
+        sa.Column("client_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
         sa.Column("limit_type", sa.String(), nullable=False),
         sa.Column("amount", sa.Numeric(), nullable=False),
         sa.Column("currency", sa.String(length=3), server_default="RUB", nullable=False),

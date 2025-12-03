@@ -1,5 +1,6 @@
 # services/core-api/app/schemas.py
 from typing import Optional, List
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 # ===== Clients =====
@@ -10,13 +11,13 @@ class ClientCreate(BaseModel):
     phone: Optional[str] = None
 
 class ClientOut(ClientCreate):
-    id: int
+    id: UUID
     is_active: bool = True
     model_config = ConfigDict(from_attributes=True)
 
 # ===== Cards =====
 class CardCreate(BaseModel):
-    client_id: int
+    client_id: UUID
     pan_masked: str
     token: str
     limit_daily: float = 0.0

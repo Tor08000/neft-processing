@@ -1,6 +1,6 @@
 -- ===== CORE ENTITIES =====
 CREATE TABLE IF NOT EXISTS clients (
-  id BIGSERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id BIGINT,
   name TEXT,
   status TEXT DEFAULT 'ACTIVE',
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE TABLE IF NOT EXISTS client_cards (
   id BIGSERIAL PRIMARY KEY,
-  client_id BIGINT REFERENCES clients(id),
+  client_id UUID REFERENCES clients(id),
   card_id TEXT NOT NULL,
   pan_masked TEXT,
   status TEXT DEFAULT 'ACTIVE',
@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS client_cards_client_idx ON client_cards(client_id);
 
 CREATE TABLE IF NOT EXISTS client_operations (
   id BIGSERIAL PRIMARY KEY,
-  client_id BIGINT REFERENCES clients(id),
+  client_id UUID REFERENCES clients(id),
   card_id TEXT,
   operation_type TEXT,
   status TEXT,
@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS client_operations_date_idx ON client_operations(perfo
 
 CREATE TABLE IF NOT EXISTS client_limits (
   id BIGSERIAL PRIMARY KEY,
-  client_id BIGINT REFERENCES clients(id),
+  client_id UUID REFERENCES clients(id),
   limit_type TEXT,
   amount NUMERIC,
   currency TEXT DEFAULT 'RUB',
@@ -52,7 +52,7 @@ CREATE INDEX IF NOT EXISTS client_limits_client_idx ON client_limits(client_id);
 CREATE TABLE IF NOT EXISTS wallets (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT,
-  client_id BIGINT REFERENCES clients(id),
+  client_id UUID REFERENCES clients(id),
   currency TEXT DEFAULT 'RUB',
   balance NUMERIC DEFAULT 0,
   hold NUMERIC DEFAULT 0,
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS wallets (
 CREATE TABLE IF NOT EXISTS cards (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT,
-  client_id BIGINT REFERENCES clients(id),
+  client_id UUID REFERENCES clients(id),
   wallet_id BIGINT REFERENCES wallets(id),
   token TEXT UNIQUE,
   status TEXT DEFAULT 'ACTIVE',
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   ext_id TEXT,
   state TEXT,            -- PRE_AUTH/CAPTURED/DECLINED/REVERSED
   reason TEXT,
-  client_id BIGINT,
+  client_id UUID,
   wallet_id BIGINT,
   card_id BIGINT,
   azs_id BIGINT,
@@ -218,14 +218,14 @@ CREATE TABLE IF NOT EXISTS coupons (
 CREATE TABLE IF NOT EXISTS kyc (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT,
-  client_id BIGINT,
+  client_id UUID,
   files JSONB,
   status TEXT
 );
 CREATE TABLE IF NOT EXISTS aml_case (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT,
-  client_id BIGINT,
+  client_id UUID,
   data JSONB,
   status TEXT
 );

@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Column, DateTime, String
+import uuid
+
+from sqlalchemy import Column, DateTime, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.db import Base
@@ -7,7 +10,7 @@ from app.db import Base
 class Client(Base):
     __tablename__ = "clients"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Человекочитаемое имя клиента (компания/физлицо)
     name = Column(String, nullable=False)
