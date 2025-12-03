@@ -1,0 +1,12 @@
+{
+  "uid": "neft-business",
+  "title": "Business Metrics",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {"type": "graph", "title": "Operations per minute", "datasource": "Prometheus", "targets": [{"expr": "rate(http_requests_total[1m])"}], "id": 1},
+    {"type": "stat", "title": "Refunds", "datasource": "Prometheus", "targets": [{"expr": "increase(http_requests_total{path=\"/refund\"}[1h])"}], "id": 2},
+    {"type": "graph", "title": "Clearing batches", "datasource": "Prometheus", "targets": [{"expr": "increase(http_requests_total{path=\"/clearing\"}[1h])"}], "id": 3},
+    {"type": "graph", "title": "Billing summary", "datasource": "Prometheus", "targets": [{"expr": "rate(http_requests_total{path=~\"/billing.*\"}[5m])"}], "id": 4}
+  ]
+}

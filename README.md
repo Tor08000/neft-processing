@@ -11,6 +11,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
    - Core API напрямую: `http://localhost:8001/api/v1/health`
    - Через gateway: `http://localhost/api/core/api/v1/health`
    - Admin UI: `http://localhost/admin/`
+5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
 
 ### Вход в админ-панель
 

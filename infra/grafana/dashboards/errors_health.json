@@ -1,0 +1,12 @@
+{
+  "uid": "neft-errors",
+  "title": "Errors & Health",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {"type": "graph", "title": "Exceptions", "datasource": "Prometheus", "targets": [{"expr": "rate(http_exceptions_total[5m])"}], "id": 1},
+    {"type": "graph", "title": "4xx/5xx", "datasource": "Prometheus", "targets": [{"expr": "rate(http_requests_total{status=~\"4..|5..\"}[5m])"}], "id": 2},
+    {"type": "graph", "title": "Redis failures", "datasource": "Prometheus", "targets": [{"expr": "rate(celery_tasks_failed_total[5m])"}], "id": 3},
+    {"type": "graph", "title": "JWT failures", "datasource": "Prometheus", "targets": [{"expr": "rate(http_requests_total{path=~\"/auth.*\",status=~\"4..|5..\"}[5m])"}], "id": 4}
+  ]
+}

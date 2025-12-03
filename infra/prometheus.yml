@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs:
+      - targets: ['gateway:80']
+  - job_name: core-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['core-api:8000']
+  - job_name: auth-host
+    metrics_path: /api/v1/metrics
+    static_configs:
+      - targets: ['auth-host:8000']
+  - job_name: ai-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ai-service:8000']
+  - job_name: workers
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['workers:8000']
