@@ -1,7 +1,13 @@
 # Changelog
 
-## v0.1.0-admin-ui-online
+## v0.1.1
+- Milestone v0.1.1 — Admin UI stable, TS filters synced, gateway stabilized.
+- Admin UI builds cleanly with TypeScript validation and synced OperationQuery interface (including date aliases).
+- Gateway `/admin/` routing stabilized for SPA behavior; backend operations, billing, and clearing endpoints aligned with admin-web expectations.
+- End-to-end flow verified (Auth → Capture → Billing summary → Clearing batches); diagnostic snapshot tooling extended.
+- Annotated tag `v0.1.1` created; see `docs/releases/v0.1.1.md` for full release notes.
 
+## v0.1.0-admin-ui-online
 - Поднята локальная среда со всеми сервисами (Postgres, Redis, Core API, Auth Host, AI Service, Workers, Nginx/Gateway).
 - Админ-панель доступна по `http://localhost/admin/`, авторизация через переменные `ADMIN_EMAIL` и `ADMIN_PASSWORD`.
 - API проходит базовые health-check проверки, стабильная работа подтверждена.
