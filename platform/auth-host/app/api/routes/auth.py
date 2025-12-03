@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Tuple
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
@@ -29,6 +31,7 @@ from app.services.keys import get_public_key_pem
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _admin_credentials() -> tuple[str, str]:
@@ -85,11 +88,12 @@ async def register(payload: RegisterRequest) -> UserResponse:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_exists")
 
     password_hash = hash_password(payload.password)
+    new_user_id = uuid4()
     async with get_conn() as (conn, cur):
         await cur.execute(
-            "INSERT INTO users (email, full_name, password_hash) VALUES (%s, %s, %s)"
+            "INSERT INTO users (id, email, full_name, password_hash) VALUES (%s, %s, %s, %s)"
             " RETURNING id, email, full_name, password_hash, is_active, created_at",
-            (payload.email, payload.full_name, password_hash),
+            (new_user_id, payload.email, payload.full_name, password_hash),
         )
         row = await cur.fetchone()
         await conn.commit()
@@ -118,14 +122,23 @@ async def login(payload: LoginRequest) -> TokenResponse:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         roles = ["ADMIN"]
     else:
-        user = await _get_user_from_db(email_lower)
+        try:
+            user = await _get_user_from_db(email_lower)
+        except Exception:
+            logger.exception("Failed to fetch user during login", extra={"email": email_lower})
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
+
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
         if not verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        client_id, _ = await _find_client_id(payload.email)
+        try:
+            client_id, _ = await _find_client_id(payload.email)
+        except Exception:
+            logger.exception("Failed to fetch client during login", extra={"email": email_lower})
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
         if client_id:
             roles = ["CLIENT_USER"]
             subject_type = "client_user"

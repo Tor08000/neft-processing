@@ -39,8 +39,12 @@ def rsa_pair() -> Tuple[str, str]:
 def _reset_keys_module(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTH_JWT_PRIVATE_KEY", raising=False)
     monkeypatch.delenv("AUTH_JWT_PUBLIC_KEY", raising=False)
+    import app.services as app_services
+
+    sys.modules.setdefault("app.services", app_services)
     keys._PRIVATE_KEY_PEM = None
     keys._PUBLIC_KEY_PEM = None
+    sys.modules.setdefault("app.services.keys", keys)
 
 
 def test_keys_generated_when_env_missing(monkeypatch: pytest.MonkeyPatch):

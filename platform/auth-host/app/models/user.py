@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 @dataclass
 class User:
-    id: int
+    id: str
     email: str
     full_name: str | None
     password_hash: str
@@ -17,7 +17,7 @@ class User:
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> "User":
         return cls(
-            id=row["id"],
+            id=str(row["id"]),
             email=row["email"],
             full_name=row.get("full_name"),
             password_hash=row["password_hash"],

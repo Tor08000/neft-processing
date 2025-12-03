@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.api.routes import processing
+from app.lib import core_api
 from app.main import app
 
 
@@ -30,8 +32,9 @@ def test_terminal_auth_happy_path(monkeypatch):
             "limits": {"daily_limit": 10000},
         }
 
-    monkeypatch.setattr("app.api.routes.processing.proxy_terminal_auth", fake_proxy)
-    monkeypatch.setattr("app.lib.core_api.proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr(processing, "proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr(core_api, "proxy_terminal_auth", fake_proxy)
+    assert processing.proxy_terminal_auth is fake_proxy
 
     response = _client().post("/api/v1/processing/terminal-auth", json=payload)
 
@@ -47,8 +50,9 @@ def test_terminal_auth_error_path(monkeypatch):
     async def fake_proxy(_payload):
         raise HTTPException(status_code=402, detail="limit_exceeded")
 
-    monkeypatch.setattr("app.api.routes.processing.proxy_terminal_auth", fake_proxy)
-    monkeypatch.setattr("app.lib.core_api.proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr(processing, "proxy_terminal_auth", fake_proxy)
+    monkeypatch.setattr(core_api, "proxy_terminal_auth", fake_proxy)
+    assert processing.proxy_terminal_auth is fake_proxy
 
     response = _client().post(
         "/api/v1/processing/terminal-auth",
@@ -74,8 +78,9 @@ def test_terminal_capture_success(monkeypatch):
         captured["amount"] = amount
         return {"operation_id": "op-cap-1", "status": "CAPTURED"}
 
-    monkeypatch.setattr("app.api.routes.processing.capture_operation_via_core_api", fake_capture)
-    monkeypatch.setattr("app.lib.core_api.capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr(processing, "capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr(core_api, "capture_operation_via_core_api", fake_capture)
+    assert processing.capture_operation_via_core_api is fake_capture
 
     response = _client().post(
         "/api/v1/processing/terminal-capture",
@@ -100,8 +105,9 @@ def test_terminal_capture_error(monkeypatch):
         assert amount is None
         raise HTTPException(status_code=404, detail="auth_operation_not_found")
 
-    monkeypatch.setattr("app.api.routes.processing.capture_operation_via_core_api", fake_capture)
-    monkeypatch.setattr("app.lib.core_api.capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr(processing, "capture_operation_via_core_api", fake_capture)
+    monkeypatch.setattr(core_api, "capture_operation_via_core_api", fake_capture)
+    assert processing.capture_operation_via_core_api is fake_capture
 
     response = _client().post(
         "/api/v1/processing/terminal-capture",

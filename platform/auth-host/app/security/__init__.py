@@ -90,16 +90,15 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
 
     payload = decode_access_token(credentials.credentials)
-    sub = payload.get("sub")
-    try:
-        user_id = int(sub)
-    except (TypeError, ValueError):
+    email = payload.get("sub")
+    if not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
 
     async with get_conn() as (_, cur):
         await cur.execute(
-            "SELECT id, email, full_name, password_hash, is_active, created_at FROM users WHERE id=%s",
-            (user_id,),
+            "SELECT id, email, full_name, password_hash, is_active, created_at"
+            " FROM users WHERE lower(email) = lower(%s)",
+            (email,),
         )
         row = await cur.fetchone()
         if not row:

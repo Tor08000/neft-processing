@@ -41,11 +41,15 @@ async def init_db() -> None:
                     id UUID PRIMARY KEY,
                     tenant_id BIGINT NOT NULL,
                     name TEXT NOT NULL,
-                    email TEXT UNIQUE NOT NULL,
+                    email TEXT,
                     full_name TEXT,
                     status TEXT DEFAULT 'ACTIVE'
                 )
                 """
+            )
+
+            await cur.execute(
+                "ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT"
             )
 
             await cur.execute(
@@ -58,13 +62,85 @@ async def init_db() -> None:
             await cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
-                    id BIGSERIAL PRIMARY KEY,
+                    id UUID PRIMARY KEY,
                     email TEXT UNIQUE NOT NULL,
                     full_name TEXT,
                     password_hash TEXT NOT NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMPTZ DEFAULT now()
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
+                """
+            )
+
+            await cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'users'
+                          AND column_name = 'id'
+                          AND table_schema = 'public'
+                          AND data_type <> 'uuid'
+                    ) THEN
+                        ALTER TABLE users ALTER COLUMN id DROP DEFAULT;
+                        ALTER TABLE users ALTER COLUMN id TYPE uuid USING (
+                            CASE
+                                WHEN pg_typeof(id)::text = 'uuid' THEN id
+                                ELSE md5(id::text || clock_timestamp()::text)::uuid
+                            END
+                        );
+                    END IF;
+                END$$;
+                """
+            )
+
+            await cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT")
+            await cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"
+            )
+            await cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN"
+            )
+            await cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ"
+            )
+            await cur.execute(
+                "UPDATE users SET is_active = TRUE WHERE is_active IS NULL"
+            )
+            await cur.execute(
+                "UPDATE users SET created_at = now() WHERE created_at IS NULL"
+            )
+            await cur.execute(
+                "UPDATE users SET password_hash = '' WHERE password_hash IS NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN id SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN email SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN is_active SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN is_active SET DEFAULT TRUE"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN created_at SET NOT NULL"
+            )
+            await cur.execute(
+                "ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now()"
+            )
+
+            await cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx
+                ON users (lower(email))
                 """
             )
 
