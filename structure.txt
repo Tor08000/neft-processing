@@ -1,5 +1,5 @@
 Структура папок тома система
-Серийный номер тома: 00000009 C21C:E066
+Серийный номер тома: 000000FE C21C:E066
 C:\NEFT-PROCESSING
 |   .dockerignore
 |   .env
@@ -7,6 +7,9 @@ C:\NEFT-PROCESSING
 |   .gitignore
 |   admin_login.json
 |   admin_tests.cmd
+|   ai_tests.cmd
+|   auth_tests.cmd
+|   CHANGELOG.md
 |   curl
 |   docker-compose.yml
 |   index.html
@@ -1350,21 +1353,62 @@ C:\NEFT-PROCESSING
 |           02_seed.sql
 |           
 +---docs
+|   |   admin-web-performance.md
 |   |   API.md
+|   |   architecture-audit.md
 |   |   ARCHITECTURE.md
 |   |   auth-host.md
 |   |   core-api.md
+|   |   gateway_performance.md
+|   |   operations-indexes.md
+|   |   pydantic_migration_notes.md
 |   |   
 |   +---ADR
 |   |       0001-use-fastapi.md
+|   |       
+|   +---diag
+|   |       inspect_neft_repo.py
+|   |       neft_state_2025-12-02.txt
+|   |       neft_state_2025-12-03.txt
+|   |       neft_state_2025-12-03_v0.1.3.txt
+|   |       neft_state_20251203_1649.txt
+|   |       observability.md
+|   |       README.md
+|   |       
+|   +---releases
+|   |       v0.1.1.md
+|   |       v0.1.1_kodex_prompt.txt
+|   |       v0.1.3.md
+|   |       v0.1.3_kodex_prompt.txt
+|   |       v0.1.4.md
 |   |       
 |   \---RUNBOOKS
 |           admin_web.md
 |           db_migrations_core_api.md
 |           deploy-prod.md
 |           restore-backup.md
+|           service_tests.md
 |           
 +---infra
+|   |   otel-collector-config.yaml
+|   |   prometheus.yml
+|   |   
+|   +---grafana
+|   |   |   grafana.ini
+|   |   |   
+|   |   +---dashboards
+|   |   |       business_metrics.json
+|   |   |       celery.json
+|   |   |       errors_health.json
+|   |   |       system_overview.json
+|   |   |       
+|   |   \---provisioning
+|   |       +---dashboards
+|   |       |       dashboard.yml
+|   |       |       
+|   |       \---datasources
+|   |               datasource.yml
+|   |               
 |   +---k8s
 |   |   +---base
 |   |   |       ai-service-deployment.yaml
@@ -1402,7 +1446,11 @@ C:\NEFT-PROCESSING
 |           neft-local.key
 |           
 +---scripts
+|       check_gateway.sh
+|       check_migrations.py
+|       dump_schema.py
 |       get_admin_token.cmd
+|       print_alembic_state.py
 |       
 +---services
 |   +---admin-web
@@ -1424,82 +1472,104 @@ C:\NEFT-PROCESSING
 |   |   +---public
 |   |   |       vite.svg
 |   |   |       
-|   |   \---src
-|   |       |   App.tsx
-|   |       |   index.css
-|   |       |   main.tsx
-|   |       |   vite-env.d.ts
-|   |       |   
-|   |       +---api
-|   |       |       auth.ts
-|   |       |       billing.ts
-|   |       |       clearing.ts
-|   |       |       client.ts
-|   |       |       health.ts
-|   |       |       operations.ts
-|   |       |       
-|   |       +---auth
-|   |       |       AuthContext.tsx
-|   |       |       
-|   |       +---components
-|   |       |   +---Filters
-|   |       |   |       DateRangeFilter.tsx
-|   |       |   |       SelectFilter.tsx
-|   |       |   |       
-|   |       |   +---Layout
-|   |       |   |       Layout.tsx
-|   |       |   |       
-|   |       |   +---Pagination
-|   |       |   |       Pagination.tsx
-|   |       |   |       
-|   |       |   +---StatusBadge
-|   |       |   |       StatusBadge.tsx
-|   |       |   |       
-|   |       |   +---SummaryCard
-|   |       |   |       SummaryCard.tsx
-|   |       |   |       
-|   |       |   \---Table
-|   |       |           Table.tsx
-|   |       |           
-|   |       +---pages
-|   |       |       BillingSummaryPage.tsx
-|   |       |       ClearingBatchesPage.tsx
-|   |       |       DashboardPage.tsx
-|   |       |       HealthPage.tsx
-|   |       |       LoginPage.tsx
-|   |       |       OperationDetailsPage.tsx
-|   |       |       OperationsListPage.tsx
-|   |       |       
-|   |       +---router
-|   |       |       index.tsx
-|   |       |       router-shim.tsx
-|   |       |       
-|   |       +---types
-|   |       |       billing.ts
-|   |       |       clearing.ts
-|   |       |       health.ts
-|   |       |       operations.ts
-|   |       |       
-|   |       \---utils
-|   |               format.ts
-|   |               
+|   |   +---src
+|   |   |   |   App.test.tsx
+|   |   |   |   App.tsx
+|   |   |   |   index.css
+|   |   |   |   main.tsx
+|   |   |   |   setupTests.ts
+|   |   |   |   vite-env.d.ts
+|   |   |   |   
+|   |   |   +---api
+|   |   |   |       auth.ts
+|   |   |   |       billing.ts
+|   |   |   |       clearing.ts
+|   |   |   |       client.test.ts
+|   |   |   |       client.ts
+|   |   |   |       health.ts
+|   |   |   |       operations.ts
+|   |   |   |       
+|   |   |   +---auth
+|   |   |   |       AuthContext.tsx
+|   |   |   |       
+|   |   |   +---components
+|   |   |   |   +---Filters
+|   |   |   |   |       DateRangeFilter.tsx
+|   |   |   |   |       SelectFilter.tsx
+|   |   |   |   |       
+|   |   |   |   +---Layout
+|   |   |   |   |       Layout.tsx
+|   |   |   |   |       
+|   |   |   |   +---Loader
+|   |   |   |   |       Loader.tsx
+|   |   |   |   |       
+|   |   |   |   +---Pagination
+|   |   |   |   |       Pagination.tsx
+|   |   |   |   |       
+|   |   |   |   +---StatusBadge
+|   |   |   |   |       StatusBadge.tsx
+|   |   |   |   |       
+|   |   |   |   +---SummaryCard
+|   |   |   |   |       SummaryCard.tsx
+|   |   |   |   |       
+|   |   |   |   \---Table
+|   |   |   |           Table.tsx
+|   |   |   |           
+|   |   |   +---pages
+|   |   |   |       BillingSummaryPage.tsx
+|   |   |   |       ClearingBatchesPage.tsx
+|   |   |   |       DashboardPage.tsx
+|   |   |   |       HealthPage.tsx
+|   |   |   |       LoginPage.tsx
+|   |   |   |       OperationDetailsPage.tsx
+|   |   |   |       OperationsListPage.tsx
+|   |   |   |       
+|   |   |   +---router
+|   |   |   |       index.tsx
+|   |   |   |       router-shim.tsx
+|   |   |   |       
+|   |   |   +---stubs
+|   |   |   |       react-query.tsx
+|   |   |   |       
+|   |   |   +---types
+|   |   |   |       billing.ts
+|   |   |   |       clearing.ts
+|   |   |   |       health.ts
+|   |   |   |       operations.ts
+|   |   |   |       
+|   |   |   \---utils
+|   |   |           format.ts
+|   |   |           
+|   |   \---types
+|   |           react-query.d.ts
+|   |           vitest.d.ts
+|   |           
 |   +---ai-service
 |   |   |   Dockerfile
 |   |   |   pyproject.toml
 |   |   |   requirements.txt
 |   |   |   
 |   |   \---app
-|   |       |   config.py
 |   |       |   main.py
 |   |       |   model_provider.py
+|   |       |   settings.py
 |   |       |   __init__.py
 |   |       |   
 |   |       +---api
+|   |       |   |   __init__.py
+|   |       |   |   
 |   |       |   \---v1
 |   |       |           health.py
 |   |       |           score.py
 |   |       |           __init__.py
 |   |       |           
+|   |       +---config
+|   |       |       base.py
+|   |       |       dev.py
+|   |       |       local.py
+|   |       |       staging.py
+|   |       |       __init__.py
+|   |       |       
 |   |       +---providers
 |   |       |       local_llm.py
 |   |       |       openai.py
@@ -1526,10 +1596,10 @@ C:\NEFT-PROCESSING
 |   |   |   requirements.txt
 |   |   |   
 |   |   \---app
-|   |       |   config.py
 |   |       |   db.py
 |   |       |   idempotency.py
 |   |       |   main.py
+|   |       |   settings.py
 |   |       |   transactions.py
 |   |       |   validators.py
 |   |       |   __init__.py
@@ -1547,6 +1617,13 @@ C:\NEFT-PROCESSING
 |   |       |           processing.py
 |   |       |           __init__.py
 |   |       |           
+|   |       +---config
+|   |       |       base.py
+|   |       |       dev.py
+|   |       |       local.py
+|   |       |       staging.py
+|   |       |       __init__.py
+|   |       |       
 |   |       +---lib
 |   |       |       core_api.py
 |   |       |       idempotency.py
@@ -1571,10 +1648,12 @@ C:\NEFT-PROCESSING
 |   |       |       __init__.py
 |   |       |       
 |   |       \---tests
+|   |               conftest.py
 |   |               test_auth.py
 |   |               test_auth_me.py
 |   |               test_keys.py
 |   |               test_processing.py
+|   |               __init__.py
 |   |               
 |   +---core-api
 |   |   |   conftest.py
@@ -1614,14 +1693,18 @@ C:\NEFT-PROCESSING
 |   |   |   |           20260101_0008_billing_summary.py
 |   |   |   |           20260110_0009_billing_summary_extend.py
 |   |   |   |           20260110_0010_clearing.py
+|   |   |   |           20260115_0011_operations_indexes.py
 |   |   |   |           __init__.py
 |   |   |   |           
 |   |   |   +---api
 |   |   |   |   |   dependencies.py
 |   |   |   |   |   __init__.py
 |   |   |   |   |   
-|   |   |   |   +---routes
+|   |   |   |   +---dependencies
 |   |   |   |   |       admin.py
+|   |   |   |   |       __init__.py
+|   |   |   |   |       
+|   |   |   |   +---routes
 |   |   |   |   |       auth.py
 |   |   |   |   |       cards.py
 |   |   |   |   |       clients.py
@@ -1637,16 +1720,18 @@ C:\NEFT-PROCESSING
 |   |   |   |   |       
 |   |   |   |   \---v1
 |   |   |   |       \---endpoints
-|   |   |   |               admin_billing.py
-|   |   |   |               admin_clearing.py
-|   |   |   |               admin_dashboard.py
 |   |   |   |               admin_limits.py
-|   |   |   |               admin_merchants.py
-|   |   |   |               admin_operations.py
 |   |   |   |               operations_read.py
 |   |   |   |               reports_billing.py
 |   |   |   |               transactions.py
 |   |   |   |               
+|   |   |   +---config
+|   |   |   |       base.py
+|   |   |   |       dev.py
+|   |   |   |       local.py
+|   |   |   |       staging.py
+|   |   |   |       __init__.py
+|   |   |   |       
 |   |   |   +---crud
 |   |   |   |       operations.py
 |   |   |   |       
@@ -1671,25 +1756,39 @@ C:\NEFT-PROCESSING
 |   |   |   |       client_repo.py
 |   |   |   |       __init__.py
 |   |   |   |       
+|   |   |   +---routers
+|   |   |   |   \---admin
+|   |   |   |           billing.py
+|   |   |   |           clearing.py
+|   |   |   |           dashboard.py
+|   |   |   |           groups_legacy.py
+|   |   |   |           limits.py
+|   |   |   |           merchants.py
+|   |   |   |           operations.py
+|   |   |   |           __init__.py
+|   |   |   |           
 |   |   |   +---RUNBOOKS
 |   |   |   |       db_migrations_core_api.md
 |   |   |   |       
 |   |   |   +---schemas
-|   |   |   |       admin.py
-|   |   |   |       admin_dashboard.py
-|   |   |   |       admin_merchants.py
-|   |   |   |       cards.py
-|   |   |   |       clearing.py
-|   |   |   |       client.py
-|   |   |   |       groups_admin.py
-|   |   |   |       limits_admin.py
-|   |   |   |       merchants.py
-|   |   |   |       operations.py
-|   |   |   |       reports.py
-|   |   |   |       terminals.py
-|   |   |   |       transactions.py
-|   |   |   |       __init__.py
-|   |   |   |       
+|   |   |   |   |   cards.py
+|   |   |   |   |   clearing.py
+|   |   |   |   |   client.py
+|   |   |   |   |   merchants.py
+|   |   |   |   |   operations.py
+|   |   |   |   |   reports.py
+|   |   |   |   |   terminals.py
+|   |   |   |   |   transactions.py
+|   |   |   |   |   __init__.py
+|   |   |   |   |   
+|   |   |   |   \---admin
+|   |   |   |           dashboard.py
+|   |   |   |           groups.py
+|   |   |   |           groups_legacy.py
+|   |   |   |           limits.py
+|   |   |   |           merchants.py
+|   |   |   |           __init__.py
+|   |   |   |           
 |   |   |   +---security
 |   |   |   |       admin_auth.py
 |   |   |   |       jwt.py
@@ -1718,6 +1817,7 @@ C:\NEFT-PROCESSING
 |   |   |       |   test_admin_limits_api.py
 |   |   |       |   test_admin_merchants_api.py
 |   |   |       |   test_admin_operations_api.py
+|   |   |       |   test_billing_clearing_e2e.py
 |   |   |       |   test_health.py
 |   |   |       |   test_limits_v2.py
 |   |   |       |   test_reports_billing.py
@@ -1744,6 +1844,7 @@ C:\NEFT-PROCESSING
 |   |       requirements.txt
 |   |       
 |   +---gateway
+|   |       Dockerfile
 |   |       nginx.conf
 |   |       
 |   \---workers
@@ -1756,10 +1857,17 @@ C:\NEFT-PROCESSING
 |       \---app
 |           |   beat.py
 |           |   celery_app.py
-|           |   config.py
 |           |   main.py
+|           |   settings.py
 |           |   __init__.py
 |           |   
+|           +---config
+|           |       base.py
+|           |       dev.py
+|           |       local.py
+|           |       staging.py
+|           |       __init__.py
+|           |       
 |           +---tasks
 |           |       ai.py
 |           |       billing.py
@@ -1778,6 +1886,7 @@ C:\NEFT-PROCESSING
     |           prompts.md
     |           
     \---python
+        |   pyproject.toml
         |   __init__.py
         |   
         \---neft_shared
