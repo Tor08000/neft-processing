@@ -3,7 +3,7 @@ VALUES (
   '00000000-0000-0000-0000-000000000001'::uuid,
   1,
   'Demo Client',
-  'demo@client.neft',
+  'client@neft.local',
   'Demo Client',
   'ACTIVE'
 ) ON CONFLICT DO NOTHING;

@@ -1,18 +1,24 @@
 from __future__ import annotations
 
-import itertools
 import os
-from typing import Dict, Tuple
+from typing import Tuple
+
+from __future__ import annotations
+
+import os
+from typing import Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.db import get_conn
+from app.demo import DEMO_CLIENT_EMAIL, DEMO_CLIENT_FULL_NAME, DEMO_CLIENT_ID
+from app.models import User
 from app.schemas.auth import (
     AuthMeResponse,
-    ClientLoginRequest,
     HealthResponse,
+    LoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
@@ -29,66 +35,11 @@ from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-_users: Dict[str, UserResponse] = {}
-_password_hashes: Dict[str, str] = {}
-_user_sequence = itertools.count(1)
-
-_client_users: Dict[str, Tuple[str, UserResponse]] = {}
-
-DEMO_CLIENT_EMAIL = os.getenv("DEMO_CLIENT_EMAIL", "demo@client.neft")
-DEMO_CLIENT_PASSWORD = os.getenv("DEMO_CLIENT_PASSWORD", "Demo123!")
-DEMO_CLIENT_ID = os.getenv("DEMO_CLIENT_ID", "demo-client")
-DEMO_CLIENT_FULL_NAME = os.getenv("DEMO_CLIENT_FULL_NAME", "Demo Client")
-
-
-def _bootstrap_demo_client():
-    if DEMO_CLIENT_EMAIL and DEMO_CLIENT_PASSWORD:
-        _password_hashes[DEMO_CLIENT_EMAIL] = hash_password(DEMO_CLIENT_PASSWORD)
-        user = _ensure_client_user(DEMO_CLIENT_EMAIL, client_id=DEMO_CLIENT_ID)
-        user.full_name = DEMO_CLIENT_FULL_NAME
-
 
 def _admin_credentials() -> tuple[str, str]:
     email = os.getenv("ADMIN_EMAIL", "admin@example.com")
     password = os.getenv("ADMIN_PASSWORD", "admin123")
     return email, password
-
-
-def _ensure_user_record(email: str) -> UserResponse:
-    if email in _users:
-        return _users[email]
-
-    next_id = next(_user_sequence)
-    user = UserResponse(
-        id=next_id,
-        email=email,
-        full_name=None,
-        is_active=True,
-        created_at=None,
-    )
-    _users[email] = user
-    return user
-
-
-def _ensure_client_user(email: str, client_id: str | None = None) -> UserResponse:
-    if email in _client_users:
-        _, user = _client_users[email]
-        return user
-
-    next_id = next(_user_sequence)
-    user = UserResponse(
-        id=next_id,
-        email=email,
-        full_name=None,
-        is_active=True,
-        created_at=None,
-    )
-    resolved_client_id = client_id or "demo-client"
-    _client_users[email] = (resolved_client_id, user)
-    return user
-
-
-_bootstrap_demo_client()
 
 
 async def _find_client_id(email: str) -> Tuple[str | None, str | None]:
@@ -101,6 +52,19 @@ async def _find_client_id(email: str) -> Tuple[str | None, str | None]:
         if not row:
             return None, None
         return str(row["id"]), row.get("full_name") if isinstance(row, dict) else row[1]
+
+
+async def _get_user_from_db(email: str) -> User | None:
+    async with get_conn() as (_conn, cur):
+        await cur.execute(
+            "SELECT id, email, full_name, password_hash, is_active, created_at "
+            "FROM users WHERE lower(email) = lower(%s) LIMIT 1",
+            (email,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return User.from_row(row)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -121,59 +85,58 @@ async def register(payload: RegisterRequest) -> UserResponse:
     if payload.email.lower() == admin_email.lower():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="admin_email_reserved")
 
-    if payload.email in _users:
+    existing = await _get_user_from_db(payload.email)
+    if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_exists")
 
     password_hash = hash_password(payload.password)
-    _password_hashes[payload.email] = password_hash
+    async with get_conn() as (conn, cur):
+        await cur.execute(
+            "INSERT INTO users (email, full_name, password_hash) VALUES (%s, %s, %s)"
+            " RETURNING id, email, full_name, password_hash, is_active, created_at",
+            (payload.email, payload.full_name, password_hash),
+        )
+        row = await cur.fetchone()
+        await conn.commit()
 
-    user = _ensure_user_record(payload.email)
-    user.full_name = payload.full_name
-    return user
+    user = User.from_row(row)
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: ClientLoginRequest) -> TokenResponse:
+async def login(payload: LoginRequest) -> TokenResponse:
     admin_email, admin_password = _admin_credentials()
     email_lower = payload.email.lower()
 
     subject_type = "user"
     client_id: str | None = None
-    client_full_name: str | None = None
+    user_email = payload.email
 
     if email_lower == admin_email.lower():
         if payload.password != admin_password:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         roles = ["ADMIN"]
-        user = _ensure_user_record(payload.email)
-    elif email_lower == DEMO_CLIENT_EMAIL.lower():
-        expected_hash = _password_hashes.get(DEMO_CLIENT_EMAIL)
-        if not expected_hash or not verify_password(payload.password, expected_hash):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-        client_id, client_full_name = await _find_client_id(DEMO_CLIENT_EMAIL)
-        if not client_id:
-            client_id = payload.client_id or DEMO_CLIENT_ID
-        if not client_full_name:
-            client_full_name = DEMO_CLIENT_FULL_NAME
-        user = _ensure_client_user(DEMO_CLIENT_EMAIL, client_id=client_id)
-        user.full_name = client_full_name
-        roles = ["CLIENT_USER"]
-        subject_type = "client_user"
     else:
-        expected_hash = _password_hashes.get(payload.email)
-        if not expected_hash or not verify_password(payload.password, expected_hash):
+        user = await _get_user_from_db(email_lower)
+        if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        client_id, client_full_name = await _find_client_id(payload.email)
+        if not verify_password(payload.password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+        client_id, _ = await _find_client_id(payload.email)
         if client_id:
-            user = _ensure_client_user(payload.email, client_id=client_id)
-            user.full_name = client_full_name
             roles = ["CLIENT_USER"]
             subject_type = "client_user"
         else:
-            user = _ensure_user_record(payload.email)
             roles = []
+        user_email = user.email
 
     settings = get_settings()
     expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))
@@ -188,7 +151,7 @@ async def login(payload: ClientLoginRequest) -> TokenResponse:
         access_token=token,
         token_type="bearer",
         expires_in=expires_in,
-        email=user.email,
+        email=user_email,
         subject_type=subject_type,
         client_id=client_id,
     )

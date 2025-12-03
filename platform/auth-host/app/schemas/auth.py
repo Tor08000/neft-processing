@@ -20,14 +20,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class ClientLoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-    client_id: str | None = Field(
-        default=None, description="Идентификатор организации клиента, если известен"
-    )
-
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
