@@ -114,5 +114,5 @@ pip install -e shared/python
 
 ## Releases
 
-- v0.1.3 — Lifespan migration: все FastAPI-сервисы переведены на современный `lifespan`, очищены устаревшие конфигурации и обновлена документация/тесты.
+- **[v0.1.3](docs/releases/v0.1.3.md)** — рекомендованный стабильный релиз для локального и demo-развёртывания: миграция всех FastAPI-сервисов на `lifespan`, аккуратное завершение ресурсов, обновлённые схемы/типы и оптимизированный admin-web.
 - [v0.1.1](https://github.com/Tor08000/neft-processing/releases/tag/v0.1.1) — стабильный билд admin-web с валидацией TypeScript, синхронизированным OperationQuery, SPA-маршрутизацией `/admin/` и подтверждённым end-to-end циклом (Auth → Operations → Billing → Clearing). Точка безопасного отката; подробности в `docs/releases/v0.1.1.md`.
