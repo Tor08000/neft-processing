@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import uuid4
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
@@ -236,9 +237,22 @@ def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEn
 # -----------------------------------------------------------------------------
 # FASTAPI
 # -----------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    init_db()
+    db = SessionLocal()
+    try:
+        ensure_default_refs(db)
+    finally:
+        db.close()
+    logger.info("core-api startup complete")
+    yield
+
+
 app = FastAPI(
     title="NEFT Core API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -250,17 +264,6 @@ app.add_middleware(
 
 # Основной роутер v1
 app.include_router(api_router, prefix="/api/v1")
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
-    db = SessionLocal()
-    try:
-        ensure_default_refs(db)
-    finally:
-        db.close()
-    logger.info("core-api startup complete")
 
 
 # Включаем доп. роутер с чтением операций из БД, если он есть
