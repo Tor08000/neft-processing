@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { Loader } from "../components/Loader/Loader";
 import { useAuth } from "../auth/AuthContext";
 
@@ -16,27 +16,25 @@ export function AppRouter() {
   const { token } = useAuth();
 
   return (
-    <BrowserRouter>
-      {!token ? (
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<LoginPage />} />
-        </Routes>
-      ) : (
-        <React.Suspense fallback={<Loader />}>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/operations" element={<OperationsListPage />} />
-              <Route path="/operations/:id" element={<OperationDetailsPage />} />
-              <Route path="/billing" element={<BillingSummaryPage />} />
-              <Route path="/clearing" element={<ClearingBatchesPage />} />
-              <Route path="/health" element={<HealthPage />} />
-              <Route path="/login" element={<LoginPage />} />
-            </Routes>
-          </Layout>
-        </React.Suspense>
-      )}
-    </BrowserRouter>
+    !token ? (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<LoginPage />} />
+      </Routes>
+    ) : (
+      <React.Suspense fallback={<Loader />}>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/operations" element={<OperationsListPage />} />
+            <Route path="/operations/:id" element={<OperationDetailsPage />} />
+            <Route path="/billing" element={<BillingSummaryPage />} />
+            <Route path="/clearing" element={<ClearingBatchesPage />} />
+            <Route path="/health" element={<HealthPage />} />
+            <Route path="/login" element={<LoginPage />} />
+          </Routes>
+        </Layout>
+      </React.Suspense>
+    )
   );
 }
