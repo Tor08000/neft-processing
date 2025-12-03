@@ -58,6 +58,16 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 * Запуск окружения с фронтом: `docker compose up -d --build gateway client-web` (или полный стек `docker compose up -d --build`).
 * Открыть в браузере: `http://localhost/client/` (или напрямую через контейнер client-web: `http://localhost:4174/client/`).
+
+### Клиентский кабинет (реальные данные)
+
+* Доступ: `http://localhost/client/`.
+* Демо-креды: `demo@client.neft` / `Demo123!` (значения можно изменить в `.env`).
+* Что внутри: операции, лимиты и дашборд читают реальные записи из БД (`client_operations`, `client_limits`, `client_cards`).
+* Быстрый старт:
+  1. `cp -n .env.example .env` и при необходимости скорректируйте `DEMO_CLIENT_*`.
+  2. `docker compose up -d --build`.
+  3. Откройте клиентский портал, авторизуйтесь демо-клиентом — увидите seeded-операции/лимиты из базы.
 * Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/client/api/v1/...` через gateway.
 * Для демо-доступа используется единый аккаунт клиента (по умолчанию `demo@client.neft / Demo123!`). Креды можно переопределить через
   переменные окружения `DEMO_CLIENT_EMAIL` и `DEMO_CLIENT_PASSWORD` в `.env`.

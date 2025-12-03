@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
+from app.db import get_conn
 from app.schemas.auth import (
     AuthMeResponse,
     ClientLoginRequest,
@@ -90,6 +91,18 @@ def _ensure_client_user(email: str, client_id: str | None = None) -> UserRespons
 _bootstrap_demo_client()
 
 
+async def _find_client_id(email: str) -> Tuple[str | None, str | None]:
+    async with get_conn() as (_conn, cur):
+        await cur.execute(
+            "SELECT id, full_name FROM clients WHERE lower(email) = lower(%s) LIMIT 1",
+            (email,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None, None
+        return str(row["id"]), row.get("full_name") if isinstance(row, dict) else row[1]
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="auth-host")
@@ -126,6 +139,7 @@ async def login(payload: ClientLoginRequest) -> TokenResponse:
 
     subject_type = "user"
     client_id: str | None = None
+    client_full_name: str | None = None
 
     if email_lower == admin_email.lower():
         if payload.password != admin_password:
@@ -137,9 +151,13 @@ async def login(payload: ClientLoginRequest) -> TokenResponse:
         if not expected_hash or not verify_password(payload.password, expected_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        client_id = payload.client_id or DEMO_CLIENT_ID
+        client_id, client_full_name = await _find_client_id(DEMO_CLIENT_EMAIL)
+        if not client_id:
+            client_id = payload.client_id or DEMO_CLIENT_ID
+        if not client_full_name:
+            client_full_name = DEMO_CLIENT_FULL_NAME
         user = _ensure_client_user(DEMO_CLIENT_EMAIL, client_id=client_id)
-        user.full_name = DEMO_CLIENT_FULL_NAME
+        user.full_name = client_full_name
         roles = ["CLIENT_USER"]
         subject_type = "client_user"
     else:
@@ -147,8 +165,15 @@ async def login(payload: ClientLoginRequest) -> TokenResponse:
         if not expected_hash or not verify_password(payload.password, expected_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        user = _ensure_user_record(payload.email)
-        roles = []
+        client_id, client_full_name = await _find_client_id(payload.email)
+        if client_id:
+            user = _ensure_client_user(payload.email, client_id=client_id)
+            user.full_name = client_full_name
+            roles = ["CLIENT_USER"]
+            subject_type = "client_user"
+        else:
+            user = _ensure_user_record(payload.email)
+            roles = []
 
     settings = get_settings()
     expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))

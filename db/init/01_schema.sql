@@ -3,8 +3,51 @@ CREATE TABLE IF NOT EXISTS clients (
   id BIGSERIAL PRIMARY KEY,
   tenant_id BIGINT,
   name TEXT,
-  status TEXT DEFAULT 'ACTIVE'
+  status TEXT DEFAULT 'ACTIVE',
+  email TEXT UNIQUE,
+  full_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS client_cards (
+  id BIGSERIAL PRIMARY KEY,
+  client_id BIGINT REFERENCES clients(id),
+  card_id TEXT NOT NULL,
+  pan_masked TEXT,
+  status TEXT DEFAULT 'ACTIVE',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS client_cards_client_idx ON client_cards(client_id);
+
+CREATE TABLE IF NOT EXISTS client_operations (
+  id BIGSERIAL PRIMARY KEY,
+  client_id BIGINT REFERENCES clients(id),
+  card_id TEXT,
+  operation_type TEXT,
+  status TEXT,
+  amount INTEGER,
+  currency TEXT DEFAULT 'RUB',
+  performed_at TIMESTAMPTZ DEFAULT now(),
+  fuel_type TEXT
+);
+
+CREATE INDEX IF NOT EXISTS client_operations_client_idx ON client_operations(client_id);
+CREATE INDEX IF NOT EXISTS client_operations_status_idx ON client_operations(status);
+CREATE INDEX IF NOT EXISTS client_operations_date_idx ON client_operations(performed_at);
+
+CREATE TABLE IF NOT EXISTS client_limits (
+  id BIGSERIAL PRIMARY KEY,
+  client_id BIGINT REFERENCES clients(id),
+  limit_type TEXT,
+  amount NUMERIC,
+  currency TEXT DEFAULT 'RUB',
+  used_amount NUMERIC DEFAULT 0,
+  period_start TIMESTAMPTZ,
+  period_end TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS client_limits_client_idx ON client_limits(client_id);
 
 CREATE TABLE IF NOT EXISTS wallets (
   id BIGSERIAL PRIMARY KEY,
