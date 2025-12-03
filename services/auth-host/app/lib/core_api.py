@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from neft_shared.logging_setup import get_logger
 
-from app.config import CORE_API
+from app.settings import CORE_API
 from app.schemas import TerminalAuthRequest, TerminalCaptureRequest
 
 logger = get_logger(__name__)

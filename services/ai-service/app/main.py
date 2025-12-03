@@ -12,7 +12,7 @@ from neft_shared.logging_setup import get_logger, init_logging
 
 from .api.v1.health import router as health_router
 from .api.v1.score import router as score_router
-from .config import settings
+from .settings import settings
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "ai-service")
 

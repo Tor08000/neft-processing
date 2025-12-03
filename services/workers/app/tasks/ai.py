@@ -5,7 +5,7 @@ from celery import shared_task
 
 from neft_shared.logging_setup import get_logger
 
-from ..config import settings
+from ..settings import settings
 
 logger = get_logger(__name__)
 

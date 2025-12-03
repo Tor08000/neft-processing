@@ -11,7 +11,7 @@ from celery import Celery
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from .config import settings
+from .settings import settings
 
 SERVICE_NAME = settings.service_name
 
