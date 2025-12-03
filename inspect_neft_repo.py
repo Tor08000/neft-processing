@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SCRIPT_VERSION = "v0.1.5"
+SCRIPT_VERSION = "v0.2.0"
 LOG_LINES: list[str] = []
 RESULTS: dict[str, "CheckResult"] = {}
 
@@ -105,6 +105,7 @@ def section_basic():
         "services/core-api",
         "services/auth-host",
         "services/admin-web",
+        "services/client-web",
         "services/ai-service",
         "services/workers",
         "shared/python/neft_shared",
@@ -217,7 +218,7 @@ def section_docker_compose(expected_services: list[str]) -> CheckResult:
 
 
 def section_services():
-    header("СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web)")
+    header("СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web, client-web)")
 
     services = {
         "core-api": ROOT / "services" / "core-api",
@@ -225,6 +226,7 @@ def section_services():
         "workers": ROOT / "services" / "workers",
         "ai-service": ROOT / "services" / "ai-service",
         "admin-web": ROOT / "services" / "admin-web",
+        "client-web": ROOT / "services" / "client-web",
     }
 
     for name, path in services.items():
@@ -241,7 +243,7 @@ def section_services():
         log(f"[{'OK' if pyproject.exists() else '  '}] pyproject.toml")
         log(f"[{'OK' if req.exists() else '  '}] requirements.txt")
 
-        if name == "admin-web":
+        if name in {"admin-web", "client-web"}:
             src_dir = path / "src"
             log(f"[{'OK' if src_dir.exists() else '!!'}] src/")
             if src_dir.exists():
@@ -394,6 +396,7 @@ def section_health_checks() -> CheckResult:
         "auth": "http://localhost/api/auth/api/v1/health",
         "core": "http://localhost/api/core/api/v1/health",
         "admin": "http://localhost/admin/",
+        "client": "http://localhost/client/",
     }
 
     docker_result = RESULTS.get("docker compose")
@@ -439,6 +442,18 @@ def section_health_checks() -> CheckResult:
                     continue
 
                 log("[OK] admin-web доступен (HTML)")
+                results[name] = CheckResult("OK")
+                continue
+
+            if name == "client":
+                if "application/json" in content_type.lower():
+                    log("[FAIL] Ожидался HTML, получен JSON")
+                    results[name] = CheckResult(
+                        "FAIL", "client-web вернул JSON вместо HTML", True
+                    )
+                    continue
+
+                log("[OK] client-web доступен (HTML)")
                 results[name] = CheckResult("OK")
                 continue
 
@@ -605,6 +620,7 @@ def main():
             "postgres",
             "redis",
             "admin-web",
+            "client-web",
             "auth-host",
             "core-api",
             "ai-service",
