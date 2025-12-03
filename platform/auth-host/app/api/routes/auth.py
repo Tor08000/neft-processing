@@ -3,11 +3,6 @@ from __future__ import annotations
 import os
 from typing import Tuple
 
-from __future__ import annotations
-
-import os
-from typing import Tuple
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -31,7 +26,7 @@ from app.security import (
     verify_password,
 )
 from app.services.keys import get_public_key_pem
-from neft_shared.settings import get_settings
+from app.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

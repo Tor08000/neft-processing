@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from neft_shared.logging_setup import get_logger
-from neft_shared.settings import get_settings
+from app.settings import get_settings
 from app.db import get_conn
 from app.models import User
 from app.services.keys import get_private_key_pem, get_public_key_pem

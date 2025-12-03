@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
+from app.settings import settings
 
-DEMO_CLIENT_EMAIL = os.getenv("DEMO_CLIENT_EMAIL", "client@neft.local")
-DEMO_CLIENT_PASSWORD = os.getenv("DEMO_CLIENT_PASSWORD", "client")
-DEMO_CLIENT_ID = os.getenv("DEMO_CLIENT_ID", "demo-client")
-DEMO_CLIENT_FULL_NAME = os.getenv("DEMO_CLIENT_FULL_NAME", "Demo Client")
-DEMO_CLIENT_UUID = os.getenv("DEMO_CLIENT_UUID", "00000000-0000-0000-0000-000000000001")
+DEMO_CLIENT_EMAIL = settings.demo_client_email
+DEMO_CLIENT_PASSWORD = settings.demo_client_password
+DEMO_CLIENT_ID = settings.demo_client_id
+DEMO_CLIENT_FULL_NAME = settings.demo_client_full_name
+DEMO_CLIENT_UUID = settings.demo_client_uuid
