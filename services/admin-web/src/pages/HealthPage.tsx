@@ -1,40 +1,28 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "../api/health";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { ServiceHealth } from "../types/health";
+import { Loader } from "../components/Loader/Loader";
 
 export const HealthPage: React.FC = () => {
-  const [data, setData] = useState<ServiceHealth[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetchHealth();
-      setData(res);
-    } catch (err: any) {
-      setError(err?.message ?? "Не удалось загрузить health");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
+  const { data = [], isFetching, isLoading, error, refetch } = useQuery<ServiceHealth[], Error>({
+    queryKey: ["health"],
+    queryFn: fetchHealth,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
   return (
     <div>
       <div className="page-header">
         <h1>Health</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => load()} disabled={loading}>
+          <button onClick={() => refetch()} disabled={isFetching}>
             Refresh
           </button>
-          {loading && <span>Loading...</span>}
-          {error && <span style={{ color: "#dc2626" }}>{error}</span>}
+          {(isLoading || isFetching) && <Loader label="Проверяем сервисы" />}
+          {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
         </div>
       </div>
 

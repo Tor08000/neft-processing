@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchOperations } from "../api/operations";
 import { fetchBillingSummary } from "../api/billing";
 import { fetchClearingBatches } from "../api/clearing";
@@ -9,49 +10,58 @@ import { formatAmount, getIsoDate } from "../utils/format";
 import { BillingSummaryItem } from "../types/billing";
 import { ClearingBatch } from "../types/clearing";
 import { ServiceHealth } from "../types/health";
+import { Loader } from "../components/Loader/Loader";
+
+interface DashboardData {
+  operationsToday: number;
+  capturedYesterday: number;
+  billing: BillingSummaryItem[];
+  clearing: ClearingBatch[];
+  health: ServiceHealth[];
+}
 
 export const DashboardPage: React.FC = () => {
-  const [operationsToday, setOperationsToday] = useState<number>(0);
-  const [capturedYesterday, setCapturedYesterday] = useState<number>(0);
-  const [billing, setBilling] = useState<BillingSummaryItem[]>([]);
-  const [clearing, setClearing] = useState<ClearingBatch[]>([]);
-  const [health, setHealth] = useState<ServiceHealth[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
 
-  useEffect(() => {
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+  const { data, error, isLoading, isFetching } = useQuery<DashboardData, Error>({
+    queryKey: ["dashboard"],
+    queryFn: async () => {
+      const [opsToday, billingData, clearingData, healthData] = await Promise.all([
+        fetchOperations({
+          date_from: getIsoDate(today),
+          date_to: getIsoDate(today),
+          limit: 1,
+          offset: 0,
+        }),
+        fetchBillingSummary({ date_from: getIsoDate(yesterday), date_to: getIsoDate(today) }),
+        fetchClearingBatches({ status: "PENDING" }),
+        fetchHealth(),
+      ]);
 
-    const load = async () => {
-      try {
-        const [opsToday, billingData, clearingData, healthData] = await Promise.all([
-          fetchOperations({
-            date_from: getIsoDate(today),
-            date_to: getIsoDate(today),
-            limit: 1,
-            offset: 0,
-          }),
-          fetchBillingSummary({ date_from: getIsoDate(yesterday), date_to: getIsoDate(today) }),
-          fetchClearingBatches({ status: "PENDING" }),
-          fetchHealth(),
-        ]);
+      const operationsToday = opsToday.total ?? opsToday.items.length;
+      const capturedYesterday = billingData
+        .filter((item) => item.date === getIsoDate(yesterday))
+        .reduce((acc, item) => acc + item.total_captured_amount, 0);
 
-        setOperationsToday(opsToday.total ?? opsToday.items.length);
-        const captured = billingData
-          .filter((item) => item.date === getIsoDate(yesterday))
-          .reduce((acc, item) => acc + item.total_captured_amount, 0);
-        setCapturedYesterday(captured);
-        setBilling(billingData);
-        setClearing(clearingData);
-        setHealth(healthData);
-      } catch (err: any) {
-        setError(err?.message ?? "Не удалось загрузить данные");
-      }
-    };
+      return {
+        operationsToday,
+        capturedYesterday,
+        billing: billingData,
+        clearing: clearingData,
+        health: healthData,
+      };
+    },
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  });
 
-    void load();
-  }, []);
+  const billing = data?.billing ?? [];
+  const clearing = data?.clearing ?? [];
+  const health = data?.health ?? [];
+  const operationsToday = data?.operationsToday ?? 0;
+  const capturedYesterday = data?.capturedYesterday ?? 0;
 
   const pendingBilling = billing.filter((b) => b.status === "PENDING").length;
   const pendingClearing = clearing.filter((c) => c.status === "PENDING").length;
@@ -61,7 +71,8 @@ export const DashboardPage: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
-        {error && <span style={{ color: "#dc2626" }}>{error}</span>}
+        {(isLoading || isFetching) && <Loader label="Обновляем метрики" />}
+        {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
       </div>
       <div className="card-grid">
         <SummaryCard title="Operations today" value={operationsToday} />

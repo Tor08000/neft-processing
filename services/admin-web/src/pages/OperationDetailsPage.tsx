@@ -1,31 +1,34 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { fetchOperation, fetchOperationChildren } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
-import { Table } from "../components/Table/Table";
 import { formatAmount, formatDateTime } from "../utils/format";
 import { Operation } from "../types/operations";
+import { Loader } from "../components/Loader/Loader";
+
+const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
 
 export const OperationDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [operation, setOperation] = useState<Operation | null>(null);
-  const [children, setChildren] = useState<Operation[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: operation,
+    error,
+    isLoading,
+    isFetching,
+  } = useQuery<Operation, Error>({
+    queryKey: ["operations", id],
+    queryFn: () => fetchOperation(id as string),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+  });
 
-  useEffect(() => {
-    if (!id) return;
-    const load = async () => {
-      try {
-        const [op, child] = await Promise.all([fetchOperation(id), fetchOperationChildren(id)]);
-        setOperation(op);
-        setChildren(child);
-      } catch (err: any) {
-        setError(err?.message ?? "Не удалось загрузить операцию");
-      }
-    };
-
-    void load();
-  }, [id]);
+  const { data: children = [], isFetching: isChildrenFetching } = useQuery<Operation[], Error>({
+    queryKey: ["operations", id, "children"],
+    queryFn: () => fetchOperationChildren(id as string),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+  });
 
   const totals = useMemo(() => {
     const captured = children
@@ -47,7 +50,8 @@ export const OperationDetailsPage: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>Operation details</h1>
-        {error && <span style={{ color: "#dc2626" }}>{error}</span>}
+        {(isLoading || isFetching || isChildrenFetching) && <Loader label="Загружаем операцию" />}
+        {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
       </div>
 
       {operation && (
@@ -89,16 +93,18 @@ export const OperationDetailsPage: React.FC = () => {
       )}
 
       <h2>Child operations</h2>
-      <Table<Operation>
-        columns={[
-          { key: "id", title: "ID", render: (row) => row.operation_id },
-          { key: "type", title: "Type", render: (row) => row.operation_type },
-          { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
-          { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
-          { key: "created", title: "Created", render: (row) => formatDateTime(row.created_at) },
-        ]}
-        data={children}
-      />
+      <Suspense fallback={<Loader label="Загружаем операции" />}>
+        <Table<Operation>
+          columns={[
+            { key: "id", title: "ID", render: (row) => row.operation_id },
+            { key: "type", title: "Type", render: (row) => row.operation_type },
+            { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+            { key: "amount", title: "Amount", render: (row) => formatAmount(row.amount) },
+            { key: "created", title: "Created", render: (row) => formatDateTime(row.created_at) },
+          ]}
+          data={children}
+        />
+      </Suspense>
     </div>
   );
 };

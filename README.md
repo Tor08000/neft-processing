@@ -49,6 +49,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * Все запросы идут через gateway:
     * `/api/auth/api/v1/auth/login`
     * `/api/core/api/v1/admin/operations`
+* Клиент использует React Query для кэширования (операции: `staleTime=30s`, дашборд: `staleTime=5s`) и динамическую
+  подгрузку страниц/тяжёлых компонентов через `React.lazy + Suspense`, чтобы ускорить initial load.
 
 ### Разделение публичного и admin API
 
