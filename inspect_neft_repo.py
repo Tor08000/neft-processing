@@ -17,11 +17,35 @@ import os
 import subprocess
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+SCRIPT_VERSION = "v0.1.5"
 LOG_LINES: list[str] = []
+
+
+@dataclass
+class CheckResult:
+    status: str
+    description: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "OK"
+
+    @property
+    def warn(self) -> bool:
+        return self.status == "WARN"
+
+    @property
+    def fail(self) -> bool:
+        return self.status == "FAIL"
+
+    @property
+    def skip(self) -> bool:
+        return self.status == "SKIP"
 
 
 def log(message: str = ""):
@@ -65,6 +89,7 @@ def list_dir(p: Path, max_items=20):
 
 def section_basic():
     header("ОБЩАЯ ИНФОРМАЦИЯ")
+    log(f"Версия скрипта: inspect_neft_repo.py {SCRIPT_VERSION}")
     log(f"Текущее время: {datetime.now().isoformat()}")
     log(f"Корень репозитория: {ROOT}")
     log(f"Имя папки: {ROOT.name}")
@@ -117,13 +142,34 @@ def section_git():
         log(f"Не удалось получить последний коммит: {err}")
 
 
-def section_docker_compose(expected_services: list[str]):
+def is_docker_env_issue(error_message: str) -> bool:
+    lowered = error_message.lower()
+    return any(
+        marker in lowered
+        for marker in [
+            "winerror 2",
+            "no such file or directory",
+            "not recognized as an internal or external command",
+            "cannot connect to the docker daemon",
+            "error during connect",
+            "daemon is not running",
+        ]
+    )
+
+
+def section_docker_compose(expected_services: list[str]) -> CheckResult:
     header("DOCKER COMPOSE")
 
     rc, out, err = safe_run(["docker", "compose", "config", "--services"])
     if rc != 0:
-        log(f"[FAIL] docker compose недоступен: {err or 'неизвестная ошибка'}")
-        return False
+        message = err or out or "docker compose недоступен"
+        if is_docker_env_issue(message) or rc == -1:
+            log("[SKIP] docker compose недоступен: Docker CLI недоступен или демон не запущен.")
+            log("       Проверьте установку Docker Desktop и запустите Docker перед диагностикой.")
+            return CheckResult("SKIP", "Docker CLI недоступен или демон не запущен")
+
+        log(f"[FAIL] docker compose завершился с ошибкой: {message}")
+        return CheckResult("FAIL", message)
 
     declared_services = sorted(line.strip() for line in out.splitlines() if line.strip())
     log("Доступные сервисы docker compose:")
@@ -140,9 +186,9 @@ def section_docker_compose(expected_services: list[str]):
 
     if not missing and not extra:
         log("[OK] Список сервисов соответствует ожиданиям")
-        return True
+        return CheckResult("OK")
 
-    return False
+    return CheckResult("WARN", "Список сервисов отличается от ожиданий")
 
 
 def section_services():
@@ -185,13 +231,13 @@ def section_services():
                 log(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
 
 
-def section_migrations():
+def section_migrations() -> CheckResult:
     header("ALEMBIC-МИГРАЦИИ core-api")
 
     alembic_dir = ROOT / "services" / "core-api" / "app" / "alembic" / "versions"
     if not alembic_dir.exists():
         log(f"[!] Каталог миграций не найден: {alembic_dir}")
-        return False
+        return CheckResult("FAIL", "Каталог миграций не найден")
 
     versions = sorted(alembic_dir.glob("*.py"))
     log(f"Всего миграций: {len(versions)}")
@@ -199,9 +245,15 @@ def section_migrations():
         log(f"- {v.name}")
 
     rc, out, err = safe_run(["alembic", "heads"], cwd=ROOT / "services" / "core-api")
+    message = err or out or "без подробностей"
     if rc != 0:
-        log(f"[FAIL] Не удалось выполнить 'alembic heads': {err or 'без подробностей'}")
-        return False
+        lowered = message.lower()
+        if rc == -1 or "winerror 2" in lowered or "no such file or directory" in lowered:
+            log("[SKIP] alembic heads: Alembic CLI недоступен. Активируйте виртуальное окружение или установите Alembic.")
+            return CheckResult("SKIP", "Alembic CLI недоступен")
+
+        log(f"[FAIL] Не удалось выполнить 'alembic heads': {message}")
+        return CheckResult("FAIL", message)
 
     heads = [line for line in out.splitlines() if line.strip()]
     log("Вывод 'alembic heads':")
@@ -210,10 +262,10 @@ def section_migrations():
 
     if len(heads) == 1:
         log("[OK] Найден один head Alembic")
-        return True
+        return CheckResult("OK")
 
     log(f"[FAIL] Количество head: {len(heads)}")
-    return False
+    return CheckResult("FAIL", f"Найдено head: {len(heads)}")
 
 
 def section_tests():
@@ -270,7 +322,7 @@ def section_db_init():
     list_dir(init_dir, max_items=20)
 
 
-def section_health_checks():
+def section_health_checks() -> CheckResult:
     header("HEALTH-CHECK СЕРВИСОВ")
 
     endpoints = {
@@ -304,10 +356,11 @@ def section_health_checks():
     overall = all(results.values()) if results else False
     if overall:
         log("[OK] Все health-check запросы успешны")
-    else:
-        failed = [name for name, ok in results.items() if not ok]
-        log(f"[FAIL] Проблемы с сервисами: {', '.join(failed)}")
-    return overall
+        return CheckResult("OK")
+
+    failed = [name for name, ok in results.items() if not ok]
+    log(f"[FAIL] Проблемы с сервисами: {', '.join(failed)}")
+    return CheckResult("FAIL", f"Недоступны: {', '.join(failed)}")
 
 
 def run_pytest_for_service(name: str, path: Path):
@@ -328,12 +381,12 @@ def run_pytest_for_service(name: str, path: Path):
     return rc == 0
 
 
-def section_run_tests(run_tests: bool):
+def section_run_tests(run_tests: bool) -> CheckResult:
     header("ЗАПУСК ТЕСТОВ")
 
     if not run_tests:
         log("Флаг --run-tests не передан, пропускаем запуск pytest")
-        return None
+        return CheckResult("SKIP", "pytest пропущен по флагу")
 
     services = {
         "core-api": ROOT / "services" / "core-api",
@@ -349,7 +402,8 @@ def section_run_tests(run_tests: bool):
     log(f"Passed: {', '.join(passed) if passed else 'нет'}")
     log(f"Failed: {', '.join(failed) if failed else 'нет'}")
 
-    return all(results.values()) if results else False
+    overall = all(results.values()) if results else False
+    return CheckResult("OK" if overall else "FAIL", "pytest запускался" if run_tests else None)
 
 
 def write_output(output_path: Path):
@@ -358,23 +412,27 @@ def write_output(output_path: Path):
     output_path.write_text("\n".join(LOG_LINES), encoding="utf-8")
 
 
-def summarize_status(statuses: dict[str, bool | None]):
+def summarize_status(statuses: dict[str, CheckResult]):
     header("ИТОГОВЫЙ ОТЧЁТ")
-    for key, value in statuses.items():
-        if value is True:
-            mark = "OK"
-        elif value is False:
-            mark = "FAIL"
-        else:
-            mark = "SKIP"
-        log(f"[{mark}] {key}")
+    for key, result in statuses.items():
+        suffix = f": {result.description}" if result.description else ""
+        log(f"[{result.status}] {key}{suffix}")
 
-    overall_ok = all(value for value in statuses.values() if value is not None)
-    if overall_ok:
-        log("\n[ИТОГ] Все проверки OK")
+    has_fail = any(result.fail for result in statuses.values())
+    has_warn = any(result.warn for result in statuses.values())
+    has_skip = any(result.skip for result in statuses.values())
+
+    if has_fail:
+        summary = "Есть проблемы в репозитории — требуется исправление конфигурации или кода"
+    elif has_warn:
+        summary = "Проверки завершены с предупреждениями"
+    elif has_skip:
+        summary = "Проверки репозитория пройдены, есть пропуски из-за окружения"
     else:
-        log("\n[ИТОГ] Есть проблемы в проверках")
-    return overall_ok
+        summary = "Все проверки OK"
+
+    log(f"\n[ИТОГ] {summary}")
+    return summary
 
 
 def main():
@@ -393,7 +451,7 @@ def main():
 
     log(f"Отчёт будет сохранён в: {output_path}")
 
-    statuses: dict[str, bool | None] = {}
+    statuses: dict[str, CheckResult] = {}
 
     section_basic()
     section_git()
@@ -409,7 +467,10 @@ def main():
             "beat",
             "flower",
             "gateway",
-            "postgres-data",
+            "otel-collector",
+            "jaeger",
+            "prometheus",
+            "grafana",
         ]
     )
     section_services()
