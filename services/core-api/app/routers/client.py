@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.schemas.client_portal import (
     ClientOperation,
@@ -13,6 +13,7 @@ from app.schemas.client_portal import (
     LimitItem,
     LimitsResponse,
 )
+from app.security.client_auth import require_client_user
 
 router = APIRouter(prefix="/client/api/v1", tags=["client-portal"])
 
@@ -65,6 +66,7 @@ async def list_operations(
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
     sort: str = Query("date_desc"),
+    _: dict = Depends(require_client_user),
 ) -> ClientOperationsResponse:
     if sort not in {"date_desc", "date_asc", "amount_asc", "amount_desc"}:
         raise HTTPException(status_code=400, detail="invalid_sort")
@@ -96,12 +98,12 @@ async def list_operations(
 
 
 @router.get("/limits", response_model=LimitsResponse)
-async def list_limits() -> LimitsResponse:
+async def list_limits(_: dict = Depends(require_client_user)) -> LimitsResponse:
     return LimitsResponse(items=_DEMO_LIMITS)
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-async def dashboard() -> DashboardResponse:
+async def dashboard(_: dict = Depends(require_client_user)) -> DashboardResponse:
     recent_ops = sorted(_DEMO_OPERATIONS, key=lambda op: op.date, reverse=True)[:5]
     total_amount = sum(op.amount for op in _DEMO_OPERATIONS)
     dates = [datetime.now().date() - timedelta(days=i) for i in range(6, -1, -1)]

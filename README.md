@@ -59,6 +59,10 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * Запуск окружения с фронтом: `docker compose up -d --build gateway client-web` (или полный стек `docker compose up -d --build`).
 * Открыть в браузере: `http://localhost/client/` (или напрямую через контейнер client-web: `http://localhost:4174/client/`).
 * Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/client/api/v1/...` через gateway.
+* Для демо-доступа используется единый аккаунт клиента (по умолчанию `demo@client.neft / Demo123!`). Креды можно переопределить через
+  переменные окружения `DEMO_CLIENT_EMAIL` и `DEMO_CLIENT_PASSWORD` в `.env`.
+* Авторизация клиентских API защищена JWT: логин по пути `/client/api/v1/auth/login`, последующие запросы к `/client/api/v1/client/*`
+  выполняются с заголовком `Authorization: Bearer <token>`; при 401/403 клиент сбрасывает токен и возвращает пользователя на экран логина.
 * Базовый сценарий: форма логина → получение токена `auth-host` → загрузка дашборда и списков операций/лимитов по организации.
 
 ### Разделение публичного и admin API

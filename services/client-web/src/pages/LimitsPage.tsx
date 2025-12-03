@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchLimits } from "../api";
+import { fetchLimits, handleUnauthorized } from "../api";
 import type { Limit } from "../types";
 
 interface LimitsPageProps {
@@ -15,6 +15,10 @@ export function LimitsPage({ token }: LimitsPageProps) {
 
   if (isLoading) {
     return <div className="card">Загрузка лимитов...</div>;
+  }
+
+  if (error && handleUnauthorized(error)) {
+    return null;
   }
 
   if (error) {

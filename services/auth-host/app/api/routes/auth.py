@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import itertools
 import os
 from typing import Dict, Tuple
@@ -18,15 +17,17 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
-from app.security import create_access_token, decode_access_token, security_scheme
+from app.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    security_scheme,
+    verify_password,
+)
 from app.services.keys import get_public_key_pem
 from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/api/v1", tags=["auth"])
-
-def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
 
 _users: Dict[str, UserResponse] = {}
 _password_hashes: Dict[str, str] = {}
@@ -34,13 +35,17 @@ _user_sequence = itertools.count(1)
 
 _client_users: Dict[str, Tuple[str, UserResponse]] = {}
 
+DEMO_CLIENT_EMAIL = os.getenv("DEMO_CLIENT_EMAIL", "demo@client.neft")
+DEMO_CLIENT_PASSWORD = os.getenv("DEMO_CLIENT_PASSWORD", "Demo123!")
+DEMO_CLIENT_ID = os.getenv("DEMO_CLIENT_ID", "demo-client")
+DEMO_CLIENT_FULL_NAME = os.getenv("DEMO_CLIENT_FULL_NAME", "Demo Client")
+
 
 def _bootstrap_demo_client():
-    email = os.getenv("DEMO_CLIENT_EMAIL", "demo@client.neft")
-    password = os.getenv("DEMO_CLIENT_PASSWORD", "demo")
-    if email not in _password_hashes:
-        _password_hashes[email] = _hash_password(password)
-    _ensure_client_user(email, client_id=os.getenv("DEMO_CLIENT_ID", "demo-client"))
+    if DEMO_CLIENT_EMAIL and DEMO_CLIENT_PASSWORD:
+        _password_hashes[DEMO_CLIENT_EMAIL] = hash_password(DEMO_CLIENT_PASSWORD)
+        user = _ensure_client_user(DEMO_CLIENT_EMAIL, client_id=DEMO_CLIENT_ID)
+        user.full_name = DEMO_CLIENT_FULL_NAME
 
 
 def _admin_credentials() -> tuple[str, str]:
@@ -107,7 +112,7 @@ async def register(payload: RegisterRequest) -> UserResponse:
     if payload.email in _users:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_exists")
 
-    password_hash = _hash_password(payload.password)
+    password_hash = hash_password(payload.password)
     _password_hashes[payload.email] = password_hash
 
     user = _ensure_user_record(payload.email)
@@ -125,7 +130,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
         roles = ["ADMIN"]
     else:
         expected_hash = _password_hashes.get(payload.email)
-        if not expected_hash or expected_hash != _hash_password(payload.password):
+        if not expected_hash or not verify_password(payload.password, expected_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         roles = []
 
@@ -166,32 +171,37 @@ async def auth_me(credentials: HTTPAuthorizationCredentials | None = Depends(sec
     )
 
 
-@router.post("/client/api/v1/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/client/api/v1/auth/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+)
 async def register_client(payload: RegisterRequest) -> UserResponse:
     if payload.email in _client_users:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="client_user_exists")
 
-    password_hash = _hash_password(payload.password)
-    _password_hashes[payload.email] = password_hash
-
-    user = _ensure_client_user(payload.email, client_id="demo-client")
-    user.full_name = payload.full_name
-    return user
+    raise HTTPException(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        detail="client_registration_disabled",
+    )
 
 
 @router.post("/client/api/v1/auth/login", response_model=TokenResponse)
 async def login_client(payload: ClientLoginRequest) -> TokenResponse:
-    expected_hash = _password_hashes.get(payload.email)
-    if not expected_hash or expected_hash != _hash_password(payload.password):
+    if payload.email.lower() != DEMO_CLIENT_EMAIL.lower():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    user = _ensure_client_user(payload.email, client_id=payload.client_id)
+    expected_hash = _password_hashes.get(DEMO_CLIENT_EMAIL)
+    if not expected_hash or not verify_password(payload.password, expected_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    user = _ensure_client_user(DEMO_CLIENT_EMAIL, client_id=DEMO_CLIENT_ID)
 
     settings = get_settings()
     expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))
-    client_id = payload.client_id or "demo-client"
+    client_id = payload.client_id or DEMO_CLIENT_ID
     token = create_access_token(
-        payload.email,
+        DEMO_CLIENT_EMAIL,
         roles=["CLIENT_USER"],
         subject_type="client_user",
         client_id=client_id,
