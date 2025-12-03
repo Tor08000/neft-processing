@@ -13,11 +13,12 @@ from fastapi import APIRouter, HTTPException
 # Должен быть настроен ТАК ЖЕ, как у workers/beat:
 #   broker: redis://redis:6379/0
 #   backend: redis://redis:6379/1
-#   default queue: default
+#   default queue: celery
 # -----------------------------
 
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 RESULT_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+DEFAULT_QUEUE = os.getenv("CELERY_DEFAULT_QUEUE", "celery")
 
 celery_app = Celery(
     "neft-workers",
@@ -28,9 +29,9 @@ celery_app = Celery(
 # В логах воркера видно, что default queue называется "default",
 # а не "celery". Поэтому настраиваем те же значения тут.
 celery_app.conf.update(
-    task_default_queue="default",
-    task_default_exchange="default",
-    task_default_routing_key="default",
+    task_default_queue=DEFAULT_QUEUE,
+    task_default_exchange=DEFAULT_QUEUE,
+    task_default_routing_key=DEFAULT_QUEUE,
     broker_connection_retry_on_startup=True,
 )
 

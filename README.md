@@ -65,6 +65,35 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `docker compose up -d gateway` — поднять только gateway (или `docker compose up -d --build` для всей среды).
   * Альтернативно: `docker build -f services/gateway/Dockerfile -t neft-processing-gateway .`.
 
+## Фоновые задачи и очереди (Celery / Redis / Flower)
+
+* Workers и Beat запускаются через общий образ `services/workers` и точку входа `services/workers/entrypoint.sh`.
+  * Очереди по умолчанию: `celery,default,limits,antifraud,reports` (список можно переопределить переменной `QUEUES`).
+  * Лимиты надёжности: `worker_max_tasks_per_child=100`, `worker_prefetch_multiplier=1`, `task_soft_time_limit=240`, `task_time_limit=300`.
+* Брокер и result backend разведены по разным Redis DB:
+  * `CELERY_BROKER_URL=redis://redis:6379/0`
+  * `CELERY_RESULT_BACKEND=redis://redis:6379/1`
+  * Кэш/сессии сервисов используют `REDIS_URL=redis://redis:6379/2`, чтобы не конкурировать с очередями.
+* Flower поднимается отдельным сервисом (`services/flower`) и теперь требует Basic Auth (`FLOWER_BASIC_AUTH`, по умолчанию `admin:change-me`). Порт наружу не публикуется, доступ возможен только из docker-сети (`http://flower:5555`); для внешнего доступа прокиньте порт вручную и задайте свои креды.
+
+### Переменные окружения
+
+* `CELERY_DEFAULT_QUEUE` — основная очередь (совпадает с exchange/routing key) по умолчанию `celery`.
+* `CELERY_WORKER_MAX_TASKS_PER_CHILD` — сколько задач обрабатывает процесс worker перед перезапуском (борьба с утечками памяти).
+* `CELERY_WORKER_PREFETCH_MULTIPLIER` — количество задач, которые воркер берёт наперёд (меньшее значение сглаживает нагрузку).
+* `CELERY_TASK_SOFT_TIME_LIMIT` / `CELERY_TASK_TIME_LIMIT` — мягкий/жёсткий лимит времени на задачу (секунды).
+* `FLOWER_BASIC_AUTH` — логин и пароль для Flower в формате `user:password`.
+* `REDIS_URL` — URL Redis для кеша/сессий (не для Celery), по умолчанию выделенная DB `redis://redis:6379/2`.
+
+### Отладка и диагностика Celery/Redis/Flower
+
+* Быстрая проверка очереди: `curl http://localhost:8001/api/v1/health/celery` (ping через Celery) либо `docker compose exec workers python - <<'PY'
+from services.workers.app.celery_app import celery_app
+print(celery_app.send_task("workers.ping", kwargs={"x": 1}).get(timeout=5))
+PY`.
+* Перезапуск воркеров при росте памяти: `docker compose restart workers`; параметр `CELERY_WORKER_MAX_TASKS_PER_CHILD` автоматически перезапускает процессы после 100 задач, что помогает сбрасывать утечки.
+* Доступ в Flower (внутри сети Docker): откройте `http://flower:5555` и используйте логин/пароль из `FLOWER_BASIC_AUTH`. Для смены пароля пропишите новое значение в `.env` и перезапустите `docker compose up -d flower`.
+
 ## Общий Python-пакет `neft_shared`
 
 В каталоге `shared/python` расположен пакет с общими настройками и логированием.

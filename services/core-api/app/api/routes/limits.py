@@ -14,12 +14,20 @@ from pydantic import BaseModel
 # ---------- Celery-клиент для core-api ----------
 
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
-RESULT_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+RESULT_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
+DEFAULT_QUEUE = os.getenv("CELERY_DEFAULT_QUEUE", "celery")
 
 celery = Celery(
     "neft-core-api",
     broker=BROKER_URL,
     backend=RESULT_URL,
+)
+
+celery.conf.update(
+    task_default_queue=DEFAULT_QUEUE,
+    task_default_exchange=DEFAULT_QUEUE,
+    task_default_routing_key=DEFAULT_QUEUE,
+    broker_connection_retry_on_startup=True,
 )
 
 # ---------- Pydantic-схемы ----------

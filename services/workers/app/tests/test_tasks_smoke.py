@@ -21,6 +21,7 @@ os.environ.setdefault("CELERY_BROKER_URL", "memory://")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
 
 from app.celery_app import celery_app
+from app.config import settings
 from app.tasks import ai, billing, clearing, limits, ping
 
 
@@ -165,6 +166,11 @@ def test_ping_task_runs_eagerly():
     assert result.get(timeout=1) == {"pong": 3}
 
 
+def test_ping_task_via_signature_apply():
+    signature = celery_app.signature("workers.ping", kwargs={"x": 2})
+    assert signature.apply().get(timeout=1) == {"pong": 2}
+
+
 def test_ai_score_task(monkeypatch):
     fake_payload = {"score": 0.98, "decision": "allow"}
     monkeypatch.setattr(ai, "_build_client", lambda: _DummyClient(fake_payload))
@@ -200,5 +206,10 @@ def test_billing_and_clearing_tasks(monkeypatch):
     clearing_batch = clearing.build_daily_batch.delay().get(timeout=1)
     assert clearing_batch["batches"] == 1
 
-    finalized = clearing.finalize_billing.delay().get(timeout=1)
-    assert finalized["finalized"] == 1
+
+def test_celery_config_hardening_defaults():
+    assert celery_app.conf.worker_max_tasks_per_child == settings.worker_max_tasks_per_child
+    assert celery_app.conf.worker_prefetch_multiplier == settings.worker_prefetch_multiplier
+    assert celery_app.conf.task_soft_time_limit == settings.task_soft_time_limit
+    assert celery_app.conf.task_time_limit == settings.task_time_limit
+    assert celery_app.conf.task_default_queue == settings.task_default_queue

@@ -29,7 +29,9 @@ celery_app = Celery(
 
 # Базовая конфигурация Celery
 celery_app.conf.update(
-    task_default_queue="default",
+    task_default_queue=settings.task_default_queue,
+    task_default_exchange=settings.task_default_queue,
+    task_default_routing_key=settings.task_default_queue,
     broker_connection_retry_on_startup=True,
     timezone=settings.timezone,
     enable_utc=True,
@@ -38,6 +40,10 @@ celery_app.conf.update(
     task_acks_late=True,
     task_max_retries=settings.task_max_retries,
     broker_transport_options={"visibility_timeout": settings.visibility_timeout},
+    worker_max_tasks_per_child=settings.worker_max_tasks_per_child,
+    worker_prefetch_multiplier=settings.worker_prefetch_multiplier,
+    task_soft_time_limit=settings.task_soft_time_limit,
+    task_time_limit=settings.task_time_limit,
 )
 
 # Автоматический поиск задач в пакете services.workers.app.tasks

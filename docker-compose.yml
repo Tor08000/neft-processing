@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: neft-processing-redis-1
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--databases", "4"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -127,6 +127,7 @@ services:
       SERVICE_NAME: workers
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_DEFAULT_QUEUE: celery
     depends_on:
       core-api:
         condition: service_healthy
@@ -144,6 +145,7 @@ services:
       SERVICE_NAME: beat
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_DEFAULT_QUEUE: celery
       CELERY_BEAT: "true"
     depends_on:
       core-api:
@@ -162,6 +164,8 @@ services:
       SERVICE_NAME: flower
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_DEFAULT_QUEUE: celery
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:change-me}
     depends_on:
       redis:
         condition: service_healthy
@@ -171,8 +175,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    ports:
-      - "5555:5555"
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - services.workers.app.celery_app:celery_app
+      - flower
+      - --port=5555
+      - --address=0.0.0.0
+      - --basic_auth=${FLOWER_BASIC_AUTH:-admin:change-me}
 
   gateway:
     build:
