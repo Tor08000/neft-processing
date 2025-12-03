@@ -222,7 +222,7 @@ services:
     ports:
       - "4317:4317"
     healthcheck:
-      test: ["CMD", "otelcol-contrib", "--version"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:13133/health"]
       interval: 10s
       timeout: 5s
       retries: 5
