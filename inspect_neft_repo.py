@@ -13,6 +13,7 @@
 """
 
 import argparse
+import json
 import os
 import subprocess
 import urllib.error
@@ -24,12 +25,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SCRIPT_VERSION = "v0.1.5"
 LOG_LINES: list[str] = []
+RESULTS: dict[str, "CheckResult"] = {}
+
+ALEMBIC_CONFIG_PATH = Path("services/core-api/app/alembic.ini")
 
 
 @dataclass
 class CheckResult:
     status: str
     description: str | None = None
+    is_env_issue: bool = False
 
     @property
     def ok(self) -> bool:
@@ -166,7 +171,7 @@ def section_docker_compose(expected_services: list[str]) -> CheckResult:
         if is_docker_env_issue(message) or rc == -1:
             log("[SKIP] docker compose недоступен: Docker CLI недоступен или демон не запущен.")
             log("       Проверьте установку Docker Desktop и запустите Docker перед диагностикой.")
-            return CheckResult("SKIP", "Docker CLI недоступен или демон не запущен")
+            return CheckResult("SKIP", "Docker CLI недоступен или демон не запущен", True)
 
         log(f"[FAIL] docker compose завершился с ошибкой: {message}")
         return CheckResult("FAIL", message)
@@ -211,24 +216,43 @@ def section_services():
         dockerfile = path / "Dockerfile"
         pyproject = path / "pyproject.toml"
         req = path / "requirements.txt"
-        app_dir = path / "app"
 
         log(f"[{'OK' if dockerfile.exists() else '!!'}] Dockerfile")
         log(f"[{'OK' if pyproject.exists() else '  '}] pyproject.toml")
         log(f"[{'OK' if req.exists() else '  '}] requirements.txt")
-        log(f"[{'OK' if app_dir.exists() else '!!'}] app/")
 
-        if app_dir.exists():
-            mains = list(app_dir.glob("main.py"))
-            if mains:
-                log("main.py найден в app/: " + ", ".join(str(m.relative_to(ROOT)) for m in mains))
-            else:
-                log("[!] main.py в app/ не найден")
+        if name == "admin-web":
+            src_dir = path / "src"
+            log(f"[{'OK' if src_dir.exists() else '!!'}] src/")
+            if src_dir.exists():
+                main_entry = src_dir / "main.tsx"
+                app_entry = src_dir / "App.tsx"
+                log(f"[{'OK' if main_entry.exists() else '!!'}] src/main.tsx")
+                log(f"[{'OK' if app_entry.exists() else '!!'}] src/App.tsx")
 
-            # Немного ключевых подпапок
-            for sub in ["api", "schemas", "models", "services", "tests"]:
-                sdir = app_dir / sub
-                log(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
+                for sub in ["api", "components"]:
+                    sdir = src_dir / sub
+                    mark = "OK" if sdir.exists() else "WARN"
+                    suffix = "" if sdir.exists() else " отсутствует"
+                    log(f"   [{mark}] src/{sub}{suffix}")
+        else:
+            app_dir = path / "app"
+            log(f"[{'OK' if app_dir.exists() else '!!'}] app/")
+
+            if app_dir.exists():
+                mains = list(app_dir.glob("main.py"))
+                if mains:
+                    log(
+                        "main.py найден в app/: "
+                        + ", ".join(str(m.relative_to(ROOT)) for m in mains)
+                    )
+                else:
+                    log("[!] main.py в app/ не найден")
+
+                # Немного ключевых подпапок
+                for sub in ["api", "schemas", "models", "services", "tests"]:
+                    sdir = app_dir / sub
+                    log(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
 
 
 def section_migrations() -> CheckResult:
@@ -244,13 +268,33 @@ def section_migrations() -> CheckResult:
     for v in versions:
         log(f"- {v.name}")
 
-    rc, out, err = safe_run(["alembic", "heads"], cwd=ROOT / "services" / "core-api")
+    alembic_config = ROOT / ALEMBIC_CONFIG_PATH
+    if not alembic_config.exists():
+        log(
+            "[FAIL] alembic config: Не найден конфиг Alembic по ожидаемому пути "
+            f"{ALEMBIC_CONFIG_PATH}"
+        )
+        return CheckResult(
+            "FAIL", f"Не найден конфиг Alembic по пути {ALEMBIC_CONFIG_PATH}"
+        )
+
+    rc, out, err = safe_run(
+        ["alembic", "-c", str(alembic_config), "heads"],
+        cwd=ROOT / "services" / "core-api",
+    )
     message = err or out or "без подробностей"
     if rc != 0:
         lowered = message.lower()
         if rc == -1 or "winerror 2" in lowered or "no such file or directory" in lowered:
-            log("[SKIP] alembic heads: Alembic CLI недоступен. Активируйте виртуальное окружение или установите Alembic.")
-            return CheckResult("SKIP", "Alembic CLI недоступен")
+            log(
+                "[SKIP] alembic heads: Alembic CLI недоступен. "
+                "Активируйте виртуальное окружение или установите Alembic."
+            )
+            return CheckResult("SKIP", "Alembic CLI недоступен", True)
+
+        if "no config file" in lowered:
+            log(f"[FAIL] alembic heads: {message}")
+            return CheckResult("FAIL", message)
 
         log(f"[FAIL] Не удалось выполнить 'alembic heads': {message}")
         return CheckResult("FAIL", message)
@@ -331,7 +375,19 @@ def section_health_checks() -> CheckResult:
         "admin": "http://localhost/admin/",
     }
 
-    results: dict[str, bool] = {}
+    docker_result = RESULTS.get("docker compose")
+    if docker_result and (
+        docker_result.skip
+        or (docker_result.fail and is_docker_env_issue(docker_result.description or ""))
+    ):
+        log(
+            "[SKIP] health-checks: HTTP-проверки пропущены, т.к. Docker недоступен или стек не запущен."
+        )
+        return CheckResult(
+            "SKIP", "Docker недоступен или стек не запущен", is_env_issue=True
+        )
+
+    results: dict[str, CheckResult] = {}
 
     for name, url in endpoints.items():
         log(f"\n--- {name} ---")
@@ -342,23 +398,58 @@ def section_health_checks() -> CheckResult:
                 log(f"URL: {url}")
                 log(f"Статус: {status}")
                 log(f"Длина ответа: {len(content)}")
-                results[name] = status == 200
+
+            if status >= 400:
+                results[name] = CheckResult(
+                    "FAIL",
+                    f"сервис {name} вернул код {status}",
+                )
+                continue
+
+            try:
+                data = json.loads(content)
+            except Exception:  # noqa: BLE001
+                log("[FAIL] Ответ не является JSON")
+                results[name] = CheckResult(
+                    "FAIL", f"сервис {name} вернул не-JSON ответ"
+                )
+                continue
+
+            if isinstance(data, dict) and data.get("status") == "ok":
+                log("[OK] Ответ health-check валиден")
+                results[name] = CheckResult("OK")
+            else:
+                log("[FAIL] Неожиданный формат ответа health-check")
+                results[name] = CheckResult(
+                    "FAIL", f"сервис {name} вернул неожиданный ответ"
+                )
         except urllib.error.HTTPError as e:
             log(f"[FAIL] HTTPError {e.code}: {e.reason}")
-            results[name] = False
+            results[name] = CheckResult(
+                "FAIL", f"сервис {name} вернул код {e.code}"
+            )
         except urllib.error.URLError as e:
-            log(f"[FAIL] URLError: {e.reason}")
-            results[name] = False
+            reason_text = str(e.reason)
+            log(f"[FAIL] URLError: {reason_text}")
+            if "connection refused" in reason_text.lower():
+                results[name] = CheckResult(
+                    "FAIL", f"сервис {name} недоступен (connection refused)"
+                )
+            else:
+                results[name] = CheckResult(
+                    "FAIL", f"сервис {name} недоступен: {reason_text}"
+                )
         except Exception as e:  # noqa: BLE001
             log(f"[FAIL] Ошибка при запросе: {e}")
-            results[name] = False
+            results[name] = CheckResult(
+                "FAIL", f"сервис {name} недоступен: {e}"
+            )
 
-    overall = all(results.values()) if results else False
-    if overall:
+    if all(result.ok for result in results.values()):
         log("[OK] Все health-check запросы успешны")
         return CheckResult("OK")
 
-    failed = [name for name, ok in results.items() if not ok]
+    failed = [name for name, result in results.items() if not result.ok]
     log(f"[FAIL] Проблемы с сервисами: {', '.join(failed)}")
     return CheckResult("FAIL", f"Недоступны: {', '.join(failed)}")
 
@@ -386,7 +477,7 @@ def section_run_tests(run_tests: bool) -> CheckResult:
 
     if not run_tests:
         log("Флаг --run-tests не передан, пропускаем запуск pytest")
-        return CheckResult("SKIP", "pytest пропущен по флагу")
+        return CheckResult("SKIP", "pytest пропущен по флагу", True)
 
     services = {
         "core-api": ROOT / "services" / "core-api",
@@ -418,18 +509,23 @@ def summarize_status(statuses: dict[str, CheckResult]):
         suffix = f": {result.description}" if result.description else ""
         log(f"[{result.status}] {key}{suffix}")
 
-    has_fail = any(result.fail for result in statuses.values())
+    repo_fail = any(
+        result.fail and not result.is_env_issue for result in statuses.values()
+    )
+    env_fail = any(result.fail and result.is_env_issue for result in statuses.values())
     has_warn = any(result.warn for result in statuses.values())
     has_skip = any(result.skip for result in statuses.values())
 
-    if has_fail:
-        summary = "Есть проблемы в репозитории — требуется исправление конфигурации или кода"
-    elif has_warn:
-        summary = "Проверки завершены с предупреждениями"
-    elif has_skip:
-        summary = "Проверки репозитория пройдены, есть пропуски из-за окружения"
+    if repo_fail:
+        summary = (
+            "Есть проблемы в репозитории — требуется исправление конфигурации или кода"
+        )
+    elif has_warn or has_skip or env_fail:
+        summary = (
+            "Репозиторий выглядит корректно, есть предупреждения и пропуски проверок (см. выше)."
+        )
     else:
-        summary = "Все проверки OK"
+        summary = "Все проверки репозитория успешно пройдены"
 
     log(f"\n[ИТОГ] {summary}")
     return summary
@@ -452,6 +548,8 @@ def main():
     log(f"Отчёт будет сохранён в: {output_path}")
 
     statuses: dict[str, CheckResult] = {}
+    global RESULTS
+    RESULTS = statuses
 
     section_basic()
     section_git()
