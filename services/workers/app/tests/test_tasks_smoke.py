@@ -21,7 +21,7 @@ os.environ.setdefault("CELERY_BROKER_URL", "memory://")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
 
 from app.celery_app import celery_app
-from app.config import settings
+from app.settings import settings
 from app.tasks import ai, billing, clearing, limits, ping
 
 

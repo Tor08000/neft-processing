@@ -1,5 +1,5 @@
 from .celery_app import celery_app
-from .config import settings
+from .settings import settings
 
 
 # Минимальный расписатель для демо-окружения
