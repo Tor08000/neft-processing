@@ -164,7 +164,12 @@ def is_docker_env_issue(error_message: str) -> bool:
 
 def is_alembic_cli_issue(return_code: int, message: str) -> bool:
     lowered = message.lower()
-    cp866_markers = ["¤«", "ўє«"]
+    cp866_markers = [
+        "¤«",
+        "ўє«",
+        "пў«пҐвбп",
+        "ў­гваґ",
+    ]
     return return_code == -1 or any(
         marker in lowered
         for marker in [
@@ -301,7 +306,11 @@ def section_migrations() -> CheckResult:
     if rc != 0:
         if is_alembic_cli_issue(rc, message):
             log("[SKIP] alembic heads: Alembic CLI недоступен")
-            return CheckResult("SKIP", "Alembic CLI недоступен", True)
+            return CheckResult(
+                "SKIP",
+                "Alembic CLI недоступен. Требуется установка или активация окружения.",
+                True,
+            )
 
         lowered = message.lower()
         if "no config file" in lowered:
@@ -557,7 +566,7 @@ def summarize_status(statuses: dict[str, CheckResult]):
             "Есть проблемы в репозитории — требуется исправление конфигурации или кода"
         )
     elif env_only_issues:
-        summary = "Репозиторий корректен, есть проблемы окружения или диагностики"
+        summary = "Репозиторий корректен, есть проблемы окружения"
     elif has_warn:
         summary = (
             "Репозиторий выглядит корректно, есть предупреждения (см. выше)."
