@@ -216,7 +216,7 @@ def _fetch_operations_for_auths(
                 Operation.parent_operation_id.in_(auth_ids),
             )
         )
-        .order_by(Operation.created_at.asc())
+        .order_by(Operation.created_at.asc(), Operation.operation_id.asc())
         .all()
     )
 
@@ -233,7 +233,7 @@ def _fetch_operations_for_auths(
                 Operation.operation_type == "REFUND",
                 Operation.parent_operation_id.in_(capture_ids),
             )
-            .order_by(Operation.created_at.asc())
+            .order_by(Operation.created_at.asc(), Operation.operation_id.asc())
             .all()
         )
         operations.extend(refund_children)
@@ -276,7 +276,9 @@ def list_transactions(
     if to_created_at:
         auth_query = auth_query.filter(Operation.created_at <= to_created_at)
 
-    auth_operations = auth_query.order_by(Operation.created_at.desc()).all()
+    auth_operations = auth_query.order_by(
+        Operation.created_at.desc(), Operation.operation_id.desc()
+    ).all()
 
     auth_ids = [op.operation_id for op in auth_operations]
     operations_by_auth = _fetch_operations_for_auths(db, auth_ids)
@@ -335,7 +337,7 @@ def get_transaction(db: Session, transaction_id: str) -> TransactionDetailRespon
                 Operation.parent_operation_id == transaction_id,
             )
         )
-        .order_by(Operation.created_at.asc())
+        .order_by(Operation.created_at.asc(), Operation.operation_id.asc())
         .all()
     )
 

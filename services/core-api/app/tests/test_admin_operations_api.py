@@ -216,6 +216,68 @@ def test_operations_sorting(admin_client: TestClient):
     ]
 
 
+def test_operations_range_filter_with_merchant(admin_client: TestClient):
+    session = SessionLocal()
+    try:
+        base_time = datetime.utcnow()
+        session.add_all(
+            [
+                Operation(
+                    operation_id="range-1",
+                    operation_type="AUTH",
+                    status="AUTHORIZED",
+                    merchant_id="merchant-range",
+                    terminal_id="t-1",
+                    client_id="c-1",
+                    card_id="card-1",
+                    amount=100,
+                    currency="RUB",
+                    created_at=base_time - timedelta(minutes=1),
+                ),
+                Operation(
+                    operation_id="range-2",
+                    operation_type="CAPTURE",
+                    status="CAPTURED",
+                    merchant_id="merchant-range",
+                    terminal_id="t-1",
+                    client_id="c-1",
+                    card_id="card-1",
+                    amount=150,
+                    currency="RUB",
+                    created_at=base_time + timedelta(minutes=1),
+                ),
+                Operation(
+                    operation_id="out-of-range",
+                    operation_type="REFUND",
+                    status="REFUNDED",
+                    merchant_id="other-merchant",
+                    terminal_id="t-2",
+                    client_id="c-2",
+                    card_id="card-2",
+                    amount=50,
+                    currency="RUB",
+                    created_at=base_time + timedelta(days=1),
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    params = {
+        "merchant_id": "merchant-range",
+        "from_created_at": (base_time - timedelta(minutes=2)).isoformat(),
+        "to_created_at": (base_time + timedelta(minutes=2)).isoformat(),
+    }
+    response = admin_client.get("/api/v1/admin/operations", params=params)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    returned_ids = {item["operation_id"] for item in payload["items"]}
+    assert returned_ids == {"range-1", "range-2"}
+
+
 def test_transactions_filters_sort_and_pagination(admin_client: TestClient):
     session = SessionLocal()
     try:
