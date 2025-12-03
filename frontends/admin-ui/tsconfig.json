@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "types": ["vite/client", "./types/vitest"],
+    "paths": {
+      "react-router-dom": ["./src/router/router-shim"]
+    }
+  },
+  "include": ["src", "types"],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
