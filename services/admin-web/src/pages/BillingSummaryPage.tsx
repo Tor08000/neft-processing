@@ -1,14 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchBillingSummary, finalizeBillingSummary } from "../api/billing";
-import { Table } from "../components/Table/Table";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
-import { DateRangeFilter } from "../components/Filters/DateRangeFilter";
-import { SelectFilter } from "../components/Filters/SelectFilter";
 import { formatAmount, formatDate } from "../utils/format";
 import { BillingSummaryItem } from "../types/billing";
+import { Loader } from "../components/Loader/Loader";
+
+const Table = React.lazy(() => import("../components/Table/Table").then((mod) => ({ default: mod.Table })));
+const DateRangeFilter = React.lazy(() =>
+  import("../components/Filters/DateRangeFilter").then((mod) => ({ default: mod.DateRangeFilter })),
+);
+const SelectFilter = React.lazy(() =>
+  import("../components/Filters/SelectFilter").then((mod) => ({ default: mod.SelectFilter })),
+);
 
 export const BillingSummaryPage: React.FC = () => {
-  const [data, setData] = useState<BillingSummaryItem[]>([]);
+  const queryClient = useQueryClient();
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
     const to = new Date();
     const from = new Date();
@@ -17,100 +24,100 @@ export const BillingSummaryPage: React.FC = () => {
   });
   const [status, setStatus] = useState<string>("");
   const [merchantId, setMerchantId] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const filters = useMemo(
+    () => ({
+      date_from: dateRange.from,
+      date_to: dateRange.to,
+      merchant_id: merchantId || undefined,
+      status: status || undefined,
+    }),
+    [dateRange.from, dateRange.to, merchantId, status],
+  );
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetchBillingSummary({
-        date_from: dateRange.from,
-        date_to: dateRange.to,
-        merchant_id: merchantId || undefined,
-        status: status || undefined,
+  const { data = [], isFetching, isLoading, error, refetch } = useQuery<BillingSummaryItem[], Error>({
+    queryKey: ["billing", filters],
+    queryFn: () => fetchBillingSummary(filters),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    keepPreviousData: true,
+  });
+
+  const finalizeMutation = useMutation({
+    mutationFn: (id: string) => finalizeBillingSummary(id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<BillingSummaryItem[]>(["billing", filters], (previous) => {
+        if (!previous) return previous;
+        return previous.map((item) => (item.id === updated.id ? updated : item));
       });
-      setData(res);
-    } catch (err: any) {
-      setError(err?.message ?? "Не удалось загрузить billing summary");
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+  });
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const handleFinalize = async (id: string) => {
-    try {
-      const updated = await finalizeBillingSummary(id);
-      setData((prev) => prev.map((item) => (item.id === id ? updated : item)));
-    } catch (err: any) {
-      setError(err?.message ?? "Не удалось финализировать");
-    }
-  };
+  const handleFinalize = (id: string) => finalizeMutation.mutate(id);
 
   return (
     <div>
       <div className="page-header">
         <h1>Billing summary</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => load()} disabled={loading}>
+          <button onClick={() => refetch()} disabled={isFetching}>
             Refresh
           </button>
-          {loading && <span>Loading...</span>}
-          {error && <span style={{ color: "#dc2626" }}>{error}</span>}
+          {(isLoading || isFetching) && <Loader label="Обновляем данные" />}
+          {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
         </div>
       </div>
 
-      <div className="filters">
-        <DateRangeFilter
-          label="Dates"
-          from={dateRange.from}
-          to={dateRange.to}
-          onChange={(range) => setDateRange({ from: range.from || "", to: range.to || "" })}
-        />
-        <SelectFilter
-          label="Status"
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "PENDING", label: "PENDING" },
-            { value: "FINALIZED", label: "FINALIZED" },
+      <Suspense fallback={<Loader label="Инициализация фильтров" />}>
+        <div className="filters">
+          <DateRangeFilter
+            label="Dates"
+            from={dateRange.from}
+            to={dateRange.to}
+            onChange={(range) => setDateRange({ from: range.from || "", to: range.to || "" })}
+          />
+          <SelectFilter
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: "PENDING", label: "PENDING" },
+              { value: "FINALIZED", label: "FINALIZED" },
+            ]}
+          />
+          <div className="filter">
+            <span className="label">Merchant</span>
+            <input value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="merchant id" />
+          </div>
+        </div>
+      </Suspense>
+
+      <Suspense fallback={<Loader label="Загружаем таблицу" />}>
+        <Table<BillingSummaryItem>
+          columns={[
+            { key: "date", title: "Date", render: (row) => formatDate(row.date) },
+            { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
+            {
+              key: "amount",
+              title: "Captured",
+              render: (row) => formatAmount(row.total_captured_amount),
+            },
+            { key: "count", title: "Ops", render: (row) => row.operations_count },
+            { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
+            { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
+            {
+              key: "actions",
+              title: "Actions",
+              render: (row) =>
+                row.status === "PENDING" ? (
+                  <button onClick={() => handleFinalize(row.id)} disabled={finalizeMutation.isPending}>
+                    Finalize
+                  </button>
+                ) : null,
+            },
           ]}
+          data={data}
         />
-        <div className="filter">
-          <span className="label">Merchant</span>
-          <input value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="merchant id" />
-        </div>
-      </div>
-
-      <Table<BillingSummaryItem>
-        columns={[
-          { key: "date", title: "Date", render: (row) => formatDate(row.date) },
-          { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
-          {
-            key: "amount",
-            title: "Captured",
-            render: (row) => formatAmount(row.total_captured_amount),
-          },
-          { key: "count", title: "Ops", render: (row) => row.operations_count },
-          { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
-          { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
-          {
-            key: "actions",
-            title: "Actions",
-            render: (row) =>
-              row.status === "PENDING" ? (
-                <button onClick={() => handleFinalize(row.id)} disabled={loading}>
-                  Finalize
-                </button>
-              ) : null,
-          },
-        ]}
-        data={data}
-      />
+      </Suspense>
     </div>
   );
 };

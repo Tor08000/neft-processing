@@ -1,11 +1,14 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { AuthProvider } from "./auth/AuthContext";
 import { AppRouter } from "./router";
+import { Loader } from "./components/Loader/Loader";
 
 export function App() {
   return (
     <AuthProvider>
-      <AppRouter />
+      <Suspense fallback={<Loader label="Загружаем интерфейс..." />}>
+        <AppRouter />
+      </Suspense>
     </AuthProvider>
   );
 }

@@ -1,14 +1,16 @@
 import React from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Layout } from "../components/Layout/Layout";
-import { DashboardPage } from "../pages/DashboardPage";
-import { OperationsListPage } from "../pages/OperationsListPage";
-import { OperationDetailsPage } from "../pages/OperationDetailsPage";
-import { BillingSummaryPage } from "../pages/BillingSummaryPage";
-import { ClearingBatchesPage } from "../pages/ClearingBatchesPage";
-import { HealthPage } from "../pages/HealthPage";
-import { LoginPage } from "../pages/LoginPage";
+import { Loader } from "../components/Loader/Loader";
 import { useAuth } from "../auth/AuthContext";
+
+const Layout = React.lazy(() => import("../components/Layout/Layout"));
+const DashboardPage = React.lazy(() => import("../pages/DashboardPage"));
+const OperationsListPage = React.lazy(() => import("../pages/OperationsListPage"));
+const OperationDetailsPage = React.lazy(() => import("../pages/OperationDetailsPage"));
+const BillingSummaryPage = React.lazy(() => import("../pages/BillingSummaryPage"));
+const ClearingBatchesPage = React.lazy(() => import("../pages/ClearingBatchesPage"));
+const HealthPage = React.lazy(() => import("../pages/HealthPage"));
+const LoginPage = React.lazy(() => import("../pages/LoginPage"));
 
 export function AppRouter() {
   const { token } = useAuth();
@@ -21,17 +23,19 @@ export function AppRouter() {
           <Route path="/" element={<LoginPage />} />
         </Routes>
       ) : (
-        <Layout>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/operations" element={<OperationsListPage />} />
-            <Route path="/operations/:id" element={<OperationDetailsPage />} />
-            <Route path="/billing" element={<BillingSummaryPage />} />
-            <Route path="/clearing" element={<ClearingBatchesPage />} />
-            <Route path="/health" element={<HealthPage />} />
-            <Route path="/login" element={<LoginPage />} />
-          </Routes>
-        </Layout>
+        <React.Suspense fallback={<Loader />}>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/operations" element={<OperationsListPage />} />
+              <Route path="/operations/:id" element={<OperationDetailsPage />} />
+              <Route path="/billing" element={<BillingSummaryPage />} />
+              <Route path="/clearing" element={<ClearingBatchesPage />} />
+              <Route path="/health" element={<HealthPage />} />
+              <Route path="/login" element={<LoginPage />} />
+            </Routes>
+          </Layout>
+        </React.Suspense>
       )}
     </BrowserRouter>
   );

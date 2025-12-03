@@ -1,29 +1,29 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { login as loginRequest } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { setToken } = useAuth();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const token = await loginRequest(email, password);
+  const loginMutation = useMutation({
+    mutationFn: () => loginRequest(email, password),
+    onSuccess: (token) => {
       setToken(token);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["operations"] });
       navigate("/operations");
-    } catch (err: any) {
-      setError(err?.message ?? "Не удалось выполнить вход");
-    } finally {
-      setLoading(false);
-    }
+    },
+  });
+  const error = loginMutation.error as Error | null;
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    loginMutation.mutate();
   };
 
   return (
@@ -46,9 +46,9 @@ export const LoginPage: React.FC = () => {
               autoComplete="current-password"
             />
           </label>
-          {error && <div className="error-text">{error}</div>}
-          <button type="submit" disabled={loading}>
-            {loading ? "Входим..." : "Войти"}
+          {error && <div className="error-text">{error.message}</div>}
+          <button type="submit" disabled={loginMutation.isPending}>
+            {loginMutation.isPending ? "Входим..." : "Войти"}
           </button>
         </form>
       </div>
