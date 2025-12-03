@@ -1,29 +1,25 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
-class ClientGroupBase(BaseModel):
+class AdminFromAttributesModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClientGroupBase(AdminFromAttributesModel):
     group_id: str
     name: str
     description: str | None = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class ClientGroupCreate(ClientGroupBase):
     pass
 
 
-class ClientGroupUpdate(BaseModel):
+class ClientGroupUpdate(AdminFromAttributesModel):
     name: str | None = None
     description: str | None = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class ClientGroupRead(ClientGroupBase):
@@ -31,51 +27,35 @@ class ClientGroupRead(ClientGroupBase):
     created_at: datetime
 
 
-class ClientGroupListResponse(BaseModel):
+class ClientGroupListResponse(AdminFromAttributesModel):
     items: list[ClientGroupRead]
     total: int
     limit: int
     offset: int
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class ClientGroupMemberChange(BaseModel):
     client_id: str
 
 
-class ClientGroupMemberRead(BaseModel):
+class ClientGroupMemberRead(AdminFromAttributesModel):
     client_id: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
-
-class CardGroupBase(BaseModel):
+class CardGroupBase(AdminFromAttributesModel):
     group_id: str
     name: str
     description: str | None = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class CardGroupCreate(CardGroupBase):
     pass
 
 
-class CardGroupUpdate(BaseModel):
+class CardGroupUpdate(AdminFromAttributesModel):
     name: str | None = None
     description: str | None = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class CardGroupRead(CardGroupBase):
@@ -83,25 +63,17 @@ class CardGroupRead(CardGroupBase):
     created_at: datetime
 
 
-class CardGroupListResponse(BaseModel):
+class CardGroupListResponse(AdminFromAttributesModel):
     items: list[CardGroupRead]
     total: int
     limit: int
     offset: int
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class CardGroupMemberChange(BaseModel):
     card_id: str
 
 
-class CardGroupMemberRead(BaseModel):
+class CardGroupMemberRead(AdminFromAttributesModel):
     card_id: str
     created_at: datetime
-
-    class Config:
-        orm_mode = True
-        from_attributes = True

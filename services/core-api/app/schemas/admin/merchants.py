@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, ConfigDict, Field, constr
 
 
 MerchantId = constr(strip_whitespace=True, min_length=1, max_length=64)
@@ -27,13 +27,11 @@ class MerchantUpdate(BaseModel):
 
 
 class MerchantRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     status: str
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class MerchantListResponse(BaseModel):
@@ -60,14 +58,12 @@ class TerminalUpdate(BaseModel):
 
 
 class TerminalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     merchant_id: str
     status: str
     location: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-        from_attributes = True
 
 
 class TerminalListResponse(BaseModel):

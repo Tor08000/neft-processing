@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.2
+- Admin schemas switched to Pydantic v2-style configuration with `ConfigDict` and `field_validator`, reducing deprecated warnings in tests and preparing the API for framework upgrades.
+
 ## v0.1.1
 - Milestone v0.1.1 — Admin UI stable, TS filters synced, gateway stabilized.
 - Admin UI builds cleanly with TypeScript validation and synced OperationQuery interface (including date aliases).

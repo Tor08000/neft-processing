@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClientGroupBase(BaseModel):
@@ -22,9 +22,7 @@ class ClientGroupUpdate(BaseModel):
 class ClientGroupResponse(ClientGroupBase):
     id: int
     members: List[str] = []
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CardGroupBase(BaseModel):
@@ -44,9 +42,7 @@ class CardGroupUpdate(BaseModel):
 class CardGroupResponse(CardGroupBase):
     id: int
     members: List[str] = []
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MembershipRequest(BaseModel):
@@ -79,6 +75,4 @@ class LimitRuleUpdate(BaseModel):
 
 class LimitRuleResponse(LimitRuleBase):
     id: int
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
