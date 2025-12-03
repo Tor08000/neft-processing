@@ -6,14 +6,13 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.reports import BillingSummaryItem
 from app.models.billing_summary import BillingSummary
-from app.services.admin_auth import require_admin
 from app.services.reports_billing import (
     finalize_billing_summary,
     get_or_build_summary,
     list_billing_summaries,
 )
 
-router = APIRouter(prefix="/admin/billing", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/billing", tags=["admin"])
 
 
 @router.get("/summary", response_model=list[BillingSummaryItem])

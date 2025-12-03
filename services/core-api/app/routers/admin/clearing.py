@@ -9,7 +9,6 @@ from app.schemas.clearing import (
     ClearingBatchOperationOut,
     ClearingBatchOut,
 )
-from app.services.admin_auth import require_admin
 from app.services.clearing import (
     build_clearing_batch_for_period,
     get_batch,
@@ -18,7 +17,7 @@ from app.services.clearing import (
     mark_batch_sent,
 )
 
-router = APIRouter(prefix="/admin/clearing", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/clearing", tags=["admin"])
 
 
 @router.get("/batches", response_model=list[ClearingBatchOut])

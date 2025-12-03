@@ -8,16 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.operation import Operation
-from app.schemas.admin_dashboard import (
+from app.schemas.admin.dashboard import (
     OperationListResponse,
     OperationShort,
     TransactionListResponse,
     TransactionShort,
 )
-from app.services.admin_auth import require_admin
 from app.services.transactions import list_transactions
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="", tags=["admin"])
 
 
 _ORDERING_OPERATION = {

@@ -50,6 +50,12 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
     * `/api/auth/api/v1/auth/login`
     * `/api/core/api/v1/admin/operations`
 
+### Разделение публичного и admin API
+
+* Публичные ручки Core API остаются в пространстве `/api/core/api/v1/*`.
+* Все административные операции теперь живут под префиксом `/api/core/api/v1/admin/*` и требуют admin JWT.
+* Admin Web клиент обновлён на использование нового префикса, поэтому старая схема путей `/api/core/api/v1/admin/...` остаётся единственной точкой входа.
+
 ### Gateway (Nginx)
 
 * Конфигурация: `services/gateway/nginx.conf` (прокси для `/admin/`, `/api/auth/`, `/api/core/`, `/api/ai/`, favicon и health).

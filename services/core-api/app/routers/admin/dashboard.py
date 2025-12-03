@@ -10,15 +10,14 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.card import Card
 from app.models.client import Client
-from app.schemas.admin_dashboard import (
+from app.schemas.admin.dashboard import (
     CardListResponse,
     CardShort,
     ClientListResponse,
     ClientShort,
 )
-from app.services.admin_auth import require_admin
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="", tags=["admin"])
 
 
 @router.get("/clients", response_model=ClientListResponse)

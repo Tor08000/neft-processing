@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.limits import CardGroup, CardGroupMembership, ClientGroup, ClientGroupMembership
 from app.models.limit_rule import LimitRule
-from app.schemas.admin import (
+from app.schemas.admin.groups_legacy import (
     CardGroupCreate,
     CardGroupResponse,
     CardGroupUpdate,
@@ -22,7 +22,7 @@ from app.schemas.admin import (
 )
 
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="", tags=["admin"])
 
 
 def _get_client_group_or_404(db: Session, group_id: int) -> ClientGroup:
