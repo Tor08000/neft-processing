@@ -259,7 +259,7 @@ services:
   gateway:
     build:
       context: .
-      dockerfile: gateway/gateway/Dockerfile
+      dockerfile: gateway/Dockerfile
     image: neft-processing-gateway:latest
     container_name: neft-processing-gateway-1
     depends_on:
