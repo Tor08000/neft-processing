@@ -6,8 +6,8 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, error }: LoginPageProps) {
-  const [email, setEmail] = useState("demo@client.neft");
-  const [password, setPassword] = useState("Demo123!");
+  const [email, setEmail] = useState("client@neft.local");
+  const [password, setPassword] = useState("client");
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
