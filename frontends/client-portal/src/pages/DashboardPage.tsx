@@ -1,94 +1,87 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchDashboard, handleUnauthorized } from "../api";
-import type { DashboardSummary, Operation } from "../types";
+import { useMemo } from "react";
+import { useAuth } from "../auth/AuthContext";
 
-interface DashboardPageProps {
-  token: string;
+function formatExpiry(timestamp: number | undefined) {
+  if (!timestamp) return "—";
+  const diffMs = timestamp - Date.now();
+  if (diffMs <= 0) return "истек";
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "менее минуты";
+  if (minutes < 60) return `${minutes} мин`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return `${hours} ч ${restMinutes} мин`;
 }
 
-export function DashboardPage({ token }: DashboardPageProps) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["dashboard", token],
-    queryFn: () => fetchDashboard(token),
-  });
+export function DashboardPage() {
+  const { user } = useAuth();
 
-  if (isLoading) {
-    return <div className="card">Загрузка дашборда...</div>;
-  }
+  const abilities = useMemo(() => {
+    if (!user) return [];
+    const list = [] as string[];
+    if (user.roles.includes("CLIENT_OWNER")) {
+      list.push("Вы являетесь владельцем аккаунта клиента");
+    }
+    user.roles
+      .filter((role) => role !== "CLIENT_OWNER")
+      .forEach((role) => list.push(`Роль: ${role}`));
+    return list;
+  }, [user]);
 
-  if (error && handleUnauthorized(error)) {
+  if (!user) {
     return null;
   }
 
-  if (error || !data) {
-    return <div className="card error">Не удалось загрузить дашборд</div>;
-  }
-
-  const summary: DashboardSummary = data.summary;
-  const lastOperations: Operation[] = data.recentOperations;
   return (
-    <div className="grid">
-      <div className="grid two">
-        <div className="card">
-          <div className="section-title">
-            <span>Операции за период</span>
-            <span className="badge pending">{summary.period}</span>
-          </div>
-          <h2>{summary.totalOperations}</h2>
-          <p>транзакций</p>
-        </div>
+    <div className="stack" aria-live="polite">
+      <section className="card">
+        <h2>Здравствуйте, {user.email}</h2>
+        <p className="muted">Добро пожаловать в клиентский кабинет NEFT.</p>
+      </section>
 
-        <div className="card">
-          <div className="section-title">
-            <span>Суммарный расход</span>
-            <span className="badge success">RUB</span>
-          </div>
-          <h2>{summary.totalAmount.toLocaleString("ru-RU")}</h2>
-          <p>по всем операциям</p>
-        </div>
+      <section className="card">
+        <h3>Ваши роли</h3>
+        <ul className="pill-list">
+          {user.roles.map((role) => (
+            <li key={role}>{role}</li>
+          ))}
+        </ul>
+      </section>
 
-        <div className="card">
-          <div className="section-title">
-            <span>Активные лимиты</span>
-          </div>
-          <h2>{summary.activeLimits}</h2>
-          <p>лимитов активно</p>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="section-title">
-          <h3>Последние операции</h3>
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>Тип</th>
-              <th>Статус</th>
-              <th>Сумма</th>
-              <th>Карта</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lastOperations.map((operation) => (
-              <tr key={operation.id}>
-                <td>{new Date(operation.date).toLocaleString("ru-RU")}</td>
-                <td>{operation.type}</td>
-                <td>
-                  <span
-                    className={`badge ${operation.status === "success" ? "success" : operation.status === "pending" ? "pending" : "error"}`}
-                  >
-                    {operation.status}
-                  </span>
-                </td>
-                <td>{operation.amount.toLocaleString("ru-RU")}</td>
-                <td>{operation.cardRef ?? "—"}</td>
-              </tr>
+      <section className="card">
+        <h3>Ваши текущие возможности</h3>
+        {abilities.length ? (
+          <ul className="bullets">
+            {abilities.map((item) => (
+              <li key={item}>{item}</li>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+        ) : (
+          <p className="muted">Роли не назначены.</p>
+        )}
+      </section>
+
+      <section className="card">
+        <h3>Статус авторизации</h3>
+        <div className="meta-grid">
+          <div>
+            <div className="label">Email</div>
+            <div>{user.email}</div>
+          </div>
+          <div>
+            <div className="label">Тип субъекта</div>
+            <div>{user.subjectType}</div>
+          </div>
+          <div>
+            <div className="label">ID клиента</div>
+            <div>{user.clientId ?? "—"}</div>
+          </div>
+          <div>
+            <div className="label">Токен истекает через</div>
+            <div>{formatExpiry(user.expiresAt)}</div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

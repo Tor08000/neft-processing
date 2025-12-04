@@ -1,33 +1,32 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { login as apiLogin, me } from "../api/auth";
-import { ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
-import type { AuthUser } from "../types/auth";
+import { fetchMe, login, UnauthorizedError, ValidationError } from "../api/auth";
+import type { AuthSession } from "../api/types";
 
 interface AuthContextValue {
-  user: AuthUser | null;
+  user: AuthSession | null;
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  isAdmin: boolean;
+  hasClientRole: boolean;
 }
 
-const STORAGE_KEY = "neft_admin_auth";
+const STORAGE_KEY = "neft_client_auth";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function hasAdminRole(roles: string[]): boolean {
-  return roles.includes("PLATFORM_ADMIN");
+function isClientRolePresent(roles: string[]): boolean {
+  return roles.some((role) => role.startsWith("CLIENT_"));
 }
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const persist = useCallback((payload: AuthUser | null) => {
-    if (payload) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  const persist = useCallback((session: AuthSession | null) => {
+    if (session) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -38,16 +37,22 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     persist(null);
   }, [persist]);
 
-  const revive = useCallback(
-    async (stored: AuthUser) => {
+  const reviveSession = useCallback(
+    async (stored: AuthSession) => {
       try {
-        const profile = await me(stored.token);
-        if (!hasAdminRole(profile.roles)) {
-          setError("У вас нет прав доступа к админской панели");
+        const profile = await fetchMe(stored.token);
+        if (!isClientRolePresent(profile.roles)) {
+          setError("Эта зона доступна только клиентам");
           logout();
           return;
         }
-        const normalized: AuthUser = { ...stored, roles: profile.roles, email: profile.email, subjectType: profile.subjectType };
+        const normalized: AuthSession = {
+          ...stored,
+          roles: profile.roles,
+          email: profile.email ?? stored.email,
+          subjectType: profile.subject_type,
+          clientId: profile.client_id ?? stored.clientId,
+        };
         setUser(normalized);
         persist(normalized);
       } catch (err) {
@@ -58,16 +63,16 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         setIsLoading(false);
       }
     },
-    [logout],
+    [logout, persist],
   );
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        const saved = JSON.parse(raw) as AuthUser;
-        if (saved.expiresAt > Date.now()) {
-          void revive(saved);
+        const stored = JSON.parse(raw) as AuthSession;
+        if (stored.expiresAt > Date.now()) {
+          void reviveSession(stored);
           return;
         }
       } catch (err) {
@@ -75,25 +80,31 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       }
     }
     setIsLoading(false);
-  }, [revive]);
+  }, [reviveSession]);
 
   const handleLogin = useCallback(
     async (email: string, password: string) => {
       setError(null);
       try {
-        const session = await apiLogin({ email, password });
-        if (!hasAdminRole(session.roles)) {
-          setError("У вас нет прав доступа к админской панели");
+        const session = await login({ email, password });
+        if (!isClientRolePresent(session.roles)) {
+          setError("У вас нет доступа к клиентскому кабинету");
           logout();
           return;
         }
-        const profile = await me(session.token);
-        if (!hasAdminRole(profile.roles)) {
-          setError("У вас нет прав доступа к админской панели");
+        const profile = await fetchMe(session.token);
+        if (!isClientRolePresent(profile.roles)) {
+          setError("У вас нет доступа к клиентскому кабинету");
           logout();
           return;
         }
-        const normalized: AuthUser = { ...session, email: profile.email, roles: profile.roles, subjectType: profile.subjectType };
+        const normalized: AuthSession = {
+          ...session,
+          email: profile.email,
+          roles: profile.roles,
+          subjectType: profile.subject_type,
+          clientId: profile.client_id ?? session.clientId,
+        };
         setUser(normalized);
         persist(normalized);
       } catch (err) {
@@ -101,12 +112,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           setError("Неверный логин или пароль");
           return;
         }
-        if (err instanceof ForbiddenError) {
-          setError("У вас нет прав доступа к админской панели");
-          return;
-        }
         if (err instanceof ValidationError) {
-          setError("Проверьте введённые данные");
+          setError("Некорректные данные для входа");
           return;
         }
         console.error("Ошибка авторизации", err);
@@ -123,7 +130,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       error,
       login: handleLogin,
       logout,
-      isAdmin: Boolean(user?.roles && hasAdminRole(user.roles)),
+      hasClientRole: Boolean(user?.roles && isClientRolePresent(user.roles)),
     }),
     [user, isLoading, error, handleLogin, logout],
   );
@@ -131,10 +138,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    throw new Error("useAuth must be used within AuthProvider");
+    throw new Error("useAuth must be used inside AuthProvider");
   }
   return ctx;
 }

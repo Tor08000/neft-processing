@@ -1,10 +1,24 @@
-import { apiPost } from "./client";
+import { request } from "./http";
+import type { AuthUser, LoginRequest, LoginResponse, MeResponse } from "../types/auth";
 
-interface LoginResponse {
-  access_token: string;
+export async function login(payload: LoginRequest): Promise<AuthUser> {
+  const body = await request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) });
+  return {
+    token: body.access_token,
+    email: body.email,
+    roles: body.roles,
+    subjectType: body.subject_type,
+    expiresAt: Date.now() + body.expires_in * 1000,
+  };
 }
 
-export async function login(email: string, password: string): Promise<string> {
-  const response = await apiPost<LoginResponse>("/api/auth/api/v1/auth/login", { email, password });
-  return response.access_token;
+export async function me(token: string): Promise<AuthUser> {
+  const body = await request<MeResponse>("/auth/me", { method: "GET" }, token);
+  return {
+    token,
+    email: body.email,
+    roles: body.roles,
+    subjectType: body.subject_type,
+    expiresAt: Date.now(),
+  };
 }
