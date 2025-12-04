@@ -18,8 +18,10 @@ const STORAGE_KEY = "neft_admin_auth";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const ADMIN_ROLES = ["ADMIN", "SUPERADMIN", "PLATFORM_ADMIN"] as const;
+
 function hasAdminRole(roles: string[]): boolean {
-  return roles.includes("PLATFORM_ADMIN");
+  return roles.some((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
 }
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {

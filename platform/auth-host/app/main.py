@@ -34,6 +34,6 @@ def health_root():
 
 @app.on_event("startup")
 async def bootstrap_demo_user() -> None:
-    logger.info("auth-host: bootstrap demo user start")
+    logger.info("auth-host: bootstrap demo users start")
     await seed_demo_client_account()
-    logger.info("auth-host: bootstrap demo user done")
+    logger.info("auth-host: bootstrap demo users done")

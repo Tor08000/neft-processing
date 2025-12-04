@@ -32,6 +32,7 @@ export const LoginPage: React.FC = () => {
       <div className="login-card">
         <h1>Админка NEFT</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
+        <p className="muted small">Демонстрационный доступ: admin@example.com / admin</p>
         <form onSubmit={handleSubmit} className="login-form">
           <label>
             Email
