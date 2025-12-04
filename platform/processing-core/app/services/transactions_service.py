@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -17,6 +16,7 @@ from app.models.operation import Operation, OperationStatus, OperationType, Risk
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
+from app.services.risk_adapter import OperationContext, call_risk_engine_sync
 
 logger = get_logger(__name__)
 
@@ -33,33 +33,18 @@ class AmountExceeded(TransactionException):
     pass
 
 
-RISK_HIGH_THRESHOLD = int(os.getenv("RISK_HIGH_THRESHOLD", "100000"))
-RISK_NIGHT_HOUR = 23
+RISK_ENGINE_OVERRIDE = None
 
 
-def _risk_stub(amount: int, now: Optional[datetime] = None) -> tuple[RiskResult, float, dict]:
-    """Deterministic risk stub used for tests."""
+def _evaluate_risk(context: OperationContext):
+    override = globals().get("RISK_ENGINE_OVERRIDE")
+    if callable(override):
+        return override(context)
 
-    ts = now or datetime.now(timezone.utc)
-    threshold = int(os.getenv("RISK_HIGH_THRESHOLD", str(RISK_HIGH_THRESHOLD)))
-    score = 0.1
-    result = RiskResult.LOW
-
-    if amount >= threshold:
-        result = RiskResult.HIGH
-        score = 0.7
-
-    if ts.time() >= time(RISK_NIGHT_HOUR, 0) and amount > threshold // 2:
-        result = RiskResult.HIGH
-        score = 0.8
-
-    payload = {
-        "engine": "rule_stub",
-        "evaluated_at": ts.isoformat(),
-        "threshold": threshold,
-    }
-
-    return result, score, payload
+    service_override = getattr(services, "call_risk_engine_override", None)
+    if callable(service_override):
+        return service_override(context)
+    return call_risk_engine_sync(context)
 
 
 def _fetch_operation_by_ext_id(db: Session, ext_operation_id: str) -> Operation | None:
@@ -225,7 +210,23 @@ def authorize_operation(
             limit_payload=limit_result.model_dump(),
         )
 
-    risk_result, risk_score, risk_payload = _risk_stub(amount)
+    risk_context = OperationContext(
+        client_id=client_id,
+        card_id=card_id,
+        terminal_id=terminal_id,
+        merchant_id=merchant_id,
+        product_id=product_id,
+        product_type=product_type,
+        amount=amount,
+        currency=currency,
+        quantity=quantity,
+        unit_price=unit_price,
+        product_category=product_category,
+        mcc=mcc,
+        tx_type=tx_type,
+        timestamp=datetime.now(timezone.utc),
+    )
+    risk_result, risk_score, risk_payload = _evaluate_risk(risk_context)
     if risk_result == RiskResult.BLOCK:
         return decline_operation(
             db,
