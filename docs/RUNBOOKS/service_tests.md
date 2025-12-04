@@ -20,7 +20,7 @@ admin_tests.cmd
 auth_tests.cmd
 ```
 
-`auth_tests.cmd` выставляет `PYTHONPATH=services\auth-host;services\auth-host\app;shared\python` и запускает `pytest services\auth-host\app\tests -q`.
+`auth_tests.cmd` выставляет `PYTHONPATH=platform\auth-host;platform\auth-host\app;shared\python` и запускает `pytest platform\auth-host\app\tests -q`.
 
 ## ai-service
 
@@ -28,4 +28,10 @@ auth_tests.cmd
 ai_tests.cmd
 ```
 
-`ai_tests.cmd` выставляет `PYTHONPATH=services\ai-service;services\ai-service\app;shared\python` и запускает `pytest services\ai-service\app\tests -q`.
+`ai_tests.cmd` выставляет `PYTHONPATH=platform\ai-services\risk-scorer;platform\ai-services\risk-scorer\app;shared\python` и запускает `pytest platform\ai-services\risk-scorer\app\tests -q`.
+
+## billing-clearing workers
+
+```
+python -m pytest platform\billing-clearing\app\tests
+```

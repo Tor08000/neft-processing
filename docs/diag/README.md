@@ -1,13 +1,13 @@
 # Диагностика и снапшоты NEFT Processing
 
-В каталоге `docs/diag/` собраны инструменты и примеры для фиксации состояния локальной инсталляции NEFT Processing. Основной скрипт диагностики — `inspect_neft_repo.py` в корне репозитория (версия правил фиксируется в самом отчёте, сейчас используется v0.1.5).
+В каталоге `docs/diag/` собраны инструменты и примеры для фиксации состояния локальной инсталляции NEFT Processing. Основной скрипт диагностики — `inspect_neft_repo.py` в корне репозитория (версия правил фиксируется в самом отчёте, актуальная версия — v0.3.0).
 
 ## Запуск диагностического скрипта
 
 1. **Подготовьте окружение.**
    - Скопируйте переменные: `cp -n .env.example .env`.
-   - Убедитесь, что заданы `ADMIN_EMAIL` и `ADMIN_PASSWORD` (пароль хранится локально).
-   - На Windows установите Docker Desktop и запустите демон; активируйте виртуальное окружение Python с установленным Alembic (`pip install -r services/core-api/requirements.txt`).
+   - Убедитесь, что заданы переменные демо-аккаунтов: `NEFT_DEMO_ADMIN_*` и `NEFT_DEMO_CLIENT_*`.
+   - На Windows установите Docker Desktop и запустите демон; активируйте виртуальное окружение Python с установленным Alembic (`pip install -r platform/processing-core/requirements.txt`).
 2. **Поднимите инфраструктуру (опционально, для health-check).**
    - `docker compose up -d --build` из корня репозитория.
    - Проверки health зависят от доступности адресов `http://localhost/admin/`, `http://localhost/api/auth/api/v1/health`, `http://localhost/api/core/api/v1/health`.
@@ -28,12 +28,12 @@
 
 ## Что проверяет скрипт
 
-- Структуру ключевых директорий (`services/*`, `db/`, `infra/`, `docs/`).
+- Структуру ключевых директорий (`platform/*`, `frontends/*`, `services/flower`, `db/`, `infra/`, `docs/`).
 - Git-состояние рабочей копии.
-- Конфигурацию `docker compose` (список сервисов, включая observability: grafana, jaeger, otel-collector, prometheus).
-- Наличие Alembic миграций и результат `alembic heads` для `services/core-api`.
-- Базовые health-check запросы (админка, auth-host, core-api).
-- Опциональный запуск `pytest` для `core-api`, `auth-host`, `ai-service`.
+- Конфигурацию `docker compose` (наличие обязательных сервисов: postgres, redis, gateway, core-api, auth-host, ai-service, admin-web, client-web, workers/beat/flower).
+- Наличие Alembic миграций и результат `alembic heads` для `platform/processing-core`.
+- Базовые health-check запросы (админка, auth-host, core-api, клиентский фронт).
+- Опциональный запуск `pytest` для `core-api`, `auth-host`, `ai-service`, `billing-clearing`.
 
 ## Статусы в отчёте
 
