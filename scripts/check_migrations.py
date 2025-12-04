@@ -8,7 +8,7 @@ from alembic.runtime.environment import EnvironmentContext
 
 
 def main() -> int:
-    cfg = Config("alembic.ini")
+    cfg = Config("platform/processing-core/app/alembic.ini")
     script = ScriptDirectory.from_config(cfg)
 
     def check_revision(rev: str, context) -> str:  # type: ignore[override]

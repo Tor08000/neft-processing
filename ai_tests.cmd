@@ -1,3 +1,3 @@
 @echo off
-set PYTHONPATH=services\ai-service;services\ai-service\app;shared\python
-pytest services\ai-service\app\tests -q
+set PYTHONPATH=platform\ai-services\risk-scorer;platform\ai-services\risk-scorer\app;shared\python
+pytest platform\ai-services\risk-scorer\app\tests -q

@@ -23,11 +23,53 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SCRIPT_VERSION = "v0.2.0"
+SCRIPT_VERSION = "v0.3.0"
 LOG_LINES: list[str] = []
 RESULTS: dict[str, "CheckResult"] = {}
 
-ALEMBIC_CONFIG_PATH = Path("services/core-api/app/alembic.ini")
+ALEMBIC_CONFIG_PATH = Path("platform/processing-core/app/alembic.ini")
+
+SERVICES = {
+    "core-api": {
+        "service_dir": ROOT / "platform" / "processing-core",
+        "app_dir": ROOT / "platform" / "processing-core" / "app",
+        "tests_dir": ROOT / "platform" / "processing-core" / "app" / "tests",
+        "alembic_versions": ROOT
+        / "platform"
+        / "processing-core"
+        / "app"
+        / "alembic"
+        / "versions",
+    },
+    "auth-host": {
+        "service_dir": ROOT / "platform" / "auth-host",
+        "app_dir": ROOT / "platform" / "auth-host" / "app",
+        "tests_dir": ROOT / "platform" / "auth-host" / "app" / "tests",
+    },
+    "ai-service": {
+        "service_dir": ROOT / "platform" / "ai-services" / "risk-scorer",
+        "app_dir": ROOT / "platform" / "ai-services" / "risk-scorer" / "app",
+        "tests_dir": ROOT
+        / "platform"
+        / "ai-services"
+        / "risk-scorer"
+        / "app"
+        / "tests",
+    },
+    "billing-clearing": {
+        "service_dir": ROOT / "platform" / "billing-clearing",
+        "app_dir": ROOT / "platform" / "billing-clearing" / "app",
+        "tests_dir": ROOT / "platform" / "billing-clearing" / "app" / "tests",
+        "tasks_dir": ROOT / "platform" / "billing-clearing" / "app" / "tasks",
+    },
+}
+
+LEGACY_SERVICE_DIRS = [
+    ROOT / "services" / "core-api",
+    ROOT / "services" / "auth-host",
+    ROOT / "services" / "ai-service",
+    ROOT / "services" / "workers",
+]
 
 
 @dataclass
@@ -92,6 +134,68 @@ def list_dir(p: Path, max_items=20):
         log(f"... и ещё {len(items) - max_items} элементов")
 
 
+def parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line or line.strip().startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def section_env() -> CheckResult:
+    header(".ENV ФАЙЛЫ")
+
+    required_vars = {
+        "NEFT_DEMO_ADMIN_EMAIL",
+        "NEFT_DEMO_ADMIN_PASSWORD",
+        "NEFT_DEMO_CLIENT_EMAIL",
+        "NEFT_DEMO_CLIENT_PASSWORD",
+    }
+
+    files = {".env": ROOT / ".env", ".env.example": ROOT / ".env.example"}
+    parsed: dict[str, dict[str, str]] = {}
+    missing_files = []
+
+    for name, path in files.items():
+        if not path.exists():
+            log(f"[WARN] {name} не найден (окружение разработчика)" )
+            missing_files.append(name)
+            continue
+        log(f"[OK ] {name}")
+        parsed[name] = parse_env_file(path)
+
+    missing_required = {name: sorted(required_vars - set(values)) for name, values in parsed.items()}
+
+    for name, missing in missing_required.items():
+        if missing:
+            log(
+                f"[FAIL] В {name} отсутствуют ключевые переменные: {', '.join(missing)}"
+            )
+
+    if missing_files:
+        log("[WARN] .env не сохранён в репозитории — проверьте локальные переменные")
+
+    legacy_vars = {"ADMIN_EMAIL", "ADMIN_PASSWORD"}
+    for name, values in parsed.items():
+        legacy_present = sorted(legacy_vars & set(values))
+        if legacy_present:
+            log(
+                f"[WARN] В {name} обнаружены legacy переменные: {', '.join(legacy_present)}"
+            )
+
+    if any(missing_required.values()):
+        return CheckResult("FAIL", "Отсутствуют необходимые переменные .env")
+
+    env_issue = bool(missing_files)
+    status = "WARN" if env_issue else "OK"
+    description = "Файл .env отсутствует" if env_issue else None
+    return CheckResult(status, description, is_env_issue=env_issue)
+
+
 def section_basic():
     header("ОБЩАЯ ИНФОРМАЦИЯ")
     log(f"Версия скрипта: inspect_neft_repo.py {SCRIPT_VERSION}")
@@ -101,13 +205,14 @@ def section_basic():
     log()
 
     expected_dirs = [
-        "services",
-        "services/core-api",
-        "services/auth-host",
-        "services/admin-web",
-        "services/client-web",
-        "services/ai-service",
-        "services/workers",
+        "platform/processing-core",
+        "platform/auth-host",
+        "platform/ai-services/risk-scorer",
+        "platform/billing-clearing",
+        "frontends/admin-ui",
+        "frontends/client-portal",
+        "services",  # env files and flower
+        "services/flower",
         "shared/python/neft_shared",
         "db",
         "nginx",
@@ -203,34 +308,33 @@ def section_docker_compose(expected_services: list[str]) -> CheckResult:
         log(f"- {service}")
 
     missing = [s for s in expected_services if s not in declared_services]
-    extra = [s for s in declared_services if s not in expected_services]
 
     if missing:
-        log(f"[WARN] Отсутствуют ожидаемые сервисы: {', '.join(missing)}")
-    if extra:
-        log(f"[WARN] Обнаружены неожиданные сервисы: {', '.join(extra)}")
+        log(f"[FAIL] Отсутствуют обязательные сервисы: {', '.join(missing)}")
+        return CheckResult("FAIL", f"Отсутствуют сервисы: {', '.join(missing)}")
 
-    if not missing and not extra:
-        log("[OK] Список сервисов соответствует ожиданиям")
-        return CheckResult("OK")
-
-    return CheckResult("WARN", "Список сервисов отличается от ожиданий")
+    log("[OK] Обязательные сервисы присутствуют")
+    return CheckResult("OK")
 
 
 def section_services():
-    header("СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web, client-web)")
+    header("СЕРВИСЫ (platform и frontends)")
 
-    services = {
-        "core-api": ROOT / "services" / "core-api",
-        "auth-host": ROOT / "services" / "auth-host",
-        "workers": ROOT / "services" / "workers",
-        "ai-service": ROOT / "services" / "ai-service",
-        "admin-web": ROOT / "services" / "admin-web",
-        "client-web": ROOT / "services" / "client-web",
+    platform_services = {
+        "core-api": SERVICES["core-api"],
+        "auth-host": SERVICES["auth-host"],
+        "ai-service": SERVICES["ai-service"],
+        "billing-clearing": SERVICES["billing-clearing"],
     }
 
-    for name, path in services.items():
+    frontend_services = {
+        "admin-web": ROOT / "frontends" / "admin-ui",
+        "client-web": ROOT / "frontends" / "client-portal",
+    }
+
+    for name, path_info in platform_services.items():
         log(f"\n--- {name} ---")
+        path = path_info["service_dir"]
         if not path.exists():
             log(f"[!] Каталог {path} не найден")
             continue
@@ -243,22 +347,8 @@ def section_services():
         log(f"[{'OK' if pyproject.exists() else '  '}] pyproject.toml")
         log(f"[{'OK' if req.exists() else '  '}] requirements.txt")
 
-        if name in {"admin-web", "client-web"}:
-            src_dir = path / "src"
-            log(f"[{'OK' if src_dir.exists() else '!!'}] src/")
-            if src_dir.exists():
-                main_entry = src_dir / "main.tsx"
-                app_entry = src_dir / "App.tsx"
-                log(f"[{'OK' if main_entry.exists() else '!!'}] src/main.tsx")
-                log(f"[{'OK' if app_entry.exists() else '!!'}] src/App.tsx")
-
-                for sub in ["api", "components"]:
-                    sdir = src_dir / sub
-                    mark = "OK" if sdir.exists() else "WARN"
-                    suffix = "" if sdir.exists() else " отсутствует"
-                    log(f"   [{mark}] src/{sub}{suffix}")
-        else:
-            app_dir = path / "app"
+        app_dir = path_info.get("app_dir")
+        if app_dir:
             log(f"[{'OK' if app_dir.exists() else '!!'}] app/")
 
             if app_dir.exists():
@@ -271,16 +361,38 @@ def section_services():
                 else:
                     log("[!] main.py в app/ не найден")
 
-                # Немного ключевых подпапок
                 for sub in ["api", "schemas", "models", "services", "tests"]:
                     sdir = app_dir / sub
-                    log(f"   [{'OK' if sdir.exists() else '  '}] app/{sub}")
+                    mark = "OK" if sdir.exists() else "  "
+                    log(f"   [{mark}] app/{sub}")
+
+    for name, path in frontend_services.items():
+        log(f"\n--- {name} ---")
+        if not path.exists():
+            log(f"[!] Каталог {path} не найден")
+            continue
+
+        dockerfile = path / "Dockerfile"
+        package_json = path / "package.json"
+        log(f"[{'OK' if dockerfile.exists() else '!!'}] Dockerfile")
+        log(f"[{'OK' if package_json.exists() else '  '}] package.json")
+        src_dir = path / "src"
+        log(f"[{'OK' if src_dir.exists() else '!!'}] src/")
+        if src_dir.exists():
+            main_entry = src_dir / "main.tsx"
+            app_entry = src_dir / "App.tsx"
+            log(f"[{'OK' if main_entry.exists() else '!!'}] src/main.tsx")
+            log(f"[{'OK' if app_entry.exists() else '!!'}] src/App.tsx")
+
+    legacy_missing = [path for path in LEGACY_SERVICE_DIRS if not path.exists()]
+    if legacy_missing:
+        log("\n[SKIP] legacy каталоги services/* отсутствуют — пропускаем проверки старой структуры")
 
 
 def section_migrations() -> CheckResult:
     header("ALEMBIC-МИГРАЦИИ core-api")
 
-    alembic_dir = ROOT / "services" / "core-api" / "app" / "alembic" / "versions"
+    alembic_dir = SERVICES["core-api"]["alembic_versions"]
     if not alembic_dir.exists():
         log(f"[!] Каталог миграций не найден: {alembic_dir}")
         return CheckResult("FAIL", "Каталог миграций не найден")
@@ -302,7 +414,7 @@ def section_migrations() -> CheckResult:
 
     rc, out, err = safe_run(
         ["alembic", "-c", str(alembic_config), "heads"],
-        cwd=ROOT / "services" / "core-api",
+        cwd=SERVICES["core-api"]["service_dir"],
     )
     message = err or out or "без подробностей"
     if rc != 0:
@@ -338,15 +450,16 @@ def section_migrations() -> CheckResult:
 def section_tests():
     header("ТЕСТЫ")
 
-    core_tests = ROOT / "services" / "core-api" / "app" / "tests"
-    auth_tests = ROOT / "services" / "auth-host" / "app" / "tests"
-    ai_tests = ROOT / "services" / "ai-service" / "app" / "tests"
-    workers_dir = ROOT / "services" / "workers" / "app"
+    core_tests = SERVICES["core-api"]["tests_dir"]
+    auth_tests = SERVICES["auth-host"]["tests_dir"]
+    ai_tests = SERVICES["ai-service"]["tests_dir"]
+    workers_dir = SERVICES["billing-clearing"]["app_dir"]
 
     for name, path in [
         ("core-api tests", core_tests),
         ("auth-host tests", auth_tests),
         ("ai-service tests", ai_tests),
+        ("billing-clearing tests", SERVICES["billing-clearing"]["tests_dir"]),
     ]:
         log(f"\n--- {name} ---")
         if not path.exists():
@@ -358,7 +471,7 @@ def section_tests():
             log(f"- {t.name}")
 
     log("\n--- workers tasks ---")
-    tasks_dir = workers_dir / "tasks"
+    tasks_dir = SERVICES["billing-clearing"].get("tasks_dir")
     if tasks_dir.exists():
         files = sorted(tasks_dir.glob("*.py"))
         log(f"Файлы задач Celery ({len(files)}):")
@@ -369,9 +482,9 @@ def section_tests():
 
 
 def section_endpoints():
-    header("ENDPOINTS core-api (api/v1/endpoints)")
+    header("ENDPOINTS core-api (app/api/routes)")
 
-    endpoints_dir = ROOT / "services" / "core-api" / "app" / "api" / "v1" / "endpoints"
+    endpoints_dir = SERVICES["core-api"]["app_dir"] / "api" / "routes"
     if not endpoints_dir.exists():
         log(f"[!] Каталог endpoints не найден: {endpoints_dir}")
         return
@@ -538,9 +651,10 @@ def section_run_tests(run_tests: bool) -> CheckResult:
         return CheckResult("SKIP", "pytest пропущен по флагу", True)
 
     services = {
-        "core-api": ROOT / "services" / "core-api",
-        "auth-host": ROOT / "services" / "auth-host",
-        "ai-service": ROOT / "services" / "ai-service",
+        "core-api": SERVICES["core-api"]["service_dir"],
+        "auth-host": SERVICES["auth-host"]["service_dir"],
+        "ai-service": SERVICES["ai-service"]["service_dir"],
+        "billing-clearing": SERVICES["billing-clearing"]["service_dir"],
     }
 
     results = {name: run_pytest_for_service(name, path) for name, path in services.items()}
@@ -615,6 +729,7 @@ def main():
 
     section_basic()
     section_git()
+    statuses[".env"] = section_env()
     statuses["docker compose"] = section_docker_compose(
         [
             "postgres",
@@ -628,10 +743,6 @@ def main():
             "beat",
             "flower",
             "gateway",
-            "otel-collector",
-            "jaeger",
-            "prometheus",
-            "grafana",
         ]
     )
     section_services()

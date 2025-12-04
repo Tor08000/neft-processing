@@ -7,7 +7,7 @@ from alembic.runtime.environment import EnvironmentContext
 
 
 def main() -> None:
-    cfg = Config("alembic.ini")
+    cfg = Config("platform/processing-core/app/alembic.ini")
     script = ScriptDirectory.from_config(cfg)
 
     def display(rev, context):  # type: ignore[override]

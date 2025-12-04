@@ -9,9 +9,9 @@
 - что делать при ошибках,
 - минимальные проверки после изменений.
 
-Сервис: **core-api**  
-БД: **PostgreSQL** (контейнер `postgres` из `docker-compose.yml`)  
-Миграции: **Alembic** (конфиг внутри `services/core-api/app`)
+Сервис: **core-api**
+БД: **PostgreSQL** (контейнер `postgres` из `docker-compose.yml`)
+Миграции: **Alembic** (конфиг внутри `platform/processing-core/app`)
 
 ---
 
@@ -20,7 +20,7 @@
 Каталог core-api:
 
 ```text
-services/core-api/app/
+platform/processing-core/app/
     alembic.ini          # основной конфиг Alembic
     alembic/
         env.py           # точка входа для Alembic

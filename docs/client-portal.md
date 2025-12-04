@@ -1,6 +1,6 @@
 # NEFT Client Portal (client-web)
 
-Первая версия клиентского кабинета размещается как отдельное фронтенд-приложение `services/client-web` и
+Первая версия клиентского кабинета размещается как отдельное фронтенд-приложение `frontends/client-portal` и
 отдаётся через gateway по базовому префиксу `/client/`. Приложение использует только клиентские API и не
 пересекается с админской частью.
 
@@ -51,7 +51,7 @@ open http://localhost/client/
 При использовании Vite-приложения напрямую:
 
 ```bash
-cd services/client-web
+cd frontends/client-portal
 npm install
 npm run dev -- --host --port 4174
 # браузер: http://localhost:4174/client/

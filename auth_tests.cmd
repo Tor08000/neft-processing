@@ -1,3 +1,3 @@
 @echo off
-set PYTHONPATH=services\auth-host;services\auth-host\app;shared\python
-pytest services\auth-host\app\tests -q
+set PYTHONPATH=platform\auth-host;platform\auth-host\app;shared\python
+pytest platform\auth-host\app\tests -q
