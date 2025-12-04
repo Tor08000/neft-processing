@@ -15,6 +15,7 @@ async def test_init_db_and_bootstrap_creates_demo_user():
         pytest.skip(f"Postgres not available: {exc}")
 
     async with conn.cursor() as cur:
+        await cur.execute("DROP TABLE IF EXISTS user_roles")
         await cur.execute("DROP TABLE IF EXISTS users")
         await conn.commit()
     await conn.close()
@@ -29,6 +30,20 @@ async def test_init_db_and_bootstrap_creates_demo_user():
         )
         row = await cur.fetchone()
 
+        await cur.execute(
+            "SELECT role FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
+            ("client@neft.local",),
+        )
+        client_roles = [r["role"] for r in await cur.fetchall()]
+
+        await cur.execute(
+            "SELECT role FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
+            ("admin@example.com",),
+        )
+        admin_roles = [r["role"] for r in await cur.fetchall()]
+
     assert row is not None
     assert row["email"].lower() == "client@neft.local"
     assert row["is_active"] is True
+    assert "CLIENT_OWNER" in client_roles
+    assert "PLATFORM_ADMIN" in admin_roles
