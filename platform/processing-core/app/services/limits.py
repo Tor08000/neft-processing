@@ -57,6 +57,7 @@ class CheckAndReserveRequest(BaseModel):
     client_group_id: Optional[str] = None
     card_group_id: Optional[str] = None
     product_category: Optional[str] = None
+    product_type: Optional[str] = None
     mcc: Optional[str] = None
     tx_type: Optional[str] = None
 

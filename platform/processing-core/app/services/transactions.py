@@ -80,7 +80,7 @@ def _determine_status(
     if authorized_amount <= 0:
         return "ERROR"
 
-    if any(op.operation_type == "REVERSAL" for op in operations):
+    if any(op.operation_type in {"REVERSAL", "REVERSE"} for op in operations):
         return "CANCELLED"
 
     if refunded_amount > 0:
@@ -149,7 +149,8 @@ def build_transaction_from_operations(
     captures = [
         op
         for op in operations
-        if op.operation_type == "CAPTURE" and op.parent_operation_id == auth_id
+        if op.operation_type in {"CAPTURE", "COMMIT"}
+        and op.parent_operation_id == auth_id
     ]
     capture_ids = {op.operation_id for op in captures}
     refunds = [

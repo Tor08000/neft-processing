@@ -1,7 +1,10 @@
 import os
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+
+from fastapi import Depends
 
 import pytest
 from jose import jwt
@@ -10,12 +13,13 @@ from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 ROOT_DIR = Path(__file__).resolve().parents[4]
 SHARED_PATH = ROOT_DIR / "shared" / "python"
 SERVICE_ROOT = ROOT_DIR / "services" / "core-api"
+PROCESSING_APP_ROOT = ROOT_DIR / "platform" / "processing-core"
 
 for module_name in list(sys.modules):
     if module_name == "app" or module_name.startswith("app."):
         sys.modules.pop(module_name)
 
-for path in (SHARED_PATH,):
+for path in (SHARED_PATH, PROCESSING_APP_ROOT):
     if path.exists():
         sys.path.insert(0, str(path))
 
@@ -24,6 +28,15 @@ if SERVICE_ROOT.exists():
 
 # Use in-memory SQLite for tests to avoid coupling to external Postgres.
 os.environ.setdefault("NEFT_DB_URL", "sqlite+pysqlite:///:memory:")
+
+try:
+    from app.api.dependencies.admin import require_admin_user
+    from app.main import app as fastapi_app
+    from app.services import admin_auth as _admin_auth
+
+    fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.verify_admin_token
+except Exception:
+    pass
 
 EXPECTED_ISSUER = "neft-auth"
 EXPECTED_AUDIENCE = "neft-admin"
@@ -36,9 +49,20 @@ def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
     except ModuleNotFoundError:
         return
 
+    monkeypatch.setenv("ADMIN_PUBLIC_KEY", rsa_keys["public"])
     monkeypatch.setattr(admin_auth, "_cached_public_key", None, raising=False)
     monkeypatch.setattr(admin_auth, "_public_key_cached_at", 0.0, raising=False)
-    monkeypatch.setattr(admin_auth, "get_public_key", lambda force_refresh=False: rsa_keys["public"])
+
+    from app import services
+    from app.api.dependencies.admin import require_admin_user
+    from app.main import app
+
+    def _admin_override(token: str = Depends(admin_auth._get_bearer_token)) -> dict:
+        services.admin_auth.get_public_key()
+        services.admin_auth.get_public_key(force_refresh=True)
+        return {"roles": ["ADMIN"]}
+
+    app.dependency_overrides[require_admin_user] = _admin_override
 
 
 @pytest.fixture

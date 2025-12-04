@@ -38,8 +38,10 @@ from app.schemas.admin.limits import (
 router = APIRouter(prefix="", tags=["admin"])
 
 
-def _validate_limits(daily_limit: Optional[int], limit_per_tx: Optional[int]) -> None:
-    if daily_limit is None and limit_per_tx is None:
+def _validate_limits(
+    daily_limit: Optional[int], limit_per_tx: Optional[int], max_amount: Optional[int]
+) -> None:
+    if daily_limit is None and limit_per_tx is None and max_amount is None:
         raise HTTPException(status_code=400, detail="at least one limit must be set")
 
 
@@ -110,7 +112,7 @@ def get_limit_rule(rule_id: int, db: Session = Depends(get_db)) -> LimitRule:
     status_code=status.HTTP_201_CREATED,
 )
 def create_limit_rule(body: LimitRuleCreate, db: Session = Depends(get_db)) -> LimitRule:
-    _validate_limits(body.daily_limit, body.limit_per_tx)
+    _validate_limits(body.daily_limit, body.limit_per_tx, body.max_amount)
 
     rule = LimitRule(**body.dict())
     db.add(rule)
@@ -131,7 +133,7 @@ def update_limit_rule(
 
     new_daily = rule.daily_limit
     new_per_tx = rule.limit_per_tx
-    _validate_limits(new_daily, new_per_tx)
+    _validate_limits(new_daily, new_per_tx, rule.max_amount)
 
     db.commit()
     db.refresh(rule)
