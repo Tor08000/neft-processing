@@ -1,22 +1,19 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 const navItems = [
-  { to: "/", label: "Dashboard" },
-  { to: "/operations", label: "Operations" },
-  { to: "/billing", label: "Billing" },
-  { to: "/clearing", label: "Clearing" },
-  { to: "/health", label: "Health" },
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/users", label: "Users" },
 ];
 
-export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
+export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { clearToken } = useAuth();
+  const { logout, user } = useAuth();
 
   const handleLogout = () => {
-    clearToken();
+    logout();
     navigate("/login");
   };
 
@@ -24,7 +21,7 @@ export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <aside
         style={{
-          width: 220,
+          width: 240,
           background: "#0f172a",
           color: "#e2e8f0",
           padding: "20px 16px",
@@ -33,8 +30,7 @@ export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 24 }}>NEFT Admin</div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {navItems.map((item) => {
-            const isActive =
-              item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+            const isActive = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
             return (
               <Link
                 key={item.to}
@@ -58,17 +54,23 @@ export const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
         <header
           style={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             padding: "16px 24px",
             background: "#fff",
             borderBottom: "1px solid #e2e8f0",
           }}
         >
+          <div>
+            <div style={{ fontWeight: 700 }}>{user?.email}</div>
+            <div style={{ color: "#475569", fontSize: 12 }}>{user?.roles.join(", ")}</div>
+          </div>
           <button onClick={handleLogout} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
             Выход
           </button>
         </header>
-        <div style={{ padding: "24px" }}>{children}</div>
+        <div style={{ padding: "24px" }}>
+          <Outlet />
+        </div>
       </main>
     </div>
   );

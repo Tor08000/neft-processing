@@ -1,27 +1,25 @@
-import { NavLink } from "react-router-dom";
-import { ReactNode } from "react";
-import type { ClientUser } from "../types";
+import { NavLink, Outlet } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
-interface LayoutProps {
-  user?: ClientUser;
-  children: ReactNode;
-}
-
-export function Layout({ user, children }: LayoutProps) {
-  const orgName = user?.organization?.name ?? "NEFT Клиент";
-  const userName = user?.fullName ?? "Гость";
-  const role = user?.role ?? "VIEWER";
+export function Layout() {
+  const { user, logout } = useAuth();
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar__meta">
           <span className="topbar__title">NEFT Client Portal</span>
-          <span>{orgName}</span>
+          <span className="muted">Демо-доступ к возможностям клиента</span>
         </div>
-        <div className="topbar__meta">
-          <strong>{userName}</strong>
-          <span className="badge pending">{role}</span>
+        <div className="topbar__meta topbar__meta--user">
+          <div>
+            <div className="muted">Вы вошли как</div>
+            <strong>{user?.email}</strong>
+            <div className="roles">{user?.roles.join(", ")}</div>
+          </div>
+          <button className="ghost" onClick={logout} type="button">
+            Выйти
+          </button>
         </div>
       </header>
 
@@ -30,12 +28,19 @@ export function Layout({ user, children }: LayoutProps) {
           <NavLink to="/dashboard" end>
             Дашборд
           </NavLink>
-          <NavLink to="/operations">Операции</NavLink>
-          <NavLink to="/limits">Лимиты</NavLink>
+          <span className="nav-disabled" aria-disabled>
+            Операции (скоро)
+          </span>
+          <span className="nav-disabled" aria-disabled>
+            Карты (скоро)
+          </span>
+          <span className="nav-disabled" aria-disabled>
+            Лимиты (скоро)
+          </span>
         </nav>
 
         <main className="main-area">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

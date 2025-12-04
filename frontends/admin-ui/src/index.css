@@ -221,3 +221,77 @@ p {
   color: #dc2626;
   font-size: 14px;
 }
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  background: #0f172a;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.form-grid {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.ghost {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  cursor: pointer;
+}
