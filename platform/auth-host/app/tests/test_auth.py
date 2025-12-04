@@ -44,7 +44,10 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
         return None
 
     monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
-    monkeypatch.setattr(auth, "_get_roles_for_user", lambda _user_id: ["CLIENT_OWNER"])
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
 
     response = _client().post(
         "/api/v1/auth/login",
@@ -76,7 +79,10 @@ def test_client_login_invalid_password(monkeypatch):
         return None
 
     monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
-    monkeypatch.setattr(auth, "_get_roles_for_user", lambda _user_id: ["CLIENT_OWNER"])
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
 
     response = _client().post(
         "/api/v1/auth/login",

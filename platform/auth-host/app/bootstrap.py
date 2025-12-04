@@ -1,58 +1,83 @@
 from __future__ import annotations
 
 import logging
-import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.db import get_conn, init_db
-from app.demo import DEMO_CLIENT_EMAIL, DEMO_CLIENT_FULL_NAME, DEMO_CLIENT_PASSWORD
-from app.security import hash_password
+from app.security import hash_password, verify_password
+from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
-async def seed_demo_client_account() -> None:
+async def seed_demo_client_account(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
     try:
-        await _ensure_demo_accounts()
+        await _ensure_demo_accounts(settings)
     except Exception:
-        logger.warning("Demo client bootstrap failed; continuing without demo user", exc_info=True)
+        logger.warning("Demo bootstrap failed; continuing without demo users", exc_info=True)
 
 
-async def _ensure_demo_accounts() -> None:
+async def _ensure_demo_accounts(settings: Settings) -> None:
     await init_db()
 
+    await bootstrap_demo_client(settings=settings)
+    await bootstrap_demo_admin(settings=settings)
+
+
+async def bootstrap_demo_client(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
     await _ensure_demo_user(
-        email=os.getenv("NEFT_DEMO_CLIENT_EMAIL", DEMO_CLIENT_EMAIL).strip(),
-        password=os.getenv("NEFT_DEMO_CLIENT_PASSWORD", DEMO_CLIENT_PASSWORD),
-        full_name=os.getenv("NEFT_DEMO_CLIENT_FULL_NAME", DEMO_CLIENT_FULL_NAME),
+        email=settings.demo_client_email.strip(),
+        password=settings.demo_client_password,
+        full_name=settings.demo_client_full_name,
         roles=["CLIENT_OWNER"],
         label="demo client",
+        preferred_id=_safe_uuid(settings.demo_client_uuid),
     )
 
+
+async def bootstrap_demo_admin(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
     await _ensure_demo_user(
-        email=os.getenv("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com").strip(),
-        password=os.getenv("NEFT_DEMO_ADMIN_PASSWORD", "admin"),
-        full_name=os.getenv("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin"),
-        roles=["PLATFORM_ADMIN"],
+        email=settings.demo_admin_email.strip(),
+        password=settings.demo_admin_password,
+        full_name=settings.demo_admin_full_name,
+        roles=settings.demo_admin_roles,
         label="demo admin",
     )
 
 
+def _safe_uuid(value: str | None) -> UUID:
+    try:
+        return UUID(str(value))
+    except Exception:
+        return uuid4()
+
+
 async def _ensure_demo_user(
-    *, email: str, password: str, full_name: str | None, roles: list[str], label: str
+    *,
+    email: str,
+    password: str,
+    full_name: str | None,
+    roles: list[str],
+    label: str,
+    preferred_id: UUID | None = None,
 ) -> None:
+    normalized_email = email.strip().lower()
     password_hash = hash_password(password)
-    demo_user_id = uuid4()
+    demo_user_id = preferred_id or uuid4()
 
     async with get_conn() as (conn, cur):
         await cur.execute(
             """
-            SELECT id, email FROM users WHERE lower(email) = lower(%s)
+            SELECT id, email, password_hash, is_active FROM users WHERE lower(email) = lower(%s)
             """,
-            (email,),
+            (normalized_email,),
         )
         existing_user = await cur.fetchone()
 
+        password_reset = False
         user_id = existing_user.get("id") if existing_user else demo_user_id
 
         if not existing_user:
@@ -63,20 +88,33 @@ async def _ensure_demo_user(
                 ON CONFLICT (email) DO NOTHING
                 RETURNING id
                 """,
-                (user_id, email, full_name, password_hash),
+                (user_id, normalized_email, full_name, password_hash),
             )
             row = await cur.fetchone()
-            user_id_value = row.get("id") if row else None
-            logger.info("%s seeded: email=%s, user_id=%s", label, email, user_id_value)
+            user_id = row.get("id") if row else user_id
+            password_reset = True
+            logger.info("%s seeded: email=%s, user_id=%s, roles=%s", label, normalized_email, user_id, roles)
         else:
-            logger.info(
-                "%s already exists: email=%s, user_id=%s",
-                label,
-                email,
-                existing_user.get("id"),
-            )
+            if not existing_user.get("is_active", True):
+                await cur.execute(
+                    "UPDATE users SET is_active = TRUE WHERE id = %s",
+                    (user_id,),
+                )
+            if not verify_password(password, existing_user.get("password_hash", "")):
+                await cur.execute(
+                    "UPDATE users SET password_hash = %s WHERE id = %s",
+                    (password_hash, user_id),
+                )
+                password_reset = True
 
-        for role in roles:
+        await cur.execute(
+            "SELECT role FROM user_roles WHERE user_id = %s",
+            (user_id,),
+        )
+        existing_roles = {row["role"] for row in await cur.fetchall()}
+        missing_roles = [role for role in roles if role not in existing_roles]
+
+        for role in missing_roles:
             await cur.execute(
                 """
                 INSERT INTO user_roles (user_id, role)
@@ -87,3 +125,13 @@ async def _ensure_demo_user(
             )
 
         await conn.commit()
+
+        if existing_user:
+            logger.info(
+                "%s already exists: email=%s, user_id=%s, updated_roles=%s, password_reset=%s",
+                label,
+                normalized_email,
+                user_id,
+                bool(missing_roles),
+                password_reset,
+            )
