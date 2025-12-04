@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -42,11 +43,7 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
             return demo_user
         return None
 
-    async def fake_find_client_id(email: str):
-        return "demo-client-id", "Demo Client"
-
     monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
-    monkeypatch.setattr(auth, "_find_client_id", fake_find_client_id)
 
     response = _client().post(
         "/api/v1/auth/login",
@@ -57,8 +54,7 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert data["client_id"] == "demo-client-id"
-    assert data["subject_type"] == "client_user"
+    assert data["subject_type"] == "user"
 
 
 def test_client_login_invalid_password(monkeypatch):
@@ -77,11 +73,7 @@ def test_client_login_invalid_password(monkeypatch):
             return demo_user
         return None
 
-    async def fake_find_client_id(email: str):
-        return None, None
-
     monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
-    monkeypatch.setattr(auth, "_find_client_id", fake_find_client_id)
 
     response = _client().post(
         "/api/v1/auth/login",

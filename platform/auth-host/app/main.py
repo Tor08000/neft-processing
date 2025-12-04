@@ -8,6 +8,7 @@ from app.api.routes.processing import router as processing_router
 from app.bootstrap import seed_demo_client_account
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NEFT Auth Host")
 
@@ -31,4 +32,6 @@ def health_root():
 
 @app.on_event("startup")
 async def bootstrap_demo_user() -> None:
+    logger.info("auth-host: bootstrap demo user start")
     await seed_demo_client_account()
+    logger.info("auth-host: bootstrap demo user done")
