@@ -1,6 +1,9 @@
 from fastapi import Depends
 
-from app.services.admin_auth import require_admin
+from app import services
+
+
+require_admin = services.admin_auth.require_admin
 
 
 def require_admin_user(token: dict = Depends(require_admin)) -> dict:

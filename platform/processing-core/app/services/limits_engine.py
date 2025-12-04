@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Iterable, Optional, Sequence, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.limit_rule import LimitRule
+from app.models.limit_rule import FuelProductType, LimitRule, LimitScope
 from app.models.operation import Operation
 
 if TYPE_CHECKING:
@@ -39,6 +39,7 @@ def rule_matches(rule: LimitRule, request: "CheckAndReserveRequest") -> bool:
         "client_group_id",
         "card_group_id",
         "product_category",
+        "product_type",
         "mcc",
         "tx_type",
     ):
@@ -59,6 +60,7 @@ def rule_specificity(rule: LimitRule, request: "CheckAndReserveRequest") -> Tupl
         int(bool(rule.merchant_id and rule.merchant_id == request.merchant_id)),
         int(bool(rule.terminal_id and rule.terminal_id == request.terminal_id)),
         int(bool(rule.product_category and rule.product_category == request.product_category)),
+        int(bool(rule.product_type and rule.product_type == getattr(request, "product_type", None))),
         int(bool(rule.mcc and rule.mcc == request.mcc)),
         int(bool(rule.tx_type and rule.tx_type == request.tx_type)),
     )
@@ -106,6 +108,12 @@ def evaluate_limits(
 
     daily_limit = rule.daily_limit if rule and rule.daily_limit is not None else DEFAULT_DAILY_LIMIT
     limit_per_tx = rule.limit_per_tx if rule and rule.limit_per_tx is not None else DEFAULT_PER_TX_LIMIT
+
+    if rule and rule.max_amount is not None:
+        if rule.scope == LimitScope.PER_TX:
+            limit_per_tx = rule.max_amount
+        elif rule.scope == LimitScope.DAILY:
+            daily_limit = rule.max_amount
 
     new_used_today = used_today + request.amount
 

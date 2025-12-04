@@ -94,6 +94,10 @@ def init_db() -> None:
         ClientGroupMember,
     )
 
+    # Для тестов и in-memory SQLite создаём таблицы автоматически.
+    if str(engine.url).startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+
 
 def get_db() -> Generator[Session, None, None]:
     """Dependency для FastAPI: даёт сессию и гарантирует её закрытие."""

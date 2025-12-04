@@ -64,3 +64,36 @@ def test_limits_v2_backward_compatibility():
 
     assert result["approved"] is True
     assert result["applied_rule_id"] == 6
+
+
+def test_limit_rule_entity_scope_and_product_type():
+    rule = LimitRule(
+        id=7,
+        entity_type="CARD",
+        scope="PER_TX",
+        product_type="DIESEL",
+        max_amount=5000,
+        client_id=None,
+        card_id="card-7",
+    )
+
+    diesel_request = CheckAndReserveRequest(
+        amount=4000,
+        card_id="card-7",
+        phase="AUTH",
+        product_type="DIESEL",
+    )
+
+    result = evaluate_limits(diesel_request, [rule], used_today=0)
+    assert result["approved"] is True
+    assert result["applied_rule_id"] == 7
+    assert result["limit_per_tx"] == 5000
+
+    mismatched_product = CheckAndReserveRequest(
+        amount=100,
+        card_id="card-7",
+        phase="AUTH",
+        product_type="AI95",
+    )
+
+    assert select_best_rule(mismatched_product, [rule]) is None

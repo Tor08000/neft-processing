@@ -1,53 +1,129 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
-from sqlalchemy.sql import func
+from __future__ import annotations
+
+import uuid
+from enum import Enum
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    Float,
+    Numeric,
+    String,
+    func,
+)
+from sqlalchemy.types import BigInteger
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import synonym
 
 from app.db import Base
+
+
+class OperationType(str, Enum):
+    AUTH = "AUTH"
+    HOLD = "HOLD"
+    COMMIT = "COMMIT"
+    REVERSE = "REVERSE"
+    REFUND = "REFUND"
+    DECLINE = "DECLINE"
+    # Backwards compatibility values
+    CAPTURE = "CAPTURE"
+    REVERSAL = "REVERSAL"
+
+
+class OperationStatus(str, Enum):
+    PENDING = "PENDING"
+    AUTHORIZED = "AUTHORIZED"
+    HELD = "HELD"
+    COMPLETED = "COMPLETED"
+    REVERSED = "REVERSED"
+    REFUNDED = "REFUNDED"
+    DECLINED = "DECLINED"
+    CANCELLED = "CANCELLED"
+    # Legacy/status aliases
+    CAPTURED = "CAPTURED"
+    OPEN = "OPEN"
+
+
+class ProductType(str, Enum):
+    DIESEL = "DIESEL"
+    AI92 = "AI92"
+    AI95 = "AI95"
+    AI98 = "AI98"
+    GAS = "GAS"
+    OTHER = "OTHER"
+
+
+class RiskResult(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    BLOCK = "BLOCK"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
 
 
 class Operation(Base):
     __tablename__ = "operations"
 
-    # Внешний UUID операции, который генерируется в main.py
-    operation_id = Column(String(64), primary_key=True, index=True, nullable=False)
+    id = Column(
+        UUID(as_uuid=True), primary_key=True, nullable=False, default=uuid.uuid4
+    )
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # External/idempotency identifier preserved for backwards compatibility
+    ext_operation_id = Column("operation_id", String(64), unique=True, nullable=False)
+    operation_id = synonym("ext_operation_id")
 
-    # AUTH / CAPTURE / REFUND / REVERSAL
-    operation_type = Column(String(16), index=True, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
-    # AUTHORIZED / DECLINED / CAPTURED / REFUNDED / REVERSED / etc.
-    status = Column(String(32), index=True, nullable=False)
+    operation_type = Column(SAEnum(OperationType), index=True, nullable=False)
+    status = Column(SAEnum(OperationStatus), index=True, nullable=False)
 
     merchant_id = Column(String(64), index=True, nullable=False)
     terminal_id = Column(String(64), index=True, nullable=False)
     client_id = Column(String(64), index=True, nullable=False)
     card_id = Column(String(64), index=True, nullable=False)
+    product_id = Column(String(64), nullable=True)
 
-    amount = Column(Integer, nullable=False)
+    amount_original = Column("amount", BigInteger, nullable=False)
+    amount = synonym("amount_original")
+    amount_settled = Column(BigInteger, nullable=True, default=0)
     currency = Column(String(3), nullable=False, default="RUB")
 
-    captured_amount = Column(Integer, nullable=False, default=0)
-    refunded_amount = Column(Integer, nullable=False, default=0)
+    product_type = Column(SAEnum(ProductType), nullable=True)
+    quantity = Column(Numeric(18, 3), nullable=True)
+    unit_price = Column(Numeric(18, 3), nullable=True)
 
-    # Лимиты – могут быть NULL для REFUND/REVERSAL
-    daily_limit = Column(Integer, nullable=True)
-    limit_per_tx = Column(Integer, nullable=True)
-    used_today = Column(Integer, nullable=True)
-    new_used_today = Column(Integer, nullable=True)
+    captured_amount = Column(BigInteger, nullable=False, default=0)
+    refunded_amount = Column(BigInteger, nullable=False, default=0)
+
+    daily_limit = Column(BigInteger, nullable=True)
+    limit_per_tx = Column(BigInteger, nullable=True)
+    used_today = Column(BigInteger, nullable=True)
+    new_used_today = Column(BigInteger, nullable=True)
+    limit_profile_id = Column(String(64), nullable=True)
+    limit_check_result = Column(JSON, nullable=True)
 
     authorized = Column(Boolean, nullable=False, default=False)
 
     response_code = Column(String(8), nullable=False, default="00")
     response_message = Column(String(255), nullable=False, default="OK")
+    auth_code = Column(String(32), nullable=True)
 
-    # Связь с родительской операцией (AUTH для CAPTURE, CAPTURE для REFUND, любая для REVERSAL)
     parent_operation_id = Column(String(64), nullable=True, index=True)
-
-    # Причина (для REFUND / REVERSAL)
     reason = Column(String(255), nullable=True)
 
-    # Дополнительные атрибуты транзакции
     mcc = Column(String(8), nullable=True, index=True)
     product_code = Column(String(32), nullable=True)
     product_category = Column(String(32), nullable=True, index=True)
     tx_type = Column(String(16), nullable=True, index=True)
+
+    risk_score = Column(Float, nullable=True)
+    risk_result = Column(SAEnum(RiskResult), nullable=True)
+    risk_payload = Column(JSON, nullable=True)

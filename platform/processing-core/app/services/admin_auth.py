@@ -27,15 +27,25 @@ def get_public_key(force_refresh: bool = False) -> str:
     if not force_refresh and _cached_public_key and now - _public_key_cached_at < PUBLIC_KEY_CACHE_TTL:
         return _cached_public_key
 
+    fallback_key = os.getenv("ADMIN_PUBLIC_KEY")
+
+    if fallback_key and not force_refresh and not _cached_public_key:
+        _cached_public_key = fallback_key
+        _public_key_cached_at = now
+        return fallback_key
+
     try:
         response = requests.get(PUBLIC_KEY_URL, timeout=5)
         response.raise_for_status()
+        _cached_public_key = response.text
+        _public_key_cached_at = now
+        return _cached_public_key
     except requests.RequestException as exc:  # pragma: no cover - network errors
+        if fallback_key:
+            _cached_public_key = fallback_key
+            _public_key_cached_at = now
+            return fallback_key
         raise HTTPException(status_code=503, detail="Unable to fetch public key") from exc
-
-    _cached_public_key = response.text
-    _public_key_cached_at = now
-    return _cached_public_key
 
 
 def _get_bearer_token(request: Request) -> str:

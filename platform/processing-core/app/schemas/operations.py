@@ -1,12 +1,16 @@
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 
 class OperationSchema(BaseModel):
+    id: Optional[UUID] = None
     operation_id: str
+    ext_operation_id: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     operation_type: str
     status: str
 
@@ -14,9 +18,14 @@ class OperationSchema(BaseModel):
     terminal_id: str
     client_id: str
     card_id: str
+    product_id: Optional[str] = None
 
     amount: int
+    amount_settled: Optional[int] = None
     currency: str = "RUB"
+    product_type: Optional[str] = None
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
     captured_amount: int = 0
     refunded_amount: int = 0
 
@@ -24,10 +33,13 @@ class OperationSchema(BaseModel):
     limit_per_tx: Optional[int] = None
     used_today: Optional[int] = None
     new_used_today: Optional[int] = None
+    limit_profile_id: Optional[str] = None
+    limit_check_result: Optional[dict] = None
 
     authorized: bool = False
     response_code: str = "00"
     response_message: str = "OK"
+    auth_code: Optional[str] = None
 
     parent_operation_id: Optional[str] = None
     reason: Optional[str] = None
@@ -36,8 +48,11 @@ class OperationSchema(BaseModel):
     product_code: Optional[str] = None
     product_category: Optional[str] = None
     tx_type: Optional[str] = None
+    risk_score: Optional[float] = None
+    risk_result: Optional[str] = None
+    risk_payload: Optional[dict] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class OperationsPage(BaseModel):
