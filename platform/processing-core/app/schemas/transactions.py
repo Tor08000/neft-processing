@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.operations import OperationSchema
+from app.models.operation import RiskResult
 
 
 class AuthRequest(BaseModel):
@@ -23,12 +24,60 @@ class AuthRequest(BaseModel):
     card_group_id: Optional[str] = None
 
 
+class AuthorizeRequest(BaseModel):
+    client_id: str
+    card_id: str
+    terminal_id: str
+    merchant_id: str
+    product_id: Optional[str] = None
+    product_type: Optional[str] = None
+    amount: int
+    currency: str = "RUB"
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
+    ext_operation_id: str
+    product_category: Optional[str] = None
+    tx_type: Optional[str] = None
+    mcc: Optional[str] = None
+    client_group_id: Optional[str] = None
+    card_group_id: Optional[str] = None
+
+
+class AuthorizeResponse(BaseModel):
+    approved: bool
+    operation_id: str
+    status: str
+    auth_code: Optional[str] = None
+    response_code: str
+    response_message: str
+    risk_result: Optional[RiskResult] = None
+    risk_score: Optional[float] = None
+    limit_check_result: Optional[dict] = None
+
+
 class CaptureRequest(BaseModel):
     amount: Optional[int] = None
 
 
 class RefundRequest(BaseModel):
     amount: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class CommitRequest(BaseModel):
+    operation_id: str
+    amount: Optional[int] = None
+    quantity: Optional[float] = None
+
+
+class ReverseRequest(BaseModel):
+    operation_id: str
+    reason: Optional[str] = None
+
+
+class RefundOperationRequest(BaseModel):
+    operation_id: str
+    amount: int
     reason: Optional[str] = None
 
 
