@@ -53,11 +53,13 @@ async def _find_client_id(email: str) -> Tuple[str | None, str | None]:
 
 
 async def _get_user_from_db(email: str) -> User | None:
+    email_normalized = email.strip().lower()
+
     async with get_conn() as (_conn, cur):
         await cur.execute(
             "SELECT id, email, full_name, password_hash, is_active, created_at "
             "FROM users WHERE lower(email) = lower(%s) LIMIT 1",
-            (email,),
+            (email_normalized,),
         )
         row = await cur.fetchone()
         if not row:
@@ -117,6 +119,10 @@ async def login(payload: LoginRequest) -> TokenResponse:
     client_id: str | None = None
     user_email = payload.email
 
+    logger.info(
+        "login attempt: email=%s -> normalized=%s", payload.email, email_lower
+    )
+
     if email_lower == admin_email.lower():
         if payload.password != admin_password:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -127,6 +133,13 @@ async def login(payload: LoginRequest) -> TokenResponse:
         except Exception:
             logger.exception("Failed to fetch user during login", extra={"email": email_lower})
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
+
+        logger.info(
+            "login attempt: email=%s -> normalized=%s, user_found=%s",
+            payload.email,
+            email_lower,
+            bool(user),
+        )
 
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
