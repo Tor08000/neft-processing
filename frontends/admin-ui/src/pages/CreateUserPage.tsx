@@ -8,7 +8,7 @@ import type { RoleOption } from "../types/users";
 const ROLE_OPTIONS: RoleOption[] = ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_VIEWER"];
 
 export const CreateUserPage: React.FC = () => {
-  const { user } = useAuth();
+  const { accessToken } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -31,10 +31,10 @@ export const CreateUserPage: React.FC = () => {
       setError("Пароль и подтверждение не совпадают");
       return;
     }
-    if (!user) return;
+    if (!accessToken) return;
     setSubmitting(true);
     try {
-      await createUser(user.token, {
+      await createUser(accessToken, {
         email,
         password,
         full_name: fullName || undefined,

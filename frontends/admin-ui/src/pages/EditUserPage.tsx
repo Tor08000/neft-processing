@@ -8,7 +8,7 @@ const ROLE_OPTIONS: RoleOption[] = ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MA
 
 export const EditUserPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { accessToken } = useAuth();
   const navigate = useNavigate();
   const [current, setCurrent] = useState<AdminUser | null>(null);
   const [fullName, setFullName] = useState("");
@@ -17,8 +17,8 @@ export const EditUserPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id || !user) return;
-    listUsers(user.token)
+    if (!id || !accessToken) return;
+    listUsers(accessToken)
       .then((users) => {
         const found = users.find((u) => u.id === id);
         if (found) {
@@ -32,7 +32,7 @@ export const EditUserPage: React.FC = () => {
         console.error("Не удалось загрузить пользователя", err);
         setError("Не удалось загрузить пользователя");
       });
-  }, [id, user]);
+  }, [id, accessToken]);
 
   const toggleRole = (role: RoleOption) => {
     setRoles((curr) => (curr.includes(role) ? curr.filter((r) => r !== role) : [...curr, role]));
@@ -42,10 +42,10 @@ export const EditUserPage: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!user || !current) return;
+    if (!accessToken || !current) return;
     setError(null);
     try {
-      const updated = await updateUser(user.token, current.id, {
+      const updated = await updateUser(accessToken, current.id, {
         full_name: fullName,
         is_active: isActive,
         roles,

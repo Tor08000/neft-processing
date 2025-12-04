@@ -2,6 +2,8 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost").replac
 const adminBase = (import.meta.env.VITE_ADMIN_BASE_PATH ?? "/admin").replace(/\/$/, "");
 export const API_BASE = `${apiBase}${adminBase}/api/v1`;
 
+export type HttpHeaders = Record<string, string>;
+
 export class UnauthorizedError extends Error {
   constructor(message = "Необходим повторный вход") {
     super(message);
@@ -26,14 +28,23 @@ export class ValidationError extends Error {
   }
 }
 
-export async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const headers: HeadersInit = {
+const buildHeaders = (token?: string | null): HttpHeaders => {
+  const headers: HttpHeaders = {
     "Content-Type": "application/json",
-    ...(init.headers as HeadersInit),
   };
+
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
+
+  return headers;
+};
+
+export async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
+  const headers: HttpHeaders = {
+    ...buildHeaders(token),
+    ...(init.headers as HttpHeaders | undefined),
+  };
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
 

@@ -4,13 +4,13 @@ import { useAuth } from "../auth/AuthContext";
 import type { AdminUser } from "../types/users";
 
 export const DashboardPage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, accessToken, logout } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    listUsers(user.token)
+    if (!accessToken) return;
+    listUsers(accessToken)
       .then((data) => setUsers(data))
       .catch((err) => {
         console.error("Не удалось загрузить пользователей", err);
@@ -19,7 +19,7 @@ export const DashboardPage: React.FC = () => {
           logout();
         }
       });
-  }, [user, logout]);
+  }, [accessToken, logout]);
 
   return (
     <div className="stack">
