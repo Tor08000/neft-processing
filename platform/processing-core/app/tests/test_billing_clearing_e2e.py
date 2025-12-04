@@ -63,12 +63,14 @@ def test_billing_and_clearing_pipeline(admin_auth_headers):
             params={
                 "date_from": today.isoformat(),
                 "date_to": today.isoformat(),
-                "status": "PENDING",
+                "limit": 10,
+                "offset": 0,
             },
             headers=admin_auth_headers,
         )
         assert admin_summary.status_code == 200
-        assert len(admin_summary.json()) == 1
+        assert admin_summary.json()["total"] == 1
+        assert len(admin_summary.json()["items"]) == 1
 
         batch_resp = client.post(
             "/api/v1/admin/clearing/batches/build",

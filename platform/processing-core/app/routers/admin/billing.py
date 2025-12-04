@@ -4,40 +4,46 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.schemas.billing import BillingSummaryPage
 from app.schemas.reports import BillingSummaryItem
 from app.models.billing_summary import BillingSummary
-from app.services.reports_billing import (
-    finalize_billing_summary,
-    get_or_build_summary,
-    list_billing_summaries,
-)
+from app.models.operation import ProductType
+from app.services.reports_billing import finalize_billing_summary
+from app.services.billing_service import get_billing_summaries
 
 router = APIRouter(prefix="/billing", tags=["admin"])
 
 
-@router.get("/summary", response_model=list[BillingSummaryItem])
+@router.get("/summary", response_model=BillingSummaryPage)
 def admin_list_billing_summaries(
     date_from: date = Query(...),
     date_to: date = Query(...),
+    client_id: str | None = None,
     merchant_id: str | None = None,
-    status: str | None = None,
-    auto_build: bool = False,
+    product_type: ProductType | None = None,
+    currency: str | None = None,
+    limit: int = Query(50, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-) -> list[BillingSummaryItem]:
-    summaries = (
-        get_or_build_summary(
-            db,
-            date_from=date_from,
-            date_to=date_to,
-            merchant_id=merchant_id,
-            status=status,
-        )
-        if auto_build
-        else list_billing_summaries(
-            db, date_from=date_from, date_to=date_to, merchant_id=merchant_id, status=status
-        )
+) -> BillingSummaryPage:
+    items, total = get_billing_summaries(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        client_id=client_id,
+        merchant_id=merchant_id,
+        product_type=product_type,
+        currency=currency,
+        limit=limit,
+        offset=offset,
     )
-    return [BillingSummaryItem.model_validate(item) for item in summaries]
+
+    return BillingSummaryPage(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/summary/{summary_id}", response_model=BillingSummaryItem)
