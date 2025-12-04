@@ -29,6 +29,7 @@ async def _ensure_demo_client_account() -> None:
     password_hash = hash_password(DEMO_CLIENT_PASSWORD)
     demo_client_id = UUID(DEMO_CLIENT_UUID)
     demo_user_id = uuid4()
+    demo_email = DEMO_CLIENT_EMAIL.strip().lower()
 
     async with get_conn() as (conn, cur):
         await cur.execute(
@@ -41,7 +42,7 @@ async def _ensure_demo_client_account() -> None:
                 is_active = TRUE
             RETURNING id
             """,
-            (demo_user_id, DEMO_CLIENT_EMAIL, DEMO_CLIENT_FULL_NAME, password_hash),
+            (demo_user_id, demo_email, DEMO_CLIENT_FULL_NAME, password_hash),
         )
 
         row = await cur.fetchone()
@@ -60,7 +61,7 @@ async def _ensure_demo_client_account() -> None:
             (
                 demo_client_id,
                 DEMO_CLIENT_FULL_NAME,
-                DEMO_CLIENT_EMAIL,
+                demo_email,
                 DEMO_CLIENT_FULL_NAME,
             ),
         )
@@ -69,7 +70,7 @@ async def _ensure_demo_client_account() -> None:
         logger.info(
             "Demo client account ensured",
             extra={
-                "email": DEMO_CLIENT_EMAIL,
+                "email": demo_email,
                 "client_id": DEMO_CLIENT_ID,
                 "user_id": demo_user_id_value,
             },
