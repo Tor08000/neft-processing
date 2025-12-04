@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import case, func
+from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
+from app.models.operation import ProductType
 from app.models.billing_summary import BillingSummary
 from app.models.operation import Operation, OperationStatus
 
@@ -84,7 +86,7 @@ async def build_billing_summary_for_date(billing_date: date) -> None:
                     item.currency,
                 ): item
                 for item in session.query(BillingSummary)
-                .filter(BillingSummary.date == billing_date)
+                .filter(BillingSummary.billing_date == billing_date)
                 .all()
             }
 
@@ -110,7 +112,7 @@ async def build_billing_summary_for_date(billing_date: date) -> None:
                     summary.commission_amount = commission_amount
                 else:
                     summary = BillingSummary(
-                        date=billing_date,
+                        billing_date=billing_date,
                         client_id=aggregate.client_id,
                         merchant_id=aggregate.merchant_id,
                         product_type=aggregate.product_type,
@@ -125,3 +127,46 @@ async def build_billing_summary_for_date(billing_date: date) -> None:
 
     finally:
         session.close()
+
+
+def get_billing_summaries(
+    db: Session,
+    *,
+    date_from: date,
+    date_to: date,
+    client_id: str | None = None,
+    merchant_id: str | None = None,
+    product_type: ProductType | None = None,
+    currency: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[BillingSummary], int]:
+    query = (
+        db.query(BillingSummary)
+        .filter(BillingSummary.billing_date >= date_from)
+        .filter(BillingSummary.billing_date <= date_to)
+    )
+
+    if client_id:
+        query = query.filter(BillingSummary.client_id == client_id)
+    if merchant_id:
+        query = query.filter(BillingSummary.merchant_id == merchant_id)
+    if product_type:
+        query = query.filter(BillingSummary.product_type == product_type)
+    if currency:
+        query = query.filter(BillingSummary.currency == currency)
+
+    total = query.count()
+
+    items = (
+        query.order_by(
+            BillingSummary.billing_date,
+            BillingSummary.client_id,
+            BillingSummary.merchant_id,
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return items, total

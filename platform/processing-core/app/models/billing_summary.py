@@ -4,6 +4,7 @@ from sqlalchemy import Column, Date, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.types import BigInteger, Numeric
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.orm import synonym
 
 from app.db import Base
 from app.models.operation import ProductType
@@ -24,15 +25,19 @@ class BillingSummary(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     billing_date = Column(Date, nullable=False, index=True)
-    client_id = Column(String(64), nullable=False, index=True)
+    client_id = Column(String(64), nullable=True, index=True)
     merchant_id = Column(String(64), nullable=False, index=True)
     product_type = Column(SAEnum(ProductType), nullable=True, index=True)
-    currency = Column(String(3), nullable=False, index=True)
+    currency = Column(String(3), nullable=True, index=True)
 
     total_amount = Column(BigInteger, nullable=False, default=0)
     total_quantity = Column(Numeric(18, 3), nullable=True)
     operations_count = Column(Integer, nullable=False, default=0)
     commission_amount = Column(BigInteger, nullable=False, default=0)
+    status = Column(String(32), nullable=True)
+    generated_at = Column(DateTime(timezone=True), nullable=True)
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    hash = Column(String(128), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
@@ -41,3 +46,7 @@ class BillingSummary(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    # Aliases for backwards compatibility
+    date = synonym("billing_date")
+    total_captured_amount = synonym("total_amount")
