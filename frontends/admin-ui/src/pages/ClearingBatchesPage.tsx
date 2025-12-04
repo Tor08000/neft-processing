@@ -1,11 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchClearingBatches,
-  fetchClearingBatchOperations,
-  markBatchConfirmed,
-  markBatchSent,
-} from "../api/clearing";
+import { fetchClearingBatches, fetchClearingBatchDetails, markBatchConfirmed, markBatchSent } from "../api/clearing";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDate } from "../utils/format";
@@ -22,8 +17,7 @@ const SelectFilter = React.lazy(() =>
 export const ClearingBatchesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [batches, setBatches] = useState<ClearingBatch[]>([]);
-  const [selectedBatch, setSelectedBatch] = useState<ClearingBatch | null>(null);
-  const [operations, setOperations] = useState<ClearingBatchOperation[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
   const [status, setStatus] = useState<string>("");
   const [merchantId, setMerchantId] = useState<string>("");
@@ -48,42 +42,50 @@ export const ClearingBatchesPage: React.FC = () => {
 
   useEffect(() => {
     setBatches(batchesData);
-    if (batchesData.length && !selectedBatch) {
-      setSelectedBatch(batchesData[0]);
+    if (batchesData.length && !selectedBatchId) {
+      setSelectedBatchId(batchesData[0].id);
     }
-  }, [batchesData, selectedBatch]);
+    if (batchesData.length && selectedBatchId && !batchesData.find((b) => b.id === selectedBatchId)) {
+      setSelectedBatchId(batchesData[0].id);
+    }
+  }, [batchesData, selectedBatchId]);
 
-  const { isFetching: isOperationsFetching } = useQuery({
-    queryKey: ["clearing", selectedBatch?.id, "operations"],
-    queryFn: async () => {
-      const res = await fetchClearingBatchOperations(selectedBatch!.id);
-      setOperations(res);
-      return res;
-    },
-    enabled: Boolean(selectedBatch?.id),
+  const {
+    data: selectedBatchDetails,
+    isFetching: isDetailsFetching,
+  } = useQuery({
+    queryKey: ["clearing", selectedBatchId, "details"],
+    queryFn: () => fetchClearingBatchDetails(selectedBatchId!),
+    enabled: Boolean(selectedBatchId),
     staleTime: 30_000,
   });
 
   const updateStatusMutation = useMutation({
     mutationFn: (action: "sent" | "confirmed") => {
-      if (!selectedBatch) return Promise.reject(new Error("No batch selected"));
-      return action === "sent" ? markBatchSent(selectedBatch.id) : markBatchConfirmed(selectedBatch.id);
+      if (!selectedBatchId) return Promise.reject(new Error("No batch selected"));
+      return action === "sent" ? markBatchSent(selectedBatchId) : markBatchConfirmed(selectedBatchId);
     },
     onSuccess: (updated) => {
       setBatches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-      setSelectedBatch(updated);
+      setSelectedBatchId(updated.id);
       queryClient.invalidateQueries({ queryKey: ["clearing", filters] });
     },
   });
 
   const updateStatus = (action: "sent" | "confirmed") => updateStatusMutation.mutate(action);
 
+  const selectedBatch = useMemo(() => {
+    const fromList = selectedBatchId ? batches.find((batch) => batch.id === selectedBatchId) : null;
+    return selectedBatchDetails?.batch ?? fromList ?? null;
+  }, [batches, selectedBatchDetails?.batch, selectedBatchId]);
+
+  const operations = selectedBatchDetails?.operations ?? [];
+
   const batchColumns: Column<ClearingBatch>[] = [
-    { key: "id", title: "ID", render: (row) => row.id },
-    { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
-    { key: "range", title: "Range", render: (row) => `${formatDate(row.date_from)} → ${formatDate(row.date_to)}` },
-    { key: "amount", title: "Amount", render: (row) => formatAmount(row.total_amount) },
-    { key: "ops", title: "Ops", render: (row) => row.operations_count },
+    { key: "batch_date", title: "Batch Date", render: (row) => formatDate(row.batch_date) },
+    { key: "merchant_id", title: "Merchant", render: (row) => row.merchant_id },
+    { key: "currency", title: "Currency", render: (row) => row.currency },
+    { key: "total_amount", title: "Total Amount", render: (row) => formatAmount(row.total_amount) },
     { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status} /> },
   ];
 
@@ -101,7 +103,7 @@ export const ClearingBatchesPage: React.FC = () => {
           <button onClick={() => refetch()} disabled={isFetching}>
             Refresh
           </button>
-          {(isLoading || isFetching || isOperationsFetching) && <Loader label="Синхронизация" />}
+          {(isLoading || isFetching || isDetailsFetching) && <Loader label="Синхронизация" />}
           {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
         </div>
       </div>
@@ -131,24 +133,25 @@ export const ClearingBatchesPage: React.FC = () => {
         <div>
           <h2>Batches</h2>
           <Suspense fallback={<Loader label="Отрисовываем таблицу" />}>
-            <Table columns={batchColumns} data={batches} onRowClick={(row) => setSelectedBatch(row)} />
+            <Table columns={batchColumns} data={batches} onRowClick={(row) => setSelectedBatchId(row.id)} />
           </Suspense>
         </div>
         <div>
-          <h2>Operations in batch</h2>
+          <h2>Batch details</h2>
           {selectedBatch ? (
-            <div className="card">
+            <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 700 }}>{selectedBatch.id}</div>
+                  <div style={{ fontWeight: 700 }}>{formatDate(selectedBatch.batch_date)}</div>
                   <div style={{ color: "#475569" }}>{selectedBatch.merchant_id}</div>
                 </div>
                 <StatusBadge status={selectedBatch.status} />
               </div>
-              <p style={{ marginBottom: 8 }}>
-                {formatDate(selectedBatch.date_from)} → {formatDate(selectedBatch.date_to)}
+              <p style={{ marginBottom: 4 }}>Currency: {selectedBatch.currency}</p>
+              <p style={{ marginBottom: 4 }}>Total amount: {formatAmount(selectedBatch.total_amount)}</p>
+              <p style={{ marginBottom: 12 }}>
+                Operations: {selectedBatch.operations_count ?? operations.length}
               </p>
-              <p style={{ marginBottom: 8 }}>Amount: {formatAmount(selectedBatch.total_amount)}</p>
               <div className="actions">
                 <button
                   onClick={() => updateStatus("sent")}
@@ -170,6 +173,7 @@ export const ClearingBatchesPage: React.FC = () => {
           ) : (
             <p>Select batch to view details</p>
           )}
+          <h3>Operations</h3>
           <Suspense fallback={<Loader label="Загружаем операции батча" />}>
             <Table columns={batchOperationsColumns} data={operations} />
           </Suspense>

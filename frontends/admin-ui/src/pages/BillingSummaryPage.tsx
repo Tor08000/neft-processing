@@ -9,9 +9,6 @@ import { Loader } from "../components/Loader/Loader";
 const DateRangeFilter = React.lazy(() =>
   import("../components/Filters/DateRangeFilter").then((mod) => ({ default: mod.DateRangeFilter })),
 );
-const SelectFilter = React.lazy(() =>
-  import("../components/Filters/SelectFilter").then((mod) => ({ default: mod.SelectFilter })),
-);
 
 export const BillingSummaryPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -21,16 +18,18 @@ export const BillingSummaryPage: React.FC = () => {
     from.setDate(to.getDate() - 7);
     return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
   });
-  const [status, setStatus] = useState<string>("");
   const [merchantId, setMerchantId] = useState<string>("");
+  const [clientId, setClientId] = useState<string>("");
+  const [productType, setProductType] = useState<string>("");
   const filters = useMemo(
     () => ({
       date_from: dateRange.from,
       date_to: dateRange.to,
+      client_id: clientId || undefined,
       merchant_id: merchantId || undefined,
-      status: status || undefined,
+      product_type: productType || undefined,
     }),
-    [dateRange.from, dateRange.to, merchantId, status],
+    [clientId, dateRange.from, dateRange.to, merchantId, productType],
   );
 
   const { data = [], isFetching, isLoading, error, refetch } = useQuery({
@@ -54,22 +53,22 @@ export const BillingSummaryPage: React.FC = () => {
   const handleFinalize = (id: string) => finalizeMutation.mutate(id);
 
   const columns: Column<BillingSummaryItem>[] = [
-    { key: "date", title: "Date", render: (row) => formatDate(row.date) },
-    { key: "merchant", title: "Merchant", render: (row) => row.merchant_id },
-    {
-      key: "amount",
-      title: "Captured",
-      render: (row) => formatAmount(row.total_captured_amount),
-    },
-    { key: "count", title: "Ops", render: (row) => row.operations_count },
-    { key: "hash", title: "Hash", render: (row) => row.hash || "-" },
+    { key: "billing_date", title: "Billing Date", render: (row) => formatDate(row.billing_date) },
+    { key: "client_id", title: "Client", render: (row) => row.client_id },
+    { key: "merchant_id", title: "Merchant", render: (row) => row.merchant_id },
+    { key: "product_type", title: "Product", render: (row) => row.product_type },
+    { key: "currency", title: "Currency", render: (row) => row.currency },
+    { key: "total_amount", title: "Total Amount", render: (row) => formatAmount(row.total_amount) },
+    { key: "total_quantity", title: "Quantity", render: (row) => row.total_quantity },
+    { key: "operations_count", title: "Operations", render: (row) => row.operations_count },
+    { key: "commission_amount", title: "Commission", render: (row) => formatAmount(row.commission_amount) },
     { key: "status", title: "Status", render: (row) => <StatusBadge status={row.status ?? ""} /> },
     {
       key: "actions",
       title: "Actions",
       render: (row) => {
         const summaryId = row.id;
-        if (row.status !== "PENDING" || !summaryId) return null;
+        if (!summaryId || row.status !== "PENDING") return null;
 
         return (
           <button onClick={() => handleFinalize(summaryId)} disabled={finalizeMutation.isPending}>
@@ -101,18 +100,21 @@ export const BillingSummaryPage: React.FC = () => {
             to={dateRange.to}
             onChange={(range) => setDateRange({ from: range.from || "", to: range.to || "" })}
           />
-          <SelectFilter
-            label="Status"
-            value={status}
-            onChange={setStatus}
-            options={[
-              { value: "PENDING", label: "PENDING" },
-              { value: "FINALIZED", label: "FINALIZED" },
-            ]}
-          />
+          <div className="filter">
+            <span className="label">Client</span>
+            <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="client id" />
+          </div>
           <div className="filter">
             <span className="label">Merchant</span>
             <input value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="merchant id" />
+          </div>
+          <div className="filter">
+            <span className="label">Product type</span>
+            <input
+              value={productType}
+              onChange={(e) => setProductType(e.target.value)}
+              placeholder="product type"
+            />
           </div>
         </div>
       </Suspense>

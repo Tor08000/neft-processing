@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./client";
-import { ClearingBatch, ClearingBatchOperation } from "../types/clearing";
+import { ClearingBatch, ClearingBatchDetails, ClearingBatchOperation } from "../types/clearing";
 
 export async function fetchClearingBatches(params: {
   date_from?: string;
@@ -10,12 +10,8 @@ export async function fetchClearingBatches(params: {
   return apiGet("/api/v1/admin/clearing/batches", params);
 }
 
-export async function fetchClearingBatch(id: string): Promise<ClearingBatch> {
+export async function fetchClearingBatchDetails(id: string): Promise<ClearingBatchDetails> {
   return apiGet(`/api/v1/admin/clearing/batches/${id}`);
-}
-
-export async function fetchClearingBatchOperations(id: string): Promise<ClearingBatchOperation[]> {
-  return apiGet(`/api/v1/admin/clearing/batches/${id}/operations`);
 }
 
 export async function markBatchSent(id: string): Promise<ClearingBatch> {
