@@ -12,10 +12,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client", "./types/vitest"],
-    "paths": {
-      "react-router-dom": ["./src/router/router-shim"]
-    }
+    "types": ["vite/client", "./types/vitest"]
   },
   "include": ["src", "types"],
   "exclude": [

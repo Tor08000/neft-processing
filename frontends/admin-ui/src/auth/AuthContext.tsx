@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { login as apiLogin, me } from "../api/auth";
 import { ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
-import type { AuthUser } from "../types/auth";
+import type { AuthSession, AuthUser } from "../types/auth";
 
 interface AuthContextValue {
   user: AuthUser | null;
+  accessToken: string | null;
+  roles: string[];
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -22,10 +24,12 @@ function hasAdminRole(roles: string[]): boolean {
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [roles, setRoles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const persist = useCallback((payload: AuthUser | null) => {
+  const persist = useCallback((payload: AuthSession | null) => {
     if (payload) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } else {
@@ -35,21 +39,30 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   const logout = useCallback(() => {
     setUser(null);
+    setAccessToken(null);
+    setRoles([]);
     persist(null);
   }, [persist]);
 
   const revive = useCallback(
-    async (stored: AuthUser) => {
+    async (stored: AuthSession) => {
       try {
-        const profile = await me(stored.token);
+        const profile = await me(stored.accessToken);
         if (!hasAdminRole(profile.roles)) {
           setError("У вас нет прав доступа к админской панели");
           logout();
           return;
         }
-        const normalized: AuthUser = { ...stored, roles: profile.roles, email: profile.email, subjectType: profile.subjectType };
+        const normalized: AuthUser = {
+          id: profile.id,
+          email: profile.email,
+          roles: profile.roles,
+          subjectType: profile.subjectType,
+        };
         setUser(normalized);
-        persist(normalized);
+        setRoles(profile.roles);
+        setAccessToken(stored.accessToken);
+        persist({ ...stored, roles: profile.roles, email: profile.email });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           logout();
@@ -65,7 +78,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        const saved = JSON.parse(raw) as AuthUser;
+        const saved = JSON.parse(raw) as AuthSession;
         if (saved.expiresAt > Date.now()) {
           void revive(saved);
           return;
@@ -82,20 +95,22 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setError(null);
       try {
         const session = await apiLogin({ email, password });
-        if (!hasAdminRole(session.roles)) {
-          setError("У вас нет прав доступа к админской панели");
-          logout();
-          return;
-        }
-        const profile = await me(session.token);
+        const profile = await me(session.accessToken);
         if (!hasAdminRole(profile.roles)) {
           setError("У вас нет прав доступа к админской панели");
           logout();
           return;
         }
-        const normalized: AuthUser = { ...session, email: profile.email, roles: profile.roles, subjectType: profile.subjectType };
+        const normalized: AuthUser = {
+          id: profile.id,
+          email: profile.email,
+          roles: profile.roles,
+          subjectType: profile.subjectType,
+        };
         setUser(normalized);
-        persist(normalized);
+        setAccessToken(session.accessToken);
+        setRoles(profile.roles);
+        persist({ ...session, email: profile.email, roles: profile.roles });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный логин или пароль");
@@ -119,13 +134,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const value = useMemo(
     () => ({
       user,
+      accessToken,
+      roles,
       isLoading,
       error,
       login: handleLogin,
       logout,
-      isAdmin: Boolean(user?.roles && hasAdminRole(user.roles)),
+      isAdmin: hasAdminRole(roles),
     }),
-    [user, isLoading, error, handleLogin, logout],
+    [user, accessToken, roles, isLoading, error, handleLogin, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

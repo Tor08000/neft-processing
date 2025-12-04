@@ -1,5 +1,5 @@
 import React from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { Loader } from "../components/Loader/Loader";
 import { useAuth } from "../auth/AuthContext";
 
@@ -13,28 +13,26 @@ const HealthPage = React.lazy(() => import("../pages/HealthPage"));
 const LoginPage = React.lazy(() => import("../pages/LoginPage"));
 
 export function AppRouter() {
-  const { token } = useAuth();
+  const { accessToken } = useAuth();
 
   return (
-    !token ? (
+    <React.Suspense fallback={<Loader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<LoginPage />} />
-      </Routes>
-    ) : (
-      <React.Suspense fallback={<Loader />}>
-        <Layout>
-          <Routes>
+        {!accessToken ? (
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        ) : (
+          <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/operations" element={<OperationsListPage />} />
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/billing" element={<BillingSummaryPage />} />
             <Route path="/clearing" element={<ClearingBatchesPage />} />
             <Route path="/health" element={<HealthPage />} />
-            <Route path="/login" element={<LoginPage />} />
-          </Routes>
-        </Layout>
-      </React.Suspense>
-    )
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        )}
+      </Routes>
+    </React.Suspense>
   );
 }

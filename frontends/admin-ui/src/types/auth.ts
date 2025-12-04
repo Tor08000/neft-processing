@@ -7,9 +7,9 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
-  email: string;
-  subject_type: string;
-  roles: string[];
+  email?: string;
+  subject_type?: string;
+  roles?: string[];
 }
 
 export interface MeResponse {
@@ -20,9 +20,15 @@ export interface MeResponse {
 }
 
 export interface AuthUser {
-  token: string;
+  id: string;
   email: string;
   roles: string[];
-  subjectType: string;
+  subjectType?: string;
+}
+
+export interface AuthSession {
+  accessToken: string;
   expiresAt: number;
+  email?: string;
+  roles?: string[];
 }

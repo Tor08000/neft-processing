@@ -6,16 +6,16 @@ import { useAuth } from "../auth/AuthContext";
 import type { AdminUser } from "../types/users";
 
 export const UsersPage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { accessToken, logout } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!accessToken) return;
     setLoading(true);
-    listUsers(user.token)
+    listUsers(accessToken)
       .then((data) => setUsers(data))
       .catch((err) => {
         console.error("Ошибка загрузки пользователей", err);
@@ -26,7 +26,7 @@ export const UsersPage: React.FC = () => {
         setError("Не удалось загрузить пользователей");
       })
       .finally(() => setLoading(false));
-  }, [user, logout]);
+  }, [accessToken, logout]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -35,9 +35,9 @@ export const UsersPage: React.FC = () => {
   }, [users, search]);
 
   const toggleActive = async (item: AdminUser) => {
-    if (!user) return;
+    if (!accessToken) return;
     try {
-      const updated = await updateUser(user.token, item.id, { is_active: !item.is_active });
+      const updated = await updateUser(accessToken, item.id, { is_active: !item.is_active });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     } catch (err) {
       console.error("Не удалось обновить пользователя", err);
