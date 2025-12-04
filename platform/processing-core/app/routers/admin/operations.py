@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.operation import Operation
+from app.schemas.operations import OperationSchema
 from app.schemas.admin.dashboard import (
     OperationListResponse,
     OperationShort,
@@ -55,6 +56,8 @@ def _serialize_operations(items: List[Operation]) -> List[OperationShort]:
             response_code=item.response_code,
             response_message=item.response_message,
             reason=item.reason,
+            risk_result=item.risk_result,
+            risk_score=item.risk_score,
         )
         for item in items
     ]
@@ -80,6 +83,8 @@ def list_operations_admin(
     mcc: str | None = None,
     product_category: str | None = None,
     tx_type: str | None = None,
+    response_code: str | None = None,
+    risk_result: str | None = None,
     db: Session = Depends(get_db),
 ) -> OperationListResponse:
     if order_by not in _ORDERING_OPERATION:
@@ -118,6 +123,10 @@ def list_operations_admin(
         query = query.filter(Operation.product_category == product_category)
     if tx_type:
         query = query.filter(Operation.tx_type == tx_type)
+    if response_code:
+        query = query.filter(Operation.response_code == response_code)
+    if risk_result:
+        query = query.filter(Operation.risk_result == risk_result)
 
     total = query.count()
     items: List[Operation] = (
@@ -209,12 +218,12 @@ def list_transactions_admin(
     return TransactionListResponse(items=serialized, total=total, limit=limit, offset=offset)
 
 
-@router.get("/operations/{operation_id}", response_model=OperationShort)
-def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationShort:
+@router.get("/operations/{operation_id}", response_model=OperationSchema)
+def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationSchema:
     operation = db.query(Operation).filter(Operation.operation_id == operation_id).first()
     if operation is None:
         raise HTTPException(status_code=404, detail="operation not found")
-    return _serialize_operations([operation])[0]
+    return OperationSchema.from_orm(operation)
 
 
 @router.get("/operations/{operation_id}/children", response_model=OperationListResponse)

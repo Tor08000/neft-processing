@@ -10,8 +10,13 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas.operations import OperationSchema
 from app.schemas.transactions import (
+    AuthorizeRequest,
+    AuthorizeResponse,
     CaptureRequest,
+    CommitRequest,
+    RefundOperationRequest,
     RefundRequest,
+    ReverseRequest,
     TransactionDetailResponse,
     TransactionsPage,
 )
@@ -27,11 +32,92 @@ from app.services.transactions import (
     refund_operation,
     reverse_auth,
 )
+from app.services.transactions_service import (
+    AmountExceeded,
+    InvalidOperationState,
+    authorize_operation,
+    commit_operation,
+    reverse_operation,
+    refund_operation as service_refund,
+    serialize_operation,
+)
 
 router = APIRouter(
     prefix="/api/v1/transactions",
     tags=["transactions"],
 )
+
+
+@router.post("/authorize", response_model=AuthorizeResponse)
+def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> AuthorizeResponse:
+    operation = authorize_operation(
+        db,
+        client_id=body.client_id,
+        card_id=body.card_id,
+        terminal_id=body.terminal_id,
+        merchant_id=body.merchant_id,
+        product_id=body.product_id,
+        product_type=body.product_type,
+        amount=body.amount,
+        currency=body.currency,
+        ext_operation_id=body.ext_operation_id,
+        quantity=body.quantity,
+        unit_price=body.unit_price,
+        mcc=body.mcc,
+        product_category=body.product_category,
+        tx_type=body.tx_type,
+        client_group_id=body.client_group_id,
+        card_group_id=body.card_group_id,
+    )
+    return AuthorizeResponse(
+        approved=operation.status == "AUTHORIZED",
+        operation_id=operation.operation_id,
+        status=operation.status,
+        auth_code=operation.auth_code,
+        response_code=operation.response_code,
+        response_message=operation.response_message,
+        risk_result=operation.risk_result,
+        risk_score=operation.risk_score,
+        limit_check_result=operation.limit_check_result,
+    )
+
+
+@router.post("/commit", response_model=OperationSchema)
+def commit(body: CommitRequest, db: Session = Depends(get_db)) -> OperationSchema:
+    try:
+        op = commit_operation(db, operation_id=body.operation_id, amount=body.amount, quantity=body.quantity)
+    except AmountExceeded as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return serialize_operation(op)
+
+
+@router.post("/reverse", response_model=OperationSchema)
+def reverse(body: ReverseRequest, db: Session = Depends(get_db)) -> OperationSchema:
+    try:
+        op = reverse_operation(db, operation_id=body.operation_id, reason=body.reason)
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return serialize_operation(op)
+
+
+@router.post("/refund", response_model=OperationSchema)
+def refund(body: RefundOperationRequest, db: Session = Depends(get_db)) -> OperationSchema:
+    try:
+        op = service_refund(
+            db,
+            original_operation_id=body.operation_id,
+            amount=body.amount,
+            reason=body.reason,
+        )
+    except AmountExceeded as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except InvalidOperationState as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return serialize_operation(op)
 
 
 @router.get("", response_model=TransactionsPage)

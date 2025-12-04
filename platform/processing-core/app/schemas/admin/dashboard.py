@@ -61,6 +61,8 @@ class OperationShort(BaseModel):
     response_code: Optional[str] = None
     response_message: Optional[str] = None
     reason: Optional[str] = None
+    risk_result: Optional[str] = None
+    risk_score: Optional[float] = None
 
 
 class OperationListResponse(BaseModel):
