@@ -28,12 +28,6 @@ async def test_demo_login_against_real_db():
         )
         assert await cur.fetchone()
 
-        await cur.execute(
-            "SELECT email FROM clients WHERE lower(email) = lower(%s) LIMIT 1",
-            (DEMO_CLIENT_EMAIL,),
-        )
-        assert await cur.fetchone()
-
     transport = httpx.ASGITransport(app=app, lifespan="on")
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -46,5 +40,4 @@ async def test_demo_login_against_real_db():
     assert data["access_token"]
     assert data["token_type"] == "bearer"
     assert data["email"] == DEMO_CLIENT_EMAIL
-    assert data["subject_type"] == "client_user"
-    assert data["client_id"]
+    assert data["subject_type"] == "user"

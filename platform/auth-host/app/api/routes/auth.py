@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Tuple
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +9,6 @@ from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.db import get_conn
-from app.demo import DEMO_CLIENT_EMAIL, DEMO_CLIENT_FULL_NAME, DEMO_CLIENT_ID
 from app.models import User
 from app.schemas.auth import (
     AuthMeResponse,
@@ -38,18 +36,6 @@ def _admin_credentials() -> tuple[str, str]:
     email = os.getenv("ADMIN_EMAIL", "admin@example.com")
     password = os.getenv("ADMIN_PASSWORD", "admin123")
     return email, password
-
-
-async def _find_client_id(email: str) -> Tuple[str | None, str | None]:
-    async with get_conn() as (_conn, cur):
-        await cur.execute(
-            "SELECT id, full_name FROM clients WHERE lower(email) = lower(%s) LIMIT 1",
-            (email,),
-        )
-        row = await cur.fetchone()
-        if not row:
-            return None, None
-        return str(row["id"]), row.get("full_name") if isinstance(row, dict) else row[1]
 
 
 async def _get_user_from_db(email: str) -> User | None:
@@ -113,31 +99,33 @@ async def register(payload: RegisterRequest) -> UserResponse:
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
     admin_email, admin_password = _admin_credentials()
-    email_lower = payload.email.lower()
+    normalized_email = payload.email.strip().lower()
 
     subject_type = "user"
-    client_id: str | None = None
-    user_email = payload.email
+    roles: list[str]
+    user_email = normalized_email
 
     logger.info(
-        "login attempt: email=%s -> normalized=%s", payload.email, email_lower
+        "login attempt: email=%s -> normalized=%s", payload.email, normalized_email
     )
 
-    if email_lower == admin_email.lower():
+    if normalized_email == admin_email.lower():
         if payload.password != admin_password:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         roles = ["ADMIN"]
     else:
         try:
-            user = await _get_user_from_db(email_lower)
+            user = await _get_user_from_db(normalized_email)
         except Exception:
-            logger.exception("Failed to fetch user during login", extra={"email": email_lower})
+            logger.exception(
+                "Failed to fetch user during login", extra={"email": normalized_email}
+            )
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
 
         logger.info(
             "login attempt: email=%s -> normalized=%s, user_found=%s",
             payload.email,
-            email_lower,
+            normalized_email,
             bool(user),
         )
 
@@ -147,16 +135,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
         if not verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        try:
-            client_id, _ = await _find_client_id(payload.email)
-        except Exception:
-            logger.exception("Failed to fetch client during login", extra={"email": email_lower})
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
-        if client_id:
-            roles = ["CLIENT_USER"]
-            subject_type = "client_user"
-        else:
-            roles = []
+        roles = []
         user_email = user.email
 
     settings = get_settings()
@@ -165,7 +144,6 @@ async def login(payload: LoginRequest) -> TokenResponse:
         payload.email,
         roles=roles,
         subject_type=subject_type,
-        client_id=client_id,
     )
 
     return TokenResponse(
@@ -174,7 +152,6 @@ async def login(payload: LoginRequest) -> TokenResponse:
         expires_in=expires_in,
         email=user_email,
         subject_type=subject_type,
-        client_id=client_id,
     )
 
 
