@@ -73,3 +73,43 @@ async def generate_clearing_batches_for_date(clearing_date: date) -> None:
                     session.add(clearing)
     finally:
         session.close()
+
+
+def _apply_filters(
+    query, merchant_id: str | None, status: str | None, date_from: date | None, date_to: date | None
+):
+    if merchant_id:
+        query = query.filter(Clearing.merchant_id == merchant_id)
+    if status:
+        query = query.filter(Clearing.status == status)
+    if date_from:
+        query = query.filter(Clearing.batch_date >= date_from)
+    if date_to:
+        query = query.filter(Clearing.batch_date <= date_to)
+    return query
+
+
+def list_clearing_batches(
+    db,
+    *,
+    date_from: date | None,
+    date_to: date | None,
+    merchant_id: str | None,
+    status: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[Clearing], int]:
+    query = db.query(Clearing)
+    query = _apply_filters(query, merchant_id, status, date_from, date_to)
+    total = query.count()
+    batches = (
+        query.order_by(Clearing.batch_date.desc(), Clearing.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return batches, total
+
+
+def load_clearing_batch(db, batch_id: str) -> Clearing | None:
+    return db.query(Clearing).filter(Clearing.id == batch_id).first()
