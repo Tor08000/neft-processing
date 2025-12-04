@@ -1,13 +1,15 @@
 export type BillingStatus = "PENDING" | "FINALIZED";
 
 export interface BillingSummaryItem {
-  id?: string | null;
-  date: string;
+  billing_date: string;
+  client_id: string;
   merchant_id: string;
-  total_captured_amount: number;
+  product_type: string;
+  currency: string;
+  total_amount: number;
+  total_quantity: number;
   operations_count: number;
+  commission_amount: number;
   status?: BillingStatus | null;
-  hash?: string | null;
-  generated_at?: string | null;
-  finalized_at?: string | null;
+  id?: string | null;
 }

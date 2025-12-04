@@ -3,14 +3,19 @@ export type ClearingStatus = "PENDING" | "SENT" | "CONFIRMED" | "FAILED";
 export interface ClearingBatch {
   id: string;
   merchant_id: string;
-  date_from: string;
-  date_to: string;
+  batch_date: string;
+  currency: string;
   total_amount: number;
-  operations_count: number;
   status: ClearingStatus;
-  created_at: string;
-  updated_at: string;
+  operations_count?: number;
+  created_at?: string;
+  updated_at?: string;
   operations?: ClearingBatchOperation[] | null;
+}
+
+export interface ClearingBatchDetails {
+  batch: ClearingBatch;
+  operations: ClearingBatchOperation[];
 }
 
 export interface ClearingBatchOperation {

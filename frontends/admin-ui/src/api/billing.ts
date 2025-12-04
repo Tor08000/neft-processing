@@ -2,10 +2,11 @@ import { apiGet, apiPost } from "./client";
 import { BillingSummaryItem } from "../types/billing";
 
 export async function fetchBillingSummary(params: {
-  date_from: string;
-  date_to: string;
+  date_from?: string;
+  date_to?: string;
+  client_id?: string;
   merchant_id?: string;
-  status?: string;
+  product_type?: string;
 }): Promise<BillingSummaryItem[]> {
   return apiGet("/api/v1/admin/billing/summary", params);
 }
