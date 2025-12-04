@@ -32,12 +32,6 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-def _admin_credentials() -> tuple[str, str]:
-    email = os.getenv("ADMIN_EMAIL", "admin@example.com")
-    password = os.getenv("ADMIN_PASSWORD", "admin123")
-    return email, password
-
-
 async def _get_user_from_db(email: str) -> User | None:
     email_normalized = email.strip().lower()
 
@@ -51,6 +45,16 @@ async def _get_user_from_db(email: str) -> User | None:
         if not row:
             return None
         return User.from_row(row)
+
+
+async def _get_roles_for_user(user_id: str) -> list[str]:
+    async with get_conn() as (_conn, cur):
+        await cur.execute(
+            "SELECT role FROM user_roles WHERE user_id = %s",
+            (user_id,),
+        )
+        roles_rows = await cur.fetchall()
+    return [row["role"] for row in roles_rows]
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -98,50 +102,46 @@ async def register(payload: RegisterRequest) -> UserResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
-    admin_email, admin_password = _admin_credentials()
     normalized_email = payload.email.strip().lower()
 
     subject_type = "user"
-    roles: list[str]
     user_email = normalized_email
 
     logger.info(
         "login attempt: email=%s -> normalized=%s", payload.email, normalized_email
     )
 
-    if normalized_email == admin_email.lower():
-        if payload.password != admin_password:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        roles = ["ADMIN"]
-    else:
-        try:
-            user = await _get_user_from_db(normalized_email)
-        except Exception:
-            logger.exception(
-                "Failed to fetch user during login", extra={"email": normalized_email}
-            )
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
-
-        logger.info(
-            "login attempt: email=%s -> normalized=%s, user_found=%s",
-            payload.email,
-            normalized_email,
-            bool(user),
+    try:
+        user = await _get_user_from_db(normalized_email)
+    except Exception:
+        logger.exception(
+            "Failed to fetch user during login", extra={"email": normalized_email}
         )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="internal_error")
 
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    logger.info(
+        "login attempt: email=%s -> normalized=%s, user_found=%s",
+        payload.email,
+        normalized_email,
+        bool(user),
+    )
 
-        if not verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        roles = []
-        user_email = user.email
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="user_inactive")
+
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    roles = await _get_roles_for_user(user.id)
+    user_email = user.email
 
     settings = get_settings()
     expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))
     token = create_access_token(
-        payload.email,
+        user_email,
         roles=roles,
         subject_type=subject_type,
     )
@@ -152,6 +152,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
         expires_in=expires_in,
         email=user_email,
         subject_type=subject_type,
+        roles=roles,
     )
 
 

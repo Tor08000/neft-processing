@@ -44,6 +44,7 @@ class TokenResponse(BaseModel):
     email: str
     subject_type: str = Field(default="user", description="Тип субъекта в токене")
     client_id: str | None = Field(default=None, description="Организация клиента")
+    roles: list[str] = Field(default_factory=list)
 
     @field_validator("email")
     @classmethod
