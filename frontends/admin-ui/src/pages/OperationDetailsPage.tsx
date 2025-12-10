@@ -1,12 +1,12 @@
 import React, { Suspense, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchOperation, fetchOperationChildren } from "../api/operations";
+import { fetchOperation, fetchOperationChildren, fetchOperations } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { RiskBadge } from "../components/RiskBadge/RiskBadge";
 import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDateTime } from "../utils/format";
-import { Operation } from "../types/operations";
+import { Operation, RiskPayload } from "../types/operations";
 import { Loader } from "../components/Loader/Loader";
 
 export const OperationDetailsPage: React.FC = () => {
@@ -22,6 +22,54 @@ export const OperationDetailsPage: React.FC = () => {
     queryKey: ["operations", id, "children"],
     queryFn: () => fetchOperationChildren(id as string),
     enabled: Boolean(id),
+    staleTime: 30_000,
+  });
+
+  const riskPayload = useMemo<RiskPayload | null>(() => {
+    if (!operation?.risk_payload) return null;
+    return operation.risk_payload as RiskPayload;
+  }, [operation?.risk_payload]);
+
+  const riskDecision = riskPayload?.decision;
+  const riskReasons = operation?.risk_reasons || riskDecision?.reason_codes || [];
+  const riskRules = operation?.risk_rules_fired || riskDecision?.rules_fired || [];
+  const aiScore = riskDecision?.ai_score ?? null;
+  const aiModelVersion = riskDecision?.ai_model_version ?? null;
+  const riskSource = operation?.risk_source || riskPayload?.source || undefined;
+
+  const dayRange = useMemo(() => {
+    if (!operation?.created_at) return null;
+    const date = new Date(operation.created_at);
+    const from = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
+    const to = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
+    return { from: from.toISOString(), to: to.toISOString() };
+  }, [operation?.created_at]);
+
+  const { data: cardOpsTotal } = useQuery({
+    queryKey: ["operations", id, "card-count", operation?.card_id, dayRange?.from, dayRange?.to],
+    queryFn: () =>
+      fetchOperations({
+        limit: 1,
+        offset: 0,
+        card_id: operation?.card_id || undefined,
+        from_created_at: dayRange?.from,
+        to_created_at: dayRange?.to,
+      }).then((res) => res.total),
+    enabled: Boolean(operation?.card_id && dayRange),
+    staleTime: 30_000,
+  });
+
+  const { data: clientOpsTotal } = useQuery({
+    queryKey: ["operations", id, "client-count", operation?.client_id, dayRange?.from, dayRange?.to],
+    queryFn: () =>
+      fetchOperations({
+        limit: 1,
+        offset: 0,
+        client_id: operation?.client_id || undefined,
+        from_created_at: dayRange?.from,
+        to_created_at: dayRange?.to,
+      }).then((res) => res.total),
+    enabled: Boolean(operation?.client_id && dayRange),
     staleTime: 30_000,
   });
 
@@ -95,19 +143,22 @@ export const OperationDetailsPage: React.FC = () => {
           <div className="card">
             <h3>Risk</h3>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-              <RiskBadge level={operation.risk_result} score={operation.risk_score ?? undefined} />
-              {typeof operation.risk_score === "number" && (
-                <span style={{ color: "#475569" }}>score: {(operation.risk_score * 100).toFixed(1)}</span>
-              )}
+              <RiskBadge
+                level={operation.risk_result || operation.risk_level}
+                decision={operation.risk_level}
+                score={operation.risk_score ?? undefined}
+                reasons={riskReasons}
+                source={riskSource}
+              />
             </div>
             <p>
-              <strong>Источник:</strong> {operation.risk_source || "—"}
+              <strong>Источник:</strong> {riskSource || "—"}
             </p>
-            {operation.risk_reasons && operation.risk_reasons.length > 0 && (
+            {riskReasons && riskReasons.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <span className="label">Причины</span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {operation.risk_reasons.map((reason) => (
+                  {riskReasons.map((reason) => (
                     <span
                       key={reason}
                       className="badge"
@@ -116,6 +167,35 @@ export const OperationDetailsPage: React.FC = () => {
                       {reason}
                     </span>
                   ))}
+                </div>
+              </div>
+            )}
+            {riskRules && riskRules.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <span className="label">Сработавшие правила</span>
+                <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
+                  {riskRules.map((rule) => (
+                    <li key={rule} style={{ color: "#334155" }}>
+                      {rule}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(aiScore !== null || aiModelVersion) && (
+              <div style={{ marginTop: 8 }}>
+                <span className="label">AI</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, color: "#334155" }}>
+                  {aiScore !== null && (
+                    <span>
+                      ai_score: <strong>{(aiScore * 100).toFixed(1)}</strong>
+                    </span>
+                  )}
+                  {aiModelVersion && (
+                    <span>
+                      model_version: <strong>{aiModelVersion}</strong>
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -128,6 +208,23 @@ export const OperationDetailsPage: React.FC = () => {
                       {key}: <strong>{String(value)}</strong>
                     </span>
                   ))}
+                </div>
+              </div>
+            )}
+            {(cardOpsTotal !== undefined || clientOpsTotal !== undefined) && (
+              <div style={{ marginTop: 8 }}>
+                <span className="label">Контекст за день</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, color: "#334155" }}>
+                  {cardOpsTotal !== undefined && (
+                    <span>
+                      Операций по карте: <strong>{cardOpsTotal}</strong>
+                    </span>
+                  )}
+                  {clientOpsTotal !== undefined && (
+                    <span>
+                      Операций по клиенту: <strong>{clientOpsTotal}</strong>
+                    </span>
+                  )}
                 </div>
               </div>
             )}

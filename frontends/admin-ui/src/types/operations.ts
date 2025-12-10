@@ -24,7 +24,9 @@ export interface Operation {
   risk_reasons?: string[] | null;
   risk_flags?: Record<string, unknown> | null;
   risk_source?: string | null;
-  risk_payload?: Record<string, unknown> | null;
+  risk_level?: string | null;
+  risk_rules_fired?: string[] | null;
+  risk_payload?: RiskPayload | null;
   daily_limit?: number | null;
   limit_per_tx?: number | null;
   used_today?: number | null;
@@ -67,7 +69,23 @@ export interface OperationQuery extends Record<string, unknown> {
     | "amount_asc"
     | "risk_score_desc"
     | "risk_score_asc";
+  risk_level?: string | string[];
   mcc?: string;
   product_category?: string;
   tx_type?: string;
+}
+
+export interface RiskDecisionPayload {
+  level?: string;
+  reason_codes?: string[];
+  rules_fired?: string[];
+  ai_score?: number;
+  ai_model_version?: string;
+}
+
+export interface RiskPayload {
+  decision?: RiskDecisionPayload;
+  source?: string;
+  flags?: Record<string, unknown>;
+  [key: string]: unknown;
 }
