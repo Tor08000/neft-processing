@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional, Set
 
 from neft_shared.logging_setup import get_logger
 from sqlalchemy.orm import Session
 
 from app.models.operation import Operation
+
+if TYPE_CHECKING:  # pragma: no cover - circular import guard
+    from app.services.risk_adapter import OperationContext, RiskResult
 
 logger = get_logger(__name__)
 
@@ -55,6 +58,14 @@ def _compute_score(level: str, reasons: Iterable[str]) -> float:
     return min(1.0, base + bump)
 
 
+def _normalize_dt(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
 async def load_recent_operations_stats(
     db: Optional[Session], card_id: Any, client_id: Any, now: Optional[datetime] = None
 ) -> RecentStats:
@@ -76,6 +87,9 @@ async def load_recent_operations_stats(
     if not operations:
         return RecentStats()
 
+    for op in operations:
+        op.created_at = _normalize_dt(op.created_at)
+
     amounts = [op.amount for op in operations]
     avg_amount = sum(amounts) / len(amounts)
     max_amount = max(amounts)
@@ -93,7 +107,9 @@ async def load_recent_operations_stats(
     )
 
 
-async def evaluate_rules(context, db=None) -> "app.services.risk_adapter.RiskResult":
+async def evaluate_rules(
+    context: "OperationContext", db=None
+) -> "RiskResult":
     # Lazy import to avoid circular dependency
     from app.services.risk_adapter import RiskResult
 
