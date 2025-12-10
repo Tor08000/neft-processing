@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.operation import Operation
-from app.schemas.operations import OperationSchema
+from app.schemas.operations import (
+    OperationSchema,
+    extract_risk_flags,
+    extract_risk_level,
+    extract_risk_reasons,
+    extract_risk_rules_fired,
+    extract_risk_source,
+)
 from app.schemas.admin.dashboard import (
     OperationListResponse,
     OperationShort,
@@ -60,40 +67,11 @@ def _serialize_operations(items: List[Operation]) -> List[OperationShort]:
             reason=item.reason,
             risk_result=item.risk_result,
             risk_score=item.risk_score,
-            risk_flags=(item.risk_payload or {}).get("flags")
-            if isinstance(item.risk_payload, dict)
-            else None,
-            risk_reasons=(
-                (item.risk_payload or {}).get("reasons")
-                if isinstance(item.risk_payload, dict)
-                else None
-            )
-            or (
-                (item.risk_payload or {}).get("reason_codes")
-                if isinstance(item.risk_payload, dict)
-                else None
-            )
-            or (
-                ((item.risk_payload or {}).get("decision") or {}).get("reason_codes")
-                if isinstance(item.risk_payload, dict)
-                else None
-            ),
-            risk_source=(
-                (item.risk_payload or {}).get("source")
-                if isinstance(item.risk_payload, dict)
-                else None
-            )
-            or ((item.risk_payload or {}).get("engine") if isinstance(item.risk_payload, dict) else None),
-            risk_rules_fired=(
-                (item.risk_payload or {}).get("rules_fired")
-                if isinstance(item.risk_payload, dict)
-                else None
-            )
-            or (
-                ((item.risk_payload or {}).get("decision") or {}).get("rules_fired")
-                if isinstance(item.risk_payload, dict)
-                else None
-            ),
+            risk_level=extract_risk_level(item.risk_payload, item.risk_result),
+            risk_flags=extract_risk_flags(item.risk_payload),
+            risk_reasons=extract_risk_reasons(item.risk_payload),
+            risk_source=extract_risk_source(item.risk_payload),
+            risk_rules_fired=extract_risk_rules_fired(item.risk_payload),
         )
         for item in items
     ]
@@ -120,7 +98,10 @@ def list_operations_admin(
     product_category: str | None = None,
     tx_type: str | None = None,
     response_code: str | None = None,
+    response_codes: List[str] | None = Query(None),
+    error_code: List[str] | None = Query(None),
     risk_result: List[str] | None = Query(None),
+    risk_level: List[str] | None = Query(None),
     risk_min_score: float | None = Query(None),
     risk_max_score: float | None = Query(None),
     db: Session = Depends(get_db),
@@ -161,8 +142,13 @@ def list_operations_admin(
         query = query.filter(Operation.product_category == product_category)
     if tx_type:
         query = query.filter(Operation.tx_type == tx_type)
+    response_codes_set = {
+        code for code in (response_codes or []) + (error_code or []) if code
+    }
     if response_code:
-        query = query.filter(Operation.response_code == response_code)
+        response_codes_set.add(response_code)
+    if response_codes_set:
+        query = query.filter(Operation.response_code.in_(response_codes_set))
     if risk_result:
         query = query.filter(Operation.risk_result.in_(risk_result))
     if risk_min_score is not None:
@@ -170,13 +156,24 @@ def list_operations_admin(
     if risk_max_score is not None:
         query = query.filter(Operation.risk_score <= risk_max_score)
 
-    total = query.count()
-    items: List[Operation] = (
-        query.order_by(*_ORDERING_OPERATION[order_by])
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    normalized_levels = {
+        level.upper() for level in risk_level or [] if level is not None
+    }
+
+    ordered_query = query.order_by(*_ORDERING_OPERATION[order_by])
+    if normalized_levels:
+        items_all: List[Operation] = ordered_query.all()
+        filtered_items = [
+            item
+            for item in items_all
+            if extract_risk_level(item.risk_payload, item.risk_result)
+            in normalized_levels
+        ]
+        total = len(filtered_items)
+        items = filtered_items[offset : offset + limit]
+    else:
+        total = query.count()
+        items = ordered_query.offset(offset).limit(limit).all()
 
     serialized = _serialize_operations(items)
     return OperationListResponse(items=serialized, total=total, limit=limit, offset=offset)

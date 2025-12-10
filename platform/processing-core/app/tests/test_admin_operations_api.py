@@ -285,36 +285,38 @@ def test_risk_filters_and_fields(admin_client: TestClient):
         session.add_all(
             [
                 Operation(
-                    operation_id="risk-low",
-                    operation_type="AUTH",
-                    status="AUTHORIZED",
-                    merchant_id="m-risk",
-                    terminal_id="t-risk",
-                    client_id="c-risk",
-                    card_id="card-risk",
-                    amount=100,
-                    currency="RUB",
-                    created_at=base_time,
-                    risk_result="LOW",
-                    risk_score=0.1,
-                    risk_payload={"flags": {"night": False}, "reasons": ["ok"], "source": "RULES"},
-                ),
-                Operation(
+                operation_id="risk-low",
+                operation_type="AUTH",
+                status="AUTHORIZED",
+                merchant_id="m-risk",
+                terminal_id="t-risk",
+                client_id="c-risk",
+                card_id="card-risk",
+                amount=100,
+                currency="RUB",
+                created_at=base_time,
+                response_code="00",
+                risk_result="LOW",
+                risk_score=0.1,
+                risk_payload={"flags": {"night": False}, "reasons": ["ok"], "source": "RULES"},
+            ),
+            Operation(
                     operation_id="risk-high",
                     operation_type="AUTH",
                     status="AUTHORIZED",
                     merchant_id="m-risk",
                     terminal_id="t-risk",
                     client_id="c-risk",
-                    card_id="card-risk",
-                    amount=200,
-                    currency="RUB",
-                    created_at=base_time + timedelta(minutes=1),
-                    risk_result="HIGH",
-                    risk_score=0.9,
-                    risk_payload={
-                        "decision": {
-                            "level": "HARD_DECLINE",
+                card_id="card-risk",
+                amount=200,
+                currency="RUB",
+                created_at=base_time + timedelta(minutes=1),
+                response_code="RISK_HARD_DECLINE",
+                risk_result="HIGH",
+                risk_score=0.9,
+                risk_payload={
+                    "decision": {
+                        "level": "HARD_DECLINE",
                             "reason_codes": ["amount_spike"],
                             "rules_fired": ["high_amount_rule"],
                             "ai_score": 0.9,
@@ -331,24 +333,25 @@ def test_risk_filters_and_fields(admin_client: TestClient):
                     merchant_id="m-risk",
                     terminal_id="t-risk",
                     client_id="c-risk",
-                    card_id="card-risk",
-                    amount=150,
-                    currency="RUB",
-                    created_at=base_time + timedelta(minutes=2),
-                    risk_result="MEDIUM",
-                    risk_score=0.55,
-                    risk_payload={
-                        "decision": {
-                            "level": "MEDIUM",
-                            "reason_codes": ["velocity"],
-                            "rules_fired": [],
-                            "ai_score": 0.55,
-                            "ai_model_version": "v2",
-                        },
-                        "source": "AI+RULES",
+                card_id="card-risk",
+                amount=150,
+                currency="RUB",
+                created_at=base_time + timedelta(minutes=2),
+                response_code="MR01",
+                risk_result="MEDIUM",
+                risk_score=0.55,
+                risk_payload={
+                    "decision": {
+                        "level": "MANUAL_REVIEW",
+                        "reason_codes": ["velocity"],
+                        "rules_fired": [],
+                        "ai_score": 0.55,
+                        "ai_model_version": "v2",
                     },
-                ),
-            ]
+                    "source": "AI+RULES",
+                },
+            ),
+        ]
         )
         session.commit()
     finally:
@@ -390,6 +393,28 @@ def test_risk_filters_and_fields(admin_client: TestClient):
     assert payload["risk_flags"] == {"night": True, "amount_threshold_hit": True}
     assert payload["risk_source"] == "AI"
     assert payload["risk_rules_fired"] == ["high_amount_rule"]
+    assert payload["risk_level"] == "HARD_DECLINE"
+
+    risk_levels_filtered = admin_client.get(
+        "/api/v1/admin/operations",
+        params={"risk_level": ["hard_decline", "manual_review"], "merchant_id": "m-risk"},
+    )
+    assert risk_levels_filtered.status_code == 200
+    filtered_ids = {item["operation_id"] for item in risk_levels_filtered.json()["items"]}
+    assert filtered_ids == {"risk-high", "risk-medium"}
+    for item in risk_levels_filtered.json()["items"]:
+        assert item["risk_level"] in {"HARD_DECLINE", "MANUAL_REVIEW"}
+
+    error_codes_filtered = admin_client.get(
+        "/api/v1/admin/operations",
+        params={"response_codes": ["MR01"], "error_code": ["RISK_HARD_DECLINE"], "merchant_id": "m-risk"},
+    )
+    assert error_codes_filtered.status_code == 200
+    assert error_codes_filtered.json()["total"] == 2
+    assert {item["response_code"] for item in error_codes_filtered.json()["items"]} == {
+        "MR01",
+        "RISK_HARD_DECLINE",
+    }
 
 
 def test_transactions_filters_sort_and_pagination(admin_client: TestClient):

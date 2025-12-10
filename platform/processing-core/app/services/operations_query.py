@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -15,6 +15,39 @@ _ORDERING = {
     "risk_score_desc": (Operation.risk_score.desc(), Operation.operation_id.desc()),
     "risk_score_asc": (Operation.risk_score.asc(), Operation.operation_id.asc()),
 }
+
+
+def _normalize_risk_level(level: str | None) -> Optional[str]:
+    if not level:
+        return None
+    normalized = str(level).upper()
+    if normalized in {"ALLOW", "LOW"}:
+        return "LOW"
+    if normalized == "MEDIUM":
+        return "MEDIUM"
+    if normalized in {"REVIEW", "MANUAL_REVIEW"}:
+        return "MANUAL_REVIEW"
+    if normalized == "HIGH":
+        return "HIGH"
+    if normalized in {"BLOCK", "DENY", "DECLINE"}:
+        return "BLOCK"
+    if normalized == "HARD_DECLINE":
+        return "HARD_DECLINE"
+    return normalized
+
+
+def _extract_risk_level_from_model(operation: Operation) -> Optional[str]:
+    payload = operation.risk_payload or {}
+    level = None
+    if isinstance(payload, dict):
+        decision = payload.get("decision")
+        if isinstance(decision, dict):
+            level = decision.get("level")
+        if level is None:
+            level = payload.get("level")
+    if level is None:
+        level = operation.risk_result
+    return _normalize_risk_level(level)
 
 
 def list_operations(
@@ -36,7 +69,10 @@ def list_operations(
     product_category: Optional[str] = None,
     tx_type: Optional[str] = None,
     response_code: Optional[str] = None,
+    response_codes: Optional[Sequence[str]] = None,
+    error_codes: Optional[Sequence[str]] = None,
     risk_results: Optional[Sequence[str]] = None,
+    risk_levels: Optional[Sequence[str]] = None,
     risk_min_score: Optional[float] = None,
     risk_max_score: Optional[float] = None,
     order_by: str = "created_at_desc",
@@ -70,17 +106,37 @@ def list_operations(
         query = query.filter(Operation.product_category == product_category)
     if tx_type:
         query = query.filter(Operation.tx_type == tx_type)
+    combined_response_codes: Set[str] = set(response_codes or ()) | set(
+        error_codes or ()
+    )
     if response_code:
-        query = query.filter(Operation.response_code == response_code)
+        combined_response_codes.add(response_code)
+    if combined_response_codes:
+        query = query.filter(Operation.response_code.in_(combined_response_codes))
     if risk_results:
         query = query.filter(Operation.risk_result.in_(risk_results))
+    normalized_levels = {
+        _normalize_risk_level(level)
+        for level in risk_levels or []
+        if _normalize_risk_level(level)
+    }
     if risk_min_score is not None:
         query = query.filter(Operation.risk_score >= risk_min_score)
     if risk_max_score is not None:
         query = query.filter(Operation.risk_score <= risk_max_score)
 
-    total = query.count()
-    items = query.order_by(*order_clause).offset(offset).limit(limit).all()
+    if normalized_levels:
+        items_all = query.order_by(*order_clause).all()
+        filtered_items = [
+            op
+            for op in items_all
+            if _extract_risk_level_from_model(op) in normalized_levels
+        ]
+        total = len(filtered_items)
+        items = filtered_items[offset : offset + limit]
+    else:
+        total = query.count()
+        items = query.order_by(*order_clause).offset(offset).limit(limit).all()
 
     return items, total
 
