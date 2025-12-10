@@ -13,7 +13,8 @@ import { Loader } from "../components/Loader/Loader";
 export const OperationsListPage: React.FC = () => {
   const [limit, setLimit] = useState<number>(20);
   const [offset, setOffset] = useState<number>(0);
-  const [riskLevel, setRiskLevel] = useState<string>("ANY");
+  const [riskResult, setRiskResult] = useState<string>("ANY");
+  const [riskDecision, setRiskDecision] = useState<string>("ANY");
   const [minScore, setMinScore] = useState<string>("");
   const [maxScore, setMaxScore] = useState<string>("");
   const [orderBy, setOrderBy] = useState<OperationQuery["order_by"]>("created_at_desc");
@@ -24,11 +25,12 @@ export const OperationsListPage: React.FC = () => {
       limit,
       offset,
       order_by: orderBy,
-      risk_result: riskLevel !== "ANY" ? riskLevel : undefined,
+      risk_result: riskResult !== "ANY" ? [riskResult] : undefined,
+      risk_level: riskDecision !== "ANY" ? [riskDecision] : undefined,
       risk_min_score: minScore !== "" ? Number(minScore) : undefined,
       risk_max_score: maxScore !== "" ? Number(maxScore) : undefined,
     }),
-    [limit, maxScore, minScore, offset, orderBy, riskLevel],
+    [limit, maxScore, minScore, offset, orderBy, riskDecision, riskResult],
   );
 
   const { data, isLoading, error, isFetching } = useQuery({
@@ -50,12 +52,15 @@ export const OperationsListPage: React.FC = () => {
     {
       key: "risk_result",
       title: "Риск",
-      render: (row) => <RiskBadge level={row.risk_result} score={row.risk_score ?? undefined} />,
-    },
-    {
-      key: "risk_score",
-      title: "Score",
-      render: (row) => (typeof row.risk_score === "number" ? (row.risk_score * 100).toFixed(0) : "—"),
+      render: (row) => (
+        <RiskBadge
+          level={row.risk_result}
+          decision={row.risk_level}
+          score={row.risk_score ?? undefined}
+          reasons={row.risk_reasons ?? undefined}
+          source={row.risk_source ?? undefined}
+        />
+      ),
     },
     { key: "client_id", title: "Клиент", render: (row) => row.client_id },
     { key: "card_id", title: "Карта", render: (row) => row.card_id },
@@ -73,13 +78,22 @@ export const OperationsListPage: React.FC = () => {
 
       <div className="filters">
         <div className="filter">
-          <span className="label">Риск</span>
-          <select value={riskLevel} onChange={(e) => setRiskLevel(e.target.value)}>
+          <span className="label">Риск (severity)</span>
+          <select value={riskResult} onChange={(e) => setRiskResult(e.target.value)}>
             <option value="ANY">Любой</option>
             <option value="LOW">LOW</option>
             <option value="MEDIUM">MEDIUM</option>
             <option value="HIGH">HIGH</option>
             <option value="BLOCK">BLOCK</option>
+          </select>
+        </div>
+        <div className="filter">
+          <span className="label">Decision</span>
+          <select value={riskDecision} onChange={(e) => setRiskDecision(e.target.value)}>
+            <option value="ANY">Любой</option>
+            <option value="APPROVED">APPROVED</option>
+            <option value="MANUAL_REVIEW">MANUAL_REVIEW</option>
+            <option value="HARD_DECLINE">HARD_DECLINE</option>
           </select>
         </div>
         <div className="filter">

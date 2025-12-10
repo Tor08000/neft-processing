@@ -25,6 +25,7 @@ export const RiskAnalyticsPage: React.FC = () => {
   const [riskLevel, setRiskLevel] = useState<string>("ANY");
   const [clientId, setClientId] = useState<string>("");
   const [merchantId, setMerchantId] = useState<string>("");
+  const [reasonFilter, setReasonFilter] = useState<string>("");
 
   const filters = useMemo(
     () => ({
@@ -33,7 +34,7 @@ export const RiskAnalyticsPage: React.FC = () => {
       order_by: "risk_score_desc" as const,
       from_created_at: dateRange.from ? `${dateRange.from}T00:00:00Z` : undefined,
       to_created_at: dateRange.to ? `${dateRange.to}T23:59:59Z` : undefined,
-      risk_result: riskLevel !== "ANY" ? riskLevel : undefined,
+      risk_result: riskLevel !== "ANY" ? [riskLevel] : undefined,
       client_id: clientId || undefined,
       merchant_id: merchantId || undefined,
     }),
@@ -50,15 +51,36 @@ export const RiskAnalyticsPage: React.FC = () => {
 
   const operations = data?.items ?? [];
 
+  const filteredOperations = useMemo(() => {
+    const reasonSearch = reasonFilter.trim().toLowerCase();
+    if (!reasonSearch) return operations;
+    return operations.filter((op) =>
+      (op.risk_reasons || []).some((reason) => reason.toLowerCase().includes(reasonSearch)),
+    );
+  }, [operations, reasonFilter]);
+
   const totals = useMemo(() => {
     const counts: Record<string, number> = {};
-    operations.forEach((op) => {
+    filteredOperations.forEach((op) => {
       const level = (op.risk_result || "UNKNOWN").toUpperCase();
       counts[level] = (counts[level] || 0) + 1;
     });
-    const total = operations.length;
+    const total = filteredOperations.length;
     return { counts, total };
-  }, [operations]);
+  }, [filteredOperations]);
+
+  const highRiskOperations = useMemo(() => {
+    const result = filteredOperations.filter((op) => {
+      const severity = (op.risk_result || "").toUpperCase();
+      const decision = (op.risk_level || "").toUpperCase();
+      return ["HIGH", "BLOCK"].includes(severity) || decision === "HARD_DECLINE";
+    });
+    return result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [filteredOperations]);
+
+  const topByRiskScore = useMemo(() => {
+    return [...filteredOperations].sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0));
+  }, [filteredOperations]);
 
   const columns: Column<Operation>[] = [
     { key: "created_at", title: "Дата", render: (row) => formatDateTime(row.created_at) },
@@ -68,7 +90,15 @@ export const RiskAnalyticsPage: React.FC = () => {
     {
       key: "risk_result",
       title: "Риск",
-      render: (row) => <RiskBadge level={row.risk_result} score={row.risk_score ?? undefined} />,
+      render: (row) => (
+        <RiskBadge
+          level={row.risk_result}
+          decision={row.risk_level}
+          score={row.risk_score ?? undefined}
+          reasons={row.risk_reasons ?? undefined}
+          source={row.risk_source ?? undefined}
+        />
+      ),
     },
     {
       key: "risk_reasons",
@@ -117,6 +147,14 @@ export const RiskAnalyticsPage: React.FC = () => {
             <span className="label">Merchant</span>
             <input value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="merchant id" />
           </div>
+          <div className="filter">
+            <span className="label">Reason code</span>
+            <input
+              value={reasonFilter}
+              onChange={(e) => setReasonFilter(e.target.value)}
+              placeholder="velocity / blacklist ..."
+            />
+          </div>
         </div>
       </Suspense>
 
@@ -140,9 +178,52 @@ export const RiskAnalyticsPage: React.FC = () => {
         })}
       </div>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3>Распределение по уровням риска</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+          {RISK_LEVELS.map((level) => {
+            const count = totals.counts[level] || 0;
+            const percent = totals.total ? Math.round((count / totals.total) * 100) : 0;
+            return (
+              <div key={level} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ minWidth: 90 }}>
+                  <RiskBadge level={level} />
+                </div>
+                <div style={{ flex: 1, background: "#e2e8f0", borderRadius: 4, height: 10, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: `${percent}%`,
+                      height: "100%",
+                      background: "linear-gradient(90deg, #10b981, #f97316, #ef4444)",
+                      transition: "width 0.2s ease",
+                    }}
+                  />
+                </div>
+                <span style={{ minWidth: 80, textAlign: "right", color: "#334155" }}>
+                  {count} / {percent}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <h2>Топ рискованных операций</h2>
       <Suspense fallback={<Loader label="Загружаем операции" />}>
-        <Table columns={columns} data={operations.slice(0, 50)} onRowClick={(row) => navigate(`/operations/${row.operation_id}`)} />
+        <Table
+          columns={columns}
+          data={topByRiskScore.slice(0, 50)}
+          onRowClick={(row) => navigate(`/operations/${row.operation_id}`)}
+        />
+      </Suspense>
+
+      <h2 style={{ marginTop: 16 }}>Последние high-risk / declines</h2>
+      <Suspense fallback={<Loader label="Загружаем операции" />}>
+        <Table
+          columns={columns}
+          data={highRiskOperations.slice(0, 30)}
+          onRowClick={(row) => navigate(`/operations/${row.operation_id}`)}
+        />
       </Suspense>
     </div>
   );
