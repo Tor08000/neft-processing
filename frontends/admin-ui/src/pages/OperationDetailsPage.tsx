@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOperation, fetchOperationChildren } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
+import { RiskBadge } from "../components/RiskBadge/RiskBadge";
 import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDateTime } from "../utils/format";
 import { Operation } from "../types/operations";
@@ -90,6 +91,46 @@ export const OperationDetailsPage: React.FC = () => {
             <p>
               Remaining: <strong>{formatAmount(totals.remaining)}</strong>
             </p>
+          </div>
+          <div className="card">
+            <h3>Risk</h3>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <RiskBadge level={operation.risk_result} score={operation.risk_score ?? undefined} />
+              {typeof operation.risk_score === "number" && (
+                <span style={{ color: "#475569" }}>score: {(operation.risk_score * 100).toFixed(1)}</span>
+              )}
+            </div>
+            <p>
+              <strong>Источник:</strong> {operation.risk_source || "—"}
+            </p>
+            {operation.risk_reasons && operation.risk_reasons.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <span className="label">Причины</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {operation.risk_reasons.map((reason) => (
+                    <span
+                      key={reason}
+                      className="badge"
+                      style={{ background: "#e0f2fe", color: "#075985", padding: "2px 8px" }}
+                    >
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {operation.risk_flags && (
+              <div style={{ marginTop: 8 }}>
+                <span className="label">Флаги</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {Object.entries(operation.risk_flags).map(([key, value]) => (
+                    <span key={key} style={{ color: "#334155" }}>
+                      {key}: <strong>{String(value)}</strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

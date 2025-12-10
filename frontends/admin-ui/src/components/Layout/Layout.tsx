@@ -5,6 +5,8 @@ import { useAuth } from "../../auth/AuthContext";
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/users", label: "Users" },
+  { to: "/operations", label: "Operations" },
+  { to: "/analytics/risk", label: "Risk analytics" },
 ];
 
 export const Layout: React.FC = () => {

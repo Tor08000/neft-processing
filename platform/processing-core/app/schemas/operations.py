@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 class OperationSchema(BaseModel):
@@ -51,6 +51,30 @@ class OperationSchema(BaseModel):
     risk_score: Optional[float] = None
     risk_result: Optional[str] = None
     risk_payload: Optional[dict] = None
+
+    @computed_field
+    @property
+    def risk_flags(self) -> Optional[dict]:
+        payload = self.risk_payload or {}
+        flags = payload.get("flags") if isinstance(payload, dict) else None
+        return flags
+
+    @computed_field
+    @property
+    def risk_reasons(self) -> Optional[List[str]]:
+        payload = self.risk_payload or {}
+        reasons = payload.get("reasons") if isinstance(payload, dict) else None
+        if reasons is None:
+            return None
+        return list(reasons)
+
+    @computed_field
+    @property
+    def risk_source(self) -> Optional[str]:
+        payload = self.risk_payload or {}
+        if not isinstance(payload, dict):
+            return None
+        return payload.get("source") or payload.get("engine")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

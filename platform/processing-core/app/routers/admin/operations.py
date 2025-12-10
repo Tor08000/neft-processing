@@ -25,6 +25,8 @@ _ORDERING_OPERATION = {
     "created_at_asc": (Operation.created_at.asc(), Operation.operation_id.asc()),
     "amount_desc": (Operation.amount.desc(), Operation.operation_id.desc()),
     "amount_asc": (Operation.amount.asc(), Operation.operation_id.asc()),
+    "risk_score_desc": (Operation.risk_score.desc(), Operation.operation_id.desc()),
+    "risk_score_asc": (Operation.risk_score.asc(), Operation.operation_id.asc()),
 }
 
 
@@ -58,6 +60,18 @@ def _serialize_operations(items: List[Operation]) -> List[OperationShort]:
             reason=item.reason,
             risk_result=item.risk_result,
             risk_score=item.risk_score,
+            risk_flags=(item.risk_payload or {}).get("flags")
+            if isinstance(item.risk_payload, dict)
+            else None,
+            risk_reasons=(item.risk_payload or {}).get("reasons")
+            if isinstance(item.risk_payload, dict)
+            else None,
+            risk_source=(
+                (item.risk_payload or {}).get("source")
+                if isinstance(item.risk_payload, dict)
+                else None
+            )
+            or ((item.risk_payload or {}).get("engine") if isinstance(item.risk_payload, dict) else None),
         )
         for item in items
     ]
@@ -84,7 +98,9 @@ def list_operations_admin(
     product_category: str | None = None,
     tx_type: str | None = None,
     response_code: str | None = None,
-    risk_result: str | None = None,
+    risk_result: List[str] | None = Query(None),
+    risk_min_score: float | None = Query(None),
+    risk_max_score: float | None = Query(None),
     db: Session = Depends(get_db),
 ) -> OperationListResponse:
     if order_by not in _ORDERING_OPERATION:
@@ -126,7 +142,11 @@ def list_operations_admin(
     if response_code:
         query = query.filter(Operation.response_code == response_code)
     if risk_result:
-        query = query.filter(Operation.risk_result == risk_result)
+        query = query.filter(Operation.risk_result.in_(risk_result))
+    if risk_min_score is not None:
+        query = query.filter(Operation.risk_score >= risk_min_score)
+    if risk_max_score is not None:
+        query = query.filter(Operation.risk_score <= risk_max_score)
 
     total = query.count()
     items: List[Operation] = (
