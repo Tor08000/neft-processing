@@ -4,8 +4,9 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Union
 
+from pydantic import BaseModel, Field, field_validator, model_validator
 from neft_shared.logging_setup import get_logger
 from sqlalchemy.orm import Session
 
@@ -44,7 +45,16 @@ SCORE_MAP: dict[str, float] = {
 
 
 class RuleScope(str, Enum):
-    """Scope of a rule target."""
+    """Scope of a rule target.
+
+    Attributes mirror UPAS DSL field ``scope`` and describe where the rule
+    should be applied:
+
+    * ``GLOBAL`` – applies to any operation.
+    * ``CLIENT`` – limited to a specific client id.
+    * ``CARD`` – limited to a specific card id.
+    * ``TARIFF`` – limited to a specific tariff id.
+    """
 
     GLOBAL = "GLOBAL"
     CLIENT = "CLIENT"
@@ -53,7 +63,19 @@ class RuleScope(str, Enum):
 
 
 class MetricType(str, Enum):
-    """Supported metrics in the UPAS risk DSL."""
+    """Supported metrics in the UPAS risk DSL.
+
+    They map to the ``metric`` field in the specification:
+
+    * ``ALWAYS`` – unconditional rule trigger.
+    * ``AMOUNT`` – compare single operation amount against ``value``.
+    * ``QUANTITY`` – compare fuel quantity against ``value``.
+    * ``COUNT`` – number of operations in a ``window``.
+    * ``TOTAL_AMOUNT`` – cumulative amount in a ``window``.
+    * ``AMOUNT_SPIKE`` – current amount above historical maximum multiplied
+      by ``value``.
+    * ``UNUSUAL_PRODUCT`` – product type not present in historical profile.
+    """
 
     ALWAYS = "always"
     AMOUNT = "amount"
@@ -65,7 +87,11 @@ class MetricType(str, Enum):
 
 
 class RuleAction(str, Enum):
-    """Resulting action when a rule is triggered."""
+    """Resulting action when a rule is triggered.
+
+    Maps to the ``action`` field in DSL and is later translated to the
+    unified risk levels.
+    """
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -76,13 +102,17 @@ class RuleAction(str, Enum):
 
 @dataclass
 class RuleSelector:
-    """Attribute based selector to narrow rule applicability."""
+    """Attribute based selector to narrow rule applicability (``selector`` field).
+
+    All attributes are optional. If provided, they restrict rule evaluation to
+    matching values in :class:`~app.services.risk_adapter.OperationContext`.
+    """
 
     product_types: set[str] | None = None
     merchant_ids: set[str] | None = None
     terminal_ids: set[str] | None = None
     geo: set[str] | None = None
-    hours: range | None = None
+    hours: Union[range, set[int], None] = None
 
     def matches(self, context: "OperationContext") -> bool:
         if self.product_types and (context.product_type not in self.product_types):
@@ -111,7 +141,20 @@ class RuleWindow:
 
 @dataclass
 class RuleDefinition:
-    """Unified DSL rule definition."""
+    """Unified DSL rule definition (runtime representation).
+
+    Mirrors UPAS fields:
+
+    * ``name`` – identifier of the rule for audit/debugging.
+    * ``scope`` / ``subject_id`` – define to which entity the rule is bound.
+    * ``selector`` – attribute-based filter for geo/time/product, etc.
+    * ``window`` – optional aggregation window for metrics like ``COUNT``.
+    * ``metric`` / ``value`` – how to compute the check and threshold.
+    * ``action`` – resulting decision level when triggered.
+    * ``priority`` – lower number means earlier evaluation.
+    * ``enabled`` – toggle rule execution.
+    * ``reason`` – human readable reason to surface in risk payload.
+    """
 
     name: str
     scope: RuleScope
@@ -185,6 +228,120 @@ class RuleDefinition:
         if self.reason:
             flags["reason"] = self.reason
         return True, flags
+
+
+class WindowConfig(BaseModel):
+    """DSL wrapper for ``window``.
+
+    Supports explicit duration in seconds or helper ``hours`` shortcut.
+    Exactly one of the fields must be provided.
+    """
+
+    duration_seconds: Optional[int] = Field(
+        None, description="Explicit window duration in seconds (positive)."
+    )
+    hours: Optional[int] = Field(None, description="Shortcut to set window by hours.")
+
+    @model_validator(mode="after")
+    def _only_one(self) -> "WindowConfig":
+        provided = [
+            name
+            for name, value in {
+                "duration_seconds": self.duration_seconds,
+                "hours": self.hours,
+            }.items()
+            if value is not None
+        ]
+        if len(provided) != 1:
+            raise ValueError("Provide exactly one of duration_seconds or hours")
+        return self
+
+    @field_validator("duration_seconds", "hours")
+    def _positive(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and value <= 0:
+            raise ValueError("Window duration must be positive")
+        return value
+
+    def to_window(self) -> RuleWindow:
+        if self.hours is not None:
+            return RuleWindow.hours(self.hours)
+        assert self.duration_seconds is not None  # validated above
+        return RuleWindow(duration=timedelta(seconds=self.duration_seconds))
+
+
+class SelectorConfig(BaseModel):
+    """DSL wrapper for ``selector`` field."""
+
+    product_types: Optional[set[str]] = Field(None, description="Allowed product types")
+    merchant_ids: Optional[set[str]] = Field(None, description="Allowed merchant ids")
+    terminal_ids: Optional[set[str]] = Field(None, description="Allowed terminal ids")
+    geo: Optional[set[str]] = Field(None, description="Allowed geo codes")
+    hours: Optional[list[int]] = Field(
+        None, description="Hours of day (0-23) when the rule should be applied"
+    )
+
+    @field_validator("hours")
+    def _validate_hours(cls, value: Optional[list[int]]) -> Optional[list[int]]:
+        if value is None:
+            return None
+        invalid = [hour for hour in value if hour < 0 or hour > 23]
+        if invalid:
+            raise ValueError(f"Hours must be between 0 and 23. Got {invalid}")
+        return value
+
+    def to_selector(self) -> RuleSelector:
+        hours_range: Union[set[int], range, None]
+        hours_range = set(self.hours) if self.hours is not None else None
+        return RuleSelector(
+            product_types=self.product_types,
+            merchant_ids=self.merchant_ids,
+            terminal_ids=self.terminal_ids,
+            geo=self.geo,
+            hours=hours_range,
+        )
+
+
+class RuleConfig(BaseModel):
+    """Full DSL rule specification.
+
+    This model is aligned with UPAS Part V fields and can be stored/transported
+    as JSON. Conversion to :class:`RuleDefinition` is available via
+    :meth:`to_definition`.
+    """
+
+    name: str = Field(..., description="Unique rule name")
+    scope: RuleScope = Field(..., description="Scope of the rule application")
+    subject_id: Optional[str] = Field(
+        None, description="Identifier within the chosen scope (e.g. client id)"
+    )
+    selector: SelectorConfig = Field(
+        default_factory=SelectorConfig,
+        description="Attribute-based filter to narrow applicability",
+    )
+    window: Optional[WindowConfig] = Field(
+        None, description="Optional sliding window for aggregated metrics"
+    )
+    metric: MetricType = Field(..., description="Metric to evaluate")
+    value: float = Field(..., description="Threshold or expected value")
+    action: RuleAction = Field(..., description="Action to take when triggered")
+    priority: int = Field(100, description="Evaluation order: lower first")
+    enabled: bool = Field(True, description="Whether rule is active")
+    reason: Optional[str] = Field(None, description="Human readable reason")
+
+    def to_definition(self) -> RuleDefinition:
+        return RuleDefinition(
+            name=self.name,
+            scope=self.scope,
+            subject_id=self.subject_id,
+            selector=self.selector.to_selector(),
+            metric=self.metric,
+            value=self.value,
+            action=self.action,
+            priority=self.priority,
+            enabled=self.enabled,
+            window=self.window.to_window() if self.window else None,
+            reason=self.reason,
+        )
 
 
 @dataclass
@@ -356,6 +513,22 @@ def _default_rules() -> list[RuleDefinition]:
     ]
 
 
+RuleLike = Union[RuleDefinition, RuleConfig]
+
+
+def _normalize_rules(rules: Iterable[RuleLike] | None) -> list[RuleDefinition]:
+    """Ensure incoming rules (DSL configs or runtime definitions) are unified."""
+
+    source = list(rules or _default_rules())
+    definitions: list[RuleDefinition] = []
+    for rule in source:
+        if isinstance(rule, RuleDefinition):
+            definitions.append(rule)
+        else:
+            definitions.append(rule.to_definition())
+    return sorted(definitions, key=lambda rule: rule.priority)
+
+
 async def load_recent_operations_stats(
     db: Optional[Session], card_id: Any, client_id: Any, now: Optional[datetime] = None
 ) -> RecentStats:
@@ -398,7 +571,9 @@ async def load_recent_operations_stats(
 
 
 async def evaluate_rules(
-    context: "OperationContext", db: Session | None = None, rules: Iterable[RuleDefinition] | None = None
+    context: "OperationContext",
+    db: Session | None = None,
+    rules: Iterable[Union[RuleDefinition, RuleConfig]] | None = None,
 ) -> "RiskResult":
     # Lazy import to avoid circular dependency
     from app.services.risk_adapter import RiskResult
@@ -410,7 +585,7 @@ async def evaluate_rules(
     now = _normalize_dt(context.created_at) or datetime.now(timezone.utc)
     stats = await load_recent_operations_stats(db, context.card_id, context.client_id, now)
 
-    active_rules = sorted(list(rules or _default_rules()), key=lambda rule: rule.priority)
+    active_rules = _normalize_rules(rules)
 
     for rule in active_rules:
         window_ops: Sequence[Operation] = []

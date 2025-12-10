@@ -12,9 +12,12 @@ from app.services import risk_adapter, risk_rules
 from app.services.risk_rules import (
     MetricType,
     RuleAction,
+    RuleConfig,
     RuleDefinition,
     RuleScope,
     RuleSelector,
+    SelectorConfig,
+    WindowConfig,
     RuleWindow,
 )
 from app.services.risk_adapter import OperationContext, RiskResult, evaluate_risk
@@ -385,3 +388,44 @@ def test_geo_and_time_selector(monkeypatch):
 
     assert result.risk_result == "HIGH"
     assert result.reasons == ["geo_time_match"]
+
+
+def test_rule_config_dsl_conversion(monkeypatch):
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="terminal-dsl",
+        merchant_id="merchant-dsl",
+        amount=55_000,
+        currency="RUB",
+        geo="RU-MOW",
+        created_at=datetime(2024, 6, 1, 2, tzinfo=timezone.utc),
+    )
+
+    rules = [
+        RuleConfig(
+            name="dsl_hard_amount",
+            scope=RuleScope.GLOBAL,
+            metric=MetricType.AMOUNT,
+            value=50_000,
+            action=RuleAction.BLOCK,
+            priority=10,
+            reason="dsl_hard_amount",
+        ),
+        RuleConfig(
+            name="dsl_geo_hours",
+            scope=RuleScope.GLOBAL,
+            selector=SelectorConfig(geo={"RU-MOW"}, hours=[2, 3, 4]),
+            metric=MetricType.ALWAYS,
+            value=1,
+            action=RuleAction.LOW,
+            priority=20,
+            window=WindowConfig(hours=1),
+            reason="dsl_geo_hours",
+        ),
+    ]
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx, rules=rules))
+
+    assert result.risk_result == "BLOCK"
+    assert result.reasons == ["dsl_hard_amount", "dsl_geo_hours"]
