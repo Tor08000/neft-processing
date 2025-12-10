@@ -27,6 +27,12 @@ from .groups_legacy import (
 )
 from .limits import LimitRuleCreate, LimitRuleListResponse, LimitRuleRead, LimitRuleUpdate
 from .merchants import MerchantCreate, MerchantListResponse, MerchantRead, MerchantUpdate
+from .risk_rules import (
+    RiskRuleCreate,
+    RiskRuleListResponse,
+    RiskRuleRead,
+    RiskRuleUpdate,
+)
 
 __all__ = [
     "OperationListResponse",
@@ -63,4 +69,8 @@ __all__ = [
     "MerchantListResponse",
     "MerchantRead",
     "MerchantUpdate",
+    "RiskRuleCreate",
+    "RiskRuleListResponse",
+    "RiskRuleRead",
+    "RiskRuleUpdate",
 ]
