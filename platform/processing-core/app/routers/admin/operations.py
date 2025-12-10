@@ -63,15 +63,37 @@ def _serialize_operations(items: List[Operation]) -> List[OperationShort]:
             risk_flags=(item.risk_payload or {}).get("flags")
             if isinstance(item.risk_payload, dict)
             else None,
-            risk_reasons=(item.risk_payload or {}).get("reasons")
-            if isinstance(item.risk_payload, dict)
-            else None,
+            risk_reasons=(
+                (item.risk_payload or {}).get("reasons")
+                if isinstance(item.risk_payload, dict)
+                else None
+            )
+            or (
+                (item.risk_payload or {}).get("reason_codes")
+                if isinstance(item.risk_payload, dict)
+                else None
+            )
+            or (
+                ((item.risk_payload or {}).get("decision") or {}).get("reason_codes")
+                if isinstance(item.risk_payload, dict)
+                else None
+            ),
             risk_source=(
                 (item.risk_payload or {}).get("source")
                 if isinstance(item.risk_payload, dict)
                 else None
             )
             or ((item.risk_payload or {}).get("engine") if isinstance(item.risk_payload, dict) else None),
+            risk_rules_fired=(
+                (item.risk_payload or {}).get("rules_fired")
+                if isinstance(item.risk_payload, dict)
+                else None
+            )
+            or (
+                ((item.risk_payload or {}).get("decision") or {}).get("rules_fired")
+                if isinstance(item.risk_payload, dict)
+                else None
+            ),
         )
         for item in items
     ]

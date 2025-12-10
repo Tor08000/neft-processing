@@ -66,6 +66,7 @@ class OperationShort(BaseModel):
     risk_reasons: Optional[List[str]] = None
     risk_flags: Optional[dict] = None
     risk_source: Optional[str] = None
+    risk_rules_fired: Optional[List[str]] = None
 
 
 class OperationListResponse(BaseModel):

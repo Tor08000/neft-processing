@@ -64,6 +64,12 @@ class OperationSchema(BaseModel):
     def risk_reasons(self) -> Optional[List[str]]:
         payload = self.risk_payload or {}
         reasons = payload.get("reasons") if isinstance(payload, dict) else None
+        if reasons is None and isinstance(payload, dict):
+            reasons = payload.get("reason_codes")
+        if reasons is None and isinstance(payload, dict):
+            decision = payload.get("decision")
+            if isinstance(decision, dict):
+                reasons = decision.get("reason_codes")
         if reasons is None:
             return None
         return list(reasons)
@@ -75,6 +81,21 @@ class OperationSchema(BaseModel):
         if not isinstance(payload, dict):
             return None
         return payload.get("source") or payload.get("engine")
+
+    @computed_field
+    @property
+    def risk_rules_fired(self) -> Optional[List[str]]:
+        payload = self.risk_payload or {}
+        if not isinstance(payload, dict):
+            return None
+        rules = payload.get("rules_fired")
+        if rules is None:
+            decision = payload.get("decision")
+            if isinstance(decision, dict):
+                rules = decision.get("rules_fired")
+        if rules is None:
+            return None
+        return list(rules)
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
