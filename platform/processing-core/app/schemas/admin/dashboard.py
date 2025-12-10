@@ -63,6 +63,9 @@ class OperationShort(BaseModel):
     reason: Optional[str] = None
     risk_result: Optional[str] = None
     risk_score: Optional[float] = None
+    risk_reasons: Optional[List[str]] = None
+    risk_flags: Optional[dict] = None
+    risk_source: Optional[str] = None
 
 
 class OperationListResponse(BaseModel):

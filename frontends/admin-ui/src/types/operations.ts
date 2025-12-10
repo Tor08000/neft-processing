@@ -19,6 +19,12 @@ export interface Operation {
   product_category?: string | null;
   tx_type?: string | null;
   mcc?: string | null;
+  risk_result?: string | null;
+  risk_score?: number | null;
+  risk_reasons?: string[] | null;
+  risk_flags?: Record<string, unknown> | null;
+  risk_source?: string | null;
+  risk_payload?: Record<string, unknown> | null;
   daily_limit?: number | null;
   limit_per_tx?: number | null;
   used_today?: number | null;
@@ -51,11 +57,16 @@ export interface OperationQuery extends Record<string, unknown> {
   to_created_at?: string;
   min_amount?: number;
   max_amount?: number;
+  risk_result?: string | string[];
+  risk_min_score?: number;
+  risk_max_score?: number;
   order_by?:
     | "created_at_desc"
     | "created_at_asc"
     | "amount_desc"
-    | "amount_asc";
+    | "amount_asc"
+    | "risk_score_desc"
+    | "risk_score_asc";
   mcc?: string;
   product_category?: string;
   tx_type?: string;

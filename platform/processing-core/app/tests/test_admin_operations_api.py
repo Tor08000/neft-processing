@@ -278,6 +278,103 @@ def test_operations_range_filter_with_merchant(admin_client: TestClient):
     assert returned_ids == {"range-1", "range-2"}
 
 
+def test_risk_filters_and_fields(admin_client: TestClient):
+    session = SessionLocal()
+    try:
+        base_time = datetime.utcnow()
+        session.add_all(
+            [
+                Operation(
+                    operation_id="risk-low",
+                    operation_type="AUTH",
+                    status="AUTHORIZED",
+                    merchant_id="m-risk",
+                    terminal_id="t-risk",
+                    client_id="c-risk",
+                    card_id="card-risk",
+                    amount=100,
+                    currency="RUB",
+                    created_at=base_time,
+                    risk_result="LOW",
+                    risk_score=0.1,
+                    risk_payload={"flags": {"night": False}, "reasons": ["ok"], "source": "RULES"},
+                ),
+                Operation(
+                    operation_id="risk-high",
+                    operation_type="AUTH",
+                    status="AUTHORIZED",
+                    merchant_id="m-risk",
+                    terminal_id="t-risk",
+                    client_id="c-risk",
+                    card_id="card-risk",
+                    amount=200,
+                    currency="RUB",
+                    created_at=base_time + timedelta(minutes=1),
+                    risk_result="HIGH",
+                    risk_score=0.9,
+                    risk_payload={
+                        "flags": {"night": True, "amount_threshold_hit": True},
+                        "reasons": ["amount_spike"],
+                        "source": "AI",
+                    },
+                ),
+                Operation(
+                    operation_id="risk-medium",
+                    operation_type="AUTH",
+                    status="AUTHORIZED",
+                    merchant_id="m-risk",
+                    terminal_id="t-risk",
+                    client_id="c-risk",
+                    card_id="card-risk",
+                    amount=150,
+                    currency="RUB",
+                    created_at=base_time + timedelta(minutes=2),
+                    risk_result="MEDIUM",
+                    risk_score=0.55,
+                    risk_payload={"reasons": ["velocity"], "source": "AI+RULES"},
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    ordered = admin_client.get(
+        "/api/v1/admin/operations", params={"order_by": "risk_score_desc", "merchant_id": "m-risk"}
+    )
+    assert ordered.status_code == 200
+    ordered_ids = [item["operation_id"] for item in ordered.json()["items"]]
+    assert ordered_ids[:2] == ["risk-high", "risk-medium"]
+    first_item = ordered.json()["items"][0]
+    assert first_item["risk_reasons"] == ["amount_spike"]
+    assert first_item["risk_flags"] == {"night": True, "amount_threshold_hit": True}
+    assert first_item["risk_source"] == "AI"
+
+    filtered_by_result = admin_client.get(
+        "/api/v1/admin/operations", params={"risk_result": ["HIGH", "BLOCK"], "merchant_id": "m-risk"}
+    )
+    assert filtered_by_result.status_code == 200
+    assert filtered_by_result.json()["total"] == 1
+    assert filtered_by_result.json()["items"][0]["operation_id"] == "risk-high"
+
+    filtered_by_score = admin_client.get(
+        "/api/v1/admin/operations",
+        params={"risk_min_score": 0.5, "risk_max_score": 0.8, "merchant_id": "m-risk"},
+    )
+    assert filtered_by_score.status_code == 200
+    returned_ids = {item["operation_id"] for item in filtered_by_score.json()["items"]}
+    assert returned_ids == {"risk-medium"}
+
+    detail = admin_client.get("/api/v1/admin/operations/risk-high")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["risk_result"] == "HIGH"
+    assert payload["risk_score"] == 0.9
+    assert payload["risk_reasons"] == ["amount_spike"]
+    assert payload["risk_flags"] == {"night": True, "amount_threshold_hit": True}
+    assert payload["risk_source"] == "AI"
+
+
 def test_transactions_filters_sort_and_pagination(admin_client: TestClient):
     session = SessionLocal()
     try:

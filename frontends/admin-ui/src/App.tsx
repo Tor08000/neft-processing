@@ -6,6 +6,9 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { UsersPage } from "./pages/UsersPage";
 import { CreateUserPage } from "./pages/CreateUserPage";
 import { EditUserPage } from "./pages/EditUserPage";
+import { OperationsListPage } from "./pages/OperationsListPage";
+import { OperationDetailsPage } from "./pages/OperationDetailsPage";
+import { RiskAnalyticsPage } from "./pages/RiskAnalyticsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export function App() {
@@ -20,6 +23,9 @@ export function App() {
             <Route path="/users" element={<UsersPage />} />
             <Route path="/users/new" element={<CreateUserPage />} />
             <Route path="/users/:id" element={<EditUserPage />} />
+            <Route path="/operations" element={<OperationsListPage />} />
+            <Route path="/operations/:id" element={<OperationDetailsPage />} />
+            <Route path="/analytics/risk" element={<RiskAnalyticsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
