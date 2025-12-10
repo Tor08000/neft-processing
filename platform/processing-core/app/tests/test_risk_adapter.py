@@ -167,3 +167,82 @@ def test_risk_block_declines_operation(monkeypatch, session):
     assert op.response_code == "RISK_BLOCK"
     assert op.risk_result == RiskLevel.BLOCK
     assert op.risk_payload.get("reasons") == ["blacklist"]
+
+
+def test_rule_anomalies_from_history(monkeypatch, session):
+    from datetime import timedelta
+
+    from app.models.operation import Operation, OperationType
+
+    now = datetime.now(timezone.utc)
+    client_pk = uuid4()
+    card_id = "card-history"
+
+    # Historical operations to build stats
+    past_ops = [
+        Operation(
+            ext_operation_id=f"ext-old-{idx}",
+            operation_id=f"ext-old-{idx}",
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.COMPLETED,
+            merchant_id="m-1",
+            terminal_id="t-1",
+            client_id=str(client_pk),
+            card_id=card_id,
+            product_id=None,
+            amount=20_000,
+            currency="RUB",
+            product_type="DIESEL",
+            authorized=True,
+            response_code="00",
+            response_message="OK",
+            created_at=now - timedelta(days=2),
+        )
+        for idx in range(1)
+    ]
+
+    recent_ops = [
+        Operation(
+            ext_operation_id=f"ext-recent-{idx}",
+            operation_id=f"ext-recent-{idx}",
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.COMPLETED,
+            merchant_id="m-1",
+            terminal_id="t-1",
+            client_id=str(client_pk),
+            card_id=card_id,
+            product_id=None,
+            amount=500,
+            currency="RUB",
+            product_type="DIESEL",
+            authorized=True,
+            response_code="00",
+            response_message="OK",
+            created_at=now - timedelta(minutes=20),
+        )
+        for idx in range(6)
+    ]
+
+    for op in [*past_ops, *recent_ops]:
+        session.add(op)
+    session.commit()
+
+    ctx = OperationContext(
+        client_id=client_pk,
+        card_id=card_id,
+        terminal_id="t-1",
+        merchant_id="m-1",
+        product_type="GAS",
+        amount=60_000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=now,
+    )
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx, db=session))
+
+    assert result.risk_result == "HIGH"
+    assert "amount_spike" in result.reasons
+    assert "high_frequency" in result.reasons
+    assert "unusual_fuel_type" in result.reasons
