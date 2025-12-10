@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import os
+import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -35,6 +38,8 @@ DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
     RiskDecisionLevel.HIGH: 0.8,
     RiskDecisionLevel.HARD_DECLINE: 1.0,
 }
+AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/v1/ai/score")
+AI_SCORE_TIMEOUT_SECONDS = float(os.getenv("AI_SCORE_TIMEOUT_SECONDS", "3.0"))
 
 
 @dataclass
@@ -122,9 +127,46 @@ def _normalize_level(value: str | None) -> RiskDecisionLevel:
     return RiskDecisionLevel.MEDIUM
 
 
+def _score_bucket(score: float) -> str:
+    if score < 0.2:
+        return "0.0-0.2"
+    if score < 0.5:
+        return "0.2-0.5"
+    if score < 0.8:
+        return "0.5-0.8"
+    return "0.8-1.0"
+
+
+@dataclass
+class RiskMetrics:
+    latencies_ms: list[float] = field(default_factory=list)
+    connection_errors: Counter[str] = field(default_factory=Counter)
+    score_distribution: Counter[str] = field(default_factory=Counter)
+
+    def observe_latency(self, value_ms: float) -> None:
+        self.latencies_ms.append(value_ms)
+
+    def inc_connection_error(self, kind: str) -> None:
+        self.connection_errors[kind] += 1
+
+    def observe_score(self, score: Optional[float]) -> None:
+        if score is None:
+            return
+        bucket = _score_bucket(score)
+        self.score_distribution[bucket] += 1
+
+    def reset(self) -> None:
+        self.latencies_ms.clear()
+        self.connection_errors.clear()
+        self.score_distribution.clear()
+
+
+metrics = RiskMetrics()
+
+
 async def _post_score(payload: dict) -> dict:
-    async with httpx.AsyncClient(timeout=3.0) as client:
-        response = await client.post("http://ai-service:8000/api/v1/score", json=payload)
+    async with httpx.AsyncClient(timeout=AI_SCORE_TIMEOUT_SECONDS) as client:
+        response = await client.post(AI_SCORE_URL, json=payload)
     if response.status_code != 200:
         raise httpx.HTTPStatusError(
             f"Unexpected status {response.status_code}", request=response.request, response=response
@@ -153,7 +195,55 @@ async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
         },
     }
 
-    response_data = await _post_score(payload)
+    started_at = time.perf_counter()
+    try:
+        response_data = await asyncio.wait_for(_post_score(payload), timeout=AI_SCORE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        latency_ms = (time.perf_counter() - started_at) * 1000
+        metrics.observe_latency(latency_ms)
+        metrics.inc_connection_error("timeout")
+        logger.warning(
+            "AI risk scorer timeout", extra={"latency_ms": latency_ms, "payload_keys": list(payload.keys())}
+        )
+        return RiskEvaluation(
+            decision=RiskDecision(
+                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
+            ),
+            score=None,
+            source="FALLBACK",
+            flags={"error": "timeout"},
+        )
+    except httpx.RequestError as exc:
+        latency_ms = (time.perf_counter() - started_at) * 1000
+        metrics.observe_latency(latency_ms)
+        metrics.inc_connection_error("request_error")
+        logger.warning("AI risk scorer connection failed: %s", exc, extra={"latency_ms": latency_ms}, exc_info=exc)
+        return RiskEvaluation(
+            decision=RiskDecision(
+                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
+            ),
+            score=None,
+            source="FALLBACK",
+            flags={"error": str(exc)},
+        )
+    except httpx.HTTPStatusError as exc:
+        latency_ms = (time.perf_counter() - started_at) * 1000
+        metrics.observe_latency(latency_ms)
+        metrics.inc_connection_error("bad_status")
+        logger.warning(
+            "AI risk scorer returned bad status", extra={"status": exc.response.status_code, "latency_ms": latency_ms}
+        )
+        return RiskEvaluation(
+            decision=RiskDecision(
+                level=RiskDecisionLevel.MEDIUM, rules_fired=[], reason_codes=[], ai_score=None, ai_model_version=None
+            ),
+            score=None,
+            source="FALLBACK",
+            flags={"error": str(exc)},
+        )
+
+    latency_ms = (time.perf_counter() - started_at) * 1000
+    metrics.observe_latency(latency_ms)
     risk_score = float(
         response_data.get("risk_score")
         if "risk_score" in response_data
@@ -164,6 +254,10 @@ async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
     reasons = response_data.get("reason_codes") or response_data.get("reasons") or []
     flags = {"ai_payload": response_data}
     ai_model_version = response_data.get("model_version")
+    metrics.observe_score(risk_score)
+    logger.info(
+        "AI risk scorer responded", extra={"latency_ms": latency_ms, "risk_level": risk_level.value, "score": risk_score}
+    )
 
     return RiskEvaluation(
         decision=RiskDecision(

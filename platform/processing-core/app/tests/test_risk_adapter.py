@@ -46,6 +46,13 @@ def session():
         db.close()
 
 
+@pytest.fixture(autouse=True)
+def _reset_risk_metrics():
+    risk_adapter.metrics.reset()
+    yield
+    risk_adapter.metrics.reset()
+
+
 def test_rules_detect_graylist_and_night(monkeypatch):
     monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", {"t1"})
     ctx = OperationContext(
@@ -166,6 +173,66 @@ def test_ai_fallback_uses_rules(monkeypatch):
     assert result.source == "RULES_FALLBACK"
     assert "amount_above_threshold" in result.decision.reason_codes
     assert "ai_error" in result.flags
+
+
+def test_ai_timeout_metrics_and_fallback(monkeypatch):
+    async def slow_post(payload):
+        await asyncio.sleep(risk_adapter.AI_SCORE_TIMEOUT_SECONDS + 0.2)
+        return {"risk_score": 0.1, "decision": "LOW"}
+
+    monkeypatch.setattr(risk_adapter, "_post_score", slow_post)
+
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t1",
+        merchant_id="m1",
+        product_type="DIESEL",
+        amount=1000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    result = asyncio.run(risk_adapter.call_risk_engine(ctx))
+
+    assert result.source == "FALLBACK"
+    assert result.flags["error"] == "timeout"
+    assert risk_adapter.metrics.connection_errors["timeout"] == 1
+    assert risk_adapter.metrics.latencies_ms[-1] >= 0
+
+
+def test_ai_success_records_score_distribution(monkeypatch):
+    async def fake_post(payload):
+        return {
+            "risk_score": 0.76,
+            "decision": "HIGH",
+            "reason_codes": ["ai_high"],
+            "model_version": "v1.2.3",
+        }
+
+    monkeypatch.setattr(risk_adapter, "_post_score", fake_post)
+
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t2",
+        merchant_id="m2",
+        product_type="GAS",
+        amount=7500,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    result = asyncio.run(risk_adapter.call_risk_engine(ctx))
+
+    assert result.decision.ai_score == 0.76
+    assert result.decision.ai_model_version == "v1.2.3"
+    assert risk_adapter.metrics.score_distribution["0.5-0.8"] == 1
+    assert risk_adapter.metrics.latencies_ms[-1] >= 0
 
 
 def test_risk_block_declines_operation(monkeypatch, session):
