@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -6,8 +7,9 @@ import pytest
 
 import app.services.transactions_service as transactions_service
 from app.db import Base, SessionLocal, engine
-from app.models.operation import OperationStatus, RiskResult
-from app.services.risk_adapter import OperationContext, call_risk_engine
+from app.models.operation import OperationStatus, RiskResult as RiskLevel
+from app.services import risk_adapter, risk_rules
+from app.services.risk_adapter import OperationContext, RiskResult, evaluate_risk
 from app.services.transactions_service import authorize_operation
 
 
@@ -28,80 +30,106 @@ def session():
         db.close()
 
 
-class DummyClient:
-    def __init__(self, responses):
-        self._responses = responses
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-    async def post(self, url, json):
-        data = self._responses.pop(0)
-        return DummyResponse(data[0], data[1])
-
-
-class DummyResponse:
-    def __init__(self, status_code, payload):
-        self.status_code = status_code
-        self._payload = payload
-        self.request = None
-
-    def json(self):
-        return self._payload
-
-
-def test_call_risk_engine_success(monkeypatch):
-    responses = [(200, {"score": 0.2, "decision": "allow", "reasons": ["ok"]})]
-    monkeypatch.setattr(
-        "app.services.risk_adapter.httpx.AsyncClient",
-        lambda timeout=3.0: DummyClient(responses),
-    )
-    context = OperationContext(
-        client_id="c1",
-        card_id="card-1",
+def test_rules_detect_graylist_and_night(monkeypatch):
+    monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", {"t1"})
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
         terminal_id="t1",
         merchant_id="m1",
+        product_type="DIESEL",
+        amount=150_000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime(2023, 1, 1, 2, 30, tzinfo=timezone.utc),
+    )
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx))
+
+    assert result.risk_result in {"HIGH", "BLOCK"}
+    assert "graylisted_terminal" in result.reasons
+    assert "night_operation" in result.reasons
+    assert "amount_above_threshold" in result.reasons
+
+
+def test_ai_and_rules_combination_prefers_high(monkeypatch):
+    async def fake_ai(context):
+        return RiskResult(0.1, "LOW", ["ai_low"], {"ai": True}, "AI")
+
+    monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
+    monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", {"gt"})
+
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="gt",
+        merchant_id="m1",
+        product_type="DIESEL",
         amount=10_000,
         currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime.now(timezone.utc),
     )
 
-    result, score, payload = asyncio.run(call_risk_engine(context))
+    result = asyncio.run(evaluate_risk(ctx))
 
-    assert result == RiskResult.LOW
-    assert score == 0.2
-    assert payload["reasons"] == ["ok"]
+    assert result.risk_result == "HIGH"
+    assert result.source == "AI+RULES"
+    assert "graylisted_terminal" in result.reasons
 
 
-def test_call_risk_engine_fallback(monkeypatch):
-    class FailingClient:
-        async def __aenter__(self):
-            return self
+def test_ai_block_overrides_rules(monkeypatch):
+    async def fake_ai(context):
+        return RiskResult(0.95, "BLOCK", ["ai_block"], {"ai": True}, "AI")
 
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
+    monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
 
-        async def post(self, url, json):  # pragma: no cover - exercised via adapter
-            raise httpx.ConnectTimeout("boom")
-
-    monkeypatch.setattr("app.services.risk_adapter.httpx.AsyncClient", lambda timeout=3.0: FailingClient())
-
-    context = OperationContext(
-        client_id="c1",
-        card_id="card-1",
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
         terminal_id="t1",
         merchant_id="m1",
-        amount=250_000,
+        product_type="DIESEL",
+        amount=1000,
         currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime.now(timezone.utc),
     )
 
-    result, score, payload = asyncio.run(call_risk_engine(context))
+    result = asyncio.run(evaluate_risk(ctx))
 
-    assert result in {RiskResult.MEDIUM, RiskResult.HIGH}
-    assert score == 0.5
-    assert payload.get("fallback") is True
+    assert result.risk_result == "BLOCK"
+    assert "ai_block" in result.reasons
+
+
+def test_ai_fallback_uses_rules(monkeypatch):
+    async def failing_ai(context):  # pragma: no cover - exercised via fallback path
+        raise httpx.ConnectTimeout("boom")
+
+    monkeypatch.setattr(risk_adapter, "call_risk_engine", failing_ai)
+
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t1",
+        merchant_id="m1",
+        product_type="DIESEL",
+        amount=150_000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    result = asyncio.run(evaluate_risk(ctx))
+
+    assert result.risk_result in {"MEDIUM", "HIGH"}
+    assert result.source == "RULES_FALLBACK"
+    assert "amount_above_threshold" in result.reasons
+    assert "ai_error" in result.flags
 
 
 def test_risk_block_declines_operation(monkeypatch, session):
@@ -117,30 +145,10 @@ def test_risk_block_declines_operation(monkeypatch, session):
     session.add(Terminal(id="t-1", merchant_id="m-1", status="ACTIVE"))
     session.commit()
 
-    async def blocking_call(context):
-        return RiskResult.BLOCK, 0.9, {"reason": "blacklist", "risk_result": "BLOCK"}
+    def blocking_risk(context, db=None):
+        return RiskResult(1.0, "BLOCK", ["blacklist"], {}, "AI")
 
-    from app import services
-
-    async def block_post_score(payload):
-        return {"risk_score": 0.95, "risk_result": "BLOCK", "reasons": ["blacklist"]}
-
-    monkeypatch.setattr("app.services.risk_adapter._post_score", block_post_score)
-    monkeypatch.setattr(
-        transactions_service, "call_risk_engine_sync", lambda ctx: asyncio.run(blocking_call(ctx))
-    )
-
-    probe_ctx = transactions_service.OperationContext(
-        client_id=str(client_pk),
-        card_id="card-1",
-        terminal_id="t-1",
-        merchant_id="m-1",
-        amount=10_000,
-        currency="RUB",
-    )
-    result, _, payload = transactions_service._evaluate_risk(probe_ctx)
-    assert result == RiskResult.BLOCK
-    assert payload["risk_result"] == "BLOCK"
+    monkeypatch.setattr(transactions_service, "call_risk_engine_sync", blocking_risk)
 
     op = authorize_operation(
         session,
@@ -157,6 +165,5 @@ def test_risk_block_declines_operation(monkeypatch, session):
 
     assert op.status == OperationStatus.DECLINED
     assert op.response_code == "RISK_BLOCK"
-    assert op.risk_result == RiskResult.BLOCK
-    assert op.risk_payload.get("reason") == "blacklist"
-    assert op.risk_payload.get("risk_result") == "BLOCK"
+    assert op.risk_result == RiskLevel.BLOCK
+    assert op.risk_payload.get("reasons") == ["blacklist"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
@@ -9,14 +10,17 @@ from sqlalchemy.orm import Session
 from neft_shared.logging_setup import get_logger
 
 from app import services
+from app.services import risk_adapter
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
-from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
+from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
-from app.services.risk_adapter import OperationContext, call_risk_engine_sync
+from app.services.risk_adapter import OperationContext, evaluate_risk_sync
+
+call_risk_engine_sync = evaluate_risk_sync
 
 logger = get_logger(__name__)
 
@@ -36,7 +40,7 @@ class AmountExceeded(TransactionException):
 RISK_ENGINE_OVERRIDE = None
 
 
-def _evaluate_risk(context: OperationContext):
+def _evaluate_risk(context: OperationContext, db=None):
     override = globals().get("RISK_ENGINE_OVERRIDE")
     if callable(override):
         return override(context)
@@ -44,7 +48,35 @@ def _evaluate_risk(context: OperationContext):
     service_override = getattr(services, "call_risk_engine_override", None)
     if callable(service_override):
         return service_override(context)
-    return call_risk_engine_sync(context)
+
+    engine_func = globals().get("call_risk_engine_sync", evaluate_risk_sync)
+    try:
+        result = engine_func(context, db=db)
+    except TypeError:
+        result = engine_func(context)
+
+    if isinstance(result, risk_adapter.RiskResult):
+        return result
+    if isinstance(result, tuple) and len(result) >= 3:
+        legacy_level, legacy_score, legacy_payload = result
+        return risk_adapter.RiskResult(
+            risk_score=legacy_score,
+            risk_result=legacy_level.value if hasattr(legacy_level, "value") else str(legacy_level),
+            reasons=list(legacy_payload.get("reasons", [])),
+            flags=legacy_payload,
+            source=legacy_payload.get("source", "LEGACY"),
+        )
+
+    raise ValueError("Unsupported risk engine result")
+
+
+def _to_risk_level(value: str | RiskLevel | None) -> RiskLevel:
+    if isinstance(value, RiskLevel):
+        return value
+    if not value:
+        return RiskLevel.MEDIUM
+    normalized = str(value).upper()
+    return RiskLevel.__members__.get(normalized, RiskLevel.MEDIUM)
 
 
 def _fetch_operation_by_ext_id(db: Session, ext_operation_id: str) -> Operation | None:
@@ -224,10 +256,15 @@ def authorize_operation(
         product_category=product_category,
         mcc=mcc,
         tx_type=tx_type,
-        timestamp=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        metadata={"client_group_id": client_group_id, "card_group_id": card_group_id},
     )
-    risk_result, risk_score, risk_payload = _evaluate_risk(risk_context)
-    if risk_result == RiskResult.BLOCK:
+    risk_result = _evaluate_risk(risk_context, db=db)
+    risk_level = _to_risk_level(risk_result.risk_result)
+
+    strict_high = os.getenv("RISK_HIGH_STRICT_MODE", "false").lower() in {"1", "true", "yes"}
+
+    if risk_level == RiskLevel.BLOCK:
         return decline_operation(
             db,
             ext_operation_id=ext_operation_id,
@@ -241,9 +278,41 @@ def authorize_operation(
             product_id=product_id,
             product_type=product_type,
             limit_payload=limit_result.model_dump(),
-            risk_payload=risk_payload,
-            risk_result=risk_result,
+            risk_payload={
+                "reasons": risk_result.reasons,
+                "flags": risk_result.flags,
+                "source": risk_result.source,
+            },
+            risk_result=risk_level,
         )
+
+    if strict_high and risk_level == RiskLevel.HIGH:
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason="RISK_HIGH",
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            limit_payload=limit_result.model_dump(),
+            risk_payload={
+                "reasons": risk_result.reasons,
+                "flags": risk_result.flags,
+                "source": risk_result.source,
+            },
+            risk_result=risk_level,
+        )
+
+    risk_payload = {
+        "reasons": risk_result.reasons,
+        "flags": risk_result.flags,
+        "source": risk_result.source,
+    }
 
     operation = Operation(
         id=None,
@@ -277,8 +346,8 @@ def authorize_operation(
         mcc=mcc,
         product_category=product_category,
         tx_type=tx_type,
-        risk_score=risk_score,
-        risk_result=risk_result,
+        risk_score=risk_result.risk_score,
+        risk_result=risk_level,
         risk_payload=risk_payload,
     )
     db.add(operation)
@@ -293,7 +362,7 @@ def authorize_operation(
             {
                 "limit": limit_result.model_dump(),
                 "risk": risk_payload,
-                "risk_result": risk_result.value if hasattr(risk_result, "value") else str(risk_result),
+                "risk_result": risk_level.value,
             },
         )
     except Exception:  # pragma: no cover
