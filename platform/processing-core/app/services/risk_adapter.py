@@ -14,7 +14,7 @@ from app.services import risk_rules
 logger = get_logger(__name__)
 
 
-LEVEL_ORDER = ["LOW", "MEDIUM", "HIGH", "BLOCK", "MANUAL_REVIEW"]
+LEVEL_ORDER = ["LOW", "MEDIUM", "HIGH", "MANUAL_REVIEW", "BLOCK"]
 DEFAULT_SCORE_MAP: Dict[str, float] = {
     "LOW": 0.2,
     "MEDIUM": 0.5,
@@ -41,6 +41,7 @@ class OperationContext:
     product_category: Optional[str] = None
     mcc: Optional[str] = None
     tx_type: Optional[str] = None
+    tariff_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
@@ -7,8 +7,16 @@ import pytest
 
 import app.services.transactions_service as transactions_service
 from app.db import Base, SessionLocal, engine
-from app.models.operation import OperationStatus, RiskResult as RiskLevel
+from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
 from app.services import risk_adapter, risk_rules
+from app.services.risk_rules import (
+    MetricType,
+    RuleAction,
+    RuleDefinition,
+    RuleScope,
+    RuleSelector,
+    RuleWindow,
+)
 from app.services.risk_adapter import OperationContext, RiskResult, evaluate_risk
 from app.services.transactions_service import authorize_operation
 
@@ -246,3 +254,134 @@ def test_rule_anomalies_from_history(monkeypatch, session):
     assert "amount_spike" in result.reasons
     assert "high_frequency" in result.reasons
     assert "unusual_fuel_type" in result.reasons
+
+
+def test_hard_and_soft_limits(monkeypatch):
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t1",
+        merchant_id="m1",
+        amount=120_000,
+        currency="RUB",
+        quantity=120.5,
+        created_at=datetime(2024, 5, 5, 10, tzinfo=timezone.utc),
+    )
+
+    rules = [
+        RuleDefinition(
+            name="hard_amount_limit",
+            scope=RuleScope.GLOBAL,
+            subject_id=None,
+            selector=RuleSelector(),
+            metric=MetricType.AMOUNT,
+            value=100_000,
+            action=RuleAction.BLOCK,
+            reason="hard_amount_limit",
+        ),
+        RuleDefinition(
+            name="soft_quantity_limit",
+            scope=RuleScope.GLOBAL,
+            subject_id=None,
+            selector=RuleSelector(),
+            metric=MetricType.QUANTITY,
+            value=100,
+            action=RuleAction.MANUAL_REVIEW,
+            reason="soft_quantity_limit",
+        ),
+    ]
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx, rules=rules))
+
+    assert result.risk_result == "BLOCK"
+    assert set(result.reasons) == {"hard_amount_limit", "soft_quantity_limit"}
+
+
+def test_tariff_rule_and_window_count(monkeypatch, session):
+    now = datetime(2024, 6, 1, 9, tzinfo=timezone.utc)
+    client_pk = uuid4()
+    card_id = uuid4()
+
+    for idx in range(3):
+        session.add(
+            Operation(
+                ext_operation_id=f"ext-tariff-{idx}",
+                operation_id=f"int-tariff-{idx}",
+                operation_type=OperationType.AUTH,
+                status=OperationStatus.COMPLETED,
+                merchant_id="m-1",
+                terminal_id="t-1",
+                client_id=str(client_pk),
+                card_id=str(card_id),
+                product_id=None,
+                amount=10_000,
+                currency="RUB",
+                product_type="DIESEL",
+                authorized=True,
+                response_code="00",
+                response_message="OK",
+                created_at=now - timedelta(minutes=10 * (idx + 1)),
+            )
+        )
+    session.commit()
+
+    ctx = OperationContext(
+        client_id=client_pk,
+        card_id=card_id,
+        terminal_id="t-1",
+        merchant_id="m-1",
+        amount=5_000,
+        currency="RUB",
+        tariff_id="T-1",
+        created_at=now,
+    )
+
+    rules = [
+        RuleDefinition(
+            name="tariff_window_count",
+            scope=RuleScope.TARIFF,
+            subject_id="T-1",
+            selector=RuleSelector(),
+            metric=MetricType.COUNT,
+            value=2,
+            action=RuleAction.MEDIUM,
+            window=RuleWindow.hours(1),
+            reason="tariff_count_limit",
+        )
+    ]
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx, db=session, rules=rules))
+
+    assert result.risk_result == "MEDIUM"
+    assert result.reasons == ["tariff_count_limit"]
+
+
+def test_geo_and_time_selector(monkeypatch):
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t1",
+        merchant_id="m1",
+        amount=10_000,
+        currency="RUB",
+        geo="RU-MOW",
+        created_at=datetime(2024, 6, 1, 3, tzinfo=timezone.utc),
+    )
+
+    rules = [
+        RuleDefinition(
+            name="geo_time_window",
+            scope=RuleScope.GLOBAL,
+            subject_id=None,
+            selector=RuleSelector(geo={"RU-MOW"}, hours=range(0, 6)),
+            metric=MetricType.ALWAYS,
+            value=1,
+            action=RuleAction.HIGH,
+            reason="geo_time_match",
+        )
+    ]
+
+    result = asyncio.run(risk_rules.evaluate_rules(ctx, rules=rules))
+
+    assert result.risk_result == "HIGH"
+    assert result.reasons == ["geo_time_match"]
