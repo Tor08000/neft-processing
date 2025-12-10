@@ -1,73 +1,78 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from uuid import UUID
 
 import httpx
-
 from neft_shared.logging_setup import get_logger
 
-from app.models.operation import RiskResult
+from app.services import risk_rules
 
 logger = get_logger(__name__)
 
-RISK_HIGH_THRESHOLD = int(os.getenv("RISK_HIGH_THRESHOLD", "100000"))
-RISK_NIGHT_HOUR = 23
+
+LEVEL_ORDER = ["LOW", "MEDIUM", "HIGH", "BLOCK", "MANUAL_REVIEW"]
+DEFAULT_SCORE_MAP: Dict[str, float] = {
+    "LOW": 0.2,
+    "MEDIUM": 0.5,
+    "HIGH": 0.8,
+    "BLOCK": 1.0,
+    "MANUAL_REVIEW": 0.6,
+}
 
 
 @dataclass
 class OperationContext:
-    client_id: str
-    card_id: str
-    terminal_id: str
-    merchant_id: str
-    amount: int
-    currency: str
-    product_id: Optional[str] = None
+    client_id: UUID
+    card_id: UUID
+    terminal_id: UUID
+    merchant_id: UUID
     product_type: Optional[str] = None
+    amount: int = 0
+    currency: str = "RUB"
     quantity: Optional[float] = None
     unit_price: Optional[float] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    geo: Optional[str] = None
+    product_id: Optional[str] = None
     product_category: Optional[str] = None
     mcc: Optional[str] = None
     tx_type: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-def _apply_stub_rules(amount: int, ts: Optional[datetime] = None) -> tuple[RiskResult, dict]:
-    ts = ts or datetime.now(timezone.utc)
-    threshold = int(os.getenv("RISK_HIGH_THRESHOLD", str(RISK_HIGH_THRESHOLD)))
-    result = RiskResult.LOW
-
-    if amount >= threshold:
-        result = RiskResult.HIGH
-
-    if ts.time() >= time(RISK_NIGHT_HOUR, 0) and amount > threshold // 2:
-        result = RiskResult.HIGH
-
-    payload = {
-        "engine": "rule_stub",
-        "evaluated_at": ts.isoformat(),
-        "threshold": threshold,
-    }
-    return result, payload
+@dataclass
+class RiskResult:
+    risk_score: float
+    risk_result: str
+    reasons: list[str]
+    flags: dict[str, Any]
+    source: str
 
 
-def _map_decision(decision: str | None) -> RiskResult:
+def _severity(value: str) -> int:
+    try:
+        return LEVEL_ORDER.index(value.upper())
+    except ValueError:
+        return LEVEL_ORDER.index("MEDIUM")
+
+
+def _map_decision(decision: str | None) -> str:
     if not decision:
-        return RiskResult.MEDIUM
+        return "MEDIUM"
     normalized = decision.upper()
     if normalized in {"ALLOW", "LOW"}:
-        return RiskResult.LOW
-    if normalized in {"REVIEW", "MEDIUM"}:
-        return RiskResult.MEDIUM
+        return "LOW"
+    if normalized in {"REVIEW", "MEDIUM", "MANUAL_REVIEW"}:
+        return "MEDIUM"
     if normalized in {"DENY", "BLOCK"}:
-        return RiskResult.BLOCK
+        return "BLOCK"
     if normalized == "HIGH":
-        return RiskResult.HIGH
-    return RiskResult.MEDIUM
+        return "HIGH"
+    return "MEDIUM"
 
 
 async def _post_score(payload: dict) -> dict:
@@ -80,47 +85,95 @@ async def _post_score(payload: dict) -> dict:
     return response.json()
 
 
-async def call_risk_engine(context: OperationContext) -> tuple[RiskResult, float, dict]:
+async def call_risk_engine(context: OperationContext) -> RiskResult:
     payload: Dict[str, Any] = {
-        "client_id": context.client_id,
-        "card_id": context.card_id,
+        "client_id": str(context.client_id),
+        "card_id": str(context.card_id),
         "amount": float(context.amount),
         "currency": context.currency,
-        "merchant": context.merchant_id,
+        "merchant": str(context.merchant_id),
         "qty": context.quantity,
-        "hour": context.timestamp.hour,
+        "hour": context.created_at.hour,
         "metadata": {
-            "terminal_id": context.terminal_id,
+            "terminal_id": str(context.terminal_id),
             "product_type": context.product_type,
             "product_category": context.product_category,
             "mcc": context.mcc,
             "tx_type": context.tx_type,
             "unit_price": context.unit_price,
             "product_id": context.product_id,
+            **(context.metadata or {}),
         },
     }
 
-    try:
-        response_data = await _post_score(payload)
-        risk_score = float(
-            response_data.get("risk_score")
-            if "risk_score" in response_data
-            else response_data.get("score", 0.0)
-        )
-        decision = response_data.get("risk_result") or response_data.get("decision")
-        risk_result = _map_decision(decision)
-        return risk_result, risk_score, response_data
-    except Exception as exc:  # pragma: no cover - handled by fallback
-        logger.warning("Risk engine unavailable, using fallback: %s", exc)
-        stub_result, stub_payload = _apply_stub_rules(context.amount, context.timestamp)
-        fallback_result = RiskResult.HIGH if stub_result == RiskResult.HIGH else RiskResult.MEDIUM
-        fallback_payload = {
-            "fallback": True,
-            "error": str(exc),
-            "stub": stub_payload,
-        }
-        return fallback_result, 0.5, fallback_payload
+    response_data = await _post_score(payload)
+    risk_score = float(
+        response_data.get("risk_score")
+        if "risk_score" in response_data
+        else response_data.get("score", 0.0)
+    )
+    decision = response_data.get("risk_result") or response_data.get("decision")
+    risk_result = _map_decision(decision)
+    reasons = response_data.get("reasons") or []
+    flags = {"ai_payload": response_data}
+    return RiskResult(
+        risk_score=risk_score,
+        risk_result=risk_result,
+        reasons=reasons,
+        flags=flags,
+        source="AI",
+    )
 
 
-def call_risk_engine_sync(context: OperationContext) -> tuple[RiskResult, float, dict]:
+def call_risk_engine_sync(context: OperationContext) -> RiskResult:
     return asyncio.run(call_risk_engine(context))
+
+
+async def evaluate_risk(context: OperationContext, db=None) -> RiskResult:
+    rules_result = await risk_rules.evaluate_rules(context, db=db)
+
+    try:
+        ai_result = await call_risk_engine(context)
+    except Exception as exc:  # pragma: no cover - exercised in tests via fallback
+        logger.warning("Risk engine unavailable, using rules only: %s", exc)
+        flags = {**rules_result.flags, "ai_error": str(exc)}
+        return RiskResult(
+            risk_score=rules_result.risk_score,
+            risk_result=rules_result.risk_result,
+            reasons=rules_result.reasons,
+            flags=flags,
+            source="RULES_FALLBACK",
+        )
+
+    # If AI responded with fallback marker, rely on rules
+    if ai_result.source == "FALLBACK" or ai_result.flags.get("error"):
+        flags = {**rules_result.flags, **ai_result.flags}
+        return RiskResult(
+            risk_score=rules_result.risk_score,
+            risk_result=rules_result.risk_result,
+            reasons=rules_result.reasons,
+            flags=flags,
+            source="RULES_FALLBACK",
+        )
+
+    combined_level = (
+        ai_result.risk_result
+        if _severity(ai_result.risk_result) > _severity(rules_result.risk_result)
+        else rules_result.risk_result
+    )
+    combined_score = max(ai_result.risk_score, rules_result.risk_score)
+    combined_reasons = [*rules_result.reasons, *ai_result.reasons]
+    combined_flags = {**rules_result.flags, **ai_result.flags}
+
+    source = "AI+RULES"
+    return RiskResult(
+        risk_score=combined_score,
+        risk_result=combined_level,
+        reasons=combined_reasons,
+        flags=combined_flags,
+        source=source,
+    )
+
+
+def evaluate_risk_sync(context: OperationContext, db=None) -> RiskResult:
+    return asyncio.run(evaluate_risk(context, db=db))
