@@ -20,7 +20,12 @@ from app.services.risk_rules import (
     WindowConfig,
     RuleWindow,
 )
-from app.services.risk_adapter import OperationContext, RiskResult, evaluate_risk
+from app.services.risk_adapter import (
+    OperationContext,
+    RiskDecisionLevel,
+    RiskEvaluation,
+    evaluate_risk,
+)
 from app.services.transactions_service import authorize_operation
 
 
@@ -66,7 +71,17 @@ def test_rules_detect_graylist_and_night(monkeypatch):
 
 def test_ai_and_rules_combination_prefers_high(monkeypatch):
     async def fake_ai(context):
-        return RiskResult(0.1, "LOW", ["ai_low"], {"ai": True}, "AI")
+        return RiskEvaluation(
+            decision=risk_adapter.RiskDecision(
+                level=RiskDecisionLevel.LOW,
+                rules_fired=[],
+                reason_codes=["ai_low"],
+                ai_score=0.1,
+            ),
+            score=0.1,
+            source="AI",
+            flags={"ai": True},
+        )
 
     monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
     monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", {"gt"})
@@ -86,14 +101,24 @@ def test_ai_and_rules_combination_prefers_high(monkeypatch):
 
     result = asyncio.run(evaluate_risk(ctx))
 
-    assert result.risk_result == "HIGH"
-    assert result.source == "AI+RULES"
-    assert "graylisted_terminal" in result.reasons
+    assert result.decision.level == RiskDecisionLevel.HIGH
+    assert result.source == "RULES_AND_AI"
+    assert "graylisted_terminal" in result.decision.reason_codes
 
 
 def test_ai_block_overrides_rules(monkeypatch):
     async def fake_ai(context):
-        return RiskResult(0.95, "BLOCK", ["ai_block"], {"ai": True}, "AI")
+        return RiskEvaluation(
+            decision=risk_adapter.RiskDecision(
+                level=RiskDecisionLevel.HARD_DECLINE,
+                rules_fired=[],
+                reason_codes=["ai_block"],
+                ai_score=0.95,
+            ),
+            score=0.95,
+            source="AI",
+            flags={"ai": True},
+        )
 
     monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
 
@@ -112,8 +137,8 @@ def test_ai_block_overrides_rules(monkeypatch):
 
     result = asyncio.run(evaluate_risk(ctx))
 
-    assert result.risk_result == "BLOCK"
-    assert "ai_block" in result.reasons
+    assert result.decision.level == RiskDecisionLevel.HARD_DECLINE
+    assert "ai_block" in result.decision.reason_codes
 
 
 def test_ai_fallback_uses_rules(monkeypatch):
@@ -137,9 +162,9 @@ def test_ai_fallback_uses_rules(monkeypatch):
 
     result = asyncio.run(evaluate_risk(ctx))
 
-    assert result.risk_result in {"MEDIUM", "HIGH"}
+    assert result.decision.level in {RiskDecisionLevel.MEDIUM, RiskDecisionLevel.HIGH}
     assert result.source == "RULES_FALLBACK"
-    assert "amount_above_threshold" in result.reasons
+    assert "amount_above_threshold" in result.decision.reason_codes
     assert "ai_error" in result.flags
 
 
@@ -157,7 +182,17 @@ def test_risk_block_declines_operation(monkeypatch, session):
     session.commit()
 
     def blocking_risk(context, db=None):
-        return RiskResult(1.0, "BLOCK", ["blacklist"], {}, "AI")
+        return RiskEvaluation(
+            decision=risk_adapter.RiskDecision(
+                level=RiskDecisionLevel.HARD_DECLINE,
+                rules_fired=["blacklist_rule"],
+                reason_codes=["blacklist"],
+                ai_score=1.0,
+            ),
+            score=1.0,
+            source="AI",
+            flags={},
+        )
 
     monkeypatch.setattr(transactions_service, "call_risk_engine_sync", blocking_risk)
 
@@ -175,9 +210,9 @@ def test_risk_block_declines_operation(monkeypatch, session):
     )
 
     assert op.status == OperationStatus.DECLINED
-    assert op.response_code == "RISK_BLOCK"
+    assert op.response_code == "RISK_HARD_DECLINE"
     assert op.risk_result == RiskLevel.BLOCK
-    assert op.risk_payload.get("reasons") == ["blacklist"]
+    assert op.risk_payload.get("decision", {}).get("reason_codes") == ["blacklist"]
 
 
 def test_rule_anomalies_from_history(monkeypatch, session):

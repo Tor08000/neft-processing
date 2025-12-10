@@ -18,7 +18,12 @@ from app.models.operation import Operation, OperationStatus, OperationType, Risk
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
-from app.services.risk_adapter import OperationContext, evaluate_risk_sync
+from app.services.risk_adapter import (
+    OperationContext,
+    RiskDecisionLevel,
+    RiskEvaluation,
+    evaluate_risk_sync,
+)
 
 call_risk_engine_sync = evaluate_risk_sync
 
@@ -40,7 +45,7 @@ class AmountExceeded(TransactionException):
 RISK_ENGINE_OVERRIDE = None
 
 
-def _evaluate_risk(context: OperationContext, db=None):
+def _evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     override = globals().get("RISK_ENGINE_OVERRIDE")
     if callable(override):
         return override(context)
@@ -55,27 +60,51 @@ def _evaluate_risk(context: OperationContext, db=None):
     except TypeError:
         result = engine_func(context)
 
-    if isinstance(result, risk_adapter.RiskResult):
+    if isinstance(result, risk_adapter.RiskEvaluation):
         return result
+    if isinstance(result, risk_adapter.RiskResult):
+        legacy_decision = risk_adapter.RiskDecision(
+            level=risk_adapter._normalize_level(result.risk_result),
+            rules_fired=result.flags.get("rules", []),
+            reason_codes=list(result.reasons),
+        )
+        return risk_adapter.RiskEvaluation(
+            decision=legacy_decision,
+            score=result.risk_score,
+            source=result.source,
+            flags=result.flags,
+        )
     if isinstance(result, tuple) and len(result) >= 3:
         legacy_level, legacy_score, legacy_payload = result
-        return risk_adapter.RiskResult(
-            risk_score=legacy_score,
-            risk_result=legacy_level.value if hasattr(legacy_level, "value") else str(legacy_level),
-            reasons=list(legacy_payload.get("reasons", [])),
-            flags=legacy_payload,
+        level_value = legacy_level.value if hasattr(legacy_level, "value") else str(legacy_level)
+        decision_level = risk_adapter._normalize_level(level_value)
+        decision = risk_adapter.RiskDecision(
+            level=decision_level,
+            rules_fired=list(legacy_payload.get("rules", [])),
+            reason_codes=list(legacy_payload.get("reasons", [])),
+        )
+        return risk_adapter.RiskEvaluation(
+            decision=decision,
+            score=legacy_score,
             source=legacy_payload.get("source", "LEGACY"),
+            flags=legacy_payload,
         )
 
     raise ValueError("Unsupported risk engine result")
 
 
-def _to_risk_level(value: str | RiskLevel | None) -> RiskLevel:
+def _to_risk_level(value: str | RiskLevel | RiskDecisionLevel | None) -> RiskLevel:
     if isinstance(value, RiskLevel):
         return value
+    if isinstance(value, RiskDecisionLevel):
+        if value == RiskDecisionLevel.HARD_DECLINE:
+            return RiskLevel.BLOCK
+        return RiskLevel.__members__.get(value.value, RiskLevel.MEDIUM)
     if not value:
         return RiskLevel.MEDIUM
     normalized = str(value).upper()
+    if normalized == RiskDecisionLevel.HARD_DECLINE.value:
+        return RiskLevel.BLOCK
     return RiskLevel.__members__.get(normalized, RiskLevel.MEDIUM)
 
 
@@ -259,16 +288,16 @@ def authorize_operation(
         created_at=datetime.now(timezone.utc),
         metadata={"client_group_id": client_group_id, "card_group_id": card_group_id},
     )
-    risk_result = _evaluate_risk(risk_context, db=db)
-    risk_level = _to_risk_level(risk_result.risk_result)
+    risk_evaluation = _evaluate_risk(risk_context, db=db)
+    risk_level = _to_risk_level(risk_evaluation.decision.level)
 
     strict_high = os.getenv("RISK_HIGH_STRICT_MODE", "false").lower() in {"1", "true", "yes"}
 
-    if risk_level == RiskLevel.BLOCK:
+    if risk_evaluation.decision.level == RiskDecisionLevel.HARD_DECLINE:
         return decline_operation(
             db,
             ext_operation_id=ext_operation_id,
-            reason="RISK_BLOCK",
+            reason="RISK_HARD_DECLINE",
             amount=amount,
             currency=currency,
             client_id=client_id,
@@ -278,12 +307,8 @@ def authorize_operation(
             product_id=product_id,
             product_type=product_type,
             limit_payload=limit_result.model_dump(),
-            risk_payload={
-                "reasons": risk_result.reasons,
-                "flags": risk_result.flags,
-                "source": risk_result.source,
-            },
-            risk_result=risk_level,
+            risk_payload=risk_evaluation.to_payload(),
+            risk_result=_to_risk_level(risk_evaluation.decision.level),
         )
 
     if strict_high and risk_level == RiskLevel.HIGH:
@@ -300,19 +325,11 @@ def authorize_operation(
             product_id=product_id,
             product_type=product_type,
             limit_payload=limit_result.model_dump(),
-            risk_payload={
-                "reasons": risk_result.reasons,
-                "flags": risk_result.flags,
-                "source": risk_result.source,
-            },
+            risk_payload=risk_evaluation.to_payload(),
             risk_result=risk_level,
         )
 
-    risk_payload = {
-        "reasons": risk_result.reasons,
-        "flags": risk_result.flags,
-        "source": risk_result.source,
-    }
+    risk_payload = risk_evaluation.to_payload()
 
     operation = Operation(
         id=None,
@@ -346,7 +363,7 @@ def authorize_operation(
         mcc=mcc,
         product_category=product_category,
         tx_type=tx_type,
-        risk_score=risk_result.risk_score,
+        risk_score=risk_evaluation.score,
         risk_result=risk_level,
         risk_payload=risk_payload,
     )

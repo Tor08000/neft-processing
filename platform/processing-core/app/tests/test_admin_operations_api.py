@@ -313,8 +313,14 @@ def test_risk_filters_and_fields(admin_client: TestClient):
                     risk_result="HIGH",
                     risk_score=0.9,
                     risk_payload={
+                        "decision": {
+                            "level": "HARD_DECLINE",
+                            "reason_codes": ["amount_spike"],
+                            "rules_fired": ["high_amount_rule"],
+                            "ai_score": 0.9,
+                            "ai_model_version": "v1",
+                        },
                         "flags": {"night": True, "amount_threshold_hit": True},
-                        "reasons": ["amount_spike"],
                         "source": "AI",
                     },
                 ),
@@ -331,7 +337,16 @@ def test_risk_filters_and_fields(admin_client: TestClient):
                     created_at=base_time + timedelta(minutes=2),
                     risk_result="MEDIUM",
                     risk_score=0.55,
-                    risk_payload={"reasons": ["velocity"], "source": "AI+RULES"},
+                    risk_payload={
+                        "decision": {
+                            "level": "MEDIUM",
+                            "reason_codes": ["velocity"],
+                            "rules_fired": [],
+                            "ai_score": 0.55,
+                            "ai_model_version": "v2",
+                        },
+                        "source": "AI+RULES",
+                    },
                 ),
             ]
         )
@@ -349,6 +364,7 @@ def test_risk_filters_and_fields(admin_client: TestClient):
     assert first_item["risk_reasons"] == ["amount_spike"]
     assert first_item["risk_flags"] == {"night": True, "amount_threshold_hit": True}
     assert first_item["risk_source"] == "AI"
+    assert first_item["risk_rules_fired"] == ["high_amount_rule"]
 
     filtered_by_result = admin_client.get(
         "/api/v1/admin/operations", params={"risk_result": ["HIGH", "BLOCK"], "merchant_id": "m-risk"}
@@ -373,6 +389,7 @@ def test_risk_filters_and_fields(admin_client: TestClient):
     assert payload["risk_reasons"] == ["amount_spike"]
     assert payload["risk_flags"] == {"night": True, "amount_threshold_hit": True}
     assert payload["risk_source"] == "AI"
+    assert payload["risk_rules_fired"] == ["high_amount_rule"]
 
 
 def test_transactions_filters_sort_and_pagination(admin_client: TestClient):

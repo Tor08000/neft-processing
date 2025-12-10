@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -14,13 +16,24 @@ from app.services import risk_rules
 logger = get_logger(__name__)
 
 
-LEVEL_ORDER = ["LOW", "MEDIUM", "HIGH", "MANUAL_REVIEW", "BLOCK"]
-DEFAULT_SCORE_MAP: Dict[str, float] = {
-    "LOW": 0.2,
-    "MEDIUM": 0.5,
-    "HIGH": 0.8,
-    "BLOCK": 1.0,
-    "MANUAL_REVIEW": 0.6,
+class RiskDecisionLevel(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    HARD_DECLINE = "HARD_DECLINE"
+
+
+LEVEL_ORDER = [
+    RiskDecisionLevel.LOW,
+    RiskDecisionLevel.MEDIUM,
+    RiskDecisionLevel.HIGH,
+    RiskDecisionLevel.HARD_DECLINE,
+]
+DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
+    RiskDecisionLevel.LOW: 0.2,
+    RiskDecisionLevel.MEDIUM: 0.5,
+    RiskDecisionLevel.HIGH: 0.8,
+    RiskDecisionLevel.HARD_DECLINE: 1.0,
 }
 
 
@@ -47,6 +60,8 @@ class OperationContext:
 
 @dataclass
 class RiskResult:
+    """Legacy structure produced by rules and some overrides."""
+
     risk_score: float
     risk_result: str
     reasons: list[str]
@@ -54,26 +69,57 @@ class RiskResult:
     source: str
 
 
-def _severity(value: str) -> int:
+@dataclass
+class RiskDecision:
+    level: RiskDecisionLevel
+    rules_fired: list[str]
+    reason_codes: list[str]
+    ai_score: Optional[float] = None
+    ai_model_version: Optional[str] = None
+
+
+@dataclass
+class RiskEvaluation:
+    decision: RiskDecision
+    score: Optional[float]
+    source: str
+    flags: dict[str, Any]
+
+    def to_payload(self) -> dict[str, Any]:
+        decision_payload = dataclasses.asdict(self.decision)
+        decision_payload["level"] = self.decision.level.value
+        payload: dict[str, Any] = {
+            "decision": decision_payload,
+            "source": self.source,
+            "flags": self.flags,
+            "reason_codes": list(self.decision.reason_codes),
+            "rules_fired": list(self.decision.rules_fired),
+        }
+        if self.score is not None:
+            payload["score"] = self.score
+        return payload
+
+
+def _severity(value: RiskDecisionLevel) -> int:
     try:
-        return LEVEL_ORDER.index(value.upper())
+        return LEVEL_ORDER.index(value)
     except ValueError:
-        return LEVEL_ORDER.index("MEDIUM")
+        return LEVEL_ORDER.index(RiskDecisionLevel.MEDIUM)
 
 
-def _map_decision(decision: str | None) -> str:
-    if not decision:
-        return "MEDIUM"
-    normalized = decision.upper()
+def _normalize_level(value: str | None) -> RiskDecisionLevel:
+    if not value:
+        return RiskDecisionLevel.MEDIUM
+    normalized = value.upper()
     if normalized in {"ALLOW", "LOW"}:
-        return "LOW"
+        return RiskDecisionLevel.LOW
     if normalized in {"REVIEW", "MEDIUM", "MANUAL_REVIEW"}:
-        return "MEDIUM"
-    if normalized in {"DENY", "BLOCK"}:
-        return "BLOCK"
+        return RiskDecisionLevel.MEDIUM
+    if normalized in {"DENY", "BLOCK", "HARD_DECLINE"}:
+        return RiskDecisionLevel.HARD_DECLINE
     if normalized == "HIGH":
-        return "HIGH"
-    return "MEDIUM"
+        return RiskDecisionLevel.HIGH
+    return RiskDecisionLevel.MEDIUM
 
 
 async def _post_score(payload: dict) -> dict:
@@ -86,7 +132,7 @@ async def _post_score(payload: dict) -> dict:
     return response.json()
 
 
-async def call_risk_engine(context: OperationContext) -> RiskResult:
+async def call_risk_engine(context: OperationContext) -> RiskEvaluation:
     payload: Dict[str, Any] = {
         "client_id": str(context.client_id),
         "card_id": str(context.card_id),
@@ -114,67 +160,91 @@ async def call_risk_engine(context: OperationContext) -> RiskResult:
         else response_data.get("score", 0.0)
     )
     decision = response_data.get("risk_result") or response_data.get("decision")
-    risk_result = _map_decision(decision)
-    reasons = response_data.get("reasons") or []
+    risk_level = _normalize_level(decision)
+    reasons = response_data.get("reason_codes") or response_data.get("reasons") or []
     flags = {"ai_payload": response_data}
-    return RiskResult(
-        risk_score=risk_score,
-        risk_result=risk_result,
-        reasons=reasons,
-        flags=flags,
+    ai_model_version = response_data.get("model_version")
+
+    return RiskEvaluation(
+        decision=RiskDecision(
+            level=risk_level,
+            rules_fired=[],
+            reason_codes=list(reasons),
+            ai_score=risk_score,
+            ai_model_version=ai_model_version,
+        ),
+        score=risk_score,
         source="AI",
+        flags=flags,
     )
 
 
-def call_risk_engine_sync(context: OperationContext) -> RiskResult:
+def call_risk_engine_sync(context: OperationContext) -> RiskEvaluation:
     return asyncio.run(call_risk_engine(context))
 
 
-async def evaluate_risk(context: OperationContext, db=None) -> RiskResult:
+def _rules_to_decision(rules_result: RiskResult) -> RiskDecision:
+    rules = []
+    if isinstance(rules_result.flags.get("rules"), list):
+        rules = [rule.get("name") for rule in rules_result.flags["rules"] if rule.get("name")]
+    level = _normalize_level(rules_result.risk_result)
+    return RiskDecision(
+        level=level,
+        rules_fired=rules,
+        reason_codes=list(rules_result.reasons),
+    )
+
+
+async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     rules_result = await risk_rules.evaluate_rules(context, db=db)
+    rules_decision = _rules_to_decision(rules_result)
+    combined_flags = dict(rules_result.flags)
 
     try:
         ai_result = await call_risk_engine(context)
     except Exception as exc:  # pragma: no cover - exercised in tests via fallback
         logger.warning("Risk engine unavailable, using rules only: %s", exc)
-        flags = {**rules_result.flags, "ai_error": str(exc)}
-        return RiskResult(
-            risk_score=rules_result.risk_score,
-            risk_result=rules_result.risk_result,
-            reasons=rules_result.reasons,
-            flags=flags,
+        combined_flags["ai_error"] = str(exc)
+        return RiskEvaluation(
+            decision=rules_decision,
+            score=rules_result.risk_score,
             source="RULES_FALLBACK",
+            flags=combined_flags,
         )
 
-    # If AI responded with fallback marker, rely on rules
     if ai_result.source == "FALLBACK" or ai_result.flags.get("error"):
-        flags = {**rules_result.flags, **ai_result.flags}
-        return RiskResult(
-            risk_score=rules_result.risk_score,
-            risk_result=rules_result.risk_result,
-            reasons=rules_result.reasons,
-            flags=flags,
+        combined_flags.update(ai_result.flags)
+        return RiskEvaluation(
+            decision=rules_decision,
+            score=rules_result.risk_score,
             source="RULES_FALLBACK",
+            flags=combined_flags,
         )
 
-    combined_level = (
-        ai_result.risk_result
-        if _severity(ai_result.risk_result) > _severity(rules_result.risk_result)
-        else rules_result.risk_result
-    )
-    combined_score = max(ai_result.risk_score, rules_result.risk_score)
-    combined_reasons = [*rules_result.reasons, *ai_result.reasons]
-    combined_flags = {**rules_result.flags, **ai_result.flags}
+    combined_level = ai_result.decision.level
+    if _severity(rules_decision.level) > _severity(combined_level):
+        combined_level = rules_decision.level
 
-    source = "AI+RULES"
-    return RiskResult(
-        risk_score=combined_score,
-        risk_result=combined_level,
-        reasons=combined_reasons,
-        flags=combined_flags,
+    combined_score = max(filter(lambda val: val is not None, [ai_result.score, rules_result.risk_score]))
+    reason_codes = list(dict.fromkeys([*rules_decision.reason_codes, *ai_result.decision.reason_codes]))
+    combined_flags.update(ai_result.flags)
+
+    combined_decision = RiskDecision(
+        level=combined_level,
+        rules_fired=rules_decision.rules_fired,
+        reason_codes=reason_codes,
+        ai_score=ai_result.decision.ai_score,
+        ai_model_version=ai_result.decision.ai_model_version,
+    )
+
+    source = "RULES_AND_AI" if rules_decision.reason_codes else ai_result.source
+    return RiskEvaluation(
+        decision=combined_decision,
+        score=combined_score,
         source=source,
+        flags=combined_flags,
     )
 
 
-def evaluate_risk_sync(context: OperationContext, db=None) -> RiskResult:
+def evaluate_risk_sync(context: OperationContext, db=None) -> RiskEvaluation:
     return asyncio.run(evaluate_risk(context, db=db))
