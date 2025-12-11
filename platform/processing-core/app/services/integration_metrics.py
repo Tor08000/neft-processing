@@ -15,6 +15,7 @@ class IntakeMetrics:
     posting_errors: int = 0
     responses: Counter = field(default_factory=Counter)
     normalization_latencies: list[float] = field(default_factory=list)
+    request_latencies: list[float] = field(default_factory=list)
 
     def mark_request(self, name: str) -> None:
         self.intake_requests[name] += 1
@@ -31,6 +32,13 @@ class IntakeMetrics:
     def observe_normalization(self, seconds: float) -> None:
         self.normalization_latencies.append(seconds * 1000)
         logger.debug("intake_normalization_ms", extra={"latency_ms": self.normalization_latencies[-1]})
+
+    def observe_request_latency(self, partner_id: str, latency_ms: float) -> None:
+        self.request_latencies.append(latency_ms)
+        logger.debug(
+            "integration_request_latency",
+            extra={"partner_id": partner_id, "latency_ms": latency_ms},
+        )
 
 
 metrics = IntakeMetrics()

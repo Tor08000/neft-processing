@@ -7,6 +7,7 @@ const navItems = [
   { to: "/users", label: "Users" },
   { to: "/accounts", label: "Balances" },
   { to: "/operations", label: "Operations" },
+  { to: "/integration", label: "Integration Monitoring" },
   { to: "/analytics/risk", label: "Risk analytics" },
   { to: "/risk/rules", label: "Risk rules" },
 ];

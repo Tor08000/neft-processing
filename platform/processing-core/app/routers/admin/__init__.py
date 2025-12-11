@@ -6,6 +6,7 @@ from app.routers.admin import (
     billing,
     clearing,
     dashboard,
+    integration_monitoring,
     limits,
     merchants,
     operations,
@@ -22,5 +23,6 @@ router.include_router(merchants.router)
 router.include_router(clearing.router)
 router.include_router(billing.router)
 router.include_router(risk_rules.router)
+router.include_router(integration_monitoring.router)
 
 __all__ = ["router"]
