@@ -21,6 +21,8 @@ from .groups import (  # noqa: F401
     ClientGroup,
     ClientGroupMember,
 )
+from .account import Account, AccountBalance  # noqa: F401
+from .ledger_entry import LedgerEntry  # noqa: F401
 
 __all__ = [
     "Client",
@@ -41,4 +43,7 @@ __all__ = [
     "RiskRuleAudit",
     "RiskRuleAuditAction",
     "RiskRuleVersion",
+    "Account",
+    "AccountBalance",
+    "LedgerEntry",
 ]

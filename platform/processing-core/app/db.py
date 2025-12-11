@@ -98,6 +98,8 @@ def init_db() -> None:
         RiskRuleAudit,
         RiskRuleVersion,
     )
+    from app.models.account import Account, AccountBalance  # noqa: F401
+    from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
     if str(engine.url).startswith("sqlite"):
