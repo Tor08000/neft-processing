@@ -9,7 +9,10 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
+from app.models.client import Client
 from app.models.operation import OperationType, ProductType
+from app.models.invoice import Invoice, InvoiceStatus
+from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_summary import BillingSummary
 from app.models.operation import Operation, OperationStatus
 from app.services.pricing_service import PriceQuote, get_effective_price
@@ -327,7 +330,7 @@ def get_billing_summaries(
     return items, total
 
 
-def calculate_client_charges(
+def build_invoice_data_for_client(
     db: Session,
     *,
     client_id: str,
@@ -415,7 +418,7 @@ def generate_invoices_for_period(
         if existing:
             continue
 
-        invoice_data = calculate_client_charges(
+        invoice_data = build_invoice_data_for_client(
             db,
             client_id=str(client.id),
             period_from=period_from,
