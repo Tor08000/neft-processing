@@ -86,6 +86,7 @@ def init_db() -> None:
     from app.models.merchant import Merchant  # noqa: F401
     from app.models.terminal import Terminal  # noqa: F401
     from app.models.card import Card  # noqa: F401
+    from app.models.partner import Partner  # noqa: F401
     from app.models.limit_rule import LimitRule  # noqa: F401
     from app.models.groups import (  # noqa: F401
         CardGroup,
