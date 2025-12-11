@@ -11,16 +11,24 @@ interface AuthContextValue {
   hasClientRole: boolean;
 }
 
+interface AuthProviderProps {
+  children: React.ReactNode;
+  /**
+   * Позволяет в тестах подставить заранее авторизованную сессию без походов в API.
+   */
+  initialSession?: AuthSession | null;
+}
+
 const STORAGE_KEY = "neft_client_auth";
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function isClientRolePresent(roles: string[]): boolean {
   return roles.some((role) => role.startsWith("CLIENT_"));
 }
 
-export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [user, setUser] = useState<AuthSession | null>(null);
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSession = null }) => {
+  const [user, setUser] = useState<AuthSession | null>(initialSession);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +75,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   );
 
   useEffect(() => {
+    if (initialSession) {
+      setIsLoading(false);
+      return;
+    }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
@@ -80,7 +92,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       }
     }
     setIsLoading(false);
-  }, [reviveSession]);
+  }, [initialSession, reviveSession]);
 
   const handleLogin = useCallback(
     async (email: string, password: string) => {

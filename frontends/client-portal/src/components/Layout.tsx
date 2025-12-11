@@ -8,8 +8,9 @@ export function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar__meta">
-          <span className="topbar__title">NEFT Client Portal</span>
-          <span className="muted">Демо-доступ к возможностям клиента</span>
+          <span className="logo">NEFT</span>
+          <div className="topbar__title">Client Portal</div>
+          <div className="muted">{user?.clientId ? `Клиент ${user.clientId}` : "Клиентский кабинет"}</div>
         </div>
         <div className="topbar__meta topbar__meta--user">
           <div>
@@ -25,18 +26,13 @@ export function Layout() {
 
       <div className="sidebar-layout">
         <nav className="sidebar">
-          <NavLink to="/dashboard" end>
+          <NavLink to="/" end>
             Дашборд
           </NavLink>
-          <span className="nav-disabled" aria-disabled>
-            Операции (скоро)
-          </span>
-          <span className="nav-disabled" aria-disabled>
-            Карты (скоро)
-          </span>
-          <span className="nav-disabled" aria-disabled>
-            Лимиты (скоро)
-          </span>
+          <NavLink to="/cards">Карты</NavLink>
+          <NavLink to="/operations">Операции</NavLink>
+          <NavLink to="/balances">Балансы</NavLink>
+          <NavLink to="/profile">Профиль</NavLink>
         </nav>
 
         <main className="main-area">
