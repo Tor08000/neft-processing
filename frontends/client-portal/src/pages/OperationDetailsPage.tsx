@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { fetchOperationDetails } from "../api/operations";
 import { useAuth } from "../auth/AuthContext";
 import type { OperationDetails } from "../types/operations";
+import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
 
 export function OperationDetailsPage() {
   const { id } = useParams();
@@ -41,25 +42,48 @@ export function OperationDetailsPage() {
 
   return (
     <div className="card">
-      <h2>Операция {operation.id}</h2>
+      <div className="card__header">
+        <div>
+          <h2>Операция {operation.id}</h2>
+          <p className="muted">Полная информация по транзакции</p>
+        </div>
+        <button type="button" className="secondary" disabled>
+          Экспорт в PDF/Excel (скоро)
+        </button>
+      </div>
+
       <dl className="meta-grid">
         <div>
           <dt className="label">Дата</dt>
-          <dd>{new Date(operation.created_at).toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="label">Сумма</dt>
-          <dd>
-            {operation.amount} {operation.currency}
-          </dd>
-        </div>
-        <div>
-          <dt className="label">Статус</dt>
-          <dd>{operation.status}</dd>
+          <dd>{formatDateTime(operation.created_at)}</dd>
         </div>
         <div>
           <dt className="label">Карта</dt>
           <dd>{operation.card_id}</dd>
+        </div>
+        <div>
+          <dt className="label">АЗС</dt>
+          <dd>{operation.merchant_id ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="label">Продукт</dt>
+          <dd>{operation.product_type ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="label">Литры</dt>
+          <dd>{formatLiters(operation.quantity)}</dd>
+        </div>
+        <div>
+          <dt className="label">Сумма</dt>
+          <dd>{formatMoney(operation.amount, operation.currency)}</dd>
+        </div>
+        <div>
+          <dt className="label">Статус</dt>
+          <dd>
+            <span className={`pill pill--${operation.status === "APPROVED" ? "success" : "warning"}`}>
+              {operation.status}
+            </span>
+          </dd>
         </div>
         {operation.reason && (
           <div>

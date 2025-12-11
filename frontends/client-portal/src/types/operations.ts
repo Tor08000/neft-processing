@@ -9,11 +9,11 @@ export interface OperationSummary {
   terminal_id?: string | null;
   reason?: string | null;
   product_type?: string | null;
+  quantity?: number | string | null;
 }
 
 export interface OperationDetails extends OperationSummary {
-  limit_profile_id?: string | null;
-  risk_result?: string | null;
+  // intentionally empty — client view hides internal fields
 }
 
 export interface OperationsPage {
