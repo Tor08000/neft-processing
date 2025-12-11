@@ -8,6 +8,7 @@ import pytest
 import app.services.transactions_service as transactions_service
 from app.db import Base, SessionLocal, engine
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
+from app.repositories.risk_rules_repository import RiskRulesRepository
 from app.services import risk_adapter, risk_rules
 from app.services.risk_rules import (
     MetricType,
@@ -201,6 +202,63 @@ def test_ai_timeout_metrics_and_fallback(monkeypatch):
     assert result.flags["error"] == "timeout"
     assert risk_adapter.metrics.connection_errors["timeout"] == 1
     assert risk_adapter.metrics.latencies_ms[-1] >= 0
+
+
+def test_evaluate_risk_uses_db_rules(monkeypatch, session):
+    async def fake_ai(context):
+        return RiskEvaluation(
+            decision=risk_adapter.RiskDecision(
+                level=RiskDecisionLevel.LOW,
+                rules_fired=[],
+                reason_codes=[],
+                ai_score=0.1,
+            ),
+            score=0.1,
+            source="AI",
+            flags={"ai": True},
+        )
+
+    monkeypatch.setenv("RISK_RULES_SOURCE", "DB")
+    monkeypatch.setattr(risk_adapter, "RISK_RULES_SOURCE", "DB")
+    monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
+    monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", set())
+    monkeypatch.setattr(risk_rules, "GRAYLIST_MERCHANTS", set())
+
+    client_id = uuid4()
+    ctx = OperationContext(
+        client_id=client_id,
+        card_id=uuid4(),
+        terminal_id="t-db",
+        merchant_id="m-db",
+        product_type="DIESEL",
+        amount=1000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime(2023, 1, 1, 12, 0, tzinfo=timezone.utc),
+    )
+
+    repository = RiskRulesRepository(session)
+    db_rule = RuleConfig(
+        name="db_high_client",
+        scope=RuleScope.CLIENT,
+        subject_id=str(client_id),
+        selector=SelectorConfig(),
+        window=None,
+        metric=MetricType.ALWAYS,
+        value=1,
+        action=RuleAction.HIGH,
+        priority=5,
+        reason="db_rule_triggered",
+        enabled=True,
+    )
+    repository.create_rule(db_rule)
+
+    result = asyncio.run(evaluate_risk(ctx, db=session))
+
+    assert result.decision.level == RiskDecisionLevel.HIGH
+    assert "db_rule_triggered" in result.decision.reason_codes
+    assert result.decision.rules_fired == ["db_high_client"]
 
 
 def test_ai_success_records_score_distribution(monkeypatch):
