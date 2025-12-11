@@ -3,7 +3,19 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
 
@@ -18,6 +30,26 @@ class TariffPlan(Base):
     id = Column(String(64), primary_key=True)
     name = Column(String(255), nullable=False, unique=True, index=True)
     params = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class TariffPrice(Base):
+    """Pricing rules for a tariff plan scoped by product and partner/azs."""
+
+    __tablename__ = "tariff_prices"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    tariff_id = Column(String(64), ForeignKey("tariff_plans.id"), nullable=False, index=True)
+    product_id = Column(String(64), nullable=False, index=True)
+    partner_id = Column(String(64), nullable=True, index=True)
+    azs_id = Column(String(64), nullable=True, index=True)
+    price_per_liter = Column(Numeric(18, 6), nullable=False)
+    cost_price_per_liter = Column(Numeric(18, 6), nullable=True)
+    currency = Column(String(3), nullable=False)
+    valid_from = Column(DateTime(timezone=True), nullable=True, index=True)
+    valid_to = Column(DateTime(timezone=True), nullable=True, index=True)
+    priority = Column(Integer, nullable=False, default=100, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

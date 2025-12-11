@@ -1,17 +1,169 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Dict, List
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
+from app.models.operation import OperationType, ProductType
 from app.models.billing_summary import BillingSummary
-from app.models.client import Client
-from app.models.invoice import Invoice, InvoiceStatus
-from app.models.operation import Operation, OperationStatus, ProductType
-from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
+from app.models.operation import Operation, OperationStatus
+from app.services.pricing_service import PriceQuote, get_effective_price
+
+
+@dataclass
+class OperationCharge:
+    """Calculated billing line for a single operation."""
+
+    operation_id: str
+    tariff_id: str
+    product_id: str | None
+    partner_id: str | None
+    azs_id: str | None
+    currency: str
+    quantity: Decimal
+    client_price_per_liter: Decimal
+    cost_price_per_liter: Decimal | None
+    charge_amount: Decimal
+    cost_amount: Decimal | None
+    margin_amount: Decimal | None
+    tariff_price_id: int
+
+
+@dataclass
+class BillingTotals:
+    """Aggregated billing totals per currency."""
+
+    charge_amount: Decimal
+    cost_amount: Decimal | None
+    margin_amount: Decimal | None
+
+
+@dataclass
+class BillingCalculationResult:
+    """Result of billing calculation for a client within a period."""
+
+    client_id: str
+    totals_by_currency: Dict[str, BillingTotals]
+    items: List[OperationCharge]
+
+
+def _decimalize(value: Decimal | float | int) -> Decimal:
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+BILLABLE_STATUSES = {
+    OperationStatus.POSTED,
+    OperationStatus.COMPLETED,
+    OperationStatus.REFUNDED,
+    OperationStatus.REVERSED,
+}
+
+
+def calculate_client_charges(
+    db: Session,
+    *,
+    client_id: str,
+    date_from: datetime,
+    date_to: datetime,
+) -> BillingCalculationResult:
+    """Calculate billing amounts for client operations within the period."""
+
+    operations = (
+        db.query(Operation)
+        .filter(Operation.client_id == client_id)
+        .filter(Operation.created_at >= date_from)
+        .filter(Operation.created_at <= date_to)
+        .filter(Operation.status.in_(BILLABLE_STATUSES))
+        .all()
+    )
+
+    items: list[OperationCharge] = []
+    totals: dict[str, dict[str, Decimal | bool]] = {}
+
+    for operation in operations:
+        if not operation.tariff_id:
+            raise ValueError(f"Tariff is not set for operation {operation.id}")
+
+        product_id = operation.product_id or (
+            operation.product_type.value if operation.product_type else None
+        )
+        if not product_id:
+            raise ValueError(f"Product is not set for operation {operation.id}")
+        if operation.quantity is None:
+            raise ValueError(f"Quantity is not set for operation {operation.id}")
+
+        quantity = _decimalize(operation.quantity)
+        sign = (
+            Decimal("-1")
+            if operation.status in {OperationStatus.REFUNDED, OperationStatus.REVERSED}
+            or operation.operation_type in {OperationType.REFUND, OperationType.REVERSE}
+            else Decimal("1")
+        )
+
+        price_quote: PriceQuote = get_effective_price(
+            db,
+            tariff_id=operation.tariff_id,
+            product_id=product_id,
+            partner_id=operation.merchant_id,
+            azs_id=operation.terminal_id,
+            occurred_at=operation.created_at,
+        )
+
+        charge_amount = price_quote.client_price_per_liter * quantity * sign
+        cost_amount = (
+            price_quote.cost_price_per_liter * quantity * sign
+            if price_quote.cost_price_per_liter is not None
+            else None
+        )
+        margin_amount = charge_amount - cost_amount if cost_amount is not None else None
+
+        items.append(
+            OperationCharge(
+                operation_id=str(operation.id),
+                tariff_id=operation.tariff_id,
+                product_id=product_id,
+                partner_id=operation.merchant_id,
+                azs_id=operation.terminal_id,
+                currency=price_quote.currency,
+                quantity=quantity * sign,
+                client_price_per_liter=price_quote.client_price_per_liter,
+                cost_price_per_liter=price_quote.cost_price_per_liter,
+                charge_amount=charge_amount,
+                cost_amount=cost_amount,
+                margin_amount=margin_amount,
+                tariff_price_id=price_quote.tariff_price.id,
+            )
+        )
+
+        totals_entry = totals.setdefault(
+            price_quote.currency,
+            {"charge": Decimal("0"), "cost": Decimal("0"), "margin": Decimal("0"), "has_cost": True},
+        )
+        totals_entry["charge"] += charge_amount
+        if cost_amount is not None and margin_amount is not None:
+            totals_entry["cost"] += cost_amount
+            totals_entry["margin"] += margin_amount
+        else:
+            totals_entry["has_cost"] = False
+
+    totals_by_currency: Dict[str, BillingTotals] = {}
+    for currency, data in totals.items():
+        totals_by_currency[currency] = BillingTotals(
+            charge_amount=data["charge"],
+            cost_amount=data["cost"] if data.get("has_cost", False) else None,
+            margin_amount=data["margin"] if data.get("has_cost", False) else None,
+        )
+
+    return BillingCalculationResult(
+        client_id=client_id,
+        totals_by_currency=totals_by_currency,
+        items=items,
+    )
 
 
 async def build_billing_summary_for_date(billing_date: date) -> None:
