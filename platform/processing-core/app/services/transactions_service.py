@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from neft_shared.logging_setup import get_logger
 
 from app import services
+from app.models.account import AccountType
 from app.services import risk_adapter
 from app.models.card import Card
 from app.models.client import Client
@@ -17,6 +18,9 @@ from app.models.merchant import Merchant
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
+from app.models.ledger_entry import LedgerDirection
+from app.repositories.accounts_repository import AccountsRepository
+from app.repositories.ledger_repository import LedgerRepository
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
 from app.services.risk_adapter import (
     OperationContext,
@@ -40,6 +44,10 @@ class InvalidOperationState(TransactionException):
 
 class AmountExceeded(TransactionException):
     pass
+
+
+class PostingFailed(TransactionException):
+    """Raised when posting fails and transaction must be marked as error."""
 
 
 RISK_ENGINE_OVERRIDE = None
@@ -115,6 +123,48 @@ def _fetch_operation_by_ext_id(db: Session, ext_operation_id: str) -> Operation 
         .order_by(Operation.created_at.desc())
         .first()
     )
+
+
+def _perform_posting(db: Session, *, operation: Operation) -> dict:
+    """Create ledger entries for an operation and return posting metadata."""
+
+    accounts_repo = AccountsRepository(db)
+    ledger_repo = LedgerRepository(db)
+
+    debit_account = accounts_repo.get_or_create_account(
+        client_id=operation.client_id,
+        card_id=operation.card_id,
+        currency=operation.currency,
+        account_type=AccountType.CLIENT_MAIN,
+    )
+    credit_account = accounts_repo.get_or_create_account(
+        client_id=operation.merchant_id,
+        currency=operation.currency,
+        account_type=AccountType.TECHNICAL,
+    )
+
+    debit_entry = ledger_repo.post_entry(
+        account_id=debit_account.id,
+        operation_id=operation.id,
+        direction=LedgerDirection.DEBIT,
+        amount=operation.amount,
+        currency=operation.currency,
+        auto_commit=False,
+    )
+
+    credit_entry = ledger_repo.post_entry(
+        account_id=credit_account.id,
+        operation_id=operation.id,
+        direction=LedgerDirection.CREDIT,
+        amount=operation.amount,
+        currency=operation.currency,
+        auto_commit=False,
+    )
+
+    return {
+        "accounts": [debit_account.id, credit_account.id],
+        "entries": [debit_entry.id, credit_entry.id],
+    }
 
 
 def _validate_references(
@@ -212,6 +262,8 @@ def authorize_operation(
     tx_type: str | None = None,
     client_group_id: str | None = None,
     card_group_id: str | None = None,
+    risk_evaluation: RiskEvaluation | None = None,
+    simulate_posting_error: bool = False,
 ) -> Operation:
     existing = _fetch_operation_by_ext_id(db, ext_operation_id)
     if existing:
@@ -288,7 +340,7 @@ def authorize_operation(
         created_at=datetime.now(timezone.utc),
         metadata={"client_group_id": client_group_id, "card_group_id": card_group_id},
     )
-    risk_evaluation = _evaluate_risk(risk_context, db=db)
+    risk_evaluation = risk_evaluation or _evaluate_risk(risk_context, db=db)
     risk_level = _to_risk_level(risk_evaluation.decision.level)
 
     strict_high = os.getenv("RISK_HIGH_STRICT_MODE", "false").lower() in {"1", "true", "yes"}
@@ -330,13 +382,12 @@ def authorize_operation(
         )
 
     risk_payload = risk_evaluation.to_payload()
-
     operation = Operation(
         id=None,
         ext_operation_id=ext_operation_id,
         operation_id=ext_operation_id,
         operation_type=OperationType.AUTH,
-        status=OperationStatus.AUTHORIZED,
+        status=OperationStatus.APPROVED,
         merchant_id=merchant_id,
         terminal_id=terminal_id,
         client_id=client_id,
@@ -370,6 +421,33 @@ def authorize_operation(
     db.add(operation)
     db.commit()
     db.refresh(operation)
+
+    try:
+        if simulate_posting_error:
+            raise RuntimeError("POSTING_SIMULATED_FAILURE")
+        posting_meta = _perform_posting(db, operation=operation)
+        operation.accounts = posting_meta.get("accounts")
+        operation.posting_result = posting_meta
+        operation.status = OperationStatus.POSTED
+        db.add(operation)
+        db.commit()
+        db.refresh(operation)
+    except Exception as exc:
+        db.rollback()
+        try:
+            failing = _fetch_operation_by_ext_id(db, ext_operation_id)
+            if failing:
+                failing.status = OperationStatus.ERROR
+                failing.response_code = "POSTING_ERROR"
+                failing.response_message = str(exc)[:255]
+                db.add(failing)
+                db.commit()
+                db.refresh(failing)
+                operation = failing
+        except Exception:  # pragma: no cover - best effort update
+            db.rollback()
+        raise PostingFailed("POSTING_FAILED") from exc
+
     try:
         services.audit_log(
             db,
@@ -380,6 +458,7 @@ def authorize_operation(
                 "limit": limit_result.model_dump(),
                 "risk": risk_payload,
                 "risk_result": risk_level.value,
+                "posting": posting_meta,
             },
         )
     except Exception:  # pragma: no cover
@@ -397,7 +476,12 @@ def commit_operation(
     operation = _fetch_operation_by_ext_id(db, operation_id)
     if operation is None:
         raise InvalidOperationState("OPERATION_NOT_FOUND")
-    if operation.status not in {OperationStatus.AUTHORIZED, OperationStatus.HELD}:
+    if operation.status not in {
+        OperationStatus.AUTHORIZED,
+        OperationStatus.HELD,
+        OperationStatus.POSTED,
+        OperationStatus.APPROVED,
+    }:
         raise InvalidOperationState("INVALID_STATE")
 
     commit_amount = amount if amount is not None else operation.amount
@@ -422,7 +506,12 @@ def reverse_operation(db: Session, *, operation_id: str, reason: str | None = No
     operation = _fetch_operation_by_ext_id(db, operation_id)
     if operation is None:
         raise InvalidOperationState("OPERATION_NOT_FOUND")
-    if operation.status not in {OperationStatus.AUTHORIZED, OperationStatus.HELD}:
+    if operation.status not in {
+        OperationStatus.AUTHORIZED,
+        OperationStatus.HELD,
+        OperationStatus.POSTED,
+        OperationStatus.APPROVED,
+    }:
         raise InvalidOperationState("INVALID_STATE")
 
     operation.status = OperationStatus.REVERSED

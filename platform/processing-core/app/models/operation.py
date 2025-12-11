@@ -35,13 +35,16 @@ class OperationType(str, Enum):
 
 class OperationStatus(str, Enum):
     PENDING = "PENDING"
+    APPROVED = "APPROVED"
     AUTHORIZED = "AUTHORIZED"
     HELD = "HELD"
     COMPLETED = "COMPLETED"
+    POSTED = "POSTED"
     REVERSED = "REVERSED"
     REFUNDED = "REFUNDED"
     DECLINED = "DECLINED"
     CANCELLED = "CANCELLED"
+    ERROR = "ERROR"
     # Legacy/status aliases
     CAPTURED = "CAPTURED"
     OPEN = "OPEN"
@@ -123,6 +126,9 @@ class Operation(Base):
     product_code = Column(String(32), nullable=True)
     product_category = Column(String(32), nullable=True, index=True)
     tx_type = Column(String(16), nullable=True, index=True)
+
+    accounts = Column(JSON, nullable=True)
+    posting_result = Column(JSON, nullable=True)
 
     risk_score = Column(Float, nullable=True)
     risk_result = Column(SAEnum(RiskResult), nullable=True)

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.operations import OperationSchema
+from app.models.operation import OperationStatus
 from app.schemas.transactions import (
     AuthorizeRequest,
     AuthorizeResponse,
@@ -70,7 +71,11 @@ def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> Authoriz
         card_group_id=body.card_group_id,
     )
     return AuthorizeResponse(
-        approved=operation.status == "AUTHORIZED",
+        approved=operation.status in {
+            OperationStatus.AUTHORIZED,
+            OperationStatus.APPROVED,
+            OperationStatus.POSTED,
+        },
         operation_id=operation.operation_id,
         status=operation.status,
         auth_code=operation.auth_code,
