@@ -25,6 +25,7 @@ from .groups import (  # noqa: F401
 from .account import Account, AccountBalance  # noqa: F401
 from .ledger_entry import LedgerEntry  # noqa: F401
 from .contract_limits import TariffPlan, LimitConfig, LimitScope, LimitType  # noqa: F401
+from .external_request_log import ExternalRequestLog  # noqa: F401
 
 __all__ = [
     "Client",
@@ -53,4 +54,5 @@ __all__ = [
     "LimitScope",
     "LimitType",
     "Partner",
+    "ExternalRequestLog",
 ]

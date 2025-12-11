@@ -16,6 +16,7 @@ from app.models.terminal import Terminal
 from app.schemas.intake import IntakeAuthorizeRequest, IntakeResponse
 from app.services import transactions_service
 from app.services.integration_metrics import metrics
+from app.services.integration_monitoring import log_external_request
 
 logger = get_logger(__name__)
 
@@ -148,6 +149,37 @@ def authorize_intake(db: Session, request: Request, payload: IntakeAuthorizeRequ
         raise
 
     metrics.mark_response(operation.status.value)
+    latency_ms = (time.perf_counter() - normalized_started) * 1000
+    metrics.observe_request_latency(partner.id, latency_ms)
+
+    reason_category: str | None = None
+    risk_code: str | None = getattr(operation.risk_result, "value", None)
+    limit_code: str | None = None
+    if operation.response_code and "LIMIT" in operation.response_code:
+        limit_code = operation.response_code
+    if risk_code:
+        reason_category = "RISK"
+    elif limit_code:
+        reason_category = "LIMIT"
+    elif operation.status in {OperationStatus.ERROR}:
+        reason_category = "TECHNICAL"
+
+    log_external_request(
+        db,
+        partner_id=partner.id,
+        azs_id=payload.azs_id,
+        terminal_id=terminal.id,
+        operation_id=str(operation.operation_id),
+        request_type="AUTHORIZE",
+        amount=payload.amount,
+        liters=payload.liters,
+        currency=payload.currency,
+        status="APPROVED" if operation.status in {OperationStatus.POSTED, OperationStatus.AUTHORIZED, OperationStatus.APPROVED} else "DECLINED" if operation.status == OperationStatus.DECLINED else "ERROR",
+        reason_category=reason_category,
+        risk_code=risk_code,
+        limit_code=limit_code,
+        latency_ms=latency_ms,
+    )
     logger.info(
         "intake_result",
         extra={
