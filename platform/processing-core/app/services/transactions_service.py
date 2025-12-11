@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
@@ -12,6 +13,8 @@ from neft_shared.logging_setup import get_logger
 from app import services
 from app.models.account import AccountType
 from app.services import risk_adapter
+from app.services.limits_service import check_contractual_limits
+from app.services.posting_metrics import metrics as posting_metrics
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
@@ -201,6 +204,7 @@ def decline_operation(
     currency: str,
     client_id: str,
     card_id: str,
+    tariff_id: str | None = None,
     terminal_id: str,
     merchant_id: str,
     product_id: str | None = None,
@@ -222,6 +226,7 @@ def decline_operation(
         terminal_id=terminal_id,
         client_id=client_id,
         card_id=card_id,
+        tariff_id=tariff_id,
         product_id=product_id,
         product_type=product_type,
         amount=amount,
@@ -237,6 +242,10 @@ def decline_operation(
     db.commit()
     db.refresh(op)
     try:
+        posting_metrics.mark_status(op.status.value)
+    except Exception:  # pragma: no cover - metrics best effort
+        logger.debug("Failed to record status metric")
+    try:
         services.audit_log(db, "system", "TX_DECLINE", op.operation_id, {"reason": reason})
     except Exception:  # pragma: no cover - best effort
         logger.exception("Failed to store audit log for decline")
@@ -250,6 +259,7 @@ def authorize_operation(
     card_id: str,
     terminal_id: str,
     merchant_id: str,
+    tariff_id: str | None = None,
     product_id: str | None,
     product_type: str | None,
     amount: int,
@@ -286,6 +296,7 @@ def authorize_operation(
             currency=currency,
             client_id=client_id,
             card_id=card_id,
+            tariff_id=tariff_id,
             terminal_id=terminal_id,
             merchant_id=merchant_id,
             product_id=product_id,
@@ -316,6 +327,7 @@ def authorize_operation(
             currency=currency,
             client_id=client_id,
             card_id=card_id,
+            tariff_id=tariff_id,
             terminal_id=terminal_id,
             merchant_id=merchant_id,
             product_id=product_id,
@@ -382,6 +394,50 @@ def authorize_operation(
         )
 
     risk_payload = risk_evaluation.to_payload()
+
+    contract_limits = check_contractual_limits(
+        db,
+        client_id=client_id,
+        card_id=card_id,
+        amount=amount,
+        quantity=quantity,
+        tariff_id=tariff_id,
+    )
+    if not contract_limits.approved:
+        posting_metrics.inc_contractual_decline()
+
+        violation_payload = {
+            "violations": [
+                {
+                    "limit_id": c.limit.id,
+                    "limit_type": getattr(c.limit.limit_type, "value", str(c.limit.limit_type)),
+                    "scope": getattr(c.limit.scope, "value", str(c.limit.scope)),
+                    "subject": c.limit.subject_ref,
+                    "used": c.used,
+                    "projected": c.projected,
+                    "value": c.limit.value,
+                    "window_start": c.window_start.isoformat(),
+                }
+                for c in contract_limits.violations
+            ]
+        }
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason="LIMIT_EXCEEDED_CONTRACT",
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            limit_payload=violation_payload,
+            risk_payload=risk_payload,
+            risk_result=risk_level,
+        )
     operation = Operation(
         id=None,
         ext_operation_id=ext_operation_id,
@@ -392,6 +448,7 @@ def authorize_operation(
         terminal_id=terminal_id,
         client_id=client_id,
         card_id=card_id,
+        tariff_id=tariff_id,
         product_id=product_id,
         amount=amount,
         amount_settled=0,
@@ -422,6 +479,7 @@ def authorize_operation(
     db.commit()
     db.refresh(operation)
 
+    posting_started = time.perf_counter()
     try:
         if simulate_posting_error:
             raise RuntimeError("POSTING_SIMULATED_FAILURE")
@@ -432,7 +490,36 @@ def authorize_operation(
         db.add(operation)
         db.commit()
         db.refresh(operation)
+        latency_ms = (time.perf_counter() - posting_started) * 1000
+        posting_metrics.observe_posting(True, latency_ms)
+        posting_metrics.mark_status(operation.status.value)
+        logger.info(
+            "posting_success",
+            extra={
+                "operation_id": operation.operation_id,
+                "latency_ms": latency_ms,
+                "client_id": client_id,
+                "card_id": card_id,
+                "terminal_id": terminal_id,
+                "merchant_id": merchant_id,
+            },
+        )
     except Exception as exc:
+        latency_ms = (time.perf_counter() - posting_started) * 1000
+        posting_metrics.observe_posting(False, latency_ms)
+        posting_metrics.mark_status(OperationStatus.ERROR.value)
+        logger.error(
+            "posting_failed",
+            extra={
+                "operation_id": ext_operation_id,
+                "error": str(exc),
+                "latency_ms": latency_ms,
+                "client_id": client_id,
+                "card_id": card_id,
+                "terminal_id": terminal_id,
+                "merchant_id": merchant_id,
+            },
+        )
         db.rollback()
         try:
             failing = _fetch_operation_by_ext_id(db, ext_operation_id)

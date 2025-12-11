@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from enum import Enum
+from typing import Optional
+
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
+
+from app.db import Base
+
+
+class TariffPlan(Base):
+    """Represents a financial tariff/plan with customizable parameters."""
+
+    __tablename__ = "tariff_plans"
+
+    id = Column(String(64), primary_key=True)
+    name = Column(String(255), nullable=False, unique=True, index=True)
+    params = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class LimitScope(str, Enum):
+    CLIENT = "CLIENT"
+    CARD = "CARD"
+    TARIFF = "TARIFF"
+
+
+class LimitType(str, Enum):
+    DAILY_VOLUME = "DAILY_VOLUME"
+    DAILY_AMOUNT = "DAILY_AMOUNT"
+    MONTHLY_AMOUNT = "MONTHLY_AMOUNT"
+    CREDIT_LIMIT = "CREDIT_LIMIT"
+
+
+class LimitWindow(str, Enum):
+    DAY = "DAY"
+    MONTH = "MONTH"
+
+
+class LimitConfig(Base):
+    """Contractual limits applied per client/card/tariff independent from risk DSL."""
+
+    __tablename__ = "limit_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(SAEnum(LimitScope), nullable=False, index=True)
+    subject_ref = Column(String(64), nullable=False, index=True)
+    limit_type = Column(SAEnum(LimitType), nullable=False, index=True)
+    value = Column(BigInteger, nullable=False)
+    window = Column(SAEnum(LimitWindow), nullable=False, default=LimitWindow.DAY)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    tariff_plan_id = Column(String(64), ForeignKey("tariff_plans.id"), nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug only
+        return f"<LimitConfig id={self.id} scope={self.scope} subject={self.subject_ref} type={self.limit_type}>"

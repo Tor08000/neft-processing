@@ -92,6 +92,7 @@ class Operation(Base):
     terminal_id = Column(String(64), index=True, nullable=False)
     client_id = Column(String(64), index=True, nullable=False)
     card_id = Column(String(64), index=True, nullable=False)
+    tariff_id = Column(String(64), nullable=True, index=True)
     product_id = Column(String(64), nullable=True)
 
     amount_original = Column("amount", BigInteger, nullable=False)
