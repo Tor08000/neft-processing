@@ -45,13 +45,15 @@ EXPECTED_AUDIENCE = "neft-admin"
 @pytest.fixture(autouse=True)
 def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
     try:
-        from app.services import admin_auth
+        from app.services import admin_auth, client_auth
     except ModuleNotFoundError:
         return
 
     monkeypatch.setenv("ADMIN_PUBLIC_KEY", rsa_keys["public"])
-    monkeypatch.setattr(admin_auth, "_cached_public_key", None, raising=False)
-    monkeypatch.setattr(admin_auth, "_public_key_cached_at", 0.0, raising=False)
+    monkeypatch.setenv("CLIENT_PUBLIC_KEY", rsa_keys["public"])
+    for module in (admin_auth, client_auth):
+        monkeypatch.setattr(module, "_cached_public_key", None, raising=False)
+        monkeypatch.setattr(module, "_public_key_cached_at", 0.0, raising=False)
 
     from app import services
     from app.api.dependencies.admin import require_admin_user
@@ -67,7 +69,13 @@ def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
 
 @pytest.fixture
 def make_jwt(rsa_keys: dict):
-    def _make_jwt(roles=("ADMIN",), minutes_valid: int = 60, sub: str = "user-1"):
+    def _make_jwt(
+        roles=("ADMIN",),
+        minutes_valid: int = 60,
+        sub: str = "user-1",
+        client_id: str | None = None,
+        extra: dict | None = None,
+    ):
         payload = {
             "sub": sub,
             "roles": list(roles),
@@ -75,6 +83,12 @@ def make_jwt(rsa_keys: dict):
             "aud": EXPECTED_AUDIENCE,
             "iss": EXPECTED_ISSUER,
         }
+        if client_id:
+            payload["client_id"] = client_id
+        if roles and len(roles) == 1:
+            payload["role"] = roles[0]
+        if extra:
+            payload.update(extra)
         return jwt.encode(payload, rsa_keys["private"], algorithm="RS256")
 
     return _make_jwt
@@ -93,3 +107,13 @@ def user_token(make_jwt):
 @pytest.fixture
 def admin_auth_headers(admin_token: str):
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture
+def client_token(make_jwt):
+    return make_jwt(roles=("CLIENT_USER",), client_id="client-1")
+
+
+@pytest.fixture
+def client_auth_headers(client_token: str):
+    return {"Authorization": f"Bearer {client_token}"}

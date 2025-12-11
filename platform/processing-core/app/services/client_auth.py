@@ -16,6 +16,8 @@ PUBLIC_KEY_CACHE_TTL = 300
 EXPECTED_ISSUER = "neft-auth"
 EXPECTED_AUDIENCE = "neft-admin"
 
+ALLOWED_CLIENT_ROLES = {"CLIENT_ADMIN", "CLIENT_USER"}
+
 _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
 
@@ -27,15 +29,24 @@ def get_public_key(force_refresh: bool = False) -> str:
     if not force_refresh and _cached_public_key and now - _public_key_cached_at < PUBLIC_KEY_CACHE_TTL:
         return _cached_public_key
 
+    fallback_key = os.getenv("CLIENT_PUBLIC_KEY") or os.getenv("ADMIN_PUBLIC_KEY")
+    if fallback_key and not force_refresh and not _cached_public_key:
+        _cached_public_key = fallback_key
+        _public_key_cached_at = now
+        return fallback_key
+
     try:
         response = requests.get(PUBLIC_KEY_URL, timeout=5)
         response.raise_for_status()
+        _cached_public_key = response.text
+        _public_key_cached_at = now
+        return _cached_public_key
     except requests.RequestException as exc:  # pragma: no cover - network errors
+        if fallback_key:
+            _cached_public_key = fallback_key
+            _public_key_cached_at = now
+            return fallback_key
         raise HTTPException(status_code=503, detail="Unable to fetch public key") from exc
-
-    _cached_public_key = response.text
-    _public_key_cached_at = now
-    return _cached_public_key
 
 
 def _get_bearer_token(request: Request) -> str:
@@ -75,10 +86,19 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
             raise HTTPException(status_code=401, detail="Invalid token")
 
     roles = payload.get("roles") or []
+    role = payload.get("role") or next((r for r in roles if r in ALLOWED_CLIENT_ROLES), None)
     subject_type = payload.get("subject_type")
-    if "CLIENT_USER" not in roles and subject_type != "client_user":
+    if role not in ALLOWED_CLIENT_ROLES and subject_type != "client_user":
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    client_id = payload.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="Missing client context")
+
+    payload["user_id"] = payload.get("sub")
+    if role:
+        payload["role"] = role
+    payload["client_id"] = client_id
     return payload
 
 
