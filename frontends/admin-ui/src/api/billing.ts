@@ -1,5 +1,11 @@
 import { apiGet, apiPost } from "./client";
-import { BillingSummaryItem } from "../types/billing";
+import type {
+  BillingSummaryItem,
+  Invoice,
+  InvoiceStatus,
+  TariffPlan,
+  TariffPrice,
+} from "../types/billing";
 
 export async function fetchBillingSummary(params: {
   date_from?: string;
@@ -13,4 +19,47 @@ export async function fetchBillingSummary(params: {
 
 export async function finalizeBillingSummary(id: string): Promise<BillingSummaryItem> {
   return apiPost(`/api/v1/admin/billing/summary/${id}/finalize`);
+}
+
+export async function fetchTariffs(params?: { limit?: number; offset?: number }) {
+  return apiGet<{ items: TariffPlan[]; total: number; limit: number; offset: number }>(
+    "/api/v1/admin/billing/tariffs",
+    params,
+  );
+}
+
+export async function fetchTariff(tariffId: string): Promise<TariffPlan> {
+  return apiGet(`/api/v1/admin/billing/tariffs/${tariffId}`);
+}
+
+export async function fetchTariffPrices(tariffId: string): Promise<{ items: TariffPrice[] }> {
+  return apiGet(`/api/v1/admin/billing/tariffs/${tariffId}/prices`);
+}
+
+export async function upsertTariffPrice(tariffId: string, payload: Partial<TariffPrice>) {
+  return apiPost<TariffPrice>(`/api/v1/admin/billing/tariffs/${tariffId}/prices`, payload);
+}
+
+export async function fetchInvoices(params?: {
+  client_id?: string;
+  period_from?: string;
+  period_to?: string;
+  status?: InvoiceStatus;
+}) {
+  return apiGet<{ items: Invoice[]; total: number; limit: number; offset: number }>(
+    "/api/v1/admin/billing/invoices",
+    params,
+  );
+}
+
+export async function fetchInvoice(invoiceId: string): Promise<Invoice> {
+  return apiGet(`/api/v1/admin/billing/invoices/${invoiceId}`);
+}
+
+export async function generateInvoices(payload: { period_from: string; period_to: string }) {
+  return apiPost<{ created_ids: string[] }>("/api/v1/admin/billing/invoices/generate", payload);
+}
+
+export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStatus) {
+  return apiPost<Invoice>(`/api/v1/admin/billing/invoices/${invoiceId}/status`, { status });
 }
