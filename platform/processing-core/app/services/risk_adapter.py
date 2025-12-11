@@ -15,6 +15,7 @@ import httpx
 from neft_shared.logging_setup import get_logger
 
 from app.services import risk_rules
+from app.repositories.risk_rules_repository import RiskRulesRepository
 
 logger = get_logger(__name__)
 
@@ -40,6 +41,7 @@ DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
 }
 AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/v1/ai/score")
 AI_SCORE_TIMEOUT_SECONDS = float(os.getenv("AI_SCORE_TIMEOUT_SECONDS", "3.0"))
+RISK_RULES_SOURCE = os.getenv("RISK_RULES_SOURCE", "CODE").upper()
 
 
 @dataclass
@@ -289,8 +291,53 @@ def _rules_to_decision(rules_result: RiskResult) -> RiskDecision:
     )
 
 
+def _load_rules_from_db(
+    context: OperationContext, db
+) -> list[risk_rules.RuleDefinition]:
+    """Load applicable rules for the context from the database.
+
+    The selection aggregates global rules with scoped ones for the client, card,
+    and tariff (when provided). Duplicates by name are ignored and the result is
+    sorted by priority to preserve deterministic execution order.
+    """
+
+    if db is None:
+        return []
+
+    repository = RiskRulesRepository(db)
+    scoped_targets: list[tuple[risk_rules.RuleScope, str | None]] = [
+        (risk_rules.RuleScope.GLOBAL, None),
+        (risk_rules.RuleScope.CLIENT, str(context.client_id)),
+        (risk_rules.RuleScope.CARD, str(context.card_id)),
+    ]
+    if context.tariff_id:
+        scoped_targets.append((risk_rules.RuleScope.TARIFF, str(context.tariff_id)))
+
+    rules: list[risk_rules.RuleDefinition] = []
+    seen_names: set[str] = set()
+    for scope, subject_ref in scoped_targets:
+        for definition in repository.get_active_rules_by_scope(scope, subject_ref):
+            if definition.name in seen_names:
+                continue
+            seen_names.add(definition.name)
+            rules.append(definition)
+
+    return sorted(rules, key=lambda rule: rule.priority)
+
+
 async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
-    rules_result = await risk_rules.evaluate_rules(context, db=db)
+    rules_from_db: list[risk_rules.RuleDefinition] | None = None
+    if RISK_RULES_SOURCE == "DB":
+        loaded_rules = _load_rules_from_db(context, db)
+        if loaded_rules:
+            rules_from_db = loaded_rules
+        else:
+            logger.info(
+                "Risk rules source is DB but no persisted rules found; falling back to code defaults",
+                extra={"client_id": str(context.client_id)},
+            )
+
+    rules_result = await risk_rules.evaluate_rules(context, db=db, rules=rules_from_db)
     rules_decision = _rules_to_decision(rules_result)
     combined_flags = dict(rules_result.flags)
 
