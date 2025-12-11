@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.risk_rule import RiskRule, RiskRuleScope
+from app.models.risk_rule import RiskRule, RiskRuleAuditAction, RiskRuleScope
 from app.repositories.risk_rules_repository import RiskRulesRepository
 from app.schemas.admin.risk_rules import (
     RiskRuleCreate,
@@ -63,15 +64,22 @@ def _validate_config(config: RuleConfig) -> None:
         )
 
 
+def _extract_actor(token: dict | None) -> str | None:
+    if not token:
+        return None
+    return token.get("email") or token.get("sub") or token.get("user_id")
+
+
 def _with_validated_config(
     operation: Callable[[RiskRulesRepository, RuleConfig], RiskRule],
     *,
     db: Session,
     body: RiskRuleCreate | RiskRuleUpdate,
+    performed_by: str | None,
 ) -> RiskRule:
     config = RuleConfig.model_validate(body.dsl.model_dump())
     _validate_config(config)
-    repository = RiskRulesRepository(db)
+    repository = RiskRulesRepository(db, performed_by=performed_by)
     try:
         return operation(repository, config)
     except NoResultFound:
@@ -114,48 +122,97 @@ def get_risk_rule(rule_id: int, db: Session = Depends(get_db)) -> RiskRuleRead:
 
 
 @router.post("/rules", response_model=RiskRuleRead, status_code=status.HTTP_201_CREATED)
-def create_risk_rule(body: RiskRuleCreate, db: Session = Depends(get_db)) -> RiskRuleRead:
+def create_risk_rule(
+    body: RiskRuleCreate,
+    db: Session = Depends(get_db),
+    admin_token: dict = Depends(require_admin_user),
+) -> RiskRuleRead:
+    actor = _extract_actor(admin_token)
     rule = _with_validated_config(
-        lambda repo, cfg: repo.create_rule(cfg, description=body.description),
+        lambda repo, cfg: repo.create_rule(
+            cfg,
+            description=body.description,
+            performed_by=repo.performed_by,
+        ),
         db=db,
         body=body,
+        performed_by=actor,
     )
     return _serialize_rule(rule)
 
 
 @router.put("/rules/{rule_id}", response_model=RiskRuleRead)
 def update_risk_rule(
-    rule_id: int, body: RiskRuleUpdate, db: Session = Depends(get_db)
+    rule_id: int,
+    body: RiskRuleUpdate,
+    db: Session = Depends(get_db),
+    admin_token: dict = Depends(require_admin_user),
 ) -> RiskRuleRead:
-    def _update(repo: RiskRulesRepository, cfg: RuleConfig) -> RiskRule:
-        return repo.update_rule(rule_id, cfg, description=body.description)
+    actor = _extract_actor(admin_token)
 
-    rule = _with_validated_config(_update, db=db, body=body)
+    def _update(repo: RiskRulesRepository, cfg: RuleConfig) -> RiskRule:
+        return repo.update_rule(
+            rule_id,
+            cfg,
+            description=body.description,
+            performed_by=repo.performed_by,
+        )
+
+    rule = _with_validated_config(
+        _update,
+        db=db,
+        body=body,
+        performed_by=actor,
+    )
     return _serialize_rule(rule)
 
 
 @router.post("/rules/{rule_id}/enable", response_model=RiskRuleRead)
-def enable_risk_rule(rule_id: int, db: Session = Depends(get_db)) -> RiskRuleRead:
+def enable_risk_rule(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    admin_token: dict = Depends(require_admin_user),
+) -> RiskRuleRead:
+    actor = _extract_actor(admin_token)
     rule = _get_rule_or_404(db, rule_id)
     body = RiskRuleUpdate(description=rule.description, dsl=RuleConfig.model_validate(rule.dsl_payload))
     body.dsl.enabled = True
     updated = _with_validated_config(
-        lambda repo, cfg: repo.update_rule(rule_id, cfg, description=body.description),
+        lambda repo, cfg: repo.update_rule(
+            rule_id,
+            cfg,
+            description=body.description,
+            performed_by=repo.performed_by,
+            audit_action=RiskRuleAuditAction.ENABLE,
+        ),
         db=db,
         body=body,
+        performed_by=actor,
     )
     return _serialize_rule(updated)
 
 
 @router.post("/rules/{rule_id}/disable", response_model=RiskRuleRead)
-def disable_risk_rule(rule_id: int, db: Session = Depends(get_db)) -> RiskRuleRead:
+def disable_risk_rule(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    admin_token: dict = Depends(require_admin_user),
+) -> RiskRuleRead:
+    actor = _extract_actor(admin_token)
     rule = _get_rule_or_404(db, rule_id)
     body = RiskRuleUpdate(description=rule.description, dsl=RuleConfig.model_validate(rule.dsl_payload))
     body.dsl.enabled = False
     updated = _with_validated_config(
-        lambda repo, cfg: repo.update_rule(rule_id, cfg, description=body.description),
+        lambda repo, cfg: repo.update_rule(
+            rule_id,
+            cfg,
+            description=body.description,
+            performed_by=repo.performed_by,
+            audit_action=RiskRuleAuditAction.DISABLE,
+        ),
         db=db,
         body=body,
+        performed_by=actor,
     )
     return _serialize_rule(updated)
 

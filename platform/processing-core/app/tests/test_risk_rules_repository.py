@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import inspect
 
 from app.db import Base, SessionLocal, engine
+from app.models.risk_rule import RiskRuleAudit, RiskRuleAuditAction
 from app.repositories.risk_rules_repository import RiskRulesRepository
 from app.services.risk_rules import (
     MetricType,
@@ -51,6 +52,7 @@ def test_migration_tables_created():
     inspector = inspect(engine)
     assert "risk_rules" in inspector.get_table_names()
     assert "risk_rule_versions" in inspector.get_table_names()
+    assert "risk_rule_audits" in inspector.get_table_names()
 
     indexes = inspector.get_indexes("risk_rules")
     index_names = {idx["name"] for idx in indexes}
@@ -139,3 +141,42 @@ def test_save_many(repo: RiskRulesRepository):
         "r1",
         "r2",
     }
+
+
+def test_audit_logged_on_changes(repo: RiskRulesRepository):
+    base = repo.create_rule(
+        _make_basic_rule("audited", RuleScope.GLOBAL),
+        performed_by="admin@example.com",
+    )
+
+    audits = repo.db.query(RiskRuleAudit).order_by(RiskRuleAudit.id).all()
+    assert len(audits) == 1
+    assert audits[0].action == RiskRuleAuditAction.CREATE
+    assert audits[0].performed_by == "admin@example.com"
+    assert audits[0].old_value is None
+    assert audits[0].new_value["name"] == "audited"
+
+    updated = repo.update_rule(
+        base.id,
+        RuleConfig(
+            name="audited-updated",
+            scope=RuleScope.GLOBAL,
+            subject_id=None,
+            selector=SelectorConfig(),
+            metric=MetricType.ALWAYS,
+            value=2,
+            action=RuleAction.HIGH,
+            priority=5,
+            enabled=False,
+        ),
+        performed_by="admin@example.com",
+    )
+
+    assert updated.enabled is False
+    audits = repo.db.query(RiskRuleAudit).order_by(RiskRuleAudit.id).all()
+    assert len(audits) == 2
+    assert audits[1].action == RiskRuleAuditAction.UPDATE
+    assert audits[1].old_value["enabled"] is True
+    assert audits[1].new_value["enabled"] is False
+    assert audits[1].old_value["name"] == "audited"
+    assert audits[1].new_value["name"] == "audited-updated"

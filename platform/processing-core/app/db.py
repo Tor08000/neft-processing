@@ -93,7 +93,11 @@ def init_db() -> None:
         ClientGroup,
         ClientGroupMember,
     )
-    from app.models.risk_rule import RiskRule, RiskRuleVersion  # noqa: F401
+    from app.models.risk_rule import (  # noqa: F401
+        RiskRule,
+        RiskRuleAudit,
+        RiskRuleVersion,
+    )
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
     if str(engine.url).startswith("sqlite"):
