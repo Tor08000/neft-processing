@@ -85,9 +85,23 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
   }
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const url = buildUrl(path);
+    return this.fetcher<T>(url, {
+      method: "PUT",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
 export const apiGet = apiClient.get.bind(apiClient);
 export const apiPost = apiClient.post.bind(apiClient);
+export const apiPut = apiClient.put.bind(apiClient);
 export const apiFetcher = apiClient.fetcher;

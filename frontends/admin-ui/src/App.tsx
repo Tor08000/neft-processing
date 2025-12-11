@@ -9,6 +9,8 @@ import { EditUserPage } from "./pages/EditUserPage";
 import { OperationsListPage } from "./pages/OperationsListPage";
 import { OperationDetailsPage } from "./pages/OperationDetailsPage";
 import { RiskAnalyticsPage } from "./pages/RiskAnalyticsPage";
+import { RiskRulesListPage } from "./pages/RiskRulesListPage";
+import { RiskRuleDetailsPage } from "./pages/RiskRuleDetailsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export function App() {
@@ -26,6 +28,8 @@ export function App() {
             <Route path="/operations" element={<OperationsListPage />} />
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/analytics/risk" element={<RiskAnalyticsPage />} />
+            <Route path="/risk/rules" element={<RiskRulesListPage />} />
+            <Route path="/risk/rules/:id" element={<RiskRuleDetailsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
