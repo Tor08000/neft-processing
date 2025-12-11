@@ -15,6 +15,7 @@ from .clearing import Clearing  # noqa: F401
 from .clearing_batch import ClearingBatch  # noqa: F401
 from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
 from .client_portal import ClientCard, ClientLimit, ClientOperation  # noqa: F401
+from .partner import Partner  # noqa: F401
 from .groups import (  # noqa: F401
     CardGroup,
     CardGroupMember,
@@ -44,11 +45,12 @@ __all__ = [
     "RiskRuleAudit",
     "RiskRuleAuditAction",
     "RiskRuleVersion",
-    "Account", 
-    "AccountBalance", 
-    "LedgerEntry", 
+    "Account",
+    "AccountBalance",
+    "LedgerEntry",
     "TariffPlan",
     "LimitConfig",
     "LimitScope",
     "LimitType",
+    "Partner",
 ]
