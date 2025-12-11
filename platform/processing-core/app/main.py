@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
 from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
+from app.routers.client_portal import router as client_portal_router
 from app.services.transactions import derive_tx_type
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -297,6 +298,7 @@ if partners_router is not None:
 
 app.include_router(admin_router)
 app.include_router(client_router)
+app.include_router(client_portal_router)
 
 
 # -----------------------------------------------------------------------------

@@ -18,9 +18,16 @@ class Client(Base):
     # Внешний идентификатор (например, ID в твоей CRM или код клиента)
     external_id = Column(String, nullable=True, unique=True)
 
+    # Регистрационные данные клиента
+    inn = Column(String, nullable=True)
+
     # Контактные данные для клиентского портала
     email = Column(String, nullable=True, unique=True)
     full_name = Column(String, nullable=True)
+
+    # Базовая информация по тарифу и контактному менеджеру
+    tariff_plan = Column(String, nullable=True)
+    account_manager = Column(String, nullable=True)
     status = Column(String, nullable=False, server_default="ACTIVE")
 
     # Когда клиент был создан

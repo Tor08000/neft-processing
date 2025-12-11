@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+from decimal import Decimal
 
 
 class ClientUser(BaseModel):
@@ -58,3 +59,73 @@ class DashboardResponse(BaseModel):
     summary: DashboardTotals
     recent_operations: List[ClientOperation]
     limits: List[LimitItem]
+
+
+class ClientProfile(BaseModel):
+    id: str
+    name: str
+    external_id: str | None = None
+    inn: str | None = None
+    tariff_plan: str | None = None
+    account_manager: str | None = None
+    status: str
+
+
+class CardLimit(BaseModel):
+    type: str
+    value: int
+    window: str
+
+
+class ClientCard(BaseModel):
+    id: str
+    pan_masked: str | None = None
+    status: str
+    limits: List[CardLimit] = Field(default_factory=list)
+
+
+class ClientCardsResponse(BaseModel):
+    items: List[ClientCard]
+
+
+class OperationSummary(BaseModel):
+    id: str
+    created_at: datetime
+    status: str
+    amount: int
+    currency: str = "RUB"
+    card_id: str
+    product_type: str | None = None
+    merchant_id: str | None = None
+    terminal_id: str | None = None
+    reason: str | None = None
+
+
+class OperationDetails(OperationSummary):
+    limit_profile_id: str | None = None
+    risk_result: str | None = None
+
+
+class BalanceItem(BaseModel):
+    currency: str
+    current: Decimal
+    available: Decimal
+
+
+class BalancesResponse(BaseModel):
+    items: List[BalanceItem]
+
+
+class OperationsPage(BaseModel):
+    items: List[OperationSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class StatementResponse(BaseModel):
+    currency: str
+    start_balance: Decimal
+    end_balance: Decimal
+    credits: Decimal
+    debits: Decimal
