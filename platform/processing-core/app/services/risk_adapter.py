@@ -13,6 +13,7 @@ from uuid import UUID
 
 import httpx
 from neft_shared.logging_setup import get_logger
+from neft_shared.settings import get_settings
 
 from app.services import risk_rules
 from app.repositories.risk_rules_repository import RiskRulesRepository
@@ -41,7 +42,7 @@ DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
 }
 AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/v1/ai/score")
 AI_SCORE_TIMEOUT_SECONDS = float(os.getenv("AI_SCORE_TIMEOUT_SECONDS", "3.0"))
-RISK_RULES_SOURCE = os.getenv("RISK_RULES_SOURCE", "CODE").upper()
+settings = get_settings()
 
 
 @dataclass
@@ -164,6 +165,22 @@ class RiskMetrics:
 
 
 metrics = RiskMetrics()
+
+
+def _is_ai_enabled() -> bool:
+    """Return whether AI risk evaluation is enabled in configuration."""
+
+    value = getattr(settings, "AI_RISK_ENABLED", True)
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _rules_source() -> str:
+    """Return configured rules source (``DB`` or ``CODE``)."""
+
+    value = getattr(settings, "RISK_RULES_SOURCE", "CODE") or "CODE"
+    return str(value).upper()
 
 
 async def _post_score(payload: dict) -> dict:
@@ -327,7 +344,7 @@ def _load_rules_from_db(
 
 async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     rules_from_db: list[risk_rules.RuleDefinition] | None = None
-    if RISK_RULES_SOURCE == "DB":
+    if _rules_source() == "DB":
         loaded_rules = _load_rules_from_db(context, db)
         if loaded_rules:
             rules_from_db = loaded_rules
@@ -340,6 +357,19 @@ async def evaluate_risk(context: OperationContext, db=None) -> RiskEvaluation:
     rules_result = await risk_rules.evaluate_rules(context, db=db, rules=rules_from_db)
     rules_decision = _rules_to_decision(rules_result)
     combined_flags = dict(rules_result.flags)
+
+    experimental_rule_set = getattr(settings, "RISK_EXPERIMENTAL_RULE_SET", "")
+    if experimental_rule_set:
+        combined_flags.setdefault("config", {})["experimental_rule_set"] = experimental_rule_set
+
+    if not _is_ai_enabled():
+        combined_flags["ai_disabled"] = True
+        return RiskEvaluation(
+            decision=rules_decision,
+            score=rules_result.risk_score,
+            source="RULES_ONLY",
+            flags=combined_flags,
+        )
 
     try:
         ai_result = await call_risk_engine(context)

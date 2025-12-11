@@ -22,6 +22,11 @@ class Settings:
     refresh_token_expires_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "15"))
     password_pepper: str = os.getenv("PASSWORD_PEPPER", "dev-pepper")
 
+    # Risk & Rules feature flags
+    AI_RISK_ENABLED: bool = os.getenv("AI_RISK_ENABLED", "true").lower() in {"1", "true", "yes"}
+    RISK_RULES_SOURCE: str = os.getenv("RISK_RULES_SOURCE", "CODE").upper()
+    RISK_EXPERIMENTAL_RULE_SET: str = os.getenv("RISK_EXPERIMENTAL_RULE_SET", "")
+
     @property
     def redis_dsn(self) -> str:
         """Совместимость с более старым кодом, ожидающим REDIS_DSN."""
