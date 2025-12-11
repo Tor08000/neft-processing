@@ -25,6 +25,7 @@ class LedgerRepository:
         currency: str,
         posted_at: datetime | None = None,
         value_date: date | None = None,
+        auto_commit: bool = True,
     ) -> LedgerEntry:
         """Create ledger entry and update account balances."""
 
@@ -61,10 +62,12 @@ class LedgerRepository:
         balance.current_balance = new_balance
         balance.available_balance = new_balance
         balance.updated_at = now
-
-        self.db.commit()
-        self.db.refresh(entry)
-        self.db.refresh(balance)
+        if auto_commit:
+            self.db.commit()
+            self.db.refresh(entry)
+            self.db.refresh(balance)
+        else:
+            self.db.flush()
         return entry
 
     def get_entries(

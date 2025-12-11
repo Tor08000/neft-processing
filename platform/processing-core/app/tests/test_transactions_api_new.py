@@ -49,7 +49,7 @@ def test_authorize_endpoint_success():
     assert resp.status_code == 200
     data = resp.json()
     assert data["approved"] is True
-    assert data["status"] == "AUTHORIZED"
+    assert data["status"] in {"AUTHORIZED", "POSTED"}
     assert data["operation_id"] == "ext-api-1"
 
 

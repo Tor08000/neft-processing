@@ -7,10 +7,12 @@ from app.db import Base, SessionLocal, engine
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
-from app.models.operation import OperationStatus, RiskResult
+from app.models.ledger_entry import LedgerEntry
+from app.models.operation import Operation, OperationStatus, RiskResult
 from app.models.terminal import Terminal
 from app.services.transactions_service import (
     AmountExceeded,
+    PostingFailed,
     authorize_operation,
     commit_operation,
     refund_operation,
@@ -76,10 +78,13 @@ def test_authorize_happy_path(session):
         product_category="FUEL",
     )
 
-    assert op.status == OperationStatus.AUTHORIZED
+    assert op.status == OperationStatus.POSTED
     assert op.auth_code is not None
     assert op.limit_check_result["approved"] is True
     assert op.risk_result in {RiskResult.LOW, RiskResult.MEDIUM}
+    assert op.accounts
+    assert op.posting_result
+    assert session.query(LedgerEntry).count() == 2
 
 
 def test_authorize_limit_failure(session):
@@ -162,4 +167,86 @@ def test_commit_reverse_and_refund(session):
 
     reversed_op = reverse_operation(session, operation_id=fresh_auth.operation_id, reason="manual")
     assert reversed_op.status == OperationStatus.REVERSED
+
+
+def test_hard_decline_stops_posting(session, monkeypatch):
+    client_id = _seed_refs(session)
+    from app.services import transactions_service
+    from app.services import risk_adapter
+
+    def hard_decline(context, db=None):
+        return risk_adapter.RiskEvaluation(
+            decision=risk_adapter.RiskDecision(
+                level=risk_adapter.RiskDecisionLevel.HARD_DECLINE,
+                rules_fired=["hard"],
+                reason_codes=["block"],
+            ),
+            score=1.0,
+            source="test",
+            flags={},
+        )
+
+    monkeypatch.setattr(transactions_service, "call_risk_engine_sync", hard_decline)
+    monkeypatch.setattr(transactions_service, "RISK_ENGINE_OVERRIDE", hard_decline)
+
+    risk_eval = hard_decline(None)
+    op = authorize_operation(
+        session,
+        client_id=client_id,
+        card_id="card-1",
+        terminal_id="t-1",
+        merchant_id="m-1",
+        product_id=None,
+        product_type=None,
+        amount=1_000,
+        currency="RUB",
+        ext_operation_id="ext-hard",
+        risk_evaluation=risk_eval,
+    )
+
+    assert op.status == OperationStatus.DECLINED
+    assert session.query(LedgerEntry).count() == 0
+
+
+def test_posting_failure_rolls_back(session, monkeypatch):
+    client_id = _seed_refs(session)
+    from app.services import transactions_service
+
+    def allow_risk(context, db=None):
+        return transactions_service.risk_adapter.RiskEvaluation(
+            decision=transactions_service.risk_adapter.RiskDecision(
+                level=transactions_service.risk_adapter.RiskDecisionLevel.LOW,
+                rules_fired=[],
+                reason_codes=[],
+            ),
+            score=0.1,
+            source="test",
+            flags={},
+        )
+
+    monkeypatch.setattr(transactions_service, "RISK_ENGINE_OVERRIDE", allow_risk)
+
+    risk_eval = allow_risk(None)
+
+    with pytest.raises(PostingFailed):
+        authorize_operation(
+            session,
+            client_id=client_id,
+            card_id="card-1",
+            terminal_id="t-1",
+            merchant_id="m-1",
+            product_id=None,
+            product_type=None,
+            amount=1_000,
+            currency="RUB",
+            ext_operation_id="ext-fail",
+            risk_evaluation=risk_eval,
+            simulate_posting_error=True,
+        )
+
+    op = session.query(Operation).filter(Operation.operation_id == "ext-fail").first()
+    assert op is not None
+    assert op.status == OperationStatus.ERROR
+    assert op.response_code == "POSTING_ERROR"
+    assert session.query(LedgerEntry).count() == 0
 

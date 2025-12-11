@@ -125,6 +125,8 @@ class OperationSchema(BaseModel):
     risk_score: Optional[float] = None
     risk_result: Optional[str] = None
     risk_payload: Optional[dict] = None
+    accounts: Optional[list[int]] = None
+    posting_result: Optional[dict] = None
 
     @computed_field
     @property
