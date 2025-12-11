@@ -154,6 +154,13 @@ export const RiskAnalyticsPage: React.FC = () => {
               onChange={(e) => setReasonFilter(e.target.value)}
               placeholder="velocity / blacklist ..."
             />
+            <button
+              style={{ marginTop: 6 }}
+              onClick={() => reasonFilter && navigate(`/risk/rules?reason=${encodeURIComponent(reasonFilter)}`)}
+              disabled={!reasonFilter}
+            >
+              Найти правила
+            </button>
           </div>
         </div>
       </Suspense>

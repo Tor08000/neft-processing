@@ -7,6 +7,7 @@ const navItems = [
   { to: "/users", label: "Users" },
   { to: "/operations", label: "Operations" },
   { to: "/analytics/risk", label: "Risk analytics" },
+  { to: "/risk/rules", label: "Risk rules" },
 ];
 
 export const Layout: React.FC = () => {

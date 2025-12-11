@@ -174,11 +174,20 @@ export const OperationDetailsPage: React.FC = () => {
               <div style={{ marginTop: 8 }}>
                 <span className="label">Сработавшие правила</span>
                 <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
-                  {riskRules.map((rule) => (
-                    <li key={rule} style={{ color: "#334155" }}>
-                      {rule}
-                    </li>
-                  ))}
+                  {riskRules.map((rule) => {
+                    const isId = /^\d+$/.test(String(rule));
+                    return (
+                      <li key={rule} style={{ color: "#334155" }}>
+                        {isId ? (
+                          <a href={`/risk/rules/${rule}`} style={{ color: "#2563eb" }}>
+                            {rule}
+                          </a>
+                        ) : (
+                          rule
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
