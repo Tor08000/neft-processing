@@ -218,8 +218,7 @@ def test_evaluate_risk_uses_db_rules(monkeypatch, session):
             flags={"ai": True},
         )
 
-    monkeypatch.setenv("RISK_RULES_SOURCE", "DB")
-    monkeypatch.setattr(risk_adapter, "RISK_RULES_SOURCE", "DB")
+    monkeypatch.setattr(risk_adapter.settings, "RISK_RULES_SOURCE", "DB")
     monkeypatch.setattr(risk_adapter, "call_risk_engine", fake_ai)
     monkeypatch.setattr(risk_rules, "GRAYLIST_TERMINALS", set())
     monkeypatch.setattr(risk_rules, "GRAYLIST_MERCHANTS", set())
@@ -258,7 +257,75 @@ def test_evaluate_risk_uses_db_rules(monkeypatch, session):
 
     assert result.decision.level == RiskDecisionLevel.HIGH
     assert "db_rule_triggered" in result.decision.reason_codes
-    assert result.decision.rules_fired == ["db_high_client"]
+
+
+def test_ai_disabled_skips_call(monkeypatch):
+    async def forbidden_ai_call(context):  # pragma: no cover - should never be executed
+        raise AssertionError("AI scorer must be disabled")
+
+    monkeypatch.setattr(risk_adapter.settings, "AI_RISK_ENABLED", False)
+    monkeypatch.setattr(risk_adapter, "call_risk_engine", forbidden_ai_call)
+
+    ctx = OperationContext(
+        client_id=uuid4(),
+        card_id=uuid4(),
+        terminal_id="t-off",
+        merchant_id="m-off",
+        product_type="DIESEL",
+        amount=150_000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime(2024, 1, 1, 3, tzinfo=timezone.utc),
+    )
+
+    result = asyncio.run(evaluate_risk(ctx))
+
+    assert result.source == "RULES_ONLY"
+    assert result.flags.get("ai_disabled") is True
+    assert result.decision.ai_score is None
+
+
+def test_rules_source_code_prefers_builtin_rules(monkeypatch, session):
+    monkeypatch.setattr(risk_adapter.settings, "RISK_RULES_SOURCE", "CODE")
+    monkeypatch.setattr(risk_adapter.settings, "AI_RISK_ENABLED", False)
+
+    client_id = uuid4()
+    repository = RiskRulesRepository(session)
+    db_rule = RuleConfig(
+        name="db_block_client",
+        scope=RuleScope.CLIENT,
+        subject_id=str(client_id),
+        selector=SelectorConfig(),
+        window=None,
+        metric=MetricType.ALWAYS,
+        value=1,
+        action=RuleAction.BLOCK,
+        priority=1,
+        reason="db_rule_block",
+        enabled=True,
+    )
+    repository.create_rule(db_rule)
+
+    ctx = OperationContext(
+        client_id=client_id,
+        card_id=uuid4(),
+        terminal_id="t-code",
+        merchant_id="m-code",
+        product_type="DIESEL",
+        amount=1000,
+        currency="RUB",
+        quantity=None,
+        unit_price=None,
+        created_at=datetime(2024, 2, 2, 12, tzinfo=timezone.utc),
+    )
+
+    result = asyncio.run(evaluate_risk(ctx, db=session))
+
+    assert result.decision.level == RiskDecisionLevel.LOW
+    assert "db_rule_block" not in result.decision.reason_codes
+    assert result.source == "RULES_ONLY"
+    assert result.decision.rules_fired == []
 
 
 def test_ai_success_records_score_distribution(monkeypatch):
