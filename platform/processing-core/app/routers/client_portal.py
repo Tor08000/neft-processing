@@ -16,7 +16,7 @@ from app.models.card import Card
 from app.models.client import Client
 from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
-from app.models.operation import Operation
+from app.models.operation import Operation, RiskResult
 from app.schemas.client_portal import (
     BalanceItem,
     BalancesResponse,
@@ -31,6 +31,22 @@ from app.schemas.client_portal import (
 )
 
 router = APIRouter(prefix="/api/v1/client", tags=["client-portal"])
+
+
+_CLIENT_REASON_MAP: dict[str, str] = {
+    "AI_RISK_DECLINE_INTERNAL": "Операция отклонена службой безопасности",
+    "RISK_DECLINE": "Операция отклонена правилами безопасности",
+    "LIMIT_PER_TX": "Превышен лимит на одну транзакцию",
+    "DAILY_LIMIT_EXCEEDED": "Превышен дневной лимит договора",
+    "CARD_BLOCKED": "Карта заблокирована",
+    "SUSPICIOUS_TRANSACTION": "Подозрительная транзакция",
+}
+
+_RISK_RESULT_MESSAGES: dict[RiskResult, str] = {
+    RiskResult.HIGH: "Операция требует дополнительной проверки",
+    RiskResult.BLOCK: "Операция заблокирована правилами безопасности",
+    RiskResult.MANUAL_REVIEW: "Операция отправлена на ручную проверку",
+}
 
 
 def _ensure_client_context(token: dict) -> str:
@@ -87,6 +103,37 @@ def _attach_limits(db: Session, cards: Iterable[Card]) -> list[ClientCard]:
             )
         )
     return result
+
+
+def _humanize_reason(op: Operation) -> str | None:
+    if not op:
+        return None
+
+    if op.reason:
+        key = str(op.reason).upper()
+        return _CLIENT_REASON_MAP.get(key, op.reason)
+
+    risk_result = getattr(op, "risk_result", None)
+    if risk_result and isinstance(risk_result, RiskResult):
+        return _RISK_RESULT_MESSAGES.get(risk_result)
+
+    return None
+
+
+def _serialize_operation(op: Operation) -> OperationSummary:
+    return OperationSummary(
+        id=op.operation_id,
+        created_at=op.created_at,
+        status=op.status,
+        amount=op.amount,
+        currency=op.currency,
+        card_id=op.card_id,
+        product_type=getattr(op, "product_type", None),
+        merchant_id=op.merchant_id,
+        terminal_id=op.terminal_id,
+        reason=_humanize_reason(op),
+        quantity=getattr(op, "quantity", None),
+    )
 
 
 @router.get("/me", response_model=ClientProfile)
@@ -254,21 +301,7 @@ async def list_operations(
     operations: List[Operation] = (
         query.order_by(Operation.created_at.desc()).offset(offset).limit(limit).all()
     )
-    items = [
-        OperationSummary(
-            id=op.operation_id,
-            created_at=op.created_at,
-            status=op.status,
-            amount=op.amount,
-            currency=op.currency,
-            card_id=op.card_id,
-            product_type=getattr(op, "product_type", None),
-            merchant_id=op.merchant_id,
-            terminal_id=op.terminal_id,
-            reason=op.reason,
-        )
-        for op in operations
-    ]
+    items = [_serialize_operation(op) for op in operations]
     return OperationsPage(items=items, total=total, limit=limit, offset=offset)
 
 
@@ -288,20 +321,7 @@ async def operation_details(
     if not op:
         raise HTTPException(status_code=404, detail="operation_not_found")
 
-    return OperationDetails(
-        id=op.operation_id,
-        created_at=op.created_at,
-        status=op.status,
-        amount=op.amount,
-        currency=op.currency,
-        card_id=op.card_id,
-        product_type=getattr(op, "product_type", None),
-        merchant_id=op.merchant_id,
-        terminal_id=op.terminal_id,
-        reason=op.reason,
-        limit_profile_id=getattr(op, "limit_profile_id", None),
-        risk_result=getattr(op, "risk_result", None),
-    )
+    return OperationDetails(**_serialize_operation(op).dict())
 
 
 @router.get("/balances", response_model=BalancesResponse)

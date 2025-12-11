@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 from fastapi.testclient import TestClient
 
@@ -9,7 +10,7 @@ from app.models.account import AccountType
 from app.models.card import Card
 from app.models.client import Client
 from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
-from app.models.operation import Operation, OperationStatus, OperationType
+from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
 from app.models.ledger_entry import LedgerDirection
@@ -196,3 +197,42 @@ def test_balances_and_statements(db_session, make_jwt):
         assert data["credits"] in ("500", "500.0000")
         assert data["debits"] in ("100", "100.0000")
         assert data["end_balance"] in ("400", "400.0000")
+
+
+def test_client_operations_response_is_sanitized(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    db_session.add(
+        Operation(
+            operation_id="op-3",
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.DECLINED,
+            merchant_id="m3",
+            terminal_id="t3",
+            client_id=str(client_id),
+            card_id="card-1",
+            amount=300,
+            currency="RUB",
+            reason="AI_RISK_DECLINE_INTERNAL",
+            risk_result=RiskResult.HIGH,
+            limit_profile_id="lp-1",
+            quantity=Decimal("42"),
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        ops = api_client.get("/api/v1/client/operations").json()
+        payload = ops["items"][0]
+        assert "limit_profile_id" not in payload
+        assert "risk_result" not in payload
+        assert payload["reason"] == "Операция отклонена службой безопасности"
+        assert Decimal(str(payload["quantity"])) == Decimal("42")
+
+        details = api_client.get("/api/v1/client/operations/op-3").json()
+        assert "limit_profile_id" not in details
+        assert "risk_result" not in details
+        assert details["reason"] == "Операция отклонена службой безопасности"

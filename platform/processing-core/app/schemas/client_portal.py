@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -99,11 +100,11 @@ class OperationSummary(BaseModel):
     merchant_id: str | None = None
     terminal_id: str | None = None
     reason: str | None = None
+    quantity: Decimal | None = None
 
 
 class OperationDetails(OperationSummary):
-    limit_profile_id: str | None = None
-    risk_result: str | None = None
+    pass
 
 
 class BalanceItem(BaseModel):
