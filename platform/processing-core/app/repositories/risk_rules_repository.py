@@ -1,19 +1,46 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Iterable, Sequence
+
+import logging
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.models.risk_rule import RiskRule, RiskRuleAction, RiskRuleScope, RiskRuleVersion
+from app.models.risk_rule import (
+    RiskRule,
+    RiskRuleAction,
+    RiskRuleAudit,
+    RiskRuleAuditAction,
+    RiskRuleScope,
+    RiskRuleVersion,
+)
 from app.services.risk_rules import RuleConfig, RuleDefinition, RuleScope
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RiskRuleChangedEvent:
+    """Event payload describing a risk rule change."""
+
+    rule_id: int
+    action: RiskRuleAuditAction
+    old_value: dict | None
+    new_value: dict | None
+    performed_by: str | None
+    performed_at: datetime
 
 
 class RiskRulesRepository:
     """Repository for persisting and loading risk rules with DSL conversion."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, *, performed_by: str | None = None):
         self.db = db
+        self.performed_by = performed_by
 
     def _to_definition(self, rule: RiskRule) -> RuleDefinition:
         config = RuleConfig.model_validate(rule.dsl_payload)
@@ -22,7 +49,13 @@ class RiskRulesRepository:
     def _prepare_payload(self, config: RuleConfig) -> dict:
         return config.model_dump(mode="json")
 
-    def create_rule(self, config: RuleConfig, description: str | None = None) -> RiskRule:
+    def create_rule(
+        self,
+        config: RuleConfig,
+        description: str | None = None,
+        *,
+        performed_by: str | None = None,
+    ) -> RiskRule:
         payload = self._prepare_payload(config)
         rule = RiskRule(
             name=config.name,
@@ -37,12 +70,28 @@ class RiskRulesRepository:
         self.db.add(rule)
         self.db.flush()
         self._store_version(rule, payload, version=1)
+        self._log_audit(
+            rule,
+            action=RiskRuleAuditAction.CREATE,
+            old_value=None,
+            new_value=payload,
+            performed_by=performed_by,
+        )
         self.db.commit()
         self.db.refresh(rule)
         return rule
 
-    def update_rule(self, rule_id: int, config: RuleConfig, description: str | None = None) -> RiskRule:
+    def update_rule(
+        self,
+        rule_id: int,
+        config: RuleConfig,
+        description: str | None = None,
+        *,
+        performed_by: str | None = None,
+        audit_action: RiskRuleAuditAction = RiskRuleAuditAction.UPDATE,
+    ) -> RiskRule:
         rule = self.db.query(RiskRule).filter(RiskRule.id == rule_id).one()
+        old_payload = dict(rule.dsl_payload)
         payload = self._prepare_payload(config)
         rule.name = config.name
         rule.description = description
@@ -55,6 +104,13 @@ class RiskRulesRepository:
 
         next_version = 1 + len(rule.versions)
         self._store_version(rule, payload, version=next_version)
+        self._log_audit(
+            rule,
+            action=audit_action,
+            old_value=old_payload,
+            new_value=payload,
+            performed_by=performed_by,
+        )
         self.db.commit()
         self.db.refresh(rule)
         return rule
@@ -80,7 +136,11 @@ class RiskRulesRepository:
         payload = dict(source.dsl_payload)
         payload["name"] = new_name
         config = RuleConfig.model_validate(payload)
-        return self.create_rule(config, description=source.description)
+        return self.create_rule(
+            config,
+            description=source.description,
+            performed_by=self.performed_by,
+        )
 
     def get_active_rules_by_scope(
         self, scope: RuleScope, subject_ref: str | None = None
@@ -118,5 +178,35 @@ class RiskRulesRepository:
     def save_many(self, configs: Iterable[RuleConfig]) -> list[RiskRule]:
         saved: list[RiskRule] = []
         for config in configs:
-            saved.append(self.create_rule(config))
+            saved.append(self.create_rule(config, performed_by=self.performed_by))
         return saved
+
+    def _log_audit(
+        self,
+        rule: RiskRule,
+        *,
+        action: RiskRuleAuditAction,
+        old_value: dict | None,
+        new_value: dict | None,
+        performed_by: str | None = None,
+    ) -> RiskRuleAudit:
+        actor = performed_by or self.performed_by
+        audit = RiskRuleAudit(
+            rule_id=rule.id,
+            action=action,
+            old_value=old_value,
+            new_value=new_value,
+            performed_by=actor,
+        )
+        self.db.add(audit)
+
+        event = RiskRuleChangedEvent(
+            rule_id=rule.id,
+            action=action,
+            old_value=old_value,
+            new_value=new_value,
+            performed_by=actor,
+            performed_at=datetime.now(timezone.utc),
+        )
+        logger.info("RISK_RULE_CHANGED: %s", event)
+        return audit

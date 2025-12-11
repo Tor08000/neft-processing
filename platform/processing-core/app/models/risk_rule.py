@@ -117,3 +117,40 @@ class RiskRuleVersion(Base):
     rule = relationship("RiskRule", back_populates="versions")
 
     __table_args__ = (UniqueConstraint("rule_id", "version", name="uq_risk_rule_version"),)
+
+
+class RiskRuleAuditAction(str, Enum):
+    """Actions captured in the audit trail for risk rule changes."""
+
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+    ENABLE = "ENABLE"
+    DISABLE = "DISABLE"
+
+
+class RiskRuleAudit(Base):
+    """Audit trail entry for changes applied to risk rules."""
+
+    __tablename__ = "risk_rule_audits"
+
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    rule_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("risk_rules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action = Column(SAEnum(RiskRuleAuditAction), nullable=False, index=True)
+    old_value = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    new_value = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    performed_by = Column(String(256), nullable=True)
+    performed_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
