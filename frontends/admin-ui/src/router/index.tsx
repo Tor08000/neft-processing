@@ -9,6 +9,8 @@ const OperationsListPage = React.lazy(() => import("../pages/OperationsListPage"
 const OperationDetailsPage = React.lazy(() => import("../pages/OperationDetailsPage"));
 const BillingSummaryPage = React.lazy(() => import("../pages/BillingSummaryPage"));
 const ClearingBatchesPage = React.lazy(() => import("../pages/ClearingBatchesPage"));
+const BalancesPage = React.lazy(() => import("../pages/BalancesPage"));
+const AccountDetailsPage = React.lazy(() => import("../pages/AccountDetailsPage"));
 const HealthPage = React.lazy(() => import("../pages/HealthPage"));
 const LoginPage = React.lazy(() => import("../pages/LoginPage"));
 
@@ -24,6 +26,8 @@ export function AppRouter() {
         ) : (
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/accounts" element={<BalancesPage />} />
+            <Route path="/accounts/:accountId" element={<AccountDetailsPage />} />
             <Route path="/operations" element={<OperationsListPage />} />
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/billing" element={<BillingSummaryPage />} />

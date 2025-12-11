@@ -57,6 +57,7 @@ def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> Authoriz
         card_id=body.card_id,
         terminal_id=body.terminal_id,
         merchant_id=body.merchant_id,
+        tariff_id=body.tariff_id,
         product_id=body.product_id,
         product_type=body.product_type,
         amount=body.amount,

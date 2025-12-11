@@ -14,6 +14,7 @@ class AuthRequest(BaseModel):
     terminal_id: str
     client_id: str
     card_id: str
+    tariff_id: Optional[str] = None
     amount: int
     currency: str = "RUB"
     product_code: Optional[str] = None
@@ -29,6 +30,7 @@ class AuthorizeRequest(BaseModel):
     card_id: str
     terminal_id: str
     merchant_id: str
+    tariff_id: Optional[str] = None
     product_id: Optional[str] = None
     product_type: Optional[str] = None
     amount: int

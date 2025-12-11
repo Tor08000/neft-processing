@@ -92,6 +92,7 @@ class OperationSchema(BaseModel):
     terminal_id: str
     client_id: str
     card_id: str
+    tariff_id: Optional[str] = None
     product_id: Optional[str] = None
 
     amount: int
