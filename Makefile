@@ -10,7 +10,7 @@ PROJECT_NAME := neft-processing
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
         migrate test test-core test-auth test-ai test-workers \
-        health health-core health-auth health-ai \
+        health health-core health-auth health-ai smoke \
         clean-volumes clean-images
 
 # ----------------------------------------
@@ -106,7 +106,7 @@ test: test-core test-auth test-ai
 # Требует запущенного стека (nginx + сервисы).
 
 health:
-	curl -s "http://localhost/api/v1/health" || echo "core-api health check failed"
+        curl -s "http://localhost/api/v1/health" || echo "core-api health check failed"
 
 health-core: health
 
@@ -116,7 +116,10 @@ health-auth:
 	@echo "Auth-host health endpoint через nginx пока не определён"
 
 health-ai:
-	@echo "AI-service health endpoint через nginx пока не определён"
+        @echo "AI-service health endpoint через nginx пока не определён"
+
+smoke:
+        bash scripts/smoke_local.sh
 
 # ----------------------------------------
 # ЧИСТКА
