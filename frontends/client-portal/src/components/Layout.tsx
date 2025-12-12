@@ -30,6 +30,7 @@ export function Layout() {
             Дашборд
           </NavLink>
           <NavLink to="/cards">Карты</NavLink>
+          <NavLink to="/invoices">Счета</NavLink>
           <NavLink to="/operations">Операции</NavLink>
           <NavLink to="/balances">Балансы</NavLink>
           <NavLink to="/profile">Профиль</NavLink>

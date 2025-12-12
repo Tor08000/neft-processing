@@ -16,6 +16,11 @@ from app.repositories.billing_repository import BillingInvoiceData, BillingLineD
 from app.models.billing_summary import BillingSummary
 from app.models.operation import Operation, OperationStatus
 from app.services.pricing_service import PriceQuote, get_effective_price
+from app.services.billing_metrics import metrics as billing_metrics
+from neft_shared.logging_setup import get_logger
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -396,6 +401,7 @@ def generate_invoices_for_period(
 ) -> list[Invoice]:
     """Generate invoices for all active clients with tariffs for the given period."""
 
+    billing_metrics.start_run(str(period_from), str(period_to))
     repo = BillingRepository(db)
     clients = (
         db.query(Client)
@@ -405,32 +411,58 @@ def generate_invoices_for_period(
     )
 
     created: list[Invoice] = []
+    period_key = f"{period_from}:{period_to}"
 
     for client in clients:
-        existing = (
-            db.query(Invoice)
-            .filter(Invoice.client_id == str(client.id))
-            .filter(Invoice.period_from == period_from)
-            .filter(Invoice.period_to == period_to)
-            .filter(Invoice.status != InvoiceStatus.CANCELLED)
-            .first()
-        )
-        if existing:
-            continue
+        try:
+            existing = (
+                db.query(Invoice)
+                .filter(Invoice.client_id == str(client.id))
+                .filter(Invoice.period_from == period_from)
+                .filter(Invoice.period_to == period_to)
+                .filter(Invoice.status != InvoiceStatus.CANCELLED)
+                .first()
+            )
+            if existing:
+                continue
 
-        invoice_data = build_invoice_data_for_client(
-            db,
-            client_id=str(client.id),
-            period_from=period_from,
-            period_to=period_to,
-            options={**(options or {}), "status": status},
-        )
+            invoice_data = build_invoice_data_for_client(
+                db,
+                client_id=str(client.id),
+                period_from=period_from,
+                period_to=period_to,
+                options={**(options or {}), "status": status},
+            )
 
-        if invoice_data is None:
-            continue
+            if invoice_data is None:
+                continue
 
-        invoice = repo.create_invoice(invoice_data, auto_commit=True)
-        created.append(invoice)
+            invoice = repo.create_invoice(invoice_data, auto_commit=True)
+            billing_metrics.mark_generated()
+            billing_metrics.observe_billed_amount(
+                invoice.total_with_tax or invoice.total_amount or 0, period_key=period_key
+            )
+            logger.info(
+                "billing.invoice_generated",
+                extra={
+                    "client_id": str(client.id),
+                    "period_from": str(period_from),
+                    "period_to": str(period_to),
+                    "status": invoice.status,
+                    "total_with_tax": invoice.total_with_tax,
+                },
+            )
+            created.append(invoice)
+        except Exception:
+            billing_metrics.mark_error()
+            logger.exception(
+                "billing.invoice_generation_failed",
+                extra={
+                    "client_id": str(client.id),
+                    "period_from": str(period_from),
+                    "period_to": str(period_to),
+                },
+            )
 
     return created
 

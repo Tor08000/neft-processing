@@ -24,3 +24,16 @@ export function formatLiters(quantity?: number | string | null): string {
   if (Number.isNaN(value)) return String(quantity);
   return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 }
+
+export function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(dateStr));
+  } catch (err) {
+    return String(dateStr);
+  }
+}

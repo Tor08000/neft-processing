@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 from fastapi.testclient import TestClient
@@ -10,10 +10,12 @@ from app.models.account import AccountType
 from app.models.card import Card
 from app.models.client import Client
 from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.invoice import InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
 from app.models.ledger_entry import LedgerDirection
+from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 
 
 @pytest.fixture(autouse=True)
@@ -197,6 +199,51 @@ def test_balances_and_statements(db_session, make_jwt):
         assert data["credits"] in ("500", "500.0000")
         assert data["debits"] in ("100", "100.0000")
         assert data["end_balance"] in ("400", "400.0000")
+
+
+def test_client_invoices_filtered(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2024, 3, 1),
+            period_to=date(2024, 3, 31),
+            currency="RUB",
+            status=InvoiceStatus.ISSUED,
+            lines=[
+                BillingLineData(product_id="diesel", liters=Decimal("10"), unit_price=None, line_amount=1000, tax_amount=0)
+            ],
+        )
+    )
+    other_invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(other_client_id),
+            period_from=date(2024, 3, 1),
+            period_to=date(2024, 3, 31),
+            currency="RUB",
+            status=InvoiceStatus.ISSUED,
+            lines=[BillingLineData(product_id="ai95", liters=None, unit_price=None, line_amount=2000, tax_amount=0)],
+        )
+    )
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        listing = api_client.get("/api/v1/client/invoices")
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["total"] == 1
+        assert body["items"][0]["id"] == invoice.id
+
+        details = api_client.get(f"/api/v1/client/invoices/{invoice.id}")
+        assert details.status_code == 200
+        assert details.json()["total_with_tax"] == invoice.total_with_tax
+
+        foreign = api_client.get(f"/api/v1/client/invoices/{other_invoice.id}")
+        assert foreign.status_code in (404,)
 
 
 def test_client_operations_response_is_sanitized(db_session, make_jwt):
