@@ -20,6 +20,22 @@ STATUS_ENUM = sa.Enum("PENDING", "FINALIZED", name="billing_summary_status")
 
 
 def upgrade() -> None:
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_type WHERE typname = 'billing_summary_status'
+            ) THEN
+                CREATE TYPE billing_summary_status AS ENUM (
+                    'PENDING',
+                    'FINALIZED'
+                );
+            END IF;
+        END $$;
+        """
+    )
+
     op.add_column(
         "billing_summary",
         sa.Column(
@@ -64,4 +80,3 @@ def downgrade() -> None:
     op.drop_column("billing_summary", "finalized_at")
     op.drop_column("billing_summary", "generated_at")
     op.drop_column("billing_summary", "status")
-    STATUS_ENUM.drop(op.get_bind())
