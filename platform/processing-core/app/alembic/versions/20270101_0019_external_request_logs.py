@@ -1,6 +1,6 @@
 """external request logs table
 
-Revision ID: 20270101_0019
+Revision ID: 20270101_0019_external_request_logs
 Revises: 20261205_0018_contract_limits
 Create Date: 2027-01-01 00:00:00.000000
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20270101_0019"
+revision = "20270101_0019_external_request_logs"
 down_revision = "20261205_0018_contract_limits"
 branch_labels = None
 depends_on = None
