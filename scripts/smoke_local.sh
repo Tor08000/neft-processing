@@ -5,8 +5,15 @@ set -euo pipefail
 DC_BIN="${DOCKER_COMPOSE:-docker compose}"
 POSTGRES_DB="${POSTGRES_DB:-neft}"
 POSTGRES_USER="${POSTGRES_USER:-neft}"
+TABLES_FILE="${TABLES_FILE:-scripts/expected_tables.txt}"
 
 info() { echo "[smoke] $*"; }
+
+table_exists() {
+    local table="$1"
+    ${DC_BIN} exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+        "select to_regclass('public.${table}')"
+}
 
 check_url() {
     local name="$1"
@@ -27,9 +34,21 @@ check_url() {
 info "docker compose ps"
 ${DC_BIN} ps
 
-info "checking that merchants table exists"
-${DC_BIN} exec -T postgres psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c \
-  "select tablename from pg_tables where schemaname='public' and tablename='merchants';"
+if [[ ! -f "${TABLES_FILE}" ]]; then
+    echo "[smoke][ERROR] expected tables file not found: ${TABLES_FILE}" >&2
+    exit 1
+fi
+
+info "checking expected tables"
+while IFS= read -r table; do
+    [[ -z "${table}" || "${table}" =~ ^# ]] && continue
+    exists=$(table_exists "${table}" | tr -d '[:space:]')
+    if [[ -z "${exists}" || "${exists}" == "null" ]]; then
+        echo "[smoke][ERROR] missing table: ${table}" >&2
+        exit 1
+    fi
+    info "table ${table} exists"
+done < "${TABLES_FILE}"
 
 info "health endpoints via gateway"
 check_url "gateway health" "http://localhost/health"
