@@ -16,7 +16,7 @@ echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
-    if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
+    if alembic -c "$ALEMBIC_CONFIG" upgrade heads; then
         echo "[entrypoint] migrations applied"
         break
     fi
