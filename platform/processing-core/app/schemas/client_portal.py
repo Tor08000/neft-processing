@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from decimal import Decimal
+from app.models.invoice import InvoiceStatus
 
 
 class ClientUser(BaseModel):
@@ -130,3 +130,48 @@ class StatementResponse(BaseModel):
     end_balance: Decimal
     credits: Decimal
     debits: Decimal
+
+
+class ClientInvoiceLine(BaseModel):
+    """Simplified invoice line for client-facing APIs."""
+
+    card_id: str | None = None
+    product_id: str
+    liters: Decimal | None = None
+    amount: int = Field(alias="line_amount")
+    tax_amount: int
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class ClientInvoiceSummary(BaseModel):
+    """Invoice summary item without internal fields."""
+
+    id: str
+    period_from: date
+    period_to: date
+    currency: str
+    total_amount: int
+    tax_amount: int
+    total_with_tax: int
+    status: InvoiceStatus
+    created_at: datetime | None = None
+    issued_at: datetime | None = None
+    paid_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ClientInvoiceDetails(ClientInvoiceSummary):
+    """Detailed invoice representation with line items."""
+
+    lines: List[ClientInvoiceLine] = Field(default_factory=list)
+
+
+class ClientInvoiceListResponse(BaseModel):
+    """Collection of client invoices."""
+
+    items: List[ClientInvoiceSummary]
+    total: int
+    limit: int
+    offset: int

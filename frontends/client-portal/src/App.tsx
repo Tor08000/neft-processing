@@ -11,6 +11,8 @@ import { ClientCardsPage } from "./pages/ClientCardsPage";
 import { ClientCardDetailsPage } from "./pages/ClientCardDetailsPage";
 import { BalancesPage } from "./pages/BalancesPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
+import { ClientInvoiceDetailsPage } from "./pages/ClientInvoiceDetailsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -26,6 +28,8 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/cards" element={<ClientCardsPage />} />
             <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
+            <Route path="/invoices" element={<ClientInvoicesPage />} />
+            <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/balances" element={<BalancesPage />} />

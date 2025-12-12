@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Iterable, List
 from uuid import UUID
@@ -15,14 +15,19 @@ from app.models.account import Account, AccountBalance
 from app.models.card import Card
 from app.models.client import Client
 from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.invoice import InvoiceStatus
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
 from app.models.operation import Operation, RiskResult
+from app.repositories.billing_repository import BillingRepository
 from app.schemas.client_portal import (
     BalanceItem,
     BalancesResponse,
     CardLimit,
     ClientCard,
     ClientCardsResponse,
+    ClientInvoiceDetails,
+    ClientInvoiceListResponse,
+    ClientInvoiceSummary,
     ClientProfile,
     OperationDetails,
     OperationSummary,
@@ -322,6 +327,45 @@ async def operation_details(
         raise HTTPException(status_code=404, detail="operation_not_found")
 
     return OperationDetails(**_serialize_operation(op).dict())
+
+
+@router.get("/invoices", response_model=ClientInvoiceListResponse)
+async def list_invoices(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    period_from: date | None = Query(None, alias="from"),
+    period_to: date | None = Query(None, alias="to"),
+    status: str | None = None,
+) -> ClientInvoiceListResponse:
+    client_id = _ensure_client_context(token)
+    repo = BillingRepository(db)
+
+    parsed_status = _parse_enum_value(status, InvoiceStatus) if status else None
+
+    invoices = repo.find_invoices(
+        client_id=client_id,
+        period_from=period_from,
+        period_to=period_to,
+        status=parsed_status,
+        exclude_cancelled=True,
+    )
+    items = [ClientInvoiceSummary.model_validate(invoice, from_attributes=True) for invoice in invoices]
+    return ClientInvoiceListResponse(items=items, total=len(items), limit=len(items), offset=0)
+
+
+@router.get("/invoices/{invoice_id}", response_model=ClientInvoiceDetails)
+async def get_invoice_details(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientInvoiceDetails:
+    client_id = _ensure_client_context(token)
+    repo = BillingRepository(db)
+    invoice = repo.get_invoice(invoice_id)
+    if invoice is None or str(invoice.client_id) != client_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    return ClientInvoiceDetails.model_validate(invoice, from_attributes=True)
 
 
 @router.get("/balances", response_model=BalancesResponse)
