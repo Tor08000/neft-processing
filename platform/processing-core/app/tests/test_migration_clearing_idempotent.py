@@ -20,12 +20,21 @@ class DummyConnection:
         self.tables: set[str] = set()
         self.dialect = SimpleNamespace(name="postgresql")
         self.executed: list[str] = []
+        self.executed_params: list[tuple | dict | None] = []
 
     def exec_driver_sql(self, statement, params=None):
         self.executed.append(str(statement))
+        self.executed_params.append(params)
         if "to_regclass" in str(statement):
-            table_name = params.get("table_name") if params else None
-            return DummyResult(table_name if table_name in self.tables else None)
+            if params is None:
+                raise AssertionError("to_regclass must be called with params")
+            if isinstance(params, dict) or not isinstance(params, (list, tuple)):
+                raise SyntaxError("Invalid parameter style for exec_driver_sql")
+            if len(params) != 1:
+                raise SyntaxError("exec_driver_sql expects a single positional param")
+            table_name = params[0]
+            plain_name = str(table_name).split(".")[-1]
+            return DummyResult(table_name if plain_name in self.tables else None)
         return DummyResult(None)
 
 

@@ -21,11 +21,8 @@ BATCH_STATUS = sa.Enum(
 
 
 def _table_exists(bind, table_name: str) -> bool:
-    return bool(
-        bind.exec_driver_sql(
-            "SELECT to_regclass(:table_name)", {"table_name": table_name}
-        ).scalar()
-    )
+    qname = table_name if "." in table_name else f"public.{table_name}"
+    return bool(bind.exec_driver_sql("SELECT to_regclass(%s)", (qname,)).scalar())
 
 
 def _create_index_if_not_exists(index_name: str, table_name: str, *columns: str) -> None:
