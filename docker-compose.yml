@@ -289,6 +289,7 @@ services:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:13133/health"]
       interval: 10s
       timeout: 5s
+      start_period: 20s
       retries: 5
 
   jaeger:

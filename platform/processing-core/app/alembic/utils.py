@@ -25,7 +25,8 @@ def ensure_alembic_version_length(
             text(
                 f"""
                 CREATE TABLE IF NOT EXISTS alembic_version (
-                    version_num VARCHAR({min_length}) NOT NULL
+                    version_num VARCHAR({min_length}) NOT NULL,
+                    CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)
                 )
                 """
             )
@@ -43,15 +44,33 @@ def ensure_alembic_version_length(
                 """
             )
         )
-        return
+        current_length = None
+    else:
+        column_type = version_column.get("type")
+        current_length = getattr(column_type, "length", None)
 
-    column_type = version_column.get("type")
-    current_length = getattr(column_type, "length", None)
-    if current_length is not None and current_length >= min_length:
-        return
-
-    connection.execute(
-        text(
-            f"ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR({min_length})"
+    if current_length is None or current_length < min_length:
+        connection.execute(
+            text(
+                f"ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR({min_length})"
+            )
         )
-    )
+
+    pk = inspector.get_pk_constraint("alembic_version")
+    pk_columns = set(pk.get("constrained_columns") or [])
+    pk_name = pk.get("name")
+
+    if pk_columns != {"version_num"}:
+        if pk_name:
+            connection.execute(
+                text(
+                    f'ALTER TABLE alembic_version DROP CONSTRAINT IF EXISTS "{pk_name}"'
+                )
+            )
+
+        connection.execute(
+            text(
+                "ALTER TABLE alembic_version"
+                " ADD CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)"
+            )
+        )
