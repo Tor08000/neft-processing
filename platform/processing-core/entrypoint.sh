@@ -13,6 +13,7 @@ import os
 import sys
 import time
 
+from sqlalchemy.engine import make_url
 import psycopg
 
 dsn = os.getenv("DATABASE_URL")
@@ -21,6 +22,40 @@ interval = int(os.getenv("DB_WAIT_INTERVAL", "2"))
 
 deadline = time.time() + timeout
 last_error = None
+
+
+def _normalize_postgres_dsn(raw: str) -> str:
+    """Convert SQLAlchemy-style URLs to psycopg-friendly DSNs.
+
+    psycopg accepts plain libpq connection strings and "postgresql://" URLs, but
+    will reject dialect suffixes like ``postgresql+psycopg://``. To support both
+    DSN styles used by the project we normalise URLs with a scheme by stripping
+    driver aliases and rendering them without hiding the password.
+    """
+
+    if "postgresql" not in raw:
+        return raw
+
+    if "://" not in raw:
+        return raw
+
+    try:
+        url = make_url(raw)
+    except Exception:
+        return raw
+
+    if not url.drivername.startswith("postgresql"):
+        return raw
+
+    safe_url = url.set(drivername="postgresql")
+    return safe_url.render_as_string(hide_password=False)
+
+
+if not dsn:
+    print("[entrypoint] DATABASE_URL is not set", file=sys.stderr)
+    sys.exit(1)
+
+dsn = _normalize_postgres_dsn(dsn)
 
 while time.time() < deadline:
     try:
