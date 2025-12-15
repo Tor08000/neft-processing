@@ -21,11 +21,28 @@ def ensure_alembic_version_length(
 
     inspector = inspect(connection)
     if "alembic_version" not in inspector.get_table_names():
+        connection.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS alembic_version (
+                    version_num VARCHAR({min_length}) NOT NULL
+                )
+                """
+            )
+        )
         return
 
     columns = inspector.get_columns("alembic_version")
     version_column = next((col for col in columns if col.get("name") == "version_num"), None)
     if version_column is None:
+        connection.execute(
+            text(
+                f"""
+                ALTER TABLE alembic_version
+                ADD COLUMN version_num VARCHAR({min_length}) NOT NULL
+                """
+            )
+        )
         return
 
     column_type = version_column.get("type")

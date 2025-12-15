@@ -7,6 +7,70 @@ echo "[entrypoint] core-api starting"
 # propagated for some reason (e.g. overridden by docker-compose env).
 export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 
+wait_for_postgres() {
+    python - <<'PY'
+import os
+import sys
+import time
+
+import psycopg
+
+dsn = os.getenv("DATABASE_URL")
+timeout = int(os.getenv("DB_WAIT_TIMEOUT", "60"))
+interval = int(os.getenv("DB_WAIT_INTERVAL", "2"))
+
+deadline = time.time() + timeout
+last_error = None
+
+while time.time() < deadline:
+    try:
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        sys.exit(0)
+    except Exception as exc:  # noqa: BLE001 - entrypoint diagnostics
+        last_error = exc
+        time.sleep(interval)
+
+print(f"[entrypoint] postgres is not ready after {timeout}s: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+}
+
+wait_for_redis() {
+    python - <<'PY'
+import os
+import sys
+import time
+
+import redis
+
+url = os.getenv("REDIS_URL")
+timeout = int(os.getenv("REDIS_WAIT_TIMEOUT", "60"))
+interval = int(os.getenv("REDIS_WAIT_INTERVAL", "2"))
+
+deadline = time.time() + timeout
+last_error = None
+client = redis.Redis.from_url(url)
+
+while time.time() < deadline:
+    try:
+        client.ping()
+        sys.exit(0)
+    except Exception as exc:  # noqa: BLE001 - entrypoint diagnostics
+        last_error = exc
+        time.sleep(interval)
+
+print(f"[entrypoint] redis is not ready after {timeout}s: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+}
+
+echo "[entrypoint] waiting for postgres..."
+wait_for_postgres
+echo "[entrypoint] waiting for redis..."
+wait_for_redis
+
 # Run migrations before starting the API to guarantee schema availability
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
 MIGRATIONS_RETRIES=${MIGRATIONS_RETRIES:-5}

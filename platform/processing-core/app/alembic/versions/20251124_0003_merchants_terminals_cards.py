@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20251124_0003_merchants_terminals_cards"
-down_revision = "20251120_0003_limits_rules_v2"
+down_revision = "20251121_0003a_extend_alembic_version_len"
 branch_labels = None
 depends_on = None
 
