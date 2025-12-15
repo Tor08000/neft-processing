@@ -121,22 +121,34 @@ def upgrade() -> None:
     )
 
     op.create_index(
-        "ix_billing_summary_billing_date", "billing_summary", ["billing_date"], False
+        "ix_billing_summary_billing_date",
+        "billing_summary",
+        ["billing_date"],
+        unique=False,
     )
     op.create_index(
-        "ix_billing_summary_merchant_id", "billing_summary", ["merchant_id"], False
+        "ix_billing_summary_merchant_id",
+        "billing_summary",
+        ["merchant_id"],
+        unique=False,
     )
     op.create_index(
-        "ix_billing_summary_client_id", "billing_summary", ["client_id"], False
+        "ix_billing_summary_client_id",
+        "billing_summary",
+        ["client_id"],
+        unique=False,
     )
     op.create_index(
         "ix_billing_summary_product_type",
         "billing_summary",
         ["product_type"],
-        False,
+        unique=False,
     )
     op.create_index(
-        "ix_billing_summary_currency", "billing_summary", ["currency"], False
+        "ix_billing_summary_currency",
+        "billing_summary",
+        ["currency"],
+        unique=False,
     )
 
     op.create_unique_constraint(
@@ -203,9 +215,27 @@ def downgrade() -> None:
     op.create_unique_constraint(
         "uq_billing_summary_date_merchant", "billing_summary", ["date", "merchant_id"]
     )
-    op.create_index("ix_billing_summary_merchant_id", "billing_summary", ["merchant_id"], False)
-    op.create_index("ix_billing_summary_date", "billing_summary", ["date"], False)
-    op.create_index("ix_billing_summary_status", "billing_summary", ["status"], False)
     op.create_index(
-        "ix_billing_summary_generated_at", "billing_summary", ["generated_at"], False
+        "ix_billing_summary_merchant_id",
+        "billing_summary",
+        ["merchant_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_billing_summary_date",
+        "billing_summary",
+        ["date"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_billing_summary_status",
+        "billing_summary",
+        ["status"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_billing_summary_generated_at",
+        "billing_summary",
+        ["generated_at"],
+        unique=False,
     )
