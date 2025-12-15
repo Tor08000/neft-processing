@@ -25,7 +25,7 @@ STATUS_ENUM = sa.Enum(
 
 
 def _ensure_status_enum_exists(connection):
-    connection.execute(
+    connection.exec_driver_sql(
         """
         DO $$
         BEGIN
@@ -38,7 +38,7 @@ def _ensure_status_enum_exists(connection):
                 );
             END IF;
         END $$;
-        """,
+        """
     )
 
 

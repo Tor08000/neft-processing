@@ -14,7 +14,7 @@ class DummyConnection:
         self.executed: list[str] = []
         self.dialect = SimpleNamespace(name="postgresql")
 
-    def execute(self, statement):
+    def exec_driver_sql(self, statement):
         self.executed.append(str(statement))
 
 
