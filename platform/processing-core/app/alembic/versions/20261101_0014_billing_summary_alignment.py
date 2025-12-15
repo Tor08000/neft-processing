@@ -27,43 +27,32 @@ def ensure_enum_type_exists(bind, type_name: str, values: list[str], schema: str
     if bind.dialect.name != "postgresql":  # pragma: no cover - alembic migrations run on PG
         return
 
-    exists = bind.exec_driver_sql(
-        sa.text(
-            """
-            SELECT 1 FROM pg_type t
-            JOIN pg_namespace n ON n.oid = t.typnamespace
-            WHERE n.nspname = :schema AND t.typname = :type_name;
-            """
-        ),
-        {"schema": schema, "type_name": type_name},
-    ).scalar()
+    res = bind.exec_driver_sql(
+        "SELECT 1 FROM pg_type t "
+        "JOIN pg_namespace n ON n.oid = t.typnamespace "
+        "WHERE n.nspname = %s AND t.typname = %s",
+        (schema, type_name),
+    ).first()
+    exists = res is not None
 
     if exists:
         return
 
     values_sql = ", ".join(f"'{value}'" for value in values)
     bind.exec_driver_sql(
-        f"CREATE TYPE {schema}.{type_name} AS ENUM ({values_sql});"
+        f"CREATE TYPE {schema}.{type_name} AS ENUM ({values_sql})"
     )
 
 
 def _column_exists(bind, table_name: str, column_name: str, schema: str = "public") -> bool:
     return bool(
         bind.exec_driver_sql(
-            sa.text(
-                """
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_schema = :schema
-                  AND table_name = :table_name
-                  AND column_name = :column_name;
-                """
-            ),
-            {
-                "schema": schema,
-                "table_name": table_name,
-                "column_name": column_name,
-            },
+            "SELECT 1 "
+            "FROM information_schema.columns "
+            "WHERE table_schema = %s "
+            "  AND table_name = %s "
+            "  AND column_name = %s",
+            (schema, table_name, column_name),
         ).scalar()
     )
 

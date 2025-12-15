@@ -15,6 +15,9 @@ class DummyResult:
     def scalar(self):
         return self._value
 
+    def first(self):
+        return self._value
+
 
 class DummyConnection:
     def __init__(self, *, types=None, columns=None):
@@ -29,16 +32,18 @@ class DummyConnection:
         self.executed_sql: list[str] = []
 
     def exec_driver_sql(self, statement, params=None):  # noqa: ARG002
-        sql = str(statement)
+        if not isinstance(statement, str):
+            raise TypeError("statement must be str")
+
+        sql = statement
         self.executed_sql.append(sql)
 
         if "FROM pg_type" in sql:
-            type_name = params["type_name"]
+            _, type_name = params
             return DummyResult(1 if type_name in self.types else None)
 
         if "information_schema.columns" in sql:
-            table_name = params["table_name"]
-            column_name = params["column_name"]
+            _, table_name, column_name = params
             return DummyResult(1 if column_name in self.columns.get(table_name, {}) else None)
 
         if sql.strip().startswith("CREATE TYPE"):
@@ -111,3 +116,11 @@ def test_upgrade_is_idempotent(monkeypatch: pytest.MonkeyPatch):
     assert not any(sql.strip().startswith("CREATE TYPE") for sql in connection.executed_sql)
     assert ("billing_summary", "product_type") not in op_calls.added_columns
     assert "product_type" in connection.types
+
+
+def test_exec_driver_sql_invoked_with_str(monkeypatch: pytest.MonkeyPatch):
+    connection = DummyConnection(columns={"billing_summary": {}})
+
+    _run_upgrade(monkeypatch, connection)
+
+    assert all(isinstance(sql, str) for sql in connection.executed_sql)
