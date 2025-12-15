@@ -1,5 +1,4 @@
 import importlib
-from types import SimpleNamespace
 
 import pytest
 
@@ -74,15 +73,6 @@ class DummyOp:
         self.executed_sql.append(str(statement))
 
 
-@pytest.fixture(autouse=True)
-def _patch_context(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        migration.context,
-        "get_context",
-        lambda: SimpleNamespace(log=SimpleNamespace(info=lambda *_, **__: None)),
-    )
-
-
 def test_upgrade_skips_missing_tables(monkeypatch: pytest.MonkeyPatch):
     connection = DummyConnection(
         tables={"clients"},
@@ -101,6 +91,10 @@ def test_upgrade_skips_missing_tables(monkeypatch: pytest.MonkeyPatch):
     dummy_op = DummyOp(connection)
     monkeypatch.setattr(migration, "op", dummy_op)
 
+    monkeypatch.setattr(
+        migration.context, "get_context", lambda: (_ for _ in ()).throw(AttributeError)
+    )
+
     migration.upgrade()
 
     assert ("client_cards", "client_id") not in dummy_op.alter_calls
@@ -109,3 +103,18 @@ def test_upgrade_skips_missing_tables(monkeypatch: pytest.MonkeyPatch):
         "ALTER TABLE \"clients\" ALTER COLUMN \"id\" SET DEFAULT" in sql
         for sql in dummy_op.executed_sql
     )
+
+
+def test_upgrade_does_not_use_context_log(monkeypatch: pytest.MonkeyPatch):
+    connection = DummyConnection(tables=set(), columns={})
+    dummy_op = DummyOp(connection)
+    monkeypatch.setattr(migration, "op", dummy_op)
+
+    monkeypatch.setattr(
+        migration.context, "get_context", lambda: (_ for _ in ()).throw(AttributeError)
+    )
+
+    migration.upgrade()
+
+    assert dummy_op.alter_calls == []
+    assert dummy_op.executed_sql == []

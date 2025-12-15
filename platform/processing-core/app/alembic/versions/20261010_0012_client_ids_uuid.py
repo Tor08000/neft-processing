@@ -1,5 +1,7 @@
 """Ensure client foreign keys use UUID"""
 
+import logging
+
 from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -8,6 +10,8 @@ revision = "20261010_0012_client_ids_uuid"
 down_revision = "20260115_0011_operations_indexes"
 branch_labels = None
 depends_on = None
+
+logger = logging.getLogger("alembic.runtime.migration")
 
 
 def upgrade() -> None:
@@ -75,8 +79,6 @@ def _has_invalid_uuid_values(connection, table: str, column: str) -> bool:
 
 
 def _convert_to_uuid(connection, table: str, column: str, *, set_default: bool = False) -> None:
-    logger = context.get_context().log
-
     if not _table_exists(connection, table):
         logger.info("Skipping %s.%s: table missing", table, column)
         return
@@ -119,8 +121,6 @@ def _convert_to_uuid(connection, table: str, column: str, *, set_default: bool =
 
 
 def _convert_from_uuid(connection, table: str, column: str, *, drop_default: bool = False) -> None:
-    logger = context.get_context().log
-
     if not _table_exists(connection, table):
         logger.info("Skipping downgrade for %s.%s: table missing", table, column)
         return
