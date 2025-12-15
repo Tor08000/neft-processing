@@ -113,6 +113,87 @@ def _drop_index_if_exists(name: str, table_name: str) -> None:
     op.drop_index(name, table_name=table_name)
 
 
+def _get_inspector(bind):
+    try:
+        return sa.inspect(bind)
+    except Exception:  # pragma: no cover - extremely defensive
+        return None
+
+
+def _column_is_operationtype_enum(column: dict) -> bool:
+    column_type = column.get("type")
+    return bool(
+        isinstance(column_type, sa.Enum)
+        and getattr(column_type, "name", None) == "operationtype"
+    )
+
+
+def _ensure_operation_type_enum(bind) -> None:
+    inspector = _get_inspector(bind)
+
+    try:
+        table_names = set(inspector.get_table_names()) if inspector is not None else set()
+    except Exception:
+        table_names = set()
+
+    if "operations" not in table_names:
+        return
+
+    try:
+        columns = {column["name"]: column for column in inspector.get_columns("operations")}
+    except Exception:
+        return
+    if "operation_type" not in columns:
+        return
+
+    column = columns["operation_type"]
+    if _column_is_operationtype_enum(column):
+        return
+
+    op.execute(
+        sa.text(
+            """
+            UPDATE operations
+            SET operation_type = UPPER(TRIM(operation_type))
+            WHERE operation_type IS NOT NULL
+            """
+        )
+    )
+
+    invalid_values = bind.execute(
+        sa.text(
+            """
+            SELECT operation_type, count(*)
+            FROM operations
+            WHERE operation_type IS NOT NULL
+              AND operation_type::text NOT IN :enum_values
+            GROUP BY operation_type
+            """
+        ).bindparams(
+            sa.bindparam(
+                "enum_values", value=tuple(operation_type_enum.enums), expanding=True
+            )
+        )
+    ).fetchall()
+
+    if invalid_values:
+        values_list = ", ".join(
+            f"{value} ({count})" for value, count in invalid_values[:10]
+        )
+        raise RuntimeError(
+            "operations.operation_type contains values outside enum: "
+            f"{values_list}. Please clean the data before rerunning the migration."
+        )
+
+    op.alter_column(
+        "operations",
+        "operation_type",
+        type_=operation_type_enum,
+        existing_nullable=False,
+        postgresql_using="operation_type::operationtype",
+    )
+
+
 def upgrade() -> None:
     # Create enums if they don't exist
     operation_type_enum.create(op.get_bind(), checkfirst=True)
@@ -160,7 +241,7 @@ def upgrade() -> None:
     )
 
     # Adjust types for enums
-    op.alter_column("operations", "operation_type", type_=operation_type_enum, existing_nullable=False)
+    _ensure_operation_type_enum(op.get_bind())
     op.alter_column("operations", "status", type_=operation_status_enum, existing_nullable=False)
 
     with op.batch_alter_table("limits_rules") as batch:
