@@ -20,62 +20,78 @@ BATCH_STATUS = sa.Enum(
 )
 
 
-def upgrade() -> None:
-    op.create_table(
-        "clearing_batch",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("merchant_id", sa.String(length=64), nullable=False, index=True),
-        sa.Column("date_from", sa.Date(), nullable=False, index=True),
-        sa.Column("date_to", sa.Date(), nullable=False, index=True),
-        sa.Column("total_amount", sa.Integer(), nullable=False),
-        sa.Column("operations_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column(
-            "status",
-            BATCH_STATUS,
-            nullable=False,
-            server_default="PENDING",
-        ),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            onupdate=sa.func.now(),
-            nullable=False,
-        ),
-    )
-    op.create_index(
-        "ix_clearing_batch_status", "clearing_batch", ["status"], unique=False
-    )
-    op.create_index(
-        "ix_clearing_batch_merchant_id", "clearing_batch", ["merchant_id"], unique=False
-    )
-    op.create_index(
-        "ix_clearing_batch_date_from", "clearing_batch", ["date_from"], unique=False
-    )
-    op.create_index(
-        "ix_clearing_batch_date_to", "clearing_batch", ["date_to"], unique=False
+def _table_exists(bind, table_name: str) -> bool:
+    return bool(
+        bind.exec_driver_sql(
+            "SELECT to_regclass(:table_name)", {"table_name": table_name}
+        ).scalar()
     )
 
-    op.create_table(
-        "clearing_batch_operation",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("batch_id", sa.String(length=36), sa.ForeignKey("clearing_batch.id"), nullable=False),
-        sa.Column(
-            "operation_id",
-            sa.String(length=64),
-            sa.ForeignKey("operations.operation_id"),
-            nullable=False,
-        ),
-        sa.Column("amount", sa.Integer(), nullable=False),
+
+def _create_index_if_not_exists(index_name: str, table_name: str, *columns: str) -> None:
+    columns_sql = ", ".join(columns)
+    op.execute(
+        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})"
     )
-    op.create_index(
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+
+    if not _table_exists(bind, "clearing_batch"):
+        op.create_table(
+            "clearing_batch",
+            sa.Column("id", sa.String(length=36), primary_key=True),
+            sa.Column("merchant_id", sa.String(length=64), nullable=False, index=True),
+            sa.Column("date_from", sa.Date(), nullable=False, index=True),
+            sa.Column("date_to", sa.Date(), nullable=False, index=True),
+            sa.Column("total_amount", sa.Integer(), nullable=False),
+            sa.Column("operations_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column(
+                "status",
+                BATCH_STATUS,
+                nullable=False,
+                server_default="PENDING",
+            ),
+            sa.Column(
+                "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                onupdate=sa.func.now(),
+                nullable=False,
+            ),
+        )
+
+    _create_index_if_not_exists("ix_clearing_batch_status", "clearing_batch", "status")
+    _create_index_if_not_exists(
+        "ix_clearing_batch_merchant_id", "clearing_batch", "merchant_id"
+    )
+    _create_index_if_not_exists(
+        "ix_clearing_batch_date_from", "clearing_batch", "date_from"
+    )
+    _create_index_if_not_exists("ix_clearing_batch_date_to", "clearing_batch", "date_to")
+
+    if not _table_exists(bind, "clearing_batch_operation"):
+        op.create_table(
+            "clearing_batch_operation",
+            sa.Column("id", sa.String(length=36), primary_key=True),
+            sa.Column("batch_id", sa.String(length=36), sa.ForeignKey("clearing_batch.id"), nullable=False),
+            sa.Column(
+                "operation_id",
+                sa.String(length=64),
+                sa.ForeignKey("operations.operation_id"),
+                nullable=False,
+            ),
+            sa.Column("amount", sa.Integer(), nullable=False),
+        )
+
+    _create_index_if_not_exists(
         "ix_clearing_batch_operation_batch_id",
         "clearing_batch_operation",
-        ["batch_id"],
-        unique=False,
+        "batch_id",
     )
 
 
