@@ -194,6 +194,78 @@ def _ensure_operation_type_enum(bind) -> None:
     )
 
 
+def _column_is_operationstatus_enum(column: dict) -> bool:
+    column_type = column.get("type")
+    return bool(
+        isinstance(column_type, sa.Enum)
+        and getattr(column_type, "name", None) == "operationstatus"
+    )
+
+
+def _ensure_operation_status_enum(bind) -> None:
+    inspector = _get_inspector(bind)
+
+    try:
+        table_names = set(inspector.get_table_names()) if inspector is not None else set()
+    except Exception:
+        table_names = set()
+
+    if "operations" not in table_names:
+        return
+
+    try:
+        columns = {column["name"]: column for column in inspector.get_columns("operations")}
+    except Exception:
+        return
+    if "status" not in columns:
+        return
+
+    column = columns["status"]
+    if _column_is_operationstatus_enum(column):
+        return
+
+    op.execute(
+        sa.text(
+            """
+            UPDATE operations
+            SET status = UPPER(TRIM(status))
+            WHERE status IS NOT NULL
+            """
+        )
+    )
+
+    invalid_values = bind.execute(
+        sa.text(
+            """
+            SELECT status, count(*)
+            FROM operations
+            WHERE status IS NOT NULL
+              AND status::text NOT IN :enum_values
+            GROUP BY status
+            """
+        ).bindparams(
+            sa.bindparam("enum_values", value=tuple(operation_status_enum.enums), expanding=True)
+        )
+    ).fetchall()
+
+    if invalid_values:
+        values_list = ", ".join(
+            f"{value} ({count})" for value, count in invalid_values[:10]
+        )
+        raise RuntimeError(
+            "operations.status contains values outside enum: "
+            f"{values_list}. Please clean the data before rerunning the migration."
+        )
+
+    op.alter_column(
+        "operations",
+        "status",
+        type_=operation_status_enum,
+        existing_nullable=False,
+        postgresql_using="status::operationstatus",
+    )
+
+
 def upgrade() -> None:
     # Create enums if they don't exist
     operation_type_enum.create(op.get_bind(), checkfirst=True)
@@ -242,7 +314,7 @@ def upgrade() -> None:
 
     # Adjust types for enums
     _ensure_operation_type_enum(op.get_bind())
-    op.alter_column("operations", "status", type_=operation_status_enum, existing_nullable=False)
+    _ensure_operation_status_enum(op.get_bind())
 
     with op.batch_alter_table("limits_rules") as batch:
         batch.add_column(sa.Column("entity_type", limit_entity_enum, nullable=False, server_default="CLIENT"))
