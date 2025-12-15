@@ -16,11 +16,16 @@ branch_labels = None
 depends_on = None
 
 
-STATUS_ENUM = sa.Enum("PENDING", "FINALIZED", name="billing_summary_status")
+STATUS_ENUM = sa.Enum(
+    "PENDING",
+    "FINALIZED",
+    name="billing_summary_status",
+    create_type=False,  # тип создаём явно через DO $$ чтобы повторный прогон не падал
+)
 
 
-def upgrade() -> None:
-    op.execute(
+def _ensure_status_enum_exists(connection):
+    connection.execute(
         """
         DO $$
         BEGIN
@@ -33,50 +38,83 @@ def upgrade() -> None:
                 );
             END IF;
         END $$;
-        """
+        """,
     )
 
-    op.add_column(
-        "billing_summary",
-        sa.Column(
-            "status",
-            STATUS_ENUM,
-            nullable=False,
-            server_default="PENDING",
-        ),
-    )
-    op.add_column(
-        "billing_summary",
-        sa.Column(
-            "generated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-    )
-    op.add_column(
-        "billing_summary",
-        sa.Column("finalized_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "billing_summary",
-        sa.Column("hash", sa.String(length=128), nullable=True),
-    )
-    op.create_index(
-        "ix_billing_summary_status", "billing_summary", ["status"], unique=False
-    )
-    op.create_index(
-        "ix_billing_summary_generated_at",
-        "billing_summary",
-        ["generated_at"],
-        unique=False,
-    )
+
+def _table_state(inspector):
+    return {
+        "columns": {col["name"] for col in inspector.get_columns("billing_summary")},
+        "indexes": {ix["name"] for ix in inspector.get_indexes("billing_summary")},
+    }
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    _ensure_status_enum_exists(bind)
+
+    inspector = sa.inspect(bind)
+    state = _table_state(inspector)
+
+    if "status" not in state["columns"]:
+        op.add_column(
+            "billing_summary",
+            sa.Column(
+                "status",
+                STATUS_ENUM,
+                nullable=False,
+                server_default="PENDING",
+            ),
+        )
+    if "generated_at" not in state["columns"]:
+        op.add_column(
+            "billing_summary",
+            sa.Column(
+                "generated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
+        )
+    if "finalized_at" not in state["columns"]:
+        op.add_column(
+            "billing_summary",
+            sa.Column("finalized_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if "hash" not in state["columns"]:
+        op.add_column(
+            "billing_summary",
+            sa.Column("hash", sa.String(length=128), nullable=True),
+        )
+
+    if "ix_billing_summary_status" not in state["indexes"]:
+        op.create_index(
+            "ix_billing_summary_status", "billing_summary", ["status"], unique=False
+        )
+    if "ix_billing_summary_generated_at" not in state["indexes"]:
+        op.create_index(
+            "ix_billing_summary_generated_at",
+            "billing_summary",
+            ["generated_at"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_billing_summary_generated_at", table_name="billing_summary")
-    op.drop_index("ix_billing_summary_status", table_name="billing_summary")
-    op.drop_column("billing_summary", "hash")
-    op.drop_column("billing_summary", "finalized_at")
-    op.drop_column("billing_summary", "generated_at")
-    op.drop_column("billing_summary", "status")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    state = _table_state(inspector)
+
+    if "ix_billing_summary_generated_at" in state["indexes"]:
+        op.drop_index("ix_billing_summary_generated_at", table_name="billing_summary")
+    if "ix_billing_summary_status" in state["indexes"]:
+        op.drop_index("ix_billing_summary_status", table_name="billing_summary")
+
+    if "hash" in state["columns"]:
+        op.drop_column("billing_summary", "hash")
+    if "finalized_at" in state["columns"]:
+        op.drop_column("billing_summary", "finalized_at")
+    if "generated_at" in state["columns"]:
+        op.drop_column("billing_summary", "generated_at")
+    if "status" in state["columns"]:
+        op.drop_column("billing_summary", "status")
