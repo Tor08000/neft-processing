@@ -120,6 +120,60 @@ def _get_inspector(bind):
         return None
 
 
+_MUTABLE_PREDICATE_TOKENS = (
+    "now()",
+    "current_timestamp",
+    "clock_timestamp",
+    "statement_timestamp",
+    "date_trunc",
+    "timezone(",
+)
+
+
+def _get_operations_indexes(bind):
+    if getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
+        return []
+
+    try:
+        result = bind.execute(
+            sa.text(
+                "SELECT indexname, indexdef "
+                "FROM pg_indexes "
+                "WHERE tablename='operations'"
+            )
+        )
+    except Exception:
+        return []
+
+    return [(row[0], row[1]) for row in result.fetchall()]
+
+
+def _drop_mutable_predicate_indexes(bind) -> list[str]:
+    dropped_indexes: list[str] = []
+    for index_name, index_def in _get_operations_indexes(bind):
+        if not index_def:
+            continue
+
+        lowered_definition = index_def.lower()
+        if " where " not in lowered_definition:
+            continue
+
+        if any(token in lowered_definition for token in _MUTABLE_PREDICATE_TOKENS):
+            _drop_index_if_exists(index_name, table_name="operations")
+            dropped_indexes.append(index_name)
+
+    return dropped_indexes
+
+
+def _create_operations_active_status_index() -> None:
+    _create_index_if_not_exists(
+        "idx_operations_active_status",
+        "operations",
+        ["status", "created_at"],
+        where="status IN ('PENDING', 'AUTHORIZED', 'OPEN', 'HELD')",
+    )
+
+
 def _column_is_operationtype_enum(column: dict) -> bool:
     column_type = column.get("type")
     return bool(
@@ -257,6 +311,8 @@ def _ensure_operation_status_enum(bind) -> None:
             f"{values_list}. Please clean the data before rerunning the migration."
         )
 
+    _drop_mutable_predicate_indexes(bind)
+
     op.alter_column(
         "operations",
         "status",
@@ -264,6 +320,8 @@ def _ensure_operation_status_enum(bind) -> None:
         existing_nullable=False,
         postgresql_using="status::operationstatus",
     )
+
+    _create_operations_active_status_index()
 
 
 def upgrade() -> None:
