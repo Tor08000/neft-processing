@@ -80,6 +80,39 @@ fuel_product_enum = sa.Enum(
 )
 
 
+def _create_index_if_not_exists(
+    name: str,
+    table_name: str,
+    columns: list[str] | tuple[str, ...],
+    *,
+    unique: bool = False,
+    where: str | None = None,
+) -> None:
+    bind = op.get_bind()
+    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
+        columns_sql = ", ".join(columns)
+        unique_sql = "UNIQUE " if unique else ""
+        where_sql = f" WHERE {where}" if where else ""
+        op.execute(
+            sa.text(
+                f"CREATE {unique_sql}INDEX IF NOT EXISTS {name} "
+                f"ON {table_name} ({columns_sql}){where_sql}"
+            )
+        )
+        return
+
+    op.create_index(name, table_name, columns, unique=unique)
+
+
+def _drop_index_if_exists(name: str, table_name: str) -> None:
+    bind = op.get_bind()
+    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
+        op.execute(sa.text(f"DROP INDEX IF EXISTS {name}"))
+        return
+
+    op.drop_index(name, table_name=table_name)
+
+
 def upgrade() -> None:
     # Create enums if they don't exist
     operation_type_enum.create(op.get_bind(), checkfirst=True)
@@ -121,8 +154,10 @@ def upgrade() -> None:
         batch.drop_constraint("operations_pkey", type_="primary")
         batch.create_primary_key("operations_pkey", ["id"])
 
-    op.create_index("ix_operations_status", "operations", ["status"])
-    op.create_index("ix_operations_operation_type", "operations", ["operation_type"])
+    _create_index_if_not_exists("ix_operations_status", "operations", ["status"])
+    _create_index_if_not_exists(
+        "ix_operations_operation_type", "operations", ["operation_type"]
+    )
 
     # Adjust types for enums
     op.alter_column("operations", "operation_type", type_=operation_type_enum, existing_nullable=False)
@@ -135,15 +170,17 @@ def upgrade() -> None:
         batch.add_column(sa.Column("max_amount", sa.BigInteger(), nullable=True))
         batch.add_column(sa.Column("max_quantity", sa.Numeric(18, 3), nullable=True))
 
-    op.create_index("ix_limits_rules_entity_type", "limits_rules", ["entity_type"])
-    op.create_index("ix_limits_rules_scope", "limits_rules", ["scope"])
-    op.create_index("ix_limits_rules_product_type", "limits_rules", ["product_type"])
+    _create_index_if_not_exists("ix_limits_rules_entity_type", "limits_rules", ["entity_type"])
+    _create_index_if_not_exists("ix_limits_rules_scope", "limits_rules", ["scope"])
+    _create_index_if_not_exists(
+        "ix_limits_rules_product_type", "limits_rules", ["product_type"]
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_limits_rules_product_type", table_name="limits_rules")
-    op.drop_index("ix_limits_rules_scope", table_name="limits_rules")
-    op.drop_index("ix_limits_rules_entity_type", table_name="limits_rules")
+    _drop_index_if_exists("ix_limits_rules_product_type", table_name="limits_rules")
+    _drop_index_if_exists("ix_limits_rules_scope", table_name="limits_rules")
+    _drop_index_if_exists("ix_limits_rules_entity_type", table_name="limits_rules")
 
     with op.batch_alter_table("limits_rules") as batch:
         batch.drop_column("max_quantity")
@@ -152,8 +189,8 @@ def downgrade() -> None:
         batch.drop_column("scope")
         batch.drop_column("entity_type")
 
-    op.drop_index("ix_operations_operation_type", table_name="operations")
-    op.drop_index("ix_operations_status", table_name="operations")
+    _drop_index_if_exists("ix_operations_operation_type", table_name="operations")
+    _drop_index_if_exists("ix_operations_status", table_name="operations")
     with op.batch_alter_table("operations") as batch:
         batch.drop_column("updated_at")
         batch.drop_column("auth_code")
