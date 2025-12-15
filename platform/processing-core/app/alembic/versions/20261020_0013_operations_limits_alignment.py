@@ -120,47 +120,40 @@ def _get_inspector(bind):
         return None
 
 
-_MUTABLE_PREDICATE_TOKENS = (
-    "now()",
-    "current_timestamp",
-    "clock_timestamp",
-    "statement_timestamp",
-    "date_trunc",
-    "timezone(",
-)
-
-
-def _get_operations_indexes(bind):
+def drop_partial_and_expression_indexes(table_name: str) -> list[str]:
+    bind = op.get_bind()
     if getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
         return []
 
-    try:
-        result = bind.execute(
-            sa.text(
-                "SELECT indexname, indexdef "
-                "FROM pg_indexes "
-                "WHERE tablename='operations'"
-            )
-        )
-    except Exception:
-        return []
+    preparer = getattr(getattr(bind, "dialect", None), "identifier_preparer", None)
+    quote = getattr(preparer, "quote", None) or (lambda ident: f'"{ident}"')
 
-    return [(row[0], row[1]) for row in result.fetchall()]
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT
+              idx.relname AS index_name,
+              pg_get_expr(i.indpred, i.indrelid) AS predicate,
+              pg_get_expr(i.indexprs, i.indrelid) AS expr
+            FROM pg_index i
+            JOIN pg_class tbl ON tbl.oid = i.indrelid
+            JOIN pg_class idx ON idx.oid = i.indexrelid
+            JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+            WHERE ns.nspname = 'public'
+              AND tbl.relname = :table_name
+              AND (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL);
+            """
+        ),
+        {"table_name": table_name},
+    )
 
-
-def _drop_mutable_predicate_indexes(bind) -> list[str]:
     dropped_indexes: list[str] = []
-    for index_name, index_def in _get_operations_indexes(bind):
-        if not index_def:
+    for index_name, predicate, expr in result.fetchall():  # noqa: B007 - explicit unpacking
+        if not index_name:
             continue
 
-        lowered_definition = index_def.lower()
-        if " where " not in lowered_definition:
-            continue
-
-        if any(token in lowered_definition for token in _MUTABLE_PREDICATE_TOKENS):
-            _drop_index_if_exists(index_name, table_name="operations")
-            dropped_indexes.append(index_name)
+        op.execute(sa.text(f"DROP INDEX IF EXISTS {quote(index_name)}"))
+        dropped_indexes.append(index_name)
 
     return dropped_indexes
 
@@ -311,7 +304,7 @@ def _ensure_operation_status_enum(bind) -> None:
             f"{values_list}. Please clean the data before rerunning the migration."
         )
 
-    _drop_mutable_predicate_indexes(bind)
+    drop_partial_and_expression_indexes("operations")
 
     op.alter_column(
         "operations",

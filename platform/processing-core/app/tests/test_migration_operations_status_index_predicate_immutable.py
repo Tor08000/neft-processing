@@ -25,22 +25,34 @@ def patch_enum_creation(monkeypatch: pytest.MonkeyPatch):
     yield
 
 
-def test_upgrade_drops_mutable_predicate_indexes(monkeypatch: pytest.MonkeyPatch):
-    mutable_index_definition = (
-        "CREATE INDEX idx_operations_recent ON public.operations "
-        "USING btree (created_at) "
-        "WHERE ((status = 'OPEN'::text) "
-        "AND (created_at >= timezone('utc'::text, now()) - '1 day'::interval));"
-    )
+def test_upgrade_drops_partial_and_expression_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    index_details = [
+        (
+            "idx_operations_recent",
+            "(status = 'OPEN'::text) AND (created_at > timezone('UTC', now()) - '1 day'::interval)",
+            None,
+        ),
+        (
+            "idx_operations_created_day",
+            None,
+            "date_trunc('day'::text, created_at)",
+        ),
+    ]
 
     op_calls = _run_upgrade(
         monkeypatch,
         status=migration.sa.String(),
-        indexes=[("idx_operations_recent", mutable_index_definition)],
+        index_details=index_details,
     )
 
     assert any(
-        "DROP INDEX IF EXISTS idx_operations_recent" in sql
+        "DROP INDEX IF EXISTS \"idx_operations_recent\"" in sql
+        for sql in op_calls.executed_sql
+    )
+    assert any(
+        "DROP INDEX IF EXISTS \"idx_operations_created_day\"" in sql
         for sql in op_calls.executed_sql
     )
 

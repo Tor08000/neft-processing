@@ -18,17 +18,20 @@ class DummyResult:
 
 
 class DummyConnection:
-    def __init__(self, *, invalid_rows=None, indexes=None):
+    def __init__(self, *, invalid_rows=None, indexes=None, index_details=None):
         self.invalid_rows = invalid_rows or []
         self.indexes = indexes or []
+        self.index_details = index_details or []
         self.executed: list[str] = []
         self.dialect = SimpleNamespace(name="postgresql")
 
-    def execute(self, statement):
+    def execute(self, statement, *_, **__):
         sql = str(statement)
         self.executed.append(sql)
         if "FROM pg_indexes" in sql:
             return DummyResult(self.indexes)
+        if "FROM pg_index" in sql:
+            return DummyResult(self.index_details)
         if "SELECT status" in sql:
             return DummyResult(self.invalid_rows)
         return DummyResult()
@@ -119,8 +122,11 @@ def _run_upgrade(
     status,
     invalid_rows=None,
     indexes=None,
+    index_details=None,
 ):
-    connection = DummyConnection(invalid_rows=invalid_rows, indexes=indexes)
+    connection = DummyConnection(
+        invalid_rows=invalid_rows, indexes=indexes, index_details=index_details
+    )
     dummy_op = DummyOp(connection)
     inspector = DummyInspector(columns={"status": status})
 
