@@ -17,16 +17,17 @@ SHARED_PATH = ROOT_DIR / "shared" / "python"
 SERVICE_ROOT = ROOT_DIR / "services" / "core-api"
 PROCESSING_APP_ROOT = ROOT_DIR / "platform" / "processing-core"
 
-for module_name in list(sys.modules):
-    if module_name == "app" or module_name.startswith("app."):
-        sys.modules.pop(module_name)
 
-for path in (SHARED_PATH, PROCESSING_APP_ROOT):
-    if path.exists():
-        sys.path.insert(0, str(path))
+def _prepend_path(path: Path) -> None:
+    if not path.exists():
+        return
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
-if SERVICE_ROOT.exists():
-    sys.path.insert(0, str(SERVICE_ROOT))
+
+for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
+    _prepend_path(path)
 
 # Use in-memory SQLite for tests to avoid coupling to external Postgres.
 os.environ.setdefault("NEFT_DB_URL", "sqlite+pysqlite:///:memory:")
