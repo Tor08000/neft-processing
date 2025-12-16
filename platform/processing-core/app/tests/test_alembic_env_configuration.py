@@ -6,19 +6,27 @@ import pytest
 from alembic import context
 
 
-class DummyTransaction:
+class DummyConnection:
+    def __init__(self):
+        self.ensure_called = False
+        self.begin_called = False
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):  # noqa: D401,ARG002
         return False
 
+    def begin(self):
+        return DummyTransaction(self)
 
-class DummyConnection:
-    def __init__(self):
-        self.ensure_called = False
+
+class DummyTransaction:
+    def __init__(self, connection: DummyConnection):
+        self.connection = connection
 
     def __enter__(self):
+        self.connection.begin_called = True
         return self
 
     def __exit__(self, exc_type, exc, tb):  # noqa: D401,ARG002
@@ -62,7 +70,6 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setenv("DATABASE_URL", target_url)
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
-    monkeypatch.setattr(context, "begin_transaction", lambda: DummyTransaction(), raising=False)
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
     def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
@@ -87,8 +94,9 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     assert dummy_config.get_main_option("sqlalchemy.url") == target_url
     assert any("postgresql+psycopg://user:***@db:5432/neft" in message for message in caplog.messages)
     assert configure_calls.get("connection") is dummy_connection
-    assert configure_calls.get("as_sql") is False
+    assert "as_sql" not in configure_calls
     assert dummy_connection.ensure_called is True
+    assert dummy_connection.begin_called is True
 
 
 @pytest.fixture
@@ -101,7 +109,6 @@ def clear_env_module():
 def restore_context():
     original_config = getattr(context, "config", None)
     original_offline_mode = context.is_offline_mode
-    original_begin = context.begin_transaction
     original_run_migrations = context.run_migrations
     original_configure = context.configure
     yield
@@ -110,6 +117,5 @@ def restore_context():
     else:
         context.config = original_config
     context.is_offline_mode = original_offline_mode
-    context.begin_transaction = original_begin
     context.run_migrations = original_run_migrations
     context.configure = original_configure
