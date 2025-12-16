@@ -7,7 +7,8 @@ Create Date: 2025-11-21 00:00:00.000000
 from __future__ import annotations
 
 from alembic import op
-import sqlalchemy as sa
+
+from app.alembic.utils import ensure_alembic_version_length
 
 
 # revision identifiers, used by Alembic.
@@ -25,12 +26,7 @@ def upgrade() -> None:
     enlarge the column before those migrations run to avoid StringDataRightTruncation.
     """
 
-    op.alter_column(
-        "alembic_version",
-        "version_num",
-        existing_type=sa.String(length=32),
-        type_=sa.String(length=128),
-    )
+    ensure_alembic_version_length(op.get_bind(), min_length=128)
 
 
 def downgrade() -> None:

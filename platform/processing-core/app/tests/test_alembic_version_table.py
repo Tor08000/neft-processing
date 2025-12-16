@@ -43,6 +43,9 @@ class DummyConnection:
     def execute(self, statement):
         self.executed_sql.append(str(statement))
 
+    def exec_driver_sql(self, statement, params=None):  # noqa: ARG002
+        return self.execute(statement)
+
 
 @pytest.mark.parametrize("current_length, expected_calls", [(32, 1), (256, 0)])
 def test_ensure_alembic_version_length(monkeypatch: pytest.MonkeyPatch, current_length, expected_calls):

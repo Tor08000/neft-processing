@@ -7,6 +7,14 @@ Create Date: 2025-06-10
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    drop_index_if_exists,
+    ensure_enum_type_exists,
+    table_exists,
+)
 
 # revision identifiers, used by Alembic.
 revision = "20260110_0010_clearing"
@@ -15,27 +23,26 @@ branch_labels = None
 depends_on = None
 
 
-BATCH_STATUS = sa.Enum(
-    "PENDING", "SENT", "CONFIRMED", "FAILED", name="clearing_batch_status"
+BATCH_STATUS = postgresql.ENUM(
+    "PENDING",
+    "SENT",
+    "CONFIRMED",
+    "FAILED",
+    name="clearing_batch_status",
+    create_type=False,
 )
-
-
-def _table_exists(bind, table_name: str) -> bool:
-    qname = table_name if "." in table_name else f"public.{table_name}"
-    return bool(bind.exec_driver_sql("SELECT to_regclass(%s)", (qname,)).scalar())
-
-
-def _create_index_if_not_exists(index_name: str, table_name: str, *columns: str) -> None:
-    columns_sql = ", ".join(columns)
-    op.execute(
-        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})"
-    )
 
 
 def upgrade() -> None:
     bind = op.get_bind()
 
-    if not _table_exists(bind, "clearing_batch"):
+    ensure_enum_type_exists(
+        bind,
+        type_name=BATCH_STATUS.name,
+        values=list(BATCH_STATUS.enums),
+    )
+
+    if not table_exists(bind, "clearing_batch"):
         op.create_table(
             "clearing_batch",
             sa.Column("id", sa.String(length=36), primary_key=True),
@@ -62,16 +69,16 @@ def upgrade() -> None:
             ),
         )
 
-    _create_index_if_not_exists("ix_clearing_batch_status", "clearing_batch", "status")
-    _create_index_if_not_exists(
-        "ix_clearing_batch_merchant_id", "clearing_batch", "merchant_id"
+    create_index_if_not_exists(bind, "ix_clearing_batch_status", "clearing_batch", ["status"])
+    create_index_if_not_exists(
+        bind, "ix_clearing_batch_merchant_id", "clearing_batch", ["merchant_id"]
     )
-    _create_index_if_not_exists(
-        "ix_clearing_batch_date_from", "clearing_batch", "date_from"
+    create_index_if_not_exists(
+        bind, "ix_clearing_batch_date_from", "clearing_batch", ["date_from"]
     )
-    _create_index_if_not_exists("ix_clearing_batch_date_to", "clearing_batch", "date_to")
+    create_index_if_not_exists(bind, "ix_clearing_batch_date_to", "clearing_batch", ["date_to"])
 
-    if not _table_exists(bind, "clearing_batch_operation"):
+    if not table_exists(bind, "clearing_batch_operation"):
         op.create_table(
             "clearing_batch_operation",
             sa.Column("id", sa.String(length=36), primary_key=True),
@@ -85,21 +92,25 @@ def upgrade() -> None:
             sa.Column("amount", sa.Integer(), nullable=False),
         )
 
-    _create_index_if_not_exists(
+    create_index_if_not_exists(
+        bind,
         "ix_clearing_batch_operation_batch_id",
         "clearing_batch_operation",
-        "batch_id",
+        ["batch_id"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_clearing_batch_operation_batch_id", table_name="clearing_batch_operation"
+    bind = op.get_bind()
+    drop_index_if_exists(
+        bind, "ix_clearing_batch_operation_batch_id", table_name="clearing_batch_operation"
     )
-    op.drop_table("clearing_batch_operation")
-    op.drop_index("ix_clearing_batch_date_to", table_name="clearing_batch")
-    op.drop_index("ix_clearing_batch_date_from", table_name="clearing_batch")
-    op.drop_index("ix_clearing_batch_merchant_id", table_name="clearing_batch")
-    op.drop_index("ix_clearing_batch_status", table_name="clearing_batch")
-    op.drop_table("clearing_batch")
-    BATCH_STATUS.drop(op.get_bind())
+    if table_exists(bind, "clearing_batch_operation"):
+        op.drop_table("clearing_batch_operation")
+    drop_index_if_exists(bind, "ix_clearing_batch_date_to", table_name="clearing_batch")
+    drop_index_if_exists(bind, "ix_clearing_batch_date_from", table_name="clearing_batch")
+    drop_index_if_exists(bind, "ix_clearing_batch_merchant_id", table_name="clearing_batch")
+    drop_index_if_exists(bind, "ix_clearing_batch_status", table_name="clearing_batch")
+    if table_exists(bind, "clearing_batch"):
+        op.drop_table("clearing_batch")
+    BATCH_STATUS.drop(bind, checkfirst=True)
