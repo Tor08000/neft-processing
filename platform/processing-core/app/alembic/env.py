@@ -62,16 +62,18 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # ВАЖНО: не делать connection.begin() — Alembic сам управляет транзакцией
         ensure_alembic_version_length(connection)
 
-        with connection.begin():
-            context.configure(
-                connection=connection,
-                target_metadata=target_metadata,
-                compare_type=True,
-                version_table_column_type=sa.String(length=128),
-            )
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            version_table_column_type=sa.String(length=128),
+            as_sql=False,
+        )
 
+        with context.begin_transaction():
             context.run_migrations()
 
 
