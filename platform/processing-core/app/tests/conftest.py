@@ -10,7 +10,9 @@ import pytest
 from jose import jwt
 from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 
-ROOT_DIR = Path(__file__).resolve().parents[4]
+ROOT_DIR = Path(__file__).resolve()
+while ROOT_DIR.name != "app" and ROOT_DIR.parent != ROOT_DIR:
+    ROOT_DIR = ROOT_DIR.parent
 SHARED_PATH = ROOT_DIR / "shared" / "python"
 SERVICE_ROOT = ROOT_DIR / "services" / "core-api"
 PROCESSING_APP_ROOT = ROOT_DIR / "platform" / "processing-core"
