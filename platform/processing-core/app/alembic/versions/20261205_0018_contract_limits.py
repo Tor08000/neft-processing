@@ -11,6 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from app.alembic.utils import ensure_pg_enum, safe_enum
+
 # revision identifiers, used by Alembic.
 revision: str = "20261205_0018_contract_limits"
 down_revision: Union[str, None] = "20261201_0017_accounts_and_ledger"
@@ -18,7 +20,22 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+LIMIT_SCOPE_VALUES = ["CLIENT", "CARD", "TARIFF"]
+LIMIT_TYPE_VALUES = ["DAILY_VOLUME", "DAILY_AMOUNT", "MONTHLY_AMOUNT", "CREDIT_LIMIT"]
+LIMIT_WINDOW_VALUES = ["DAY", "MONTH"]
+
+
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    ensure_pg_enum(bind, "limitscope", values=LIMIT_SCOPE_VALUES)
+    ensure_pg_enum(bind, "limittype", values=LIMIT_TYPE_VALUES)
+    ensure_pg_enum(bind, "limitwindow", values=LIMIT_WINDOW_VALUES)
+
+    limit_scope_enum = safe_enum(bind, "limitscope", LIMIT_SCOPE_VALUES)
+    limit_type_enum = safe_enum(bind, "limittype", LIMIT_TYPE_VALUES)
+    limit_window_enum = safe_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES)
+
     op.create_table(
         "tariff_plans",
         sa.Column("id", sa.String(length=64), nullable=False),
@@ -33,15 +50,15 @@ def upgrade() -> None:
     op.create_table(
         "limit_configs",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("scope", sa.Enum("CLIENT", "CARD", "TARIFF", name="limitscope"), nullable=False),
+        sa.Column("scope", limit_scope_enum, nullable=False),
         sa.Column("subject_ref", sa.String(length=64), nullable=False),
         sa.Column(
             "limit_type",
-            sa.Enum("DAILY_VOLUME", "DAILY_AMOUNT", "MONTHLY_AMOUNT", "CREDIT_LIMIT", name="limittype"),
+            limit_type_enum,
             nullable=False,
         ),
         sa.Column("value", sa.BigInteger(), nullable=False),
-        sa.Column("window", sa.Enum("DAY", "MONTH", name="limitwindow"), nullable=False, server_default="DAY"),
+        sa.Column("window", limit_window_enum, nullable=False, server_default="DAY"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("tariff_plan_id", sa.String(length=64), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
@@ -76,7 +93,3 @@ def downgrade() -> None:
 
     op.drop_index("ix_tariff_plans_name", table_name="tariff_plans")
     op.drop_table("tariff_plans")
-
-    sa.Enum(name="limitscope").drop(op.get_bind(), checkfirst=False)
-    sa.Enum(name="limittype").drop(op.get_bind(), checkfirst=False)
-    sa.Enum(name="limitwindow").drop(op.get_bind(), checkfirst=False)

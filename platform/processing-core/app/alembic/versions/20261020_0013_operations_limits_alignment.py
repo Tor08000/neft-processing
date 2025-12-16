@@ -6,6 +6,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.alembic.utils import ensure_pg_enum, safe_enum
+
 # revision identifiers, used by Alembic.
 revision = "20261020_0013_operations_limits_alignment"
 down_revision = "20261010_0012_client_ids_uuid"
@@ -13,7 +15,7 @@ branch_labels = None
 depends_on = None
 
 
-operation_type_enum = sa.Enum(
+OPERATION_TYPE_VALUES = [
     "AUTH",
     "HOLD",
     "COMMIT",
@@ -22,10 +24,9 @@ operation_type_enum = sa.Enum(
     "DECLINE",
     "CAPTURE",
     "REVERSAL",
-    name="operationtype",
-)
+]
 
-operation_status_enum = sa.Enum(
+OPERATION_STATUS_VALUES = [
     "PENDING",
     "AUTHORIZED",
     "HELD",
@@ -36,48 +37,45 @@ operation_status_enum = sa.Enum(
     "CANCELLED",
     "CAPTURED",
     "OPEN",
-    name="operationstatus",
-)
+]
 
-product_type_enum = sa.Enum(
-    "DIESEL",
-    "AI92",
-    "AI95",
-    "AI98",
-    "GAS",
-    "OTHER",
-    name="producttype",
-)
+PRODUCT_TYPE_VALUES = ["DIESEL", "AI92", "AI95", "AI98", "GAS", "OTHER"]
 
-risk_result_enum = sa.Enum(
-    "LOW",
-    "MEDIUM",
-    "HIGH",
-    "BLOCK",
-    "MANUAL_REVIEW",
-    name="riskresult",
-)
+RISK_RESULT_VALUES = ["LOW", "MEDIUM", "HIGH", "BLOCK", "MANUAL_REVIEW"]
 
-limit_entity_enum = sa.Enum(
-    "CLIENT",
-    "CARD",
-    "TERMINAL",
-    "MERCHANT",
-    name="limitentitytype",
-)
+LIMIT_ENTITY_VALUES = ["CLIENT", "CARD", "TERMINAL", "MERCHANT"]
 
-limit_scope_enum = sa.Enum("PER_TX", "DAILY", "MONTHLY", name="limitscope")
+LIMIT_SCOPE_VALUES = ["PER_TX", "DAILY", "MONTHLY"]
 
-fuel_product_enum = sa.Enum(
-    "ANY",
-    "DIESEL",
-    "AI92",
-    "AI95",
-    "AI98",
-    "GAS",
-    "OTHER",
-    name="fuelproducttype",
-)
+FUEL_PRODUCT_VALUES = ["ANY", "DIESEL", "AI92", "AI95", "AI98", "GAS", "OTHER"]
+
+
+def _operation_type_enum(bind):
+    return safe_enum(bind, "operationtype", OPERATION_TYPE_VALUES)
+
+
+def _operation_status_enum(bind):
+    return safe_enum(bind, "operationstatus", OPERATION_STATUS_VALUES)
+
+
+def _product_type_enum(bind):
+    return safe_enum(bind, "producttype", PRODUCT_TYPE_VALUES)
+
+
+def _risk_result_enum(bind):
+    return safe_enum(bind, "riskresult", RISK_RESULT_VALUES)
+
+
+def _limit_entity_enum(bind):
+    return safe_enum(bind, "limitentitytype", LIMIT_ENTITY_VALUES)
+
+
+def _limit_scope_enum(bind):
+    return safe_enum(bind, "limitscope", LIMIT_SCOPE_VALUES)
+
+
+def _fuel_product_enum(bind):
+    return safe_enum(bind, "fuelproducttype", FUEL_PRODUCT_VALUES)
 
 
 def _create_index_if_not_exists(
@@ -176,6 +174,7 @@ def _column_is_operationtype_enum(column: dict) -> bool:
 
 
 def _ensure_operation_type_enum(bind) -> None:
+    operation_type_enum = _operation_type_enum(bind)
     inspector = _get_inspector(bind)
 
     try:
@@ -218,7 +217,7 @@ def _ensure_operation_type_enum(bind) -> None:
             """
         ).bindparams(
             sa.bindparam(
-                "enum_values", value=tuple(operation_type_enum.enums), expanding=True
+                "enum_values", value=tuple(OPERATION_TYPE_VALUES), expanding=True
             )
         )
     ).fetchall()
@@ -250,6 +249,7 @@ def _column_is_operationstatus_enum(column: dict) -> bool:
 
 
 def _ensure_operation_status_enum(bind) -> None:
+    operation_status_enum = _operation_status_enum(bind)
     inspector = _get_inspector(bind)
 
     try:
@@ -291,7 +291,7 @@ def _ensure_operation_status_enum(bind) -> None:
             GROUP BY status
             """
         ).bindparams(
-            sa.bindparam("enum_values", value=tuple(operation_status_enum.enums), expanding=True)
+            sa.bindparam("enum_values", value=tuple(OPERATION_STATUS_VALUES), expanding=True)
         )
     ).fetchall()
 
@@ -318,14 +318,23 @@ def _ensure_operation_status_enum(bind) -> None:
 
 
 def upgrade() -> None:
-    # Create enums if they don't exist
-    operation_type_enum.create(op.get_bind(), checkfirst=True)
-    operation_status_enum.create(op.get_bind(), checkfirst=True)
-    product_type_enum.create(op.get_bind(), checkfirst=True)
-    risk_result_enum.create(op.get_bind(), checkfirst=True)
-    limit_entity_enum.create(op.get_bind(), checkfirst=True)
-    limit_scope_enum.create(op.get_bind(), checkfirst=True)
-    fuel_product_enum.create(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+
+    ensure_pg_enum(bind, "operationtype", values=OPERATION_TYPE_VALUES)
+    ensure_pg_enum(bind, "operationstatus", values=OPERATION_STATUS_VALUES)
+    ensure_pg_enum(bind, "producttype", values=PRODUCT_TYPE_VALUES)
+    ensure_pg_enum(bind, "riskresult", values=RISK_RESULT_VALUES)
+    ensure_pg_enum(bind, "limitentitytype", values=LIMIT_ENTITY_VALUES)
+    ensure_pg_enum(bind, "limitscope", values=LIMIT_SCOPE_VALUES)
+    ensure_pg_enum(bind, "fuelproducttype", values=FUEL_PRODUCT_VALUES)
+
+    operation_type_enum = _operation_type_enum(bind)
+    operation_status_enum = _operation_status_enum(bind)
+    product_type_enum = _product_type_enum(bind)
+    risk_result_enum = _risk_result_enum(bind)
+    limit_entity_enum = _limit_entity_enum(bind)
+    limit_scope_enum = _limit_scope_enum(bind)
+    fuel_product_enum = _fuel_product_enum(bind)
 
     with op.batch_alter_table("operations") as batch:
         batch.add_column(
@@ -412,10 +421,3 @@ def downgrade() -> None:
         batch.create_primary_key("operations_pkey", ["operation_id"])
         batch.drop_column("id")
 
-    risk_result_enum.drop(op.get_bind(), checkfirst=True)
-    product_type_enum.drop(op.get_bind(), checkfirst=True)
-    operation_status_enum.drop(op.get_bind(), checkfirst=True)
-    operation_type_enum.drop(op.get_bind(), checkfirst=True)
-    limit_entity_enum.drop(op.get_bind(), checkfirst=True)
-    limit_scope_enum.drop(op.get_bind(), checkfirst=True)
-    fuel_product_enum.drop(op.get_bind(), checkfirst=True)

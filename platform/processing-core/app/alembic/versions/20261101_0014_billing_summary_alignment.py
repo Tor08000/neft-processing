@@ -8,6 +8,7 @@ Create Date: 2026-11-01 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import ensure_pg_enum, safe_enum
 from app.models.operation import ProductType
 
 
@@ -19,29 +20,7 @@ depends_on = None
 
 
 product_type_values = [value.value for value in ProductType]
-product_type_enum = sa.Enum(*product_type_values, name="product_type")
-status_enum = sa.Enum("PENDING", "FINALIZED", name="billing_summary_status")
-
-
-def ensure_enum_type_exists(bind, type_name: str, values: list[str], schema: str = "public") -> None:
-    if bind.dialect.name != "postgresql":  # pragma: no cover - alembic migrations run on PG
-        return
-
-    res = bind.exec_driver_sql(
-        "SELECT 1 FROM pg_type t "
-        "JOIN pg_namespace n ON n.oid = t.typnamespace "
-        "WHERE n.nspname = %s AND t.typname = %s",
-        (schema, type_name),
-    ).first()
-    exists = res is not None
-
-    if exists:
-        return
-
-    values_sql = ", ".join(f"'{value}'" for value in values)
-    bind.exec_driver_sql(
-        f"CREATE TYPE {schema}.{type_name} AS ENUM ({values_sql})"
-    )
+billing_status_values = ["PENDING", "FINALIZED"]
 
 
 def _column_exists(bind, table_name: str, column_name: str, schema: str = "public") -> bool:
@@ -59,7 +38,11 @@ def _column_exists(bind, table_name: str, column_name: str, schema: str = "publi
 
 def upgrade() -> None:
     bind = op.get_bind()
-    ensure_enum_type_exists(bind, "product_type", values=product_type_values, schema="public")
+    ensure_pg_enum(bind, "product_type", values=product_type_values, schema="public")
+    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema="public")
+
+    product_type_enum = safe_enum(bind, "product_type", product_type_values)
+    status_enum = safe_enum(bind, "billing_summary_status", billing_status_values)
 
     op.drop_index("ix_billing_summary_generated_at", table_name="billing_summary")
     op.drop_index("ix_billing_summary_status", table_name="billing_summary")
@@ -159,6 +142,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+
+    ensure_pg_enum(bind, "product_type", values=product_type_values, schema="public")
+    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema="public")
+
+    product_type_enum = safe_enum(bind, "product_type", product_type_values)
+    status_enum = safe_enum(bind, "billing_summary_status", billing_status_values)
+
     op.drop_constraint(
         "uq_billing_summary_unique_scope",
         "billing_summary",
