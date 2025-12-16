@@ -7,6 +7,7 @@ Create Date: 2026-12-01 00:17:00.000000
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
     create_index_if_not_exists,
@@ -27,32 +28,41 @@ LEDGER_DIRECTION_VALUES = ["DEBIT", "CREDIT"]
 
 
 def _account_type_enum(bind):
-    is_pg = bind.dialect.name == "postgresql"
+    if bind.dialect.name == "postgresql":
+        return postgresql.ENUM(
+            *ACCOUNT_TYPE_VALUES, name="accounttype", create_type=False
+        )
+
     return sa.Enum(
         *ACCOUNT_TYPE_VALUES,
         name="accounttype",
-        create_type=False,
-        native_enum=is_pg,
+        native_enum=False,
     )
 
 
 def _account_status_enum(bind):
-    is_pg = bind.dialect.name == "postgresql"
+    if bind.dialect.name == "postgresql":
+        return postgresql.ENUM(
+            *ACCOUNT_STATUS_VALUES, name="accountstatus", create_type=False
+        )
+
     return sa.Enum(
         *ACCOUNT_STATUS_VALUES,
         name="accountstatus",
-        create_type=False,
-        native_enum=is_pg,
+        native_enum=False,
     )
 
 
 def _ledger_direction_enum(bind):
-    is_pg = bind.dialect.name == "postgresql"
+    if bind.dialect.name == "postgresql":
+        return postgresql.ENUM(
+            *LEDGER_DIRECTION_VALUES, name="ledgerdirection", create_type=False
+        )
+
     return sa.Enum(
         *LEDGER_DIRECTION_VALUES,
         name="ledgerdirection",
-        create_type=False,
-        native_enum=is_pg,
+        native_enum=False,
     )
 
 
