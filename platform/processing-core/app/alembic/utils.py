@@ -190,15 +190,51 @@ def ensure_enum_type_exists(
     values: list[str],
     schema: str = "public",
 ) -> None:
+    pg_ensure_enum(connection, type_name, values, schema=schema)
+
+
+def pg_enum_exists(connection: Connection, name: str, *, schema: str = "public") -> bool:
+    """Check if a PostgreSQL enum exists.
+
+    Always returns ``False`` for non-PostgreSQL dialects to make helpers
+    idempotent in SQLite test runs.
+    """
+
+    if connection.dialect.name != "postgresql":
+        return False
+
+    return enum_type_exists(connection, name, schema=schema)
+
+
+def pg_ensure_enum(
+    connection: Connection, name: str, values: list[str], *, schema: str = "public"
+) -> None:
+    """Create a PostgreSQL enum if it does not already exist.
+
+    Uses a ``DO $$ ... $$`` block for compatibility with PostgreSQL versions that
+    lack ``CREATE TYPE ... IF NOT EXISTS``.
+    """
+
     if connection.dialect.name != "postgresql":
         return
 
-    if enum_type_exists(connection, type_name, schema=schema):
-        logger.info("Skipping creation of enum %s.%s: already exists", schema, type_name)
+    if pg_enum_exists(connection, name, schema=schema):
+        logger.info("Skipping creation of enum %s.%s: already exists", schema, name)
         return
 
     values_sql = ", ".join(f"'{value}'" for value in values)
-    logger.info("Creating enum %s.%s", schema, type_name)
+    logger.info("Creating enum %s.%s", schema, name)
     connection.exec_driver_sql(
-        f"CREATE TYPE {schema}.{type_name} AS ENUM ({values_sql})"
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = '{schema}' AND t.typname = '{name}'
+            ) THEN
+                CREATE TYPE {schema}.{name} AS ENUM ({values_sql});
+            END IF;
+        END $$;
+        """
     )
