@@ -1,6 +1,8 @@
 # services/core-api/app/alembic/env.py
+import importlib
 import logging
 import os
+import pkgutil
 import sys
 from logging.config import fileConfig
 
@@ -13,8 +15,6 @@ from sqlalchemy.engine.url import make_url
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.db import Base, DATABASE_URL  # type: ignore  # noqa: E402
-from app import models  # noqa: F401,E402
-from app.models import operation  # noqa: F401,E402
 from app.alembic.utils import ensure_alembic_version_length
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,16 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+
+def import_all_model_modules() -> None:
+    """Import every module inside app.models to populate metadata."""
+
+    models_pkg = importlib.import_module("app.models")
+    for module in pkgutil.iter_modules(models_pkg.__path__):
+        if module.name.startswith("__"):
+            continue
+        importlib.import_module(f"app.models.{module.name}")
 
 
 def resolve_db_url() -> str:
@@ -42,6 +52,7 @@ def resolve_db_url() -> str:
 
     return db_url
 
+import_all_model_modules()
 
 db_url = resolve_db_url()
 
@@ -97,19 +108,32 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_schemas=True,
             compare_type=True,
+            compare_server_default=True,
             version_table="alembic_version",
             version_table_schema="public",
             version_table_column_type=sa.String(length=128),
+            transactional_ddl=True,
             as_sql=False,
         )
+
+        if not target_metadata.tables:
+            raise RuntimeError(
+                "Alembic target_metadata is empty — migrations would not execute any DDL"
+            )
 
         with context.begin_transaction():
             context.run_migrations()
 
-        inspector = sa.inspect(connection)
-        if "alembic_version" not in inspector.get_table_names(schema="public"):
-            raise RuntimeError("alembic_version table was not created during migrations")
+        exists = connection.exec_driver_sql(
+            "select to_regclass('public.alembic_version')"
+        ).scalar()
+
+        if not exists:
+            raise RuntimeError(
+                "Alembic finished without creating alembic_version — DDL was not executed"
+            )
 
 
 if context.is_offline_mode():
