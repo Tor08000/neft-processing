@@ -1,11 +1,13 @@
 # services/core-api/app/alembic/env.py
+import logging
 import os
 import sys
 from logging.config import fileConfig
 
+import sqlalchemy as sa
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-import sqlalchemy as sa
+from sqlalchemy.engine.url import make_url
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -14,32 +16,43 @@ from app import models  # noqa: F401,E402
 from app.models import operation  # noqa: F401,E402
 from app.alembic.utils import ensure_alembic_version_length
 
+logger = logging.getLogger(__name__)
+
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Берём DSN из ENV или из того же источника, что использует core-api
-db_url = os.getenv("DATABASE_URL", DATABASE_URL)
-config.set_main_option("sqlalchemy.url", db_url)
+
+def resolve_db_url() -> str:
+    """Получить URL подключения к БД из окружения или alembic.ini."""
+
+    env_url = os.getenv("DATABASE_URL")
+    ini_url = config.get_main_option("sqlalchemy.url")
+    db_url = env_url or ini_url
+
+    if not db_url:
+        raise RuntimeError(
+            "DATABASE_URL is not set and sqlalchemy.url is missing in alembic.ini",
+        )
+
+    config.set_main_option("sqlalchemy.url", db_url)
+
+    safe_url = make_url(db_url).render_as_string(hide_password=True)
+    logger.info("Using database URL for alembic: %s", safe_url)
+
+    return db_url
+
+
+db_url = resolve_db_url()
 
 # Все ORM-модели (Client, User, потом Operation и т.д.)
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Запуск миграций в offline-режиме (генерация SQL без подключения к БД)."""
-    url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        compare_type=True,
-        version_table_column_type=sa.String(length=128),
-    )
-
-    with context.begin_transaction():
-        context.run_migrations()
+    msg = "Offline migrations are not supported; provide DATABASE_URL for online run."
+    raise RuntimeError(msg)
 
 
 def run_migrations_online() -> None:
@@ -58,6 +71,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             version_table_column_type=sa.String(length=128),
+            as_sql=False,
         )
 
         with context.begin_transaction():
