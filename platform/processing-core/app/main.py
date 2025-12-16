@@ -446,6 +446,13 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     return "\n".join(lines) + "\n"
 
 
+@app.get("/metric", response_class=PlainTextResponse, include_in_schema=False)
+def metric_alias() -> str:  # pragma: no cover - compatibility alias
+    """Backward-compatible alias for the metrics endpoint."""
+
+    return metrics()
+
+
 # -----------------------------------------------------------------------------
 # HEALTH
 # -----------------------------------------------------------------------------

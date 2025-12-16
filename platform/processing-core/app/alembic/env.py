@@ -137,17 +137,27 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         try:
             db_info = connection.exec_driver_sql(
-                "SELECT current_database(), current_user, inet_server_addr(), inet_server_port()"
+                """
+                SELECT
+                    current_database(),
+                    current_user,
+                    inet_server_addr(),
+                    inet_server_port(),
+                    current_schema(),
+                    version()
+                """
             ).first()
         except Exception as exc:  # pragma: no cover - diagnostic only
             logger.warning("Could not fetch connection diagnostics: %s", exc)
         else:
             logger.info(
-                "Connected to database=%s user=%s host=%s port=%s",
+                "Connected to database=%s user=%s host=%s port=%s schema=%s version=%s",
                 db_info[0],
                 db_info[1],
                 db_info[2],
                 db_info[3],
+                db_info[4],
+                db_info[5],
             )
 
         migration_context = MigrationContext.configure(
@@ -187,13 +197,23 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
-        exists = connection.exec_driver_sql(
+        version_exists = connection.exec_driver_sql(
             "select to_regclass('public.alembic_version')"
         ).scalar()
+        table_count = connection.exec_driver_sql(
+            "select count(*) from pg_tables where schemaname='public'"
+        ).scalar()
 
-        if not exists:
+        logger.info(
+            "Post-migration checks: alembic_version=%s, public tables=%s",
+            version_exists,
+            table_count,
+        )
+
+        if not version_exists:
             raise RuntimeError(
-                "Alembic finished without creating alembic_version — DDL was not executed"
+                "Migrations finished without creating alembic_version; DDL did not apply."
+                " Check transaction, schema, connection, or alembic configuration."
             )
 
 

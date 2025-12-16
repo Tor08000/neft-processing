@@ -16,3 +16,14 @@ def test_metrics_endpoint_returns_prometheus_text():
     body = response.text
     assert "core_api_up 1" in body
     assert "core_api_billing_generated_total 1" in body
+
+
+def test_metric_alias_is_supported():
+    billing_metrics.reset()
+    billing_metrics.mark_generated()
+
+    client = TestClient(app)
+    response = client.get("/metric")
+
+    assert response.status_code == 200
+    assert "core_api_billing_generated_total 1" in response.text
