@@ -9,6 +9,14 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+    table_exists,
+)
+
 
 # revision identifiers, used by Alembic.
 revision = "20270201_0020"
@@ -18,7 +26,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+
+    create_table_if_not_exists(
+        bind,
         "tariff_prices",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
         sa.Column("tariff_id", sa.String(length=64), sa.ForeignKey("tariff_plans.id"), nullable=False),
@@ -34,21 +45,24 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
-    op.create_index("ix_tariff_prices_tariff_id", "tariff_prices", ["tariff_id"])
-    op.create_index("ix_tariff_prices_product_id", "tariff_prices", ["product_id"])
-    op.create_index("ix_tariff_prices_partner_id", "tariff_prices", ["partner_id"])
-    op.create_index("ix_tariff_prices_azs_id", "tariff_prices", ["azs_id"])
-    op.create_index("ix_tariff_prices_valid_from", "tariff_prices", ["valid_from"])
-    op.create_index("ix_tariff_prices_valid_to", "tariff_prices", ["valid_to"])
-    op.create_index("ix_tariff_prices_priority", "tariff_prices", ["priority"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_tariff_id", "tariff_prices", ["tariff_id"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_product_id", "tariff_prices", ["product_id"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_partner_id", "tariff_prices", ["partner_id"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_azs_id", "tariff_prices", ["azs_id"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_valid_from", "tariff_prices", ["valid_from"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_valid_to", "tariff_prices", ["valid_to"])
+    create_index_if_not_exists(bind, "ix_tariff_prices_priority", "tariff_prices", ["priority"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_tariff_prices_priority", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_valid_to", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_valid_from", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_azs_id", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_partner_id", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_product_id", table_name="tariff_prices")
-    op.drop_index("ix_tariff_prices_tariff_id", table_name="tariff_prices")
-    op.drop_table("tariff_prices")
+    bind = op.get_bind()
+
+    if table_exists(bind, "tariff_prices"):
+        drop_index_if_exists(bind, "ix_tariff_prices_priority")
+        drop_index_if_exists(bind, "ix_tariff_prices_valid_to")
+        drop_index_if_exists(bind, "ix_tariff_prices_valid_from")
+        drop_index_if_exists(bind, "ix_tariff_prices_azs_id")
+        drop_index_if_exists(bind, "ix_tariff_prices_partner_id")
+        drop_index_if_exists(bind, "ix_tariff_prices_product_id")
+        drop_index_if_exists(bind, "ix_tariff_prices_tariff_id")
+        drop_table_if_exists(bind, "tariff_prices")

@@ -9,7 +9,15 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import ensure_pg_enum, safe_enum
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+    ensure_pg_enum,
+    safe_enum,
+    table_exists,
+)
 from app.models.invoice import InvoiceStatus
 
 # revision identifiers, used by Alembic.
@@ -27,12 +35,13 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "invoicestatus", values=INVOICE_STATUS_VALUES)
     invoice_status_enum = safe_enum(bind, "invoicestatus", INVOICE_STATUS_VALUES)
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "invoices",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("client_id", sa.String(length=64), nullable=False, index=True),
-        sa.Column("period_from", sa.Date(), nullable=False, index=True),
-        sa.Column("period_to", sa.Date(), nullable=False, index=True),
+        sa.Column("client_id", sa.String(length=64), nullable=False),
+        sa.Column("period_from", sa.Date(), nullable=False),
+        sa.Column("period_to", sa.Date(), nullable=False),
         sa.Column("currency", sa.String(length=3), nullable=False),
         sa.Column("total_amount", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("tax_amount", sa.BigInteger(), nullable=False, server_default="0"),
@@ -41,7 +50,6 @@ def upgrade() -> None:
             "status",
             invoice_status_enum,
             nullable=False,
-            index=True,
             server_default=InvoiceStatus.DRAFT.value,
         ),
         sa.Column(
@@ -55,10 +63,13 @@ def upgrade() -> None:
         sa.Column("external_number", sa.String(length=64), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "invoice_lines",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("invoice_id", sa.String(length=36), sa.ForeignKey("invoices.id"), nullable=False, index=True),
+        sa.Column(
+            "invoice_id", sa.String(length=36), sa.ForeignKey("invoices.id"), nullable=False
+        ),
         sa.Column("operation_id", sa.String(length=128), nullable=True),
         sa.Column("card_id", sa.String(length=64), nullable=True),
         sa.Column("product_id", sa.String(length=64), nullable=False),
@@ -70,21 +81,26 @@ def upgrade() -> None:
         sa.Column("azs_id", sa.String(length=64), nullable=True),
     )
 
-    op.create_index("ix_invoices_client_id", "invoices", ["client_id"])
-    op.create_index("ix_invoices_status", "invoices", ["status"])
-    op.create_index("ix_invoices_period_from", "invoices", ["period_from"])
-    op.create_index("ix_invoices_period_to", "invoices", ["period_to"])
-    op.create_index("ix_invoice_lines_invoice_id", "invoice_lines", ["invoice_id"])
+    create_index_if_not_exists(bind, "ix_invoices_client_id", "invoices", ["client_id"])
+    create_index_if_not_exists(bind, "ix_invoices_status", "invoices", ["status"])
+    create_index_if_not_exists(bind, "ix_invoices_period_from", "invoices", ["period_from"])
+    create_index_if_not_exists(bind, "ix_invoices_period_to", "invoices", ["period_to"])
+    create_index_if_not_exists(
+        bind, "ix_invoice_lines_invoice_id", "invoice_lines", ["invoice_id"]
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_invoice_lines_invoice_id", table_name="invoice_lines")
-    op.drop_index("ix_invoices_period_to", table_name="invoices")
-    op.drop_index("ix_invoices_period_from", table_name="invoices")
-    op.drop_index("ix_invoices_status", table_name="invoices")
-    op.drop_index("ix_invoices_client_id", table_name="invoices")
-    op.drop_table("invoice_lines")
-    op.drop_table("invoices")
     bind = op.get_bind()
+
+    if table_exists(bind, "invoice_lines"):
+        drop_index_if_exists(bind, "ix_invoice_lines_invoice_id")
+        drop_table_if_exists(bind, "invoice_lines")
+    if table_exists(bind, "invoices"):
+        drop_index_if_exists(bind, "ix_invoices_period_to")
+        drop_index_if_exists(bind, "ix_invoices_period_from")
+        drop_index_if_exists(bind, "ix_invoices_status")
+        drop_index_if_exists(bind, "ix_invoices_client_id")
+        drop_table_if_exists(bind, "invoices")
     if bind.dialect.name == "postgresql":
         bind.exec_driver_sql("DROP TYPE IF EXISTS public.invoicestatus")

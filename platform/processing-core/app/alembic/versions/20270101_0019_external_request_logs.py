@@ -10,6 +10,14 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+    table_exists,
+)
+
 
 # revision identifiers, used by Alembic.
 revision = "20270101_0019_external_request_logs"
@@ -19,7 +27,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+
+    create_table_if_not_exists(
+        bind,
         "external_request_logs",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("partner_id", sa.String(length=64), nullable=False),
@@ -37,15 +48,26 @@ def upgrade() -> None:
         sa.Column("latency_ms", sa.Float(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
-    op.create_index("ix_external_request_logs_partner", "external_request_logs", ["partner_id"])
-    op.create_index("ix_external_request_logs_azs", "external_request_logs", ["azs_id"])
-    op.create_index("ix_external_request_logs_status", "external_request_logs", ["status"])
-    op.create_index("ix_external_request_logs_created", "external_request_logs", ["created_at"])
+    create_index_if_not_exists(
+        bind, "ix_external_request_logs_partner", "external_request_logs", ["partner_id"]
+    )
+    create_index_if_not_exists(
+        bind, "ix_external_request_logs_azs", "external_request_logs", ["azs_id"]
+    )
+    create_index_if_not_exists(
+        bind, "ix_external_request_logs_status", "external_request_logs", ["status"]
+    )
+    create_index_if_not_exists(
+        bind, "ix_external_request_logs_created", "external_request_logs", ["created_at"]
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_external_request_logs_created", table_name="external_request_logs")
-    op.drop_index("ix_external_request_logs_status", table_name="external_request_logs")
-    op.drop_index("ix_external_request_logs_azs", table_name="external_request_logs")
-    op.drop_index("ix_external_request_logs_partner", table_name="external_request_logs")
-    op.drop_table("external_request_logs")
+    bind = op.get_bind()
+
+    if table_exists(bind, "external_request_logs"):
+        drop_index_if_exists(bind, "ix_external_request_logs_created")
+        drop_index_if_exists(bind, "ix_external_request_logs_status")
+        drop_index_if_exists(bind, "ix_external_request_logs_azs")
+        drop_index_if_exists(bind, "ix_external_request_logs_partner")
+        drop_table_if_exists(bind, "external_request_logs")
