@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from alembic import op
 
+from app.alembic.utils import ensure_pg_enum
+
 
 # revision identifiers, used by Alembic.
 revision = "20270520_0023_billing_summary_status_enum_fix"
@@ -20,21 +22,7 @@ ENUM_NAME = "billing_summary_status"
 
 
 def upgrade() -> None:
-    op.execute(
-        f"""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_type WHERE typname = '{ENUM_NAME}'
-            ) THEN
-                CREATE TYPE {ENUM_NAME} AS ENUM (
-                    'PENDING',
-                    'FINALIZED'
-                );
-            END IF;
-        END $$;
-        """
-    )
+    ensure_pg_enum(op.get_bind(), ENUM_NAME, values=["PENDING", "FINALIZED"])
 
 
 def downgrade() -> None:

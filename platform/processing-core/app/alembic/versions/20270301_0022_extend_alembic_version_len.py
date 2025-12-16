@@ -10,6 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import ensure_alembic_version_length
+
 
 # revision identifiers, used by Alembic.
 revision = "20270301_0022_extend_alembic_version_len"
@@ -19,12 +21,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "alembic_version",
-        "version_num",
-        existing_type=sa.String(length=32),
-        type_=sa.String(length=128),
-    )
+    connection = op.get_bind()
+    ensure_alembic_version_length(connection)
 
 
 def downgrade() -> None:

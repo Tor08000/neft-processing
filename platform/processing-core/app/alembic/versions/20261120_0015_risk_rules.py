@@ -10,7 +10,15 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import ensure_pg_enum, safe_enum
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+    ensure_pg_enum,
+    safe_enum,
+    table_exists,
+)
 
 # revision identifiers, used by Alembic.
 revision = "20261120_0015_risk_rules"
@@ -41,7 +49,14 @@ def upgrade() -> None:
     risk_rule_scope_enum = safe_enum(bind, "riskrulescope", RISK_RULE_SCOPE_VALUES)
     risk_rule_action_enum = safe_enum(bind, "riskruleaction", RISK_RULE_ACTION_VALUES)
 
-    op.create_table(
+    json_type = (
+        postgresql.JSONB(astext_type=sa.Text())
+        if bind.dialect.name == "postgresql"
+        else sa.JSON()
+    )
+
+    create_table_if_not_exists(
+        bind,
         "risk_rules",
         sa.Column(
             "id",
@@ -58,7 +73,7 @@ def upgrade() -> None:
         sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
         sa.Column(
             "dsl_payload",
-            postgresql.JSONB(astext_type=sa.Text()) if op.get_bind().dialect.name == "postgresql" else sa.JSON(),
+            json_type,
             nullable=False,
         ),
         sa.Column(
@@ -76,7 +91,8 @@ def upgrade() -> None:
         ),
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "risk_rule_versions",
         sa.Column(
             "id",
@@ -93,7 +109,7 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column(
             "dsl_payload",
-            postgresql.JSONB(astext_type=sa.Text()) if op.get_bind().dialect.name == "postgresql" else sa.JSON(),
+            json_type,
             nullable=False,
         ),
         sa.Column("effective_from", sa.DateTime(timezone=True), nullable=True),
@@ -106,11 +122,16 @@ def upgrade() -> None:
         sa.UniqueConstraint("rule_id", "version", name="uq_risk_rule_version"),
     )
 
-    op.create_index("ix_risk_rules_scope", "risk_rules", ["scope"], unique=False)
-    op.create_index("ix_risk_rules_subject_ref", "risk_rules", ["subject_ref"], unique=False)
-    op.create_index("ix_risk_rules_enabled", "risk_rules", ["enabled"], unique=False)
-    op.create_index("ix_risk_rule_versions_rule_id", "risk_rule_versions", ["rule_id"], unique=False)
-    op.create_index(
+    create_index_if_not_exists(bind, "ix_risk_rules_scope", "risk_rules", ["scope"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_risk_rules_subject_ref", "risk_rules", ["subject_ref"], unique=False
+    )
+    create_index_if_not_exists(bind, "ix_risk_rules_enabled", "risk_rules", ["enabled"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_risk_rule_versions_rule_id", "risk_rule_versions", ["rule_id"], unique=False
+    )
+    create_index_if_not_exists(
+        bind,
         "ix_risk_rule_versions_effective_from",
         "risk_rule_versions",
         ["effective_from"],
@@ -119,14 +140,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_risk_rule_versions_effective_from", table_name="risk_rule_versions")
-    op.drop_index("ix_risk_rule_versions_rule_id", table_name="risk_rule_versions")
-    op.drop_table("risk_rule_versions")
+    bind = op.get_bind()
+    if table_exists(bind, "risk_rule_versions"):
+        drop_index_if_exists(bind, "ix_risk_rule_versions_effective_from")
+        drop_index_if_exists(bind, "ix_risk_rule_versions_rule_id")
+        drop_table_if_exists(bind, "risk_rule_versions")
 
-    op.drop_index("ix_risk_rules_enabled", table_name="risk_rules")
-    op.drop_index("ix_risk_rules_subject_ref", table_name="risk_rules")
-    op.drop_index("ix_risk_rules_scope", table_name="risk_rules")
-    op.drop_table("risk_rules")
+    if table_exists(bind, "risk_rules"):
+        drop_index_if_exists(bind, "ix_risk_rules_enabled")
+        drop_index_if_exists(bind, "ix_risk_rules_subject_ref")
+        drop_index_if_exists(bind, "ix_risk_rules_scope")
+        drop_table_if_exists(bind, "risk_rules")
 
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
