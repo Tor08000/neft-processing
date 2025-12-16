@@ -72,9 +72,11 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    drop_index_if_exists(bind, "ix_operations_tx_type")
-    if column_exists(bind, "operations", "tx_type"):
-        op.drop_column("operations", "tx_type")
+
+    if table_exists(bind, "operations"):
+        drop_index_if_exists(bind, "ix_operations_tx_type")
+        if column_exists(bind, "operations", "tx_type"):
+            op.drop_column("operations", "tx_type")
 
     drop_index_if_exists(bind, "ix_limits_rules_card_group_id")
     drop_index_if_exists(bind, "ix_limits_rules_client_group_id")
