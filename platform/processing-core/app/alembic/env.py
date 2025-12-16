@@ -5,14 +5,18 @@ import os
 import pkgutil
 import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import context
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import InvalidRequestError
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
 
 from app.db import Base, DATABASE_URL  # type: ignore  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length
@@ -25,14 +29,40 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
-def import_all_model_modules() -> None:
-    """Import every module inside app.models to populate metadata."""
+def _clear_models_aliases() -> None:
+    aliases = [name for name in sys.modules if name == "models" or name.startswith("models.")]
+    if aliases:
+        logger.warning("Found unexpected models.* aliases in sys.modules: %s", aliases)
+        for alias in aliases:
+            sys.modules.pop(alias, None)
+
+
+def import_models_once() -> None:
+    """Safely load models so metadata is populated without duplicate imports."""
+
+    _clear_models_aliases()
 
     models_pkg = importlib.import_module("app.models")
+    models_path = Path(models_pkg.__file__).parent
+
+    ignore_names = {"__pycache__", "tests", "migrations", "alembic"}
+
     for module in pkgutil.iter_modules(models_pkg.__path__):
-        if module.name.startswith("__"):
+        if module.ispkg:
             continue
-        importlib.import_module(f"app.models.{module.name}")
+
+        if module.name in ignore_names or module.name.startswith("_"):
+            continue
+
+        module_name = f"app.models.{module.name}"
+        if module_name in sys.modules:
+            continue
+
+        module_file = models_path / f"{module.name}.py"
+        if module_file.name.startswith("."):
+            continue
+
+        importlib.import_module(module_name)
 
 
 def resolve_db_url() -> str:
@@ -52,12 +82,43 @@ def resolve_db_url() -> str:
 
     return db_url
 
-import_all_model_modules()
+
+def log_metadata_state(prefix: str = "") -> None:
+    tables = list(Base.metadata.tables.keys())
+    sample_tables = tables[:30]
+    logger.info("%sSQLAlchemy metadata contains %d tables: %s", prefix, len(tables), sample_tables)
+
+
+try:
+    import_models_once()
+except InvalidRequestError as exc:
+    message = str(exc)
+    table_name = None
+    if "already defined" in message:
+        parts = message.split("'")
+        if len(parts) >= 2:
+            table_name = parts[1]
+    suspect_modules = [
+        name
+        for name in sys.modules
+        if any(token in name for token in ("limits", "client_group", "client_groups"))
+    ]
+    models_aliases = [name for name in sys.modules if name == "models" or name.startswith("models.")]
+    logger.error(
+        "Model import failed due to duplicate table%s. Table: %s. suspect modules: %s. models aliases: %s",
+        "" if table_name else "s",
+        table_name or "unknown",
+        suspect_modules,
+        models_aliases,
+    )
+    raise
 
 db_url = resolve_db_url()
 
 # Все ORM-модели (Client, User, потом Operation и т.д.)
 target_metadata = Base.metadata
+
+log_metadata_state()
 
 
 def run_migrations_offline() -> None:
@@ -136,7 +197,9 @@ def run_migrations_online() -> None:
             )
 
 
-if context.is_offline_mode():
+if os.getenv("ALEMBIC_SKIP_RUN"):
+    logger.info("ALEMBIC_SKIP_RUN is set; skipping Alembic execution")
+elif context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()

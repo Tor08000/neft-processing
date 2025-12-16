@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.limits import CardGroup, CardGroupMembership, ClientGroup, ClientGroupMembership
+from app.models.groups import CardGroup, CardGroupMember, ClientGroup, ClientGroupMember
 from app.models.limit_rule import LimitRule
 from app.schemas.admin.groups_legacy import (
     CardGroupCreate,
@@ -51,7 +51,7 @@ def _serialize_client_group(group: ClientGroup) -> ClientGroupResponse:
         id=group.id,
         name=group.name,
         description=group.description,
-        members=[member.client_id for member in group.memberships],
+        members=[member.client_id for member in group.members],
     )
 
 
@@ -60,7 +60,7 @@ def _serialize_card_group(group: CardGroup) -> CardGroupResponse:
         id=group.id,
         name=group.name,
         description=group.description,
-        members=[member.card_id for member in group.memberships],
+        members=[member.card_id for member in group.members],
     )
 
 
@@ -140,15 +140,15 @@ def add_client_to_group(
 ) -> ClientGroupResponse:
     group = _get_client_group_or_404(db, group_id)
     membership = (
-        db.query(ClientGroupMembership)
+        db.query(ClientGroupMember)
         .filter(
-            ClientGroupMembership.group_id == group_id,
-            ClientGroupMembership.client_id == payload.member_id,
+            ClientGroupMember.client_group_id == group_id,
+            ClientGroupMember.client_id == payload.member_id,
         )
         .first()
     )
     if not membership:
-        membership = ClientGroupMembership(group_id=group_id, client_id=payload.member_id)
+        membership = ClientGroupMember(client_group_id=group_id, client_id=payload.member_id)
         db.add(membership)
         db.commit()
     db.refresh(group)
@@ -161,10 +161,10 @@ def remove_client_from_group(
 ) -> ClientGroupResponse:
     group = _get_client_group_or_404(db, group_id)
     membership = (
-        db.query(ClientGroupMembership)
+        db.query(ClientGroupMember)
         .filter(
-            ClientGroupMembership.group_id == group_id,
-            ClientGroupMembership.client_id == client_id,
+            ClientGroupMember.client_group_id == group_id,
+            ClientGroupMember.client_id == client_id,
         )
         .first()
     )
@@ -238,15 +238,15 @@ def add_card_to_group(
 ) -> CardGroupResponse:
     group = _get_card_group_or_404(db, group_id)
     membership = (
-        db.query(CardGroupMembership)
+        db.query(CardGroupMember)
         .filter(
-            CardGroupMembership.group_id == group_id,
-            CardGroupMembership.card_id == payload.member_id,
+            CardGroupMember.card_group_id == group_id,
+            CardGroupMember.card_id == payload.member_id,
         )
         .first()
     )
     if not membership:
-        membership = CardGroupMembership(group_id=group_id, card_id=payload.member_id)
+        membership = CardGroupMember(card_group_id=group_id, card_id=payload.member_id)
         db.add(membership)
         db.commit()
     db.refresh(group)
@@ -259,10 +259,10 @@ def remove_card_from_group(
 ) -> CardGroupResponse:
     group = _get_card_group_or_404(db, group_id)
     membership = (
-        db.query(CardGroupMembership)
+        db.query(CardGroupMember)
         .filter(
-            CardGroupMembership.group_id == group_id,
-            CardGroupMembership.card_id == card_id,
+            CardGroupMember.card_group_id == group_id,
+            CardGroupMember.card_id == card_id,
         )
         .first()
     )
