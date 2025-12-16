@@ -141,9 +141,9 @@ def run_migrations_online() -> None:
                 SELECT
                     current_database(),
                     current_user,
+                    current_schema(),
                     inet_server_addr(),
                     inet_server_port(),
-                    current_schema(),
                     version()
                 """
             ).first()
@@ -151,7 +151,7 @@ def run_migrations_online() -> None:
             logger.warning("Could not fetch connection diagnostics: %s", exc)
         else:
             logger.info(
-                "Connected to database=%s user=%s host=%s port=%s schema=%s version=%s",
+                "Connected to database=%s user=%s schema=%s host=%s port=%s version=%s",
                 db_info[0],
                 db_info[1],
                 db_info[2],
@@ -166,13 +166,10 @@ def run_migrations_online() -> None:
                 "version_table": "alembic_version",
                 "version_table_schema": "public",
                 "version_table_column_type": sa.String(length=128),
-                "as_sql": False,
             },
         )
 
-        if not migration_context._has_version_table():
-            logger.info("alembic_version table missing; creating via MigrationContext")
-            migration_context._ensure_version_table()
+        migration_context._ensure_version_table()
 
         ensure_alembic_version_length(connection)
 
@@ -210,10 +207,10 @@ def run_migrations_online() -> None:
             table_count,
         )
 
-        if not version_exists:
+        if version_exists is None:
             raise RuntimeError(
-                "Migrations finished without creating alembic_version; DDL did not apply."
-                " Check transaction, schema, connection, or alembic configuration."
+                "Alembic finished without creating public.alembic_version. "
+                "DDL did not apply — check transaction, schema, or engine configuration."
             )
 
 
