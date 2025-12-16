@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
 from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 
@@ -30,6 +31,10 @@ from app.services.limits import (
     celery_app,
 )
 from app.services.bootstrap import ensure_default_refs
+from app.services.billing_metrics import metrics as billing_metrics
+from app.services.integration_metrics import metrics as intake_metrics
+from app.services.posting_metrics import metrics as posting_metrics
+from app.services.risk_adapter import metrics as risk_metrics
 
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
@@ -299,6 +304,146 @@ if partners_router is not None:
 app.include_router(admin_router)
 app.include_router(client_router)
 app.include_router(client_portal_router)
+
+
+# -----------------------------------------------------------------------------
+# METRICS
+# -----------------------------------------------------------------------------
+def _percentile(values: list[float], pct: float) -> float | None:
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    k = (len(sorted_values) - 1) * (pct / 100)
+    f = int(k)
+    c = min(f + 1, len(sorted_values) - 1)
+    if f == c:
+        return sorted_values[int(k)]
+    d0 = sorted_values[f] * (c - k)
+    d1 = sorted_values[c] * (k - f)
+    return d0 + d1
+
+
+def _billing_metrics() -> list[str]:
+    lines = [
+        "# HELP core_api_billing_generated_total Total invoices generated.",
+        "# TYPE core_api_billing_generated_total counter",
+        f"core_api_billing_generated_total {billing_metrics.generated_invoices_total}",
+        "# HELP core_api_billing_last_run_generated Invoices generated in the last billing run.",
+        "# TYPE core_api_billing_last_run_generated counter",
+        f"core_api_billing_last_run_generated {billing_metrics.last_run_generated}",
+        "# HELP core_api_billing_errors_total Billing errors encountered.",
+        "# TYPE core_api_billing_errors_total counter",
+        f"core_api_billing_errors_total {billing_metrics.billing_errors}",
+        "# HELP core_api_billing_amount_total Total billed amount per period.",
+        "# TYPE core_api_billing_amount_total counter",
+    ]
+    for period, amount in billing_metrics.billed_amounts.items():
+        lines.append(f'core_api_billing_amount_total{{period="{period}"}} {amount}')
+    if len(lines) == 5:  # no billed amounts
+        lines.append('core_api_billing_amount_total{period="unknown"} 0')
+    return lines
+
+
+def _posting_metrics() -> list[str]:
+    latency_p99 = _percentile(posting_metrics.latencies_ms, 99) or 0
+    status_lines = [
+        f'core_api_postings_status_total{{status="{status}"}} {count}'
+        for status, count in posting_metrics.status_distribution.items()
+    ]
+    if not status_lines:
+        status_lines.append('core_api_postings_status_total{status="unset"} 0')
+
+    return [
+        "# HELP core_api_postings_success_total Successful postings.",
+        "# TYPE core_api_postings_success_total counter",
+        f"core_api_postings_success_total {posting_metrics.successful_postings}",
+        "# HELP core_api_postings_failed_total Failed postings.",
+        "# TYPE core_api_postings_failed_total counter",
+        f"core_api_postings_failed_total {posting_metrics.failed_postings}",
+        "# HELP core_api_postings_contractual_declines_total Contractual declines encountered.",
+        "# TYPE core_api_postings_contractual_declines_total counter",
+        f"core_api_postings_contractual_declines_total {posting_metrics.contractual_declines}",
+        "# HELP core_api_postings_status_total Posting status distribution.",
+        "# TYPE core_api_postings_status_total counter",
+        *status_lines,
+        "# HELP core_api_postings_latency_p99_ms 99th percentile posting latency (ms).",
+        "# TYPE core_api_postings_latency_p99_ms gauge",
+        f"core_api_postings_latency_p99_ms {latency_p99}",
+    ]
+
+
+def _intake_metrics() -> list[str]:
+    request_lines = [
+        f'core_api_intake_requests_total{{name="{name}"}} {count}'
+        for name, count in intake_metrics.intake_requests.items()
+    ]
+    if not request_lines:
+        request_lines.append('core_api_intake_requests_total{name="unset"} 0')
+
+    response_lines = [
+        f'core_api_intake_responses_total{{status="{status}"}} {count}'
+        for status, count in intake_metrics.responses.items()
+    ]
+    if not response_lines:
+        response_lines.append('core_api_intake_responses_total{status="unset"} 0')
+
+    return [
+        "# HELP core_api_intake_requests_total Intake requests by name.",
+        "# TYPE core_api_intake_requests_total counter",
+        *request_lines,
+        "# HELP core_api_intake_partner_errors_total Partner errors encountered.",
+        "# TYPE core_api_intake_partner_errors_total counter",
+        f"core_api_intake_partner_errors_total {intake_metrics.partner_errors}",
+        "# HELP core_api_intake_posting_errors_total Posting errors encountered during intake.",
+        "# TYPE core_api_intake_posting_errors_total counter",
+        f"core_api_intake_posting_errors_total {intake_metrics.posting_errors}",
+        "# HELP core_api_intake_responses_total Intake responses by status.",
+        "# TYPE core_api_intake_responses_total counter",
+        *response_lines,
+    ]
+
+
+def _risk_metrics() -> list[str]:
+    latency_p95 = _percentile(risk_metrics.latencies_ms, 95) or 0
+    connection_lines = [
+        f'core_api_risk_connection_errors_total{{kind="{kind}"}} {count}'
+        for kind, count in risk_metrics.connection_errors.items()
+    ]
+    if not connection_lines:
+        connection_lines.append('core_api_risk_connection_errors_total{kind="unset"} 0')
+
+    score_lines = [
+        f'core_api_risk_score_distribution_total{{bucket="{bucket}"}} {count}'
+        for bucket, count in risk_metrics.score_distribution.items()
+    ]
+    if not score_lines:
+        score_lines.append('core_api_risk_score_distribution_total{bucket="unset"} 0')
+
+    return [
+        "# HELP core_api_risk_latency_p95_ms 95th percentile latency for risk evaluations (ms).",
+        "# TYPE core_api_risk_latency_p95_ms gauge",
+        f"core_api_risk_latency_p95_ms {latency_p95}",
+        "# HELP core_api_risk_connection_errors_total Connection errors when calling risk service.",
+        "# TYPE core_api_risk_connection_errors_total counter",
+        *connection_lines,
+        "# HELP core_api_risk_score_distribution_total Distribution of risk scores by bucket.",
+        "# TYPE core_api_risk_score_distribution_total counter",
+        *score_lines,
+    ]
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics() -> str:  # pragma: no cover - response verified via API test
+    lines = [
+        "# HELP core_api_up Core API availability.",
+        "# TYPE core_api_up gauge",
+        "core_api_up 1",
+    ]
+    lines.extend(_billing_metrics())
+    lines.extend(_posting_metrics())
+    lines.extend(_intake_metrics())
+    lines.extend(_risk_metrics())
+    return "\n".join(lines) + "\n"
 
 
 # -----------------------------------------------------------------------------
