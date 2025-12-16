@@ -32,9 +32,7 @@ def resolve_db_url() -> str:
     db_url = env_url or ini_url
 
     if not db_url:
-        raise RuntimeError(
-            "DATABASE_URL is not set and sqlalchemy.url is missing in alembic.ini",
-        )
+        raise RuntimeError("DATABASE_URL not set and sqlalchemy.url missing")
 
     config.set_main_option("sqlalchemy.url", db_url)
 
@@ -66,15 +64,14 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         ensure_alembic_version_length(connection)
 
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-            version_table_column_type=sa.String(length=128),
-            as_sql=False,
-        )
+        with connection.begin():
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+                version_table_column_type=sa.String(length=128),
+            )
 
-        with context.begin_transaction():
             context.run_migrations()
 
 
