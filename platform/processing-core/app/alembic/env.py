@@ -27,7 +27,7 @@ if config.config_file_name is not None:
 def resolve_db_url() -> str:
     """Получить URL подключения к БД из окружения или alembic.ini."""
 
-    env_url = os.getenv("DATABASE_URL")
+    env_url = os.getenv("DATABASE_URL") or os.getenv("NEFT_DB_URL")
     ini_url = config.get_main_option("sqlalchemy.url")
     db_url = env_url or ini_url
 
