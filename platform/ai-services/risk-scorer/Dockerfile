@@ -18,6 +18,9 @@ RUN pip install --upgrade pip && \
 COPY shared/python /opt/python
 ENV PYTHONPATH="/opt/python:${PYTHONPATH}"
 
+# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+COPY sitecustomize.py /app/sitecustomize.py
+
 COPY platform/ai-services/risk-scorer /app
 
 EXPOSE 8000
