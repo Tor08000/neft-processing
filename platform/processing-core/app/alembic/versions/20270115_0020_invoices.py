@@ -9,6 +9,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import ensure_pg_enum, safe_enum
 from app.models.invoice import InvoiceStatus
 
 # revision identifiers, used by Alembic.
@@ -17,8 +18,15 @@ down_revision = "20270101_0019_external_request_logs"
 branch_labels = None
 depends_on = None
 
+INVOICE_STATUS_VALUES = [status.value for status in InvoiceStatus]
+
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    ensure_pg_enum(bind, "invoicestatus", values=INVOICE_STATUS_VALUES)
+    invoice_status_enum = safe_enum(bind, "invoicestatus", INVOICE_STATUS_VALUES)
+
     op.create_table(
         "invoices",
         sa.Column("id", sa.String(length=36), primary_key=True),
@@ -31,7 +39,7 @@ def upgrade() -> None:
         sa.Column("total_with_tax", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column(
             "status",
-            sa.Enum(InvoiceStatus, name="invoicestatus"),
+            invoice_status_enum,
             nullable=False,
             index=True,
             server_default=InvoiceStatus.DRAFT.value,
@@ -77,4 +85,6 @@ def downgrade() -> None:
     op.drop_index("ix_invoices_client_id", table_name="invoices")
     op.drop_table("invoice_lines")
     op.drop_table("invoices")
-    sa.Enum(name="invoicestatus").drop(op.get_bind(), checkfirst=False)
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        bind.exec_driver_sql("DROP TYPE IF EXISTS public.invoicestatus")

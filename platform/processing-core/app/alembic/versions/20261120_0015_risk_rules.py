@@ -10,22 +10,17 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from app.alembic.utils import ensure_pg_enum, safe_enum
+
 # revision identifiers, used by Alembic.
 revision = "20261120_0015_risk_rules"
 down_revision = "20261101_0014_billing_summary_alignment"
 branch_labels = None
 depends_on = None
 
-risk_rule_scope_enum = sa.Enum(
-    "GLOBAL",
-    "CLIENT",
-    "CARD",
-    "TARIFF",
-    "SEGMENT",
-    name="riskrulescope",
-)
+RISK_RULE_SCOPE_VALUES = ["GLOBAL", "CLIENT", "CARD", "TARIFF", "SEGMENT"]
 
-risk_rule_action_enum = sa.Enum(
+RISK_RULE_ACTION_VALUES = [
     "HARD_DECLINE",
     "SOFT_FLAG",
     "TARIFF_LIMIT",
@@ -34,11 +29,18 @@ risk_rule_action_enum = sa.Enum(
     "HIGH",
     "BLOCK",
     "MANUAL_REVIEW",
-    name="riskruleaction",
-)
+]
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    ensure_pg_enum(bind, "riskrulescope", values=RISK_RULE_SCOPE_VALUES)
+    ensure_pg_enum(bind, "riskruleaction", values=RISK_RULE_ACTION_VALUES)
+
+    risk_rule_scope_enum = safe_enum(bind, "riskrulescope", RISK_RULE_SCOPE_VALUES)
+    risk_rule_action_enum = safe_enum(bind, "riskruleaction", RISK_RULE_ACTION_VALUES)
+
     op.create_table(
         "risk_rules",
         sa.Column(
@@ -126,5 +128,7 @@ def downgrade() -> None:
     op.drop_index("ix_risk_rules_scope", table_name="risk_rules")
     op.drop_table("risk_rules")
 
-    risk_rule_action_enum.drop(op.get_bind(), checkfirst=True)
-    risk_rule_scope_enum.drop(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        bind.exec_driver_sql("DROP TYPE IF EXISTS public.riskruleaction")
+        bind.exec_driver_sql("DROP TYPE IF EXISTS public.riskrulescope")
