@@ -31,12 +31,15 @@ def _ensure_psycopg_driver(url: str) -> str:
     return sa_url.render_as_string(hide_password=False)
 
 
-# 1) Берём URL из переменной окружения NEFT_DB_URL (как в alembic.ini)
-# 2) Если её нет — пробуем достать из settings.NEFT_DB_URL
-# 3) Если и там нет — дефолт на локальный Postgres из docker-compose
+# 1) Берём URL из переменной окружения DATABASE_URL (как в docker-compose/.env)
+# 2) Затем пробуем NEFT_DB_URL для обратной совместимости
+# 3) Затем настройки (dataclass Settings) — поле database_url
+# 4) Если ничего нет — дефолт на локальный Postgres из docker-compose
 raw_db_url = (
-    os.getenv("NEFT_DB_URL")
+    os.getenv("DATABASE_URL")
+    or os.getenv("NEFT_DB_URL")
     or getattr(settings, "NEFT_DB_URL", None)
+    or getattr(settings, "database_url", None)
     or "postgresql+psycopg://neft:neft@postgres:5432/neft"
 )
 
