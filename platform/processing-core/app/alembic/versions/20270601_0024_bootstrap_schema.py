@@ -111,8 +111,11 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.UniqueConstraint("external_id", name="uq_clients_external_id"),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_clients_id", "clients", ["id"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_clients_id", "clients", ["id"], unique=False, schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -120,9 +123,19 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_merchants_id", "merchants", ["id"], unique=False)
-    create_index_if_not_exists(bind, "ix_merchants_status", "merchants", ["status"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_merchants_id", "merchants", ["id"], unique=False, schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_merchants_status",
+        "merchants",
+        ["status"],
+        unique=False,
+        schema="public",
+    )
 
     create_table_if_not_exists(
         bind,
@@ -131,10 +144,27 @@ def upgrade() -> None:
         sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey("merchants.id"), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("location", sa.String(length=255), nullable=True),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_terminals_id", "terminals", ["id"], unique=False)
-    create_index_if_not_exists(bind, "ix_terminals_merchant_id", "terminals", ["merchant_id"], unique=False)
-    create_index_if_not_exists(bind, "ix_terminals_status", "terminals", ["status"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_terminals_id", "terminals", ["id"], unique=False, schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_terminals_merchant_id",
+        "terminals",
+        ["merchant_id"],
+        unique=False,
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_terminals_status",
+        "terminals",
+        ["status"],
+        unique=False,
+        schema="public",
+    )
 
     create_table_if_not_exists(
         bind,
@@ -144,10 +174,17 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("pan_masked", sa.String(length=32), nullable=True),
         sa.Column("expires_at", sa.String(length=16), nullable=True),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_cards_id", "cards", ["id"], unique=False)
-    create_index_if_not_exists(bind, "ix_cards_client_id", "cards", ["client_id"], unique=False)
-    create_index_if_not_exists(bind, "ix_cards_status", "cards", ["status"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_cards_id", "cards", ["id"], unique=False, schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_cards_client_id", "cards", ["client_id"], unique=False, schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_cards_status", "cards", ["status"], unique=False, schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -164,8 +201,11 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_partners_status", "partners", ["status"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_partners_status", "partners", ["status"], unique=False, schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -200,6 +240,7 @@ def upgrade() -> None:
         sa.Column("tx_type", sa.String(length=32), nullable=True),
         sa.Column("captured_amount", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("refunded_amount", sa.BigInteger(), nullable=False, server_default="0"),
+        schema="public",
     )
     for index_name, columns in {
         "ix_operations_card_id": ["card_id"],
@@ -215,7 +256,9 @@ def upgrade() -> None:
         "ix_operations_status": ["status"],
         "ix_operations_parent_operation_id": ["parent_operation_id"],
     }.items():
-        create_index_if_not_exists(bind, index_name, "operations", columns, unique=False)
+        create_index_if_not_exists(
+            bind, index_name, "operations", columns, unique=False, schema="public"
+        )
 
     create_table_if_not_exists(
         bind,
@@ -250,12 +293,31 @@ def upgrade() -> None:
             "currency",
             name="uq_billing_summary_unique_scope",
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_billing_summary_billing_date", "billing_summary", ["billing_date"])
-    create_index_if_not_exists(bind, "ix_billing_summary_merchant_id", "billing_summary", ["merchant_id"])
-    create_index_if_not_exists(bind, "ix_billing_summary_client_id", "billing_summary", ["client_id"])
-    create_index_if_not_exists(bind, "ix_billing_summary_product_type", "billing_summary", ["product_type"])
-    create_index_if_not_exists(bind, "ix_billing_summary_currency", "billing_summary", ["currency"])
+    create_index_if_not_exists(
+        bind,
+        "ix_billing_summary_billing_date",
+        "billing_summary",
+        ["billing_date"],
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind, "ix_billing_summary_merchant_id", "billing_summary", ["merchant_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_billing_summary_client_id", "billing_summary", ["client_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_billing_summary_product_type",
+        "billing_summary",
+        ["product_type"],
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind, "ix_billing_summary_currency", "billing_summary", ["currency"], schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -283,11 +345,20 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "batch_date", "merchant_id", "currency", name="uq_clearing_date_merchant_currency"
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_clearing_batch_date", "clearing", ["batch_date"])
-    create_index_if_not_exists(bind, "ix_clearing_merchant_id", "clearing", ["merchant_id"])
-    create_index_if_not_exists(bind, "ix_clearing_currency", "clearing", ["currency"])
-    create_index_if_not_exists(bind, "ix_clearing_status", "clearing", ["status"])
+    create_index_if_not_exists(
+        bind, "ix_clearing_batch_date", "clearing", ["batch_date"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_clearing_merchant_id", "clearing", ["merchant_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_clearing_currency", "clearing", ["currency"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_clearing_status", "clearing", ["status"], schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -312,11 +383,28 @@ def upgrade() -> None:
             onupdate=sa.func.now(),
             nullable=False,
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_clearing_batch_status", "clearing_batch", ["status"])
-    create_index_if_not_exists(bind, "ix_clearing_batch_merchant_id", "clearing_batch", ["merchant_id"])
-    create_index_if_not_exists(bind, "ix_clearing_batch_date_from", "clearing_batch", ["date_from"])
-    create_index_if_not_exists(bind, "ix_clearing_batch_date_to", "clearing_batch", ["date_to"])
+    create_index_if_not_exists(
+        bind, "ix_clearing_batch_status", "clearing_batch", ["status"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_clearing_batch_merchant_id",
+        "clearing_batch",
+        ["merchant_id"],
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_clearing_batch_date_from",
+        "clearing_batch",
+        ["date_from"],
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind, "ix_clearing_batch_date_to", "clearing_batch", ["date_to"], schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -325,12 +413,14 @@ def upgrade() -> None:
         sa.Column("batch_id", sa.String(length=36), sa.ForeignKey("clearing_batch.id"), nullable=False),
         sa.Column("operation_id", sa.String(length=64), sa.ForeignKey("operations.operation_id"), nullable=False),
         sa.Column("amount", sa.Integer(), nullable=False),
+        schema="public",
     )
     create_index_if_not_exists(
         bind,
         "ix_clearing_batch_operation_batch_id",
         "clearing_batch_operation",
         ["batch_id"],
+        schema="public",
     )
 
     create_table_if_not_exists(
@@ -358,10 +448,22 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             onupdate=sa.func.now(),
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_risk_rules_scope", "risk_rules", ["scope"], unique=False)
-    create_index_if_not_exists(bind, "ix_risk_rules_subject_ref", "risk_rules", ["subject_ref"], unique=False)
-    create_index_if_not_exists(bind, "ix_risk_rules_enabled", "risk_rules", ["enabled"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_risk_rules_scope", "risk_rules", ["scope"], unique=False, schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_risk_rules_subject_ref",
+        "risk_rules",
+        ["subject_ref"],
+        unique=False,
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind, "ix_risk_rules_enabled", "risk_rules", ["enabled"], unique=False, schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -378,14 +480,18 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.UniqueConstraint("rule_id", "version", name="uq_risk_rule_version"),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_risk_rule_versions_rule_id", "risk_rule_versions", ["rule_id"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_risk_rule_versions_rule_id", "risk_rule_versions", ["rule_id"], unique=False, schema="public"
+    )
     create_index_if_not_exists(
         bind,
         "ix_risk_rule_versions_effective_from",
         "risk_rule_versions",
         ["effective_from"],
         unique=False,
+        schema="public",
     )
 
     create_table_if_not_exists(
@@ -403,10 +509,21 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_risk_rule_audits_rule_id", "risk_rule_audits", ["rule_id"])
-    create_index_if_not_exists(bind, "ix_risk_rule_audits_action", "risk_rule_audits", ["action"])
-    create_index_if_not_exists(bind, "ix_risk_rule_audits_performed_at", "risk_rule_audits", ["performed_at"])
+    create_index_if_not_exists(
+        bind, "ix_risk_rule_audits_rule_id", "risk_rule_audits", ["rule_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_risk_rule_audits_action", "risk_rule_audits", ["action"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_risk_rule_audits_performed_at",
+        "risk_rule_audits",
+        ["performed_at"],
+        schema="public",
+    )
 
     create_table_if_not_exists(
         bind,
@@ -431,11 +548,18 @@ def upgrade() -> None:
             onupdate=sa.func.now(),
             nullable=False,
         ),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"])
-    create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"])
-    create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"])
-    create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"])
+    create_index_if_not_exists(
+        bind, "ix_accounts_client_id", "accounts", ["client_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind, "ix_accounts_card_id", "accounts", ["card_id"], schema="public"
+    )
+    create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"], schema="public")
+    create_index_if_not_exists(
+        bind, "ix_accounts_status", "accounts", ["status"], schema="public"
+    )
 
     create_table_if_not_exists(
         bind,
@@ -450,6 +574,7 @@ def upgrade() -> None:
             onupdate=sa.func.now(),
             nullable=False,
         ),
+        schema="public",
     )
 
     create_table_if_not_exists(
@@ -469,14 +594,25 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("value_date", sa.Date(), nullable=True),
+        schema="public",
     )
-    create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"])
-    create_index_if_not_exists(bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"])
-    create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"])
+    create_index_if_not_exists(
+        bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"], schema="public"
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_ledger_entries_operation_id",
+        "ledger_entries",
+        ["operation_id"],
+        schema="public",
+    )
+    create_index_if_not_exists(
+        bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"], schema="public"
+    )
 
     for table_name in ("merchants", "clients", "operations"):
-        exists = bind.execute(
-            sa.text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"}
+        exists = bind.exec_driver_sql(
+            f"select to_regclass('public.{table_name}')"
         ).scalar()
         if not exists:
             raise RuntimeError(f"Bootstrap schema failed: missing table {table_name}")

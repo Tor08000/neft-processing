@@ -21,9 +21,19 @@ def test_bootstrap_migration_idempotent():
 
     with engine.connect() as connection:
         for table in ("merchants", "clients", "operations"):
-            result = connection.execute(
-                sa.text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table}"}
+            result = connection.exec_driver_sql(
+                f"select to_regclass('public.{table}')"
             ).scalar()
             assert result, f"Missing table {table} after first upgrade"
+
+        public_merchants = connection.exec_driver_sql(
+            "select to_regclass('public.merchants')"
+        ).scalar()
+        assert public_merchants, "merchants should be created in public schema"
+
+        neft_merchants = connection.exec_driver_sql(
+            "select to_regclass('neft.merchants')"
+        ).scalar()
+        assert not neft_merchants, "merchants should not be created in neft schema"
 
     command.upgrade(cfg, "head")
