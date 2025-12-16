@@ -10,6 +10,13 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+)
+
 
 # revision identifiers, used by Alembic.
 revision = "20251124_0003_merchants_terminals_cards"
@@ -19,33 +26,44 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+
+    create_table_if_not_exists(
+        bind,
         "merchants",
         sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
     )
-    op.create_index("ix_merchants_id", "merchants", ["id"], unique=False)
-    op.create_index("ix_merchants_status", "merchants", ["status"], unique=False)
+    create_index_if_not_exists(bind, "ix_merchants_id", "merchants", ["id"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_merchants_status", "merchants", ["status"], unique=False
+    )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "terminals",
         sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
-        sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey("merchants.id"), nullable=False),
+        sa.Column(
+            "merchant_id", sa.String(length=64), sa.ForeignKey("merchants.id"), nullable=False
+        ),
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("location", sa.String(length=255), nullable=True),
     )
-    op.create_index("ix_terminals_id", "terminals", ["id"], unique=False)
-    op.create_index("ix_terminals_merchant_id", "terminals", ["merchant_id"], unique=False)
-    op.create_index("ix_terminals_status", "terminals", ["status"], unique=False)
+    create_index_if_not_exists(bind, "ix_terminals_id", "terminals", ["id"], unique=False)
+    create_index_if_not_exists(
+        bind, "ix_terminals_merchant_id", "terminals", ["merchant_id"], unique=False
+    )
+    create_index_if_not_exists(bind, "ix_terminals_status", "terminals", ["status"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_terminals_status", table_name="terminals")
-    op.drop_index("ix_terminals_merchant_id", table_name="terminals")
-    op.drop_index("ix_terminals_id", table_name="terminals")
-    op.drop_table("terminals")
+    bind = op.get_bind()
+    drop_index_if_exists(bind, "ix_terminals_status")
+    drop_index_if_exists(bind, "ix_terminals_merchant_id")
+    drop_index_if_exists(bind, "ix_terminals_id")
+    drop_table_if_exists(bind, "terminals")
 
-    op.drop_index("ix_merchants_status", table_name="merchants")
-    op.drop_index("ix_merchants_id", table_name="merchants")
-    op.drop_table("merchants")
+    drop_index_if_exists(bind, "ix_merchants_status")
+    drop_index_if_exists(bind, "ix_merchants_id")
+    drop_table_if_exists(bind, "merchants")

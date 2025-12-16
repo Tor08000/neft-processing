@@ -10,6 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import column_exists, table_exists
 
 # revision identifiers, used by Alembic.
 revision = "20251215_0005_add_created_at_to_cards"
@@ -19,16 +20,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "cards",
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-    )
+    bind = op.get_bind()
+    if table_exists(bind, "cards") and not column_exists(bind, "cards", "created_at"):
+        op.add_column(
+            "cards",
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("NOW()"),
+                nullable=False,
+            ),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("cards", "created_at")
+    bind = op.get_bind()
+    if table_exists(bind, "cards") and column_exists(bind, "cards", "created_at"):
+        op.drop_column("cards", "created_at")

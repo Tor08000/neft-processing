@@ -8,6 +8,13 @@ Create Date: 2025-06-10
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    drop_index_if_exists,
+    ensure_pg_enum,
+    safe_enum,
+)
+
 
 # revision identifiers, used by Alembic.
 revision = "20260110_0009_billing_summary_extend"
@@ -16,30 +23,8 @@ branch_labels = None
 depends_on = None
 
 
-STATUS_ENUM = sa.Enum(
-    "PENDING",
-    "FINALIZED",
-    name="billing_summary_status",
-    create_type=False,  # тип создаём явно через DO $$ чтобы повторный прогон не падал
-)
-
-
 def _ensure_status_enum_exists(connection):
-    connection.exec_driver_sql(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_type WHERE typname = 'billing_summary_status'
-            ) THEN
-                CREATE TYPE billing_summary_status AS ENUM (
-                    'PENDING',
-                    'FINALIZED'
-                );
-            END IF;
-        END $$;
-        """
-    )
+    ensure_pg_enum(connection, "billing_summary_status", values=["PENDING", "FINALIZED"])
 
 
 def _table_state(inspector):
@@ -52,6 +37,7 @@ def _table_state(inspector):
 def upgrade() -> None:
     bind = op.get_bind()
     _ensure_status_enum_exists(bind)
+    status_enum = safe_enum(bind, "billing_summary_status", values=["PENDING", "FINALIZED"])
 
     inspector = sa.inspect(bind)
     state = _table_state(inspector)
@@ -61,7 +47,7 @@ def upgrade() -> None:
             "billing_summary",
             sa.Column(
                 "status",
-                STATUS_ENUM,
+                status_enum,
                 nullable=False,
                 server_default="PENDING",
             ),
@@ -87,17 +73,14 @@ def upgrade() -> None:
             sa.Column("hash", sa.String(length=128), nullable=True),
         )
 
-    if "ix_billing_summary_status" not in state["indexes"]:
-        op.create_index(
-            "ix_billing_summary_status", "billing_summary", ["status"], unique=False
-        )
-    if "ix_billing_summary_generated_at" not in state["indexes"]:
-        op.create_index(
-            "ix_billing_summary_generated_at",
-            "billing_summary",
-            ["generated_at"],
-            unique=False,
-        )
+    create_index_if_not_exists(bind, "ix_billing_summary_status", "billing_summary", ["status"], unique=False)
+    create_index_if_not_exists(
+        bind,
+        "ix_billing_summary_generated_at",
+        "billing_summary",
+        ["generated_at"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
@@ -105,10 +88,8 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     state = _table_state(inspector)
 
-    if "ix_billing_summary_generated_at" in state["indexes"]:
-        op.drop_index("ix_billing_summary_generated_at", table_name="billing_summary")
-    if "ix_billing_summary_status" in state["indexes"]:
-        op.drop_index("ix_billing_summary_status", table_name="billing_summary")
+    drop_index_if_exists(bind, "ix_billing_summary_generated_at")
+    drop_index_if_exists(bind, "ix_billing_summary_status")
 
     if "hash" in state["columns"]:
         op.drop_column("billing_summary", "hash")

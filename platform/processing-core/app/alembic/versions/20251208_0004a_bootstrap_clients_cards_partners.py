@@ -14,6 +14,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
+from app.alembic.utils import create_index_if_not_exists, create_table_if_not_exists
+
 # revision identifiers, used by Alembic.
 revision = "20251208_0004a_bootstrap_clients_cards_partners"
 down_revision = "20251206_0004_operations_product_fields"
@@ -39,7 +41,8 @@ def upgrade() -> None:
     inspector = inspect(bind)
 
     if not _table_exists(inspector, "clients"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "clients",
             sa.Column(
                 "id",
@@ -61,7 +64,7 @@ def upgrade() -> None:
             ),
             sa.UniqueConstraint("external_id", name="uq_clients_external_id"),
         )
-        op.create_index("ix_clients_id", "clients", ["id"], unique=False)
+        create_index_if_not_exists(bind, "ix_clients_id", "clients", ["id"], unique=False)
     else:
         missing_columns = _missing_columns(
             inspector,
@@ -87,11 +90,11 @@ def upgrade() -> None:
                     nullable=False,
                 ),
             )
-        if not _index_exists(inspector, "clients", "ix_clients_id"):
-            op.create_index("ix_clients_id", "clients", ["id"], unique=False)
+        create_index_if_not_exists(bind, "ix_clients_id", "clients", ["id"], unique=False)
 
     if not _table_exists(inspector, "cards"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "cards",
             sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
             sa.Column("client_id", sa.String(length=64), nullable=False),
@@ -99,9 +102,9 @@ def upgrade() -> None:
             sa.Column("pan_masked", sa.String(length=32), nullable=True),
             sa.Column("expires_at", sa.String(length=16), nullable=True),
         )
-        op.create_index("ix_cards_id", "cards", ["id"], unique=False)
-        op.create_index("ix_cards_client_id", "cards", ["client_id"], unique=False)
-        op.create_index("ix_cards_status", "cards", ["status"], unique=False)
+        create_index_if_not_exists(bind, "ix_cards_id", "cards", ["id"], unique=False)
+        create_index_if_not_exists(bind, "ix_cards_client_id", "cards", ["client_id"], unique=False)
+        create_index_if_not_exists(bind, "ix_cards_status", "cards", ["status"], unique=False)
     else:
         missing_columns = _missing_columns(
             inspector,
@@ -117,12 +120,12 @@ def upgrade() -> None:
             ("ix_cards_client_id", ["client_id"]),
             ("ix_cards_status", ["status"]),
         ):
-            if not _index_exists(inspector, "cards", index_name):
-                op.create_index(index_name, "cards", columns, unique=False)
+            create_index_if_not_exists(bind, index_name, "cards", columns, unique=False)
 
     if not _table_exists(inspector, "partners"):
         allowed_ips_type = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "partners",
             sa.Column("id", sa.String(length=64), primary_key=True, nullable=False),
             sa.Column("name", sa.String(length=255), nullable=False),
@@ -147,7 +150,7 @@ def upgrade() -> None:
                 server_default=sa.func.now(),
             ),
         )
-        op.create_index("ix_partners_status", "partners", ["status"], unique=False)
+        create_index_if_not_exists(bind, "ix_partners_status", "partners", ["status"], unique=False)
     else:
         missing_columns = _missing_columns(
             inspector,
@@ -186,8 +189,7 @@ def upgrade() -> None:
                     server_default=sa.func.now(),
                 ),
             )
-        if not _index_exists(inspector, "partners", "ix_partners_status"):
-            op.create_index("ix_partners_status", "partners", ["status"], unique=False)
+        create_index_if_not_exists(bind, "ix_partners_status", "partners", ["status"], unique=False)
 
 
 def downgrade() -> None:

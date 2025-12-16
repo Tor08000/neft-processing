@@ -53,8 +53,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    drop_index_if_exists(bind, "ix_operations_product_category", table_name="operations")
-    drop_index_if_exists(bind, "ix_operations_mcc", table_name="operations")
+    drop_index_if_exists(bind, "ix_operations_product_category")
+    drop_index_if_exists(bind, "ix_operations_mcc")
 
     if table_exists(bind, "operations"):
         if column_exists(bind, "operations", "product_category"):

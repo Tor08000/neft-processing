@@ -11,6 +11,13 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
+from app.alembic.utils import (
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_table_if_exists,
+)
+
 # revision identifiers, used by Alembic.
 revision = "20251220_0006_auto_fix"
 down_revision = "20251215_0005_add_created_at_to_cards"
@@ -32,7 +39,8 @@ def upgrade() -> None:
 
     # Ensure group tables are present
     if not _table_exists(inspector, "client_groups"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "client_groups",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column("group_id", sa.String(length=64), nullable=False),
@@ -46,10 +54,13 @@ def upgrade() -> None:
             ),
             sa.UniqueConstraint("group_id"),
         )
-        op.create_index("ix_client_groups_group_id", "client_groups", ["group_id"], unique=False)
+        create_index_if_not_exists(
+            bind, "ix_client_groups_group_id", "client_groups", ["group_id"], unique=False
+        )
 
     if not _table_exists(inspector, "card_groups"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "card_groups",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column("group_id", sa.String(length=64), nullable=False),
@@ -63,10 +74,13 @@ def upgrade() -> None:
             ),
             sa.UniqueConstraint("group_id"),
         )
-        op.create_index("ix_card_groups_group_id", "card_groups", ["group_id"], unique=False)
+        create_index_if_not_exists(
+            bind, "ix_card_groups_group_id", "card_groups", ["group_id"], unique=False
+        )
 
     if not _table_exists(inspector, "client_group_members"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "client_group_members",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column(
@@ -86,7 +100,8 @@ def upgrade() -> None:
         )
 
     if not _table_exists(inspector, "card_group_members"):
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "card_group_members",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column(
@@ -318,55 +333,42 @@ def upgrade() -> None:
             )
 
         # Ensure indexes exist
-        if not _index_exists(inspector, "cards", "ix_cards_id"):
-            op.create_index("ix_cards_id", "cards", ["id"], unique=False)
-        if not _index_exists(inspector, "cards", "ix_cards_client_id"):
-            op.create_index("ix_cards_client_id", "cards", ["client_id"], unique=False)
-        if not _index_exists(inspector, "cards", "ix_cards_status"):
-            op.create_index("ix_cards_status", "cards", ["status"], unique=False)
+        create_index_if_not_exists(bind, "ix_cards_id", "cards", ["id"], unique=False)
+        create_index_if_not_exists(
+            bind, "ix_cards_client_id", "cards", ["client_id"], unique=False
+        )
+        create_index_if_not_exists(bind, "ix_cards_status", "cards", ["status"], unique=False)
 
 
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
 
-    if _table_exists(inspector, "card_group_members"):
-        op.drop_table("card_group_members")
-    if _table_exists(inspector, "client_group_members"):
-        op.drop_table("client_group_members")
-    if _index_exists(inspector, "card_groups", "ix_card_groups_group_id"):
-        op.drop_index("ix_card_groups_group_id", table_name="card_groups")
-    if _table_exists(inspector, "card_groups"):
-        op.drop_table("card_groups")
-    if _index_exists(inspector, "client_groups", "ix_client_groups_group_id"):
-        op.drop_index("ix_client_groups_group_id", table_name="client_groups")
-    if _table_exists(inspector, "client_groups"):
-        op.drop_table("client_groups")
+    drop_table_if_exists(bind, "card_group_members")
+    drop_table_if_exists(bind, "client_group_members")
+    drop_index_if_exists(bind, "ix_card_groups_group_id")
+    drop_table_if_exists(bind, "card_groups")
+    drop_index_if_exists(bind, "ix_client_groups_group_id")
+    drop_table_if_exists(bind, "client_groups")
 
-    if _index_exists(inspector, "cards", "ix_cards_status"):
-        op.drop_index("ix_cards_status", table_name="cards")
-    if _index_exists(inspector, "cards", "ix_cards_client_id"):
-        op.drop_index("ix_cards_client_id", table_name="cards")
-    if _index_exists(inspector, "cards", "ix_cards_id"):
-        op.drop_index("ix_cards_id", table_name="cards")
+    drop_index_if_exists(bind, "ix_cards_status")
+    drop_index_if_exists(bind, "ix_cards_client_id")
+    drop_index_if_exists(bind, "ix_cards_id")
 
-    if _table_exists(inspector, "limits_rules"):
-        for index_name in (
-            "ix_limits_rules_client_id",
-            "ix_limits_rules_card_id",
-            "ix_limits_rules_merchant_id",
-            "ix_limits_rules_terminal_id",
-            "ix_limits_rules_client_group_id",
-            "ix_limits_rules_card_group_id",
-            "ix_limits_rules_product_category",
-            "ix_limits_rules_mcc",
-            "ix_limits_rules_tx_type",
-        ):
-            if _index_exists(inspector, "limits_rules", index_name):
-                op.drop_index(index_name, table_name="limits_rules")
+    for index_name in (
+        "ix_limits_rules_client_id",
+        "ix_limits_rules_card_id",
+        "ix_limits_rules_merchant_id",
+        "ix_limits_rules_terminal_id",
+        "ix_limits_rules_client_group_id",
+        "ix_limits_rules_card_group_id",
+        "ix_limits_rules_product_category",
+        "ix_limits_rules_mcc",
+        "ix_limits_rules_tx_type",
+    ):
+        drop_index_if_exists(bind, index_name)
 
     if _table_exists(inspector, "operations"):
-        existing_indexes = [idx["name"] for idx in inspector.get_indexes("operations")]
         for index_name in (
             "ix_operations_tx_type",
             "ix_operations_product_category",
@@ -381,8 +383,7 @@ def downgrade() -> None:
             "ix_operations_parent_operation_id",
             "ix_operations_created_at",
         ):
-            if index_name in existing_indexes:
-                op.drop_index(index_name, table_name="operations")
+            drop_index_if_exists(bind, index_name)
 
         for column in (
             "tx_type",

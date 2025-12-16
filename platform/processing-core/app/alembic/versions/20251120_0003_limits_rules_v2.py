@@ -6,8 +6,9 @@ import sqlalchemy as sa
 from app.alembic.utils import (
     column_exists,
     create_index_if_not_exists,
+    create_table_if_not_exists,
     drop_index_if_exists,
-    table_exists,
+    drop_table_if_exists,
 )
 
 # revision identifiers, used by Alembic.
@@ -20,44 +21,43 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
 
-    if not table_exists(bind, "limits_rules"):
-        op.create_table(
-            "limits_rules",
-            sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-            sa.Column("phase", sa.String(length=16), nullable=False, server_default="AUTH"),
-            sa.Column("client_id", sa.String(length=64), nullable=True),
-            sa.Column("card_id", sa.String(length=64), nullable=True),
-            sa.Column("merchant_id", sa.String(length=64), nullable=True),
-            sa.Column("terminal_id", sa.String(length=64), nullable=True),
-            sa.Column("client_group_id", sa.String(length=64), nullable=True),
-            sa.Column("card_group_id", sa.String(length=64), nullable=True),
-            sa.Column("product_category", sa.String(length=64), nullable=True),
-            sa.Column("mcc", sa.String(length=32), nullable=True),
-            sa.Column("tx_type", sa.String(length=32), nullable=True),
-            sa.Column("currency", sa.String(length=8), nullable=False, server_default="RUB"),
-            sa.Column("daily_limit", sa.BigInteger(), nullable=True),
-            sa.Column("limit_per_tx", sa.BigInteger(), nullable=True),
-            sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-            sa.Column(
-                "created_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.text("NOW()"),
-                nullable=False,
-            ),
-        )
+    create_table_if_not_exists(
+        bind,
+        "limits_rules",
+        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+        sa.Column("phase", sa.String(length=16), nullable=False, server_default="AUTH"),
+        sa.Column("client_id", sa.String(length=64), nullable=True),
+        sa.Column("card_id", sa.String(length=64), nullable=True),
+        sa.Column("merchant_id", sa.String(length=64), nullable=True),
+        sa.Column("terminal_id", sa.String(length=64), nullable=True),
+        sa.Column("client_group_id", sa.String(length=64), nullable=True),
+        sa.Column("card_group_id", sa.String(length=64), nullable=True),
+        sa.Column("product_category", sa.String(length=64), nullable=True),
+        sa.Column("mcc", sa.String(length=32), nullable=True),
+        sa.Column("tx_type", sa.String(length=32), nullable=True),
+        sa.Column("currency", sa.String(length=8), nullable=False, server_default="RUB"),
+        sa.Column("daily_limit", sa.BigInteger(), nullable=True),
+        sa.Column("limit_per_tx", sa.BigInteger(), nullable=True),
+        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
+    )
 
-    if table_exists(bind, "limits_rules"):
-        create_index_if_not_exists(
-            bind, "ix_limits_rules_product_category", "limits_rules", ["product_category"]
-        )
-        create_index_if_not_exists(bind, "ix_limits_rules_mcc", "limits_rules", ["mcc"])
-        create_index_if_not_exists(bind, "ix_limits_rules_tx_type", "limits_rules", ["tx_type"])
-        create_index_if_not_exists(
-            bind, "ix_limits_rules_client_group_id", "limits_rules", ["client_group_id"]
-        )
-        create_index_if_not_exists(
-            bind, "ix_limits_rules_card_group_id", "limits_rules", ["card_group_id"]
-        )
+    create_index_if_not_exists(
+        bind, "ix_limits_rules_product_category", "limits_rules", ["product_category"]
+    )
+    create_index_if_not_exists(bind, "ix_limits_rules_mcc", "limits_rules", ["mcc"])
+    create_index_if_not_exists(bind, "ix_limits_rules_tx_type", "limits_rules", ["tx_type"])
+    create_index_if_not_exists(
+        bind, "ix_limits_rules_client_group_id", "limits_rules", ["client_group_id"]
+    )
+    create_index_if_not_exists(
+        bind, "ix_limits_rules_card_group_id", "limits_rules", ["card_group_id"]
+    )
 
     if table_exists(bind, "operations") and not column_exists(bind, "operations", "tx_type"):
         op.add_column(
@@ -71,15 +71,14 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    drop_index_if_exists(bind, "ix_operations_tx_type", table_name="operations")
+    drop_index_if_exists(bind, "ix_operations_tx_type")
     if column_exists(bind, "operations", "tx_type"):
         op.drop_column("operations", "tx_type")
 
-    drop_index_if_exists(bind, "ix_limits_rules_card_group_id", table_name="limits_rules")
-    drop_index_if_exists(bind, "ix_limits_rules_client_group_id", table_name="limits_rules")
-    drop_index_if_exists(bind, "ix_limits_rules_tx_type", table_name="limits_rules")
-    drop_index_if_exists(bind, "ix_limits_rules_mcc", table_name="limits_rules")
-    drop_index_if_exists(bind, "ix_limits_rules_product_category", table_name="limits_rules")
+    drop_index_if_exists(bind, "ix_limits_rules_card_group_id")
+    drop_index_if_exists(bind, "ix_limits_rules_client_group_id")
+    drop_index_if_exists(bind, "ix_limits_rules_tx_type")
+    drop_index_if_exists(bind, "ix_limits_rules_mcc")
+    drop_index_if_exists(bind, "ix_limits_rules_product_category")
 
-    if table_exists(bind, "limits_rules"):
-        op.drop_table("limits_rules")
+    drop_table_if_exists(bind, "limits_rules")
