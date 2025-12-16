@@ -135,6 +135,18 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
     )
 
 
+def pg_ensure_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = "public") -> None:
+    """Alias for ensure_pg_enum for backward compatibility."""
+
+    ensure_pg_enum(bind, enum_name, values=values, schema=schema)
+
+
+def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[str], schema: str = "public") -> None:
+    """Maintain compatibility with older migrations expecting ensure_enum_type_exists."""
+
+    ensure_pg_enum(bind, type_name, values=values, schema=schema)
+
+
 def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = "public"):
     if is_postgres(bind):
         return postgresql.ENUM(*values, name=enum_name, schema=schema, create_type=False)
