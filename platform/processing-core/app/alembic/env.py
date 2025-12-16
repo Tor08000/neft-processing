@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.db import Base, DATABASE_URL  # type: ignore  # noqa: E402
 from app import models  # noqa: F401,E402
 from app.models import operation  # noqa: F401,E402
-from app.alembic.utils import ensure_alembic_version_length
+from app.alembic.utils import MIN_VERSION_LENGTH, ensure_alembic_version_length
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,14 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         # ВАЖНО: не делать connection.begin() — Alembic сам управляет транзакцией
+        connection.exec_driver_sql(
+            f"""
+            CREATE TABLE IF NOT EXISTS alembic_version (
+                version_num VARCHAR({MIN_VERSION_LENGTH}) NOT NULL,
+                CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)
+            )
+            """
+        )
         ensure_alembic_version_length(connection)
 
         context.configure(
@@ -75,6 +83,10 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
+        inspector = sa.inspect(connection)
+        if "alembic_version" not in inspector.get_table_names():
+            raise RuntimeError("alembic_version table was not created during migrations")
 
 
 if context.is_offline_mode():
