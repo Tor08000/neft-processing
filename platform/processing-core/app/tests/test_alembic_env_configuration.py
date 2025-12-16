@@ -24,6 +24,12 @@ class DummyConnection:
 
     def exec_driver_sql(self, statement):  # noqa: D401
         self.executed_sql.append(statement)
+        return DummyResult()
+
+
+class DummyResult:
+    def first(self):
+        return ("neft", "user", "127.0.0.1", 5432)
 
 
 class DummyTransaction:
@@ -44,6 +50,20 @@ class DummyEngine:
 
     def connect(self):
         return self.connection
+
+
+class DummyMigrationContext:
+    def __init__(self):
+        self.ensure_called = False
+        self.has_version_table = False
+        self.configure_opts: dict | None = None
+        self.connection = None
+
+    def _has_version_table(self):
+        return self.has_version_table
+
+    def _ensure_version_table(self):
+        self.ensure_called = True
 
 
 class DummyConfig:
@@ -70,6 +90,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     target_url = "postgresql+psycopg://user:supersecret@db:5432/neft"
     dummy_config = DummyConfig()
     dummy_connection = DummyConnection()
+    migration_context = DummyMigrationContext()
     configure_calls: dict[str, object] = {}
 
     monkeypatch.setenv("DATABASE_URL", target_url)
@@ -86,6 +107,11 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     def fake_configure(**kwargs):
         configure_calls.update(kwargs)
 
+    def fake_migration_context_configure(connection, opts):  # noqa: ARG002
+        migration_context.connection = connection
+        migration_context.configure_opts = opts
+        return migration_context
+
     class DummyInspector:
         def __init__(self, connection: DummyConnection):
             self.connection = connection
@@ -99,6 +125,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
     )
+    monkeypatch.setattr("alembic.runtime.migration.MigrationContext.configure", fake_migration_context_configure)
     monkeypatch.setattr("alembic.context.configure", fake_configure)
     monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(dummy_connection))
     monkeypatch.setattr("sqlalchemy.inspect", lambda conn: DummyInspector(conn), raising=False)
@@ -109,9 +136,13 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     assert any("postgresql+psycopg://user:***@db:5432/neft" in message for message in caplog.messages)
     assert configure_calls.get("connection") is dummy_connection
     assert configure_calls.get("as_sql") is False
+    assert configure_calls.get("version_table") == "alembic_version"
+    assert configure_calls.get("version_table_schema") == "public"
     assert dummy_connection.ensure_called is True
     assert dummy_connection.begin_called is True
-    assert any("CREATE TABLE IF NOT EXISTS alembic_version" in sql for sql in dummy_connection.executed_sql)
+    assert migration_context.ensure_called is True
+    assert migration_context.configure_opts["version_table"] == "alembic_version"
+    assert migration_context.configure_opts["version_table_schema"] == "public"
 
 
 @pytest.mark.usefixtures("clear_env_module")
@@ -119,6 +150,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
 def test_env_fails_if_version_table_missing(monkeypatch):
     dummy_config = DummyConfig()
     dummy_connection = DummyConnection()
+    migration_context = DummyMigrationContext()
 
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:supersecret@db:5432/neft")
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
@@ -134,15 +166,35 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     def fake_configure(**kwargs):  # noqa: ARG001
         return None
 
+    def fake_migration_context_configure(connection, opts):  # noqa: ARG002
+        migration_context.connection = connection
+        migration_context.configure_opts = opts
+        return migration_context
+
     monkeypatch.setattr("sqlalchemy.engine_from_config", fake_engine_from_config, raising=False)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
     )
+    monkeypatch.setattr("alembic.runtime.migration.MigrationContext.configure", fake_migration_context_configure)
     monkeypatch.setattr(
         "sqlalchemy.inspect", lambda conn: SimpleNamespace(get_table_names=lambda schema=None: [])
     )
     monkeypatch.setattr("alembic.context.configure", fake_configure, raising=False)
     monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(dummy_connection))
+
+    with pytest.raises(RuntimeError):
+        importlib.import_module("app.alembic.env")
+
+
+@pytest.mark.usefixtures("clear_env_module")
+@pytest.mark.usefixtures("restore_context")
+def test_env_requires_database_url(monkeypatch):
+    dummy_config = DummyConfig()
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("NEFT_DB_URL", raising=False)
+    monkeypatch.setattr(context, "config", dummy_config, raising=False)
+    monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
 
     with pytest.raises(RuntimeError):
         importlib.import_module("app.alembic.env")
