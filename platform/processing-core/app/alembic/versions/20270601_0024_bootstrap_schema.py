@@ -474,12 +474,12 @@ def upgrade() -> None:
     create_index_if_not_exists(bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"])
     create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"])
 
-    for table_name in ("clients", "merchants", "operations"):
-        exists = bind.exec_driver_sql(
-            "select to_regclass(%s)", (f"public.{table_name}",)
+    for table_name in ("merchants", "clients", "operations"):
+        exists = bind.execute(
+            sa.text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"}
         ).scalar()
-        if exists is None:
-            raise RuntimeError(f"Bootstrap failed: {table_name} was not created")
+        if not exists:
+            raise RuntimeError(f"Bootstrap schema failed: missing table {table_name}")
 
 
 def downgrade() -> None:
