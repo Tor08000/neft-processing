@@ -6,6 +6,7 @@ from logging.config import fileConfig
 
 import sqlalchemy as sa
 from alembic import context
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.url import make_url
 
@@ -14,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.db import Base, DATABASE_URL  # type: ignore  # noqa: E402
 from app import models  # noqa: F401,E402
 from app.models import operation  # noqa: F401,E402
-from app.alembic.utils import MIN_VERSION_LENGTH, ensure_alembic_version_length
+from app.alembic.utils import ensure_alembic_version_length
 
 logger = logging.getLogger(__name__)
 
@@ -62,21 +63,43 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # ВАЖНО: не делать connection.begin() — Alembic сам управляет транзакцией
-        connection.exec_driver_sql(
-            f"""
-            CREATE TABLE IF NOT EXISTS alembic_version (
-                version_num VARCHAR({MIN_VERSION_LENGTH}) NOT NULL,
-                CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)
+        try:
+            db_info = connection.exec_driver_sql(
+                "SELECT current_database(), current_user, inet_server_addr(), inet_server_port()"
+            ).first()
+        except Exception as exc:  # pragma: no cover - diagnostic only
+            logger.warning("Could not fetch connection diagnostics: %s", exc)
+        else:
+            logger.info(
+                "Connected to database=%s user=%s host=%s port=%s",
+                db_info[0],
+                db_info[1],
+                db_info[2],
+                db_info[3],
             )
-            """
+
+        migration_context = MigrationContext.configure(
+            connection,
+            opts={
+                "version_table": "alembic_version",
+                "version_table_schema": "public",
+                "version_table_column_type": sa.String(length=128),
+                "as_sql": False,
+            },
         )
+
+        if not migration_context._has_version_table():
+            logger.info("alembic_version table missing; creating via MigrationContext")
+            migration_context._ensure_version_table()
+
         ensure_alembic_version_length(connection)
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            version_table="alembic_version",
+            version_table_schema="public",
             version_table_column_type=sa.String(length=128),
             as_sql=False,
         )
@@ -85,7 +108,7 @@ def run_migrations_online() -> None:
             context.run_migrations()
 
         inspector = sa.inspect(connection)
-        if "alembic_version" not in inspector.get_table_names():
+        if "alembic_version" not in inspector.get_table_names(schema="public"):
             raise RuntimeError("alembic_version table was not created during migrations")
 
 
