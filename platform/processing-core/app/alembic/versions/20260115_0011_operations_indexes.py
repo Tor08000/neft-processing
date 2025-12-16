@@ -11,6 +11,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from app.alembic.utils import create_index_if_not_exists, drop_index_if_exists
+
 
 # revision identifiers, used by Alembic.
 revision = "20260115_0011_operations_indexes"
@@ -20,38 +22,45 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_index(
+    bind = op.get_bind()
+    create_index_if_not_exists(
+        bind,
         "ix_operations_merchant_created_at_desc",
         "operations",
         ["merchant_id", sa.text("created_at DESC")],
         unique=False,
     )
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "ix_operations_terminal_created_at_desc",
         "operations",
         ["terminal_id", sa.text("created_at DESC")],
         unique=False,
     )
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "ix_operations_client_created_at_desc",
         "operations",
         ["client_id", sa.text("created_at DESC")],
         unique=False,
     )
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "ix_operations_card_created_at_desc",
         "operations",
         ["card_id", sa.text("created_at DESC")],
         unique=False,
     )
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "ix_operations_type_created_at_desc",
         "operations",
         ["operation_type", sa.text("created_at DESC")],
         unique=False,
     )
 
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "idx_operations_open_only",
         "operations",
         ["created_at"],
@@ -59,7 +68,8 @@ def upgrade() -> None:
         postgresql_where=sa.text("status = 'OPEN'"),
     )
 
-    op.create_index(
+    create_index_if_not_exists(
+        bind,
         "idx_operations_created_brin",
         "operations",
         ["created_at"],
@@ -69,10 +79,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_operations_created_brin", table_name="operations")
-    op.drop_index("idx_operations_open_only", table_name="operations")
-    op.drop_index("ix_operations_type_created_at_desc", table_name="operations")
-    op.drop_index("ix_operations_card_created_at_desc", table_name="operations")
-    op.drop_index("ix_operations_client_created_at_desc", table_name="operations")
-    op.drop_index("ix_operations_terminal_created_at_desc", table_name="operations")
-    op.drop_index("ix_operations_merchant_created_at_desc", table_name="operations")
+    bind = op.get_bind()
+    drop_index_if_exists(bind, "idx_operations_created_brin")
+    drop_index_if_exists(bind, "idx_operations_open_only")
+    drop_index_if_exists(bind, "ix_operations_type_created_at_desc")
+    drop_index_if_exists(bind, "ix_operations_card_created_at_desc")
+    drop_index_if_exists(bind, "ix_operations_client_created_at_desc")
+    drop_index_if_exists(bind, "ix_operations_terminal_created_at_desc")
+    drop_index_if_exists(bind, "ix_operations_merchant_created_at_desc")

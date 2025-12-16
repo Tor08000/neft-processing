@@ -73,9 +73,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    drop_index_if_exists(bind, "ix_clearing_status", table_name="clearing")
-    drop_index_if_exists(bind, "ix_clearing_currency", table_name="clearing")
-    drop_index_if_exists(bind, "ix_clearing_merchant_id", table_name="clearing")
-    drop_index_if_exists(bind, "ix_clearing_batch_date", table_name="clearing")
+    drop_index_if_exists(bind, "ix_clearing_status")
+    drop_index_if_exists(bind, "ix_clearing_currency")
+    drop_index_if_exists(bind, "ix_clearing_merchant_id")
+    drop_index_if_exists(bind, "ix_clearing_batch_date")
     drop_table_if_exists(bind, "clearing")
     bind.exec_driver_sql("DROP TYPE IF EXISTS clearing_status")
