@@ -22,6 +22,9 @@ COPY shared/python /opt/python
 COPY shared/python/neft_shared /app/neft_shared
 ENV PYTHONPATH="/opt/python:/app"
 
+# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+COPY sitecustomize.py /app/sitecustomize.py
+
 COPY platform/billing-clearing /app/services/workers
 
 CMD ["python", "-m", "celery", "-A", "services.workers.app.celery_app:celery_app", "flower", "--port=5555", "--address=0.0.0.0"]

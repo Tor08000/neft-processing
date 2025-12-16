@@ -16,6 +16,9 @@ COPY shared/python /opt/python
 # Очень важно: чтобы neft_shared был виден
 ENV PYTHONPATH="/opt/python:${PYTHONPATH}"
 
+# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+COPY sitecustomize.py /app/sitecustomize.py
+
 # Ставим зависимости auth-host
 COPY platform/auth-host/requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip && \

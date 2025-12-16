@@ -17,6 +17,9 @@ RUN apt-get update && \
 COPY shared/python /opt/python
 ENV PYTHONPATH=/opt/python:/app
 
+# подключаем sitecustomize.py, чтобы он подхватывался автоматически
+COPY sitecustomize.py /app/sitecustomize.py
+
 # ставим зависимости core-api
 COPY platform/processing-core/requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip && \
