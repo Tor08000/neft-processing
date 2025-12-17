@@ -13,3 +13,13 @@ data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Repo hygiene
+docs/diag/*.txt
+diag_v*.txt
+FETCH_HEAD
+CACHED
+frontends/**/dist/
+frontends/**/build/
+frontends/**/coverage/
+frontends/**/.vite/
