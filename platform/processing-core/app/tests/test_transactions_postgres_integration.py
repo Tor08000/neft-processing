@@ -86,11 +86,14 @@ def test_authorize_persists_operation_in_postgres():
         with engine.connect() as connection:
             count = connection.execute(sa.text("select count(*) from operations"))
             ops_count = count.scalar_one()
-            status = connection.execute(
-                sa.text("select status from operations order by created_at desc limit 1")
-            ).scalar_one()
+            status, response_message = connection.execute(
+                sa.text(
+                    "select status, response_message from operations order by created_at desc limit 1"
+                )
+            ).one()
 
-        assert ops_count >= 1
-        assert status in {member.value for member in OperationStatus}
+        assert ops_count == 1
+        assert status == OperationStatus.AUTHORIZED.value
+        assert response_message == "APPROVED"
     finally:
         app.dependency_overrides.pop(get_db, None)

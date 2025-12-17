@@ -217,6 +217,8 @@ def decline_operation(
     if existing:
         return existing
 
+    response_message = f"DECLINED: {reason}" if reason else "DECLINED"
+
     op = Operation(
         ext_operation_id=ext_operation_id,
         operation_id=ext_operation_id,
@@ -233,7 +235,7 @@ def decline_operation(
         currency=currency,
         authorized=False,
         response_code=reason,
-        response_message=reason,
+        response_message=response_message,
         limit_check_result=limit_payload,
         risk_payload=risk_payload,
         risk_result=risk_result,

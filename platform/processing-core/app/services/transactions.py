@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models.operation import Operation
+from app.models.operation import Operation, OperationStatus, OperationType
 
 
 class TransactionError(Exception):
@@ -47,7 +47,7 @@ def _group_operations_by_auth(
     by_id: Dict[str, Operation] = {op.operation_id: op for op in operations}
 
     for op in operations:
-        if op.operation_type == "AUTH" and op.operation_id in auth_set:
+        if op.operation_type == OperationType.AUTH and op.operation_id in auth_set:
             mapping[op.operation_id].append(op)
             continue
 
@@ -59,7 +59,7 @@ def _group_operations_by_auth(
             parent = by_id.get(current.parent_operation_id)
             if parent is None:
                 break
-            if parent.operation_type == "AUTH" and parent.operation_id in auth_set:
+            if parent.operation_type == OperationType.AUTH and parent.operation_id in auth_set:
                 root_id = parent.operation_id
                 break
             current = parent
@@ -374,9 +374,9 @@ def _get_operation_or_error(db: Session, operation_id: UUID | str) -> Operation:
 
 def capture_operation(db: Session, *, auth_operation_id: UUID, amount: int | None = None) -> Operation:
     auth_op = _get_operation_or_error(db, auth_operation_id)
-    if auth_op.operation_type != "AUTH":
+    if auth_op.operation_type != OperationType.AUTH:
         raise InvalidState("only AUTH operations can be captured")
-    if auth_op.status not in {"AUTHORIZED", "PARTIALLY_CAPTURED"}:
+    if auth_op.status not in {OperationStatus.AUTHORIZED, OperationStatus.CAPTURED}:
         raise InvalidState("auth is not in a capturable state")
 
     remaining = auth_op.amount - (auth_op.captured_amount or 0)
@@ -390,8 +390,8 @@ def capture_operation(db: Session, *, auth_operation_id: UUID, amount: int | Non
 
     new_capture = Operation(
         operation_id=str(uuid4()),
-        operation_type="CAPTURE",
-        status="CAPTURED" if capture_amount == remaining else "PARTIALLY_CAPTURED",
+        operation_type=OperationType.CAPTURE,
+        status=OperationStatus.CAPTURED,
         merchant_id=auth_op.merchant_id,
         terminal_id=auth_op.terminal_id,
         client_id=auth_op.client_id,
@@ -409,9 +409,9 @@ def capture_operation(db: Session, *, auth_operation_id: UUID, amount: int | Non
 
     auth_op.captured_amount = (auth_op.captured_amount or 0) + capture_amount
     if auth_op.captured_amount >= auth_op.amount:
-        auth_op.status = "CAPTURED"
+        auth_op.status = OperationStatus.CAPTURED
     else:
-        auth_op.status = "PARTIALLY_CAPTURED"
+        auth_op.status = OperationStatus.AUTHORIZED
 
     db.add(new_capture)
     db.add(auth_op)
@@ -425,9 +425,9 @@ def refund_operation(
     db: Session, *, captured_operation_id: UUID, amount: int | None = None
 ) -> Operation:
     capture_op = _get_operation_or_error(db, captured_operation_id)
-    if capture_op.operation_type != "CAPTURE":
+    if capture_op.operation_type != OperationType.CAPTURE:
         raise InvalidState("only CAPTURE operations can be refunded")
-    if capture_op.status not in {"CAPTURED", "PARTIALLY_REFUNDED"}:
+    if capture_op.status not in {OperationStatus.CAPTURED, OperationStatus.REFUNDED}:
         raise InvalidState("capture is not refundable")
 
     remaining = capture_op.amount - (capture_op.refunded_amount or 0)
@@ -439,8 +439,8 @@ def refund_operation(
 
     refund_op = Operation(
         operation_id=str(uuid4()),
-        operation_type="REFUND",
-        status="REFUNDED" if refund_amount == remaining else "PARTIALLY_REFUNDED",
+        operation_type=OperationType.REFUND,
+        status=OperationStatus.REFUNDED,
         merchant_id=capture_op.merchant_id,
         terminal_id=capture_op.terminal_id,
         client_id=capture_op.client_id,
@@ -458,9 +458,9 @@ def refund_operation(
 
     capture_op.refunded_amount = (capture_op.refunded_amount or 0) + refund_amount
     if capture_op.refunded_amount >= capture_op.amount:
-        capture_op.status = "REFUNDED"
+        capture_op.status = OperationStatus.REFUNDED
     else:
-        capture_op.status = "PARTIALLY_REFUNDED"
+        capture_op.status = OperationStatus.CAPTURED
 
     db.add(refund_op)
     db.add(capture_op)
@@ -472,7 +472,7 @@ def refund_operation(
 
 def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
     auth_op = _get_operation_or_error(db, auth_operation_id)
-    if auth_op.operation_type != "AUTH":
+    if auth_op.operation_type != OperationType.AUTH:
         raise InvalidState("only AUTH operations can be reversed")
 
     children = (
@@ -480,13 +480,13 @@ def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
         .filter(Operation.parent_operation_id == auth_op.operation_id)
         .all()
     )
-    if any(child.operation_type == "CAPTURE" for child in children):
+    if any(child.operation_type == OperationType.CAPTURE for child in children):
         raise InvalidState("cannot reverse auth with captures")
 
     reversal_op = Operation(
         operation_id=str(uuid4()),
-        operation_type="REVERSAL",
-        status="REVERSED",
+        operation_type=OperationType.REVERSAL,
+        status=OperationStatus.REVERSED,
         merchant_id=auth_op.merchant_id,
         terminal_id=auth_op.terminal_id,
         client_id=auth_op.client_id,
@@ -502,7 +502,7 @@ def reverse_auth(db: Session, *, auth_operation_id: UUID) -> Operation:
         tx_type=auth_op.tx_type,
     )
 
-    auth_op.status = "REVERSED"
+    auth_op.status = OperationStatus.REVERSED
     db.add(reversal_op)
     db.add(auth_op)
     db.commit()
