@@ -12,13 +12,7 @@ from typing import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import (
-    column_exists,
-    ensure_pg_enum,
-    is_postgres,
-    safe_enum,
-    table_exists,
-)
+from app.alembic.utils import column_exists, is_postgres, safe_enum, table_exists
 
 # revision identifiers, used by Alembic.
 revision = "20270710_0028_limit_config_scope_enum_fix"
@@ -33,6 +27,22 @@ LIMIT_WINDOW_ENUM_NAME = "limitwindow"
 LIMIT_CONFIG_SCOPE_ENUM_NAME = "limitconfigscope"
 
 
+def _ensure_enum_exists(enum_name: str, values: Sequence[str]) -> None:
+    bind = op.get_bind()
+    if not is_postgres(bind):  # pragma: no cover - defensive for sqlite
+        return
+
+    exists = bind.exec_driver_sql(
+        "SELECT 1 FROM pg_type WHERE typname = %s",
+        (enum_name,),
+    ).first()
+    if exists:
+        return
+
+    values_sql = ", ".join(f"'{value}'" for value in values)
+    op.execute(sa.text(f"CREATE TYPE {enum_name} AS ENUM ({values_sql})"))
+
+
 def _ensure_enum_labels(enum_name: str, values: Sequence[str]) -> None:
     """Ensure a Postgres enum has at least the provided values."""
 
@@ -40,27 +50,13 @@ def _ensure_enum_labels(enum_name: str, values: Sequence[str]) -> None:
     if not is_postgres(bind):  # pragma: no cover - defensive for sqlite
         return
 
+    _ensure_enum_exists(enum_name, values)
+    existing_labels = _get_enum_labels(enum_name)
+
     for value in values:
-        op.execute(
-            sa.text(
-                f"""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1
-                        FROM pg_enum e
-                        JOIN pg_type t ON t.oid = e.enumtypid
-                        WHERE t.typname = :enum_name AND e.enumlabel = :value
-                    ) THEN
-                        ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}';
-                    END IF;
-                END$$;
-                """
-            ).bindparams(
-                sa.bindparam("enum_name", enum_name),
-                sa.bindparam("value", value),
-            )
-        )
+        if value in existing_labels:
+            continue
+        op.execute(sa.text(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'"))
 
 
 def _get_column_udt_name(table: str, column: str) -> str | None:
@@ -108,14 +104,15 @@ def _ensure_window_column_type(window_enum) -> None:
     existing_labels = _get_enum_labels(LIMIT_WINDOW_ENUM_NAME)
     recreate_type = bool(existing_labels and set(existing_labels) != set(LIMIT_WINDOW_VALUES))
     target_enum_name = LIMIT_WINDOW_ENUM_NAME if not recreate_type else f"{LIMIT_WINDOW_ENUM_NAME}_new"
+
+    if recreate_type:
+        _ensure_enum_exists(target_enum_name, LIMIT_WINDOW_VALUES)
+
     enum_to_use = (
         window_enum
         if target_enum_name == LIMIT_WINDOW_ENUM_NAME
         else safe_enum(bind, target_enum_name, LIMIT_WINDOW_VALUES)
     )
-
-    if recreate_type:
-        ensure_pg_enum(bind, target_enum_name, values=LIMIT_WINDOW_VALUES)
 
     normalized_case = """
         CASE
@@ -205,8 +202,8 @@ def _convert_scope_column(scope_enum) -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    ensure_pg_enum(bind, LIMIT_CONFIG_SCOPE_ENUM_NAME, values=LIMIT_CONFIG_SCOPE_VALUES)
-    ensure_pg_enum(bind, LIMIT_WINDOW_ENUM_NAME, values=LIMIT_WINDOW_VALUES)
+    _ensure_enum_exists(LIMIT_CONFIG_SCOPE_ENUM_NAME, LIMIT_CONFIG_SCOPE_VALUES)
+    _ensure_enum_exists(LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
     _ensure_enum_labels(LIMIT_CONFIG_SCOPE_ENUM_NAME, LIMIT_CONFIG_SCOPE_VALUES)
     _ensure_enum_labels(LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
 
