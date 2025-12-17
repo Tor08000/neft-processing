@@ -1,19 +1,22 @@
-"""align operation and limits models"""
+"""operations limits alignment
 
+Revision ID: 20261020_0013
+Revises: 20261010_0012_client_ids_uuid
+Create Date: 2026-10-20 00:00:00.000000
+"""
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import ensure_pg_enum, safe_enum
+from app.alembic.utils import ensure_pg_enum
 
 # revision identifiers, used by Alembic.
-revision = "20261020_0013_operations_limits_alignment"
+revision = "20261020_0013"
 down_revision = "20261010_0012_client_ids_uuid"
 branch_labels = None
 depends_on = None
-
 
 OPERATION_TYPE_VALUES = [
     "AUTH",
@@ -50,32 +53,27 @@ LIMIT_SCOPE_VALUES = ["PER_TX", "DAILY", "MONTHLY"]
 FUEL_PRODUCT_VALUES = ["ANY", "DIESEL", "AI92", "AI95", "AI98", "GAS", "OTHER"]
 
 
-def _operation_type_enum(bind):
-    return safe_enum(bind, "operationtype", OPERATION_TYPE_VALUES)
-
-
-def _operation_status_enum(bind):
-    return safe_enum(bind, "operationstatus", OPERATION_STATUS_VALUES)
-
-
-def _product_type_enum(bind):
-    return safe_enum(bind, "producttype", PRODUCT_TYPE_VALUES)
-
-
-def _risk_result_enum(bind):
-    return safe_enum(bind, "riskresult", RISK_RESULT_VALUES)
-
-
-def _limit_entity_enum(bind):
-    return safe_enum(bind, "limitentitytype", LIMIT_ENTITY_VALUES)
-
-
-def _limit_scope_enum(bind):
-    return safe_enum(bind, "limitscope", LIMIT_SCOPE_VALUES)
-
-
-def _fuel_product_enum(bind):
-    return safe_enum(bind, "fuelproducttype", FUEL_PRODUCT_VALUES)
+operation_type_enum = postgresql.ENUM(
+    *OPERATION_TYPE_VALUES, name="operationtype", create_type=False
+)
+operation_status_enum = postgresql.ENUM(
+    *OPERATION_STATUS_VALUES, name="operationstatus", create_type=False
+)
+product_type_enum = postgresql.ENUM(
+    *PRODUCT_TYPE_VALUES, name="producttype", create_type=False
+)
+risk_result_enum = postgresql.ENUM(
+    *RISK_RESULT_VALUES, name="riskresult", create_type=False
+)
+limit_entity_enum = postgresql.ENUM(
+    *LIMIT_ENTITY_VALUES, name="limitentitytype", create_type=False
+)
+limit_scope_enum = postgresql.ENUM(
+    *LIMIT_SCOPE_VALUES, name="limitscope", create_type=False
+)
+fuel_product_enum = postgresql.ENUM(
+    *FUEL_PRODUCT_VALUES, name="fuelproducttype", create_type=False
+)
 
 
 def _create_index_if_not_exists(
@@ -174,7 +172,7 @@ def _column_is_operationtype_enum(column: dict) -> bool:
 
 
 def _ensure_operation_type_enum(bind) -> None:
-    operation_type_enum = _operation_type_enum(bind)
+    ensure_pg_enum(bind, operation_type_enum.name, values=OPERATION_TYPE_VALUES)
     inspector = _get_inspector(bind)
 
     try:
@@ -249,7 +247,7 @@ def _column_is_operationstatus_enum(column: dict) -> bool:
 
 
 def _ensure_operation_status_enum(bind) -> None:
-    operation_status_enum = _operation_status_enum(bind)
+    ensure_pg_enum(bind, operation_status_enum.name, values=OPERATION_STATUS_VALUES)
     inspector = _get_inspector(bind)
 
     try:
@@ -320,21 +318,13 @@ def _ensure_operation_status_enum(bind) -> None:
 def upgrade() -> None:
     bind = op.get_bind()
 
-    ensure_pg_enum(bind, "operationtype", values=OPERATION_TYPE_VALUES)
-    ensure_pg_enum(bind, "operationstatus", values=OPERATION_STATUS_VALUES)
-    ensure_pg_enum(bind, "producttype", values=PRODUCT_TYPE_VALUES)
-    ensure_pg_enum(bind, "riskresult", values=RISK_RESULT_VALUES)
-    ensure_pg_enum(bind, "limitentitytype", values=LIMIT_ENTITY_VALUES)
-    ensure_pg_enum(bind, "limitscope", values=LIMIT_SCOPE_VALUES)
-    ensure_pg_enum(bind, "fuelproducttype", values=FUEL_PRODUCT_VALUES)
-
-    operation_type_enum = _operation_type_enum(bind)
-    operation_status_enum = _operation_status_enum(bind)
-    product_type_enum = _product_type_enum(bind)
-    risk_result_enum = _risk_result_enum(bind)
-    limit_entity_enum = _limit_entity_enum(bind)
-    limit_scope_enum = _limit_scope_enum(bind)
-    fuel_product_enum = _fuel_product_enum(bind)
+    ensure_pg_enum(bind, operation_type_enum.name, values=OPERATION_TYPE_VALUES)
+    ensure_pg_enum(bind, operation_status_enum.name, values=OPERATION_STATUS_VALUES)
+    ensure_pg_enum(bind, product_type_enum.name, values=PRODUCT_TYPE_VALUES)
+    ensure_pg_enum(bind, risk_result_enum.name, values=RISK_RESULT_VALUES)
+    ensure_pg_enum(bind, limit_entity_enum.name, values=LIMIT_ENTITY_VALUES)
+    ensure_pg_enum(bind, limit_scope_enum.name, values=LIMIT_SCOPE_VALUES)
+    ensure_pg_enum(bind, fuel_product_enum.name, values=FUEL_PRODUCT_VALUES)
 
     with op.batch_alter_table("operations") as batch:
         batch.add_column(
@@ -346,7 +336,9 @@ def upgrade() -> None:
             )
         )
         batch.add_column(sa.Column("product_id", sa.String(length=64), nullable=True))
-        batch.add_column(sa.Column("amount_settled", sa.BigInteger(), nullable=True, server_default="0"))
+        batch.add_column(
+            sa.Column("amount_settled", sa.BigInteger(), nullable=True, server_default="0")
+        )
         batch.add_column(sa.Column("product_type", product_type_enum, nullable=True))
         batch.add_column(sa.Column("quantity", sa.Numeric(18, 3), nullable=True))
         batch.add_column(sa.Column("unit_price", sa.Numeric(18, 3), nullable=True))
@@ -372,13 +364,21 @@ def upgrade() -> None:
         "ix_operations_operation_type", "operations", ["operation_type"]
     )
 
-    # Adjust types for enums
-    _ensure_operation_type_enum(op.get_bind())
-    _ensure_operation_status_enum(op.get_bind())
+    _ensure_operation_type_enum(bind)
+    _ensure_operation_status_enum(bind)
 
     with op.batch_alter_table("limits_rules") as batch:
-        batch.add_column(sa.Column("entity_type", limit_entity_enum, nullable=False, server_default="CLIENT"))
-        batch.add_column(sa.Column("scope", limit_scope_enum, nullable=False, server_default="PER_TX"))
+        batch.add_column(
+            sa.Column(
+                "entity_type",
+                limit_entity_enum,
+                nullable=False,
+                server_default="CLIENT",
+            )
+        )
+        batch.add_column(
+            sa.Column("scope", limit_scope_enum, nullable=False, server_default="PER_TX")
+        )
         batch.add_column(sa.Column("product_type", fuel_product_enum, nullable=True))
         batch.add_column(sa.Column("max_amount", sa.BigInteger(), nullable=True))
         batch.add_column(sa.Column("max_quantity", sa.Numeric(18, 3), nullable=True))
@@ -420,4 +420,3 @@ def downgrade() -> None:
         batch.drop_constraint("operations_pkey", type_="primary")
         batch.create_primary_key("operations_pkey", ["operation_id"])
         batch.drop_column("id")
-

@@ -19,6 +19,12 @@ docs/diag/*.txt
 diag_v*.txt
 FETCH_HEAD
 CACHED
+# Temporary inspection outputs
+0.7
+deep_repo_inspector.py
+docker
+git
+where
 frontends/**/dist/
 frontends/**/build/
 frontends/**/coverage/
