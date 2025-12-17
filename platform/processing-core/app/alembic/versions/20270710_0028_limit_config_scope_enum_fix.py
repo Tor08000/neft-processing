@@ -100,6 +100,9 @@ def _ensure_window_column_type(window_enum) -> None:
     if not column_exists(bind, "limit_configs", "window"):
         return
 
+    # Drop default to avoid casting issues during enum recreation
+    op.execute(sa.text('ALTER TABLE limit_configs ALTER COLUMN "window" DROP DEFAULT'))
+
     current_type = _get_column_udt_name("limit_configs", "window")
     existing_labels = _get_enum_labels(LIMIT_WINDOW_ENUM_NAME)
     recreate_type = bool(existing_labels and set(existing_labels) != set(LIMIT_WINDOW_VALUES))
@@ -139,11 +142,13 @@ def _ensure_window_column_type(window_enum) -> None:
         op.execute(sa.text(f"ALTER TYPE {target_enum_name} RENAME TO {LIMIT_WINDOW_ENUM_NAME}"))
         enum_to_use = safe_enum(bind, LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
 
+    op.execute(
+        sa.text("ALTER TABLE limit_configs ALTER COLUMN \"window\" SET DEFAULT 'PER_TX'::limitwindow")
+    )
     op.alter_column(
         "limit_configs",
         "window",
         existing_type=enum_to_use,
-        server_default=sa.text("'PER_TX'::limitwindow") if is_postgres(bind) else "PER_TX",
         nullable=False,
     )
 
@@ -173,6 +178,8 @@ def _convert_scope_column(scope_enum) -> None:
     if not column_exists(bind, "limit_configs", "scope"):
         return
 
+    op.execute(sa.text('ALTER TABLE limit_configs ALTER COLUMN "scope" DROP DEFAULT'))
+
     current_type = _get_column_udt_name("limit_configs", "scope")
     if current_type != LIMIT_CONFIG_SCOPE_ENUM_NAME:
         op.alter_column(
@@ -191,11 +198,15 @@ def _convert_scope_column(scope_enum) -> None:
         )
 
     op.execute(sa.text("UPDATE limit_configs SET scope = COALESCE(scope, 'GLOBAL'::limitconfigscope)"))
+    op.execute(
+        sa.text(
+            "ALTER TABLE limit_configs ALTER COLUMN \"scope\" SET DEFAULT 'GLOBAL'::limitconfigscope"
+        )
+    )
     op.alter_column(
         "limit_configs",
         "scope",
         existing_type=scope_enum,
-        server_default=sa.text("'GLOBAL'::limitconfigscope") if is_postgres(bind) else "GLOBAL",
         nullable=False,
     )
 
