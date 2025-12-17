@@ -5,6 +5,7 @@ from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from uuid import UUID
+from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -42,35 +43,49 @@ from app.services.transactions_service import (
     refund_operation as service_refund,
     serialize_operation,
 )
+from neft_shared.logging_setup import get_logger
 
 router = APIRouter(
     prefix="/api/v1/transactions",
     tags=["transactions"],
 )
 
+logger = get_logger(__name__)
+
 
 @router.post("/authorize", response_model=AuthorizeResponse)
 def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> AuthorizeResponse:
-    operation = authorize_operation(
-        db,
-        client_id=body.client_id,
-        card_id=body.card_id,
-        terminal_id=body.terminal_id,
-        merchant_id=body.merchant_id,
-        tariff_id=body.tariff_id,
-        product_id=body.product_id,
-        product_type=body.product_type,
-        amount=body.amount,
-        currency=body.currency,
-        ext_operation_id=body.ext_operation_id,
-        quantity=body.quantity,
-        unit_price=body.unit_price,
-        mcc=body.mcc,
-        product_category=body.product_category,
-        tx_type=body.tx_type,
-        client_group_id=body.client_group_id,
-        card_group_id=body.card_group_id,
-    )
+    try:
+        operation = authorize_operation(
+            db,
+            client_id=body.client_id,
+            card_id=body.card_id,
+            terminal_id=body.terminal_id,
+            merchant_id=body.merchant_id,
+            tariff_id=body.tariff_id,
+            product_id=body.product_id,
+            product_type=body.product_type,
+            amount=body.amount,
+            currency=body.currency,
+            ext_operation_id=body.ext_operation_id,
+            quantity=body.quantity,
+            unit_price=body.unit_price,
+            mcc=body.mcc,
+            product_category=body.product_category,
+            tx_type=body.tx_type,
+            client_group_id=body.client_group_id,
+            card_group_id=body.card_group_id,
+        )
+    except DataError as exc:
+        db.rollback()
+        logger.exception(
+            "invalid_enum_value",
+            extra={"field": "operations.status", "error": str(exc)},
+        )
+        raise HTTPException(status_code=400, detail="INVALID_ENUM_VALUE: operations.status")
+    except Exception:
+        db.rollback()
+        raise
     return AuthorizeResponse(
         approved=operation.status in {
             OperationStatus.AUTHORIZED,

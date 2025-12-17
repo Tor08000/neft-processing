@@ -6,9 +6,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 from neft_shared.logging_setup import get_logger, init_logging
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .api.v1.health import router as health_router
 from .api.v1.score import router as score_router
@@ -36,6 +37,11 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(score_router)
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
     return app
 
 

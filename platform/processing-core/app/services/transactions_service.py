@@ -443,7 +443,7 @@ def authorize_operation(
         ext_operation_id=ext_operation_id,
         operation_id=ext_operation_id,
         operation_type=OperationType.AUTH,
-        status=OperationStatus.APPROVED,
+        status=OperationStatus.AUTHORIZED,
         merchant_id=merchant_id,
         terminal_id=terminal_id,
         client_id=client_id,
@@ -486,7 +486,7 @@ def authorize_operation(
         posting_meta = _perform_posting(db, operation=operation)
         operation.accounts = posting_meta.get("accounts")
         operation.posting_result = posting_meta
-        operation.status = OperationStatus.POSTED
+        operation.status = OperationStatus.AUTHORIZED
         db.add(operation)
         db.commit()
         db.refresh(operation)
@@ -507,7 +507,7 @@ def authorize_operation(
     except Exception as exc:
         latency_ms = (time.perf_counter() - posting_started) * 1000
         posting_metrics.observe_posting(False, latency_ms)
-        posting_metrics.mark_status(OperationStatus.ERROR.value)
+        posting_metrics.mark_status(OperationStatus.DECLINED.value)
         logger.error(
             "posting_failed",
             extra={
@@ -524,7 +524,7 @@ def authorize_operation(
         try:
             failing = _fetch_operation_by_ext_id(db, ext_operation_id)
             if failing:
-                failing.status = OperationStatus.ERROR
+                failing.status = OperationStatus.DECLINED
                 failing.response_code = "POSTING_ERROR"
                 failing.response_message = str(exc)[:255]
                 db.add(failing)

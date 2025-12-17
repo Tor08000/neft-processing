@@ -40,7 +40,7 @@ DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
     RiskDecisionLevel.HIGH: 0.8,
     RiskDecisionLevel.HARD_DECLINE: 1.0,
 }
-AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/v1/ai/score")
+AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/api/v1/score")
 AI_SCORE_TIMEOUT_SECONDS = float(os.getenv("AI_SCORE_TIMEOUT_SECONDS", "3.0"))
 settings = get_settings()
 
