@@ -39,19 +39,20 @@ class OperationType(str, Enum):
 
 class OperationStatus(str, Enum):
     PENDING = "PENDING"
-    APPROVED = "APPROVED"
     AUTHORIZED = "AUTHORIZED"
     HELD = "HELD"
     COMPLETED = "COMPLETED"
-    POSTED = "POSTED"
     REVERSED = "REVERSED"
     REFUNDED = "REFUNDED"
     DECLINED = "DECLINED"
     CANCELLED = "CANCELLED"
-    ERROR = "ERROR"
-    # Legacy/status aliases
     CAPTURED = "CAPTURED"
     OPEN = "OPEN"
+
+    # Aliases kept for backward compatibility with older payloads
+    APPROVED = AUTHORIZED
+    POSTED = AUTHORIZED
+    ERROR = DECLINED
 
 
 class ProductType(str, Enum):
