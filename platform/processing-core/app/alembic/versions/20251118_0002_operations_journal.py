@@ -2,6 +2,7 @@
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.alembic.utils import (
     create_index_if_not_exists,
@@ -37,6 +38,7 @@ def upgrade():
         sa.Column("terminal_id", sa.String(length=64), nullable=False),
         sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("card_id", sa.String(length=64), nullable=False),
+        sa.Column("accounts", JSONB, nullable=True),
         sa.Column("amount", sa.BigInteger(), nullable=False),
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column(
