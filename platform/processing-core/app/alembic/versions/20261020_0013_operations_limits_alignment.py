@@ -1,6 +1,6 @@
 """operations limits alignment
 
-Revision ID: 20261020_0013_operations_limits_alignment
+Revision ID: 20261020_0013
 Revises: 20261010_0012_client_ids_uuid
 Create Date: 2026-10-20 00:00:00.000000
 """
@@ -13,17 +13,14 @@ from sqlalchemy.dialects import postgresql
 from app.alembic.utils import ensure_pg_enum
 
 # revision identifiers, used by Alembic.
-revision = "20261020_0013_operations_limits_alignment"
+revision = "20261020_0013"
 down_revision = "20261010_0012_client_ids_uuid"
 branch_labels = None
 depends_on = None
 
-# If a database already has `alembic_version.version_num = '20261020_0013'`,
-# update it to `20261020_0013_operations_limits_alignment` to keep the history
-# graph consistent:
-#   UPDATE alembic_version
-#   SET version_num = '20261020_0013_operations_limits_alignment'
-#   WHERE version_num = '20261020_0013';
+# Migration 20261020_0013a_operations_limits_alignment_alias updates
+# `alembic_version` automatically for databases that already recorded
+# version `20261020_0013`.
 
 OPERATION_TYPE_VALUES = [
     "AUTH",
