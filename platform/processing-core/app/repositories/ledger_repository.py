@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,7 @@ class LedgerRepository:
         self,
         *,
         account_id: int,
-        operation_id: object | None,
+        operation_id: UUID | None,
         direction: LedgerDirection,
         amount: Decimal | float | int,
         currency: str,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from uuid import UUID as UUIDType
 
 from sqlalchemy import (
     BigInteger,
@@ -14,7 +15,7 @@ from sqlalchemy import (
     String,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.db import Base
 
@@ -40,8 +41,8 @@ class LedgerEntry(Base):
         nullable=False,
         index=True,
     )
-    operation_id = Column(
-        UUID(as_uuid=True),
+    operation_id: UUIDType | None = Column(
+        PGUUID(as_uuid=True),
         ForeignKey("operations.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
