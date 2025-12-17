@@ -46,6 +46,8 @@ RISK_RULE_AUDIT_ACTION_VALUES = ["CREATE", "UPDATE", "ENABLE", "DISABLE"]
 CLEARING_BATCH_STATUS_VALUES = ["PENDING", "SENT", "CONFIRMED", "FAILED"]
 BILLING_SUMMARY_STATUS_VALUES = ["PENDING", "FINALIZED"]
 PRODUCT_TYPE_VALUES = ["ACQUIRING", "PAYOUT", "SUBSCRIPTION"]
+LIMIT_CONFIG_SCOPE_VALUES = ["GLOBAL", "CLIENT", "CARD", "TARIFF"]
+LIMIT_WINDOW_VALUES = ["PER_TX", "DAILY", "MONTHLY"]
 
 
 
@@ -72,6 +74,8 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "clearing_batch_status", CLEARING_BATCH_STATUS_VALUES)
     ensure_pg_enum(bind, "billing_summary_status", BILLING_SUMMARY_STATUS_VALUES)
     ensure_pg_enum(bind, "product_type", PRODUCT_TYPE_VALUES)
+    ensure_pg_enum(bind, "limitconfigscope", LIMIT_CONFIG_SCOPE_VALUES)
+    ensure_pg_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES)
 
     account_type_enum = safe_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES)
     account_status_enum = safe_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES)
