@@ -10,6 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.alembic.utils import (
     create_index_if_not_exists,
@@ -123,6 +124,9 @@ def upgrade() -> None:
     # Align operations columns
     if _table_exists(inspector, "operations"):
         columns = {col["name"]: col for col in inspector.get_columns("operations")}
+
+        if "accounts" not in columns:
+            op.add_column("operations", sa.Column("accounts", JSONB, nullable=True))
 
         desired_columns = {
             "mcc": sa.String(length=8),

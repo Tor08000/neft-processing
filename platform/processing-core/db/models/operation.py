@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import BigInteger, Boolean, DateTime, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -126,6 +127,10 @@ class Operation(Base):
 
     new_used_today: Mapped[Optional[int]] = mapped_column(
         BigInteger,
+        nullable=True,
+    )
+    accounts: Mapped[Optional[list[int]]] = mapped_column(
+        JSONB,
         nullable=True,
     )
 
