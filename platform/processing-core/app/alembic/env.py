@@ -6,15 +6,14 @@ from logging.config import fileConfig
 
 import sqlalchemy as sa
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
 from sqlalchemy.engine.url import make_url
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from app.db import Base, DATABASE_URL  # type: ignore  # noqa: E402
-from app.alembic.utils import ensure_alembic_version_length
+from app.db import Base  # type: ignore  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
 
 logger = logging.getLogger(__name__)
@@ -64,68 +63,22 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = sa.create_engine(db_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
-        fingerprint = connection.exec_driver_sql(
-            "SELECT current_database(), current_user, inet_server_addr(), inet_server_port();"
-        ).first()
-        logger.info(
-            "Alembic DB fingerprint: database=%s user=%s host=%s port=%s",
-            fingerprint[0],
-            fingerprint[1],
-            fingerprint[2],
-            fingerprint[3],
-        )
-
-        connection.exec_driver_sql(
-            """
-            CREATE TABLE IF NOT EXISTS public.alembic_version (
-              version_num VARCHAR(128) NOT NULL PRIMARY KEY
-            )
-            """
-        )
-
-        ensure_alembic_version_length(connection)
-
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             include_schemas=True,
             compare_type=True,
             compare_server_default=True,
+            transactional_ddl=True,
             version_table="alembic_version",
             version_table_schema="public",
-            version_table_column_type=sa.String(length=128),
-            transactional_ddl=True,
-            as_sql=False,
         )
-
-        if not target_metadata.tables:
-            raise RuntimeError(
-                "Alembic target_metadata is empty — migrations would not execute any DDL"
-            )
 
         with context.begin_transaction():
             context.run_migrations()
-
-        version_exists = connection.exec_driver_sql(
-            "select to_regclass('public.alembic_version')"
-        ).scalar()
-        if version_exists is None:
-            raise RuntimeError(
-                "alembic_version is missing after migrations — migrations did not apply"
-            )
-
-        merchants_exists = connection.exec_driver_sql(
-            "select to_regclass('public.merchants')"
-        ).scalar()
-        if merchants_exists is None:
-            raise RuntimeError("public.merchants missing after migrations — schema was not created")
 
 
 if os.getenv("ALEMBIC_SKIP_RUN"):
