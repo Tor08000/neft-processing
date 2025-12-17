@@ -37,7 +37,7 @@ def test_limit_config_scope_and_window_enums():
             SELECT t.typname, e.enumlabel
             FROM pg_enum e
             JOIN pg_type t ON t.oid = e.enumtypid
-            WHERE t.typname IN ('limitconfigscope', 'limitscope')
+            WHERE t.typname IN ('limitconfigscope', 'limitwindow')
             ORDER BY t.typname, enumsortorder
             """
         ).fetchall()
@@ -67,9 +67,9 @@ def test_limit_config_scope_and_window_enums():
         ).scalar()
 
     assert set(enum_map.get("limitconfigscope", [])) == {"GLOBAL", "CLIENT", "CARD", "TARIFF"}
-    assert set(enum_map.get("limitscope", [])) == {"PER_TX", "DAILY", "MONTHLY"}
+    assert set(enum_map.get("limitwindow", [])) == {"PER_TX", "DAILY", "MONTHLY"}
     assert scope_type == "limitconfigscope"
-    assert window_type == "limitscope"
+    assert window_type == "limitwindow"
 
 
 @pytest.mark.skipif(engine.dialect.name != "postgresql", reason="Test requires Postgres")

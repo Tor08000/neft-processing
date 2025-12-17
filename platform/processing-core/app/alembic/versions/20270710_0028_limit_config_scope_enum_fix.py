@@ -29,6 +29,38 @@ depends_on: Sequence[str] | None = None
 
 LIMIT_CONFIG_SCOPE_VALUES = ["GLOBAL", "CLIENT", "CARD", "TARIFF"]
 LIMIT_WINDOW_VALUES = ["PER_TX", "DAILY", "MONTHLY"]
+LIMIT_WINDOW_ENUM_NAME = "limitwindow"
+LIMIT_CONFIG_SCOPE_ENUM_NAME = "limitconfigscope"
+
+
+def _ensure_enum_labels(enum_name: str, values: Sequence[str]) -> None:
+    """Ensure a Postgres enum has at least the provided values."""
+
+    bind = op.get_bind()
+    if not is_postgres(bind):  # pragma: no cover - defensive for sqlite
+        return
+
+    for value in values:
+        op.execute(
+            sa.text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_enum e
+                        JOIN pg_type t ON t.oid = e.enumtypid
+                        WHERE t.typname = :enum_name AND e.enumlabel = :value
+                    ) THEN
+                        ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}';
+                    END IF;
+                END$$;
+                """
+            ).bindparams(
+                sa.bindparam("enum_name", enum_name),
+                sa.bindparam("value", value),
+            )
+        )
 
 
 def _get_column_udt_name(table: str, column: str) -> str | None:
@@ -47,33 +79,74 @@ def _get_column_udt_name(table: str, column: str) -> str | None:
     return result[0] if result else None
 
 
+def _get_enum_labels(enum_name: str) -> list[str]:
+    bind = op.get_bind()
+    if not is_postgres(bind):
+        return []
+
+    rows = bind.exec_driver_sql(
+        """
+        SELECT e.enumlabel
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = %s
+        ORDER BY e.enumsortorder
+        """,
+        (enum_name,),
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
 def _ensure_window_column_type(window_enum) -> None:
     bind = op.get_bind()
+    if not is_postgres(bind):  # pragma: no cover - sqlite fallback
+        return
     if not column_exists(bind, "limit_configs", "window"):
         return
 
     current_type = _get_column_udt_name("limit_configs", "window")
-    if current_type != "limitscope":
+    existing_labels = _get_enum_labels(LIMIT_WINDOW_ENUM_NAME)
+    recreate_type = bool(existing_labels and set(existing_labels) != set(LIMIT_WINDOW_VALUES))
+    target_enum_name = LIMIT_WINDOW_ENUM_NAME if not recreate_type else f"{LIMIT_WINDOW_ENUM_NAME}_new"
+    enum_to_use = (
+        window_enum
+        if target_enum_name == LIMIT_WINDOW_ENUM_NAME
+        else safe_enum(bind, target_enum_name, LIMIT_WINDOW_VALUES)
+    )
+
+    if recreate_type:
+        ensure_pg_enum(bind, target_enum_name, values=LIMIT_WINDOW_VALUES)
+
+    normalized_case = """
+        CASE
+            WHEN "window" IS NULL THEN 'PER_TX'::{target}
+            WHEN "window"::text = 'DAY' THEN 'DAILY'::{target}
+            WHEN "window"::text = 'MONTH' THEN 'MONTHLY'::{target}
+            WHEN "window"::text IN ('PER_TX', 'DAILY', 'MONTHLY') THEN "window"::text::{target}
+            ELSE 'PER_TX'::{target}
+        END
+    """.format(target=target_enum_name)
+
+    if current_type != target_enum_name:
         op.alter_column(
             "limit_configs",
             "window",
-            type_=window_enum,
-            postgresql_using="""
-                CASE
-                    WHEN window::text = 'DAY' THEN 'DAILY'::limitscope
-                    WHEN window::text = 'MONTH' THEN 'MONTHLY'::limitscope
-                    WHEN window::text IN ('PER_TX', 'DAILY', 'MONTHLY') THEN window::text::limitscope
-                    ELSE 'DAILY'::limitscope
-                END
-            """,
+            type_=enum_to_use,
+            postgresql_using=normalized_case,
         )
+    else:
+        op.execute(sa.text(f"UPDATE limit_configs SET \"window\" = {normalized_case}"))
 
-    op.execute(sa.text("UPDATE limit_configs SET window = COALESCE(window, 'DAILY'::limitscope)"))
+    if recreate_type:
+        op.execute(sa.text(f"DROP TYPE IF EXISTS {LIMIT_WINDOW_ENUM_NAME}"))
+        op.execute(sa.text(f"ALTER TYPE {target_enum_name} RENAME TO {LIMIT_WINDOW_ENUM_NAME}"))
+        enum_to_use = safe_enum(bind, LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
+
     op.alter_column(
         "limit_configs",
         "window",
-        existing_type=window_enum,
-        server_default=sa.text("'DAILY'::limitscope") if is_postgres(bind) else "DAILY",
+        existing_type=enum_to_use,
+        server_default=sa.text("'PER_TX'::limitwindow") if is_postgres(bind) else "PER_TX",
         nullable=False,
     )
 
@@ -87,9 +160,9 @@ def _shift_scope_values_into_window() -> None:
         sa.text(
             """
             UPDATE limit_configs
-            SET window = CASE
-                WHEN scope::text IN ('PER_TX', 'DAILY', 'MONTHLY') THEN scope::text::limitscope
-                ELSE window
+            SET "window" = CASE
+                WHEN scope::text IN ('PER_TX', 'DAILY', 'MONTHLY') THEN scope::text::limitwindow
+                ELSE "window"
             END
             """
         )
@@ -98,11 +171,13 @@ def _shift_scope_values_into_window() -> None:
 
 def _convert_scope_column(scope_enum) -> None:
     bind = op.get_bind()
+    if not is_postgres(bind):  # pragma: no cover - sqlite fallback
+        return
     if not column_exists(bind, "limit_configs", "scope"):
         return
 
     current_type = _get_column_udt_name("limit_configs", "scope")
-    if current_type != "limitconfigscope":
+    if current_type != LIMIT_CONFIG_SCOPE_ENUM_NAME:
         op.alter_column(
             "limit_configs",
             "scope",
@@ -130,14 +205,16 @@ def _convert_scope_column(scope_enum) -> None:
 
 def upgrade() -> None:
     bind = op.get_bind()
-    ensure_pg_enum(bind, "limitconfigscope", values=LIMIT_CONFIG_SCOPE_VALUES)
-    ensure_pg_enum(bind, "limitscope", values=LIMIT_WINDOW_VALUES)
+    ensure_pg_enum(bind, LIMIT_CONFIG_SCOPE_ENUM_NAME, values=LIMIT_CONFIG_SCOPE_VALUES)
+    ensure_pg_enum(bind, LIMIT_WINDOW_ENUM_NAME, values=LIMIT_WINDOW_VALUES)
+    _ensure_enum_labels(LIMIT_CONFIG_SCOPE_ENUM_NAME, LIMIT_CONFIG_SCOPE_VALUES)
+    _ensure_enum_labels(LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
 
     if not table_exists(bind, "limit_configs"):
         return
 
-    window_enum = safe_enum(bind, "limitscope", LIMIT_WINDOW_VALUES)
-    scope_enum = safe_enum(bind, "limitconfigscope", LIMIT_CONFIG_SCOPE_VALUES)
+    window_enum = safe_enum(bind, LIMIT_WINDOW_ENUM_NAME, LIMIT_WINDOW_VALUES)
+    scope_enum = safe_enum(bind, LIMIT_CONFIG_SCOPE_ENUM_NAME, LIMIT_CONFIG_SCOPE_VALUES)
 
     _ensure_window_column_type(window_enum)
     _shift_scope_values_into_window()
