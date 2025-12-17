@@ -54,7 +54,8 @@ class TariffPrice(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
-class LimitScope(str, Enum):
+class LimitConfigScope(str, Enum):
+    GLOBAL = "GLOBAL"
     CLIENT = "CLIENT"
     CARD = "CARD"
     TARIFF = "TARIFF"
@@ -68,8 +69,9 @@ class LimitType(str, Enum):
 
 
 class LimitWindow(str, Enum):
-    DAY = "DAY"
-    MONTH = "MONTH"
+    PER_TX = "PER_TX"
+    DAILY = "DAILY"
+    MONTHLY = "MONTHLY"
 
 
 class LimitConfig(Base):
@@ -78,11 +80,11 @@ class LimitConfig(Base):
     __tablename__ = "limit_configs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    scope = Column(SAEnum(LimitScope), nullable=False, index=True)
+    scope = Column(SAEnum(LimitConfigScope), nullable=False, index=True)
     subject_ref = Column(String(64), nullable=False, index=True)
     limit_type = Column(SAEnum(LimitType), nullable=False, index=True)
     value = Column(BigInteger, nullable=False)
-    window = Column(SAEnum(LimitWindow), nullable=False, default=LimitWindow.DAY)
+    window = Column(SAEnum(LimitWindow), nullable=False, default=LimitWindow.DAILY)
     enabled = Column(Boolean, nullable=False, default=True, index=True)
     tariff_plan_id = Column(String(64), ForeignKey("tariff_plans.id"), nullable=True)
     description = Column(Text, nullable=True)

@@ -14,7 +14,7 @@ from app.db import get_db
 from app.models.account import Account, AccountBalance
 from app.models.card import Card
 from app.models.client import Client
-from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
 from app.models.invoice import InvoiceStatus
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
 from app.models.operation import Operation, RiskResult
@@ -85,7 +85,7 @@ def _attach_limits(db: Session, cards: Iterable[Card]) -> list[ClientCard]:
     card_ids = [card.id for card in card_list]
     limits = (
         db.query(LimitConfig)
-        .filter(LimitConfig.scope == LimitScope.CARD)
+        .filter(LimitConfig.scope == LimitConfigScope.CARD)
         .filter(LimitConfig.subject_ref.in_(card_ids))
         .all()
     )
@@ -257,7 +257,7 @@ async def update_card_limits(
 
     limit = (
         db.query(LimitConfig)
-        .filter(LimitConfig.scope == LimitScope.CARD)
+        .filter(LimitConfig.scope == LimitConfigScope.CARD)
         .filter(LimitConfig.subject_ref == card_id)
         .filter(LimitConfig.limit_type == limit_type)
         .one_or_none()
@@ -267,7 +267,7 @@ async def update_card_limits(
         limit.window = window
     else:
         limit = LimitConfig(
-            scope=LimitScope.CARD,
+            scope=LimitConfigScope.CARD,
             subject_ref=card_id,
             limit_type=limit_type,
             value=payload.value,

@@ -9,7 +9,7 @@ from app.main import app
 from app.models.account import AccountType
 from app.models.card import Card
 from app.models.client import Client
-from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
 from app.models.invoice import InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
 from app.repositories.accounts_repository import AccountsRepository
@@ -51,11 +51,11 @@ def _seed_clients(session, client_id, other_client_id):
     session.add(Card(id="card-2", client_id=str(other_client_id), status="ACTIVE", pan_masked="2222"))
     session.add(
         LimitConfig(
-            scope=LimitScope.CARD,
+            scope=LimitConfigScope.CARD,
             subject_ref="card-1",
             limit_type=LimitType.DAILY_AMOUNT,
             value=1000,
-            window=LimitWindow.DAY,
+            window=LimitWindow.DAILY,
             enabled=True,
         )
     )
