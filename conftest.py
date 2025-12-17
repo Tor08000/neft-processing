@@ -8,10 +8,10 @@ from typing import Iterable, Optional
 PROJECT_ROOT = Path(__file__).resolve().parent
 SHARED_PATH = PROJECT_ROOT / "shared" / "python"
 SERVICE_ROOTS = {
-    "ai-service": PROJECT_ROOT / "services" / "ai-service",
-    "auth-host": PROJECT_ROOT / "services" / "auth-host",
-    "core-api": PROJECT_ROOT / "services" / "core-api",
-    "workers": PROJECT_ROOT / "services" / "workers",
+    "ai-service": PROJECT_ROOT / "platform" / "ai-services" / "risk-scorer",
+    "auth-host": PROJECT_ROOT / "platform" / "auth-host",
+    "core-api": PROJECT_ROOT / "platform" / "processing-core",
+    "workers": PROJECT_ROOT / "platform" / "billing-clearing",
 }
 
 
@@ -48,4 +48,7 @@ def pytest_runtest_setup(item):  # type: ignore[override]
     if current_root:
         sys.path.insert(0, str(current_root))
         importlib.invalidate_caches()
-        importlib.import_module("app.services.keys")
+
+        keys_module = current_root / "app" / "services" / "keys.py"
+        if keys_module.exists():
+            importlib.import_module("app.services.keys")

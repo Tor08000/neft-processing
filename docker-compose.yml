@@ -272,7 +272,7 @@ services:
     ports:
       - "80:80"
     healthcheck:
-      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 5
