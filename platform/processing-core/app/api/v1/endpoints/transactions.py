@@ -5,7 +5,7 @@ from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from uuid import UUID
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -76,13 +76,13 @@ def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> Authoriz
             client_group_id=body.client_group_id,
             card_group_id=body.card_group_id,
         )
-    except DataError as exc:
+    except (DataError, IntegrityError) as exc:
         db.rollback()
         logger.exception(
             "invalid_enum_value",
             extra={"field": "operations.status", "error": str(exc)},
         )
-        raise HTTPException(status_code=400, detail="INVALID_ENUM_VALUE: operations.status")
+        raise HTTPException(status_code=400, detail="INVALID_OPERATION_STATUS")
     except Exception:
         db.rollback()
         raise
