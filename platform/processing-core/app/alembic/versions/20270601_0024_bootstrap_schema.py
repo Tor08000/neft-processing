@@ -224,6 +224,7 @@ def upgrade() -> None:
         sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("card_id", sa.String(length=64), nullable=False),
         sa.Column("accounts", json_type, nullable=True),
+        sa.Column("posting_result", json_type, nullable=True),
         sa.Column("amount", sa.BigInteger(), nullable=False),
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("authorized", sa.Boolean(), nullable=False, server_default=sa.text("false")),

@@ -15,10 +15,14 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.types import BigInteger
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import synonym
 
 from app.db import Base
+
+
+json_variant = JSON().with_variant(postgresql.JSONB, "postgresql")
 
 
 class OperationType(str, Enum):
@@ -128,8 +132,8 @@ class Operation(Base):
     product_category = Column(String(32), nullable=True, index=True)
     tx_type = Column(String(16), nullable=True, index=True)
 
-    accounts = Column(JSON, nullable=True)
-    posting_result = Column(JSON, nullable=True)
+    accounts = Column(json_variant, nullable=True)
+    posting_result = Column(json_variant, nullable=True)
 
     risk_score = Column(Float, nullable=True)
     risk_result = Column(SAEnum(RiskResult), nullable=True)
