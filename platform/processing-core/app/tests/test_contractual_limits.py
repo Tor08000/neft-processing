@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.db import Base, SessionLocal, engine
-from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.services.limits_service import check_contractual_limits
 
@@ -42,11 +42,11 @@ def test_daily_amount_limit_blocks_excess():
     try:
         db.add(
             LimitConfig(
-                scope=LimitScope.CLIENT,
+                scope=LimitConfigScope.CLIENT,
                 subject_ref="client-1",
                 limit_type=LimitType.DAILY_AMOUNT,
                 value=1_000,
-                window=LimitWindow.DAY,
+                window=LimitWindow.DAILY,
             )
         )
         db.commit()
@@ -74,18 +74,18 @@ def test_card_limit_more_strict_than_client():
         db.add_all(
             [
                 LimitConfig(
-                    scope=LimitScope.CLIENT,
+                    scope=LimitConfigScope.CLIENT,
                     subject_ref="client-1",
                     limit_type=LimitType.DAILY_AMOUNT,
                     value=2_000,
-                    window=LimitWindow.DAY,
+                    window=LimitWindow.DAILY,
                 ),
                 LimitConfig(
-                    scope=LimitScope.CARD,
+                    scope=LimitConfigScope.CARD,
                     subject_ref="card-1",
                     limit_type=LimitType.DAILY_AMOUNT,
                     value=600,
-                    window=LimitWindow.DAY,
+                    window=LimitWindow.DAILY,
                 ),
             ]
         )
@@ -103,6 +103,6 @@ def test_card_limit_more_strict_than_client():
             now=now,
         )
         assert not evaluation.approved
-        assert any(v.limit.scope == LimitScope.CARD for v in evaluation.violations)
+        assert any(v.limit.scope == LimitConfigScope.CARD for v in evaluation.violations)
     finally:
         db.close()

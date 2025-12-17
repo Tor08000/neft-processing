@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger
 
-from app.models.contract_limits import LimitConfig, LimitScope, LimitType, LimitWindow
+from app.models.contract_limits import (
+    LimitConfig,
+    LimitConfigScope,
+    LimitType,
+    LimitWindow,
+)
 from app.models.operation import Operation, OperationStatus
 
 logger = get_logger(__name__)
@@ -42,7 +47,9 @@ class LimitEvaluation:
 
 
 def _window_start(config: LimitConfig, *, now: datetime) -> datetime:
-    if config.window == LimitWindow.MONTH or config.limit_type == LimitType.MONTHLY_AMOUNT:
+    if config.window == LimitWindow.PER_TX:
+        return now
+    if config.window == LimitWindow.MONTHLY or config.limit_type == LimitType.MONTHLY_AMOUNT:
         return datetime(now.year, now.month, 1, tzinfo=now.tzinfo or timezone.utc)
     return datetime(now.year, now.month, now.day, tzinfo=now.tzinfo or timezone.utc)
 
@@ -50,11 +57,11 @@ def _window_start(config: LimitConfig, *, now: datetime) -> datetime:
 def _base_query(db: Session, config: LimitConfig, *, start: datetime):
     query = db.query(Operation).filter(Operation.created_at >= start)
     query = query.filter(Operation.status.in_(SUCCESS_STATUSES))
-    if config.scope == LimitScope.CLIENT:
+    if config.scope == LimitConfigScope.CLIENT:
         query = query.filter(Operation.client_id == config.subject_ref)
-    elif config.scope == LimitScope.CARD:
+    elif config.scope == LimitConfigScope.CARD:
         query = query.filter(Operation.card_id == config.subject_ref)
-    elif config.scope == LimitScope.TARIFF:
+    elif config.scope == LimitConfigScope.TARIFF:
         query = query.filter(Operation.tariff_id == config.subject_ref)
     return query
 
@@ -88,16 +95,24 @@ def _matching_configs(
     db: Session, *, client_id: str, card_id: str, tariff_id: str | None = None
 ) -> Iterable[LimitConfig]:
     clauses = [
-        (LimitConfig.scope == LimitScope.CLIENT, LimitConfig.subject_ref == client_id),
-        (LimitConfig.scope == LimitScope.CARD, LimitConfig.subject_ref == card_id),
+        (LimitConfig.scope == LimitConfigScope.CLIENT, LimitConfig.subject_ref == client_id),
+        (LimitConfig.scope == LimitConfigScope.CARD, LimitConfig.subject_ref == card_id),
+        (LimitConfig.scope == LimitConfigScope.GLOBAL, True),
     ]
     if tariff_id:
-        clauses.append((LimitConfig.scope == LimitScope.TARIFF, LimitConfig.subject_ref == tariff_id))
+        clauses.append(
+            (LimitConfig.scope == LimitConfigScope.TARIFF, LimitConfig.subject_ref == tariff_id)
+        )
 
     query = db.query(LimitConfig).filter(LimitConfig.enabled.is_(True))
     scope_filters = []
     for scope_expr, subject_expr in clauses:
-        scope_filters.append(scope_expr & subject_expr)
+        # GLOBAL scope applies without subject filtering
+        if subject_expr is True:
+            scope_filters.append(scope_expr)
+        else:
+            scope_filters.append(scope_expr & subject_expr)
+
     if scope_filters:
         query = query.filter(or_(*scope_filters))
     return query.all()
