@@ -46,20 +46,16 @@ Expected results:
 - Operations/transactions list endpoints return `200 OK` (empty lists are acceptable)
 
 ## D) Happy-path demo data (no 500s)
+Run the Windows CMD-safe seed script (no manual copy/paste needed):
 ```cmd
-curl -i -X POST http://localhost/api/core/api/v1/clients -H "Content-Type: application/json" -d "{\"name\":\"CLIENT-1\"}"
-```
-Copy the `id` from the response as `<CLIENT_UUID>` for the next requests:
-```cmd
-curl -i -X POST http://localhost/api/core/api/v1/merchants -H "Content-Type: application/json" -d "{\"id\":\"MERCHANT-1\",\"name\":\"MERCHANT-1\",\"status\":\"ACTIVE\"}"
-curl -i -X POST http://localhost/api/core/api/v1/terminals -H "Content-Type: application/json" -d "{\"id\":\"TERM-1\",\"merchant_id\":\"MERCHANT-1\",\"status\":\"ACTIVE\",\"location\":\"MSK\"}"
-curl -i -X POST http://localhost/api/core/api/v1/cards -H "Content-Type: application/json" -d "{\"id\":\"CARD-1\",\"client_id\":\"<CLIENT_UUID>\",\"status\":\"ACTIVE\"}"
-curl -i -X POST http://localhost/api/core/api/v1/transactions/authorize -H "Content-Type: application/json" -d "{\"client_id\":\"<CLIENT_UUID>\",\"card_id\":\"CARD-1\",\"terminal_id\":\"TERM-1\",\"merchant_id\":\"MERCHANT-1\",\"amount\":10000,\"currency\":\"RUB\",\"ext_operation_id\":\"EXT-0001\"}"
+cd C:\neft-processing
+call docs\runbooks\demo_seed_cmd.bat
 ```
 
 Expected results:
-- Each call returns `200 OK`
-- The authorize response contains structured JSON (approved status and an `operation_id`), not a `500`.
+- client created (ID printed by the script)
+- card created (merchant/terminal created automatically)
+- authorize response returns `200 OK` with JSON (approved status and an `operation_id`)
 
 ## E) Gateway upstream sanity check
 ```cmd

@@ -7,6 +7,7 @@ from app.main import app
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
+from app.models.operation import Operation, OperationStatus
 from app.models.terminal import Terminal
 
 
@@ -69,6 +70,38 @@ def test_authorize_idempotent():
     second = client.post("/api/v1/transactions/authorize", json=payload)
 
     assert first.json()["operation_id"] == second.json()["operation_id"]
+
+
+def test_authorize_persists_operation_record():
+    client_id = _seed_refs()
+    client = TestClient(app)
+    payload = {
+        "client_id": client_id,
+        "card_id": "card-a",
+        "terminal_id": "terminal-a",
+        "merchant_id": "merchant-a",
+        "amount": 2500,
+        "currency": "RUB",
+        "ext_operation_id": "ext-api-4",
+    }
+
+    resp = client.post("/api/v1/transactions/authorize", json=payload)
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        operations = db.query(Operation).all()
+    finally:
+        db.close()
+
+    assert len(operations) == 1
+    op = operations[0]
+    assert op.client_id == client_id
+    assert op.card_id == "card-a"
+    assert op.terminal_id == "terminal-a"
+    assert op.merchant_id == "merchant-a"
+    assert op.ext_operation_id == "ext-api-4"
+    assert op.status in {OperationStatus.AUTHORIZED, OperationStatus.POSTED}
 
 
 def test_commit_and_refund_endpoints():
