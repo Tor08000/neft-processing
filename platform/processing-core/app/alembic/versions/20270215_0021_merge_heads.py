@@ -7,6 +7,12 @@ Create Date: 2027-02-15 00:00:00
 
 from __future__ import annotations
 
+import os
+
+from alembic import op
+
+from app.alembic.helpers import DB_SCHEMA, table_exists
+
 # revision identifiers, used by Alembic.
 revision = "20270215_0021_merge_heads"
 down_revision = (
@@ -20,10 +26,23 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """No-op merge migration."""
-    pass
+    """Merge node with sanity checks.
+
+    The migration remains structurally a merge, but it now asserts that the
+    core tables exist so the upgrade cannot silently succeed while skipping the
+    required bootstrap DDL.
+    """
+
+    bind = op.get_bind()
+    schema = os.getenv("DB_SCHEMA", DB_SCHEMA)
+
+    missing = [name for name in ("operations", "accounts", "ledger_entries", "limit_configs") if not table_exists(bind, name, schema=schema)]
+    if missing:
+        raise RuntimeError(
+            "Merge revision 20270215_0021_merge_heads requires core tables to exist; missing: "
+            + ", ".join(missing)
+        )
 
 
 def downgrade() -> None:
-    """No-op merge migration."""
-    pass
+    raise RuntimeError("Merge revision 20270215_0021_merge_heads cannot be downgraded safely")
