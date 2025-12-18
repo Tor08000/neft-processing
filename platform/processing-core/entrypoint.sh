@@ -417,6 +417,13 @@ if [ "$diagnostics_status" -ne 0 ]; then
     exit 1
 fi
 
+python - <<'PY'
+from app.db import reset_engine
+
+reset_engine()
+print("[entrypoint] ORM engine cache reset after migrations", flush=True)
+PY
+
 if [ "${ENTRYPOINT_SKIP_APP}" = "1" ]; then
     echo "[entrypoint] ENTRYPOINT_SKIP_APP=1 is set; exiting after migrations"
     exit 0

@@ -12,7 +12,10 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 
+from app.db import get_engine, get_sessionmaker, reset_engine
 from app.diagnostics import db_state
+from app.models.card import Card
+from app.services.bootstrap import ensure_default_refs
 
 REQUIRED_TABLES = (
     "alembic_version",
@@ -140,3 +143,34 @@ def test_upgrade_respects_custom_schema(monkeypatch):
 
     assert not missing, f"tables missing in schema {schema}: {missing}"
     assert not in_public, f"tables should not be created in public when schema={schema}: {in_public}"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for this integration test")
+def test_engine_reset_after_migrations(monkeypatch):
+    image = os.getenv("TEST_POSTGRES_IMAGE", "postgres:16")
+    schema = f"core_{uuid4().hex[:6]}"
+
+    try:
+        with _postgres_container(image) as db_url:
+            monkeypatch.setenv("DATABASE_URL", db_url)
+            monkeypatch.setenv("DB_SCHEMA", schema)
+
+            warm_engine = get_engine()
+            with warm_engine.connect() as conn:
+                conn.exec_driver_sql("select 1")
+
+            get_sessionmaker()
+
+            cfg = _make_alembic_config(db_url)
+            command.upgrade(cfg, "head")
+
+            reset_engine()
+
+            session_factory = get_sessionmaker()
+            with session_factory() as session:
+                ensure_default_refs(session)
+                card = session.query(Card).filter(Card.id == "CARD-001").one()
+                assert card.created_at is not None
+    except RuntimeError as exc:
+        pytest.skip(str(exc))

@@ -4,6 +4,7 @@ import os
 from typing import Generator
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -22,6 +23,7 @@ def _ensure_psycopg_driver(url: str) -> str:
     ВАЖНО: render_as_string(hide_password=False), иначе SQLAlchemy замаскирует
     пароль как "***" и коннект всегда будет падать по auth failed.
     """
+
     sa_url = make_url(url)
 
     if sa_url.drivername in {"postgres", "postgresql"} or sa_url.drivername.endswith(
@@ -47,37 +49,73 @@ except Exception as exc:  # noqa: BLE001 - explicit startup failure
     ) from exc
 
 
-# Базовый engine
-engine_kwargs = dict(
-    future=True,
-    pool_pre_ping=True,
-)
-
-if DATABASE_URL.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA},public"}
-
-if DATABASE_URL.startswith("sqlite"):
-    engine_kwargs.update(
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-engine = create_engine(
-    DATABASE_URL,
-    **engine_kwargs,
-)
-
 # База для декларативных моделей
 Base = declarative_base()
 
-# Фабрика сессий
-SessionLocal = sessionmaker(
-    bind=engine,
-    class_=Session,
-    autoflush=False,
-    autocommit=False,
-    expire_on_commit=False,
-)
+
+def _make_engine_kwargs(url: str) -> dict:
+    engine_kwargs = dict(
+        future=True,
+        pool_pre_ping=True,
+    )
+
+    if url.startswith("postgresql"):
+        engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA},public"}
+
+    if url.startswith("sqlite"):
+        engine_kwargs.update(
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+
+    return engine_kwargs
+
+
+_engine: Engine | None = None
+_SessionLocal: sessionmaker[Session] | None = None
+
+
+def get_engine() -> Engine:
+    """Lazy singleton for the core SQLAlchemy engine."""
+
+    global _engine
+
+    if _engine is None:
+        _engine = create_engine(
+            DATABASE_URL,
+            **_make_engine_kwargs(DATABASE_URL),
+        )
+
+    return _engine
+
+
+def get_sessionmaker() -> sessionmaker[Session]:
+    """Lazy singleton for the Session factory."""
+
+    global _SessionLocal
+
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(
+            bind=get_engine(),
+            class_=Session,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+        )
+
+    return _SessionLocal
+
+
+def reset_engine() -> None:
+    """Dispose of the current engine and sessionmaker cache."""
+
+    global _engine, _SessionLocal
+
+    if _engine is not None:
+        _engine.dispose()
+
+    _engine = None
+    _SessionLocal = None
 
 
 def init_db() -> None:
@@ -110,6 +148,7 @@ def init_db() -> None:
     from app.models.ledger_entry import LedgerEntry  # noqa: F401
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
+    engine = get_engine()
     if str(engine.url).startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
 
@@ -117,8 +156,29 @@ def init_db() -> None:
 def get_db() -> Generator[Session, None, None]:
     """Dependency для FastAPI: даёт сессию и гарантирует её закрытие."""
 
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         yield db
     finally:
         db.close()
+
+
+class _EngineProxy:
+    def __call__(self) -> Engine:
+        return get_engine()
+
+    def __getattr__(self, item):  # pragma: no cover - passthrough helper
+        return getattr(get_engine(), item)
+
+
+class _SessionLocalProxy:
+    def __call__(self) -> Session:
+        return get_sessionmaker()()
+
+    def __getattr__(self, item):  # pragma: no cover - passthrough helper
+        return getattr(get_sessionmaker(), item)
+
+
+# Backward-compatible lazy proxies: avoid engine creation at import-time
+engine = _EngineProxy()
+SessionLocal = _SessionLocalProxy()
