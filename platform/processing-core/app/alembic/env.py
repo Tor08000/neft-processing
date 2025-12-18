@@ -20,6 +20,7 @@ from app import models as _models  # noqa: F401  # E402: ensure models are regis
 
 logger = logging.getLogger(__name__)
 DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1"
+EVENT_LOGGER = logging.getLogger("app.alembic.sql")
 
 config = context.config
 
@@ -66,6 +67,15 @@ def run_migrations_offline() -> None:
     raise RuntimeError(msg)
 
 
+def _log_transaction_event(event_name: str, connection: sa.engine.Connection) -> None:
+    EVENT_LOGGER.info("DB_DEBUG_SQL: %s connection=%s", event_name.upper(), hex(id(connection)))
+
+
+def _attach_transaction_logging(connectable: sa.engine.Engine) -> None:
+    for name in ("begin", "commit", "rollback"):
+        sa.event.listen(connectable, name, lambda conn, *_args, _name=name: _log_transaction_event(_name, conn))
+
+
 def run_migrations_online() -> None:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
@@ -75,14 +85,7 @@ def run_migrations_online() -> None:
     )
 
     if DEBUG_SQL:
-        for name in ("begin", "commit", "rollback"):
-            sa.event.listen(
-                connectable,
-                name,
-                lambda conn, *_args, _name=name: logger.info(
-                    "DB_DEBUG_SQL: %s connection=%s", _name.upper(), hex(id(conn))
-                ),
-            )
+        _attach_transaction_logging(connectable)
 
     with connectable.connect() as connection:
         if connection.dialect.name != "postgresql":
