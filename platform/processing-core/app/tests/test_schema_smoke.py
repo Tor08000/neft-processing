@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
@@ -27,6 +28,9 @@ def _create_engine_for_schema(db_url: str):
 
 def test_core_tables_exist_after_migrations() -> None:
     db_url = os.getenv("DATABASE_URL") or os.getenv("NEFT_DB_URL") or DATABASE_URL
+
+    if not db_url.startswith("postgresql"):
+        pytest.skip("schema smoke test requires Postgres database")
 
     alembic_cfg = _make_alembic_config(db_url)
     command.upgrade(alembic_cfg, "head")
