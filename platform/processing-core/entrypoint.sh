@@ -12,7 +12,7 @@ import os
 from sqlalchemy.engine.url import make_url
 
 db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("DB_SCHEMA", "public")
+schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
 
 if not db_url:
     print("[entrypoint] DATABASE_URL is not set", flush=True)
@@ -151,7 +151,7 @@ from sqlalchemy import create_engine, event, text
 
 from app.diagnostics.db_state import to_regclass
 
-schema = os.getenv("DB_SCHEMA", "public")
+schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
 url = os.getenv("DATABASE_URL")
 required_tables = (
     "alembic_version",
@@ -193,6 +193,32 @@ if missing:
         f"[entrypoint] migration verification failed; missing tables in schema '{schema}': {missing}",
         file=sys.stderr,
     )
+    user_schemas = conn.execute(
+        text(
+            """
+            select nspname
+            from pg_namespace
+            where nspname not in ('pg_catalog','information_schema','pg_toast')
+            order by 1
+            """
+        )
+    ).scalars().all()
+    user_tables = [
+        f"{row.table_schema}.{row.table_name}"
+        for row in conn.execute(
+            text(
+                """
+                select table_schema, table_name
+                from information_schema.tables
+                where table_schema not in ('pg_catalog','information_schema','pg_toast')
+                order by 1,2
+                """
+            )
+        )
+    ]
+
+    print(f"[entrypoint] user schemas: {user_schemas}", file=sys.stderr)
+    print(f"[entrypoint] user tables ({len(user_tables)}): {user_tables}", file=sys.stderr)
     print(
         "[entrypoint] hint: docker compose logs --tail=200 postgres to check if the DB was reset",
         file=sys.stderr,

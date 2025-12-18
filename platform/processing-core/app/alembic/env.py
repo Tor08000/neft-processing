@@ -77,6 +77,52 @@ def _attach_transaction_logging(connectable: sa.engine.Engine) -> None:
         sa.event.listen(connectable, name, lambda conn, *_args, _name=name: _log_transaction_event(_name, conn))
 
 
+def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> None:
+    logger.info("[%s] DB_SCHEMA setting: %s", label, DB_SCHEMA or "public")
+
+    db_addr, db_port, db_name, db_user, db_schema = connection.exec_driver_sql(
+        "SELECT inet_server_addr(), inet_server_port(), current_database(), current_user, current_schema();",
+    ).first()
+    logger.info(
+        "[%s] connected to db=%s user=%s schema=%s at %s:%s",
+        label,
+        db_name,
+        db_user,
+        db_schema,
+        db_addr,
+        db_port,
+    )
+
+    search_path = connection.exec_driver_sql("SHOW search_path").scalar_one()
+    logger.info("[%s] effective search_path=%s", label, search_path)
+
+    schemas = [
+        row[0]
+        for row in connection.exec_driver_sql(
+            """
+            select nspname
+            from pg_namespace
+            where nspname not in ('pg_catalog','information_schema','pg_toast')
+            order by 1
+            """
+        )
+    ]
+    logger.info("[%s] user schemas: %s", label, schemas)
+
+    tables = [
+        f"{row.table_schema}.{row.table_name}"
+        for row in connection.exec_driver_sql(
+            """
+            select table_schema, table_name
+            from information_schema.tables
+            where table_schema not in ('pg_catalog','information_schema','pg_toast')
+            order by 1,2
+            """
+        )
+    ]
+    logger.info("[%s] user tables (%d): %s", label, len(tables), tables)
+
+
 def run_migrations_online() -> None:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
@@ -94,22 +140,15 @@ def run_migrations_online() -> None:
                 f"Alembic migrations require PostgreSQL engine, got '{connection.dialect.name}'",
             )
 
-        current_db, current_schema, server_ip, server_port = connection.exec_driver_sql(
-            "SELECT current_database(), current_schema(), inet_server_addr(), inet_server_port();",
-        ).first()
-        logger.info(
-            "Connected to database=%s schema=%s at %s:%s", current_db, current_schema, server_ip, server_port
-        )
+        target_schema = DB_SCHEMA or "public"
+        target_schema_escaped = target_schema.replace('"', '""')
 
-        if DB_SCHEMA:
-            search_path_sql = f"SET search_path TO {DB_SCHEMA}, public"
-            connection.exec_driver_sql(search_path_sql)
-            logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
+        search_path_sql = f"SET search_path TO \"{target_schema_escaped}\", public"
+        connection.exec_driver_sql(search_path_sql)
+        logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
 
-        search_path_row = connection.exec_driver_sql("SHOW search_path").scalar_one()
-        logger.info("Effective search_path is %s", search_path_row)
-
-        log_connection_fingerprint(connection, label="pre-upgrade", emitter=logger.info)
+        _log_schema_inventory(connection, label="pre-upgrade")
+        log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
         ensure_alembic_version_length(connection)
 
@@ -121,19 +160,28 @@ def run_migrations_online() -> None:
             compare_server_default=True,
             transactional_ddl=True,
             version_table="alembic_version",
-            version_table_schema=None,
+            version_table_schema=target_schema,
             as_sql=False,
         )
 
         with context.begin_transaction():
             context.run_migrations()
 
-        version_schema = DB_SCHEMA or "public"
-        version_reg = to_regclass(connection, version_schema, "alembic_version")
-        operations_reg = to_regclass(connection, version_schema, "operations")
+        version_reg = to_regclass(connection, target_schema, "alembic_version")
+        operations_reg = to_regclass(connection, target_schema, "operations")
+
+        current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
         if version_reg is None:
-            raise RuntimeError("Alembic upgrade finished but alembic_version is missing; aborting")
+            raise RuntimeError(
+                "Post-upgrade verification failed: alembic_version missing in "
+                f"schema '{target_schema}' (search_path={current_search_path})"
+            )
+        if operations_reg is None:
+            raise RuntimeError(
+                "Post-upgrade verification failed: operations missing in "
+                f"schema '{target_schema}' (search_path={current_search_path})"
+            )
 
         logger.info(
             "Post-upgrade regclass status: alembic_version=%s operations=%s",
@@ -141,7 +189,8 @@ def run_migrations_online() -> None:
             operations_reg,
         )
 
-        log_connection_fingerprint(connection, label="post-upgrade", emitter=logger.info)
+        _log_schema_inventory(connection, label="post-upgrade")
+        log_connection_fingerprint(connection, schema=target_schema, label="post-upgrade", emitter=logger.info)
 
 
 if os.getenv("ALEMBIC_SKIP_RUN"):
