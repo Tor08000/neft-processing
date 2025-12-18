@@ -110,7 +110,7 @@ def commit(body: CommitRequest, db: Session = Depends(get_db)) -> OperationSchem
     except AmountExceeded as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except InvalidOperationState as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=getattr(exc, "payload", str(exc)))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return serialize_operation(op)
@@ -121,7 +121,7 @@ def reverse(body: ReverseRequest, db: Session = Depends(get_db)) -> OperationSch
     try:
         op = reverse_operation(db, operation_id=body.operation_id, reason=body.reason)
     except InvalidOperationState as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=getattr(exc, "payload", str(exc)))
     return serialize_operation(op)
 
 
@@ -137,7 +137,7 @@ def refund(body: RefundOperationRequest, db: Session = Depends(get_db)) -> Opera
     except AmountExceeded as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except InvalidOperationState as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=getattr(exc, "payload", str(exc)))
     return serialize_operation(op)
 
 
