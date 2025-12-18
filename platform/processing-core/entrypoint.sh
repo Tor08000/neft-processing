@@ -302,18 +302,177 @@ PY
 }
 
 assert_alembic_state() {
-    heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads 2>&1)
-    current_output=$(alembic -c "$ALEMBIC_CONFIG" current 2>&1)
+    heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads -v 2>&1)
+    current_output=$(alembic -c "$ALEMBIC_CONFIG" current -v 2>&1)
 
     echo "[entrypoint] alembic heads:" >&2
     echo "$heads_output" >&2
     echo "[entrypoint] alembic current:" >&2
     echo "$current_output" >&2
 
-    if [ -z "$current_output" ]; then
-        echo "[entrypoint] alembic current returned empty output; migration failed" >&2
-        exit 1
+    REQUIRED_REVISION="20270720_0029_cards_created_at"
+
+    HEADS_OUTPUT="$heads_output" CURRENT_OUTPUT="$current_output" REQUIRED_REVISION="$REQUIRED_REVISION" \
+        python - <<'PY'
+import os
+import re
+import sys
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, text
+
+schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+alembic_config_path = os.environ["ALEMBIC_CONFIG"]
+db_url = os.environ["DATABASE_URL"]
+
+heads_output = os.environ["HEADS_OUTPUT"]
+current_output = os.environ["CURRENT_OUTPUT"]
+required_revision = os.environ["REQUIRED_REVISION"]
+
+
+def _extract_revisions(output: str) -> list[str]:
+    pattern = re.compile(r"(?P<rev>[0-9a-f]{10,}|\d{8}_\d+_[\w]+)")
+    revisions: list[str] = []
+    for line in output.splitlines():
+        for match in pattern.finditer(line):
+            revisions.append(match.group("rev"))
+    return revisions
+
+
+heads = _extract_revisions(heads_output)
+current = _extract_revisions(current_output)
+
+if not current_output.strip() or not current:
+    print("[entrypoint] alembic current returned empty output; migration failed", file=sys.stderr)
+    sys.exit(1)
+
+if not heads:
+    print("[entrypoint] alembic heads returned no revisions; migration failed", file=sys.stderr)
+    sys.exit(1)
+
+if set(current) != set(heads):
+    print(
+        f"[entrypoint] alembic current {current} does not match heads {heads}; migration failed",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+script_dir = ScriptDirectory.from_config(Config(alembic_config_path))
+script_heads = script_dir.get_heads()
+
+if set(current) != set(script_heads):
+    print(
+        f"[entrypoint] alembic current {current} does not match script heads {script_heads}; migration failed",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+engine_kwargs = {"future": True, "pool_pre_ping": True}
+if db_url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {
+        "prepare_threshold": 0,
+        "options": f"-csearch_path={schema},public",
+    }
+
+engine = create_engine(db_url, **engine_kwargs)
+with engine.connect() as conn:
+    version_rows = conn.execute(
+        text(f'SELECT version_num FROM "{schema}".alembic_version')
+    ).fetchall()
+
+version_values = [row[0] for row in version_rows]
+if required_revision not in version_values:
+    print(
+        f"[entrypoint] alembic_version table missing required revision '{required_revision}' (found {version_values})",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+}
+
+assert_cards_created_at() {
+    if python - <<'PY'
+import os
+import sys
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+url = os.environ.get("DATABASE_URL")
+
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for cards.created_at verification", file=sys.stderr)
+    sys.exit(1)
+
+engine_kwargs = {"future": True, "pool_pre_ping": True}
+if url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {
+        "prepare_threshold": 0,
+        "options": f"-csearch_path={schema},public",
+    }
+
+engine = create_engine(url, **engine_kwargs)
+
+try:
+    with engine.connect() as conn:
+        exists = conn.execute(
+            text(
+                """
+                select 1
+                from information_schema.columns
+                where table_schema=:schema
+                  and table_name='cards'
+                  and column_name='created_at'
+                """
+            ),
+            {"schema": schema},
+        ).scalar_one_or_none()
+except SQLAlchemyError as exc:  # pragma: no cover - startup guard
+    print(f"[entrypoint] failed to verify cards.created_at presence: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+if exists:
+    print(f"[entrypoint] verified cards.created_at exists in schema '{schema}'", flush=True)
+    sys.exit(0)
+
+print(f"[entrypoint] cards.created_at missing in schema '{schema}'", file=sys.stderr)
+sys.exit(1)
+PY
+    then
+        return 0
     fi
+
+    echo "[entrypoint] alembic_version contents:" >&2
+    python - <<'PY'
+import os
+import sys
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+url = os.environ["DATABASE_URL"]
+
+engine_kwargs = {"future": True, "pool_pre_ping": True}
+if url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {
+        "prepare_threshold": 0,
+        "options": f"-csearch_path={schema},public",
+    }
+
+engine = create_engine(url, **engine_kwargs)
+try:
+    with engine.connect() as conn:
+        rows = conn.execute(text(f'SELECT version_num FROM "{schema}".alembic_version')).fetchall()
+        print(rows)
+except SQLAlchemyError as exc:  # pragma: no cover - diagnostics helper
+    print(f"[entrypoint] failed to read alembic_version contents: {exc}")
+    sys.exit(0)
+PY
+
+    echo "[entrypoint] alembic history tail:" >&2
+    alembic -c "$ALEMBIC_CONFIG" history --verbose | tail
+    exit 1
 }
 
 # Run migrations before starting the API to guarantee schema availability
@@ -376,6 +535,8 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     attempt=$((attempt + 1))
     sleep "$MIGRATIONS_RETRY_DELAY"
 done
+
+assert_cards_created_at
 
 set +e
 python - <<'PY'
