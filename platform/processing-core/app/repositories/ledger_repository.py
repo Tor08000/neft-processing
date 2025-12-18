@@ -8,6 +8,17 @@ from sqlalchemy.orm import Session
 
 from app.models.account import AccountBalance
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
+from app.models.operation import Operation
+
+
+class OperationNotFound(Exception):
+    """Raised when a referenced operation does not exist."""
+
+    code = "OPERATION_NOT_FOUND"
+
+    def __init__(self, operation_id: UUID):
+        super().__init__(self.code)
+        self.operation_id = operation_id
 
 
 class LedgerRepository:
@@ -31,6 +42,16 @@ class LedgerRepository:
         """Create ledger entry and update account balances."""
 
         decimal_amount = Decimal(str(amount))
+
+        if operation_id is not None:
+            exists = (
+                self.db.query(Operation.id)
+                .filter(Operation.id == operation_id)
+                .scalar()
+            )
+            if exists is None:
+                raise OperationNotFound(operation_id)
+
         balance = (
             self.db.query(AccountBalance)
             .filter(AccountBalance.account_id == account_id)
