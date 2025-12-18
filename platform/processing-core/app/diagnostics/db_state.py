@@ -39,7 +39,8 @@ class ConnectionInventory:
 def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
     """Return the regclass for the given schema-qualified name, if it exists."""
 
-    regclass = f"{schema}.{name}"
+    schema_name = schema or "public"
+    regclass = f"{schema_name}.{name}"
     return connection.execute(text("select to_regclass(:reg)"), {"reg": regclass}).scalar_one_or_none()
 
 
