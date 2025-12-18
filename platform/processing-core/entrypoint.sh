@@ -149,6 +149,8 @@ import sys
 
 from sqlalchemy import create_engine, event, text
 
+from app.diagnostics.db_state import to_regclass
+
 schema = os.getenv("DB_SCHEMA", "public")
 url = os.getenv("DATABASE_URL")
 required_tables = (
@@ -183,10 +185,7 @@ if debug_sql:
 
 with engine.connect() as conn:
     with conn.begin():
-        results = {
-            name: conn.execute(text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.{name}"}).scalar()
-            for name in required_tables
-        }
+        results = {name: to_regclass(conn, schema, name) for name in required_tables}
 
 missing = [name for name, reg in results.items() if reg is None]
 if missing:

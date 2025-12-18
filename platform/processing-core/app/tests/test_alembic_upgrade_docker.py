@@ -11,6 +11,8 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 
+from app.diagnostics import db_state
+
 REQUIRED_TABLES = (
     "alembic_version",
     "operations",
@@ -84,10 +86,7 @@ def test_upgrade_creates_public_tables_via_docker(monkeypatch):
         command.upgrade(cfg, "head")
 
         with sa.create_engine(db_url, future=True, pool_pre_ping=True).connect() as conn:
-            missing = {
-                table: conn.exec_driver_sql("select to_regclass(:reg)", {"reg": f"public.{table}"}).scalar()
-                for table in REQUIRED_TABLES
-            }
+            missing = {table: db_state.to_regclass(conn, "public", table) for table in REQUIRED_TABLES}
     finally:
         subprocess.run(["docker", "rm", "-f", container_name], check=False)
 
