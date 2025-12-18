@@ -216,7 +216,7 @@ def upgrade():
         bind,
         "accounts",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
-        sa.Column("client_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
+        sa.Column("client_id", uuid_type, sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
         sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=True),
         sa.Column("tariff_id", sa.String(length=64), nullable=True),
         sa.Column("currency", sa.String(length=8), nullable=False),
