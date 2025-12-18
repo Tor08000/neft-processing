@@ -119,8 +119,10 @@ PY
 
 echo "[entrypoint] waiting for postgres..."
 wait_for_postgres
-echo "[entrypoint] waiting for redis..."
-wait_for_redis
+if [ "${SKIP_REDIS_WAIT}" != "1" ]; then
+    echo "[entrypoint] waiting for redis..."
+    wait_for_redis
+fi
 
 # Shared diagnostics helpers
 dump_migration_diagnostics() {
@@ -149,6 +151,13 @@ from sqlalchemy import create_engine, event, text
 
 schema = os.getenv("DB_SCHEMA", "public")
 url = os.getenv("DATABASE_URL")
+required_tables = (
+    "alembic_version",
+    "operations",
+    "accounts",
+    "ledger_entries",
+    "limit_configs",
+)
 
 if not url:
     print("[entrypoint] DATABASE_URL is not set for migration verification", file=sys.stderr)
@@ -175,12 +184,8 @@ if debug_sql:
 with engine.connect() as conn:
     with conn.begin():
         results = {
-            "alembic_version": conn.execute(
-                text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.alembic_version"}
-            ).scalar(),
-            "operations": conn.execute(
-                text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.operations"}
-            ).scalar(),
+            name: conn.execute(text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.{name}"}).scalar()
+            for name in required_tables
         }
 
 missing = [name for name, reg in results.items() if reg is None]
@@ -192,10 +197,82 @@ if missing:
     sys.exit(1)
 
 print(
-    f"[entrypoint] verified alembic_version and operations tables exist in schema '{schema}'",
+    f"[entrypoint] verified required tables exist in schema '{schema}': {sorted(results)}",
     flush=True,
 )
 PY
+}
+
+log_db_fingerprint() {
+    python - <<'PY'
+import os
+import sys
+from textwrap import indent
+
+from sqlalchemy import create_engine, text
+
+schema = os.getenv("DB_SCHEMA", "public")
+url = os.getenv("DATABASE_URL")
+label = os.getenv("DB_FINGERPRINT_LABEL", "")
+
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for fingerprint collection", file=sys.stderr)
+    sys.exit(1)
+
+engine = create_engine(url, future=True, pool_pre_ping=True)
+
+with engine.connect() as conn:
+    prefix = f"[entrypoint] db fingerprint {label}"
+    server_info = conn.execute(
+        text("SELECT inet_server_addr(), inet_server_port()")
+    ).one()
+    session_info = conn.execute(
+        text("SELECT current_database(), current_user, current_schema()")
+    ).one()
+    search_path = conn.execute(text("SHOW search_path")).scalar_one_or_none()
+    version_reg = conn.execute(
+        text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.alembic_version"}
+    ).scalar_one_or_none()
+    table_count = conn.execute(
+        text("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+    ).scalar_one()
+    tables = conn.execute(
+        text(
+            """
+            select table_schema, table_name
+            from information_schema.tables
+            where table_schema='public'
+            order by 1,2
+            limit 200
+            """
+        )
+    ).all()
+
+    print(
+        f"{prefix} server={server_info[0]}:{server_info[1]} db={session_info[0]} user={session_info[1]}",
+        flush=True,
+    )
+    print(f"{prefix} search_path={search_path}", flush=True)
+    print(f"{prefix} alembic_version_regclass={version_reg}", flush=True)
+    print(f"{prefix} public_table_count={table_count}", flush=True)
+    formatted_tables = "\n".join(f"- {schema}.{name}" for schema, name in tables)
+    print(f"{prefix} public_tables:\n{indent(formatted_tables, '  ')}", flush=True)
+PY
+}
+
+assert_alembic_state() {
+    heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads 2>&1)
+    current_output=$(alembic -c "$ALEMBIC_CONFIG" current 2>&1)
+
+    echo "[entrypoint] alembic heads:" >&2
+    echo "$heads_output" >&2
+    echo "[entrypoint] alembic current:" >&2
+    echo "$current_output" >&2
+
+    if [ -z "$current_output" ]; then
+        echo "[entrypoint] alembic current returned empty output; migration failed" >&2
+        exit 1
+    fi
 }
 
 # Run migrations before starting the API to guarantee schema availability
@@ -231,8 +308,12 @@ PY
 
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
+    DB_FINGERPRINT_LABEL="pre-migration-attempt-$attempt" log_db_fingerprint
+
     if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
+        assert_alembic_state
         if verify_migration_ddls; then
+            DB_FINGERPRINT_LABEL="post-migration-attempt-$attempt" log_db_fingerprint
             echo "[entrypoint] migrations applied"
             break
         fi
@@ -297,6 +378,11 @@ set -e
 if [ "$diagnostics_status" -ne 0 ]; then
     dump_migration_diagnostics
     exit 1
+fi
+
+if [ "${ENTRYPOINT_SKIP_APP}" = "1" ]; then
+    echo "[entrypoint] ENTRYPOINT_SKIP_APP=1 is set; exiting after migrations"
+    exit 0
 fi
 
 echo "[entrypoint] starting uvicorn..."
