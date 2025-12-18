@@ -8,8 +8,9 @@ from sqlalchemy import inspect
 from app.db import Base, SessionLocal, engine
 from app.models.account import AccountStatus, AccountType
 from app.models.ledger_entry import LedgerDirection
+from app.models.operation import Operation, OperationStatus, OperationType
 from app.repositories.accounts_repository import AccountsRepository
-from app.repositories.ledger_repository import LedgerRepository
+from app.repositories.ledger_repository import LedgerRepository, OperationNotFound
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +90,22 @@ def test_posting_and_balances(accounts_repo: AccountsRepository, ledger_repo: Le
     )
 
     op_id = uuid4()
+    operation = Operation(
+        id=op_id,
+        ext_operation_id=str(op_id),
+        operation_type=OperationType.AUTH,
+        status=OperationStatus.AUTHORIZED,
+        merchant_id="merchant-1",
+        terminal_id="terminal-1",
+        client_id="client-2",
+        card_id="card-1",
+        amount=10000,
+        amount_settled=0,
+        currency="USD",
+    )
+    ledger_repo.db.add(operation)
+    ledger_repo.db.commit()
+
     first = ledger_repo.post_entry(
         account_id=account.id,
         operation_id=op_id,
@@ -116,3 +133,24 @@ def test_posting_and_balances(accounts_repo: AccountsRepository, ledger_repo: Le
     entries = ledger_repo.get_entries(account.id)
     assert [entry.id for entry in entries] == [first.id, second.id]
     assert [Decimal(entry.amount) for entry in entries] == [Decimal("100.00"), Decimal("40.50")]
+
+
+def test_ledger_entry_requires_existing_operation_when_operation_id_provided(
+    accounts_repo: AccountsRepository, ledger_repo: LedgerRepository
+):
+    account = accounts_repo.get_or_create_account(
+        client_id="client-3",
+        currency="USD",
+        account_type=AccountType.CLIENT_MAIN,
+    )
+
+    missing_operation_id = uuid4()
+
+    with pytest.raises(OperationNotFound, match="OPERATION_NOT_FOUND"):
+        ledger_repo.post_entry(
+            account_id=account.id,
+            operation_id=missing_operation_id,
+            direction=LedgerDirection.CREDIT,
+            amount=Decimal("10.00"),
+            currency="USD",
+        )
