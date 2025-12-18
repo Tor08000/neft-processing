@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 
-from app.db import engine
+from app.db import DB_SCHEMA, engine
 from app.tests.utils import ensure_connectable, get_database_url
 
 
@@ -23,13 +23,15 @@ def test_bootstrap_schema_creates_tables():
     try:
         with connectable.connect() as connection:
             merchants_exists = connection.exec_driver_sql(
-                "select to_regclass('public.merchants')"
+                "select to_regclass(:reg)",
+                {"reg": f"{DB_SCHEMA}.merchants"},
             ).scalar()
             version_exists = connection.exec_driver_sql(
-                "select to_regclass('public.alembic_version')"
+                "select to_regclass(:reg)",
+                {"reg": f"{DB_SCHEMA}.alembic_version"},
             ).scalar()
     finally:
         connectable.dispose()
 
-    assert merchants_exists, "Migration should create public.merchants"
-    assert version_exists, "alembic_version should be created in public schema"
+    assert merchants_exists, f"Migration should create {DB_SCHEMA}.merchants"
+    assert version_exists, f"alembic_version should be created in {DB_SCHEMA} schema"
