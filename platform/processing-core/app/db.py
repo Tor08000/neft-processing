@@ -38,7 +38,13 @@ raw_db_url = os.getenv("DATABASE_URL")
 if not raw_db_url:
     raise RuntimeError("DATABASE_URL environment variable is required")
 
-DATABASE_URL: str = _ensure_psycopg_driver(raw_db_url)
+try:
+    DATABASE_URL: str = _ensure_psycopg_driver(raw_db_url)
+except Exception as exc:  # noqa: BLE001 - explicit startup failure
+    raise RuntimeError(
+        "Invalid DATABASE_URL provided; expected a PostgreSQL DSN such as "
+        "'postgresql+psycopg://user:pass@host:5432/dbname'"
+    ) from exc
 
 
 # Базовый engine

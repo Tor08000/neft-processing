@@ -129,6 +129,30 @@ MIGRATIONS_RETRY_DELAY=${MIGRATIONS_RETRY_DELAY:-2}
 
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 
+python - <<'PY'
+import sys
+
+from app.diagnostics.db_state import collect_inventory
+
+try:
+    inventory = collect_inventory()
+except Exception as exc:  # noqa: BLE001 - startup diagnostics
+    print(f"[entrypoint] failed to collect pre-migration inventory: {exc}", flush=True)
+    sys.exit(1)
+
+print(
+    "[entrypoint] pre-migration target: "
+    f"db={inventory.current_database} user={inventory.current_user} "
+    f"server={inventory.server_addr}:{inventory.server_port} search_path={inventory.search_path}",
+    flush=True,
+)
+print(f"[entrypoint] pre-migration schemas: {inventory.schemas}", flush=True)
+print(
+    f"[entrypoint] pre-migration tables sample: {[f'{s}.{t}' for s, t in inventory.tables[:30]]}",
+    flush=True,
+)
+PY
+
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     if alembic -c "$ALEMBIC_CONFIG" upgrade heads; then
@@ -149,64 +173,36 @@ done
 python - <<'PY'
 import sys
 
-from sqlalchemy import create_engine, text
-
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
-from app.db import DATABASE_URL, DB_SCHEMA
+from app.diagnostics.db_state import collect_inventory
 
-engine_kwargs: dict[str, object] = {}
-if DATABASE_URL.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA}"}
+try:
+    inventory = collect_inventory()
+except Exception as exc:  # noqa: BLE001 - startup diagnostics
+    print(f"[entrypoint] diagnostics failed: {exc}", flush=True)
+    sys.exit(1)
 
-engine = create_engine(DATABASE_URL, **engine_kwargs)
-with engine.connect() as conn:
-    try:
-        conn.execute(text(f'SET search_path TO "{DB_SCHEMA}", public'))
-        search_path = conn.execute(text("SHOW search_path")).scalar_one()
-        print(f"[entrypoint] diagnostics search_path={search_path}", flush=True)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[entrypoint] diagnostics failed to set search_path: {exc}", flush=True)
-        search_path = "<unknown>"
+print(
+    "[entrypoint] post-migration target: "
+    f"db={inventory.current_database} user={inventory.current_user} "
+    f"server={inventory.server_addr}:{inventory.server_port} search_path={inventory.search_path}",
+    flush=True,
+)
+print(f"[entrypoint] post-migration schemas: {inventory.schemas}", flush=True)
+print(
+    f"[entrypoint] post-migration tables sample: {[f'{s}.{t}' for s, t in inventory.tables[:30]]}",
+    flush=True,
+)
 
-    versions: list[str] = []
-    try:
-        reg = conn.execute(
-            text("SELECT to_regclass(:reg) AS reg"), {"reg": f"{DB_SCHEMA}.alembic_version"}
-        ).scalar()
-        if reg is None:
-            print(f"[entrypoint] alembic_version missing in schema {DB_SCHEMA}", flush=True)
-        else:
-            version_rows = conn.execute(text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version'))
-            versions = [row[0] for row in version_rows]
-            print(f"[entrypoint] alembic versions present: {versions}", flush=True)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[entrypoint] alembic version diagnostics failed: {exc}", flush=True)
-
-    tables: list[object] = []
-    tables_checked = False
-    try:
-        tables = conn.execute(
-            text(
-                "select table_schema, table_name from information_schema.tables where table_schema = :db_schema order by table_name"
-            ),
-            {"db_schema": DB_SCHEMA},
-        ).all()
-        tables_checked = True
-        print(
-            f"[entrypoint] tables in schema {DB_SCHEMA}: {[f'{row.table_schema}.{row.table_name}' for row in tables[:30]]}",
-            flush=True,
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[entrypoint] table diagnostics failed: {exc}", flush=True)
-
-existing_tables = {row.table_name for row in tables if getattr(row, "table_schema", None) == DB_SCHEMA}
-if tables_checked:
-    missing = set(REQUIRED_CORE_TABLES) - existing_tables
-    print(f"[entrypoint] missing_required_tables={sorted(missing)}", flush=True)
-    if missing:
-        sys.exit(1)
+if inventory.alembic_versions:
+    print(f"[entrypoint] alembic versions present: {inventory.alembic_versions}", flush=True)
 else:
-    print("[entrypoint] skipping required table check due to missing diagnostics", flush=True)
+    print("[entrypoint] alembic_version missing", flush=True)
+
+missing = inventory.missing_tables(REQUIRED_CORE_TABLES)
+print(f"[entrypoint] missing_required_tables={missing}", flush=True)
+if missing:
+    sys.exit(1)
 
 print("[entrypoint] core tables present after migrations")
 PY
