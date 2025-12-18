@@ -126,23 +126,14 @@ def _drop_index_if_exists(name: str, table_name: str) -> None:
 
 
 def _get_inspector(bind):
-    try:
-        return sa.inspect(bind)
-    except Exception:  # pragma: no cover - extremely defensive
-        return None
+    return sa.inspect(bind)
 
 
 def _get_operation_fks(bind, *, referred_columns: list[str]) -> list[tuple[str, dict]]:
     inspector = _get_inspector(bind)
-    if inspector is None:
-        return []
-
     fks: list[tuple[str, dict]] = []
     for table_name in ("clearing_batch_operation", "ledger_entries"):
-        try:
-            fk_defs = inspector.get_foreign_keys(table_name, schema=SCHEMA)
-        except Exception:  # pragma: no cover - defensive fallback
-            fk_defs = []
+        fk_defs = inspector.get_foreign_keys(table_name, schema=SCHEMA)
 
         for fk in fk_defs:
             if fk.get("referred_table") != "operations":
@@ -282,18 +273,12 @@ def _ensure_operation_type_enum(bind) -> None:
     ensure_pg_enum(bind, operation_type_enum.name, values=OPERATION_TYPE_VALUES)
     inspector = _get_inspector(bind)
 
-    try:
-        table_names = set(inspector.get_table_names()) if inspector is not None else set()
-    except Exception:
-        table_names = set()
+    table_names = set(inspector.get_table_names()) if inspector is not None else set()
 
     if "operations" not in table_names:
         return
 
-    try:
-        columns = {column["name"]: column for column in inspector.get_columns("operations")}
-    except Exception:
-        return
+    columns = {column["name"]: column for column in inspector.get_columns("operations")}
     if "operation_type" not in columns:
         return
 
@@ -357,18 +342,12 @@ def _ensure_operation_status_enum(bind) -> None:
     ensure_pg_enum(bind, operation_status_enum.name, values=OPERATION_STATUS_VALUES)
     inspector = _get_inspector(bind)
 
-    try:
-        table_names = set(inspector.get_table_names()) if inspector is not None else set()
-    except Exception:
-        table_names = set()
+    table_names = set(inspector.get_table_names()) if inspector is not None else set()
 
     if "operations" not in table_names:
         return
 
-    try:
-        columns = {column["name"]: column for column in inspector.get_columns("operations")}
-    except Exception:
-        return
+    columns = {column["name"]: column for column in inspector.get_columns("operations")}
     if "status" not in columns:
         return
 
