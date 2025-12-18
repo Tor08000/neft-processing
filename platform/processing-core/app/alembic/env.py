@@ -7,6 +7,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from alembic import context
+from alembic.runtime import migration
 from sqlalchemy import pool
 from sqlalchemy.engine.url import make_url
 
@@ -15,6 +16,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
+from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
 
 logger = logging.getLogger(__name__)
@@ -62,18 +64,34 @@ def run_migrations_offline() -> None:
     raise RuntimeError(msg)
 
 
-def _make_engine(url: str):
-    engine_kwargs: dict[str, Any] = {"poolclass": pool.NullPool}
-    if url.startswith("postgresql"):
-        engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA}"}
-    return sa.create_engine(url, **engine_kwargs)
-
-
 def run_migrations_online() -> None:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
-    connectable = _make_engine(db_url)
+    connectable = sa.engine_from_config(  # type: ignore[attr-defined]
+        context.config.get_section(context.config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
 
     with connectable.connect() as connection:
+        ensure_alembic_version_length(connection)
+
+        migration_ctx = migration.MigrationContext.configure(
+            connection,
+            opts={
+                "version_table": "alembic_version",
+                "version_table_schema": DB_SCHEMA,
+            },
+        )
+        ensure_table = getattr(migration_ctx, "_ensure_version_table", None)
+        if callable(ensure_table):
+            ensure_table()
+
+        inspector = sa.inspect(connection)
+        dialect_name = getattr(getattr(inspector, "dialect", None), "name", None)
+        schema = None if dialect_name == "sqlite" else DB_SCHEMA
+        if "alembic_version" not in inspector.get_table_names(schema=schema):
+            raise RuntimeError("alembic_version table missing")
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -83,6 +101,7 @@ def run_migrations_online() -> None:
             transactional_ddl=True,
             version_table="alembic_version",
             version_table_schema=DB_SCHEMA,
+            as_sql=False,
         )
 
         with context.begin_transaction():

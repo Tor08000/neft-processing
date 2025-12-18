@@ -31,13 +31,15 @@ def _prune_service_paths() -> None:
     sys.path[:] = [entry for entry in sys.path if entry not in service_paths]
 
 
-def pytest_runtest_setup(item):  # type: ignore[override]
-    node_path = Path(getattr(item, "fspath", getattr(item, "path", "")))
-    current_root: Optional[Path] = None
+def _detect_service_root(node_path: Path) -> Optional[Path]:
     for root in SERVICE_ROOTS.values():
         if root in node_path.parents and root.exists():
-            current_root = root
-            break
+            return root
+    return None
+
+
+def _prepare_paths(node_path: Path) -> Optional[Path]:
+    current_root = _detect_service_root(node_path)
 
     _clean_modules(["app"], keep_root=current_root)
     _prune_service_paths()
@@ -52,3 +54,15 @@ def pytest_runtest_setup(item):  # type: ignore[override]
         keys_module = current_root / "app" / "services" / "keys.py"
         if keys_module.exists():
             importlib.import_module("app.services.keys")
+
+    return current_root
+
+
+def pytest_collect_file(file_path, parent):  # type: ignore[override]
+    _prepare_paths(Path(file_path))
+    return None
+
+
+def pytest_runtest_setup(item):  # type: ignore[override]
+    node_path = Path(getattr(item, "fspath", getattr(item, "path", "")))
+    _prepare_paths(node_path)

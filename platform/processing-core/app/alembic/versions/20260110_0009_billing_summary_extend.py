@@ -36,6 +36,10 @@ def _table_state(inspector):
 
 def upgrade() -> None:
     bind = op.get_bind()
+    try:
+        setattr(bind, "op_override", op)
+    except Exception:
+        pass
     _ensure_status_enum_exists(bind)
     status_enum = safe_enum(bind, "billing_summary_status", values=["PENDING", "FINALIZED"])
 
