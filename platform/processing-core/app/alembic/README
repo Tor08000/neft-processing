@@ -1,1 +1,25 @@
-migrations
+Alembic migrations
+==================
+
+Bootstrap compatibility policy
+------------------------------
+Fresh environments are now bootstrapped with a schema close to `head`, so all
+new migrations must be idempotent when objects already exist. Follow these
+rules for PostgreSQL migrations:
+
+* **Tables** — wrap `op.create_table` in a guard that checks `to_regclass` for
+  the qualified table name.
+* **Columns** — guard `op.add_column` with an `information_schema.columns`
+  lookup to ensure the column is missing before adding it.
+* **Indexes and constraints** — check presence in `pg_catalog` (or via
+  `to_regclass` for indexes) before calling `op.create_index`,
+  `op.create_unique_constraint`, `op.create_foreign_key`, and similar helpers.
+* **Types/enums** — verify existence through `pg_catalog` before creation.
+
+Tolerant migrations
+-------------------
+The following migrations are verified to be bootstrap-compatible under this
+policy:
+
+* `20261205_0018_contract_limits` — table, index, and column creation are
+  guarded with `to_regclass`/catalog checks and column existence queries.
