@@ -10,7 +10,19 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import ensure_pg_enum
+from app.alembic.utils import column_exists, constraint_exists, ensure_pg_enum, table_exists
+
+SCHEMA = "public"
+
+
+def _add_column_if_missing(bind, table_name: str, column: sa.Column) -> None:
+    if not column_exists(bind, table_name, column.name, schema=SCHEMA):
+        op.add_column(table_name, column, schema=SCHEMA)
+
+
+def _drop_column_if_exists(bind, table_name: str, column_name: str) -> None:
+    if column_exists(bind, table_name, column_name, schema=SCHEMA):
+        op.drop_column(column_name, table_name=table_name, schema=SCHEMA)
 
 # revision identifiers, used by Alembic.
 revision = "20261020_0013"
@@ -118,6 +130,67 @@ def _get_inspector(bind):
         return sa.inspect(bind)
     except Exception:  # pragma: no cover - extremely defensive
         return None
+
+
+def _get_operation_fks(bind, *, referred_columns: list[str]) -> list[tuple[str, dict]]:
+    inspector = _get_inspector(bind)
+    if inspector is None:
+        return []
+
+    fks: list[tuple[str, dict]] = []
+    for table_name in ("clearing_batch_operation", "ledger_entries"):
+        try:
+            fk_defs = inspector.get_foreign_keys(table_name, schema=SCHEMA)
+        except Exception:  # pragma: no cover - defensive fallback
+            fk_defs = []
+
+        for fk in fk_defs:
+            if fk.get("referred_table") != "operations":
+                continue
+            referred = fk.get("referred_columns") or []
+            if referred != referred_columns:
+                continue
+
+            fks.append((table_name, fk))
+
+    return fks
+
+
+def _drop_fk_constraints(bind, fk_constraints: list[tuple[str, dict]]) -> None:
+    for table_name, fk in fk_constraints:
+        fk_name = fk.get("name") or f"{table_name}_operation_id_fkey"
+        if constraint_exists(bind, table_name, fk_name, schema=SCHEMA):
+            op.drop_constraint(
+                fk_name,
+                table_name=table_name,
+                type_="foreignkey",
+                schema=SCHEMA,
+            )
+
+
+def _recreate_fk_constraints(
+    fk_constraints: list[tuple[str, dict]],
+    *,
+    refer_to_id: bool,
+) -> None:
+    for table_name, fk in fk_constraints:
+        fk_name = fk.get("name") or f"{table_name}_operation_id_fkey"
+        ondelete = (fk.get("options") or {}).get("ondelete")
+        if refer_to_id:
+            referent_columns = ["id"] if table_name == "ledger_entries" else fk.get("referred_columns") or ["operation_id"]
+        else:
+            referent_columns = ["operation_id"]
+
+        op.create_foreign_key(
+            fk_name,
+            source_table=table_name,
+            referent_table="operations",
+            local_cols=fk.get("constrained_columns") or ["operation_id"],
+            remote_cols=referent_columns,
+            source_schema=SCHEMA,
+            referent_schema=SCHEMA,
+            ondelete=ondelete,
+        )
 
 
 def drop_partial_and_expression_indexes(table_name: str) -> list[str]:
@@ -330,38 +403,87 @@ def upgrade() -> None:
     ensure_pg_enum(bind, limit_scope_enum.name, values=LIMIT_SCOPE_VALUES)
     ensure_pg_enum(bind, fuel_product_enum.name, values=FUEL_PRODUCT_VALUES)
 
-    with op.batch_alter_table("operations") as batch:
-        batch.add_column(
+    if table_exists(bind, "operations", schema=SCHEMA):
+        _add_column_if_missing(
+            bind,
+            "operations",
             sa.Column(
                 "id",
                 postgresql.UUID(as_uuid=True),
                 nullable=False,
                 server_default=sa.text("gen_random_uuid()"),
-            )
+            ),
         )
-        batch.add_column(sa.Column("product_id", sa.String(length=64), nullable=True))
-        batch.add_column(
-            sa.Column("amount_settled", sa.BigInteger(), nullable=True, server_default="0")
+        _add_column_if_missing(
+            bind, "operations", sa.Column("product_id", sa.String(length=64), nullable=True)
         )
-        batch.add_column(sa.Column("product_type", product_type_enum, nullable=True))
-        batch.add_column(sa.Column("quantity", sa.Numeric(18, 3), nullable=True))
-        batch.add_column(sa.Column("unit_price", sa.Numeric(18, 3), nullable=True))
-        batch.add_column(sa.Column("limit_profile_id", sa.String(length=64), nullable=True))
-        batch.add_column(sa.Column("limit_check_result", sa.JSON(), nullable=True))
-        batch.add_column(sa.Column("risk_score", sa.Float(), nullable=True))
-        batch.add_column(sa.Column("risk_result", risk_result_enum, nullable=True))
-        batch.add_column(sa.Column("risk_payload", sa.JSON(), nullable=True))
-        batch.add_column(sa.Column("auth_code", sa.String(length=32), nullable=True))
-        batch.add_column(
+        _add_column_if_missing(
+            bind,
+            "operations",
+            sa.Column("amount_settled", sa.BigInteger(), nullable=True, server_default="0"),
+        )
+        _add_column_if_missing(
+            bind, "operations", sa.Column("product_type", product_type_enum, nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "operations", sa.Column("quantity", sa.Numeric(18, 3), nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "operations", sa.Column("unit_price", sa.Numeric(18, 3), nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "operations", sa.Column("limit_profile_id", sa.String(length=64), nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "operations", sa.Column("limit_check_result", sa.JSON(), nullable=True)
+        )
+        _add_column_if_missing(bind, "operations", sa.Column("risk_score", sa.Float(), nullable=True))
+        _add_column_if_missing(
+            bind, "operations", sa.Column("risk_result", risk_result_enum, nullable=True)
+        )
+        _add_column_if_missing(bind, "operations", sa.Column("risk_payload", sa.JSON(), nullable=True))
+        _add_column_if_missing(
+            bind, "operations", sa.Column("auth_code", sa.String(length=32), nullable=True)
+        )
+        _add_column_if_missing(
+            bind,
+            "operations",
             sa.Column(
                 "updated_at",
                 sa.DateTime(timezone=True),
                 server_default=sa.text("NOW()"),
                 nullable=False,
-            )
+            ),
         )
-        batch.drop_constraint("operations_pkey", type_="primary")
-        batch.create_primary_key("operations_pkey", ["id"])
+
+        operation_fks = _get_operation_fks(bind, referred_columns=["operation_id"])
+        _drop_fk_constraints(bind, operation_fks)
+
+        inspector = _get_inspector(bind)
+        if inspector is not None:
+            pk = inspector.get_pk_constraint("operations", schema=SCHEMA) or {}
+            pk_columns = pk.get("constrained_columns") or []
+            pk_name = pk.get("name")
+            if pk_name and pk_columns != ["id"]:
+                op.drop_constraint(
+                    pk_name, table_name="operations", type_="primary", schema=SCHEMA
+                )
+            if pk_columns != ["id"]:
+                op.create_primary_key(
+                    "operations_pkey", "operations", ["id"], schema=SCHEMA
+                )
+
+        if not constraint_exists(
+            bind, "operations", "uq_operations_operation_id", schema=SCHEMA
+        ):
+            op.create_unique_constraint(
+                "uq_operations_operation_id",
+                "operations",
+                ["operation_id"],
+                schema=SCHEMA,
+            )
+
+        _recreate_fk_constraints(operation_fks, refer_to_id=True)
 
     _create_index_if_not_exists("ix_operations_status", "operations", ["status"])
     _create_index_if_not_exists(
@@ -371,21 +493,31 @@ def upgrade() -> None:
     _ensure_operation_type_enum(bind)
     _ensure_operation_status_enum(bind)
 
-    with op.batch_alter_table("limits_rules") as batch:
-        batch.add_column(
+    if table_exists(bind, "limits_rules", schema=SCHEMA):
+        _add_column_if_missing(
+            bind,
+            "limits_rules",
             sa.Column(
                 "entity_type",
                 limit_entity_enum,
                 nullable=False,
                 server_default="CLIENT",
-            )
+            ),
         )
-        batch.add_column(
-            sa.Column("scope", limit_scope_enum, nullable=False, server_default="PER_TX")
+        _add_column_if_missing(
+            bind,
+            "limits_rules",
+            sa.Column("scope", limit_scope_enum, nullable=False, server_default="PER_TX"),
         )
-        batch.add_column(sa.Column("product_type", fuel_product_enum, nullable=True))
-        batch.add_column(sa.Column("max_amount", sa.BigInteger(), nullable=True))
-        batch.add_column(sa.Column("max_quantity", sa.Numeric(18, 3), nullable=True))
+        _add_column_if_missing(
+            bind, "limits_rules", sa.Column("product_type", fuel_product_enum, nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "limits_rules", sa.Column("max_amount", sa.BigInteger(), nullable=True)
+        )
+        _add_column_if_missing(
+            bind, "limits_rules", sa.Column("max_quantity", sa.Numeric(18, 3), nullable=True)
+        )
 
     _create_index_if_not_exists("ix_limits_rules_entity_type", "limits_rules", ["entity_type"])
     _create_index_if_not_exists("ix_limits_rules_scope", "limits_rules", ["scope"])
@@ -399,28 +531,59 @@ def downgrade() -> None:
     _drop_index_if_exists("ix_limits_rules_scope", table_name="limits_rules")
     _drop_index_if_exists("ix_limits_rules_entity_type", table_name="limits_rules")
 
-    with op.batch_alter_table("limits_rules") as batch:
-        batch.drop_column("max_quantity")
-        batch.drop_column("max_amount")
-        batch.drop_column("product_type")
-        batch.drop_column("scope")
-        batch.drop_column("entity_type")
+    bind = op.get_bind()
+
+    if table_exists(bind, "limits_rules", schema=SCHEMA):
+        _drop_column_if_exists(bind, "limits_rules", "max_quantity")
+        _drop_column_if_exists(bind, "limits_rules", "max_amount")
+        _drop_column_if_exists(bind, "limits_rules", "product_type")
+        _drop_column_if_exists(bind, "limits_rules", "scope")
+        _drop_column_if_exists(bind, "limits_rules", "entity_type")
 
     _drop_index_if_exists("ix_operations_operation_type", table_name="operations")
     _drop_index_if_exists("ix_operations_status", table_name="operations")
-    with op.batch_alter_table("operations") as batch:
-        batch.drop_column("updated_at")
-        batch.drop_column("auth_code")
-        batch.drop_column("risk_payload")
-        batch.drop_column("risk_result")
-        batch.drop_column("risk_score")
-        batch.drop_column("limit_check_result")
-        batch.drop_column("limit_profile_id")
-        batch.drop_column("unit_price")
-        batch.drop_column("quantity")
-        batch.drop_column("product_type")
-        batch.drop_column("amount_settled")
-        batch.drop_column("product_id")
-        batch.drop_constraint("operations_pkey", type_="primary")
-        batch.create_primary_key("operations_pkey", ["operation_id"])
-        batch.drop_column("id")
+    if table_exists(bind, "operations", schema=SCHEMA):
+        operation_fks = _get_operation_fks(bind, referred_columns=["id"])
+        _drop_fk_constraints(bind, operation_fks)
+
+        inspector = _get_inspector(bind)
+        pk_name = None
+        pk_columns: list[str] = []
+        if inspector is not None:
+            pk = inspector.get_pk_constraint("operations", schema=SCHEMA) or {}
+            pk_columns = pk.get("constrained_columns") or []
+            pk_name = pk.get("name")
+
+        if pk_name and pk_columns == ["id"]:
+            op.drop_constraint(
+                pk_name, table_name="operations", type_="primary", schema=SCHEMA
+            )
+            op.create_primary_key(
+                "operations_pkey", "operations", ["operation_id"], schema=SCHEMA
+            )
+
+        if constraint_exists(
+            bind, "operations", "uq_operations_operation_id", schema=SCHEMA
+        ):
+            op.drop_constraint(
+                "uq_operations_operation_id",
+                table_name="operations",
+                type_="unique",
+                schema=SCHEMA,
+            )
+
+        _recreate_fk_constraints(operation_fks, refer_to_id=False)
+
+        _drop_column_if_exists(bind, "operations", "id")
+        _drop_column_if_exists(bind, "operations", "product_id")
+        _drop_column_if_exists(bind, "operations", "amount_settled")
+        _drop_column_if_exists(bind, "operations", "product_type")
+        _drop_column_if_exists(bind, "operations", "quantity")
+        _drop_column_if_exists(bind, "operations", "unit_price")
+        _drop_column_if_exists(bind, "operations", "limit_profile_id")
+        _drop_column_if_exists(bind, "operations", "limit_check_result")
+        _drop_column_if_exists(bind, "operations", "risk_score")
+        _drop_column_if_exists(bind, "operations", "risk_result")
+        _drop_column_if_exists(bind, "operations", "risk_payload")
+        _drop_column_if_exists(bind, "operations", "auth_code")
+        _drop_column_if_exists(bind, "operations", "updated_at")
