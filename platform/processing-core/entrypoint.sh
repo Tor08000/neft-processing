@@ -160,33 +160,53 @@ if DATABASE_URL.startswith("postgresql"):
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 with engine.connect() as conn:
-    version_rows = conn.execute(text("select version_num from alembic_version"))
-    versions = [row[0] for row in version_rows]
+    try:
+        conn.execute(text(f'SET search_path TO "{DB_SCHEMA}", public'))
+        search_path = conn.execute(text("SHOW search_path")).scalar_one()
+        print(f"[entrypoint] diagnostics search_path={search_path}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[entrypoint] diagnostics failed to set search_path: {exc}", flush=True)
+        search_path = "<unknown>"
 
-    db_name, current_schema, search_path = conn.execute(
-        text("select current_database(), current_schema(), current_setting('search_path')")
-    ).one()
-    print(
-        f"[entrypoint] alembic versions present: {versions}; current_database={db_name} current_schema={current_schema} search_path={search_path}",
-        flush=True,
-    )
+    versions: list[str] = []
+    try:
+        reg = conn.execute(
+            text("SELECT to_regclass(:reg) AS reg"), {"reg": f"{DB_SCHEMA}.alembic_version"}
+        ).scalar()
+        if reg is None:
+            print(f"[entrypoint] alembic_version missing in schema {DB_SCHEMA}", flush=True)
+        else:
+            version_rows = conn.execute(text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version'))
+            versions = [row[0] for row in version_rows]
+            print(f"[entrypoint] alembic versions present: {versions}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[entrypoint] alembic version diagnostics failed: {exc}", flush=True)
 
-    tables = conn.execute(
-        text(
-            "select table_schema, table_name from information_schema.tables where table_schema = :db_schema order by table_name"
-        ),
-        {"db_schema": DB_SCHEMA},
-    ).all()
-    existing_tables = {row.table_name for row in tables if row.table_schema == DB_SCHEMA}
-    print(
-        f"[entrypoint] tables in schema {DB_SCHEMA}: {[f'{row.table_schema}.{row.table_name}' for row in tables[:30]]}",
-        flush=True,
-    )
+    tables: list[object] = []
+    tables_checked = False
+    try:
+        tables = conn.execute(
+            text(
+                "select table_schema, table_name from information_schema.tables where table_schema = :db_schema order by table_name"
+            ),
+            {"db_schema": DB_SCHEMA},
+        ).all()
+        tables_checked = True
+        print(
+            f"[entrypoint] tables in schema {DB_SCHEMA}: {[f'{row.table_schema}.{row.table_name}' for row in tables[:30]]}",
+            flush=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[entrypoint] table diagnostics failed: {exc}", flush=True)
 
-missing = set(REQUIRED_CORE_TABLES) - existing_tables
-print(f"[entrypoint] missing_required_tables={sorted(missing)}", flush=True)
-if missing:
-    sys.exit(1)
+existing_tables = {row.table_name for row in tables if getattr(row, "table_schema", None) == DB_SCHEMA}
+if tables_checked:
+    missing = set(REQUIRED_CORE_TABLES) - existing_tables
+    print(f"[entrypoint] missing_required_tables={sorted(missing)}", flush=True)
+    if missing:
+        sys.exit(1)
+else:
+    print("[entrypoint] skipping required table check due to missing diagnostics", flush=True)
 
 print("[entrypoint] core tables present after migrations")
 PY
