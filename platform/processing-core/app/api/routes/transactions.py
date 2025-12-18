@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger
 
-from app.db import SessionLocal, get_db
+from app.db import get_db, get_sessionmaker
 from app.models.operation import Operation
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -108,7 +108,7 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
     """
     Запись операции в таблицу operations (Postgres).
     """
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         db_op = Operation(
             operation_id=entry.operation_id,

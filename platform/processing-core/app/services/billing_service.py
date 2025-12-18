@@ -8,7 +8,7 @@ from typing import Dict, List
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from app.db import get_sessionmaker
 from app.models.client import Client
 from app.models.operation import OperationType, ProductType
 from app.models.invoice import Invoice, InvoiceStatus
@@ -183,7 +183,7 @@ async def build_billing_summary_for_date(billing_date: date) -> None:
     commission (1% of the total amount).
     """
 
-    session = SessionLocal()
+    session = get_sessionmaker()()
 
     start_ts = datetime.combine(billing_date, datetime.min.time())
     end_ts = datetime.combine(billing_date, datetime.max.time())
@@ -483,7 +483,7 @@ if celery_client:
         start = _date.fromisoformat(period_from)
         end = _date.fromisoformat(period_to)
 
-        session = SessionLocal()
+        session = get_sessionmaker()()
         try:
             invoices = generate_invoices_for_period(
                 session, period_from=start, period_to=end, status=InvoiceStatus.ISSUED

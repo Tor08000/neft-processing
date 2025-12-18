@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date
 
-from app.db import SessionLocal
+from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary
 from app.models.clearing import Clearing
 
@@ -17,7 +17,7 @@ async def generate_clearing_batches_for_date(clearing_date: date) -> None:
     billing summary entries for traceability.
     """
 
-    session = SessionLocal()
+    session = get_sessionmaker()()
     try:
         with session.begin():
             summaries = (

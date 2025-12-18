@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from app.db import init_db, SessionLocal, get_db
+from app.db import get_db, get_sessionmaker, init_db
 from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
 from app.routers.admin import router as admin_router
@@ -169,13 +169,13 @@ def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
     Используем каноническую модель app.models.operation.Operation.
     """
     try:
-        from app.db import SessionLocal  # type: ignore
+        from app.db import get_sessionmaker  # type: ignore
         from app.models.operation import Operation  # type: ignore
     except Exception as exc:  # pragma: no cover
         logger.warning("DB Operation model not available yet: %s", exc)
         return
 
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         db_op = Operation(
             operation_id=entry.operation_id,
@@ -257,7 +257,7 @@ def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEn
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         ensure_default_refs(db)
     finally:

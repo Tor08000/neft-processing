@@ -11,7 +11,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from app.db import SessionLocal
+from app.db import get_sessionmaker
 from app.models.limit_rule import LimitRule
 
 from neft_shared.logging_setup import get_logger
@@ -96,7 +96,7 @@ class CeleryUnavailable(Exception):
 
 def _evaluate_locally(req: CheckAndReserveRequest, db: Session | None = None) -> CheckAndReserveResult:
     owns_session = db is None
-    session = db or SessionLocal()
+    session = db or get_sessionmaker()()
     try:
         rules = session.query(LimitRule).filter(LimitRule.active.is_(True)).all()
         used_today = calculate_used_amount(session, req)
