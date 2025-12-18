@@ -15,10 +15,38 @@ branch_labels = None
 depends_on = None
 
 
+def _column_exists(table: str, column: str, schema: str = "public") -> bool:
+    conn = op.get_bind()
+    row = conn.execute(
+        sa.text(
+            """
+            select 1
+            from information_schema.columns
+            where table_schema = :schema
+              and table_name = :table
+              and column_name = :col
+            limit 1
+            """
+        ),
+        {"schema": schema, "table": table, "col": column},
+    ).fetchone()
+
+    return row is not None
+
+
 def upgrade():
-    with op.batch_alter_table("operations") as batch:
-        batch.add_column(sa.Column("captured_amount", sa.BigInteger(), nullable=False, server_default="0"))
-        batch.add_column(sa.Column("refunded_amount", sa.BigInteger(), nullable=False, server_default="0"))
+    schema = "public"
+
+    with op.batch_alter_table("operations", schema=schema) as batch:
+        if not _column_exists("operations", "captured_amount", schema):
+            batch.add_column(
+                sa.Column("captured_amount", sa.BigInteger(), nullable=False, server_default="0")
+            )
+
+        if not _column_exists("operations", "refunded_amount", schema):
+            batch.add_column(
+                sa.Column("refunded_amount", sa.BigInteger(), nullable=False, server_default="0")
+            )
         batch.drop_constraint("operations_pkey", type_="primary")
         batch.drop_column("id")
         batch.create_primary_key("operations_pkey", ["operation_id"])
