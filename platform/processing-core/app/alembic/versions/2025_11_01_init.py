@@ -40,6 +40,55 @@ def _create_schema(bind) -> None:
     op.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
 
 
+def _assert_fk_column_types(bind) -> None:
+    if getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
+        return
+
+    results = bind.execute(
+        sa.text(
+            """
+            select table_name, column_name, data_type, udt_name
+            from information_schema.columns
+            where table_schema = :schema
+              and (table_name, column_name) in (
+                (:operations, 'client_id'),
+                (:operations, 'card_id'),
+                (:operations, 'merchant_id'),
+                (:operations, 'terminal_id'),
+                ('clients', 'id'),
+                ('cards', 'id'),
+                ('merchants', 'id'),
+                ('terminals', 'id')
+              )
+            order by table_name, column_name
+            """
+        ),
+        {"schema": SCHEMA, "operations": "operations"},
+    ).mappings()
+
+    types = {
+        (row["table_name"], row["column_name"]): (row["data_type"], row["udt_name"])
+        for row in results
+    }
+
+    pairs = [
+        (("operations", "client_id"), ("clients", "id")),
+        (("operations", "card_id"), ("cards", "id")),
+        (("operations", "merchant_id"), ("merchants", "id")),
+        (("operations", "terminal_id"), ("terminals", "id")),
+    ]
+
+    missing = [pair for pair in pairs if pair[0] not in types or pair[1] not in types]
+    assert not missing, f"Missing columns for FK type assertion: {missing}"
+
+    mismatches = {
+        (lhs, rhs): (types.get(lhs), types.get(rhs))
+        for lhs, rhs in pairs
+        if types.get(lhs) != types.get(rhs)
+    }
+    assert not mismatches, f"FK column types mismatch: {mismatches}"
+
+
 def upgrade():
     bind = op.get_bind()
     _create_schema(bind)
@@ -139,7 +188,7 @@ def upgrade():
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.merchants.id"), nullable=False),
         sa.Column("terminal_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.terminals.id"), nullable=False),
-        sa.Column("client_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
+        sa.Column("client_id", uuid_type, sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
         sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=False),
         sa.Column("accounts", json_type, nullable=True),
         sa.Column("posting_result", json_type, nullable=True),
@@ -217,7 +266,7 @@ def upgrade():
         ),
         sa.Column(
             "operation_id",
-            uuid_type,
+            sa.String(length=64),
             sa.ForeignKey(f"{SCHEMA}.operations.operation_id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -258,6 +307,8 @@ def upgrade():
         sa.PrimaryKeyConstraint("id"),
         schema=SCHEMA,
     )
+
+    _assert_fk_column_types(bind)
 
 
 def downgrade():
