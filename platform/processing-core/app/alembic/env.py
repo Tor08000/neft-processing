@@ -130,7 +130,7 @@ def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> No
     logger.info("[%s] user tables (%d): %s", label, len(tables), tables)
 
 
-def run_migrations_online() -> None:
+def run_migrations_online() -> sa.engine.Engine:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
         context.config.get_section(context.config.config_ini_section),
@@ -164,14 +164,14 @@ def run_migrations_online() -> None:
             include_schemas=False,
             compare_type=True,
             compare_server_default=True,
-            transactional_ddl=True,
+            transactional_ddl=False,
+            transaction_per_migration=True,
             version_table="alembic_version",
             version_table_schema=target_schema,
             as_sql=False,
         )
 
-        with context.begin_transaction():
-            context.run_migrations()
+        context.run_migrations()
 
     if should_verify:
         verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
@@ -206,10 +206,19 @@ def run_migrations_online() -> None:
                     connection, schema=target_schema, label="post-upgrade", emitter=logger.info
                 )
 
+    return connectable
+
 
 if os.getenv("ALEMBIC_SKIP_RUN"):
     logger.info("ALEMBIC_SKIP_RUN is set; skipping Alembic execution")
 elif context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    engine = run_migrations_online()
+
+    with engine.connect() as c:
+        exists = c.scalar(sa.text("select to_regclass('public.operations')"))
+        if not exists:
+            raise RuntimeError(
+                "CRITICAL: migration rollback detected — core tables missing after Alembic run"
+            )
