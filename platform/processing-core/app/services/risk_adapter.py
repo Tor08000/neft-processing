@@ -25,6 +25,7 @@ class RiskDecisionLevel(str, Enum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
     HARD_DECLINE = "HARD_DECLINE"
 
 
@@ -32,15 +33,17 @@ LEVEL_ORDER = [
     RiskDecisionLevel.LOW,
     RiskDecisionLevel.MEDIUM,
     RiskDecisionLevel.HIGH,
+    RiskDecisionLevel.MANUAL_REVIEW,
     RiskDecisionLevel.HARD_DECLINE,
 ]
 DEFAULT_SCORE_MAP: Dict[RiskDecisionLevel, float] = {
     RiskDecisionLevel.LOW: 0.2,
     RiskDecisionLevel.MEDIUM: 0.5,
     RiskDecisionLevel.HIGH: 0.8,
+    RiskDecisionLevel.MANUAL_REVIEW: 0.6,
     RiskDecisionLevel.HARD_DECLINE: 1.0,
 }
-AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/api/v1/score")
+AI_SCORE_URL = os.getenv("AI_SCORE_URL", "http://ai-service:8000/api/v1/score/").rstrip("/") + "/"
 AI_SCORE_TIMEOUT_SECONDS = float(os.getenv("AI_SCORE_TIMEOUT_SECONDS", "3.0"))
 settings = get_settings()
 
@@ -122,7 +125,7 @@ def _normalize_level(value: str | None) -> RiskDecisionLevel:
     if normalized in {"ALLOW", "LOW"}:
         return RiskDecisionLevel.LOW
     if normalized in {"REVIEW", "MEDIUM", "MANUAL_REVIEW"}:
-        return RiskDecisionLevel.MEDIUM
+        return RiskDecisionLevel.MANUAL_REVIEW
     if normalized in {"DENY", "BLOCK", "HARD_DECLINE"}:
         return RiskDecisionLevel.HARD_DECLINE
     if normalized == "HIGH":
@@ -184,7 +187,7 @@ def _rules_source() -> str:
 
 
 async def _post_score(payload: dict) -> dict:
-    async with httpx.AsyncClient(timeout=AI_SCORE_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=AI_SCORE_TIMEOUT_SECONDS, follow_redirects=True) as client:
         response = await client.post(AI_SCORE_URL, json=payload)
     if response.status_code != 200:
         raise httpx.HTTPStatusError(

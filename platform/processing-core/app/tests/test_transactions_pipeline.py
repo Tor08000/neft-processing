@@ -10,6 +10,7 @@ from app.models.merchant import Merchant
 from app.models.ledger_entry import LedgerEntry
 from app.models.operation import Operation, OperationStatus, RiskResult
 from app.models.terminal import Terminal
+from app.models.account import AccountBalance
 from app.services.transactions_service import (
     AmountExceeded,
     PostingFailed,
@@ -167,6 +168,44 @@ def test_commit_reverse_and_refund(session):
 
     reversed_op = reverse_operation(session, operation_id=fresh_auth.operation_id, reason="manual")
     assert reversed_op.status == OperationStatus.REVERSED
+
+
+def test_refund_creates_postings(session):
+    client_id = _seed_refs(session)
+    auth = authorize_operation(
+        session,
+        client_id=client_id,
+        card_id="card-1",
+        terminal_id="t-1",
+        merchant_id="m-1",
+        product_id=None,
+        product_type=None,
+        amount=1_000,
+        currency="RUB",
+        ext_operation_id="ext-refund-postings",
+        mcc="5541",
+        product_category="FUEL",
+    )
+
+    commit_operation(session, operation_id=auth.operation_id)
+    ledger_before = session.query(LedgerEntry).count()
+
+    refund = refund_operation(
+        session,
+        original_operation_id=auth.operation_id,
+        amount=500,
+    )
+
+    ledger_after = session.query(LedgerEntry).count()
+    balances = {b.account_id: b.current_balance for b in session.query(AccountBalance).all()}
+
+    assert ledger_after == ledger_before + 2
+    assert refund.accounts
+    assert refund.posting_result
+    assert refund.posting_result.get("entries")
+    client_account_id, merchant_account_id = auth.accounts[0], auth.accounts[1]
+    assert balances[client_account_id] == -500
+    assert balances[merchant_account_id] == 500
 
 
 def test_hard_decline_stops_posting(session, monkeypatch):

@@ -4,6 +4,7 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -42,7 +43,16 @@ class TransactionException(Exception):
 
 
 class InvalidOperationState(TransactionException):
-    pass
+    def __init__(self, code: str, message: str | None = None):
+        super().__init__(code if message is None else f"{code}: {message}")
+        self.code = code
+        self.message = message
+
+    @property
+    def payload(self):
+        if self.message:
+            return {"code": self.code, "message": self.message}
+        return self.code
 
 
 class AmountExceeded(TransactionException):
@@ -110,12 +120,16 @@ def _to_risk_level(value: str | RiskLevel | RiskDecisionLevel | None) -> RiskLev
     if isinstance(value, RiskDecisionLevel):
         if value == RiskDecisionLevel.HARD_DECLINE:
             return RiskLevel.BLOCK
+        if value == RiskDecisionLevel.MANUAL_REVIEW:
+            return RiskLevel.MANUAL_REVIEW
         return RiskLevel.__members__.get(value.value, RiskLevel.MEDIUM)
     if not value:
         return RiskLevel.MEDIUM
     normalized = str(value).upper()
     if normalized == RiskDecisionLevel.HARD_DECLINE.value:
         return RiskLevel.BLOCK
+    if normalized == RiskDecisionLevel.MANUAL_REVIEW.value:
+        return RiskLevel.MANUAL_REVIEW
     return RiskLevel.__members__.get(normalized, RiskLevel.MEDIUM)
 
 
@@ -167,6 +181,52 @@ def _perform_posting(db: Session, *, operation: Operation) -> dict:
     return {
         "accounts": [debit_account.id, credit_account.id],
         "entries": [debit_entry.id, credit_entry.id],
+    }
+
+
+def _perform_refund_posting(db: Session, *, operation: Operation, amount: int) -> dict:
+    """Create ledger entries that reverse the original settlement."""
+
+    accounts_repo = AccountsRepository(db)
+    ledger_repo = LedgerRepository(db)
+
+    client_account = accounts_repo.get_or_create_account(
+        client_id=operation.client_id,
+        card_id=operation.card_id,
+        currency=operation.currency,
+        account_type=AccountType.CLIENT_MAIN,
+    )
+    merchant_account = accounts_repo.get_or_create_account(
+        client_id=operation.merchant_id,
+        currency=operation.currency,
+        account_type=AccountType.TECHNICAL,
+    )
+
+    merchant_entry = ledger_repo.post_entry(
+        account_id=merchant_account.id,
+        operation_id=operation.id,
+        direction=LedgerDirection.DEBIT,
+        amount=Decimal(amount),
+        currency=operation.currency,
+        auto_commit=False,
+    )
+
+    client_entry = ledger_repo.post_entry(
+        account_id=client_account.id,
+        operation_id=operation.id,
+        direction=LedgerDirection.CREDIT,
+        amount=Decimal(amount),
+        currency=operation.currency,
+        auto_commit=False,
+    )
+
+    return {
+        "accounts": [merchant_account.id, client_account.id],
+        "entries": [merchant_entry.id, client_entry.id],
+        "balances": {
+            str(merchant_account.id): str(merchant_entry.balance_after),
+            str(client_account.id): str(client_entry.balance_after),
+        },
     }
 
 
@@ -601,7 +661,8 @@ def reverse_operation(db: Session, *, operation_id: str, reason: str | None = No
         OperationStatus.POSTED,
         OperationStatus.APPROVED,
     }:
-        raise InvalidOperationState("INVALID_STATE")
+        message = f"cannot reverse {operation.status.value} operation; use REFUND"
+        raise InvalidOperationState("INVALID_STATE", message=message)
 
     operation.status = OperationStatus.REVERSED
     operation.operation_type = OperationType.REVERSE
@@ -658,6 +719,7 @@ def refund_operation(
         currency=parent.currency,
         product_type=parent.product_type,
         parent_operation_id=parent.operation_id,
+        refunded_amount=amount,
         response_code="00",
         response_message="REFUNDED",
         reason=reason,
@@ -668,6 +730,13 @@ def refund_operation(
         risk_score=parent.risk_score,
         risk_payload=parent.risk_payload,
     )
+    db.add(refund_op)
+    db.commit()
+    db.refresh(refund_op)
+
+    posting_meta = _perform_refund_posting(db, operation=refund_op, amount=amount)
+    refund_op.accounts = posting_meta.get("accounts")
+    refund_op.posting_result = posting_meta
     db.add(refund_op)
     db.commit()
     db.refresh(refund_op)

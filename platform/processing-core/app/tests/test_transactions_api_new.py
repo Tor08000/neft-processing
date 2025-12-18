@@ -8,6 +8,7 @@ from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
 from app.models.operation import Operation, OperationStatus
+from app.services import risk_adapter
 from app.models.terminal import Terminal
 
 
@@ -133,4 +134,39 @@ def test_commit_and_refund_endpoints():
     )
     assert refund_resp.status_code == 200
     assert refund_resp.json()["operation_type"] == "REFUND"
+
+
+def test_reverse_completed_returns_detail(monkeypatch):
+    client_id = _seed_refs()
+    monkeypatch.setattr(risk_adapter.settings, "AI_RISK_ENABLED", False)
+
+    client = TestClient(app)
+    auth_resp = client.post(
+        "/api/v1/transactions/authorize",
+        json={
+            "client_id": client_id,
+            "card_id": "card-a",
+            "terminal_id": "terminal-a",
+            "merchant_id": "merchant-a",
+            "amount": 5000,
+            "currency": "RUB",
+            "ext_operation_id": "ext-api-reverse",
+        },
+    ).json()
+
+    commit_resp = client.post(
+        "/api/v1/transactions/commit",
+        json={"operation_id": auth_resp["operation_id"], "amount": 5000},
+    )
+    assert commit_resp.status_code == 200
+
+    reverse_resp = client.post(
+        "/api/v1/transactions/reverse",
+        json={"operation_id": auth_resp["operation_id"], "reason": "ops"},
+    )
+
+    assert reverse_resp.status_code == 409
+    detail = reverse_resp.json()["detail"]
+    assert detail["code"] == "INVALID_STATE"
+    assert "use REFUND" in detail["message"]
 
