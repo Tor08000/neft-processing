@@ -19,6 +19,7 @@ from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
 
 logger = logging.getLogger(__name__)
+DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1"
 
 config = context.config
 
@@ -38,6 +39,10 @@ def resolve_db_url() -> str:
 
     safe_url = make_url(db_url).render_as_string(hide_password=True)
     logger.info("Using database URL for alembic: %s", safe_url)
+
+    if DEBUG_SQL:
+        logger.info("DB_DEBUG_SQL=1: enabling SQLAlchemy echo for migrations")
+        config.set_main_option("sqlalchemy.echo", "true")
 
     return db_url
 
@@ -68,6 +73,16 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    if DEBUG_SQL:
+        for name in ("begin", "commit", "rollback"):
+            sa.event.listen(
+                connectable,
+                name,
+                lambda conn, *_args, _name=name: logger.info(
+                    "DB_DEBUG_SQL: %s connection=%s", _name.upper(), hex(id(conn))
+                ),
+            )
 
     with connectable.connect() as connection:
         if connection.dialect.name != "postgresql":

@@ -122,6 +122,82 @@ wait_for_postgres
 echo "[entrypoint] waiting for redis..."
 wait_for_redis
 
+# Shared diagnostics helpers
+dump_migration_diagnostics() {
+    set +e
+    echo "[entrypoint] alembic heads output:" >&2
+    alembic -c "$ALEMBIC_CONFIG" heads
+    echo "[entrypoint] alembic current output:" >&2
+    alembic -c "$ALEMBIC_CONFIG" current
+    echo "[entrypoint] table inventory (all schemas):" >&2
+    python - <<'PY'
+from app.diagnostics.db_state import collect_inventory
+
+inventory = collect_inventory()
+for schema, table in inventory.tables:
+    print(f"{schema}.{table}")
+PY
+    set -e
+}
+
+verify_migration_ddls() {
+    python - <<'PY'
+import os
+import sys
+
+from sqlalchemy import create_engine, event, text
+
+schema = os.getenv("DB_SCHEMA", "public")
+url = os.getenv("DATABASE_URL")
+
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for migration verification", file=sys.stderr)
+    sys.exit(1)
+
+debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
+engine_kwargs = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
+if url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {"options": f"-csearch_path={schema},public"}
+
+engine = create_engine(url, **engine_kwargs)
+
+if debug_sql:
+    for name in ("begin", "commit", "rollback"):
+        event.listen(
+            engine,
+            name,
+            lambda conn, *_args, _name=name: print(
+                f"[entrypoint] DB_DEBUG_SQL: {_name.upper()} connection={hex(id(conn))}",
+                flush=True,
+            ),
+        )
+
+with engine.connect() as conn:
+    with conn.begin():
+        results = {
+            "alembic_version": conn.execute(
+                text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.alembic_version"}
+            ).scalar(),
+            "operations": conn.execute(
+                text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.operations"}
+            ).scalar(),
+        }
+
+missing = [name for name, reg in results.items() if reg is None]
+if missing:
+    print(
+        f"[entrypoint] migration verification failed; missing tables in schema '{schema}': {missing}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(
+    f"[entrypoint] verified alembic_version and operations tables exist in schema '{schema}'",
+    flush=True,
+)
+PY
+}
+
 # Run migrations before starting the API to guarantee schema availability
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
 MIGRATIONS_RETRIES=${MIGRATIONS_RETRIES:-5}
@@ -155,9 +231,15 @@ PY
 
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
-    if alembic -c "$ALEMBIC_CONFIG" upgrade heads; then
-        echo "[entrypoint] migrations applied"
-        break
+    if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
+        if verify_migration_ddls; then
+            echo "[entrypoint] migrations applied"
+            break
+        fi
+
+        echo "[entrypoint] migration attempt $attempt reported success but verification failed" >&2
+        dump_migration_diagnostics
+        exit 1
     fi
 
     if [ "$attempt" -eq "$MIGRATIONS_RETRIES" ]; then
@@ -213,18 +295,7 @@ diagnostics_status=$?
 set -e
 
 if [ "$diagnostics_status" -ne 0 ]; then
-    echo "[entrypoint] alembic heads output:" >&2
-    alembic -c "$ALEMBIC_CONFIG" heads || true
-    echo "[entrypoint] alembic current output:" >&2
-    alembic -c "$ALEMBIC_CONFIG" current || true
-    echo "[entrypoint] table inventory (all schemas):" >&2
-    python - <<'PY'
-from app.diagnostics.db_state import collect_inventory
-
-inventory = collect_inventory()
-for schema, table in inventory.tables:
-    print(f"{schema}.{table}")
-PY
+    dump_migration_diagnostics
     exit 1
 fi
 

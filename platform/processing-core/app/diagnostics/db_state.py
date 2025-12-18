@@ -3,10 +3,12 @@ from __future__ import annotations
 """Database connection diagnostics shared between entrypoints and tests."""
 
 import contextlib
+import logging
+import os
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
@@ -33,14 +35,32 @@ class ConnectionInventory:
 
 
 def _make_engine(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Engine:
-    engine_kwargs: dict[str, object] = {"future": True, "pool_pre_ping": True}
+    debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
+    engine_kwargs: dict[str, object] = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
 
     if url.startswith("postgresql"):
         # Keep the requested schema at the front of the search_path for every
         # connection created via this Engine.
         engine_kwargs["connect_args"] = {"options": f"-csearch_path={schema},public"}
+    engine = create_engine(url, **engine_kwargs)
 
-    return create_engine(url, **engine_kwargs)
+    if debug_sql:
+        _attach_transaction_logging(engine)
+
+    return engine
+
+
+def _attach_transaction_logging(engine: Engine) -> None:
+    logger = logging.getLogger("app.db_debug.sql")
+
+    def _log(event_name: str):
+        def _handler(conn, *_):  # type: ignore[override]
+            logger.info("[db-debug] %s connection=%s", event_name.upper(), hex(id(conn)))
+
+        return _handler
+
+    for name in ("begin", "commit", "rollback"):
+        event.listen(engine, name, _log(name))
 
 
 def collect_inventory(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> ConnectionInventory:
