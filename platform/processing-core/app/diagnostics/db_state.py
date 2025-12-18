@@ -34,6 +34,13 @@ class ConnectionInventory:
         return sorted(set(required) - existing)
 
 
+def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
+    """Return the regclass for the given schema-qualified name, if it exists."""
+
+    regclass = f"{schema}.{name}"
+    return connection.execute(text("select to_regclass(:reg)"), {"reg": regclass}).scalar_one_or_none()
+
+
 def _make_engine(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Engine:
     debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
     engine_kwargs: dict[str, object] = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
@@ -96,9 +103,7 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Conne
         ]
 
         alembic_versions: list[str] = []
-        reg = conn.execute(
-            text("SELECT to_regclass(:reg) AS reg"), {"reg": f"{schema}.alembic_version"}
-        ).scalar()
+        reg = to_regclass(conn, schema, "alembic_version")
         if reg:
             alembic_versions = [
                 row[0] for row in conn.execute(text(f'SELECT version_num FROM "{schema}".alembic_version'))
@@ -167,16 +172,8 @@ def log_connection_fingerprint(
     _emit(prefix, f"txid_current={txid} now={now}", emitter=emitter)
 
     target_schema = schema or "public"
-    alembic_reg = _safe_scalar(
-        connection,
-        "SELECT to_regclass(:reg)",
-        {"reg": f"{target_schema}.alembic_version"},
-    )
-    operations_reg = _safe_scalar(
-        connection,
-        "SELECT to_regclass(:reg)",
-        {"reg": f"{target_schema}.operations"},
-    )
+    alembic_reg = to_regclass(connection, target_schema, "alembic_version")
+    operations_reg = to_regclass(connection, target_schema, "operations")
     _emit(prefix, f"alembic_version_regclass={alembic_reg} operations_regclass={operations_reg}", emitter=emitter)
 
     public_table_count = connection.execute(

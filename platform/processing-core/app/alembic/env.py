@@ -17,7 +17,7 @@ if PROJECT_ROOT not in sys.path:
 from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
-from app.diagnostics.db_state import log_connection_fingerprint  # noqa: E402
+from app.diagnostics.db_state import log_connection_fingerprint, to_regclass  # noqa: E402
 
 logger = logging.getLogger(__name__)
 DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1"
@@ -129,11 +129,17 @@ def run_migrations_online() -> None:
             context.run_migrations()
 
         version_schema = DB_SCHEMA or "public"
-        version_reg = connection.exec_driver_sql(
-            "select to_regclass(:reg)", {"reg": f"{version_schema}.alembic_version"}
-        ).scalar()
+        version_reg = to_regclass(connection, version_schema, "alembic_version")
+        operations_reg = to_regclass(connection, version_schema, "operations")
+
         if version_reg is None:
             raise RuntimeError("Alembic upgrade finished but alembic_version is missing; aborting")
+
+        logger.info(
+            "Post-upgrade regclass status: alembic_version=%s operations=%s",
+            version_reg,
+            operations_reg,
+        )
 
         log_connection_fingerprint(connection, label="post-upgrade", emitter=logger.info)
 
