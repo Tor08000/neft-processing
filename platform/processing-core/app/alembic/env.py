@@ -95,12 +95,12 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_schemas=True,
+            include_schemas=False,
             compare_type=True,
             compare_server_default=True,
             transactional_ddl=True,
             version_table="alembic_version",
-            version_table_schema=DB_SCHEMA,
+            version_table_schema=None,
             as_sql=False,
         )
 

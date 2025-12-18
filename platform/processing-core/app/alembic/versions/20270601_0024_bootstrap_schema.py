@@ -70,8 +70,17 @@ def _table_exists(bind, table_name: str) -> bool:
     return inspector.has_table(table_name, schema=SCHEMA)
 
 
+def _ensure_schema(bind) -> None:
+    if getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
+        return
+
+    op.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
+
+
 def upgrade() -> None:
     bind = op.get_bind()
+
+    _ensure_schema(bind)
 
     ensure_pg_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES)
     ensure_pg_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES)
@@ -714,6 +723,12 @@ def upgrade() -> None:
         unique=False,
         schema=SCHEMA,
     )
+
+    version_regclass = bind.exec_driver_sql(
+        f"select to_regclass('{SCHEMA}.alembic_version')"
+    ).scalar()
+    if not version_regclass:
+        raise RuntimeError("Bootstrap schema failed: missing alembic_version")
 
     for table_name in ("merchants", "clients", "operations", "accounts", "ledger_entries", "limit_configs"):
         exists = bind.exec_driver_sql(
