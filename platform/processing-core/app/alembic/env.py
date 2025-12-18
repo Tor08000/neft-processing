@@ -164,33 +164,42 @@ def run_migrations_online() -> None:
             as_sql=False,
         )
 
+        cmd_opts = getattr(config, "cmd_opts", None)
+        invoked_command = getattr(cmd_opts, "cmd", None)
+        should_verify = not context.is_offline_mode() and invoked_command == "upgrade"
+
         with context.begin_transaction():
             context.run_migrations()
 
-        version_reg = to_regclass(connection, target_schema, "alembic_version")
-        operations_reg = to_regclass(connection, target_schema, "operations")
+        if should_verify:
+            verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
+            if str(verify_flag).lower() == "true":
+                version_reg = to_regclass(connection, target_schema, "alembic_version")
+                operations_reg = to_regclass(connection, target_schema, "operations")
 
-        current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
+                current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
-        if version_reg is None:
-            raise RuntimeError(
-                "Post-upgrade verification failed: alembic_version missing in "
-                f"schema '{target_schema}' (search_path={current_search_path})"
-            )
-        if operations_reg is None:
-            raise RuntimeError(
-                "Post-upgrade verification failed: operations missing in "
-                f"schema '{target_schema}' (search_path={current_search_path})"
-            )
+                if version_reg is None:
+                    raise RuntimeError(
+                        "Post-upgrade verification failed: alembic_version missing in "
+                        f"schema '{target_schema}' (search_path={current_search_path})"
+                    )
+                if operations_reg is None:
+                    raise RuntimeError(
+                        "Post-upgrade verification failed: operations missing in "
+                        f"schema '{target_schema}' (search_path={current_search_path})"
+                    )
 
-        logger.info(
-            "Post-upgrade regclass status: alembic_version=%s operations=%s",
-            version_reg,
-            operations_reg,
-        )
+                logger.info(
+                    "Post-upgrade regclass status: alembic_version=%s operations=%s",
+                    version_reg,
+                    operations_reg,
+                )
 
-        _log_schema_inventory(connection, label="post-upgrade")
-        log_connection_fingerprint(connection, schema=target_schema, label="post-upgrade", emitter=logger.info)
+                _log_schema_inventory(connection, label="post-upgrade")
+                log_connection_fingerprint(
+                    connection, schema=target_schema, label="post-upgrade", emitter=logger.info
+                )
 
 
 if os.getenv("ALEMBIC_SKIP_RUN"):
