@@ -14,6 +14,8 @@ from sqlalchemy.engine import Connection, Engine
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
 from app.db import DB_SCHEMA, DATABASE_URL
 
+USER_SCHEMA_FILTER = "('pg_catalog','information_schema','pg_toast')"
+
 
 @dataclass(frozen=True)
 class ConnectionInventory:
@@ -86,16 +88,28 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Conne
 
         search_path = conn.execute(text("SHOW search_path")).scalar_one_or_none()
 
-        schemas = [row[0] for row in conn.execute(text("SELECT nspname FROM pg_namespace ORDER BY 1"))]
+        schemas = [
+            row[0]
+            for row in conn.execute(
+                text(
+                    f"""
+                    select nspname
+                    from pg_namespace
+                    where nspname not in {USER_SCHEMA_FILTER}
+                    order by 1
+                    """
+                )
+            )
+        ]
 
         tables = [
             (row.table_schema, row.table_name)
             for row in conn.execute(
                 text(
-                    """
+                    f"""
                     select table_schema, table_name
                     from information_schema.tables
-                    where table_type='BASE TABLE'
+                    where table_schema not in {USER_SCHEMA_FILTER}
                     order by 1,2
                     """
                 )
@@ -142,11 +156,10 @@ def log_connection_fingerprint(
 
     prefix = f"[db-fingerprint{f' {label}' if label else ''}]"
 
-    server_addr, server_port = connection.execute(
-        text("SELECT inet_server_addr(), inet_server_port()"),
-    ).one()
-    current_db, current_user, current_schema = connection.execute(
-        text("SELECT current_database(), current_user, current_schema()"),
+    server_addr, server_port, current_db, current_user, current_schema = connection.execute(
+        text(
+            "SELECT inet_server_addr(), inet_server_port(), current_database(), current_user, current_schema()",
+        ),
     ).one()
     search_path = _safe_scalar(connection, "SHOW search_path")
     version_str = _safe_scalar(connection, "SELECT version()")
@@ -155,7 +168,7 @@ def log_connection_fingerprint(
         prefix,
         (
             f"server={server_addr}:{server_port} db={current_db} user={current_user} "
-            f"current_schema={current_schema} search_path={search_path}"
+            f"current_schema={current_schema} search_path={search_path} target_schema={schema or 'public'}"
         ),
         emitter=emitter,
     )
@@ -176,24 +189,34 @@ def log_connection_fingerprint(
     operations_reg = to_regclass(connection, target_schema, "operations")
     _emit(prefix, f"alembic_version_regclass={alembic_reg} operations_regclass={operations_reg}", emitter=emitter)
 
-    public_table_count = connection.execute(
-        text("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"),
-    ).scalar_one()
+    user_schemas = [
+        row[0]
+        for row in connection.execute(
+            text(
+                f"""
+                select nspname
+                from pg_namespace
+                where nspname not in {USER_SCHEMA_FILTER}
+                order by 1
+                """
+            )
+        )
+    ]
+    _emit(prefix, f"user_schemas={user_schemas}", emitter=emitter)
+
     tables = connection.execute(
         text(
-            """
+            f"""
             select table_schema, table_name
             from information_schema.tables
-            where table_schema='public'
+            where table_schema not in {USER_SCHEMA_FILTER}
             order by 1,2
-            limit 200
             """
         )
     ).all()
-
-    _emit(prefix, f"public_table_count={public_table_count}", emitter=emitter)
-    formatted_tables = ", ".join(f"{row.table_schema}.{row.table_name}" for row in tables) or "<none>"
-    _emit(prefix, f"public_tables={formatted_tables}", emitter=emitter)
+    formatted_tables = [f"{row.table_schema}.{row.table_name}" for row in tables]
+    _emit(prefix, f"user_table_count={len(formatted_tables)}", emitter=emitter)
+    _emit(prefix, f"user_tables={formatted_tables}", emitter=emitter)
 
 
 def log_fingerprint_from_url(
