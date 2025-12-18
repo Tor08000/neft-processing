@@ -60,7 +60,9 @@ def _make_engine_kwargs(url: str) -> dict:
     )
 
     if url.startswith("postgresql"):
-        engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA},public"}
+        connect_args = {"prepare_threshold": 0}
+        connect_args["options"] = f"-csearch_path={DB_SCHEMA},public"
+        engine_kwargs["connect_args"] = connect_args
 
     if url.startswith("sqlite"):
         engine_kwargs.update(
@@ -73,6 +75,8 @@ def _make_engine_kwargs(url: str) -> dict:
 
 _engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None
+_async_engine = None
+_AsyncSessionLocal = None
 
 
 def get_engine() -> Engine:
@@ -109,13 +113,17 @@ def get_sessionmaker() -> sessionmaker[Session]:
 def reset_engine() -> None:
     """Dispose of the current engine and sessionmaker cache."""
 
-    global _engine, _SessionLocal
+    global _engine, _SessionLocal, _async_engine, _AsyncSessionLocal
 
     if _engine is not None:
         _engine.dispose()
 
     _engine = None
     _SessionLocal = None
+    if _async_engine is not None:
+        _async_engine.dispose()
+    _async_engine = None
+    _AsyncSessionLocal = None
 
 
 def init_db() -> None:

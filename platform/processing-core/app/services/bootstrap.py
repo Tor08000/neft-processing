@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,21 @@ def ensure_default_refs(db: Session) -> None:
     logger = logging.getLogger(__name__)
 
     try:
+        column_exists = db.execute(
+            text(
+                """
+                select 1
+                from information_schema.columns
+                where table_name = 'cards'
+                  and column_name = 'created_at'
+                """
+            )
+        ).scalar_one_or_none()
+
+        if not column_exists:
+            logger.fatal("cards.created_at column missing; aborting bootstrap")
+            return
+
         merchant = db.query(Merchant).filter(Merchant.id == DEFAULT_MERCHANT_ID).first()
         if not merchant:
             merchant = Merchant(

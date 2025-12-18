@@ -46,12 +46,19 @@ def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
 
 def _make_engine(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Engine:
     debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
-    engine_kwargs: dict[str, object] = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
+    engine_kwargs: dict[str, object] = {
+        "future": True,
+        "pool_pre_ping": True,
+        "echo": debug_sql,
+    }
 
     if url.startswith("postgresql"):
         # Keep the requested schema at the front of the search_path for every
         # connection created via this Engine.
-        engine_kwargs["connect_args"] = {"options": f"-csearch_path={schema},public"}
+        engine_kwargs["connect_args"] = {
+            "options": f"-csearch_path={schema},public",
+            "prepare_threshold": 0,
+        }
     engine = create_engine(url, **engine_kwargs)
 
     if debug_sql:

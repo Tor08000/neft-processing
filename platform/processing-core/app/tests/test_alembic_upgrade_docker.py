@@ -75,7 +75,12 @@ def _postgres_container(image: str):
         last_error: Exception | None = None
         while time.time() < deadline:
             try:
-                engine = sa.create_engine(db_url, future=True, pool_pre_ping=True)
+                engine = sa.create_engine(
+                    db_url,
+                    future=True,
+                    pool_pre_ping=True,
+                    connect_args={"prepare_threshold": 0},
+                )
                 with engine.connect() as conn:
                     conn.exec_driver_sql("select 1")
                 break
@@ -98,7 +103,9 @@ def _upgrade_and_inventory(db_url: str, schema: str, monkeypatch: pytest.MonkeyP
 
     command.upgrade(cfg, "head")
 
-    with sa.create_engine(db_url, future=True, pool_pre_ping=True).connect() as conn:
+    with sa.create_engine(
+        db_url, future=True, pool_pre_ping=True, connect_args={"prepare_threshold": 0}
+    ).connect() as conn:
         regclasses = {table: db_state.to_regclass(conn, schema, table) for table in REQUIRED_TABLES}
         spillover_schema = "public" if schema != "public" else "nonexistent"
         spillover = {
