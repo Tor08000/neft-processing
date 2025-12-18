@@ -170,6 +170,7 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     sleep "$MIGRATIONS_RETRY_DELAY"
 done
 
+set +e
 python - <<'PY'
 import sys
 
@@ -194,18 +195,38 @@ print(
     flush=True,
 )
 
+missing_version = not inventory.alembic_versions
 if inventory.alembic_versions:
     print(f"[entrypoint] alembic versions present: {inventory.alembic_versions}", flush=True)
 else:
     print("[entrypoint] alembic_version missing", flush=True)
 
-missing = inventory.missing_tables(REQUIRED_CORE_TABLES)
-print(f"[entrypoint] missing_required_tables={missing}", flush=True)
-if missing:
-    sys.exit(1)
+missing_tables = inventory.missing_tables(REQUIRED_CORE_TABLES)
+print(f"[entrypoint] missing_required_tables={missing_tables}", flush=True)
+
+if missing_version or missing_tables:
+    sys.exit(2)
 
 print("[entrypoint] core tables present after migrations")
 PY
+diagnostics_status=$?
+set -e
+
+if [ "$diagnostics_status" -ne 0 ]; then
+    echo "[entrypoint] alembic heads output:" >&2
+    alembic -c "$ALEMBIC_CONFIG" heads || true
+    echo "[entrypoint] alembic current output:" >&2
+    alembic -c "$ALEMBIC_CONFIG" current || true
+    echo "[entrypoint] table inventory (all schemas):" >&2
+    python - <<'PY'
+from app.diagnostics.db_state import collect_inventory
+
+inventory = collect_inventory()
+for schema, table in inventory.tables:
+    print(f"{schema}.{table}")
+PY
+    exit 1
+fi
 
 echo "[entrypoint] starting uvicorn..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
