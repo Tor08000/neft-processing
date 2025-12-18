@@ -149,7 +149,7 @@ done
 python - <<'PY'
 import sys
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, text
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
 from app.db import DATABASE_URL, DB_SCHEMA
@@ -160,15 +160,32 @@ if DATABASE_URL.startswith("postgresql"):
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 with engine.connect() as conn:
-    inspector = inspect(conn)
-    existing = set(inspector.get_table_names(schema=DB_SCHEMA))
+    version_rows = conn.execute(text("select version_num from alembic_version"))
+    versions = [row[0] for row in version_rows]
 
-missing = set(REQUIRED_CORE_TABLES) - existing
-if missing:
+    db_name, current_schema, search_path = conn.execute(
+        text("select current_database(), current_schema(), current_setting('search_path')")
+    ).one()
     print(
-        f"[entrypoint] missing required tables after migrations: {sorted(missing)}",
-        file=sys.stderr,
+        f"[entrypoint] alembic versions present: {versions}; current_database={db_name} current_schema={current_schema} search_path={search_path}",
+        flush=True,
     )
+
+    tables = conn.execute(
+        text(
+            "select table_schema, table_name from information_schema.tables where table_schema = :db_schema order by table_name"
+        ),
+        {"db_schema": DB_SCHEMA},
+    ).all()
+    existing_tables = {row.table_name for row in tables if row.table_schema == DB_SCHEMA}
+    print(
+        f"[entrypoint] tables in schema {DB_SCHEMA}: {[f'{row.table_schema}.{row.table_name}' for row in tables[:30]]}",
+        flush=True,
+    )
+
+missing = set(REQUIRED_CORE_TABLES) - existing_tables
+print(f"[entrypoint] missing_required_tables={sorted(missing)}", flush=True)
+if missing:
     sys.exit(1)
 
 print("[entrypoint] core tables present after migrations")

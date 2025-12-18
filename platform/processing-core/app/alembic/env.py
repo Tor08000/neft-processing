@@ -7,7 +7,6 @@ from typing import Any
 
 import sqlalchemy as sa
 from alembic import context
-from alembic.runtime import migration
 from sqlalchemy import pool
 from sqlalchemy.engine.url import make_url
 
@@ -88,24 +87,10 @@ def run_migrations_online() -> None:
             connection.exec_driver_sql(search_path_sql)
             logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
 
+        search_path_row = connection.exec_driver_sql("SHOW search_path").scalar_one()
+        logger.info("Effective search_path is %s", search_path_row)
+
         ensure_alembic_version_length(connection)
-
-        migration_ctx = migration.MigrationContext.configure(
-            connection,
-            opts={
-                "version_table": "alembic_version",
-                "version_table_schema": DB_SCHEMA,
-            },
-        )
-        ensure_table = getattr(migration_ctx, "_ensure_version_table", None)
-        if callable(ensure_table):
-            ensure_table()
-
-        inspector = sa.inspect(connection)
-        dialect_name = getattr(getattr(inspector, "dialect", None), "name", None)
-        schema = None if dialect_name == "sqlite" else DB_SCHEMA
-        if "alembic_version" not in inspector.get_table_names(schema=schema):
-            raise RuntimeError("alembic_version table missing")
 
         context.configure(
             connection=connection,
