@@ -35,6 +35,10 @@ The helper logs:
 - `alembic current` and `alembic heads` point to the same revision.
 - Required tables (`operations`, `limit_configs`, `accounts`, `ledger_entries`) exist in the same schema as `alembic_version`.
 
+> ⚠️ `users` and `user_roles` can appear even when `core-api` migrations never ran.
+> They are created by the auth service bootstrap in `platform/auth-host/app/db.py` on startup
+> and should not be used as proof that Alembic DDL succeeded.
+
 ## Debugging tips
 
 - Ensure `DATABASE_URL` is set and valid. An invalid DSN now raises a clear startup error.
