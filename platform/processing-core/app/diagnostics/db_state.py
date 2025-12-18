@@ -6,10 +6,10 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Callable, Iterable
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
 from app.db import DB_SCHEMA, DATABASE_URL
@@ -115,4 +115,98 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Conne
         alembic_versions=alembic_versions,
         schema=schema,
     )
+
+
+def _emit(prefix: str, message: str, *, emitter: Callable[[str], None] | None = None) -> None:
+    logger_func = emitter or logging.getLogger(__name__).info
+    logger_func(f"{prefix} {message}")
+
+
+def _safe_scalar(connection: Connection, sql: str, params: dict | None = None):
+    return connection.execute(text(sql), params or {}).scalar_one_or_none()
+
+
+def log_connection_fingerprint(
+    connection: Connection,
+    *,
+    schema: str = DB_SCHEMA,
+    emitter: Callable[[str], None] | None = None,
+    label: str | None = None,
+) -> None:
+    """Log a detailed DB fingerprint using a single connection."""
+
+    prefix = f"[db-fingerprint{f' {label}' if label else ''}]"
+
+    server_addr, server_port = connection.execute(
+        text("SELECT inet_server_addr(), inet_server_port()"),
+    ).one()
+    current_db, current_user, current_schema = connection.execute(
+        text("SELECT current_database(), current_user, current_schema()"),
+    ).one()
+    search_path = _safe_scalar(connection, "SHOW search_path")
+    version_str = _safe_scalar(connection, "SELECT version()")
+
+    _emit(
+        prefix,
+        (
+            f"server={server_addr}:{server_port} db={current_db} user={current_user} "
+            f"current_schema={current_schema} search_path={search_path}"
+        ),
+        emitter=emitter,
+    )
+    _emit(prefix, f"version={version_str}", emitter=emitter)
+
+    db_info = connection.execute(
+        text("SELECT datname, oid FROM pg_database WHERE datname = current_database()"),
+    ).one_or_none()
+    if db_info:
+        _emit(prefix, f"database_oid={db_info.oid}", emitter=emitter)
+
+    txid = _safe_scalar(connection, "SELECT txid_current()")
+    now = _safe_scalar(connection, "SELECT now()")
+    _emit(prefix, f"txid_current={txid} now={now}", emitter=emitter)
+
+    target_schema = schema or "public"
+    alembic_reg = _safe_scalar(
+        connection,
+        "SELECT to_regclass(:reg)",
+        {"reg": f"{target_schema}.alembic_version"},
+    )
+    operations_reg = _safe_scalar(
+        connection,
+        "SELECT to_regclass(:reg)",
+        {"reg": f"{target_schema}.operations"},
+    )
+    _emit(prefix, f"alembic_version_regclass={alembic_reg} operations_regclass={operations_reg}", emitter=emitter)
+
+    public_table_count = connection.execute(
+        text("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"),
+    ).scalar_one()
+    tables = connection.execute(
+        text(
+            """
+            select table_schema, table_name
+            from information_schema.tables
+            where table_schema='public'
+            order by 1,2
+            limit 200
+            """
+        )
+    ).all()
+
+    _emit(prefix, f"public_table_count={public_table_count}", emitter=emitter)
+    formatted_tables = ", ".join(f"{row.table_schema}.{row.table_name}" for row in tables) or "<none>"
+    _emit(prefix, f"public_tables={formatted_tables}", emitter=emitter)
+
+
+def log_fingerprint_from_url(
+    url: str = DATABASE_URL,
+    *,
+    schema: str = DB_SCHEMA,
+    emitter: Callable[[str], None] | None = None,
+    label: str | None = None,
+) -> None:
+    engine = _make_engine(url=url, schema=schema)
+    with engine.connect() as conn:
+        log_connection_fingerprint(conn, schema=schema, emitter=emitter, label=label)
 
