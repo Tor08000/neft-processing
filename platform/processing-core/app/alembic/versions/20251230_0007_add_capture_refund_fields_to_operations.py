@@ -37,35 +37,29 @@ def _column_exists(table: str, column: str, schema: str = "public") -> bool:
 def upgrade():
     schema = "public"
 
-    with op.batch_alter_table("operations", schema=schema) as batch:
-        if not _column_exists("operations", "captured_amount", schema):
-            batch.add_column(
-                sa.Column("captured_amount", sa.BigInteger(), nullable=False, server_default="0")
-            )
+    if not _column_exists("operations", "captured_amount", schema):
+        op.add_column(
+            "operations",
+            sa.Column("captured_amount", sa.BigInteger(), nullable=False, server_default="0"),
+            schema=schema,
+        )
 
-        if not _column_exists("operations", "refunded_amount", schema):
-            batch.add_column(
-                sa.Column("refunded_amount", sa.BigInteger(), nullable=False, server_default="0")
-            )
-        batch.drop_constraint("operations_pkey", type_="primary")
-        batch.drop_column("id")
-        batch.create_primary_key("operations_pkey", ["operation_id"])
+    if not _column_exists("operations", "refunded_amount", schema):
+        op.add_column(
+            "operations",
+            sa.Column("refunded_amount", sa.BigInteger(), nullable=False, server_default="0"),
+            schema=schema,
+        )
 
     op.execute("UPDATE operations SET captured_amount = 0 WHERE captured_amount IS NULL")
     op.execute("UPDATE operations SET refunded_amount = 0 WHERE refunded_amount IS NULL")
 
 
 def downgrade():
-    with op.batch_alter_table("operations") as batch:
-        batch.drop_constraint("operations_pkey", type_="primary")
-        batch.add_column(
-            sa.Column(
-                "id",
-                sa.BigInteger(),
-                autoincrement=True,
-                nullable=False,
-            )
-        )
-        batch.create_primary_key("operations_pkey", ["id"])
-        batch.drop_column("captured_amount")
-        batch.drop_column("refunded_amount")
+    schema = "public"
+
+    if _column_exists("operations", "captured_amount", schema):
+        op.drop_column("operations", "captured_amount", schema=schema)
+
+    if _column_exists("operations", "refunded_amount", schema):
+        op.drop_column("operations", "refunded_amount", schema=schema)
