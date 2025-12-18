@@ -28,7 +28,11 @@ def get_database_url() -> str:
 def ensure_connectable(db_url: str) -> Engine:
     """Create an engine for the provided URL and ensure it is reachable."""
 
-    connectable = sa.create_engine(db_url)
+    engine_kwargs = {}
+    if db_url.startswith("postgresql"):
+        engine_kwargs["connect_args"] = {"prepare_threshold": 0}
+
+    connectable = sa.create_engine(db_url, **engine_kwargs)
     try:
         with connectable.connect() as connection:
             connection.exec_driver_sql("select 1")

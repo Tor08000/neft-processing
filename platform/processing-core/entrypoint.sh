@@ -75,7 +75,7 @@ dsn = _normalize_postgres_dsn(dsn)
 
 while time.time() < deadline:
     try:
-        with psycopg.connect(dsn, connect_timeout=5) as conn:
+        with psycopg.connect(dsn, connect_timeout=5, prepare_threshold=0) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
         sys.exit(0)
@@ -168,7 +168,10 @@ if not url:
 debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
 engine_kwargs = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
 if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {"options": f"-csearch_path={schema},public"}
+    engine_kwargs["connect_args"] = {
+        "options": f"-csearch_path={schema},public",
+        "prepare_threshold": 0,
+    }
 
 engine = create_engine(url, **engine_kwargs)
 
@@ -252,7 +255,13 @@ if not url:
     print("[entrypoint] DATABASE_URL is not set for after-commit probe", file=sys.stderr)
     sys.exit(1)
 
-engine = create_engine(url, future=True, pool_pre_ping=True, echo=os.getenv("DB_DEBUG_SQL") == "1")
+engine = create_engine(
+    url,
+    future=True,
+    pool_pre_ping=True,
+    connect_args={"prepare_threshold": 0} if url.startswith("postgresql") else {},
+    echo=os.getenv("DB_DEBUG_SQL") == "1",
+)
 
 with engine.connect() as conn:
     operations_reg = conn.execute(text("select to_regclass('public.operations')")).scalar_one_or_none()

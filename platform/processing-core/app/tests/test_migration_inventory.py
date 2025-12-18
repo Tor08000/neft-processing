@@ -34,7 +34,12 @@ def postgres_schema(monkeypatch):
         pytest.skip("PostgreSQL TEST_DATABASE_URL or DATABASE_URL is required for migration smoke tests")
 
     schema = f"test_schema_{uuid4().hex[:8]}"
-    engine = sa.create_engine(db_url, future=True, pool_pre_ping=True)
+    engine = sa.create_engine(
+        db_url,
+        future=True,
+        pool_pre_ping=True,
+        connect_args={"prepare_threshold": 0},
+    )
 
     with engine.begin() as conn:
         conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))

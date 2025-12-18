@@ -11,7 +11,12 @@ from neft_shared.settings import get_settings
 
 logger = get_logger(__name__)
 settings = get_settings()
-_engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
+_engine = create_engine(
+    settings.database_url,
+    future=True,
+    pool_pre_ping=True,
+    connect_args={"prepare_threshold": 0},
+)
 
 
 @shared_task(name="clearing.build_daily_batch")
