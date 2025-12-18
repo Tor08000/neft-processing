@@ -130,5 +130,33 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     sleep "$MIGRATIONS_RETRY_DELAY"
 done
 
+python - <<'PY'
+import sys
+
+from sqlalchemy import create_engine, inspect
+
+from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
+from app.db import DATABASE_URL, DB_SCHEMA
+
+engine_kwargs: dict[str, object] = {}
+if DATABASE_URL.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA}"}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+with engine.connect() as conn:
+    inspector = inspect(conn)
+    existing = set(inspector.get_table_names(schema=DB_SCHEMA))
+
+missing = set(REQUIRED_CORE_TABLES) - existing
+if missing:
+    print(
+        f"[entrypoint] missing required tables after migrations: {sorted(missing)}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print("[entrypoint] core tables present after migrations")
+PY
+
 echo "[entrypoint] starting uvicorn..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

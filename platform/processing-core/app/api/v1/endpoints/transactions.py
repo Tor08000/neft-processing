@@ -8,8 +8,10 @@ from uuid import UUID
 from sqlalchemy.exc import DBAPIError, DataError, IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.schema_guard import ensure_tables_exist, raise_schema_error_if_missing
-from app.db import get_db
+from app.api.dependencies.schema_guard import (
+    raise_schema_error_if_missing,
+    require_operations_table,
+)
 from app.schemas.operations import OperationSchema
 from app.models.operation import OperationStatus
 from app.schemas.transactions import (
@@ -55,7 +57,9 @@ logger = get_logger(__name__)
 
 
 @router.post("/authorize", response_model=AuthorizeResponse)
-def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> AuthorizeResponse:
+def authorize(
+    body: AuthorizeRequest, db: Session = Depends(require_operations_table)
+) -> AuthorizeResponse:
     try:
         operation = authorize_operation(
             db,
@@ -105,7 +109,9 @@ def authorize(body: AuthorizeRequest, db: Session = Depends(get_db)) -> Authoriz
 
 
 @router.post("/commit", response_model=OperationSchema)
-def commit(body: CommitRequest, db: Session = Depends(get_db)) -> OperationSchema:
+def commit(
+    body: CommitRequest, db: Session = Depends(require_operations_table)
+) -> OperationSchema:
     try:
         op = commit_operation(db, operation_id=body.operation_id, amount=body.amount, quantity=body.quantity)
     except AmountExceeded as exc:
@@ -118,7 +124,7 @@ def commit(body: CommitRequest, db: Session = Depends(get_db)) -> OperationSchem
 
 
 @router.post("/reverse", response_model=OperationSchema)
-def reverse(body: ReverseRequest, db: Session = Depends(get_db)) -> OperationSchema:
+def reverse(body: ReverseRequest, db: Session = Depends(require_operations_table)) -> OperationSchema:
     try:
         op = reverse_operation(db, operation_id=body.operation_id, reason=body.reason)
     except InvalidOperationState as exc:
@@ -127,7 +133,9 @@ def reverse(body: ReverseRequest, db: Session = Depends(get_db)) -> OperationSch
 
 
 @router.post("/refund", response_model=OperationSchema)
-def refund(body: RefundOperationRequest, db: Session = Depends(get_db)) -> OperationSchema:
+def refund(
+    body: RefundOperationRequest, db: Session = Depends(require_operations_table)
+) -> OperationSchema:
     try:
         op = service_refund(
             db,
@@ -153,9 +161,8 @@ def list_transactions_endpoint(
     status: str | None = None,
     from_created_at: datetime | None = Query(None, alias="from"),
     to_created_at: datetime | None = Query(None, alias="to"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(require_operations_table),
 ) -> TransactionsPage:
-    ensure_tables_exist(db, tables=("operations",))
     try:
         return list_transactions(
             db,
@@ -176,9 +183,8 @@ def list_transactions_endpoint(
 
 @router.get("/{transaction_id}", response_model=TransactionDetailResponse)
 def get_transaction_endpoint(
-    transaction_id: str, db: Session = Depends(get_db)
+    transaction_id: str, db: Session = Depends(require_operations_table)
 ) -> TransactionDetailResponse:
-    ensure_tables_exist(db, tables=("operations",))
     try:
         transaction = get_transaction(db, transaction_id)
     except DBAPIError as exc:
@@ -192,9 +198,8 @@ def get_transaction_endpoint(
 
 @router.get("/{transaction_id}/timeline", response_model=List[OperationSchema])
 def get_transaction_timeline_endpoint(
-    transaction_id: str, db: Session = Depends(get_db)
+    transaction_id: str, db: Session = Depends(require_operations_table)
 ) -> List[OperationSchema]:
-    ensure_tables_exist(db, tables=("operations",))
     try:
         operations_chain = get_operation_timeline(db, transaction_id)
     except DBAPIError as exc:
@@ -210,7 +215,7 @@ def get_transaction_timeline_endpoint(
 def capture_transaction_endpoint(
     auth_operation_id: UUID,
     body: CaptureRequest = Body(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(require_operations_table),
 ) -> OperationSchema:
     try:
         operation = capture_operation(db, auth_operation_id=auth_operation_id, amount=body.amount if body else None)
@@ -228,7 +233,7 @@ def capture_transaction_endpoint(
 def refund_transaction_endpoint(
     capture_operation_id: UUID,
     body: RefundRequest = Body(None),
-    db: Session = Depends(get_db),
+    db: Session = Depends(require_operations_table),
 ) -> OperationSchema:
     try:
         operation = refund_operation(
@@ -249,7 +254,7 @@ def refund_transaction_endpoint(
 @router.post("/transactions/{auth_operation_id}/reverse", response_model=OperationSchema)
 def reverse_transaction_endpoint(
     auth_operation_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(require_operations_table),
 ) -> OperationSchema:
     try:
         operation = reverse_auth(db, auth_operation_id=auth_operation_id)

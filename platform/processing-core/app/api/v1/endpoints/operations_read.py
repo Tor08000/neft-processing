@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.schema_guard import ensure_tables_exist, raise_schema_error_if_missing
-from app.db import get_db
+from app.api.dependencies.schema_guard import (
+    raise_schema_error_if_missing,
+    require_operations_table,
+)
 from app.schemas.operations import OperationSchema, OperationsPage
 from app.services import operations_query
 from app.services.operations_query import get_operation_timeline
@@ -42,9 +44,8 @@ def list_operations(
     risk_min_score: float | None = Query(None),
     risk_max_score: float | None = Query(None),
     order_by: str = Query("created_at_desc"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(require_operations_table),
 ) -> OperationsPage:
-    ensure_tables_exist(db, tables=("operations",))
     allowed_ordering = set(operations_query._ORDERING.keys())
     if order_by not in allowed_ordering:
         raise HTTPException(status_code=400, detail="Invalid order_by")
@@ -83,8 +84,7 @@ def list_operations(
 
 
 @router.get("/{operation_id}", response_model=OperationSchema)
-def get_operation(operation_id: str, db: Session = Depends(get_db)) -> OperationSchema:
-    ensure_tables_exist(db, tables=("operations",))
+def get_operation(operation_id: str, db: Session = Depends(require_operations_table)) -> OperationSchema:
     try:
         timeline = get_operation_timeline(db, operation_id)
     except DBAPIError as exc:
@@ -98,9 +98,8 @@ def get_operation(operation_id: str, db: Session = Depends(get_db)) -> Operation
 
 @router.get("/{operation_id}/timeline", response_model=List[OperationSchema])
 def get_operation_timeline_endpoint(
-    operation_id: str, db: Session = Depends(get_db)
+    operation_id: str, db: Session = Depends(require_operations_table)
 ) -> List[OperationSchema]:
-    ensure_tables_exist(db, tables=("operations",))
     try:
         operations_chain = get_operation_timeline(db, operation_id)
     except DBAPIError as exc:
