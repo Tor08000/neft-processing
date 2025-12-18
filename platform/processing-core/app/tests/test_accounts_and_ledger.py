@@ -8,6 +8,7 @@ from sqlalchemy import inspect
 from app.db import Base, SessionLocal, engine
 from app.models.account import AccountStatus, AccountType
 from app.models.ledger_entry import LedgerDirection
+from app.models.operation import Operation, OperationStatus, OperationType
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
 
@@ -81,7 +82,9 @@ def test_account_crud(accounts_repo: AccountsRepository):
     assert closed.status == AccountStatus.CLOSED
 
 
-def test_posting_and_balances(accounts_repo: AccountsRepository, ledger_repo: LedgerRepository):
+def test_posting_and_balances(
+    accounts_repo: AccountsRepository, ledger_repo: LedgerRepository, session
+):
     account = accounts_repo.get_or_create_account(
         client_id="client-2",
         currency="USD",
@@ -89,6 +92,21 @@ def test_posting_and_balances(accounts_repo: AccountsRepository, ledger_repo: Le
     )
 
     op_id = uuid4()
+    session.add(
+        Operation(
+            id=op_id,
+            operation_id=str(op_id),
+            operation_type=OperationType.AUTH,
+            status=OperationStatus.AUTHORIZED,
+            merchant_id="merchant-1",
+            terminal_id="terminal-1",
+            client_id=account.client_id,
+            card_id="card-1",
+            amount=0,
+            currency="USD",
+        )
+    )
+    session.commit()
     first = ledger_repo.post_entry(
         account_id=account.id,
         operation_id=op_id,

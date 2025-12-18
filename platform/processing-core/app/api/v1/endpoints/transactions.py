@@ -5,9 +5,10 @@ from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from uuid import UUID
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.exc import DBAPIError, DataError, IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.schema_guard import ensure_tables_exist, raise_schema_error_if_missing
 from app.db import get_db
 from app.schemas.operations import OperationSchema
 from app.models.operation import OperationStatus
@@ -154,25 +155,35 @@ def list_transactions_endpoint(
     to_created_at: datetime | None = Query(None, alias="to"),
     db: Session = Depends(get_db),
 ) -> TransactionsPage:
-    return list_transactions(
-        db,
-        limit=limit,
-        offset=offset,
-        client_id=client_id,
-        card_id=card_id,
-        merchant_id=merchant_id,
-        terminal_id=terminal_id,
-        status=status,
-        from_created_at=from_created_at,
-        to_created_at=to_created_at,
-    )
+    ensure_tables_exist(db, tables=("operations",))
+    try:
+        return list_transactions(
+            db,
+            limit=limit,
+            offset=offset,
+            client_id=client_id,
+            card_id=card_id,
+            merchant_id=merchant_id,
+            terminal_id=terminal_id,
+            status=status,
+            from_created_at=from_created_at,
+            to_created_at=to_created_at,
+        )
+    except DBAPIError as exc:
+        raise_schema_error_if_missing(exc)
+        raise
 
 
 @router.get("/{transaction_id}", response_model=TransactionDetailResponse)
 def get_transaction_endpoint(
     transaction_id: str, db: Session = Depends(get_db)
 ) -> TransactionDetailResponse:
-    transaction = get_transaction(db, transaction_id)
+    ensure_tables_exist(db, tables=("operations",))
+    try:
+        transaction = get_transaction(db, transaction_id)
+    except DBAPIError as exc:
+        raise_schema_error_if_missing(exc)
+        raise
     if transaction is None:
         raise HTTPException(status_code=404, detail="transaction not found")
 
@@ -183,7 +194,12 @@ def get_transaction_endpoint(
 def get_transaction_timeline_endpoint(
     transaction_id: str, db: Session = Depends(get_db)
 ) -> List[OperationSchema]:
-    operations_chain = get_operation_timeline(db, transaction_id)
+    ensure_tables_exist(db, tables=("operations",))
+    try:
+        operations_chain = get_operation_timeline(db, transaction_id)
+    except DBAPIError as exc:
+        raise_schema_error_if_missing(exc)
+        raise
     if not operations_chain:
         raise HTTPException(status_code=404, detail="transaction not found")
 
