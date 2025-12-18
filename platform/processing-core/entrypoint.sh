@@ -194,6 +194,10 @@ if missing:
         f"[entrypoint] migration verification failed; missing tables in schema '{schema}': {missing}",
         file=sys.stderr,
     )
+    print(
+        "[entrypoint] hint: docker compose logs --tail=200 postgres to check if the DB was reset",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 print(
@@ -207,11 +211,10 @@ log_db_fingerprint() {
     python - <<'PY'
 import os
 import sys
-from textwrap import indent
 
-from sqlalchemy import create_engine, text
+from app.diagnostics.db_state import log_fingerprint_from_url
 
-schema = os.getenv("DB_SCHEMA", "public")
+schema = os.getenv("DB_SCHEMA", "public") or "public"
 url = os.getenv("DATABASE_URL")
 label = os.getenv("DB_FINGERPRINT_LABEL", "")
 
@@ -219,44 +222,12 @@ if not url:
     print("[entrypoint] DATABASE_URL is not set for fingerprint collection", file=sys.stderr)
     sys.exit(1)
 
-engine = create_engine(url, future=True, pool_pre_ping=True)
 
-with engine.connect() as conn:
-    prefix = f"[entrypoint] db fingerprint {label}"
-    server_info = conn.execute(
-        text("SELECT inet_server_addr(), inet_server_port()")
-    ).one()
-    session_info = conn.execute(
-        text("SELECT current_database(), current_user, current_schema()")
-    ).one()
-    search_path = conn.execute(text("SHOW search_path")).scalar_one_or_none()
-    version_reg = conn.execute(
-        text("SELECT to_regclass(:reg)"), {"reg": f"{schema}.alembic_version"}
-    ).scalar_one_or_none()
-    table_count = conn.execute(
-        text("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
-    ).scalar_one()
-    tables = conn.execute(
-        text(
-            """
-            select table_schema, table_name
-            from information_schema.tables
-            where table_schema='public'
-            order by 1,2
-            limit 200
-            """
-        )
-    ).all()
+def _emit(message: str) -> None:
+    print(f"[entrypoint] {message}", flush=True)
 
-    print(
-        f"{prefix} server={server_info[0]}:{server_info[1]} db={session_info[0]} user={session_info[1]}",
-        flush=True,
-    )
-    print(f"{prefix} search_path={search_path}", flush=True)
-    print(f"{prefix} alembic_version_regclass={version_reg}", flush=True)
-    print(f"{prefix} public_table_count={table_count}", flush=True)
-    formatted_tables = "\n".join(f"- {schema}.{name}" for schema, name in tables)
-    print(f"{prefix} public_tables:\n{indent(formatted_tables, '  ')}", flush=True)
+
+log_fingerprint_from_url(url=url, schema=schema, emitter=_emit, label=label)
 PY
 }
 
