@@ -173,50 +173,58 @@ if url.startswith("postgresql"):
 engine = create_engine(url, **engine_kwargs)
 
 if debug_sql:
-    for name in ("begin", "commit", "rollback"):
-        event.listen(
-            engine,
-            name,
-            lambda conn, *_args, _name=name: print(
-                f"[entrypoint] DB_DEBUG_SQL: {_name.upper()} connection={hex(id(conn))}",
-                flush=True,
-            ),
+    def _log_event(conn, *_args, _name):
+        print(
+            f"[entrypoint] DB_DEBUG_SQL: {_name.upper()} connection={hex(id(conn))}",
+            flush=True,
         )
 
-with engine.connect() as conn:
-    with conn.begin():
-        results = {name: to_regclass(conn, schema, name) for name in required_tables}
+    for name in ("begin", "commit", "rollback", "close"):
+        event.listen(engine, name, lambda conn, *_args, _name=name: _log_event(conn, _name=_name))
 
+
+def _collect_required_tables() -> dict[str, str | None]:
+    with engine.connect() as conn:
+        with conn.begin():
+            return {name: to_regclass(conn, schema, name) for name in required_tables}
+
+
+def _collect_inventory() -> tuple[list[str], list[str]]:
+    with engine.connect() as conn:
+        user_schemas = conn.execute(
+            text(
+                """
+                select nspname
+                from pg_namespace
+                where nspname not in ('pg_catalog','information_schema','pg_toast')
+                order by 1
+                """
+            )
+        ).scalars().all()
+        user_tables = [
+            f"{row.table_schema}.{row.table_name}"
+            for row in conn.execute(
+                text(
+                    """
+                    select table_schema, table_name
+                    from information_schema.tables
+                    where table_schema not in ('pg_catalog','information_schema','pg_toast')
+                    order by 1,2
+                    """
+                )
+            )
+        ]
+    return user_schemas, user_tables
+
+
+results = _collect_required_tables()
 missing = [name for name, reg in results.items() if reg is None]
 if missing:
+    user_schemas, user_tables = _collect_inventory()
     print(
         f"[entrypoint] migration verification failed; missing tables in schema '{schema}': {missing}",
         file=sys.stderr,
     )
-    user_schemas = conn.execute(
-        text(
-            """
-            select nspname
-            from pg_namespace
-            where nspname not in ('pg_catalog','information_schema','pg_toast')
-            order by 1
-            """
-        )
-    ).scalars().all()
-    user_tables = [
-        f"{row.table_schema}.{row.table_name}"
-        for row in conn.execute(
-            text(
-                """
-                select table_schema, table_name
-                from information_schema.tables
-                where table_schema not in ('pg_catalog','information_schema','pg_toast')
-                order by 1,2
-                """
-            )
-        )
-    ]
-
     print(f"[entrypoint] user schemas: {user_schemas}", file=sys.stderr)
     print(f"[entrypoint] user tables ({len(user_tables)}): {user_tables}", file=sys.stderr)
     print(
@@ -227,6 +235,34 @@ if missing:
 
 print(
     f"[entrypoint] verified required tables exist in schema '{schema}': {sorted(results)}",
+    flush=True,
+)
+PY
+}
+
+after_commit_visibility_probe() {
+    python - <<'PY'
+import os
+import sys
+
+from sqlalchemy import create_engine, text
+
+url = os.getenv("DATABASE_URL")
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for after-commit probe", file=sys.stderr)
+    sys.exit(1)
+
+engine = create_engine(url, future=True, pool_pre_ping=True, echo=os.getenv("DB_DEBUG_SQL") == "1")
+
+with engine.connect() as conn:
+    operations_reg = conn.execute(text("select to_regclass('public.operations')")).scalar_one_or_none()
+    public_table_count = conn.execute(
+        text("select count(*) from information_schema.tables where table_schema='public'")
+    ).scalar_one()
+
+print(f"[entrypoint] after-commit probe: operations regclass in public = {operations_reg}", flush=True)
+print(
+    f"[entrypoint] after-commit probe: table count in public schema = {public_table_count}",
     flush=True,
 )
 PY
@@ -280,12 +316,14 @@ echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 
 python - <<'PY'
 import sys
+import traceback
 
 from app.diagnostics.db_state import collect_inventory
 
 try:
     inventory = collect_inventory()
 except Exception as exc:  # noqa: BLE001 - startup diagnostics
+    traceback.print_exc()
     print(f"[entrypoint] failed to collect pre-migration inventory: {exc}", flush=True)
     sys.exit(1)
 
@@ -308,6 +346,7 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
 
     if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
         assert_alembic_state
+        after_commit_visibility_probe
         if verify_migration_ddls; then
             DB_FINGERPRINT_LABEL="post-migration-attempt-$attempt" log_db_fingerprint
             echo "[entrypoint] migrations applied"
@@ -332,6 +371,7 @@ done
 set +e
 python - <<'PY'
 import sys
+import traceback
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
 from app.diagnostics.db_state import collect_inventory
@@ -339,6 +379,7 @@ from app.diagnostics.db_state import collect_inventory
 try:
     inventory = collect_inventory()
 except Exception as exc:  # noqa: BLE001 - startup diagnostics
+    traceback.print_exc()
     print(f"[entrypoint] diagnostics failed: {exc}", flush=True)
     sys.exit(1)
 
