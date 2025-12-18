@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from logging.config import fileConfig
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import context
@@ -13,7 +14,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from app.db import Base  # type: ignore  # noqa: E402
+from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
 
 logger = logging.getLogger(__name__)
@@ -61,9 +62,16 @@ def run_migrations_offline() -> None:
     raise RuntimeError(msg)
 
 
+def _make_engine(url: str):
+    engine_kwargs: dict[str, Any] = {"poolclass": pool.NullPool}
+    if url.startswith("postgresql"):
+        engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA}"}
+    return sa.create_engine(url, **engine_kwargs)
+
+
 def run_migrations_online() -> None:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
-    connectable = sa.create_engine(db_url, poolclass=pool.NullPool)
+    connectable = _make_engine(db_url)
 
     with connectable.connect() as connection:
         context.configure(
@@ -74,7 +82,7 @@ def run_migrations_online() -> None:
             compare_server_default=True,
             transactional_ddl=True,
             version_table="alembic_version",
-            version_table_schema="public",
+            version_table_schema=DB_SCHEMA,
         )
 
         with context.begin_transaction():

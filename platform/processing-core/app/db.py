@@ -12,6 +12,8 @@ from neft_shared.settings import get_settings
 
 settings = get_settings()
 
+DB_SCHEMA = os.getenv("DB_SCHEMA", "public")
+
 
 def _ensure_psycopg_driver(url: str) -> str:
     """
@@ -51,6 +53,9 @@ engine_kwargs = dict(
     future=True,
     pool_pre_ping=True,
 )
+
+if DATABASE_URL.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {"options": f"-csearch_path={DB_SCHEMA}"}
 
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs.update(

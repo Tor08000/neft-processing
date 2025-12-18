@@ -82,7 +82,9 @@ def test_account_crud(accounts_repo: AccountsRepository):
     assert closed.status == AccountStatus.CLOSED
 
 
-def test_posting_and_balances(accounts_repo: AccountsRepository, ledger_repo: LedgerRepository):
+def test_posting_and_balances(
+    accounts_repo: AccountsRepository, ledger_repo: LedgerRepository, session
+):
     account = accounts_repo.get_or_create_account(
         client_id="client-2",
         currency="USD",
