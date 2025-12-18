@@ -24,7 +24,7 @@ branch_labels = None
 depends_on = None
 
 
-SCHEMA = os.getenv("DB_SCHEMA", DB_SCHEMA)
+SCHEMA = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or DB_SCHEMA or "public"
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
 ACCOUNT_STATUS_VALUES = ["ACTIVE", "FROZEN", "CLOSED"]
@@ -54,6 +54,8 @@ def upgrade() -> None:
     bind = op.get_bind()
     _ensure_schema(bind)
 
+    print(f"[20251112_0001_core] Using schema: {SCHEMA}")
+
     ensure_pg_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
     ensure_pg_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
     ensure_pg_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
@@ -82,10 +84,10 @@ def upgrade() -> None:
         ),
         sa.Column("operation_type", sa.String(length=32), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("merchant_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.merchants.id"), nullable=False),
-        sa.Column("terminal_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.terminals.id"), nullable=False),
-        sa.Column("client_id", uuid_type, sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
-        sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=False),
+        sa.Column("merchant_id", sa.String(length=64), nullable=False),
+        sa.Column("terminal_id", sa.String(length=64), nullable=False),
+        sa.Column("client_id", uuid_type, nullable=False),
+        sa.Column("card_id", sa.String(length=64), nullable=False),
         sa.Column("accounts", json_type, nullable=True),
         sa.Column("posting_result", json_type, nullable=True),
         sa.Column("amount", sa.BigInteger(), nullable=False),
@@ -108,11 +110,22 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
+    if bind.dialect.name == "postgresql":
+        result = bind.execute(
+            sa.text("select to_regclass(:regclass)"), {"regclass": f"{SCHEMA}.operations"}
+        ).scalar()
+        if result is None:
+            raise RuntimeError("operations table was not created during bootstrap")
+    else:
+        inspector = sa.inspect(bind)
+        if not inspector.has_table("operations", schema=SCHEMA):
+            raise RuntimeError("operations table was not created during bootstrap")
+
     op.create_table(
         "accounts",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
-        sa.Column("client_id", uuid_type, sa.ForeignKey(f"{SCHEMA}.clients.id"), nullable=False),
-        sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=True),
+        sa.Column("client_id", uuid_type, nullable=False),
+        sa.Column("card_id", sa.String(length=64), nullable=True),
         sa.Column("tariff_id", sa.String(length=64), nullable=True),
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("type", account_type_enum, nullable=False),
