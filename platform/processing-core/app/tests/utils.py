@@ -11,12 +11,12 @@ from app.db import engine as app_engine
 def get_database_url() -> str:
     """Resolve a usable database URL for tests.
 
-    Prefers environment variables (DATABASE_URL / NEFT_DB_URL) and falls back to
-    the application engine URL, which defaults to the docker-compose Postgres
+    Prefers the DATABASE_URL environment variable and falls back to the
+    application engine URL, which defaults to the docker-compose Postgres
     service when unset.
     """
 
-    env_url: Optional[str] = os.getenv("DATABASE_URL") or os.getenv("NEFT_DB_URL")
+    env_url: Optional[str] = os.getenv("DATABASE_URL")
     if env_url:
         return env_url
 

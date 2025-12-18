@@ -9,7 +9,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
-from app.db import DATABASE_URL, DB_SCHEMA
+from app.db import DB_SCHEMA
 
 
 def _make_alembic_config(db_url: str) -> Config:
@@ -27,16 +27,22 @@ def _create_engine_for_schema(db_url: str):
 
 
 def test_core_tables_exist_after_migrations() -> None:
-    db_url = os.getenv("DATABASE_URL") or os.getenv("NEFT_DB_URL") or DATABASE_URL
+    db_url = os.getenv("DATABASE_URL")
+
+    if not db_url:
+        pytest.skip("DATABASE_URL is required for schema smoke test")
 
     if not db_url.startswith("postgresql"):
-        pytest.skip("schema smoke test requires Postgres database")
+        pytest.fail("schema smoke test requires PostgreSQL DATABASE_URL")
 
     alembic_cfg = _make_alembic_config(db_url)
     command.upgrade(alembic_cfg, "head")
 
     engine = _create_engine_for_schema(db_url)
     with engine.connect() as conn:
+        db_name, current_schema = conn.execute(
+            text("SELECT current_database(), current_schema()"),
+        ).one()
         result = conn.execute(
             text(
                 """
@@ -48,5 +54,9 @@ def test_core_tables_exist_after_migrations() -> None:
             {"schema": DB_SCHEMA},
         )
         existing_tables = {row[0] for row in result}
+        missing = set(REQUIRED_CORE_TABLES) - existing_tables
 
-    assert set(REQUIRED_CORE_TABLES).issubset(existing_tables)
+    assert not missing, (
+        "missing required tables after migrations: "
+        f"{sorted(missing)} in database '{db_name}' schema '{DB_SCHEMA}', current schema '{current_schema}'"
+    )

@@ -7,6 +7,22 @@ echo "[entrypoint] core-api starting"
 # propagated for some reason (e.g. overridden by docker-compose env).
 export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 
+python - <<'PY'
+import os
+from sqlalchemy.engine.url import make_url
+
+db_url = os.getenv("DATABASE_URL")
+schema = os.getenv("DB_SCHEMA", "public")
+
+if not db_url:
+    print("[entrypoint] DATABASE_URL is not set", flush=True)
+else:
+    masked = make_url(db_url).render_as_string(hide_password=True)
+    search_path = f"{schema},public" if schema else "public"
+    print(f"[entrypoint] DATABASE_URL={masked}", flush=True)
+    print(f"[entrypoint] DB_SCHEMA={schema} search_path={search_path}", flush=True)
+PY
+
 wait_for_postgres() {
     python - <<'PY'
 import os

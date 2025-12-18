@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Iterable, Sequence
 
 import sqlalchemy as sa
@@ -11,6 +12,8 @@ from sqlalchemy.engine import Connection
 logger = logging.getLogger(__name__)
 
 MIN_VERSION_LENGTH = 128
+
+DB_SCHEMA = os.getenv("DB_SCHEMA", "public")
 
 
 # Dialect helpers
@@ -25,7 +28,7 @@ def is_sqlite(bind: Connection) -> bool:
 
 # Existence checks
 
-def table_exists(bind: Connection, table_name: str, schema: str = "public") -> bool:
+def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> bool:
     if is_sqlite(bind):
         result = bind.exec_driver_sql(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
@@ -44,7 +47,7 @@ def table_exists(bind: Connection, table_name: str, schema: str = "public") -> b
 
 
 def column_exists(
-    bind: Connection, table_name: str, column_name: str, schema: str = "public"
+    bind: Connection, table_name: str, column_name: str, schema: str = DB_SCHEMA
 ) -> bool:
     if is_sqlite(bind):
         rows = bind.exec_driver_sql(f"PRAGMA table_info('{table_name}')").all()
@@ -60,7 +63,7 @@ def column_exists(
     return result is not None
 
 
-def index_exists(bind: Connection, index_name: str, schema: str = "public") -> bool:
+def index_exists(bind: Connection, index_name: str, schema: str = DB_SCHEMA) -> bool:
     if is_sqlite(bind):
         result = bind.exec_driver_sql(
             "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (index_name,)
@@ -84,7 +87,7 @@ def index_exists(bind: Connection, index_name: str, schema: str = "public") -> b
 
 
 def constraint_exists(
-    bind: Connection, table_name: str, constraint_name: str, schema: str = "public"
+    bind: Connection, table_name: str, constraint_name: str, schema: str = DB_SCHEMA
 ) -> bool:
     if is_sqlite(bind):
         result = bind.exec_driver_sql(
@@ -103,7 +106,7 @@ def constraint_exists(
     return result is not None
 
 
-def enum_exists(bind: Connection, enum_name: str, schema: str = "public") -> bool:
+def enum_exists(bind: Connection, enum_name: str, schema: str = DB_SCHEMA) -> bool:
     if not is_postgres(bind):
         return False
 
@@ -120,7 +123,7 @@ def enum_exists(bind: Connection, enum_name: str, schema: str = "public") -> boo
 
 # Enum helpers
 
-def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = "public") -> None:
+def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA) -> None:
     if not is_postgres(bind):
         return
 
@@ -140,19 +143,19 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
     )
 
 
-def pg_ensure_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = "public") -> None:
+def pg_ensure_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA) -> None:
     """Alias for ensure_pg_enum for backward compatibility."""
 
     ensure_pg_enum(bind, enum_name, values=values, schema=schema)
 
 
-def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[str], schema: str = "public") -> None:
+def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[str], schema: str = DB_SCHEMA) -> None:
     """Maintain compatibility with older migrations expecting ensure_enum_type_exists."""
 
     ensure_pg_enum(bind, type_name, values=values, schema=schema)
 
 
-def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = "public"):
+def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA):
     if is_postgres(bind):
         return postgresql.ENUM(*values, name=enum_name, schema=schema, create_type=False)
     return sa.Enum(*values, name=enum_name, native_enum=False)
@@ -161,7 +164,7 @@ def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: s
 # Safe creation helpers
 
 def create_table_if_not_exists(
-    bind: Connection, table_name: str, *columns, schema: str = "public", **kwargs
+    bind: Connection, table_name: str, *columns, schema: str = DB_SCHEMA, **kwargs
 ) -> None:
     if table_exists(bind, table_name, schema=schema):
         logger.info("Table %s.%s already exists, skipping", schema, table_name)
@@ -170,7 +173,7 @@ def create_table_if_not_exists(
     op.create_table(table_name, *columns, schema=schema, **kwargs)
 
 
-def drop_table_if_exists(bind: Connection, table_name: str, schema: str = "public") -> None:
+def drop_table_if_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> None:
     if not table_exists(bind, table_name, schema=schema):
         return
 
@@ -183,7 +186,7 @@ def create_index_if_not_exists(
     table_name: str,
     columns: Sequence[str] | Iterable[str],
     *,
-    schema: str = "public",
+    schema: str = DB_SCHEMA,
     **kwargs,
 ) -> None:
     if index_exists(bind, index_name, schema=schema):
@@ -208,7 +211,7 @@ def create_index_if_not_exists(
         bind.exec_driver_sql(sql)
 
 
-def drop_index_if_exists(bind: Connection, index_name: str, schema: str = "public") -> None:
+def drop_index_if_exists(bind: Connection, index_name: str, schema: str = DB_SCHEMA) -> None:
     if not index_exists(bind, index_name, schema=schema):
         return
 
@@ -216,7 +219,7 @@ def drop_index_if_exists(bind: Connection, index_name: str, schema: str = "publi
 
 
 def drop_mutable_predicate_or_expression_indexes(
-    bind: Connection, table_name: str, schema: str = "public"
+    bind: Connection, table_name: str, schema: str = DB_SCHEMA
 ) -> list[str]:
     if not is_postgres(bind):
         return []

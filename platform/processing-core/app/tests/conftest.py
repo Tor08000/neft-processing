@@ -29,8 +29,7 @@ def _prepend_path(path: Path) -> None:
 for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
     _prepend_path(path)
 
-# Use in-memory SQLite for tests to avoid coupling to external Postgres.
-os.environ.setdefault("NEFT_DB_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
 
 try:
     from app.api.dependencies.admin import require_admin_user

@@ -3,7 +3,12 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["NEFT_DB_URL"] = "sqlite+pysqlite:///:memory:"
+TEST_DB_URL = os.getenv("DATABASE_URL")
+
+if TEST_DB_URL and not TEST_DB_URL.startswith("sqlite"):
+    pytest.skip("admin risk rules API tests expect isolated SQLite database", allow_module_level=True)
+
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
 from app.db import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
