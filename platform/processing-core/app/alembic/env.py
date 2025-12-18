@@ -69,12 +69,19 @@ def run_migrations_offline() -> None:
 
 
 def _log_transaction_event(event_name: str, connection: sa.engine.Connection) -> None:
-    EVENT_LOGGER.info("DB_DEBUG_SQL: %s connection=%s", event_name.upper(), hex(id(connection)))
+    EVENT_LOGGER.info("Migration connection event: %s connection=%s", event_name.upper(), hex(id(connection)))
 
 
 def _attach_transaction_logging(connectable: sa.engine.Engine) -> None:
-    for name in ("begin", "commit", "rollback"):
+    for name in ("begin", "commit", "rollback", "close"):
         sa.event.listen(connectable, name, lambda conn, *_args, _name=name: _log_transaction_event(_name, conn))
+
+
+def _configure_connection(connection: sa.engine.Connection, target_schema: str) -> None:
+    target_schema_escaped = target_schema.replace('"', '""')
+    search_path_sql = f"SET search_path TO \"{target_schema_escaped}\", public"
+    connection.exec_driver_sql(search_path_sql)
+    logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
 
 
 def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> None:
@@ -131,8 +138,13 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    if DEBUG_SQL:
-        _attach_transaction_logging(connectable)
+    _attach_transaction_logging(connectable)
+
+    target_schema = DB_SCHEMA or "public"
+
+    cmd_opts = getattr(config, "cmd_opts", None)
+    invoked_command = getattr(cmd_opts, "cmd", None)
+    should_verify = not context.is_offline_mode() and invoked_command == "upgrade"
 
     with connectable.connect() as connection:
         if connection.dialect.name != "postgresql":
@@ -140,13 +152,7 @@ def run_migrations_online() -> None:
                 f"Alembic migrations require PostgreSQL engine, got '{connection.dialect.name}'",
             )
 
-        target_schema = DB_SCHEMA or "public"
-        target_schema_escaped = target_schema.replace('"', '""')
-
-        search_path_sql = f"SET search_path TO \"{target_schema_escaped}\", public"
-        connection.exec_driver_sql(search_path_sql)
-        logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
-
+        _configure_connection(connection, target_schema)
         _log_schema_inventory(connection, label="pre-upgrade")
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
@@ -164,16 +170,15 @@ def run_migrations_online() -> None:
             as_sql=False,
         )
 
-        cmd_opts = getattr(config, "cmd_opts", None)
-        invoked_command = getattr(cmd_opts, "cmd", None)
-        should_verify = not context.is_offline_mode() and invoked_command == "upgrade"
-
         with context.begin_transaction():
             context.run_migrations()
 
-        if should_verify:
-            verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
-            if str(verify_flag).lower() == "true":
+    if should_verify:
+        verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
+        if str(verify_flag).lower() == "true":
+            with connectable.connect() as connection:
+                _configure_connection(connection, target_schema)
+
                 version_reg = to_regclass(connection, target_schema, "alembic_version")
                 operations_reg = to_regclass(connection, target_schema, "operations")
 
