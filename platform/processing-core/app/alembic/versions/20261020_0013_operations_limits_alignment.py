@@ -169,23 +169,53 @@ def _drop_fk_constraints(bind, fk_constraints: list[tuple[str, dict]]) -> None:
 
 
 def _recreate_fk_constraints(
+    bind,
     fk_constraints: list[tuple[str, dict]],
     *,
-    refer_to_id: bool,
+    prefer_uuid_references: bool = True,
 ) -> None:
+    def _get_child_column_data_type(table_name: str, column_name: str) -> str | None:
+        return bind.execute(
+            sa.text(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = :table_name
+                  AND column_name = :column_name
+                LIMIT 1
+                """
+            ),
+            {
+                "schema": SCHEMA,
+                "table_name": table_name,
+                "column_name": column_name,
+            },
+        ).scalar_one_or_none()
+
+    def _resolve_referent_column(table_name: str, column_name: str) -> str:
+        if not prefer_uuid_references:
+            return "operation_id"
+
+        data_type = (_get_child_column_data_type(table_name, column_name) or "").lower()
+        if data_type == "uuid":
+            return "id"
+
+        return "operation_id"
+
     for table_name, fk in fk_constraints:
         fk_name = fk.get("name") or f"{table_name}_operation_id_fkey"
         ondelete = (fk.get("options") or {}).get("ondelete")
-        if refer_to_id:
-            referent_columns = ["id"] if table_name == "ledger_entries" else fk.get("referred_columns") or ["operation_id"]
-        else:
-            referent_columns = ["operation_id"]
+        constrained_columns = fk.get("constrained_columns") or ["operation_id"]
+        referent_columns = [
+            _resolve_referent_column(table_name, constrained_columns[0])
+        ]
 
         op.create_foreign_key(
             fk_name,
             source_table=table_name,
             referent_table="operations",
-            local_cols=fk.get("constrained_columns") or ["operation_id"],
+            local_cols=constrained_columns,
             remote_cols=referent_columns,
             source_schema=SCHEMA,
             referent_schema=SCHEMA,
@@ -483,7 +513,7 @@ def upgrade() -> None:
                 schema=SCHEMA,
             )
 
-        _recreate_fk_constraints(operation_fks, refer_to_id=True)
+        _recreate_fk_constraints(bind, operation_fks)
 
     _create_index_if_not_exists("ix_operations_status", "operations", ["status"])
     _create_index_if_not_exists(
@@ -572,7 +602,7 @@ def downgrade() -> None:
                 schema=SCHEMA,
             )
 
-        _recreate_fk_constraints(operation_fks, refer_to_id=False)
+        _recreate_fk_constraints(bind, operation_fks, prefer_uuid_references=False)
 
         _drop_column_if_exists(bind, "operations", "id")
         _drop_column_if_exists(bind, "operations", "product_id")
