@@ -12,6 +12,7 @@ class DummyConnection:
         self.ensure_called = False
         self.begin_called = False
         self.executed_sql: list[str] = []
+        self.dialect = SimpleNamespace(name="postgresql")
 
     def __enter__(self):
         return self
@@ -29,7 +30,7 @@ class DummyConnection:
 
 class DummyResult:
     def first(self):
-        return ("neft", "user", "127.0.0.1", 5432)
+        return ("neft", "public", "127.0.0.1", 5432)
 
 
 class DummyTransaction:
@@ -138,6 +139,10 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     assert configure_calls.get("as_sql") is False
     assert configure_calls.get("version_table") == "alembic_version"
     assert configure_calls.get("version_table_schema") == "public"
+    assert any("Connected to database=neft schema=public" in message for message in caplog.messages)
+    assert any("Set search_path for migrations to" in message for message in caplog.messages)
+    assert dummy_connection.executed_sql[0].startswith("SELECT current_database()")
+    assert dummy_connection.executed_sql[1].startswith("SET search_path TO")
     assert dummy_connection.ensure_called is True
     assert dummy_connection.begin_called is True
     assert migration_context.ensure_called is True
@@ -192,7 +197,6 @@ def test_env_requires_database_url(monkeypatch):
     dummy_config = DummyConfig()
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("NEFT_DB_URL", raising=False)
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
 

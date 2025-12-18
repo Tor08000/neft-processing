@@ -28,14 +28,12 @@ if config.config_file_name is not None:
 
 
 def resolve_db_url() -> str:
-    """Получить URL подключения к БД из окружения или alembic.ini."""
+    """Получить URL подключения к БД только из переменной окружения."""
 
-    env_url = os.getenv("DATABASE_URL") or os.getenv("NEFT_DB_URL")
-    ini_url = config.get_main_option("sqlalchemy.url")
-    db_url = env_url or ini_url
-
-    if not db_url:
-        raise RuntimeError("DATABASE_URL not set and sqlalchemy.url missing")
+    try:
+        db_url = os.environ["DATABASE_URL"]
+    except KeyError as exc:  # noqa: PERF203 - explicit error preferred for startup clarity
+        raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
     config.set_main_option("sqlalchemy.url", db_url)
 
@@ -73,6 +71,23 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        if connection.dialect.name != "postgresql":
+            raise RuntimeError(
+                f"Alembic migrations require PostgreSQL engine, got '{connection.dialect.name}'",
+            )
+
+        current_db, current_schema, server_ip, server_port = connection.exec_driver_sql(
+            "SELECT current_database(), current_schema(), inet_server_addr(), inet_server_port();",
+        ).first()
+        logger.info(
+            "Connected to database=%s schema=%s at %s:%s", current_db, current_schema, server_ip, server_port
+        )
+
+        if DB_SCHEMA:
+            search_path_sql = f"SET search_path TO {DB_SCHEMA}, public"
+            connection.exec_driver_sql(search_path_sql)
+            logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
+
         ensure_alembic_version_length(connection)
 
         migration_ctx = migration.MigrationContext.configure(
