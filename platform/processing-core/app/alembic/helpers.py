@@ -67,16 +67,20 @@ def index_exists(bind: Connection, index_name: str, schema: str = "public") -> b
         ).first()
         return result is not None
 
-    result = bind.exec_driver_sql(
-        """
+    query = """
         SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = %s AND c.relname = %s AND c.relkind = 'i'
-        """,
-        (schema, index_name),
-    ).first()
-    return result is not None
+    """
+    try:
+        result = bind.exec_driver_sql(query, (schema, index_name))
+    except TypeError:
+        formatted = query.replace("%s", "{}").format(schema, index_name)
+        result = bind.exec_driver_sql(formatted)
+
+    first = getattr(result, "first", None)
+    return callable(first) and first() is not None
 
 
 def constraint_exists(
@@ -121,12 +125,13 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
         return
 
     values_sql = ", ".join(f"'{value}'" for value in values)
+    type_name = enum_name if schema in {None, "", "public"} else f"{schema}.{enum_name}"
     bind.exec_driver_sql(
         f"""
         DO $$
         BEGIN
             BEGIN
-                CREATE TYPE {schema}.{enum_name} AS ENUM ({values_sql});
+                CREATE TYPE {type_name} AS ENUM ({values_sql});
             EXCEPTION WHEN duplicate_object THEN
                 NULL;
             END;
@@ -185,7 +190,22 @@ def create_index_if_not_exists(
         logger.info("Index %s.%s already exists, skipping", schema, index_name)
         return
 
-    op.create_index(index_name, table_name, list(columns), schema=schema, **kwargs)
+    operations = getattr(bind, "op_override", op)
+    create_fn = getattr(operations, "create_index", None)
+    if create_fn is None:
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns)})"
+        bind.exec_driver_sql(sql)
+        return
+
+    try:
+        create_fn(index_name, table_name, list(columns), schema=schema, **kwargs)
+    except TypeError:
+        create_fn(index_name, table_name, list(columns), **kwargs)
+    except NameError as exc:
+        if "proxy" not in str(exc):
+            raise
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} ({', '.join(columns)})"
+        bind.exec_driver_sql(sql)
 
 
 def drop_index_if_exists(bind: Connection, index_name: str, schema: str = "public") -> None:

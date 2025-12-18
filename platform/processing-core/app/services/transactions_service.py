@@ -548,7 +548,7 @@ def authorize_operation(
         posting_meta = _perform_posting(db, operation=operation)
         operation.accounts = posting_meta.get("accounts")
         operation.posting_result = posting_meta
-        operation.status = OperationStatus.AUTHORIZED
+        operation.status = OperationStatus.POSTED
         db.add(operation)
         db.commit()
         db.refresh(operation)

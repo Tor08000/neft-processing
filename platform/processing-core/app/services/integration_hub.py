@@ -78,10 +78,16 @@ def _operation_to_response(operation: Operation) -> IntakeResponse:
 
     limit_code = operation.response_code if operation.response_code and "LIMIT" in operation.response_code else None
 
+    posting_status = operation.status.value
+    if operation.posting_result:
+        posting_status = "POSTED"
+    elif operation.response_code == "POSTING_ERROR":
+        posting_status = "ERROR"
+
     return IntakeResponse(
         approved=operation.status in approved_statuses,
         operation_id=str(operation.operation_id),
-        posting_status=operation.status.value,
+        posting_status=posting_status,
         risk_code=risk_code,
         limit_code=limit_code,
         response_code=operation.response_code,
