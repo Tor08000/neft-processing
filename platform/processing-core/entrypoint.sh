@@ -68,7 +68,7 @@ while time.time() < deadline:
         last_error = exc
         time.sleep(interval)
 
-print(f\"[entrypoint] postgres is not ready after {timeout}s: {last_error}\", file=sys.stderr, flush=True)
+print(f"[entrypoint] postgres is not ready after {timeout}s: {last_error}", file=sys.stderr, flush=True)
 sys.exit(1)
 PY
 }
