@@ -65,6 +65,9 @@ class DummyResult:
     def __iter__(self):
         return iter([])
 
+    def scalars(self):
+        return self
+
     def all(self):
         return []
 

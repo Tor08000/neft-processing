@@ -13,7 +13,7 @@ from neft_shared.settings import get_settings
 
 settings = get_settings()
 
-DB_SCHEMA = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+DB_SCHEMA = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 
 
 def _ensure_psycopg_driver(url: str) -> str:

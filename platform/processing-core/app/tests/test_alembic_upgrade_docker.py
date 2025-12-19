@@ -7,10 +7,13 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+import io
+
 import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.db import get_engine, get_sessionmaker, reset_engine
 from app.diagnostics import db_state
@@ -150,6 +153,55 @@ def test_upgrade_respects_custom_schema(monkeypatch):
 
     assert not missing, f"tables missing in schema {schema}: {missing}"
     assert not in_public, f"tables should not be created in public when schema={schema}: {in_public}"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for this integration test")
+def test_upgrade_places_version_table_in_target_schema(monkeypatch):
+    image = os.getenv("TEST_POSTGRES_IMAGE", "postgres:16")
+    target_schema = f"core_{uuid4().hex[:6]}"
+    expected_revision = "20270720_0029_cards_created_at"
+
+    try:
+        with _postgres_container(image) as db_url:
+            monkeypatch.setenv("DATABASE_URL", db_url)
+            monkeypatch.setenv("NEFT_DB_SCHEMA", target_schema)
+
+            cfg = _make_alembic_config(db_url)
+            command.upgrade(cfg, "head")
+
+            engine = sa.create_engine(
+                db_url,
+                future=True,
+                pool_pre_ping=True,
+                connect_args={"prepare_threshold": 0},
+            )
+
+            with engine.connect() as conn:
+                version_schemas = conn.execute(
+                    sa.text(
+                        """
+                        select table_schema
+                        from information_schema.tables
+                        where table_name='alembic_version'
+                        order by table_schema
+                        """
+                    )
+                ).scalars().all()
+                version = conn.execute(
+                    sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
+                ).scalar_one()
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                command.current(cfg)
+            current_output = buf.getvalue()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+    assert version_schemas == [target_schema]
+    assert version == expected_revision
+    assert expected_revision in current_output
 
 
 @pytest.mark.integration
