@@ -348,6 +348,7 @@ def _regclass(conn, name: str) -> str | None:
 
 heads = _extract_revisions(heads_output)
 current = _extract_revisions(current_output)
+allow_stamp = os.getenv("NEFT_ALLOW_STAMP") == "1"
 
 script_dir = ScriptDirectory.from_config(Config(alembic_config_path))
 script_heads = script_dir.get_heads()
@@ -438,7 +439,7 @@ schema_ready_for_stamp = cards_created and all(table_state.values())
 
 if issues:
     _log_state(prefix="mismatch")
-    if schema_ready_for_stamp:
+    if schema_ready_for_stamp and allow_stamp:
         print(
             "[entrypoint] detected version mismatch while schema is up-to-date; applying alembic stamp head",
             file=sys.stderr,
@@ -465,6 +466,12 @@ if issues:
             flush=True,
         )
         sys.exit(0)
+    if schema_ready_for_stamp and not allow_stamp:
+        print(
+            "[entrypoint] alembic_version mismatch detected but NEFT_ALLOW_STAMP is not enabled; "
+            "skip automatic stamp",
+            file=sys.stderr,
+        )
 
     print("[entrypoint] migration verification failed:", *issues, sep="\n- ", file=sys.stderr)
     sys.exit(1)
