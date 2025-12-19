@@ -276,3 +276,56 @@ def restore_context():
         context.script = None
     else:
         context.script = original_script
+
+
+@pytest.mark.usefixtures("clear_env_module")
+@pytest.mark.usefixtures("restore_context")
+def test_env_uses_execute_for_parameterized_sql(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:supersecret@db:5432/neft")
+    monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
+    monkeypatch.setattr(context, "config", DummyConfig(), raising=False)
+    monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+
+    importlib.import_module("app.alembic.env")
+    from app.alembic import env  # noqa: WPS433
+
+    class GuardResult:
+        def __init__(self, statement: str):
+            self.statement = statement
+
+        def scalar_one_or_none(self):
+            if "information_schema.columns" in self.statement:
+                return 1
+            if "information_schema.tables" in self.statement:
+                return 3
+            return None
+
+        def scalar_one(self):
+            if "information_schema.tables" in self.statement:
+                return 3
+            raise AssertionError(f"Unexpected scalar_one call for {self.statement}")
+
+    class GuardConnection(DummyConnection):
+        def __init__(self):
+            super().__init__()
+            self.execute_calls: list[tuple[str, dict | None]] = []
+
+        def exec_driver_sql(self, statement, params=None):  # noqa: D401,ARG002
+            if params and ":" in statement:
+                raise AssertionError("exec_driver_sql should not receive params for bind statements")
+            return super().exec_driver_sql(statement, params=params)
+
+        def execute(self, statement, params=None):  # noqa: D401,ARG002
+            sql = str(statement)
+            self.execute_calls.append((sql, params))
+            return GuardResult(sql)
+
+    connection = GuardConnection()
+
+    has_cards_created_at = env._has_cards_created_at(connection, "public")  # noqa: SLF001
+    table_count = env._schema_table_count(connection, "public")  # noqa: SLF001
+
+    assert has_cards_created_at is True
+    assert table_count == 3
+    assert connection.executed_sql == []
+    assert len(connection.execute_calls) == 2

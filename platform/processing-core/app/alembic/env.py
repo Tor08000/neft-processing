@@ -227,19 +227,25 @@ def _log_missing_version_table_diagnostics(connection: sa.engine.Connection, tar
 
 
 def _has_cards_created_at(connection: sa.engine.Connection, target_schema: str) -> bool:
-    return (
-        connection.exec_driver_sql(
+    return connection.execute(
+        sa.text(
             """
             select 1
             from information_schema.columns
             where table_schema=:schema
               and table_name='cards'
               and column_name='created_at'
-            """,
-            {"schema": target_schema},
-        ).scalar_one_or_none()
-        is not None
-    )
+            """
+        ),
+        {"schema": target_schema},
+    ).scalar_one_or_none() is not None
+
+
+def _schema_table_count(connection: sa.engine.Connection, target_schema: str) -> int:
+    return connection.execute(
+        sa.text("select count(*) from information_schema.tables where table_schema=:schema"),
+        {"schema": target_schema},
+    ).scalar_one()
 
 
 def _maybe_stamp_head(
@@ -351,10 +357,7 @@ def run_migrations_online() -> sa.engine.Engine:
 
         operations_reg = to_regclass(connection, target_schema, "operations")
         version_reg = to_regclass(connection, target_schema, "alembic_version")
-        table_count = connection.exec_driver_sql(
-            "select count(*) from information_schema.tables where table_schema=:schema",
-            {"schema": target_schema},
-        ).scalar_one()
+        table_count = _schema_table_count(connection, target_schema)
         logger.info(
             "Post-migrations table count in schema '%s': %s", target_schema, table_count
         )
