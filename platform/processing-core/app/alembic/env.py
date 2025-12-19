@@ -148,6 +148,22 @@ def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> No
     logger.info("[%s] user tables (%d): %s", label, len(tables), tables)
 
 
+def _log_version_table_state(connection: sa.engine.Connection, target_schema: str, *, label: str) -> None:
+    db_name, db_user = connection.exec_driver_sql("SELECT current_database(), current_user").one()
+    search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
+    version_reg = to_regclass(connection, target_schema, "alembic_version")
+    operations_reg = to_regclass(connection, target_schema, "operations")
+    logger.info(
+        "[%s] version tables probe: db=%s user=%s search_path=%s alembic_version=%s operations=%s",
+        label,
+        db_name,
+        db_user,
+        search_path,
+        version_reg,
+        operations_reg,
+    )
+
+
 def run_migrations_online() -> sa.engine.Engine:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
@@ -176,11 +192,19 @@ def run_migrations_online() -> sa.engine.Engine:
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
         ensure_alembic_version_length(connection)
+        inspector = sa.inspect(connection)
+        tables = inspector.get_table_names(schema=target_schema)
+        if "alembic_version" not in tables:
+            raise RuntimeError(
+                f"alembic_version missing in target schema '{target_schema}' after setup (tables={tables})"
+            )
+        _log_version_table_state(connection, target_schema, label="pre-migrations")
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_schemas=False,
+            as_sql=False,
+            include_schemas=True,
             compare_type=True,
             compare_server_default=True,
             version_table="alembic_version",
@@ -190,56 +214,55 @@ def run_migrations_online() -> sa.engine.Engine:
         with context.begin_transaction():
             context.run_migrations()
 
-    if should_verify:
-        verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
-        if str(verify_flag).lower() == "true":
-            with connectable.connect() as connection:
-                _configure_connection(connection, target_schema)
-                _log_connection_identity(connection, label="post-upgrade")
+    verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
+    with connectable.connect() as connection:
+        _configure_connection(connection, target_schema)
+        _log_version_table_state(connection, target_schema, label="post-migrations")
 
-                version_reg = to_regclass(connection, target_schema, "alembic_version")
-                operations_reg = to_regclass(connection, target_schema, "operations")
+        if should_verify and str(verify_flag).lower() == "true":
+            _log_connection_identity(connection, label="post-upgrade")
 
-                current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
+            version_reg = to_regclass(connection, target_schema, "alembic_version")
+            operations_reg = to_regclass(connection, target_schema, "operations")
 
-                if version_reg is None:
-                    raise RuntimeError(
-                        "Post-upgrade verification failed: alembic_version missing in "
-                        f"schema '{target_schema}' (search_path={current_search_path})"
-                    )
-                if operations_reg is None:
-                    raise RuntimeError(
-                        "Post-upgrade verification failed: operations missing in "
-                        f"schema '{target_schema}' (search_path={current_search_path})"
-                    )
+            current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
-                logger.info(
-                    "Post-upgrade regclass status: alembic_version=%s operations=%s",
-                    version_reg,
-                    operations_reg,
+            if version_reg is None:
+                raise RuntimeError(
+                    "Post-upgrade verification failed: alembic_version missing in "
+                    f"schema '{target_schema}' (search_path={current_search_path})"
+                )
+            if operations_reg is None:
+                raise RuntimeError(
+                    "Post-upgrade verification failed: operations missing in "
+                    f"schema '{target_schema}' (search_path={current_search_path})"
                 )
 
-                script_heads = context.script.get_heads()
-                version_rows = connection.exec_driver_sql(
-                    sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
-                ).fetchall()
-                version_values = [row[0] for row in version_rows]
+            logger.info(
+                "Post-upgrade regclass status: alembic_version=%s operations=%s",
+                version_reg,
+                operations_reg,
+            )
 
-                if not version_values:
-                    raise RuntimeError(
-                        "Post-upgrade verification failed: alembic_version exists but contains no rows"
-                    )
+            script_heads = context.script.get_heads()
+            version_rows = connection.exec_driver_sql(
+                sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
+            ).fetchall()
+            version_values = [row[0] for row in version_rows]
 
-                if set(version_values) != set(script_heads):
-                    raise RuntimeError(
-                        "Post-upgrade verification failed: alembic_version contents do not match script heads "
-                        f"(db={version_values}, heads={script_heads})"
-                    )
-
-                _log_schema_inventory(connection, label="post-upgrade")
-                log_connection_fingerprint(
-                    connection, schema=target_schema, label="post-upgrade", emitter=logger.info
+            if not version_values:
+                raise RuntimeError(
+                    "Post-upgrade verification failed: alembic_version exists but contains no rows"
                 )
+
+            if set(version_values) != set(script_heads):
+                raise RuntimeError(
+                    "Post-upgrade verification failed: alembic_version contents do not match script heads "
+                    f"(db={version_values}, heads={script_heads})"
+                )
+
+            _log_schema_inventory(connection, label="post-upgrade")
+            log_connection_fingerprint(connection, schema=target_schema, label="post-upgrade", emitter=logger.info)
 
     return connectable
 

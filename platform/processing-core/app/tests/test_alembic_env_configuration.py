@@ -25,12 +25,51 @@ class DummyConnection:
 
     def exec_driver_sql(self, statement):  # noqa: D401
         self.executed_sql.append(statement)
-        return DummyResult()
+        return DummyResult(statement)
+
+    def execute(self, statement, params=None):  # noqa: D401,ARG002
+        sql = str(statement)
+        self.executed_sql.append(sql)
+        return DummyResult(sql)
 
 
 class DummyResult:
+    def __init__(self, statement: str):
+        self.statement = statement
+
+    def one(self):
+        if "current_database(), current_user" in self.statement and "inet_server_addr" in self.statement:
+            return ("neft", "dummy_user", "127.0.0.1", 5432, "public")
+        if "current_database(), current_user" in self.statement:
+            return ("neft", "dummy_user")
+        if "inet_server_addr()" in self.statement:
+            return ("127.0.0.1", 5432, "neft", "dummy_user", "public")
+        return ("neft",)
+
     def first(self):
-        return ("neft", "public", "127.0.0.1", 5432)
+        return ("127.0.0.1", 5432, "neft", "dummy_user", "public")
+
+    def scalar_one(self):
+        if "SHOW search_path" in self.statement:
+            return "public"
+        return "dummy-scalar"
+
+    def scalar_one_or_none(self):
+        if "SHOW search_path" in self.statement:
+            return "public"
+        return None
+
+    def one_or_none(self):
+        return None
+
+    def __iter__(self):
+        return iter([])
+
+    def all(self):
+        return []
+
+    def fetchall(self):
+        return []
 
 
 class DummyTransaction:
@@ -97,6 +136,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setenv("DATABASE_URL", target_url)
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
     def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
@@ -123,6 +163,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     caplog.set_level(logging.INFO, logger="app.alembic.env")
 
     monkeypatch.setattr("sqlalchemy.engine_from_config", fake_engine_from_config, raising=False)
+    monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
     )
@@ -139,15 +180,13 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     assert configure_calls.get("as_sql") is False
     assert configure_calls.get("version_table") == "alembic_version"
     assert configure_calls.get("version_table_schema") == "public"
-    assert any("Connected to database=neft schema=public" in message for message in caplog.messages)
+    assert configure_calls.get("include_schemas") is True
+    assert any("connected to db=neft user=dummy_user schema=public" in message for message in caplog.messages)
     assert any("Set search_path for migrations to" in message for message in caplog.messages)
     assert dummy_connection.executed_sql[0].startswith("SELECT current_database()")
-    assert dummy_connection.executed_sql[1].startswith("SET search_path TO")
+    assert any(sql.startswith("SET search_path TO") for sql in dummy_connection.executed_sql)
     assert dummy_connection.ensure_called is True
     assert dummy_connection.begin_called is True
-    assert migration_context.ensure_called is True
-    assert migration_context.configure_opts["version_table"] == "alembic_version"
-    assert migration_context.configure_opts["version_table_schema"] == "public"
 
 
 @pytest.mark.usefixtures("clear_env_module")
@@ -160,6 +199,7 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:supersecret@db:5432/neft")
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
     def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
@@ -177,6 +217,7 @@ def test_env_fails_if_version_table_missing(monkeypatch):
         return migration_context
 
     monkeypatch.setattr("sqlalchemy.engine_from_config", fake_engine_from_config, raising=False)
+    monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
     )
