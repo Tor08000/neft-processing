@@ -24,7 +24,12 @@ from app.diagnostics.db_state import (  # noqa: E402
 )
 
 logger = logging.getLogger(__name__)
-DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1"
+x_arguments = context.get_x_argument(as_dictionary=True)
+DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1" or str(x_arguments.get("debug_sql", "")).lower() in {
+    "1",
+    "true",
+    "yes",
+}
 EVENT_LOGGER = logging.getLogger("app.alembic.sql")
 
 config = context.config
@@ -42,13 +47,13 @@ def resolve_db_url() -> str:
         raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
     config.set_main_option("sqlalchemy.url", db_url)
+    config.set_main_option("sqlalchemy.echo", "true")
 
     safe_url = make_url(db_url).render_as_string(hide_password=True)
     logger.info("Using database URL for alembic: %s", safe_url)
 
     if DEBUG_SQL:
-        logger.info("DB_DEBUG_SQL=1: enabling SQLAlchemy echo for migrations")
-        config.set_main_option("sqlalchemy.echo", "true")
+        logger.info("debug_sql flag enabled: forcing SQLAlchemy echo and detailed transaction logging")
 
     return db_url
 
@@ -306,6 +311,10 @@ def run_migrations_online() -> sa.engine.Engine:
 
     _attach_transaction_logging(connectable)
 
+    if DEBUG_SQL:
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+        EVENT_LOGGER.setLevel(logging.INFO)
+
     target_schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
     logger.info(
         "Alembic target schema resolved: %s (NEFT_DB_SCHEMA/DB_SCHEMA, default=public)", target_schema
@@ -328,9 +337,17 @@ def run_migrations_online() -> sa.engine.Engine:
         _log_schema_inventory(connection, label="pre-upgrade")
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
+        txid_before = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
+        logger.info("[tx-probe] before migrations: txid=%s pid=%s", *txid_before)
+
         ensure_alembic_version_length(connection)
 
         _log_version_table_state(connection, target_schema, label="pre-migrations")
+
+        print("[alembic] version_table_schema=", target_schema, flush=True)
+        print("[alembic] version_table=", "alembic_version", flush=True)
+        print("[alembic] include_schemas=", True, flush=True)
+        print("[alembic] dialect=", connection.dialect.name, flush=True)
 
         context.configure(
             connection=connection,
@@ -344,8 +361,49 @@ def run_migrations_online() -> sa.engine.Engine:
         )
 
         with context.begin_transaction():
+            txid_inside = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
+            logger.info("[tx-probe] inside transaction: txid=%s pid=%s", *txid_inside)
             context.run_migrations()
+            regclass_same_conn = connection.exec_driver_sql(
+                "select to_regclass(:operations), to_regclass(:version)",
+                {
+                    "operations": f"{target_schema}.operations",
+                    "version": f"{target_schema}.alembic_version",
+                },
+            ).one()
+            logger.info(
+                "[ddl-visibility] same connection regclass: operations=%s alembic_version=%s",
+                *regclass_same_conn,
+            )
         log_identity_snapshot(connection, schema=target_schema, label="alembic identity post")
+
+        txid_after = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
+        logger.info("[tx-probe] after migrations (post-commit): txid=%s pid=%s", *txid_after)
+        regclass_post_commit = connection.exec_driver_sql(
+            "select to_regclass(:operations), to_regclass(:version)",
+            {
+                "operations": f"{target_schema}.operations",
+                "version": f"{target_schema}.alembic_version",
+            },
+        ).one()
+        logger.info(
+            "[ddl-visibility] same connection after commit regclass: operations=%s alembic_version=%s",
+            *regclass_post_commit,
+        )
+
+    with connectable.connect() as visibility_connection:
+        _configure_connection(visibility_connection, target_schema)
+        regclass_new_conn = visibility_connection.exec_driver_sql(
+            "select to_regclass(:operations), to_regclass(:version)",
+            {
+                "operations": f"{target_schema}.operations",
+                "version": f"{target_schema}.alembic_version",
+            },
+        ).one()
+        logger.info(
+            "[ddl-visibility] new connection regclass: operations=%s alembic_version=%s",
+            *regclass_new_conn,
+        )
 
     verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
     with connectable.connect() as connection:
