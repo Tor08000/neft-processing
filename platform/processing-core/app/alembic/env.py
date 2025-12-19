@@ -9,10 +9,8 @@ from sqlalchemy import create_engine, text
 from app.db.schema import resolve_db_schema
 
 config = context.config
-
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
 
 try:
     DATABASE_URL = os.environ["DATABASE_URL"]
@@ -24,17 +22,9 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 
 def run_migrations_offline() -> None:
-    msg = "Offline migrations are not supported; provide DATABASE_URL for online run."
-    raise RuntimeError(msg)
-
-
-def _configure(connection) -> None:
-    connection.execute(text(schema_resolution.search_path_sql))
-    context.configure(
-        connection=connection,
-        version_table_schema=schema_resolution.schema,
-        include_schemas=True,
-    )
+    # В этом проекте оффлайн-миграции обычно не нужны.
+    # Лучше явно запретить, чтобы не было тихих сюрпризов.
+    raise RuntimeError("Offline migrations are not supported. Use online migrations.")
 
 
 def run_migrations_online() -> None:
@@ -48,9 +38,21 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
-        _configure(connection)
-        with context.begin_transaction():
-            context.run_migrations()
+        # ВАЖНО: не стартуем implicit transaction до Alembic.
+        # Иначе на выходе получишь ROLLBACK и “tables missing”.
+        connection = connection.execution_options(isolation_level="AUTOCOMMIT")
+
+        # search_path фиксируем явно
+        connection.execute(text(schema_resolution.search_path_sql))
+
+        context.configure(
+            connection=connection,
+            version_table_schema=schema_resolution.schema,
+            include_schemas=True,
+            transaction_per_migration=True,
+        )
+
+        context.run_migrations()
 
     engine.dispose()
 
