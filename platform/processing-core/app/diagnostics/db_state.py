@@ -6,6 +6,7 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Iterable
 
 from sqlalchemy import create_engine, event, text
@@ -34,6 +35,21 @@ class ConnectionInventory:
     def missing_tables(self, required: Iterable[str] = REQUIRED_CORE_TABLES) -> list[str]:
         existing = {table_name for table_schema, table_name in self.tables if table_schema == self.schema}
         return sorted(set(required) - existing)
+
+
+@dataclass(frozen=True)
+class IdentitySnapshot:
+    """Physical database identity fingerprint."""
+
+    server_addr: str | None
+    server_port: int | None
+    current_database: str | None
+    current_user: str | None
+    current_schema: str | None
+    search_path: str | None
+    backend_pid: int | None
+    database_oid: int | None
+    postmaster_start_time: datetime | None
 
 
 def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
@@ -153,6 +169,70 @@ def _safe_scalar(connection: Connection, sql: str, params: dict | None = None):
     return connection.execute(text(sql), params or {}).scalar_one_or_none()
 
 
+def collect_identity_snapshot(connection: Connection) -> IdentitySnapshot:
+    """Collect a deterministic fingerprint of the active connection."""
+
+    server_addr, server_port = connection.execute(
+        text("select inet_server_addr(), inet_server_port();")
+    ).one()
+    current_database, current_user = connection.execute(
+        text("select current_database(), current_user;")
+    ).one()
+    current_schema, search_path = connection.execute(
+        text("select current_schema, current_setting('search_path');")
+    ).one()
+    backend_pid = _safe_scalar(connection, "select pg_backend_pid();")
+    database_oid = _safe_scalar(
+        connection,
+        "select oid from pg_database where datname=current_database();",
+    )
+    postmaster_start_time = _safe_scalar(connection, "select pg_postmaster_start_time();")
+
+    return IdentitySnapshot(
+        server_addr=server_addr,
+        server_port=server_port,
+        current_database=current_database,
+        current_user=current_user,
+        current_schema=current_schema,
+        search_path=search_path,
+        backend_pid=backend_pid,
+        database_oid=database_oid,
+        postmaster_start_time=postmaster_start_time,
+    )
+
+
+def log_identity_snapshot(
+    connection: Connection,
+    *,
+    schema: str = DB_SCHEMA,
+    emitter: Callable[[str], None] | None = None,
+    label: str | None = None,
+) -> IdentitySnapshot:
+    """Collect and log a DB identity fingerprint."""
+
+    snapshot = collect_identity_snapshot(connection)
+    prefix = f"[{label or 'db-identity'}]"
+    _emit(
+        prefix,
+        (
+            f"server={snapshot.server_addr}:{snapshot.server_port} "
+            f"db={snapshot.current_database} user={snapshot.current_user} "
+            f"schema={snapshot.current_schema} search_path={snapshot.search_path} "
+            f"target_schema={schema or 'public'}"
+        ),
+        emitter=emitter,
+    )
+    _emit(
+        prefix,
+        (
+            f"database_oid={snapshot.database_oid} backend_pid={snapshot.backend_pid} "
+            f"postmaster_start_time={snapshot.postmaster_start_time}"
+        ),
+        emitter=emitter,
+    )
+    return snapshot
+
+
 def log_connection_fingerprint(
     connection: Connection,
     *,
@@ -238,3 +318,14 @@ def log_fingerprint_from_url(
     with engine.connect() as conn:
         log_connection_fingerprint(conn, schema=schema, emitter=emitter, label=label)
 
+
+def log_identity_from_url(
+    url: str = DATABASE_URL,
+    *,
+    schema: str = DB_SCHEMA,
+    emitter: Callable[[str], None] | None = None,
+    label: str | None = None,
+) -> IdentitySnapshot:
+    engine = _make_engine(url=url, schema=schema)
+    with engine.connect() as conn:
+        return log_identity_snapshot(conn, schema=schema, emitter=emitter, label=label)

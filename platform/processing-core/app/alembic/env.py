@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from typing import Any
 
 import sqlalchemy as sa
-from alembic import command, context
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine.url import make_url
 
@@ -17,7 +17,11 @@ if PROJECT_ROOT not in sys.path:
 from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
-from app.diagnostics.db_state import log_connection_fingerprint, to_regclass  # noqa: E402
+from app.diagnostics.db_state import (  # noqa: E402
+    log_connection_fingerprint,
+    log_identity_snapshot,
+    to_regclass,
+)
 
 logger = logging.getLogger(__name__)
 DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1"
@@ -68,13 +72,37 @@ def run_migrations_offline() -> None:
     raise RuntimeError(msg)
 
 
+def _get_backend_pid(connection: sa.engine.Connection) -> int | None:
+    raw = getattr(connection, "connection", None)
+    driver_conn = getattr(raw, "driver_connection", None)
+    pgconn = getattr(driver_conn, "pgconn", None)
+    if pgconn is not None:
+        return getattr(pgconn, "backend_pid", None)
+
+    try:
+        return connection.exec_driver_sql("select pg_backend_pid()").scalar_one_or_none()
+    except Exception:  # noqa: BLE001 - best-effort diagnostics
+        return None
+
+
 def _log_transaction_event(event_name: str, connection: sa.engine.Connection) -> None:
-    EVENT_LOGGER.info("Migration connection event: %s connection=%s", event_name.upper(), hex(id(connection)))
+    EVENT_LOGGER.info(
+        "[tx] %s pid=%s connection=%s",
+        event_name.upper(),
+        _get_backend_pid(connection),
+        hex(id(connection)),
+    )
 
 
 def _attach_transaction_logging(connectable: sa.engine.Engine) -> None:
-    for name in ("begin", "commit", "rollback", "close"):
-        sa.event.listen(connectable, name, lambda conn, *_args, _name=name: _log_transaction_event(_name, conn))
+    def _handler(name: str):
+        def _wrapped(conn, *_args):  # type: ignore[override]
+            _log_transaction_event(name, conn)
+
+        return _wrapped
+
+    for name in ("begin", "commit", "rollback"):
+        sa.event.listen(connectable, name, _handler(name))
 
 
 def _configure_connection(connection: sa.engine.Connection, target_schema: str) -> None:
@@ -226,21 +254,6 @@ def _log_missing_version_table_diagnostics(connection: sa.engine.Connection, tar
         logger.error("[diagnostics] %s: %s", name, value)
 
 
-def _has_cards_created_at(connection: sa.engine.Connection, target_schema: str) -> bool:
-    return connection.execute(
-        sa.text(
-            """
-            select 1
-            from information_schema.columns
-            where table_schema=:schema
-              and table_name='cards'
-              and column_name='created_at'
-            """
-        ),
-        {"schema": target_schema},
-    ).scalar_one_or_none() is not None
-
-
 def _schema_table_count(connection: sa.engine.Connection, target_schema: str) -> int:
     return connection.execute(
         sa.text("select count(*) from information_schema.tables where table_schema=:schema"),
@@ -283,72 +296,6 @@ def _require_version_table_in_target(
     return False, version_schemas
 
 
-def _maybe_stamp_head(
-    *,
-    connectable: sa.engine.Engine,
-    target_schema: str,
-    script_heads: list[str],
-    invoked_command: str | None,
-    version_schemas: list[str],
-) -> str | None:
-    """Emergency fallback for already-applied DDL without a version table."""
-
-    allow_stamp = os.getenv("NEFT_ALLOW_STAMP") == "1"
-
-    if invoked_command != "upgrade" or version_schemas:
-        return None
-
-    with connectable.connect() as connection:
-        _configure_connection(connection, target_schema)
-        operations_reg = to_regclass(connection, target_schema, "operations")
-        cards_created = _has_cards_created_at(connection, target_schema)
-        if operations_reg is None or not cards_created:
-            return None
-
-        logger.error(
-            "Schema has operations and cards.created_at but alembic_version is missing; "
-            "NEFT_ALLOW_STAMP=%s",
-            allow_stamp,
-        )
-
-        if not allow_stamp:
-            return None
-
-    logger.error("Creating alembic_version table manually before stamp head")
-    with connectable.begin() as connection:
-        connection.exec_driver_sql(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{target_schema}"."alembic_version" (
-                version_num VARCHAR(64) NOT NULL
-            );
-            """
-        )
-
-    logger.error("Invoking alembic stamp head as emergency fallback")
-    command.stamp(config, "head")
-
-    with connectable.connect() as connection:
-        _configure_connection(connection, target_schema)
-        version_locations = _version_table_schemas(connection)
-        if target_schema not in version_locations:
-            raise RuntimeError(
-                f"Emergency stamp head created alembic_version in wrong schema(s): {version_locations}"
-            )
-
-        version_rows = connection.execute(
-            sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
-        ).fetchall()
-        version_values = [row[0] for row in version_rows]
-
-    if not version_values or set(version_values) != set(script_heads):
-        raise RuntimeError("Emergency stamp head failed to synchronize alembic_version with migration heads")
-
-    logger.error("Emergency stamp head succeeded: %s", version_values)
-    with connectable.connect() as connection:
-        _configure_connection(connection, target_schema)
-        return to_regclass(connection, target_schema, "alembic_version")
-
-
 def run_migrations_online() -> sa.engine.Engine:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
@@ -360,6 +307,9 @@ def run_migrations_online() -> sa.engine.Engine:
     _attach_transaction_logging(connectable)
 
     target_schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+    logger.info(
+        "Alembic target schema resolved: %s (NEFT_DB_SCHEMA/DB_SCHEMA, default=public)", target_schema
+    )
 
     cmd_opts = getattr(config, "cmd_opts", None)
     invoked_command = getattr(cmd_opts, "cmd", None)
@@ -374,6 +324,7 @@ def run_migrations_online() -> sa.engine.Engine:
 
         _log_connection_identity(connection, label="initial")
         _configure_connection(connection, target_schema)
+        log_identity_snapshot(connection, schema=target_schema, label="alembic identity pre")
         _log_schema_inventory(connection, label="pre-upgrade")
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
@@ -394,6 +345,7 @@ def run_migrations_online() -> sa.engine.Engine:
 
         with context.begin_transaction():
             context.run_migrations()
+        log_identity_snapshot(connection, schema=target_schema, label="alembic identity post")
 
     verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
     with connectable.connect() as connection:
@@ -401,6 +353,7 @@ def run_migrations_online() -> sa.engine.Engine:
         _log_version_table_state(connection, target_schema, label="post-migrations")
 
         operations_reg = to_regclass(connection, target_schema, "operations")
+        version_reg = to_regclass(connection, target_schema, "alembic_version")
         version_present_in_target, version_schemas = _require_version_table_in_target(connection, target_schema)
         table_count = _schema_table_count(connection, target_schema)
         logger.info(
@@ -410,17 +363,6 @@ def run_migrations_online() -> sa.engine.Engine:
         missing_version_table = operations_reg is not None and not version_present_in_target
         if missing_version_table:
             _log_missing_version_table_diagnostics(connection, target_schema)
-            _maybe_stamp_head(
-                connectable=connectable,
-                target_schema=target_schema,
-                script_heads=script_heads,
-                invoked_command=invoked_command,
-                version_schemas=version_schemas,
-            )
-            version_present_in_target, version_schemas = _require_version_table_in_target(
-                connection, target_schema
-            )
-            missing_version_table = operations_reg is not None and not version_present_in_target
 
         if missing_version_table:
             raise RuntimeError(

@@ -110,28 +110,6 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    if bind.dialect.name == "postgresql":
-        operations_exists = bind.execute(
-            sa.text(
-                """
-                select 1 from information_schema.tables
-                where table_schema = :s and table_name = 'operations'
-                """
-            ),
-            {"s": SCHEMA},
-        ).scalar_one_or_none()
-
-        print(
-            f"[20251112_0001_core] operations table registration in {SCHEMA}: {operations_exists}",
-        )
-
-        if operations_exists is None:
-            raise RuntimeError("operations table was not created during bootstrap")
-    else:
-        inspector = sa.inspect(bind)
-        if not inspector.has_table("operations", schema=SCHEMA):
-            raise RuntimeError("operations table was not created during bootstrap")
-
     op.create_table(
         "accounts",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
