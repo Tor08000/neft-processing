@@ -363,39 +363,56 @@ if db_url.startswith("postgresql"):
 
 engine = create_engine(db_url, **engine_kwargs)
 
-try:
-    with engine.connect() as conn:
-        version_reg = _regclass(conn, "alembic_version")
-        required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
-        table_state = {name: _regclass(conn, name) for name in required_tables}
-        cards_created = conn.execute(
-            text(
-                """
-                select 1
-                from information_schema.columns
-                where table_schema=:schema
-                  and table_name='cards'
-                  and column_name='created_at'
-                """
-            ),
-            {"schema": schema},
-        ).scalar_one_or_none() is not None
-
-        if version_reg is None:
+    try:
+        with engine.connect() as conn:
+            version_reg = _regclass(conn, "alembic_version")
+            required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
+            table_state = {name: _regclass(conn, name) for name in required_tables}
+            cards_created = conn.execute(
+                text(
+                    """
+                    select 1
+                    from information_schema.columns
+                    where table_schema=:schema
+                      and table_name='cards'
+                      and column_name='created_at'
+                    """
+                ),
+                {"schema": schema},
+            ).scalar_one_or_none() is not None
             search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
-            print(
-                f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
-                file=sys.stderr,
-            )
-            sys.exit(1)
 
-        version_rows = conn.execute(
-            text(f'SELECT version_num FROM "{schema}".alembic_version')
-        ).fetchall()
-        version_values = [row[0] for row in version_rows]
-except SQLAlchemyError as exc:
-    print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
-    sys.exit(1)
+            version_rows = []
+            if version_reg is None:
+                schema_ready_for_stamp = cards_created and all(table_state.values())
+                if schema_ready_for_stamp and allow_stamp:
+                    print(
+                        "[entrypoint] alembic_version missing but schema has required tables; applying stamp head",
+                        file=sys.stderr,
+                    )
+                    subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
+
+                    version_reg = _regclass(conn, "alembic_version")
+                    if version_reg is None:
+                        print(
+                            f"[entrypoint] alembic_version still missing after stamp attempt (search_path={search_path})",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
+                else:
+                    print(
+                        f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+
+            version_rows = conn.execute(
+                text(f'SELECT version_num FROM "{schema}".alembic_version')
+            ).fetchall()
+            version_values = [row[0] for row in version_rows]
+    except SQLAlchemyError as exc:
+        print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _log_state(prefix: str = "current") -> None:

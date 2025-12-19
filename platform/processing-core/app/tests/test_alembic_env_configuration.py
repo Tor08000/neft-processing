@@ -23,7 +23,7 @@ class DummyConnection:
     def begin(self):
         return DummyTransaction(self)
 
-    def exec_driver_sql(self, statement):  # noqa: D401
+    def exec_driver_sql(self, statement, params=None):  # noqa: D401,ARG002
         self.executed_sql.append(statement)
         return DummyResult(statement)
 
@@ -113,6 +113,7 @@ class DummyConfig:
         self.config_file_name = None
         self.main_options: dict[str, str] = {}
         self.sections = {self.config_ini_section: {}}
+        self.cmd_opts = None
 
     def get_section(self, name: str):
         return self.sections.get(name, {})
@@ -137,6 +138,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
     monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
+    monkeypatch.setattr(context, "script", SimpleNamespace(get_heads=lambda: ["head"]), raising=False)
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
     def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
@@ -200,6 +202,7 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
     monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
+    monkeypatch.setattr(context, "script", SimpleNamespace(get_heads=lambda: ["head"]), raising=False)
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
     def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
@@ -220,6 +223,9 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
+    )
+    monkeypatch.setattr(
+        "app.diagnostics.db_state.to_regclass", lambda _conn, _schema, name: _schema if name == "operations" else None
     )
     monkeypatch.setattr("alembic.runtime.migration.MigrationContext.configure", fake_migration_context_configure)
     monkeypatch.setattr(
@@ -257,6 +263,7 @@ def restore_context():
     original_offline_mode = context.is_offline_mode
     original_run_migrations = context.run_migrations
     original_configure = context.configure
+    original_script = getattr(context, "script", None)
     yield
     if original_config is None:
         context.config = None
@@ -265,3 +272,7 @@ def restore_context():
     context.is_offline_mode = original_offline_mode
     context.run_migrations = original_run_migrations
     context.configure = original_configure
+    if original_script is None:
+        context.script = None
+    else:
+        context.script = original_script

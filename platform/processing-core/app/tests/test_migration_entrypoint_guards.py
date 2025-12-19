@@ -3,8 +3,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.db import DB_SCHEMA
 from app.tests.utils import ensure_connectable, get_database_url
@@ -34,10 +36,14 @@ def test_upgrade_creates_required_tables():
     connectable = ensure_connectable(db_url)
 
     cfg = _render_alembic_config(db_url)
+    script_heads = set(ScriptDirectory.from_config(cfg).get_heads())
 
     try:
         command.upgrade(cfg, "head")
         with connectable.connect() as connection:
+            version_reg = connection.exec_driver_sql(
+                "select to_regclass(:reg)", {"reg": f"{DB_SCHEMA}.alembic_version"}
+            ).scalar()
             missing = [
                 table
                 for table in REQUIRED_TABLES
@@ -46,9 +52,14 @@ def test_upgrade_creates_required_tables():
                 ).scalar()
                 is None
             ]
+            versions = connection.exec_driver_sql(
+                sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version')
+            ).scalars().all() if version_reg else []
     finally:
         connectable.dispose()
 
+    assert version_reg, "alembic_version table was not created by upgrade"
+    assert set(versions) == script_heads, f"alembic_version contents mismatch: {versions} != {script_heads}"
     assert not missing, f"Required tables are missing after upgrade: {missing}"
 
 

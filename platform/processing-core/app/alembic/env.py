@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from typing import Any
 
 import sqlalchemy as sa
-from alembic import context
+from alembic import command, context
 from sqlalchemy import pool
 from sqlalchemy.engine.url import make_url
 
@@ -164,6 +164,140 @@ def _log_version_table_state(connection: sa.engine.Connection, target_schema: st
     )
 
 
+def _log_missing_version_table_diagnostics(connection: sa.engine.Connection, target_schema: str) -> None:
+    logger.error(
+        "Detected operations table without alembic_version in schema '%s'; collecting diagnostics",
+        target_schema,
+    )
+    operations_reg = to_regclass(connection, target_schema, "operations")
+    version_reg = to_regclass(connection, target_schema, "alembic_version")
+    logger.error("to_regclass operations=%s alembic_version=%s", operations_reg, version_reg)
+
+    diagnostics: list[tuple[str, Any]] = []
+    diagnostics.append(
+        ("current_database,current_user", connection.exec_driver_sql("SELECT current_database(), current_user").one())
+    )
+    diagnostics.append(("search_path", connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()))
+    diagnostics.append(
+        (
+            "namespaces",
+            connection.exec_driver_sql(
+                """
+                select nspname
+                from pg_namespace
+                where nspname not like 'pg_%' and nspname <> 'information_schema'
+                order by 1
+                """
+            ).fetchall(),
+        )
+    )
+    diagnostics.append(
+        (
+            "alembic_version tables",
+            connection.exec_driver_sql(
+                "select table_schema, table_name from information_schema.tables where table_name='alembic_version'"
+            ).fetchall(),
+        )
+    )
+    diagnostics.append(
+        (
+            "operations tables",
+            connection.exec_driver_sql(
+                "select table_schema, table_name from information_schema.tables where table_name='operations'"
+            ).fetchall(),
+        )
+    )
+    diagnostics.append(
+        (
+            "pg_class entries",
+            connection.exec_driver_sql(
+                """
+                select relname, nspname
+                from pg_class
+                join pg_namespace on pg_class.relnamespace = pg_namespace.oid
+                where relname in ('alembic_version','operations')
+                order by relname, nspname
+                """
+            ).fetchall(),
+        )
+    )
+
+    for name, value in diagnostics:
+        logger.error("[diagnostics] %s: %s", name, value)
+
+
+def _has_cards_created_at(connection: sa.engine.Connection, target_schema: str) -> bool:
+    return (
+        connection.exec_driver_sql(
+            """
+            select 1
+            from information_schema.columns
+            where table_schema=:schema
+              and table_name='cards'
+              and column_name='created_at'
+            """,
+            {"schema": target_schema},
+        ).scalar_one_or_none()
+        is not None
+    )
+
+
+def _maybe_stamp_head(
+    *, connectable: sa.engine.Engine, target_schema: str, script_heads: list[str], invoked_command: str | None
+) -> str | None:
+    """Emergency fallback for already-applied DDL without a version table."""
+
+    allow_stamp = os.getenv("NEFT_ALLOW_STAMP") == "1"
+
+    if invoked_command != "upgrade":
+        return None
+
+    with connectable.connect() as connection:
+        _configure_connection(connection, target_schema)
+        operations_reg = to_regclass(connection, target_schema, "operations")
+        version_reg = to_regclass(connection, target_schema, "alembic_version")
+        cards_created = _has_cards_created_at(connection, target_schema)
+
+        if version_reg is not None or operations_reg is None or not cards_created:
+            return version_reg
+
+        logger.error(
+            "Schema has operations and cards.created_at but alembic_version is missing; "
+            "NEFT_ALLOW_STAMP=%s",
+            allow_stamp,
+        )
+
+        if not allow_stamp:
+            return None
+
+    logger.error("Creating alembic_version table manually before stamp head")
+    with connectable.begin() as connection:
+        connection.exec_driver_sql(
+            f"""
+            CREATE TABLE IF NOT EXISTS "{target_schema}"."alembic_version" (
+                version_num VARCHAR(64) NOT NULL
+            );
+            """
+        )
+
+    logger.error("Invoking alembic stamp head as emergency fallback")
+    command.stamp(config, "head")
+
+    with connectable.connect() as connection:
+        _configure_connection(connection, target_schema)
+        version_reg = to_regclass(connection, target_schema, "alembic_version")
+        version_rows = connection.exec_driver_sql(
+            f'SELECT version_num FROM "{target_schema}".alembic_version'
+        ).fetchall()
+        version_values = [row[0] for row in version_rows]
+
+    if not version_values or set(version_values) != set(script_heads):
+        raise RuntimeError("Emergency stamp head failed to synchronize alembic_version with migration heads")
+
+    logger.error("Emergency stamp head succeeded: %s", version_values)
+    return version_reg
+
+
 def run_migrations_online() -> sa.engine.Engine:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
     connectable = sa.engine_from_config(  # type: ignore[attr-defined]
@@ -179,6 +313,7 @@ def run_migrations_online() -> sa.engine.Engine:
     cmd_opts = getattr(config, "cmd_opts", None)
     invoked_command = getattr(cmd_opts, "cmd", None)
     should_verify = not context.is_offline_mode() and invoked_command == "upgrade"
+    script_heads = context.script.get_heads()
 
     with connectable.connect() as connection:
         if connection.dialect.name != "postgresql":
@@ -192,12 +327,7 @@ def run_migrations_online() -> sa.engine.Engine:
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
 
         ensure_alembic_version_length(connection)
-        inspector = sa.inspect(connection)
-        tables = inspector.get_table_names(schema=target_schema)
-        if "alembic_version" not in tables:
-            raise RuntimeError(
-                f"alembic_version missing in target schema '{target_schema}' after setup (tables={tables})"
-            )
+
         _log_version_table_state(connection, target_schema, label="pre-migrations")
 
         context.configure(
@@ -219,11 +349,34 @@ def run_migrations_online() -> sa.engine.Engine:
         _configure_connection(connection, target_schema)
         _log_version_table_state(connection, target_schema, label="post-migrations")
 
+        operations_reg = to_regclass(connection, target_schema, "operations")
+        version_reg = to_regclass(connection, target_schema, "alembic_version")
+        table_count = connection.exec_driver_sql(
+            "select count(*) from information_schema.tables where table_schema=:schema",
+            {"schema": target_schema},
+        ).scalar_one()
+        logger.info(
+            "Post-migrations table count in schema '%s': %s", target_schema, table_count
+        )
+
+        missing_version_table = operations_reg is not None and version_reg is None
+        if missing_version_table:
+            _log_missing_version_table_diagnostics(connection, target_schema)
+            version_reg = _maybe_stamp_head(
+                connectable=connectable,
+                target_schema=target_schema,
+                script_heads=script_heads,
+                invoked_command=invoked_command,
+            )
+            missing_version_table = operations_reg is not None and version_reg is None
+
+        if missing_version_table:
+            raise RuntimeError(
+                "CRITICAL: operations exists but alembic_version is missing; version table config is broken"
+            )
+
         if should_verify and str(verify_flag).lower() == "true":
             _log_connection_identity(connection, label="post-upgrade")
-
-            version_reg = to_regclass(connection, target_schema, "alembic_version")
-            operations_reg = to_regclass(connection, target_schema, "operations")
 
             current_search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
@@ -244,7 +397,6 @@ def run_migrations_online() -> sa.engine.Engine:
                 operations_reg,
             )
 
-            script_heads = context.script.get_heads()
             version_rows = connection.exec_driver_sql(
                 sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
             ).fetchall()
