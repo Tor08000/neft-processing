@@ -6,12 +6,11 @@ Create Date: 2027-07-20 00:29:00
 """
 from __future__ import annotations
 
-import os
-
 from alembic import op
 import sqlalchemy as sa
 
 from app.alembic.utils import column_exists
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270720_0029_cards_created_at"
@@ -19,7 +18,8 @@ down_revision = "20270710_0028_limit_config_scope_enum_fix"
 branch_labels = None
 depends_on = None
 
-SCHEMA = os.getenv("DB_SCHEMA", "public")
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
 
 
 def upgrade() -> None:

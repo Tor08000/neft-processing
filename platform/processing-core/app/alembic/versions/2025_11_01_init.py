@@ -1,20 +1,20 @@
 # services/core-api/app/alembic/versions/2025_11_01_init.py
 from __future__ import annotations
 
-import os
-
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import create_table_if_not_exists, ensure_pg_enum, safe_enum
+from app.db.schema import resolve_db_schema
 
 revision = "2025_11_01_init"
 down_revision = None
 branch_labels = None
 depends_on = None
 
-SCHEMA = os.getenv("DB_SCHEMA", "public")
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
 ACCOUNT_STATUS_VALUES = ["ACTIVE", "FROZEN", "CLOSED"]

@@ -18,6 +18,7 @@ from app.alembic.utils import (
     drop_index_if_exists,
     drop_table_if_exists,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251220_0006_auto_fix"
@@ -25,13 +26,16 @@ down_revision = "20251215_0005_add_created_at_to_cards"
 branch_labels = None
 depends_on = None
 
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
+
 
 def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:
-    return table_name in inspector.get_table_names()
+    return table_name in inspector.get_table_names(schema=SCHEMA)
 
 
 def _index_exists(inspector: sa.Inspector, table: str, name: str) -> bool:
-    return any(index.get("name") == name for index in inspector.get_indexes(table))
+    return any(index.get("name") == name for index in inspector.get_indexes(table, schema=SCHEMA))
 
 
 def upgrade() -> None:
@@ -54,9 +58,10 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.UniqueConstraint("group_id"),
+            schema=SCHEMA,
         )
         create_index_if_not_exists(
-            bind, "ix_client_groups_group_id", "client_groups", ["group_id"], unique=False
+            bind, "ix_client_groups_group_id", "client_groups", ["group_id"], unique=False, schema=SCHEMA
         )
 
     if not _table_exists(inspector, "card_groups"):
@@ -74,9 +79,10 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.UniqueConstraint("group_id"),
+            schema=SCHEMA,
         )
         create_index_if_not_exists(
-            bind, "ix_card_groups_group_id", "card_groups", ["group_id"], unique=False
+            bind, "ix_card_groups_group_id", "card_groups", ["group_id"], unique=False, schema=SCHEMA
         )
 
     if not _table_exists(inspector, "client_group_members"):
@@ -87,7 +93,7 @@ def upgrade() -> None:
             sa.Column(
                 "client_group_id",
                 sa.Integer(),
-                sa.ForeignKey("client_groups.id", ondelete="CASCADE"),
+                sa.ForeignKey(f"{SCHEMA}.client_groups.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column("client_id", sa.String(length=64), nullable=False),
@@ -98,6 +104,7 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.UniqueConstraint("client_group_id", "client_id", name="uq_client_group_member"),
+            schema=SCHEMA,
         )
 
     if not _table_exists(inspector, "card_group_members"):
@@ -108,7 +115,7 @@ def upgrade() -> None:
             sa.Column(
                 "card_group_id",
                 sa.Integer(),
-                sa.ForeignKey("card_groups.id", ondelete="CASCADE"),
+                sa.ForeignKey(f"{SCHEMA}.card_groups.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column("card_id", sa.String(length=64), nullable=False),
@@ -119,6 +126,7 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.UniqueConstraint("card_group_id", "card_id", name="uq_card_group_member"),
+            schema=SCHEMA,
         )
 
     # Align operations columns

@@ -24,7 +24,7 @@ def _create_engine_for_schema(db_url: str):
     if db_url.startswith("postgresql"):
         return create_engine(
             db_url,
-            connect_args={"options": f"-csearch_path={DB_SCHEMA}", "prepare_threshold": 0},
+            connect_args={"options": f"-c search_path={DB_SCHEMA}", "prepare_threshold": 0},
         )
     return create_engine(db_url)
 

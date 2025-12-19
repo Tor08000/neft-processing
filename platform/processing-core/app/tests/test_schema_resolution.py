@@ -11,9 +11,10 @@ def test_default_schema_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
 
     resolution = schema_module.resolve_db_schema(os.environ)
 
-    assert resolution.schema == "public"
+    assert resolution.target_schema == "public"
     assert resolution.source == "default"
     assert resolution.search_path == "public"
+    assert resolution.search_path_sql == 'SET search_path TO "public", public'
     assert resolution.line() == "schema_resolved=public source=default"
 
 
@@ -23,9 +24,10 @@ def test_neft_schema_has_priority(monkeypatch: pytest.MonkeyPatch) -> None:
 
     resolution = schema_module.resolve_db_schema(os.environ)
 
-    assert resolution.schema == "custom"
+    assert resolution.target_schema == "custom"
     assert resolution.source == "NEFT_DB_SCHEMA"
     assert resolution.search_path == "custom,public"
+    assert resolution.search_path_sql == 'SET search_path TO "custom", public'
 
 
 def test_db_schema_still_supported(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -34,6 +36,7 @@ def test_db_schema_still_supported(monkeypatch: pytest.MonkeyPatch) -> None:
 
     resolution = schema_module.resolve_db_schema(os.environ)
 
-    assert resolution.schema == "compat"
+    assert resolution.target_schema == "compat"
     assert resolution.source == "DB_SCHEMA"
     assert resolution.search_path == "compat,public"
+    assert resolution.search_path_sql == 'SET search_path TO "compat", public'
