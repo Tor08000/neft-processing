@@ -341,6 +341,83 @@ log_identity_from_url(
 PY
 }
 
+log_db_identity_probe() {
+    IDENTITY_PROBE_LABEL="$1" python - <<'PY'
+import os
+import sys
+
+from app.diagnostics.db_state import log_identity_probe_from_url
+
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+url = os.getenv("DATABASE_URL")
+label = os.getenv("IDENTITY_PROBE_LABEL")
+
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for identity probe", file=sys.stderr)
+    sys.exit(1)
+
+# Emit a single line matching DB_ID: ...
+log_identity_probe_from_url(
+    url=url,
+    schema=schema,
+    label=label,
+    emitter=lambda msg: print(f"[entrypoint] {msg}", flush=True),
+)
+PY
+}
+
+require_upgrade_tables_present() {
+    python - <<'PY'
+import os
+import sys
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
+
+from app.diagnostics.db_state import identity_probe_line
+
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+url = os.getenv("DATABASE_URL")
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for post-upgrade table check", file=sys.stderr)
+    sys.exit(1)
+
+engine_kwargs = {"future": True, "pool_pre_ping": True}
+if url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {
+        "options": f"-csearch_path={schema},public",
+        "prepare_threshold": 0,
+    }
+
+engine = create_engine(url, **engine_kwargs)
+masked = make_url(url).render_as_string(hide_password=True)
+
+with engine.connect() as conn:
+    operations_reg = conn.execute(
+        text("select to_regclass(:regclass)"), {"regclass": f"{schema}.operations"}
+    ).scalar_one_or_none()
+    alembic_reg = conn.execute(
+        text("select to_regclass(:regclass)"), {"regclass": f"{schema}.alembic_version"}
+    ).scalar_one_or_none()
+
+    if operations_reg is None and alembic_reg is None:
+        probe = identity_probe_line(conn, schema=schema, label="post-upgrade")
+        print(
+            "[entrypoint] CRITICAL: operations and alembic_version are both missing after upgrade",
+            file=sys.stderr,
+        )
+        print(f"[entrypoint] DATABASE_URL={masked}", file=sys.stderr)
+        print(f"[entrypoint] target_schema={schema}", file=sys.stderr)
+        print(f"[entrypoint] {probe}", file=sys.stderr)
+        sys.exit(1)
+
+print(
+    f"[entrypoint] post-upgrade regclass state: operations={operations_reg} alembic_version={alembic_reg}",
+    flush=True,
+)
+PY
+}
+
 assert_alembic_state() {
     heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads -v 2>&1)
     current_output=$(alembic -c "$ALEMBIC_CONFIG" current -v 2>&1)
@@ -651,10 +728,13 @@ PY
 
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
+    log_db_identity_probe "pre-upgrade-$attempt"
     IDENTITY_LABEL="pre-attempt-$attempt" log_entrypoint_identity
     DB_FINGERPRINT_LABEL="pre-migration-attempt-$attempt" log_db_fingerprint
 
     if alembic -x debug_sql=1 -c "$ALEMBIC_CONFIG" upgrade head; then
+        log_db_identity_probe "post-upgrade-$attempt"
+        require_upgrade_tables_present
         IDENTITY_LABEL="post-attempt-$attempt" log_entrypoint_identity
         assert_alembic_state
         after_commit_visibility_probe

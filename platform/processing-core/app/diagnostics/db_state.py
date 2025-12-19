@@ -169,6 +169,55 @@ def _safe_scalar(connection: Connection, sql: str, params: dict | None = None):
     return connection.execute(text(sql), params or {}).scalar_one_or_none()
 
 
+def _collect_identity_probe_fields(connection: Connection, schema: str) -> tuple:
+    schema_name = schema or "public"
+
+    server_addr, server_port, current_db, current_user = connection.execute(
+        text("select inet_server_addr(), inet_server_port(), current_database(), current_user")
+    ).one()
+    database_oid = connection.execute(
+        text("select oid from pg_database where datname=current_database();")
+    ).scalar_one_or_none()
+    postmaster_start = connection.execute(text("select pg_postmaster_start_time();")).scalar_one_or_none()
+    table_count = connection.execute(
+        text("select count(*) from information_schema.tables where table_schema=:schema"),
+        {"schema": schema_name},
+    ).scalar_one()
+
+    return (
+        server_addr,
+        server_port,
+        current_db,
+        current_user,
+        database_oid,
+        postmaster_start,
+        schema_name,
+        table_count,
+    )
+
+
+def identity_probe_line(connection: Connection, *, schema: str, label: str | None = None) -> str:
+    """Render a single-line DB identity probe with server and table counts."""
+
+    (
+        server_addr,
+        server_port,
+        current_db,
+        current_user,
+        database_oid,
+        postmaster_start,
+        schema_name,
+        table_count,
+    ) = _collect_identity_probe_fields(connection, schema)
+
+    prefix = f"DB_ID{f'[{label}]' if label else ''}"
+    return (
+        f"{prefix}: host={server_addr} port={server_port} db={current_db} user={current_user} "
+        f"db_oid={database_oid} postmaster_start={postmaster_start} schema={schema_name} "
+        f"table_count={table_count}"
+    )
+
+
 def collect_identity_snapshot(connection: Connection) -> IdentitySnapshot:
     """Collect a deterministic fingerprint of the active connection."""
 
@@ -329,3 +378,20 @@ def log_identity_from_url(
     engine = _make_engine(url=url, schema=schema)
     with engine.connect() as conn:
         return log_identity_snapshot(conn, schema=schema, emitter=emitter, label=label)
+
+
+def log_identity_probe_from_url(
+    url: str = DATABASE_URL,
+    *,
+    schema: str = DB_SCHEMA,
+    emitter: Callable[[str], None] | None = None,
+    label: str | None = None,
+) -> str:
+    """Emit a single-line DB identity probe for a URL and return the line."""
+
+    engine = _make_engine(url=url, schema=schema)
+    with engine.connect() as conn:
+        line = identity_probe_line(conn, schema=schema, label=label)
+        output = emitter or (lambda msg: print(msg, flush=True))
+        output(line)
+        return line
