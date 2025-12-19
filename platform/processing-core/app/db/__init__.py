@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from typing import Generator
 
@@ -12,14 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from neft_shared.settings import get_settings
 
-from .schema import (
-    DB_SCHEMA,
-    DB_SCHEMA_SOURCE,
-    SCHEMA_RESOLUTION,
-    log_schema_resolution,
-    resolve_db_schema,
-    schema_resolution_line,
-)
+from .schema import DB_SCHEMA, SCHEMA_RESOLUTION
 
 settings = get_settings()
 
@@ -69,7 +61,7 @@ def make_engine_kwargs(
     echo: bool | None = None,
     poolclass=None,
 ) -> dict:
-    resolved_schema = schema or DB_SCHEMA
+    resolved_schema = schema or SCHEMA_RESOLUTION.target_schema
     engine_kwargs: dict[str, object] = {
         "future": True,
         "pool_pre_ping": pool_pre_ping,
@@ -84,7 +76,7 @@ def make_engine_kwargs(
     if url.startswith("postgresql"):
         connect_args = {"prepare_threshold": 0}
         search_path = f"{resolved_schema},public" if resolved_schema != "public" else "public"
-        connect_args["options"] = f"-csearch_path={search_path}"
+        connect_args["options"] = f"-c search_path={search_path}"
         engine_kwargs["connect_args"] = connect_args
 
     if url.startswith("sqlite"):

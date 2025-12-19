@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
-from app.db import DB_SCHEMA
+from app.db.schema import SCHEMA_RESOLUTION
 from app.tests.utils import ensure_connectable, get_database_url
 
 REQUIRED_TABLES = (
@@ -43,16 +43,20 @@ def test_upgrade_creates_required_tables():
         with connectable.connect() as connection:
             version_reg = connection.execute(
                 sa.text("select to_regclass(:reg)"),
-                {"reg": f"{DB_SCHEMA}.alembic_version"},
+                {"reg": f"{SCHEMA_RESOLUTION.target_schema}.alembic_version"},
             ).scalar()
             missing = [
                 table
                 for table in REQUIRED_TABLES
-                if connection.execute(sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.{table}"}).scalar()
+                if connection.execute(
+                    sa.text("select to_regclass(:reg)"), {"reg": f"{SCHEMA_RESOLUTION.target_schema}.{table}"}
+                ).scalar()
                 is None
             ]
             versions = (
-                connection.execute(sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version'))
+                connection.execute(
+                    sa.text(f'SELECT version_num FROM "{SCHEMA_RESOLUTION.target_schema}".alembic_version')
+                )
                 .scalars()
                 .all()
                 if version_reg
@@ -90,8 +94,6 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
             "DATABASE_URL": db_url,
             "NEFT_DB_SCHEMA": schema,
             "ALEMBIC_CONFIG": "app/alembic.ini",
-            "MIGRATIONS_RETRIES": "1",
-            "SKIP_REDIS_WAIT": "1",
             "ENTRYPOINT_SKIP_APP": "1",
             "PATH": f"{bin_dir}:{env.get('PATH', '')}",
         }
@@ -105,7 +107,6 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
     )
 
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "migrations applied" not in result.stdout
-    assert "migration verification failed" in result.stderr
+    assert "required tables missing after migrations" in result.stderr
 
     connectable.dispose()

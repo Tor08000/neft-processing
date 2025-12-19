@@ -15,12 +15,16 @@ from app.alembic.utils import (
     pg_ensure_enum,
     table_exists,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20261201_0017_accounts_and_ledger"
 down_revision = "20261125_0016_risk_rule_audit"
 branch_labels = None
 depends_on = None
+
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
 ACCOUNT_STATUS_VALUES = ["ACTIVE", "FROZEN", "CLOSED"]
@@ -77,15 +81,15 @@ def upgrade() -> None:
     is_pg = bind.dialect.name == "postgresql"
 
     if is_pg:
-        pg_ensure_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES)
-        pg_ensure_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES)
-        pg_ensure_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES)
+        pg_ensure_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
+        pg_ensure_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
+        pg_ensure_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
 
     account_type_enum = _account_type_enum(bind)
     account_status_enum = _account_status_enum(bind)
     ledger_direction_enum = _ledger_direction_enum(bind)
 
-    if not table_exists(bind, "accounts"):
+    if not table_exists(bind, "accounts", schema=SCHEMA):
         op.create_table(
             "accounts",
             sa.Column(
@@ -95,7 +99,7 @@ def upgrade() -> None:
                 autoincrement=True,
             ),
             sa.Column("client_id", sa.String(length=64), nullable=False, index=True),
-            sa.Column("card_id", sa.String(length=64), sa.ForeignKey("cards.id"), nullable=True),
+            sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=True),
             sa.Column("tariff_id", sa.String(length=64), nullable=True),
             sa.Column("currency", sa.String(length=8), nullable=False),
             sa.Column("type", account_type_enum, nullable=False),
@@ -113,19 +117,20 @@ def upgrade() -> None:
                 onupdate=sa.func.now(),
                 nullable=False,
             ),
+            schema=SCHEMA,
         )
-    create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"])
-    create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"])
-    create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"])
-    create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"])
+    create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"], schema=SCHEMA)
 
-    if not table_exists(bind, "account_balances"):
+    if not table_exists(bind, "account_balances", schema=SCHEMA):
         op.create_table(
             "account_balances",
             sa.Column(
                 "account_id",
                 sa.BigInteger().with_variant(sa.Integer, "sqlite"),
-                sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+                sa.ForeignKey(f"{SCHEMA}.accounts.id", ondelete="CASCADE"),
                 primary_key=True,
             ),
             sa.Column("current_balance", sa.Numeric(18, 4), nullable=False, server_default="0"),
@@ -137,9 +142,10 @@ def upgrade() -> None:
                 onupdate=sa.func.now(),
                 nullable=False,
             ),
+            schema=SCHEMA,
         )
 
-    if not table_exists(bind, "ledger_entries"):
+    if not table_exists(bind, "ledger_entries", schema=SCHEMA):
         op.create_table(
             "ledger_entries",
             sa.Column(
@@ -151,13 +157,13 @@ def upgrade() -> None:
             sa.Column(
                 "account_id",
                 sa.BigInteger().with_variant(sa.Integer, "sqlite"),
-                sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+                sa.ForeignKey(f"{SCHEMA}.accounts.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column(
                 "operation_id",
                 _uuid_type(bind),
-                sa.ForeignKey("operations.id", ondelete="SET NULL"),
+                sa.ForeignKey(f"{SCHEMA}.operations.id", ondelete="SET NULL"),
                 nullable=True,
             ),
             sa.Column("direction", ledger_direction_enum, nullable=False),
@@ -171,39 +177,40 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.Column("value_date", sa.Date(), nullable=True),
+            schema=SCHEMA,
         )
-    create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"])
+    create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"], schema=SCHEMA)
     create_index_if_not_exists(
-        bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"]
+        bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"], schema=SCHEMA
     )
-    create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"])
+    create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"], schema=SCHEMA)
 
 
 def downgrade() -> None:
     bind = op.get_bind()
 
     drop_index_if_exists(
-        bind, "ix_ledger_entries_posted_at", table_name="ledger_entries"
+        bind, "ix_ledger_entries_posted_at", table_name="ledger_entries", schema=SCHEMA
     )
     drop_index_if_exists(
-        bind, "ix_ledger_entries_operation_id", table_name="ledger_entries"
+        bind, "ix_ledger_entries_operation_id", table_name="ledger_entries", schema=SCHEMA
     )
     drop_index_if_exists(
-        bind, "ix_ledger_entries_account_id", table_name="ledger_entries"
+        bind, "ix_ledger_entries_account_id", table_name="ledger_entries", schema=SCHEMA
     )
-    if table_exists(bind, "ledger_entries"):
-        op.drop_table("ledger_entries")
+    if table_exists(bind, "ledger_entries", schema=SCHEMA):
+        op.drop_table("ledger_entries", schema=SCHEMA)
 
-    if table_exists(bind, "account_balances"):
-        op.drop_table("account_balances")
+    if table_exists(bind, "account_balances", schema=SCHEMA):
+        op.drop_table("account_balances", schema=SCHEMA)
 
-    drop_index_if_exists(bind, "ix_accounts_status", table_name="accounts")
-    drop_index_if_exists(bind, "ix_accounts_type", table_name="accounts")
-    drop_index_if_exists(bind, "ix_accounts_card_id", table_name="accounts")
-    drop_index_if_exists(bind, "ix_accounts_client_id", table_name="accounts")
-    if table_exists(bind, "accounts"):
-        op.drop_table("accounts")
+    drop_index_if_exists(bind, "ix_accounts_status", table_name="accounts", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_type", table_name="accounts", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_card_id", table_name="accounts", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_client_id", table_name="accounts", schema=SCHEMA)
+    if table_exists(bind, "accounts", schema=SCHEMA):
+        op.drop_table("accounts", schema=SCHEMA)
 
     if bind.dialect.name == "postgresql":
         for enum_name in ("ledgerdirection", "accountstatus", "accounttype"):
-            bind.exec_driver_sql(f"DROP TYPE IF EXISTS public.{enum_name}")
+            bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{SCHEMA}".{enum_name}')

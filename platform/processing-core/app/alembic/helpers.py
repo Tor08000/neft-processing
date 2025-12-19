@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Iterable, Sequence
 
 import sqlalchemy as sa
@@ -9,11 +8,14 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Connection
 
+from app.db.schema import resolve_db_schema
+
 logger = logging.getLogger(__name__)
 
 MIN_VERSION_LENGTH = 128
 
-DB_SCHEMA = os.getenv("DB_SCHEMA", "public")
+SCHEMA_RESOLUTION = resolve_db_schema()
+DB_SCHEMA = SCHEMA_RESOLUTION.target_schema
 
 
 # Dialect helpers

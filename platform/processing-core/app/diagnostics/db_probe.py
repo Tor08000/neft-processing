@@ -6,14 +6,13 @@ from typing import Any, Dict
 from sqlalchemy import text
 
 from app.db import engine
-from app.db.schema import resolve_db_schema
+from app.db.schema import SCHEMA_RESOLUTION
 
-SCHEMA_RESOLUTION = resolve_db_schema()
-PROBE_TABLE = f"{SCHEMA_RESOLUTION.schema}._probe_migrations"
+PROBE_TABLE = f"{SCHEMA_RESOLUTION.quoted_schema}._probe_migrations"
 
 
 def _collect_fingerprint(connection) -> Dict[str, Any]:
-    row = connection.execute(
+    return connection.execute(
         text(
             """
             SELECT
@@ -23,12 +22,13 @@ def _collect_fingerprint(connection) -> Dict[str, Any]:
                 inet_server_port() AS inet_server_port,
                 pg_postmaster_start_time() AS pg_postmaster_start_time,
                 version() AS version,
-                current_setting('data_directory') AS data_directory
+                current_setting('data_directory') AS data_directory,
+                oid AS database_oid
+            FROM pg_database
+            WHERE datname = current_database()
             """
         )
     ).mappings().one()
-
-    return {key: str(value) for key, value in row.items()}
 
 
 def run_probe() -> Dict[str, Any]:
@@ -36,20 +36,30 @@ def run_probe() -> Dict[str, Any]:
 
     with engine.begin() as connection:
         print(f"[db_probe] {SCHEMA_RESOLUTION.line()}")
-        connection.exec_driver_sql(
-            f"CREATE TABLE IF NOT EXISTS {PROBE_TABLE} (x INT)"
-        )
-        regclass = connection.exec_driver_sql(
-            f"SELECT to_regclass('{PROBE_TABLE}')"
-        ).scalar()
+        connection.execute(text(f"CREATE TABLE IF NOT EXISTS {PROBE_TABLE} (x INT)"))
+        regclass = connection.execute(
+            text("SELECT to_regclass(:name)"),
+            {"name": f"{SCHEMA_RESOLUTION.target_schema}._probe_migrations"},
+        ).scalar_one_or_none()
 
-        fingerprint = _collect_fingerprint(connection)
+        fingerprint = {key: str(value) for key, value in _collect_fingerprint(connection).items()}
+        table_count = connection.execute(
+            text(
+                """
+                select count(*)
+                from information_schema.tables
+                where table_schema = :schema
+                """
+            ),
+            {"schema": SCHEMA_RESOLUTION.target_schema},
+        ).scalar_one()
 
     return {
         "source": "core-api",
         "regclass": regclass,
         "fingerprint": fingerprint,
         "schema": SCHEMA_RESOLUTION.line(),
+        "table_count": table_count,
     }
 
 

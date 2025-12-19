@@ -34,7 +34,7 @@ def upgrade() -> None:
 
     bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.schema
+    schema = schema_resolution.target_schema
     print(f"[{revision}] {schema_resolution.line()}")
 
     missing = [name for name in ("operations", "accounts", "ledger_entries", "limit_configs") if not table_exists(bind, name, schema=schema)]

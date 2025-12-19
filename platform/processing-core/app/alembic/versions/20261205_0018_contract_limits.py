@@ -7,13 +7,12 @@ Create Date: 2024-12-05 00:00:00.000000
 
 from typing import Sequence, Union
 
-import os
-
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import column_exists, ensure_pg_enum, safe_enum
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision: str = "20261205_0018_contract_limits"
@@ -26,10 +25,12 @@ LIMIT_SCOPE_VALUES = ["CLIENT", "CARD", "TARIFF"]
 LIMIT_TYPE_VALUES = ["DAILY_VOLUME", "DAILY_AMOUNT", "MONTHLY_AMOUNT", "CREDIT_LIMIT"]
 LIMIT_WINDOW_VALUES = ["DAY", "MONTH"]
 
-SCHEMA = os.getenv("DB_SCHEMA", "public")
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
+QUOTED_SCHEMA = SCHEMA_RESOLUTION.quoted_schema
 
 
-def _qualified(name: str, schema: str = SCHEMA) -> str:
+def _qualified(name: str, schema: str = QUOTED_SCHEMA) -> str:
     return f"{schema}.{name}" if schema else name
 
 
@@ -70,13 +71,13 @@ def constraint_exists(constraint_name: str, schema: str = SCHEMA) -> bool:
 def upgrade() -> None:
     bind = op.get_bind()
 
-    ensure_pg_enum(bind, "limitscope", values=LIMIT_SCOPE_VALUES)
-    ensure_pg_enum(bind, "limittype", values=LIMIT_TYPE_VALUES)
-    ensure_pg_enum(bind, "limitwindow", values=LIMIT_WINDOW_VALUES)
+    ensure_pg_enum(bind, "limitscope", values=LIMIT_SCOPE_VALUES, schema=SCHEMA)
+    ensure_pg_enum(bind, "limittype", values=LIMIT_TYPE_VALUES, schema=SCHEMA)
+    ensure_pg_enum(bind, "limitwindow", values=LIMIT_WINDOW_VALUES, schema=SCHEMA)
 
-    limit_scope_enum = safe_enum(bind, "limitscope", LIMIT_SCOPE_VALUES)
-    limit_type_enum = safe_enum(bind, "limittype", LIMIT_TYPE_VALUES)
-    limit_window_enum = safe_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES)
+    limit_scope_enum = safe_enum(bind, "limitscope", LIMIT_SCOPE_VALUES, schema=SCHEMA)
+    limit_type_enum = safe_enum(bind, "limittype", LIMIT_TYPE_VALUES, schema=SCHEMA)
+    limit_window_enum = safe_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES, schema=SCHEMA)
 
     if not table_exists("tariff_plans", schema=SCHEMA):
         op.create_table(
@@ -125,7 +126,7 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.ForeignKeyConstraint(
-                ["tariff_plan_id"], ["tariff_plans.id"], name="fk_limit_tariff"
+                ["tariff_plan_id"], [f"{SCHEMA}.tariff_plans.id"], name="fk_limit_tariff"
             ),
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
@@ -150,7 +151,7 @@ def upgrade() -> None:
         )
 
     if not column_exists(bind, "operations", "tariff_id", schema=SCHEMA):
-        op.add_column("operations", sa.Column("tariff_id", sa.String(length=64), nullable=True))
+        op.add_column("operations", sa.Column("tariff_id", sa.String(length=64), nullable=True), schema=SCHEMA)
     if not index_exists("ix_operations_tariff_id", schema=SCHEMA):
         op.create_index(
             "ix_operations_tariff_id", "operations", ["tariff_id"], unique=False, schema=SCHEMA
@@ -158,14 +159,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_operations_tariff_id", table_name="operations")
-    op.drop_column("operations", "tariff_id")
+    op.drop_index("ix_operations_tariff_id", table_name="operations", schema=SCHEMA)
+    op.drop_column("operations", "tariff_id", schema=SCHEMA)
 
-    op.drop_index("ix_limit_configs_scope_subject_type", table_name="limit_configs")
-    op.drop_index("ix_limit_configs_enabled", table_name="limit_configs")
-    op.drop_index("ix_limit_configs_subject", table_name="limit_configs")
-    op.drop_index("ix_limit_configs_scope", table_name="limit_configs")
-    op.drop_table("limit_configs")
+    op.drop_index("ix_limit_configs_scope_subject_type", table_name="limit_configs", schema=SCHEMA)
+    op.drop_index("ix_limit_configs_enabled", table_name="limit_configs", schema=SCHEMA)
+    op.drop_index("ix_limit_configs_subject", table_name="limit_configs", schema=SCHEMA)
+    op.drop_index("ix_limit_configs_scope", table_name="limit_configs", schema=SCHEMA)
+    op.drop_table("limit_configs", schema=SCHEMA)
 
-    op.drop_index("ix_tariff_plans_name", table_name="tariff_plans")
-    op.drop_table("tariff_plans")
+    op.drop_index("ix_tariff_plans_name", table_name="tariff_plans", schema=SCHEMA)
+    op.drop_table("tariff_plans", schema=SCHEMA)

@@ -17,6 +17,7 @@ from app.alembic.utils import (
     ensure_enum_type_exists,
     table_exists,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20261125_0016_risk_rule_audit"
@@ -26,6 +27,8 @@ depends_on = None
 
 logger = logging.getLogger("alembic.runtime.migration")
 
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.target_schema
 
 risk_rule_audit_action_enum = postgresql.ENUM(
     "CREATE",
@@ -33,6 +36,7 @@ risk_rule_audit_action_enum = postgresql.ENUM(
     "ENABLE",
     "DISABLE",
     name="riskruleauditaction",
+    schema=SCHEMA,
     create_type=False,
 )
 
@@ -44,9 +48,10 @@ def upgrade() -> None:
         bind,
         type_name="riskruleauditaction",
         values=list(risk_rule_audit_action_enum.enums),
+        schema=SCHEMA,
     )
 
-    if not table_exists(bind, "risk_rule_audits"):
+    if not table_exists(bind, "risk_rule_audits", schema=SCHEMA):
         op.create_table(
             "risk_rule_audits",
             sa.Column(
@@ -58,7 +63,7 @@ def upgrade() -> None:
             sa.Column(
                 "rule_id",
                 sa.BigInteger().with_variant(sa.Integer, "sqlite"),
-                sa.ForeignKey("risk_rules.id", ondelete="CASCADE"),
+                sa.ForeignKey(f"{SCHEMA}.risk_rules.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column("action", risk_rule_audit_action_enum, nullable=False),
@@ -79,13 +84,14 @@ def upgrade() -> None:
                 server_default=sa.func.now(),
                 nullable=False,
             ),
+            schema=SCHEMA,
         )
     else:
         logger.info("Skipping creation of risk_rule_audits table: already exists")
-    create_index_if_not_exists(bind, "ix_risk_rule_audits_rule_id", "risk_rule_audits", ["rule_id"])
-    create_index_if_not_exists(bind, "ix_risk_rule_audits_action", "risk_rule_audits", ["action"])
+    create_index_if_not_exists(bind, "ix_risk_rule_audits_rule_id", "risk_rule_audits", ["rule_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_risk_rule_audits_action", "risk_rule_audits", ["action"], schema=SCHEMA)
     create_index_if_not_exists(
-        bind, "ix_risk_rule_audits_performed_at", "risk_rule_audits", ["performed_at"]
+        bind, "ix_risk_rule_audits_performed_at", "risk_rule_audits", ["performed_at"], schema=SCHEMA
     )
 
 
@@ -93,10 +99,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     drop_index_if_exists(
-        bind, "ix_risk_rule_audits_performed_at", table_name="risk_rule_audits"
+        bind, "ix_risk_rule_audits_performed_at", table_name="risk_rule_audits", schema=SCHEMA
     )
-    drop_index_if_exists(bind, "ix_risk_rule_audits_action", table_name="risk_rule_audits")
-    drop_index_if_exists(bind, "ix_risk_rule_audits_rule_id", table_name="risk_rule_audits")
-    if table_exists(bind, "risk_rule_audits"):
-        op.drop_table("risk_rule_audits")
+    drop_index_if_exists(bind, "ix_risk_rule_audits_action", table_name="risk_rule_audits", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_risk_rule_audits_rule_id", table_name="risk_rule_audits", schema=SCHEMA)
+    if table_exists(bind, "risk_rule_audits", schema=SCHEMA):
+        op.drop_table("risk_rule_audits", schema=SCHEMA)
     risk_rule_audit_action_enum.drop(bind, checkfirst=True)

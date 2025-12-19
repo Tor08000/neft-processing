@@ -34,6 +34,9 @@ build: prepull-base-images
 prepull-base-images:
 	bash scripts/pull_base_images.sh
 
+prep:
+	bash scripts/pull_base_images.sh
+
 # ----------------------------------------
 # ЛОГИ СЕРВИСОВ
 # ----------------------------------------

@@ -92,7 +92,7 @@ def test_core_endpoints_postgres_smoke() -> None:
     engine_kwargs: dict[str, object] = {}
     if db_url.startswith("postgresql") and DB_SCHEMA:
         engine_kwargs["connect_args"] = {
-            "options": f"-csearch_path={DB_SCHEMA},public",
+            "options": f"-c search_path={DB_SCHEMA},public",
             "prepare_threshold": 0,
         }
         engine = sa.create_engine(db_url, **engine_kwargs)

@@ -18,7 +18,7 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.schema
+    schema = schema_resolution.target_schema
     print(f"[{revision}] {schema_resolution.line()}")
 
     if not table_exists(bind, "operations", schema=schema):
@@ -36,7 +36,7 @@ def upgrade():
 def downgrade():
     bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.schema
+    schema = schema_resolution.target_schema
     print(f"[{revision}] {schema_resolution.line()}")
 
     drop_index_if_exists(bind, "ix_operations_created_at", schema=schema)
