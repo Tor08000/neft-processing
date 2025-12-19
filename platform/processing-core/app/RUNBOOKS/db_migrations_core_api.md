@@ -2,6 +2,48 @@
 
 Все команды используют единый DSN из переменной окружения `DATABASE_URL`. В docker-compose для `core-api` он задан как `postgresql+psycopg://neft:neft@postgres:5432/neft` и совпадает с настройками приложения.
 
+## Полный сценарий восстановления
+
+1. Предзагрузить базовые образы, чтобы сборка не падала на `load metadata for ...`:
+
+```bash
+bash scripts/pull_base_images.sh
+# или
+make prepull-base-images
+# или вручную:
+docker pull python:3.11-slim
+docker pull node:20-alpine
+docker pull nginx:1.27-alpine
+```
+
+2. Пересоздать стенд с чистыми томами и пересборкой сервисов:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+docker compose logs --tail=200 core-api
+```
+
+3. Убедиться, что схема и версии применены:
+
+```bash
+docker compose exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+```
+
+### Windows CMD
+
+```cmd
+docker-compose.exe pull python:3.11-slim
+docker-compose.exe pull node:20-alpine
+docker-compose.exe pull nginx:1.27-alpine
+docker-compose.exe down -v
+docker-compose.exe up -d --build
+docker-compose.exe logs --tail=200 core-api
+docker-compose.exe exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
+docker-compose.exe exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+```
+
 ## Проверка текущей ревизии
 
 ```bash

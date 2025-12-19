@@ -10,29 +10,29 @@ export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 python - <<'PY'
 import os
 from sqlalchemy.engine.url import make_url
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db.schema import resolve_db_schema
 
 db_url = os.getenv("DATABASE_URL")
-schema, source = resolve_db_schema()
+resolution = resolve_db_schema()
 
-print(f"[entrypoint] {schema_resolution_line(schema, source)}", flush=True)
+print(f"[entrypoint] {resolution.line()}", flush=True)
 
 if not db_url:
     print("[entrypoint] DATABASE_URL is not set", flush=True)
 else:
     masked = make_url(db_url).render_as_string(hide_password=True)
-    search_path = f"{schema},public" if schema else "public"
     print(f"[entrypoint] DATABASE_URL={masked}", flush=True)
-    print(f"[entrypoint] DB_SCHEMA={schema} search_path={search_path}", flush=True)
+    print(f"[entrypoint] DB_SCHEMA={resolution.schema} search_path={resolution.search_path}", flush=True)
 PY
 
 eval "$(python - <<'PY'
-from app.db import resolve_db_schema
+from app.db.schema import resolve_db_schema
 
-schema, source = resolve_db_schema()
+resolution = resolve_db_schema()
 
-print(f'DB_SCHEMA_RESOLVED=\"{schema}\"')
-print(f'DB_SCHEMA_SOURCE=\"{source}\"')
+print(f'DB_SCHEMA_RESOLVED=\"{resolution.schema}\"')
+print(f'DB_SCHEMA_SOURCE=\"{resolution.source}\"')
+print(f'DB_SCHEMA_SEARCH_PATH=\"{resolution.search_path}\"')
 PY
 )"
 
@@ -164,26 +164,20 @@ import os
 import shlex
 import sys
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
 prefix = os.environ["DB_ID_PREFIX"]
 url = os.getenv("DATABASE_URL")
-schema, schema_source = resolve_db_schema()
+resolution = resolve_db_schema()
 
 if not url:
     print("[entrypoint] DATABASE_URL is not set for DB identity probe", file=sys.stderr)
     sys.exit(1)
 
-engine_kwargs = {"future": True, "pool_pre_ping": True}
-if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "options": f"-csearch_path={schema},public",
-        "prepare_threshold": 0,
-    }
-
-engine = create_engine(url, **engine_kwargs)
+engine = make_engine(url, schema=resolution.schema)
 
 with engine.connect() as conn:
     server_addr, server_port, current_db, current_user = conn.execute(
@@ -191,6 +185,7 @@ with engine.connect() as conn:
     ).one()
     db_oid = conn.execute(text("select oid from pg_database where datname=current_database();")).scalar_one_or_none()
     postmaster_start = conn.execute(text("select pg_postmaster_start_time();")).scalar_one_or_none()
+engine.dispose()
 
 def export(name: str, value) -> None:
     printable = "" if value is None else str(value)
@@ -198,7 +193,7 @@ def export(name: str, value) -> None:
 
 line = (
     f"DB_ID[{prefix}]: host={server_addr} port={server_port} db={current_db} "
-    f"user={current_user} db_oid={db_oid} postmaster_start_time={postmaster_start} schema={schema}"
+    f"user={current_user} db_oid={db_oid} postmaster_start_time={postmaster_start} schema={resolution.schema}"
 )
 export(f"DB_ID_{prefix}_ADDR", server_addr)
 export(f"DB_ID_{prefix}_PORT", server_port)
@@ -206,10 +201,10 @@ export(f"DB_ID_{prefix}_DB", current_db)
 export(f"DB_ID_{prefix}_USER", current_user)
 export(f"DB_ID_{prefix}_OID", db_oid)
 export(f"DB_ID_{prefix}_PM", postmaster_start)
-export(f"DB_ID_{prefix}_SCHEMA", schema)
-export(f"DB_ID_{prefix}_SOURCE", schema_source)
+export(f"DB_ID_{prefix}_SCHEMA", resolution.schema)
+export(f"DB_ID_{prefix}_SOURCE", resolution.source)
 export(f"DB_ID_{prefix}_LINE", line)
-print(f"echo {shlex.quote('[entrypoint] ' + schema_resolution_line(schema, schema_source))}")
+print(f"echo {shlex.quote('[entrypoint] ' + resolution.line())}")
 print(f"echo {shlex.quote('[entrypoint] ' + line)}")
 PY
     )"
@@ -232,13 +227,15 @@ verify_migration_ddls() {
 import os
 import sys
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import event, text
 
 from app.diagnostics.db_state import to_regclass
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.getenv("DATABASE_URL")
 required_tables = (
     "alembic_version",
@@ -253,14 +250,7 @@ if not url:
     sys.exit(1)
 
 debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
-engine_kwargs = {"future": True, "pool_pre_ping": True, "echo": debug_sql}
-if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "options": f"-csearch_path={schema},public",
-        "prepare_threshold": 0,
-    }
-
-engine = create_engine(url, **engine_kwargs)
+engine = make_engine(url, schema=resolution.schema, echo=debug_sql)
 
 if debug_sql:
     def _log_event(conn, *_args, _name):
@@ -322,6 +312,7 @@ if missing:
     )
     sys.exit(1)
 
+engine.dispose()
 print(
     f"[entrypoint] verified required tables exist in schema '{schema}': {sorted(results)}",
     flush=True,
@@ -334,24 +325,20 @@ after_commit_visibility_probe() {
 import os
 import sys
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 url = os.getenv("DATABASE_URL")
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 if not url:
     print("[entrypoint] DATABASE_URL is not set for after-commit probe", file=sys.stderr)
     sys.exit(1)
 
-engine = create_engine(
-    url,
-    future=True,
-    pool_pre_ping=True,
-    connect_args={"prepare_threshold": 0} if url.startswith("postgresql") else {},
-    echo=os.getenv("DB_DEBUG_SQL") == "1",
-)
+engine = make_engine(url, schema=resolution.schema, echo=os.getenv("DB_DEBUG_SQL") == "1")
 
 with engine.connect() as conn:
     alembic_reg = conn.execute(
@@ -371,6 +358,7 @@ with engine.connect() as conn:
         ),
         {"schema": schema},
     ).scalar_one()
+engine.dispose()
 
 print(f"[entrypoint] after-commit probe: alembic_version regclass = {alembic_reg}", flush=True)
 print(f"[entrypoint] after-commit probe: operations regclass = {operations_reg}", flush=True)
@@ -384,10 +372,11 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_fingerprint_from_url
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("DB_FINGERPRINT_LABEL", "")
 
@@ -410,10 +399,11 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_identity_from_url
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("IDENTITY_LABEL") or "identity"
 
@@ -441,10 +431,11 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_identity_probe_from_url
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("IDENTITY_PROBE_LABEL")
 
@@ -467,27 +458,22 @@ require_upgrade_tables_present() {
 import os
 import sys
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine.url import make_url
 
 from app.diagnostics.db_state import identity_probe_line
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.getenv("DATABASE_URL")
 if not url:
     print("[entrypoint] DATABASE_URL is not set for post-upgrade table check", file=sys.stderr)
     sys.exit(1)
 
-engine_kwargs = {"future": True, "pool_pre_ping": True}
-if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "options": f"-csearch_path={schema},public",
-        "prepare_threshold": 0,
-    }
-
-engine = create_engine(url, **engine_kwargs)
+engine = make_engine(url, schema=resolution.schema)
 masked = make_url(url).render_as_string(hide_password=True)
 
 with engine.connect() as conn:
@@ -542,6 +528,7 @@ with engine.connect() as conn:
         print(f"[entrypoint] {probe}", file=sys.stderr)
         sys.exit(1)
 
+engine.dispose()
 print(
     f"[entrypoint] post-upgrade regclass state: operations={operations_reg} alembic_version={alembic_reg}",
     flush=True,
@@ -568,13 +555,15 @@ import sys
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 alembic_config_path = os.getenv("ALEMBIC_CONFIG", "app/alembic.ini")
 db_url = os.environ["DATABASE_URL"]
 
@@ -645,14 +634,7 @@ script_dir = ScriptDirectory.from_config(Config(alembic_config_path))
 script_heads = script_dir.get_heads()
 script_heads_set = set(script_heads)
 
-engine_kwargs = {"future": True, "pool_pre_ping": True}
-if db_url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "prepare_threshold": 0,
-        "options": f"-csearch_path={schema},public",
-    }
-
-engine = create_engine(db_url, **engine_kwargs)
+engine = make_engine(db_url, schema=schema)
 
 try:
     with engine.connect() as conn:
@@ -692,6 +674,8 @@ try:
 except SQLAlchemyError as exc:
     print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
     sys.exit(1)
+finally:
+    engine.dispose()
 
 
 def _log_state(prefix: str = "current") -> None:
@@ -747,27 +731,22 @@ assert_cards_created_at() {
     if python - <<'PY'
 import os
 import sys
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.environ.get("DATABASE_URL")
 
 if not url:
     print("[entrypoint] DATABASE_URL is not set for cards.created_at verification", file=sys.stderr)
     sys.exit(1)
 
-engine_kwargs = {"future": True, "pool_pre_ping": True}
-if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "prepare_threshold": 0,
-        "options": f"-csearch_path={schema},public",
-    }
-
-engine = create_engine(url, **engine_kwargs)
+engine = make_engine(url, schema=resolution.schema)
 
 try:
     with engine.connect() as conn:
@@ -786,6 +765,8 @@ try:
 except SQLAlchemyError as exc:  # pragma: no cover - startup guard
     print(f"[entrypoint] failed to verify cards.created_at presence: {exc}", file=sys.stderr)
     sys.exit(1)
+finally:
+    engine.dispose()
 
 if exists:
     print(f"[entrypoint] verified cards.created_at exists in schema '{schema}'", flush=True)
@@ -802,23 +783,18 @@ PY
     python - <<'PY'
 import os
 import sys
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db import make_engine
+from app.db.schema import resolve_db_schema
 
-schema, schema_source = resolve_db_schema()
-print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
+resolution = resolve_db_schema()
+schema = resolution.schema
+print(f"[entrypoint] {resolution.line()}", flush=True)
 url = os.environ["DATABASE_URL"]
 
-engine_kwargs = {"future": True, "pool_pre_ping": True}
-if url.startswith("postgresql"):
-    engine_kwargs["connect_args"] = {
-        "prepare_threshold": 0,
-        "options": f"-csearch_path={schema},public",
-    }
-
-engine = create_engine(url, **engine_kwargs)
+engine = make_engine(url, schema=resolution.schema)
 try:
     with engine.connect() as conn:
         rows = conn.execute(text(f'SELECT version_num FROM "{schema}".alembic_version')).fetchall()
@@ -826,6 +802,8 @@ try:
 except SQLAlchemyError as exc:  # pragma: no cover - diagnostics helper
     print(f"[entrypoint] failed to read alembic_version contents: {exc}")
     sys.exit(0)
+finally:
+    engine.dispose()
 PY
 
     echo "[entrypoint] alembic history tail:" >&2

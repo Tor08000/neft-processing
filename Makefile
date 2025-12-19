@@ -6,7 +6,7 @@ DOCKER_COMPOSE ?= docker compose
 
 PROJECT_NAME := neft-processing
 
-.PHONY: up down restart ps build \
+.PHONY: up down restart ps build prepull-base-images \
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
         migrate test test-core test-auth test-ai test-workers \
@@ -28,8 +28,11 @@ restart: down up
 ps:
 	$(DOCKER_COMPOSE) ps
 
-build:
+build: prepull-base-images
 	$(DOCKER_COMPOSE) build
+
+prepull-base-images:
+	bash scripts/pull_base_images.sh
 
 # ----------------------------------------
 # ЛОГИ СЕРВИСОВ

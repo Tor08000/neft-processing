@@ -12,37 +12,16 @@ from sqlalchemy.pool import StaticPool
 
 from neft_shared.settings import get_settings
 
+from .schema import (
+    DB_SCHEMA,
+    DB_SCHEMA_SOURCE,
+    SCHEMA_RESOLUTION,
+    log_schema_resolution,
+    resolve_db_schema,
+    schema_resolution_line,
+)
+
 settings = get_settings()
-
-
-def resolve_db_schema(env: os._Environ[str] | None = None) -> tuple[str, str]:
-    """Resolve the target DB schema and record its source.
-
-    Resolution order:
-    1. ``NEFT_DB_SCHEMA``
-    2. ``DB_SCHEMA``
-    3. ``public`` (default)
-    """
-
-    env_map = env or os.environ
-    for key in ("NEFT_DB_SCHEMA", "DB_SCHEMA"):
-        value = env_map.get(key)
-        if value:
-            return value, key
-
-    return "public", "default"
-
-
-def schema_resolution_line(schema: str, source: str) -> str:
-    return f"schema_resolved={schema} source={source}"
-
-
-DB_SCHEMA, DB_SCHEMA_SOURCE = resolve_db_schema()
-
-
-def log_schema_resolution(logger: logging.Logger | None = None) -> None:
-    emitter = (logger or logging.getLogger(__name__)).info
-    emitter(schema_resolution_line(DB_SCHEMA, DB_SCHEMA_SOURCE))
 
 
 def _ensure_psycopg_driver(url: str) -> str:
@@ -82,15 +61,30 @@ except Exception as exc:  # noqa: BLE001 - explicit startup failure
 Base = declarative_base()
 
 
-def _make_engine_kwargs(url: str) -> dict:
-    engine_kwargs = dict(
-        future=True,
-        pool_pre_ping=True,
-    )
+def make_engine_kwargs(
+    url: str,
+    *,
+    schema: str | None = None,
+    pool_pre_ping: bool = True,
+    echo: bool | None = None,
+    poolclass=None,
+) -> dict:
+    resolved_schema = schema or DB_SCHEMA
+    engine_kwargs: dict[str, object] = {
+        "future": True,
+        "pool_pre_ping": pool_pre_ping,
+    }
+
+    if echo is not None:
+        engine_kwargs["echo"] = echo
+
+    if poolclass is not None:
+        engine_kwargs["poolclass"] = poolclass
 
     if url.startswith("postgresql"):
         connect_args = {"prepare_threshold": 0}
-        connect_args["options"] = f"-csearch_path={DB_SCHEMA},public"
+        search_path = f"{resolved_schema},public" if resolved_schema != "public" else "public"
+        connect_args["options"] = f"-csearch_path={search_path}"
         engine_kwargs["connect_args"] = connect_args
 
     if url.startswith("sqlite"):
@@ -108,15 +102,22 @@ _async_engine = None
 _AsyncSessionLocal = None
 
 
+def make_engine(url: str, *, schema: str | None = None, **kwargs) -> Engine:
+    """Create a synchronous SQLAlchemy Engine with standard defaults."""
+
+    engine_kwargs = make_engine_kwargs(url, schema=schema, **kwargs)
+    return create_engine(url, **engine_kwargs)
+
+
 def get_engine() -> Engine:
     """Lazy singleton for the core SQLAlchemy engine."""
 
     global _engine
 
     if _engine is None:
-        _engine = create_engine(
+        _engine = make_engine(
             DATABASE_URL,
-            **_make_engine_kwargs(DATABASE_URL),
+            schema=DB_SCHEMA,
         )
 
     return _engine

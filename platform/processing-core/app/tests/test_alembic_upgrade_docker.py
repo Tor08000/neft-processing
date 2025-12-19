@@ -100,22 +100,58 @@ def _postgres_container(image: str):
 
 def _upgrade_and_inventory(db_url: str, schema: str, monkeypatch: pytest.MonkeyPatch) -> dict[str, str | None]:
     monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("DB_SCHEMA", schema)
+    monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
 
     cfg = _make_alembic_config(db_url)
+    script_heads = set(ScriptDirectory.from_config(cfg).get_heads())
 
     command.upgrade(cfg, "head")
 
-    with sa.create_engine(
+    engine = sa.create_engine(
         db_url, future=True, pool_pre_ping=True, connect_args={"prepare_threshold": 0}
-    ).connect() as conn:
-        regclasses = {table: db_state.to_regclass(conn, schema, table) for table in REQUIRED_TABLES}
-        spillover_schema = "public" if schema != "public" else "nonexistent"
-        spillover = {
-            table: db_state.to_regclass(conn, spillover_schema, table) for table in REQUIRED_TABLES
-        }
+    )
+    try:
+        with engine.connect() as conn:
+            regclasses = {table: db_state.to_regclass(conn, schema, table) for table in REQUIRED_TABLES}
+            spillover_schema = "public" if schema != "public" else "nonexistent"
+            spillover = {
+                table: db_state.to_regclass(conn, spillover_schema, table) for table in REQUIRED_TABLES
+            }
+            version_values = (
+                conn.execute(sa.text(f'SELECT version_num FROM "{schema}".alembic_version')).scalars().all()
+                if regclasses.get("alembic_version")
+                else []
+            )
+            cards_created = (
+                conn.execute(
+                    sa.text(
+                        """
+                        select 1
+                        from information_schema.columns
+                        where table_schema=:schema
+                          and table_name='cards'
+                          and column_name='created_at'
+                        """
+                    ),
+                    {"schema": schema},
+                ).scalar_one_or_none()
+                is not None
+            )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            command.current(cfg)
+        current_output = buf.getvalue()
+    finally:
+        engine.dispose()
 
-    return {**regclasses, **{f"{name}_spillover": value for name, value in spillover.items()}}
+    return {
+        "regclasses": regclasses,
+        "spillover": spillover,
+        "version_values": version_values,
+        "script_heads": script_heads,
+        "current_output": current_output,
+        "cards_created": cards_created,
+    }
 
 
 @pytest.mark.integration
@@ -129,11 +165,16 @@ def test_upgrade_creates_public_tables_via_docker(monkeypatch):
     except RuntimeError as exc:
         pytest.skip(str(exc))
 
-    missing = [name for name in REQUIRED_TABLES if results[name] is None]
-    spillover = [name for name in REQUIRED_TABLES if results.get(f"{name}_spillover") is not None]
+    regclasses = results["regclasses"]
+    missing = [name for name in REQUIRED_TABLES if regclasses[name] is None]
+    spillover = [name for name in REQUIRED_TABLES if results["spillover"].get(name) is not None]
 
     assert not missing, f"tables missing in public schema: {missing}"
     assert not spillover, f"tables unexpectedly found outside public schema: {spillover}"
+    assert set(results["version_values"]) == results["script_heads"]
+    for head in results["script_heads"]:
+        assert head in results["current_output"]
+    assert results["cards_created"], "cards.created_at should exist after migrations"
 
 
 @pytest.mark.integration
@@ -148,11 +189,16 @@ def test_upgrade_respects_custom_schema(monkeypatch):
     except RuntimeError as exc:
         pytest.skip(str(exc))
 
-    missing = [name for name in REQUIRED_TABLES if results[name] is None]
-    in_public = [name for name in REQUIRED_TABLES if results.get(f"{name}_spillover") is not None]
+    regclasses = results["regclasses"]
+    missing = [name for name in REQUIRED_TABLES if regclasses[name] is None]
+    in_public = [name for name in REQUIRED_TABLES if results["spillover"].get(name) is not None]
 
     assert not missing, f"tables missing in schema {schema}: {missing}"
     assert not in_public, f"tables should not be created in public when schema={schema}: {in_public}"
+    assert set(results["version_values"]) == results["script_heads"]
+    for head in results["script_heads"]:
+        assert head in results["current_output"]
+    assert results["cards_created"]
 
 
 @pytest.mark.integration
@@ -213,7 +259,7 @@ def test_engine_reset_after_migrations(monkeypatch):
     try:
         with _postgres_container(image) as db_url:
             monkeypatch.setenv("DATABASE_URL", db_url)
-            monkeypatch.setenv("DB_SCHEMA", schema)
+            monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
 
             warm_engine = get_engine()
             with warm_engine.connect() as conn:

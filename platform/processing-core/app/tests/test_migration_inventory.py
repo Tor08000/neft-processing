@@ -45,12 +45,14 @@ def postgres_schema(monkeypatch):
         conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
 
     monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("DB_SCHEMA", schema)
+    monkeypatch.setenv("NEFT_DB_SCHEMA", schema)
+    monkeypatch.delenv("DB_SCHEMA", raising=False)
 
     yield db_url, schema
 
     with engine.begin() as conn:
         conn.execute(sa.text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    engine.dispose()
 
 
 def test_migrations_apply_and_register_version(postgres_schema):

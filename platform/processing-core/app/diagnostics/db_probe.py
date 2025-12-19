@@ -5,10 +5,11 @@ from typing import Any, Dict
 
 from sqlalchemy import text
 
-from app.db import engine, resolve_db_schema, schema_resolution_line
+from app.db import engine
+from app.db.schema import resolve_db_schema
 
-SCHEMA, SCHEMA_SOURCE = resolve_db_schema()
-PROBE_TABLE = f"{SCHEMA}._probe_migrations"
+SCHEMA_RESOLUTION = resolve_db_schema()
+PROBE_TABLE = f"{SCHEMA_RESOLUTION.schema}._probe_migrations"
 
 
 def _collect_fingerprint(connection) -> Dict[str, Any]:
@@ -34,7 +35,7 @@ def run_probe() -> Dict[str, Any]:
     """Create the probe table and report its presence and DB fingerprint."""
 
     with engine.begin() as connection:
-        print(f"[db_probe] {schema_resolution_line(SCHEMA, SCHEMA_SOURCE)}")
+        print(f"[db_probe] {SCHEMA_RESOLUTION.line()}")
         connection.exec_driver_sql(
             f"CREATE TABLE IF NOT EXISTS {PROBE_TABLE} (x INT)"
         )
@@ -48,7 +49,7 @@ def run_probe() -> Dict[str, Any]:
         "source": "core-api",
         "regclass": regclass,
         "fingerprint": fingerprint,
-        "schema": schema_resolution_line(SCHEMA, SCHEMA_SOURCE),
+        "schema": SCHEMA_RESOLUTION.line(),
     }
 
 

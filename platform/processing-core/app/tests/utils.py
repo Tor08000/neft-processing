@@ -1,8 +1,6 @@
 import os
 from typing import Optional
 
-import os
-
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
