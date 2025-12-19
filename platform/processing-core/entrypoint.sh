@@ -363,56 +363,56 @@ if db_url.startswith("postgresql"):
 
 engine = create_engine(db_url, **engine_kwargs)
 
-    try:
-        with engine.connect() as conn:
-            version_reg = _regclass(conn, "alembic_version")
-            required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
-            table_state = {name: _regclass(conn, name) for name in required_tables}
-            cards_created = conn.execute(
-                text(
-                    """
-                    select 1
-                    from information_schema.columns
-                    where table_schema=:schema
-                      and table_name='cards'
-                      and column_name='created_at'
-                    """
-                ),
-                {"schema": schema},
-            ).scalar_one_or_none() is not None
-            search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
+try:
+    with engine.connect() as conn:
+        version_reg = _regclass(conn, "alembic_version")
+        required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
+        table_state = {name: _regclass(conn, name) for name in required_tables}
+        cards_created = conn.execute(
+            text(
+                """
+                select 1
+                from information_schema.columns
+                where table_schema=:schema
+                  and table_name='cards'
+                  and column_name='created_at'
+                """
+            ),
+            {"schema": schema},
+        ).scalar_one_or_none() is not None
+        search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
-            version_rows = []
-            if version_reg is None:
-                schema_ready_for_stamp = cards_created and all(table_state.values())
-                if schema_ready_for_stamp and allow_stamp:
-                    print(
-                        "[entrypoint] alembic_version missing but schema has required tables; applying stamp head",
-                        file=sys.stderr,
-                    )
-                    subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
+        version_rows = []
+        if version_reg is None:
+            schema_ready_for_stamp = cards_created and all(table_state.values())
+            if schema_ready_for_stamp and allow_stamp:
+                print(
+                    "[entrypoint] alembic_version missing but schema has required tables; applying stamp head",
+                    file=sys.stderr,
+                )
+                subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
 
-                    version_reg = _regclass(conn, "alembic_version")
-                    if version_reg is None:
-                        print(
-                            f"[entrypoint] alembic_version still missing after stamp attempt (search_path={search_path})",
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)
-                else:
+                version_reg = _regclass(conn, "alembic_version")
+                if version_reg is None:
                     print(
-                        f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
+                        f"[entrypoint] alembic_version still missing after stamp attempt (search_path={search_path})",
                         file=sys.stderr,
                     )
                     sys.exit(1)
+            else:
+                print(
+                    f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
-            version_rows = conn.execute(
-                text(f'SELECT version_num FROM "{schema}".alembic_version')
-            ).fetchall()
-            version_values = [row[0] for row in version_rows]
-    except SQLAlchemyError as exc:
-        print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
-        sys.exit(1)
+        version_rows = conn.execute(
+            text(f'SELECT version_num FROM "{schema}".alembic_version')
+        ).fetchall()
+        version_values = [row[0] for row in version_rows]
+except SQLAlchemyError as exc:
+    print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _log_state(prefix: str = "current") -> None:
@@ -648,52 +648,13 @@ done
 assert_cards_created_at
 
 set +e
-python - <<'PY'
-import sys
-import traceback
-
-from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
-from app.diagnostics.db_state import collect_inventory
-
-try:
-    inventory = collect_inventory()
-except Exception as exc:  # noqa: BLE001 - startup diagnostics
-    traceback.print_exc()
-    print(f"[entrypoint] diagnostics failed: {exc}", flush=True)
-    sys.exit(1)
-
-print(
-    "[entrypoint] post-migration target: "
-    f"db={inventory.current_database} user={inventory.current_user} "
-    f"server={inventory.server_addr}:{inventory.server_port} search_path={inventory.search_path}",
-    flush=True,
-)
-print(f"[entrypoint] post-migration schemas: {inventory.schemas}", flush=True)
-print(
-    f"[entrypoint] post-migration tables sample: {[f'{s}.{t}' for s, t in inventory.tables[:30]]}",
-    flush=True,
-)
-
-missing_version = not inventory.alembic_versions
-if inventory.alembic_versions:
-    print(f"[entrypoint] alembic versions present: {inventory.alembic_versions}", flush=True)
-else:
-    print("[entrypoint] alembic_version missing", flush=True)
-
-missing_tables = inventory.missing_tables(REQUIRED_CORE_TABLES)
-print(f"[entrypoint] missing_required_tables={missing_tables}", flush=True)
-
-if missing_version or missing_tables:
-    sys.exit(2)
-
-print("[entrypoint] core tables present after migrations")
-PY
+python app/scripts/migration_diagnostics.py
 diagnostics_status=$?
 set -e
 
 if [ "$diagnostics_status" -ne 0 ]; then
+    echo "[entrypoint] diagnostics failed with status $diagnostics_status" >&2
     dump_migration_diagnostics
-    exit 1
 fi
 
 python - <<'PY'
