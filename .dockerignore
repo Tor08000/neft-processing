@@ -1,14 +1,34 @@
-__pycache__/
-*.py[cod]
-.venv/
-dist/
-build/
-.cache/
+# git
+.git
+.gitignore
+
+# node
+**/node_modules
+**/dist
+**/.vite
+**/.cache
+**/coverage
+
+# python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/venv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# misc
 .env
 logs/
 data/
-/alembic.ini
+build/
+dist/
+alembic.ini
 .vscode/
 .idea/
-.DS_Store
-Thumbs.db

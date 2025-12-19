@@ -3,17 +3,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY frontends/client-portal/package*.json ./
-RUN npm install
+COPY package*.json ./
+RUN npm ci
 
-COPY frontends/client-portal/. .
-
+COPY . .
 RUN npm run build
 
 # ---------- Stage 2: nginx + статические файлы ----------
 FROM nginx:1.27-alpine
 
-COPY frontends/client-portal/nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80

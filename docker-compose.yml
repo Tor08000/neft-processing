@@ -48,8 +48,8 @@ services:
 
   admin-web:
     build:
-      context: .
-      dockerfile: frontends/admin-ui/Dockerfile
+      context: ./frontends/admin-ui
+      dockerfile: Dockerfile
     container_name: neft-processing-admin-web-1
     environment:
       SERVICE_NAME: admin-web
@@ -64,8 +64,8 @@ services:
 
   client-web:
     build:
-      context: .
-      dockerfile: frontends/client-portal/Dockerfile
+      context: ./frontends/client-portal
+      dockerfile: Dockerfile
     container_name: neft-processing-client-web-1
     environment:
       SERVICE_NAME: client-web

@@ -12,6 +12,7 @@ DEFAULT_GATEWAY = "http://localhost"
 DEFAULT_TIMEOUT = float(os.getenv("SMOKE_HTTP_TIMEOUT", "5"))
 DEFAULT_RETRIES = int(os.getenv("SMOKE_HTTP_RETRIES", "3"))
 DEFAULT_SLEEP = float(os.getenv("SMOKE_HTTP_RETRY_DELAY", "1"))
+DEFAULT_SCHEMA = "public"
 
 
 def gateway_base() -> str:
@@ -60,6 +61,24 @@ def read_json(response: urllib.response.addinfourl) -> Any:
     return json.loads(payload.decode())
 
 
+def target_schema() -> str:
+    return (os.getenv("NEFT_DB_SCHEMA") or DEFAULT_SCHEMA).strip() or DEFAULT_SCHEMA
+
+
+def _quote_ident(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def schema_connect_kwargs(schema: str | None = None) -> Dict[str, str]:
+    resolved = target_schema() if schema is None else schema
+    return {"options": f"-c search_path={_quote_ident(resolved)}"}
+
+
+def qualified_regclass(name: str, schema: str | None = None) -> str:
+    resolved = target_schema() if schema is None else schema
+    return f"{_quote_ident(resolved)}.{_quote_ident(name)}"
+
+
 def normalize_pg_dsn(raw_dsn: str) -> str:
     if raw_dsn.startswith("postgresql+psycopg://"):
         return raw_dsn.replace("postgresql+psycopg://", "postgresql://", 1)
@@ -82,18 +101,18 @@ def build_pg_dsn() -> str:
     return f"postgresql://{urllib.parse.quote(user)}:{urllib.parse.quote(password)}@{host}:{port}/{db}"
 
 
-def assert_tables_exist(conn, table_names: Iterable[str]) -> None:
+def assert_tables_exist(conn, table_names: Iterable[str], schema: str | None = None) -> None:
     names = list(table_names)
-    placeholders = ",".join(["%s"] * len(names))
+    resolved_schema = target_schema() if schema is None else schema
     with conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema = 'public'
-              AND table_name IN ({placeholders})
+            WHERE table_schema = %s
+              AND table_name = ANY(%s)
             """,
-            names,
+            (resolved_schema, names),
         )
         existing = {row[0] for row in cur.fetchall()}
 
