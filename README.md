@@ -8,11 +8,22 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
    - `ADMIN_PASSWORD`
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов:
- - Core API напрямую: `http://localhost:8001/api/v1/health`
-  - Через gateway: `http://localhost/api/v1/health`
+ - Gateway health: `http://localhost/health`
+  - Core API напрямую: `http://localhost:8001/health`
+  - Через gateway: `http://localhost/api/core/health`
+  - Auth через gateway: `http://localhost/api/auth/health`
+  - AI через gateway: `http://localhost/api/ai/health`
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
+
+### Endpoints & Ports
+
+* Gateway health: `GET http://localhost/health`
+* Core через gateway: `GET http://localhost/api/core/health` (OpenAPI/Swagger: `http://localhost/api/core/docs`)
+* Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
+* AI через gateway: `GET http://localhost/api/ai/health` (Swagger: `http://localhost/api/ai/docs`)
+* Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
 
 ### Вход в админ-панель
 
@@ -29,12 +40,12 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 ### Админский токен для локальной разработки
 
 1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
-2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/admin/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
+2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
 ```
 call scripts\get_admin_token.cmd
-curl -i "http://localhost/admin/api/v1/operations?limit=5" ^
+curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   -H "Authorization: Bearer %TOKEN%"
 ```
 
@@ -49,8 +60,8 @@ curl -i "http://localhost/admin/api/v1/operations?limit=5" ^
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
-    * `/admin/api/v1/auth/login`
-    * `/admin/api/v1/operations`
+    * `/api/auth/api/v1/auth/login`
+    * `/api/core/api/v1/admin/operations`
 * Клиент использует React Query для кэширования (операции: `staleTime=30s`, дашборд: `staleTime=5s`) и динамическую
   подгрузку страниц/тяжёлых компонентов через `React.lazy + Suspense`, чтобы ускорить initial load.
 
@@ -68,23 +79,25 @@ curl -i "http://localhost/admin/api/v1/operations?limit=5" ^
   1. `cp -n .env.example .env` и при необходимости скорректируйте `DEMO_CLIENT_*`.
   2. `docker compose up -d --build`.
   3. Откройте клиентский портал, авторизуйтесь демо-клиентом — увидите seeded-операции/лимиты из базы.
-* Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/client/api/v1/...` через gateway.
+* Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/api/core/client/api/v1/...` через gateway.
 * Для демо-доступа используется единый аккаунт клиента (по умолчанию `client@neft.local / client`). Креды можно переопределить через
   переменные окружения `DEMO_CLIENT_EMAIL` и `DEMO_CLIENT_PASSWORD` в `.env`.
-* Авторизация клиентских API защищена JWT: логин по пути `/client/api/v1/auth/login`, последующие запросы к `/client/api/v1/client/*`
+* Авторизация клиентских API защищена JWT: логин по пути `/api/auth/api/v1/auth/login`, последующие запросы к `/api/core/client/api/v1/client/*`
   выполняются с заголовком `Authorization: Bearer <token>`; при 401/403 клиент сбрасывает токен и возвращает пользователя на экран логина.
 * Базовый сценарий: форма логина → получение токена `auth-host` → загрузка дашборда и списков операций/лимитов по организации.
 
 ### Разделение публичного и admin API
 
-* Gateway проксирует единый публичный API core-api по пути `/api/v1/*`.
-* Админские маршруты идут через `/admin/api/v1/*`, а авторизация — по `/admin/api/v1/auth/*` (прокси в auth-host).
-* Клиентские маршруты идут через `/client/api/v1/*`, авторизация — по `/client/api/v1/auth/*`.
-* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://gateway` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
+* Gateway проксирует сервисы без перезаписи пути:
+  * `/api/core/*` → core-api
+  * `/api/auth/*` → auth-host
+  * `/api/ai/*` → ai-service
+* Админские и клиентские SPA остаются на путях `/admin/` и `/client/`, но их API-запросы идут через новые namespace'ы `/api/core/...` и `/api/auth/...`.
+* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://gateway`, `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
 
 ### Gateway (Nginx)
 
-* Конфигурация: `gateway/nginx.conf` (прокси для `/api/v1/`, `/admin/api/v1/*`, `/client/api/v1/*`, статик `/admin/` и `/client/`, favicon и health).
+* Конфигурация: `gateway/nginx.conf` (прокси без rewrite для `/api/core/*`, `/api/auth/*`, `/api/ai/*`, статик `/admin/` и `/client/`, favicon и health).
 * Dockerfile: `gateway/Dockerfile` (основан на `nginx:1.27-alpine`, копирует конфиг в контейнер и перенаправляет логи в stdout/stderr).
 * Сборка и запуск:
   * `docker compose build gateway` — собрать образ с конфигом.
@@ -113,7 +126,7 @@ curl -i "http://localhost/admin/api/v1/operations?limit=5" ^
 
 ### Отладка и диагностика Celery/Redis/Flower
 
-* Быстрая проверка очереди: `curl http://localhost:8001/api/v1/health/celery` (ping через Celery) либо `docker compose exec workers python - <<'PY'
+* Быстрая проверка очереди: `curl http://localhost/api/core/health/celery` (ping через Celery) либо `docker compose exec workers python - <<'PY'
 from services.workers.app.celery_app import celery_app
 print(celery_app.send_task("workers.ping", kwargs={"x": 1}).get(timeout=5))
 PY`.

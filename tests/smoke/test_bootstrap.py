@@ -29,7 +29,7 @@ def test_gateway_health_bootstrap():
 
 
 def test_core_health_bootstrap():
-    response = http_get("/api/v1/health", expect_json=True)
+    response = http_get("/api/core/health", expect_json=True)
     data = read_json(response)
     assert response.status == 200
     assert data.get("status") == "ok"

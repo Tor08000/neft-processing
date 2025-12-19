@@ -1,6 +1,14 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+type ApiBase = "core" | "auth";
+
+const gatewayBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+const normalizePrefix = (raw: string): string => {
+  const value = raw.startsWith("/") ? raw : `/${raw}`;
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+};
 const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
-export const API_BASE = `${apiBase}${clientBase}/api/v1`;
+
+export const CORE_API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_CORE_API_BASE ?? "/api/core")}${clientBase}/api/v1`;
+export const AUTH_API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_AUTH_API_BASE ?? "/api/auth")}/api/v1/auth`;
 
 export type HttpHeaders = Record<string, string>;
 
@@ -31,9 +39,32 @@ const buildHeaders = (token?: string): HttpHeaders => {
   return headers;
 };
 
-export async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const headers: HttpHeaders = { ...buildHeaders(token), ...(init.headers as HttpHeaders) };
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+type RequestOptions = {
+  token?: string | null;
+  base?: ApiBase;
+};
+
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  tokenOrOptions?: string | null | RequestOptions,
+  maybeBase?: ApiBase,
+): Promise<T> {
+  let token: string | null | undefined;
+  let base: ApiBase = "core";
+  if (tokenOrOptions && typeof tokenOrOptions === "object" && !Array.isArray(tokenOrOptions)) {
+    token = tokenOrOptions.token ?? undefined;
+    base = tokenOrOptions.base ?? base;
+  } else {
+    token = (tokenOrOptions as string | null | undefined) ?? undefined;
+    if (typeof maybeBase === "string") {
+      base = maybeBase;
+    }
+  }
+
+  const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
+  const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
+  const response = await fetch(`${apiBase}${path}`, { ...init, headers });
 
   if (response.status === 401) {
     throw new UnauthorizedError();

@@ -4,7 +4,11 @@ import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./typ
 export { UnauthorizedError, ValidationError };
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
-  const body = await request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) });
+  const body = await request<LoginResponse>(
+    "/login",
+    { method: "POST", body: JSON.stringify(payload) },
+    { base: "auth" },
+  );
   return {
     token: body.access_token,
     email: body.email,
@@ -16,5 +20,5 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function fetchMe(token: string): Promise<MeResponse> {
-  return request<MeResponse>("/auth/me", { method: "GET" }, token);
+  return request<MeResponse>("/me", { method: "GET" }, { token, base: "auth" });
 }
