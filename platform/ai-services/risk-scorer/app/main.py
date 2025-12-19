@@ -17,6 +17,17 @@ from .api.v1.score import router as score_router
 from .settings import settings
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "ai-service")
+DEFAULT_API_PREFIX = "/api/ai"
+
+
+def _normalize_prefix(prefix: str, default: str) -> str:
+    if not prefix:
+        return default
+    normalized = prefix if prefix.startswith("/") else f"/{prefix}"
+    return normalized.rstrip("/") or default
+
+
+API_PREFIX_AI = _normalize_prefix(os.getenv("API_PREFIX_AI", DEFAULT_API_PREFIX), DEFAULT_API_PREFIX)
 
 
 @asynccontextmanager
@@ -36,8 +47,10 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
-    app.include_router(health_router)
-    app.include_router(score_router)
+    app.include_router(health_router, prefix="/api")
+    app.include_router(score_router, prefix="/api")
+    app.include_router(health_router, prefix=API_PREFIX_AI)
+    app.include_router(score_router, prefix=API_PREFIX_AI)
 
     prefixed_router = APIRouter(prefix="/api/ai")
     prefixed_router.include_router(health_router)

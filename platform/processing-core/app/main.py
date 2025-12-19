@@ -66,6 +66,19 @@ except Exception:  # pragma: no cover - в dev может ещё не сущес
     partners_router = None  # type: ignore
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
+DEFAULT_API_PREFIX = "/api/core"
+LEGACY_API_PREFIX = "/api"
+API_PREFIX_CORE = os.getenv("API_PREFIX_CORE", DEFAULT_API_PREFIX)
+
+
+def _normalize_api_prefix(prefix: str, default: str) -> str:
+    if not prefix:
+        return default
+    normalized = prefix if prefix.startswith("/") else f"/{prefix}"
+    return normalized.rstrip("/") or default
+
+
+API_PREFIX_CORE = _normalize_api_prefix(API_PREFIX_CORE, DEFAULT_API_PREFIX)
 init_logging(service_name=SERVICE_NAME)
 logger = get_logger(__name__)
 
@@ -300,9 +313,12 @@ if intake_router is not None:
 if partners_router is not None:
     app.include_router(partners_router, prefix="")
 
-app.include_router(admin_router)
+app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
+app.include_router(admin_router, prefix=API_PREFIX_CORE)
 app.include_router(client_router)
-app.include_router(client_portal_router)
+app.include_router(client_router, prefix=API_PREFIX_CORE)
+app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
+app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -475,7 +491,7 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 # HEALTH
 # -----------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
-@app.get("/api/v1/health", response_model=HealthResponse)
+@app.get(f"{API_PREFIX_CORE}/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok")
 

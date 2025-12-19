@@ -35,7 +35,7 @@ from app.schemas.client_portal import (
     StatementResponse,
 )
 
-router = APIRouter(prefix="/api/v1/client", tags=["client-portal"])
+router = APIRouter(prefix="/v1/client", tags=["client-portal"])
 
 
 _CLIENT_REASON_MAP: dict[str, str] = {

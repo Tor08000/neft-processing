@@ -31,8 +31,10 @@ function redirectToLogin() {
 }
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
-  const base = API_BASE_URL.endsWith("/") ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-  const url = new URL(path.startsWith("/") ? path : `/${path}`, base);
+  const fallbackBase = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const base = API_BASE_URL || fallbackBase;
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  const url = new URL(path.startsWith("/") ? path : `/${path}`, normalizedBase);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from ...model_provider import ScoreModelProvider
 from ...schemas import ScoreRequest, ScoreResponse
 
-router = APIRouter(prefix="/api/v1/score", tags=["score"])
+router = APIRouter(prefix="/v1/score", tags=["score"])
 
 
 def get_provider() -> ScoreModelProvider:

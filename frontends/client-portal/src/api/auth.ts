@@ -1,4 +1,4 @@
-import { request, UnauthorizedError, ValidationError } from "./http";
+import { AUTH_API_BASE, request, UnauthorizedError, ValidationError } from "./http";
 import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./types";
 
 export { UnauthorizedError, ValidationError };
