@@ -24,16 +24,19 @@ billing_status_values = ["PENDING", "FINALIZED"]
 
 
 def _column_exists(bind, table_name: str, column_name: str, schema: str = "public") -> bool:
-    return bool(
-        bind.exec_driver_sql(
-            "SELECT 1 "
-            "FROM information_schema.columns "
-            "WHERE table_schema = %s "
-            "  AND table_name = %s "
-            "  AND column_name = %s",
-            (schema, table_name, column_name),
-        ).scalar()
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name, "column_name": column_name},
     )
+    return bool(result.scalar())
 
 
 def upgrade() -> None:

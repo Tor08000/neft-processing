@@ -38,10 +38,20 @@ class DummyResult:
         self.statement = statement
 
     def one(self):
+        if "txid_current()" in self.statement and "pg_backend_pid()" in self.statement:
+            return ("txid", "pid")
+        if (
+            "inet_server_addr()" in self.statement
+            and "inet_server_port()" in self.statement
+            and "current_database()" not in self.statement
+        ):
+            return ("127.0.0.1", 5432)
         if "current_database(), current_user" in self.statement and "inet_server_addr" in self.statement:
             return ("neft", "dummy_user", "127.0.0.1", 5432, "public")
         if "current_database(), current_user" in self.statement:
             return ("neft", "dummy_user")
+        if "current_schema" in self.statement and "current_setting('search_path')" in self.statement:
+            return ("public", "public")
         if "inet_server_addr()" in self.statement:
             return ("127.0.0.1", 5432, "neft", "dummy_user", "public")
         return ("neft",)
@@ -288,6 +298,7 @@ def test_env_uses_execute_for_parameterized_sql(monkeypatch):
     monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
     monkeypatch.setattr(context, "config", DummyConfig(), raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
 
     importlib.import_module("app.alembic.env")
     from app.alembic import env  # noqa: WPS433
@@ -325,10 +336,43 @@ def test_env_uses_execute_for_parameterized_sql(monkeypatch):
 
     connection = GuardConnection()
 
-    has_cards_created_at = env._has_cards_created_at(connection, "public")  # noqa: SLF001
+    operations_regclass = env.regclass(connection, "public.operations")
     table_count = env._schema_table_count(connection, "public")  # noqa: SLF001
 
-    assert has_cards_created_at is True
+    assert operations_regclass is None
     assert table_count == 3
     assert connection.executed_sql == []
     assert len(connection.execute_calls) == 2
+
+
+@pytest.mark.usefixtures("clear_env_module")
+@pytest.mark.usefixtures("restore_context")
+def test_env_rejects_exec_driver_sql_with_params(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:supersecret@db:5432/neft")
+    monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
+    dummy_config = DummyConfig()
+    monkeypatch.setattr(context, "config", dummy_config, raising=False)
+    monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
+    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
+    monkeypatch.setattr(context, "script", SimpleNamespace(get_heads=lambda: ["head"]), raising=False)
+    monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
+
+    class GuardConnection(DummyConnection):
+        def exec_driver_sql(self, statement, params=None):  # noqa: D401,ARG002
+            if params is not None:
+                raise AssertionError("exec_driver_sql should not receive params")
+            if ":" in str(statement):
+                raise AssertionError("exec_driver_sql should not handle bound parameter placeholders")
+            return super().exec_driver_sql(statement, params=params)
+
+    guard_connection = GuardConnection()
+
+    monkeypatch.setattr("sqlalchemy.engine_from_config", lambda *_args, **_kwargs: DummyEngine(guard_connection))
+    monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
+    monkeypatch.setattr("alembic.context.configure", lambda **kwargs: None)
+    monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(guard_connection))
+    monkeypatch.setattr("app.alembic.utils.ensure_alembic_version_length", lambda connection: None)
+
+    import app.alembic.env as env  # noqa: WPS433
+
+    env.run_migrations_online()
