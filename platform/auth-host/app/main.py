@@ -1,6 +1,7 @@
 import logging
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
 
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
@@ -26,10 +27,34 @@ app.include_router(auth_router)
 app.include_router(admin_users_router)
 app.include_router(processing_router)
 
+api_prefixed_router = APIRouter(prefix="/api/auth")
+api_prefixed_router.include_router(health_router)
+api_prefixed_router.include_router(auth_router)
+api_prefixed_router.include_router(admin_users_router)
+api_prefixed_router.include_router(processing_router)
+
 
 @app.get("/health")
 def health_root():
     return {"status": "ok", "service": "auth-host"}
+
+
+@api_prefixed_router.get("/health")
+def prefixed_health_root():
+    return {"status": "ok", "service": "auth-host"}
+
+
+@app.get("/api/auth/openapi.json", include_in_schema=False)
+def prefixed_openapi():
+    return app.openapi()
+
+
+@app.get("/api/auth/docs", include_in_schema=False)
+def prefixed_docs():
+    return get_swagger_ui_html(openapi_url="/api/auth/openapi.json", title="NEFT Auth API")
+
+
+app.include_router(api_prefixed_router)
 
 
 @app.on_event("startup")

@@ -12,9 +12,9 @@ def _prioritize_service(service_root: Path) -> None:
     sys.path.insert(0, str(service_root))
 
 
-root = Path(__file__).resolve().parents[4]
+root = Path(__file__).resolve().parents[5]
 shared_path = root / "shared" / "python"
-service_root = root / "services" / "ai-service"
+service_root = root / "platform" / "ai-services" / "risk-scorer"
 
 for path in (shared_path,):
     if path.exists():
