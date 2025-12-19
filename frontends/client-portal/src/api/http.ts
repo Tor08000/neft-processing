@@ -1,6 +1,7 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
-const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
-export const API_BASE = `${apiBase}${clientBase}/api/v1`;
+const apiBaseEnv = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "").trim();
+const apiBase = apiBaseEnv ? apiBaseEnv.replace(/\/$/, "") : "";
+export const CORE_CLIENT_API_BASE = `${apiBase}/api/core/v1/client`;
+export const AUTH_API_BASE = `${apiBase}/api/auth/v1`;
 
 export type HttpHeaders = Record<string, string>;
 
@@ -31,9 +32,14 @@ const buildHeaders = (token?: string): HttpHeaders => {
   return headers;
 };
 
-export async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  token?: string,
+  base: string = CORE_CLIENT_API_BASE,
+): Promise<T> {
   const headers: HttpHeaders = { ...buildHeaders(token), ...(init.headers as HttpHeaders) };
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const response = await fetch(`${base}${path}`, { ...init, headers });
 
   if (response.status === 401) {
     throw new UnauthorizedError();

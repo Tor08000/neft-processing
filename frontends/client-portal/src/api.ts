@@ -1,8 +1,10 @@
 import type { DashboardSummary, Limit, Operation, ClientUser } from "./types";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+const apiBaseEnv = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "").trim();
+const apiBase = apiBaseEnv ? apiBaseEnv.replace(/\/$/, "") : "";
+const API_BASE = `${apiBase}/api/core/v1/client`;
+const AUTH_BASE = `${apiBase}/api/auth/v1`;
 const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
-const API_BASE = `${apiBase}${clientBase}/api/v1`;
 
 interface TokenResponse {
   access_token: string;
@@ -57,7 +59,7 @@ async function parseJsonOrThrow(response: Response, errorMessage: string) {
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
-  const response = await fetch(`${API_BASE}/auth/login`, {
+  const response = await fetch(`${AUTH_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -97,7 +99,7 @@ function authHeaders(token: string): HeadersInit {
 }
 
 export async function fetchMe(token: string): Promise<ClientUser> {
-  const response = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders(token) });
+  const response = await fetch(`${AUTH_BASE}/auth/me`, { headers: authHeaders(token) });
   const body = await parseJsonOrThrow(response, "Не удалось загрузить профиль");
   return {
     id: body.subject,

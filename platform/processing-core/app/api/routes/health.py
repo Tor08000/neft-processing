@@ -35,7 +35,7 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-router = APIRouter(prefix="/api/v1/health", tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 
 CELERY_HEALTH_TIMEOUT = 10.0  # секунд ожидания результата от Celery
 

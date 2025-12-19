@@ -12,7 +12,7 @@ from app.schemas import (
     TerminalCaptureResponse,
 )
 
-router = APIRouter(prefix="/api/v1/processing", tags=["processing"])
+router = APIRouter(prefix="/v1/processing", tags=["processing"])
 logger = get_logger(__name__)
 
 

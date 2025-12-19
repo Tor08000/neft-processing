@@ -16,7 +16,7 @@ from app.schemas.admin_users import (
 )
 from app.security import decode_access_token, hash_password, security_scheme
 
-router = APIRouter(prefix="/api/v1/admin/users", tags=["admin-users"])
+router = APIRouter(prefix="/v1/admin/users", tags=["admin-users"])
 
 
 async def _require_admin(

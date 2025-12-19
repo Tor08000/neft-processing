@@ -1,6 +1,6 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
-const adminBase = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/$/, "");
-export const API_BASE = `${apiBase}${adminBase}/api/v1`;
+const apiBaseEnv = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "").trim();
+const apiBase = apiBaseEnv ? apiBaseEnv.replace(/\/$/, "") : "";
+export const API_BASE = `${apiBase}/api/auth/v1`;
 
 export type HttpHeaders = Record<string, string>;
 

@@ -25,3 +25,17 @@ ai_tests.cmd
 ```
 
 `ai_tests.cmd` выставляет `PYTHONPATH=platform\ai-services\risk-scorer;platform\ai-services\risk-scorer\app;shared\python` и запускает `pytest platform\ai-services\risk-scorer\app\tests -q`.
+
+## Smoke (gateway + services)
+
+Быстрый прогон канонических health-ручек (Variant A):
+
+```
+curl http://127.0.0.1/health
+curl http://127.0.0.1/api/core/health
+curl http://127.0.0.1/api/auth/health
+curl http://127.0.0.1/api/ai/v1/health
+curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8002/health
+curl http://127.0.0.1:8003/api/v1/health
+```

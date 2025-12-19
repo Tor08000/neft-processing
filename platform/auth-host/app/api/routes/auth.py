@@ -28,7 +28,7 @@ from app.security import (
 from app.services.keys import get_public_key_pem
 from app.settings import get_settings
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
@@ -176,5 +176,4 @@ async def auth_me(credentials: HTTPAuthorizationCredentials | None = Depends(sec
         subject_type=subject_type,
         client_id=client_id,
     )
-
 
