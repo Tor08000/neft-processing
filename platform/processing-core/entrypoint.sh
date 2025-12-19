@@ -12,7 +12,7 @@ import os
 from sqlalchemy.engine.url import make_url
 
 db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 
 if not db_url:
     print("[entrypoint] DATABASE_URL is not set", flush=True)
@@ -151,7 +151,7 @@ from sqlalchemy import create_engine, event, text
 
 from app.diagnostics.db_state import to_regclass
 
-schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 url = os.getenv("DATABASE_URL")
 required_tables = (
     "alembic_version",
@@ -284,7 +284,7 @@ import sys
 
 from app.diagnostics.db_state import log_fingerprint_from_url
 
-schema = os.getenv("DB_SCHEMA", "public") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 url = os.getenv("DATABASE_URL")
 label = os.getenv("DB_FINGERPRINT_LABEL", "")
 
@@ -324,7 +324,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 alembic_config_path = os.getenv("ALEMBIC_CONFIG", "app/alembic.ini")
 db_url = os.environ["DATABASE_URL"]
 
@@ -334,12 +334,54 @@ required_revision = os.environ["REQUIRED_REVISION"]
 
 
 def _extract_revisions(output: str) -> list[str]:
-    pattern = re.compile(r"(?P<rev>[0-9a-f]{10,}|\d{8}_\d+_[\w]+)")
+    pattern = re.compile(r"(?P<rev>[0-9a-f]{10,}|\d{8}_\d+_[\\w]+)")
     revisions: list[str] = []
     for line in output.splitlines():
         for match in pattern.finditer(line):
             revisions.append(match.group("rev"))
     return revisions
+
+
+def _version_table_schemas(conn) -> list[str]:
+    return list(
+        conn.execute(
+            text(
+                """
+                select table_schema
+                from information_schema.tables
+                where table_name='alembic_version'
+                order by table_schema
+                """
+            )
+        ).scalars()
+    )
+
+
+def _collect_inventory(conn):
+    user_schemas = conn.execute(
+        text(
+            """
+            select nspname
+            from pg_namespace
+            where nspname not in ('pg_catalog','information_schema','pg_toast')
+            order by 1
+            """
+        )
+    ).scalars().all()
+    user_tables = [
+        f"{row.table_schema}.{row.table_name}"
+        for row in conn.execute(
+            text(
+                """
+                select table_schema, table_name
+                from information_schema.tables
+                where table_schema not in ('pg_catalog','information_schema','pg_toast')
+                order by 1,2
+                """
+            )
+        )
+    ]
+    return user_schemas, user_tables
 
 
 def _regclass(conn, name: str) -> str | None:
@@ -365,7 +407,8 @@ engine = create_engine(db_url, **engine_kwargs)
 
 try:
     with engine.connect() as conn:
-        version_reg = _regclass(conn, "alembic_version")
+        version_schemas = _version_table_schemas(conn)
+        version_in_target = schema in version_schemas
         required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
         table_state = {name: _regclass(conn, name) for name in required_tables}
         cards_created = conn.execute(
@@ -382,29 +425,33 @@ try:
         ).scalar_one_or_none() is not None
         search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
-        version_rows = []
-        if version_reg is None:
+        if not version_schemas:
             schema_ready_for_stamp = cards_created and all(table_state.values())
             if schema_ready_for_stamp and allow_stamp:
                 print(
-                    "[entrypoint] alembic_version missing but schema has required tables; applying stamp head",
-                    file=sys.stderr,
+                    "[entrypoint] alembic_version missing across schemas; applying stamp head",
+                    flush=True,
                 )
                 subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
-
-                version_reg = _regclass(conn, "alembic_version")
-                if version_reg is None:
-                    print(
-                        f"[entrypoint] alembic_version still missing after stamp attempt (search_path={search_path})",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-            else:
+                version_schemas = _version_table_schemas(conn)
+                version_in_target = schema in version_schemas
+            if not version_in_target:
+                user_schemas, user_tables = _collect_inventory(conn)
                 print(
-                    f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
+                    f"[entrypoint] alembic_version missing in target schema '{schema}' (search_path={search_path})",
                     file=sys.stderr,
                 )
+                print(f"[entrypoint] alembic_version found in schemas: {version_schemas}", file=sys.stderr)
+                print(f"[entrypoint] user schemas: {user_schemas}", file=sys.stderr)
+                print(f"[entrypoint] user tables ({len(user_tables)}): {user_tables}", file=sys.stderr)
                 sys.exit(1)
+
+        if version_schemas and not version_in_target:
+            print(
+                f"[entrypoint] alembic_version находится в schema={version_schemas[0]} ожидали TARGET_SCHEMA={schema}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         version_rows = conn.execute(
             text(f'SELECT version_num FROM "{schema}".alembic_version')
@@ -452,44 +499,8 @@ if version_set != script_heads_set:
         f"alembic_version contents {version_values} do not match script heads {script_heads}"
     )
 
-schema_ready_for_stamp = cards_created and all(table_state.values())
-
 if issues:
     _log_state(prefix="mismatch")
-    if schema_ready_for_stamp and allow_stamp:
-        print(
-            "[entrypoint] detected version mismatch while schema is up-to-date; applying alembic stamp head",
-            file=sys.stderr,
-        )
-        subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
-
-        with engine.connect() as conn:
-            stamped_versions = [
-                row[0]
-                for row in conn.execute(
-                    text(f'SELECT version_num FROM "{schema}".alembic_version')
-                ).fetchall()
-            ]
-
-        if set(stamped_versions) != script_heads_set:
-            print(
-                "[entrypoint] stamp head completed but alembic_version still mismatched",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        print(
-            f"[entrypoint] synchronized alembic_version with stamp head: {stamped_versions}",
-            flush=True,
-        )
-        sys.exit(0)
-    if schema_ready_for_stamp and not allow_stamp:
-        print(
-            "[entrypoint] alembic_version mismatch detected but NEFT_ALLOW_STAMP is not enabled; "
-            "skip automatic stamp",
-            file=sys.stderr,
-        )
-
     print("[entrypoint] migration verification failed:", *issues, sep="\n- ", file=sys.stderr)
     sys.exit(1)
 
@@ -507,7 +518,7 @@ import sys
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 url = os.environ.get("DATABASE_URL")
 
 if not url:
@@ -559,7 +570,7 @@ import sys
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 url = os.environ["DATABASE_URL"]
 
 engine_kwargs = {"future": True, "pool_pre_ping": True}
