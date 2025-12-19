@@ -1,5 +1,9 @@
-const apiBaseEnv = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "").trim();
-const API_BASE_URL = apiBaseEnv ? apiBaseEnv.replace(/\/$/, "") : "";
+const gatewayBase = (import.meta.env.VITE_API_BASE_URL || "http://gateway").replace(/\/$/, "");
+const normalizePrefix = (raw: string): string => {
+  const value = raw.startsWith("/") ? raw : `/${raw}`;
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+};
+const API_BASE_URL = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_CORE_API_BASE ?? "/api/core")}`;
 
 export const TOKEN_STORAGE_KEY = "neft_admin_token";
 

@@ -7,20 +7,23 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import uuid4
 
 from celery.exceptions import TimeoutError as CeleryTimeoutError
-from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
 from neft_shared.logging_setup import get_logger, init_logging
 
-from app.db import get_db, get_sessionmaker, init_db
-from sqlalchemy.orm import Session
 from app.api.routes import router as api_router
+from app.db import get_db, get_sessionmaker, init_db
 from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_portal import router as client_portal_router
-from app.services.transactions import derive_tx_type
+from app.services.bootstrap import ensure_default_refs
+from app.services.billing_metrics import metrics as billing_metrics
+from app.services.integration_metrics import metrics as intake_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveResult,
@@ -30,9 +33,6 @@ from app.services.limits import (
     call_limits_check_and_reserve_sync,
     celery_app,
 )
-from app.services.bootstrap import ensure_default_refs
-from app.services.billing_metrics import metrics as billing_metrics
-from app.services.integration_metrics import metrics as intake_metrics
 from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
 
@@ -293,9 +293,7 @@ app.add_middleware(
 )
 
 # Основной роутер v1
-app.include_router(api_router, prefix=f"{LEGACY_API_PREFIX}/v1")
-app.include_router(api_router, prefix=f"{API_PREFIX_CORE}/v1")
-
+app.include_router(api_router, prefix="/api/v1")
 
 # Включаем доп. роутер с чтением операций из БД, если он есть
 if operations_router is not None:
@@ -321,6 +319,25 @@ app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+
+# Префиксированный роутер для нового gateway namespace /api/core/*
+core_prefixed_router = APIRouter(prefix="/api/core")
+core_prefixed_router.include_router(api_router, prefix="/api/v1")
+
+if operations_router is not None:
+    core_prefixed_router.include_router(operations_router, prefix="")
+if transactions_router is not None:
+    core_prefixed_router.include_router(transactions_router, prefix="")
+if reports_billing_router is not None:
+    core_prefixed_router.include_router(reports_billing_router, prefix="")
+if intake_router is not None:
+    core_prefixed_router.include_router(intake_router, prefix="")
+if partners_router is not None:
+    core_prefixed_router.include_router(partners_router, prefix="")
+
+core_prefixed_router.include_router(admin_router)
+core_prefixed_router.include_router(client_router)
+core_prefixed_router.include_router(client_portal_router)
 
 
 # -----------------------------------------------------------------------------
@@ -499,6 +516,44 @@ def health_celery() -> HealthResponse:
     except Exception as exc:  # pragma: no cover
         logger.exception("Celery health failed: %s", exc)
         raise HTTPException(status_code=503, detail="celery unavailable")
+
+
+core_prefixed_router.add_api_route(
+    "/health",
+    health,
+    response_model=HealthResponse,
+    methods=["GET"],
+)
+core_prefixed_router.add_api_route(
+    "/api/v1/health",
+    health,
+    response_model=HealthResponse,
+    methods=["GET"],
+)
+core_prefixed_router.add_api_route(
+    "/health/db",
+    health_db,
+    response_model=HealthResponse,
+    methods=["GET"],
+)
+core_prefixed_router.add_api_route(
+    "/health/celery",
+    health_celery,
+    response_model=HealthResponse,
+    methods=["GET"],
+)
+
+app.include_router(core_prefixed_router)
+
+
+@app.get("/api/core/openapi.json", include_in_schema=False)
+def core_prefixed_openapi() -> dict[str, Any]:
+    return app.openapi()
+
+
+@app.get("/api/core/docs", include_in_schema=False)
+def core_prefixed_docs():
+    return get_swagger_ui_html(openapi_url="/api/core/openapi.json", title="NEFT Core API")
 
 
 # -----------------------------------------------------------------------------

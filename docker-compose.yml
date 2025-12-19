@@ -53,7 +53,10 @@ services:
     container_name: neft-processing-admin-web-1
     environment:
       SERVICE_NAME: admin-web
-      VITE_API_BASE: http://localhost
+      VITE_API_BASE_URL: http://gateway
+      VITE_CORE_API_BASE: /api/core
+      VITE_AUTH_API_BASE: /api/auth
+      VITE_AI_API_BASE: /api/ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -69,7 +72,10 @@ services:
     container_name: neft-processing-client-web-1
     environment:
       SERVICE_NAME: client-web
-      VITE_API_BASE: http://localhost
+      VITE_API_BASE_URL: http://gateway
+      VITE_CORE_API_BASE: /api/core
+      VITE_AUTH_API_BASE: /api/auth
+      VITE_AI_API_BASE: /api/ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -95,7 +101,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -120,7 +130,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -139,7 +153,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/ai/v1/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import sys, urllib.request; resp = urllib.request.urlopen('http://localhost:8000/health', timeout=5); sys.exit(0 if resp.getcode() == 200 else 1)\"",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
