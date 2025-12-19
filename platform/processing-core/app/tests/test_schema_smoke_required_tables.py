@@ -52,7 +52,7 @@ def test_required_core_tables_present_after_upgrade() -> None:
     command.upgrade(alembic_cfg, "head")
 
     with engine.connect() as connection:
-        connection.execute(sa.text("SET search_path TO :schema, public"), {"schema": DB_SCHEMA})
+        connection.execute(sa.text("SET search_path TO :schema"), {"schema": DB_SCHEMA})
         effective_search_path = connection.execute(sa.text("SHOW search_path")).scalar_one()
         version_table = connection.execute(
             sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.alembic_version"}
@@ -92,7 +92,7 @@ def test_core_endpoints_postgres_smoke() -> None:
     engine_kwargs: dict[str, object] = {}
     if db_url.startswith("postgresql") and DB_SCHEMA:
         engine_kwargs["connect_args"] = {
-            "options": f"-c search_path={DB_SCHEMA},public",
+            "options": f"-c search_path={DB_SCHEMA}",
             "prepare_threshold": 0,
         }
         engine = sa.create_engine(db_url, **engine_kwargs)

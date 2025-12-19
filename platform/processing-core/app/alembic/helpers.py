@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 MIN_VERSION_LENGTH = 128
 
 SCHEMA_RESOLUTION = resolve_db_schema()
-DB_SCHEMA = SCHEMA_RESOLUTION.target_schema
+DB_SCHEMA = SCHEMA_RESOLUTION.schema
 
 
 # Dialect helpers

@@ -26,8 +26,15 @@ LIMIT_TYPE_VALUES = ["DAILY_VOLUME", "DAILY_AMOUNT", "MONTHLY_AMOUNT", "CREDIT_L
 LIMIT_WINDOW_VALUES = ["DAY", "MONTH"]
 
 SCHEMA_RESOLUTION = resolve_db_schema()
-SCHEMA = SCHEMA_RESOLUTION.target_schema
-QUOTED_SCHEMA = SCHEMA_RESOLUTION.quoted_schema
+SCHEMA = SCHEMA_RESOLUTION.schema
+
+
+def _quote_schema(schema: str) -> str:
+    escaped = schema.replace('"', '""')
+    return f'"{escaped}"' if schema else schema
+
+
+QUOTED_SCHEMA = _quote_schema(SCHEMA)
 
 
 def _qualified(name: str, schema: str = QUOTED_SCHEMA) -> str:

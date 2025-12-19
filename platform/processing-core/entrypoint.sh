@@ -7,19 +7,13 @@ export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 
 python - <<'PY'
 import os
-from sqlalchemy.engine.url import make_url
 from app.db.schema import resolve_db_schema
 
 resolution = resolve_db_schema()
 db_url = os.getenv("DATABASE_URL")
 print(f"[entrypoint] {resolution.line()}", flush=True)
-
-if db_url:
-    masked = make_url(db_url).render_as_string(hide_password=True)
-    print(f"[entrypoint] DATABASE_URL={masked}", flush=True)
-    print(f"[entrypoint] search_path={resolution.search_path}", flush=True)
-else:
-    print("[entrypoint] DATABASE_URL is not set", flush=True)
+if not db_url:
+    raise SystemExit("[entrypoint] DATABASE_URL is not set")
 PY
 
 wait_for_postgres() {
@@ -84,9 +78,11 @@ python - <<'PY'
 import os
 import sys
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
-from app.db import make_engine, reset_engine
+from app.db import make_engine
 from app.db.schema import resolve_db_schema
 
 resolution = resolve_db_schema()
@@ -96,30 +92,32 @@ if not db_url:
     print("[entrypoint] DATABASE_URL is not set for post-migration verification", file=sys.stderr, flush=True)
     sys.exit(1)
 
+cfg = Config(os.getenv("ALEMBIC_CONFIG", "app/alembic.ini"))
+cfg.set_main_option("sqlalchemy.url", db_url)
+script_directory = ScriptDirectory.from_config(cfg)
+head_revision = script_directory.get_current_head()
+
 engine = make_engine(
     db_url,
-    schema=resolution.target_schema,
+    schema=resolution.schema,
 )
 
 with engine.connect() as connection:
     operations_reg = connection.execute(
         text("select to_regclass(:regclass)"),
-        {"regclass": f"{resolution.target_schema}.operations"},
+        {"regclass": f"{resolution.schema}.operations"},
     ).scalar_one_or_none()
     version_reg = connection.execute(
         text("select to_regclass(:regclass)"),
-        {"regclass": f"{resolution.target_schema}.alembic_version"},
+        {"regclass": f"{resolution.schema}.alembic_version"},
     ).scalar_one_or_none()
-    table_count = connection.execute(
-        text(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_schema = :schema
-            """
-        ),
-        {"schema": resolution.target_schema},
-    ).scalar_one()
+    version_num = None
+    if version_reg is not None:
+        version_num = connection.execute(
+            text(f'SELECT version_num FROM "{resolution.schema}".alembic_version'),
+        ).scalar_one_or_none()
+
+engine.dispose()
 
 if operations_reg is None or version_reg is None:
     print(
@@ -129,13 +127,18 @@ if operations_reg is None or version_reg is None:
     )
     sys.exit(1)
 
+if version_num != head_revision:
+    print(
+        f"[entrypoint] alembic_version mismatch: expected {head_revision}, found {version_num}",
+        file=sys.stderr,
+        flush=True,
+    )
+    sys.exit(1)
+
 print(
-    f"[entrypoint] migration check: alembic_version={version_reg} operations={operations_reg} table_count={table_count}",
+    f"[entrypoint] migration check passed: alembic_version={version_reg} operations={operations_reg} head={head_revision}",
     flush=True,
 )
-
-reset_engine()
-print("[entrypoint] ORM engine cache reset after migrations", flush=True)
 PY
 
 if [ "${ENTRYPOINT_SKIP_APP}" = "1" ]; then

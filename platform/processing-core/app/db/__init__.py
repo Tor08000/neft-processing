@@ -61,7 +61,7 @@ def make_engine_kwargs(
     echo: bool | None = None,
     poolclass=None,
 ) -> dict:
-    resolved_schema = schema or SCHEMA_RESOLUTION.target_schema
+    resolved_schema = schema or SCHEMA_RESOLUTION.schema
     engine_kwargs: dict[str, object] = {
         "future": True,
         "pool_pre_ping": pool_pre_ping,
@@ -74,10 +74,10 @@ def make_engine_kwargs(
         engine_kwargs["poolclass"] = poolclass
 
     if url.startswith("postgresql"):
-        connect_args = {"prepare_threshold": 0}
-        search_path = f"{resolved_schema},public" if resolved_schema != "public" else "public"
-        connect_args["options"] = f"-c search_path={search_path}"
-        engine_kwargs["connect_args"] = connect_args
+        engine_kwargs["connect_args"] = {
+            "options": f"-c search_path={resolved_schema}",
+            "prepare_threshold": 0,
+        }
 
     if url.startswith("sqlite"):
         engine_kwargs.update(

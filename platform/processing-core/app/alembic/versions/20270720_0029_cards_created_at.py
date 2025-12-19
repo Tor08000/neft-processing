@@ -19,7 +19,7 @@ branch_labels = None
 depends_on = None
 
 SCHEMA_RESOLUTION = resolve_db_schema()
-SCHEMA = SCHEMA_RESOLUTION.target_schema
+SCHEMA = SCHEMA_RESOLUTION.schema
 
 
 def upgrade() -> None:

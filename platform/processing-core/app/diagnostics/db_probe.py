@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.db import engine
 from app.db.schema import SCHEMA_RESOLUTION
 
-PROBE_TABLE = f"{SCHEMA_RESOLUTION.quoted_schema}._probe_migrations"
+PROBE_TABLE = f'"{SCHEMA_RESOLUTION.schema}"._probe_migrations'
 
 
 def _collect_fingerprint(connection) -> Dict[str, Any]:
@@ -39,7 +39,7 @@ def run_probe() -> Dict[str, Any]:
         connection.execute(text(f"CREATE TABLE IF NOT EXISTS {PROBE_TABLE} (x INT)"))
         regclass = connection.execute(
             text("SELECT to_regclass(:name)"),
-            {"name": f"{SCHEMA_RESOLUTION.target_schema}._probe_migrations"},
+            {"name": f"{SCHEMA_RESOLUTION.schema}._probe_migrations"},
         ).scalar_one_or_none()
 
         fingerprint = {key: str(value) for key, value in _collect_fingerprint(connection).items()}
@@ -49,10 +49,10 @@ def run_probe() -> Dict[str, Any]:
                 select count(*)
                 from information_schema.tables
                 where table_schema = :schema
-                """
-            ),
-            {"schema": SCHEMA_RESOLUTION.target_schema},
-        ).scalar_one()
+            """
+        ),
+        {"schema": SCHEMA_RESOLUTION.schema},
+    ).scalar_one()
 
     return {
         "source": "core-api",

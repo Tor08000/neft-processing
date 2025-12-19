@@ -27,7 +27,7 @@ branch_labels = None
 depends_on = None
 
 SCHEMA_RESOLUTION = resolve_db_schema()
-SCHEMA = SCHEMA_RESOLUTION.target_schema
+SCHEMA = SCHEMA_RESOLUTION.schema
 
 
 def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:

@@ -43,19 +43,19 @@ def test_upgrade_creates_required_tables():
         with connectable.connect() as connection:
             version_reg = connection.execute(
                 sa.text("select to_regclass(:reg)"),
-                {"reg": f"{SCHEMA_RESOLUTION.target_schema}.alembic_version"},
+                {"reg": f"{SCHEMA_RESOLUTION.schema}.alembic_version"},
             ).scalar()
             missing = [
                 table
                 for table in REQUIRED_TABLES
                 if connection.execute(
-                    sa.text("select to_regclass(:reg)"), {"reg": f"{SCHEMA_RESOLUTION.target_schema}.{table}"}
+                    sa.text("select to_regclass(:reg)"), {"reg": f"{SCHEMA_RESOLUTION.schema}.{table}"}
                 ).scalar()
                 is None
             ]
             versions = (
                 connection.execute(
-                    sa.text(f'SELECT version_num FROM "{SCHEMA_RESOLUTION.target_schema}".alembic_version')
+                    sa.text(f'SELECT version_num FROM "{SCHEMA_RESOLUTION.schema}".alembic_version')
                 )
                 .scalars()
                 .all()

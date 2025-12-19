@@ -1,11 +1,7 @@
 # services/core-api/app/alembic/versions/20251118_0002_operations_journal.py
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
 
-from app.alembic.helpers import DB_SCHEMA, table_exists
-from app.alembic.utils import create_index_if_not_exists, drop_index_if_exists, drop_table_if_exists
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -16,32 +12,24 @@ depends_on = None
 
 
 def upgrade():
-    bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.target_schema
+    schema = schema_resolution.schema
     print(f"[{revision}] {schema_resolution.line()}")
 
-    if not table_exists(bind, "operations", schema=schema):
-        raise RuntimeError(
-            "operations table must be created by 20251112_0001_core before 20251118_0002_operations_journal"
-        )
-
-    create_index_if_not_exists(bind, "ix_operations_card_id", "operations", ["card_id"], schema=schema)
-    create_index_if_not_exists(bind, "ix_operations_client_id", "operations", ["client_id"], schema=schema)
-    create_index_if_not_exists(bind, "ix_operations_merchant_id", "operations", ["merchant_id"], schema=schema)
-    create_index_if_not_exists(bind, "ix_operations_terminal_id", "operations", ["terminal_id"], schema=schema)
-    create_index_if_not_exists(bind, "ix_operations_created_at", "operations", ["created_at"], schema=schema)
+    op.create_index("ix_operations_card_id", "operations", ["card_id"], schema=schema)
+    op.create_index("ix_operations_client_id", "operations", ["client_id"], schema=schema)
+    op.create_index("ix_operations_merchant_id", "operations", ["merchant_id"], schema=schema)
+    op.create_index("ix_operations_terminal_id", "operations", ["terminal_id"], schema=schema)
+    op.create_index("ix_operations_created_at", "operations", ["created_at"], schema=schema)
 
 
 def downgrade():
-    bind = op.get_bind()
     schema_resolution = resolve_db_schema()
-    schema = schema_resolution.target_schema
+    schema = schema_resolution.schema
     print(f"[{revision}] {schema_resolution.line()}")
 
-    drop_index_if_exists(bind, "ix_operations_created_at", schema=schema)
-    drop_index_if_exists(bind, "ix_operations_terminal_id", schema=schema)
-    drop_index_if_exists(bind, "ix_operations_merchant_id", schema=schema)
-    drop_index_if_exists(bind, "ix_operations_client_id", schema=schema)
-    drop_index_if_exists(bind, "ix_operations_card_id", schema=schema)
-    drop_table_if_exists(bind, "operations", schema=schema)
+    op.drop_index("ix_operations_created_at", table_name="operations", schema=schema)
+    op.drop_index("ix_operations_terminal_id", table_name="operations", schema=schema)
+    op.drop_index("ix_operations_merchant_id", table_name="operations", schema=schema)
+    op.drop_index("ix_operations_client_id", table_name="operations", schema=schema)
+    op.drop_index("ix_operations_card_id", table_name="operations", schema=schema)

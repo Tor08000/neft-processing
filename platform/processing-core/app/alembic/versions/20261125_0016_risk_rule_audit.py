@@ -28,7 +28,7 @@ depends_on = None
 logger = logging.getLogger("alembic.runtime.migration")
 
 SCHEMA_RESOLUTION = resolve_db_schema()
-SCHEMA = SCHEMA_RESOLUTION.target_schema
+SCHEMA = SCHEMA_RESOLUTION.schema
 
 risk_rule_audit_action_enum = postgresql.ENUM(
     "CREATE",
