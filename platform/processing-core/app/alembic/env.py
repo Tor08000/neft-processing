@@ -22,9 +22,24 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 
 def run_migrations_offline() -> None:
+<<<<<<< HEAD
     # В этом проекте оффлайн-миграции обычно не нужны.
     # Лучше явно запретить, чтобы не было тихих сюрпризов.
     raise RuntimeError("Offline migrations are not supported. Use online migrations.")
+=======
+    msg = "Offline migrations are not supported; provide DATABASE_URL for online run."
+    raise RuntimeError(msg)
+
+
+def _configure(connection) -> None:
+    connection.execute(text(schema_resolution.search_path_sql))
+    context.configure(
+        connection=connection,
+        version_table_schema=schema_resolution.schema,
+        include_schemas=True,
+        transaction_per_migration=True,
+    )
+>>>>>>> 05bac1164a8f703cbc45e8dbc8c404cad85192ae
 
 
 def run_migrations_online() -> None:
