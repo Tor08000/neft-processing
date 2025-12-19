@@ -7,12 +7,14 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
    - `ADMIN_EMAIL`
    - `ADMIN_PASSWORD`
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
-4. Проверьте доступность сервисов:
+4. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
   - Core API напрямую: `http://localhost:8001/health`
-  - Через gateway: `http://localhost/api/core/health`
+  - Core API через gateway: `http://localhost/api/core/health`
+  - Auth напрямую: `http://localhost:8002/health`
   - Auth через gateway: `http://localhost/api/auth/health`
-  - AI через gateway: `http://localhost/api/ai/health`
+  - AI напрямую: `http://localhost:8003/health`
+  - AI через gateway: `http://localhost/api/ai/api/v1/health`
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
@@ -22,7 +24,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 * Gateway health: `GET http://localhost/health`
 * Core через gateway: `GET http://localhost/api/core/health` (OpenAPI/Swagger: `http://localhost/api/core/docs`)
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
-* AI через gateway: `GET http://localhost/api/ai/health` (Swagger: `http://localhost/api/ai/docs`)
+* AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
 
 ### Вход в админ-панель
@@ -94,6 +96,21 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `/api/ai/*` → ai-service
 * Админские и клиентские SPA остаются на путях `/admin/` и `/client/`, но их API-запросы идут через новые namespace'ы `/api/core/...` и `/api/auth/...`.
 * Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://gateway`, `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
+
+### Smoke-проверки (gateway, health, DB, merge markers)
+
+Быстрый локальный прогон (Windows CMD):
+
+```
+docker compose up -d --build
+pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
+```
+
+Поиск маркеров конфликтов только в трекаемых файлах (без шума от `.venv` и прочего):
+
+```
+git grep -n "^\<\<\<\<\<\<\<\|^\=\=\=\=\=\=\=\|^\>\>\>\>\>\>\>" -- .
+```
 
 ### Gateway (Nginx)
 

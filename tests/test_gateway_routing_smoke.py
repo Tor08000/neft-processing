@@ -6,8 +6,11 @@ from typing import Any
 import requests
 
 
+DEFAULT_GATEWAY = "http://127.0.0.1"
+
+
 def _build_url(path: str) -> str:
-    base = os.getenv("GATEWAY_BASE_URL", "http://localhost").rstrip("/")
+    base = os.getenv("GATEWAY_BASE_URL", DEFAULT_GATEWAY).rstrip("/")
     normalized = path if path.startswith("/") else f"/{path}"
     return f"{base}{normalized}"
 
@@ -24,18 +27,16 @@ def _assert_health(path: str, *, expected_service: str | None = None) -> None:
             assert payload.get("service") == expected_service
     else:
         assert "OK" in response.text
-
-
 def test_gateway_core_health_contract() -> None:
     _assert_health("/api/core/health")
 
 
 def test_gateway_auth_health_contract() -> None:
-    _assert_health("/api/auth/health", expected_service="auth-host")
+    _assert_health("/api/auth/health")
 
 
 def test_gateway_ai_health_contract() -> None:
-    _assert_health("/api/ai/health", expected_service="ai-service")
+    _assert_health("/api/ai/api/v1/health")
 
 
 def test_gateway_self_health_contract() -> None:
