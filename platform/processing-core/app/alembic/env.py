@@ -84,6 +84,24 @@ def _configure_connection(connection: sa.engine.Connection, target_schema: str) 
     logger.info("Set search_path for migrations to %s", search_path_sql.removeprefix("SET search_path TO "))
 
 
+def _log_connection_identity(connection: sa.engine.Connection, *, label: str) -> None:
+    db_name, db_user, db_addr, db_port, db_schema = connection.exec_driver_sql(
+        "SELECT current_database(), current_user, inet_server_addr(), inet_server_port(), current_schema();",
+    ).one()
+    logger.info(
+        "[%s] connected to db=%s user=%s schema=%s at %s:%s",
+        label,
+        db_name,
+        db_user,
+        db_schema,
+        db_addr,
+        db_port,
+    )
+
+    search_path = connection.exec_driver_sql("SHOW search_path").scalar_one()
+    logger.info("[%s] search_path=%s", label, search_path)
+
+
 def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> None:
     logger.info("[%s] DB_SCHEMA setting: %s", label, DB_SCHEMA or "public")
 
@@ -152,6 +170,7 @@ def run_migrations_online() -> sa.engine.Engine:
                 f"Alembic migrations require PostgreSQL engine, got '{connection.dialect.name}'",
             )
 
+        _log_connection_identity(connection, label="initial")
         _configure_connection(connection, target_schema)
         _log_schema_inventory(connection, label="pre-upgrade")
         log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
@@ -164,20 +183,19 @@ def run_migrations_online() -> sa.engine.Engine:
             include_schemas=False,
             compare_type=True,
             compare_server_default=True,
-            transactional_ddl=False,
-            transaction_per_migration=True,
             version_table="alembic_version",
             version_table_schema=target_schema,
-            as_sql=False,
         )
 
-        context.run_migrations()
+        with context.begin_transaction():
+            context.run_migrations()
 
     if should_verify:
         verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
         if str(verify_flag).lower() == "true":
             with connectable.connect() as connection:
                 _configure_connection(connection, target_schema)
+                _log_connection_identity(connection, label="post-upgrade")
 
                 version_reg = to_regclass(connection, target_schema, "alembic_version")
                 operations_reg = to_regclass(connection, target_schema, "operations")
@@ -231,11 +249,4 @@ if os.getenv("ALEMBIC_SKIP_RUN"):
 elif context.is_offline_mode():
     run_migrations_offline()
 else:
-    engine = run_migrations_online()
-
-    with engine.connect() as c:
-        exists = c.scalar(sa.text("select to_regclass('public.operations')"))
-        if not exists:
-            raise RuntimeError(
-                "CRITICAL: migration rollback detected — core tables missing after Alembic run"
-            )
+    run_migrations_online()
