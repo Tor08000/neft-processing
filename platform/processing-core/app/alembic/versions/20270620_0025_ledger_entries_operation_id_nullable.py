@@ -10,11 +10,15 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from app.db.schema import resolve_db_schema
+
 # revision identifiers, used by Alembic.
 revision = "20270620_0025_ledger_entries_operation_id_nullable"
 down_revision = "20270601_0024_bootstrap_schema"
 branch_labels = None
 depends_on = None
+
+SCHEMA = resolve_db_schema().schema
 
 
 def upgrade() -> None:
@@ -23,7 +27,7 @@ def upgrade() -> None:
         "operation_id",
         existing_type=postgresql.UUID(as_uuid=True),
         nullable=True,
-        schema="public",
+        schema=SCHEMA,
     )
 
 
@@ -33,5 +37,5 @@ def downgrade() -> None:
         "operation_id",
         existing_type=postgresql.UUID(as_uuid=True),
         nullable=False,
-        schema="public",
+        schema=SCHEMA,
     )

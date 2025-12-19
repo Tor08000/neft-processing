@@ -43,7 +43,7 @@ def _log_guard_context(db: Session, logger: logging.Logger) -> None:
         server_port,
         current_db,
         search_path,
-        DB_SCHEMA or "public",
+        DB_SCHEMA,
     )
     logger.info("default refs guard cards table entries: %s", cards_locations)
 
@@ -68,7 +68,7 @@ def ensure_default_refs(db: Session | None = None) -> None:
                   and column_name = 'created_at'
                 """
             ),
-            {"schema": DB_SCHEMA or "public"},
+            {"schema": DB_SCHEMA},
         ).scalar_one_or_none()
 
         if not column_exists:

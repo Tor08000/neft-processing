@@ -506,8 +506,8 @@ def section_health_checks() -> CheckResult:
     header("HEALTH-CHECK СЕРВИСОВ")
 
     endpoints = {
-        "auth": "http://localhost/api/auth/api/v1/health",
-        "core": "http://localhost/api/core/api/v1/health",
+        "auth": "http://localhost/admin/api/v1/auth/health",
+        "core": "http://localhost/api/v1/health",
         "admin": "http://localhost/admin/",
         "client": "http://localhost/client/",
     }

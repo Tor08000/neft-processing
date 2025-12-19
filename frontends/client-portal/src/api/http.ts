@@ -1,5 +1,6 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost").replace(/\/$/, "");
-export const API_BASE = `${apiBase}/api/v1/client`;
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
+export const API_BASE = `${apiBase}${clientBase}/api/v1`;
 
 export type HttpHeaders = Record<string, string>;
 

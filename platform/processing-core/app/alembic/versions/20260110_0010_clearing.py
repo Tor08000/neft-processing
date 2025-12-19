@@ -17,6 +17,7 @@ from app.alembic.utils import (
     ensure_pg_enum,
     safe_enum,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20260110_0010_clearing"
@@ -24,6 +25,7 @@ down_revision = "20260110_0009_billing_summary_extend"
 branch_labels = None
 depends_on = None
 
+SCHEMA = resolve_db_schema().schema
 
 BATCH_STATUS_VALUES = ["PENDING", "SENT", "CONFIRMED", "FAILED"]
 
@@ -33,7 +35,7 @@ def upgrade() -> None:
 
     ensure_pg_enum(bind, "clearing_batch_status", values=BATCH_STATUS_VALUES)
     batch_status = safe_enum(
-        bind, "clearing_batch_status", values=BATCH_STATUS_VALUES, schema="public"
+        bind, "clearing_batch_status", values=BATCH_STATUS_VALUES, schema=SCHEMA
     )
 
     create_table_if_not_exists(

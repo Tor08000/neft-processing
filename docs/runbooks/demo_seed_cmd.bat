@@ -1,7 +1,7 @@
 @echo off
 setlocal enableextensions enabledelayedexpansion
 
-set "BASE_URL=http://localhost/api/core/api/v1"
+set "BASE_URL=http://localhost/api/v1"
 set "CLIENT_RESP=%TEMP%\neft_client.json"
 set "MERCHANT_RESP=%TEMP%\neft_merchant.json"
 set "TERMINAL_RESP=%TEMP%\neft_terminal.json"

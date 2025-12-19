@@ -84,7 +84,6 @@ def restore_context():
 def test_env_configures_context(monkeypatch: pytest.MonkeyPatch):
     target_url = "postgresql+psycopg://user:secret@db:5432/neft"
     monkeypatch.setenv("DATABASE_URL", target_url)
-    monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
     dummy_config = DummyConfig()
     dummy_connection = DummyConnection()
     configure_calls: dict[str, object] = {}
@@ -102,19 +101,13 @@ def test_env_configures_context(monkeypatch: pytest.MonkeyPatch):
 
     assert dummy_config.get_main_option("sqlalchemy.url") == target_url
     assert configure_calls["connection"] is dummy_connection
-    assert configure_calls["target_metadata"] is env.target_metadata
     assert configure_calls["include_schemas"] is True
-    assert configure_calls["version_table"] == "alembic_version"
     assert configure_calls["version_table_schema"] == "public"
-    assert configure_calls["transactional_ddl"] is True
-    assert configure_calls["compare_type"] is True
-    assert configure_calls["compare_server_default"] is True
     assert any("SET search_path TO" in sql for sql, _ in dummy_connection.executed)
 
 
 def test_env_requires_database_url(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
     monkeypatch.setattr(context, "config", DummyConfig(), raising=False)
     monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
 

@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://gateway").replace(/\/$/, "");
 
 export const TOKEN_STORAGE_KEY = "neft_admin_token";
 
@@ -9,16 +9,17 @@ export class UnauthorizedError extends Error {
   }
 }
 
-function normalizeBasePath(rawBase: string | undefined): string {
-  const withLeading = rawBase?.startsWith("/") ? rawBase : `/${rawBase ?? "admin"}`;
+function normalizeBasePath(rawBase: string): string {
+  const withLeading = rawBase.startsWith("/") ? rawBase : `/${rawBase}`;
   const normalized = withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
   return normalized.replace(/\/+/g, "/");
 }
 
+const BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL ?? "/admin/");
+
 function redirectToLogin() {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
-  const base = normalizeBasePath(import.meta.env.VITE_ADMIN_BASE_PATH);
-  const target = `${base}login`;
+  const target = `${BASE_PATH}login`;
   if (window.location.pathname !== target) {
     window.location.replace(target);
   }

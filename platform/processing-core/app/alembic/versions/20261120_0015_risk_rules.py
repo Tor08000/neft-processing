@@ -19,12 +19,16 @@ from app.alembic.utils import (
     safe_enum,
     table_exists,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20261120_0015_risk_rules"
 down_revision = "20261101_0014_billing_summary_alignment"
 branch_labels = None
 depends_on = None
+
+SCHEMA = resolve_db_schema().schema
+SCHEMA_QUOTED = f'"{SCHEMA}"'
 
 RISK_RULE_SCOPE_VALUES = ["GLOBAL", "CLIENT", "CARD", "TARIFF", "SEGMENT"]
 
@@ -154,5 +158,5 @@ def downgrade() -> None:
 
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        bind.exec_driver_sql("DROP TYPE IF EXISTS public.riskruleaction")
-        bind.exec_driver_sql("DROP TYPE IF EXISTS public.riskrulescope")
+        bind.exec_driver_sql(f"DROP TYPE IF EXISTS {SCHEMA_QUOTED}.riskruleaction")
+        bind.exec_driver_sql(f"DROP TYPE IF EXISTS {SCHEMA_QUOTED}.riskrulescope")

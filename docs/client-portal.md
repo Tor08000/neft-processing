@@ -7,11 +7,9 @@
 ## Сервисы и маршрутизация
 
 - **Static:** gateway проксирует `/client/` и `/client/assets/` в upstream `client-web`.
-- **API:** клиентские запросы проходят через gateway по префиксу `/client/api/v1/...` и далее маршрутизируются
-  на существующие backend-сервисы:
-  - `/client/api/auth/*` → `auth-host` (логин, `GET /auth/me` для клиентских пользователей);
-  - `/client/api/core/*` → `core-api` (операции, лимиты, дашборд);
-  - `/client/api/ai/*` → `ai-service` (если потребуется дополнительная аналитика).
+- **API:** клиентские запросы проходят через gateway по префиксу `/client/api/v1/...`:
+  - `/client/api/v1/auth/*` → `auth-host` (логин, `GET /auth/me` для клиентских пользователей);
+  - `/client/api/v1/*` → `core-api` (операции, лимиты, дашборд и остальные ручки).
 
 ## API клиента
 

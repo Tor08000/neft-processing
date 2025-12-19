@@ -1,7 +1,7 @@
 import type { DashboardSummary, Limit, Operation, ClientUser } from "./types";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost").replace(/\/$/, "");
-const clientBase = (import.meta.env.VITE_CLIENT_BASE_PATH ?? "/client").replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
 const API_BASE = `${apiBase}${clientBase}/api/v1`;
 
 interface TokenResponse {
@@ -40,7 +40,7 @@ export function handleUnauthorized(error: unknown): boolean {
   if (error instanceof UnauthorizedError) {
     // При 401/403 сбрасываем токен и возвращаем пользователя на экран логина.
     localStorage.removeItem("client_token");
-    window.location.href = "/client/";
+    window.location.href = `${clientBase}/`;
     return true;
   }
   return false;

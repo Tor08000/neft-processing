@@ -1,5 +1,5 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost").replace(/\/$/, "");
-const adminBase = (import.meta.env.VITE_ADMIN_BASE_PATH ?? "/admin").replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
+const adminBase = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/$/, "");
 export const API_BASE = `${apiBase}${adminBase}/api/v1`;
 
 export type HttpHeaders = Record<string, string>;

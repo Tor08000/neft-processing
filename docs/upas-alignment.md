@@ -1,7 +1,7 @@
 # UPAS alignment snapshot
 
 ## Services present in the repository
-- **Gateway** (nginx) routes `/api/core`, `/api/auth`, `/api/ai` plus `/health` and `/metrics`.
+- **Gateway** (nginx) routes `/api/v1/*`, `/admin/api/v1/*`, `/client/api/v1/*` plus `/health`, `/metrics`, and SPA assets.
 - **Auth Host** (FastAPI, platform/auth-host): authentication, demo users, JWT issuance.
 - **Core API** (FastAPI, platform/processing-core): processing pipeline, admin APIs, migrations.
 - **AI Risk scorer** (platform/ai-services/risk-scorer): stubbed risk response for tests.

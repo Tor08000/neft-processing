@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 
-const base = import.meta.env.VITE_ADMIN_BASE_PATH || "/admin/";
+const base = import.meta.env.BASE_URL || "/admin/";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
