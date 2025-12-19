@@ -15,12 +15,12 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
+from app.alembic.helpers import regclass  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
 from app.diagnostics.db_state import (  # noqa: E402
     log_connection_fingerprint,
     log_identity_snapshot,
-    to_regclass,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,8 +184,8 @@ def _log_schema_inventory(connection: sa.engine.Connection, *, label: str) -> No
 def _log_version_table_state(connection: sa.engine.Connection, target_schema: str, *, label: str) -> None:
     db_name, db_user = connection.exec_driver_sql("SELECT current_database(), current_user").one()
     search_path = connection.exec_driver_sql("SHOW search_path").scalar_one_or_none()
-    version_reg = to_regclass(connection, target_schema, "alembic_version")
-    operations_reg = to_regclass(connection, target_schema, "operations")
+    version_reg = regclass(connection, f"{target_schema}.alembic_version")
+    operations_reg = regclass(connection, f"{target_schema}.operations")
     version_schemas = _version_table_schemas(connection)
     logger.info(
         "[%s] version tables probe: db=%s user=%s search_path=%s alembic_version=%s operations=%s locations=%s",
@@ -204,8 +204,8 @@ def _log_missing_version_table_diagnostics(connection: sa.engine.Connection, tar
         "Detected operations table without alembic_version in schema '%s'; collecting diagnostics",
         target_schema,
     )
-    operations_reg = to_regclass(connection, target_schema, "operations")
-    version_reg = to_regclass(connection, target_schema, "alembic_version")
+    operations_reg = regclass(connection, f"{target_schema}.operations")
+    version_reg = regclass(connection, f"{target_schema}.alembic_version")
     logger.error("to_regclass operations=%s alembic_version=%s", operations_reg, version_reg)
 
     diagnostics: list[tuple[str, Any]] = []
@@ -364,45 +364,33 @@ def run_migrations_online() -> sa.engine.Engine:
             txid_inside = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
             logger.info("[tx-probe] inside transaction: txid=%s pid=%s", *txid_inside)
             context.run_migrations()
-            regclass_same_conn = connection.exec_driver_sql(
-                "select to_regclass(:operations), to_regclass(:version)",
-                {
-                    "operations": f"{target_schema}.operations",
-                    "version": f"{target_schema}.alembic_version",
-                },
-            ).one()
+            ops_reg = regclass(connection, f"{target_schema}.operations")
+            ver_reg = regclass(connection, f"{target_schema}.alembic_version")
             logger.info(
                 "[ddl-visibility] same connection regclass: operations=%s alembic_version=%s",
-                *regclass_same_conn,
+                ops_reg,
+                ver_reg,
             )
         log_identity_snapshot(connection, schema=target_schema, label="alembic identity post")
 
         txid_after = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
         logger.info("[tx-probe] after migrations (post-commit): txid=%s pid=%s", *txid_after)
-        regclass_post_commit = connection.exec_driver_sql(
-            "select to_regclass(:operations), to_regclass(:version)",
-            {
-                "operations": f"{target_schema}.operations",
-                "version": f"{target_schema}.alembic_version",
-            },
-        ).one()
+        ops_reg = regclass(connection, f"{target_schema}.operations")
+        ver_reg = regclass(connection, f"{target_schema}.alembic_version")
         logger.info(
             "[ddl-visibility] same connection after commit regclass: operations=%s alembic_version=%s",
-            *regclass_post_commit,
+            ops_reg,
+            ver_reg,
         )
 
     with connectable.connect() as visibility_connection:
         _configure_connection(visibility_connection, target_schema)
-        regclass_new_conn = visibility_connection.exec_driver_sql(
-            "select to_regclass(:operations), to_regclass(:version)",
-            {
-                "operations": f"{target_schema}.operations",
-                "version": f"{target_schema}.alembic_version",
-            },
-        ).one()
+        ops_reg = regclass(visibility_connection, f"{target_schema}.operations")
+        ver_reg = regclass(visibility_connection, f"{target_schema}.alembic_version")
         logger.info(
             "[ddl-visibility] new connection regclass: operations=%s alembic_version=%s",
-            *regclass_new_conn,
+            ops_reg,
+            ver_reg,
         )
 
     verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
@@ -410,8 +398,8 @@ def run_migrations_online() -> sa.engine.Engine:
         _configure_connection(connection, target_schema)
         _log_version_table_state(connection, target_schema, label="post-migrations")
 
-        operations_reg = to_regclass(connection, target_schema, "operations")
-        version_reg = to_regclass(connection, target_schema, "alembic_version")
+        operations_reg = regclass(connection, f"{target_schema}.operations")
+        version_reg = regclass(connection, f"{target_schema}.alembic_version")
         version_present_in_target, version_schemas = _require_version_table_in_target(connection, target_schema)
         table_count = _schema_table_count(connection, target_schema)
         logger.info(

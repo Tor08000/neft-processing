@@ -30,18 +30,21 @@ def is_sqlite(bind: Connection) -> bool:
 
 def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> bool:
     if is_sqlite(bind):
-        result = bind.exec_driver_sql(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+        result = bind.execute(
+            sa.text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name"),
+            {"name": table_name},
         ).first()
         return result is not None
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = %s AND table_name = %s
-        """,
-        (schema, table_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = :schema AND table_name = :table_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name},
     ).first()
     return result is not None
 
@@ -53,34 +56,35 @@ def column_exists(
         rows = bind.exec_driver_sql(f"PRAGMA table_info('{table_name}')").all()
         return any(row[1] == column_name for row in rows)
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = %s AND table_name = %s AND column_name = %s
-        """,
-        (schema, table_name, column_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = :schema AND table_name = :table_name AND column_name = :column_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name, "column_name": column_name},
     ).first()
     return result is not None
 
 
 def index_exists(bind: Connection, index_name: str, schema: str = DB_SCHEMA) -> bool:
     if is_sqlite(bind):
-        result = bind.exec_driver_sql(
-            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (index_name,)
+        result = bind.execute(
+            sa.text("SELECT 1 FROM sqlite_master WHERE type='index' AND name=:name"),
+            {"name": index_name},
         ).first()
         return result is not None
 
-    query = """
+    query = sa.text(
+        """
         SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = %s AND c.relname = %s AND c.relkind = 'i'
-    """
-    try:
-        result = bind.exec_driver_sql(query, (schema, index_name))
-    except TypeError:
-        formatted = query.replace("%s", "{}").format(schema, index_name)
-        result = bind.exec_driver_sql(formatted)
+        WHERE n.nspname = :schema AND c.relname = :index_name AND c.relkind = 'i'
+        """
+    )
+    result = bind.execute(query, {"schema": schema, "index_name": index_name})
 
     first = getattr(result, "first", None)
     return callable(first) and first() is not None
@@ -90,18 +94,21 @@ def constraint_exists(
     bind: Connection, table_name: str, constraint_name: str, schema: str = DB_SCHEMA
 ) -> bool:
     if is_sqlite(bind):
-        result = bind.exec_driver_sql(
-            "SELECT 1 FROM sqlite_master WHERE name=?", (constraint_name,)
+        result = bind.execute(
+            sa.text("SELECT 1 FROM sqlite_master WHERE name=:name"),
+            {"name": constraint_name},
         ).first()
         return result is not None
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT 1
-        FROM information_schema.table_constraints
-        WHERE table_schema = %s AND table_name = %s AND constraint_name = %s
-        """,
-        (schema, table_name, constraint_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.table_constraints
+            WHERE table_schema = :schema AND table_name = :table_name AND constraint_name = :constraint_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name, "constraint_name": constraint_name},
     ).first()
     return result is not None
 
@@ -110,15 +117,26 @@ def enum_exists(bind: Connection, enum_name: str, schema: str = DB_SCHEMA) -> bo
     if not is_postgres(bind):
         return False
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT 1 FROM pg_type t
-        JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE n.nspname = %s AND t.typname = %s
-        """,
-        (schema, enum_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1 FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE n.nspname = :schema AND t.typname = :enum_name
+            """
+        ),
+        {"schema": schema, "enum_name": enum_name},
     ).first()
     return result is not None
+
+
+def regclass(conn: Connection, qualified_name: str) -> str | None:
+    """Return ``to_regclass`` for a fully qualified object name."""
+
+    return conn.execute(
+        sa.text("select to_regclass(:name)"),
+        {"name": qualified_name},
+    ).scalar_one_or_none()
 
 
 # Enum helpers
@@ -224,18 +242,20 @@ def drop_mutable_predicate_or_expression_indexes(
     if not is_postgres(bind):
         return []
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT idx.relname AS index_name
-        FROM pg_index i
-        JOIN pg_class tbl ON tbl.oid = i.indrelid
-        JOIN pg_class idx ON idx.oid = i.indexrelid
-        JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
-        WHERE ns.nspname = %s
-          AND tbl.relname = %s
-          AND (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL)
-        """,
-        (schema, table_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT idx.relname AS index_name
+            FROM pg_index i
+            JOIN pg_class tbl ON tbl.oid = i.indrelid
+            JOIN pg_class idx ON idx.oid = i.indexrelid
+            JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+            WHERE ns.nspname = :schema
+              AND tbl.relname = :table_name
+              AND (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL)
+            """
+        ),
+        {"schema": schema, "table_name": table_name},
     )
 
     dropped: list[str] = []

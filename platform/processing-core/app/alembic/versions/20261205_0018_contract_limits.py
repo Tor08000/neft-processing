@@ -35,26 +35,34 @@ def _qualified(name: str, schema: str = SCHEMA) -> str:
 
 def table_exists(table_name: str, schema: str = SCHEMA) -> bool:
     bind = op.get_bind()
-    result = bind.exec_driver_sql("SELECT to_regclass(%s)", (_qualified(table_name, schema),))
+    result = bind.execute(
+        sa.text("SELECT to_regclass(:name)"),
+        {"name": _qualified(table_name, schema)},
+    )
     return result.scalar() is not None
 
 
 def index_exists(index_name: str, schema: str = SCHEMA) -> bool:
     bind = op.get_bind()
-    result = bind.exec_driver_sql("SELECT to_regclass(%s)", (_qualified(index_name, schema),))
+    result = bind.execute(
+        sa.text("SELECT to_regclass(:name)"),
+        {"name": _qualified(index_name, schema)},
+    )
     return result.scalar() is not None
 
 
 def constraint_exists(constraint_name: str, schema: str = SCHEMA) -> bool:
     bind = op.get_bind()
-    result = bind.exec_driver_sql(
-        """
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_namespace n ON n.oid = c.connamespace
-        WHERE n.nspname = %s AND c.conname = %s
-        """,
-        (schema, constraint_name),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_namespace n ON n.oid = c.connamespace
+            WHERE n.nspname = :schema AND c.conname = :constraint_name
+            """
+        ),
+        {"schema": schema, "constraint_name": constraint_name},
     ).first()
     return result is not None
 

@@ -22,12 +22,12 @@ def test_bootstrap_schema_creates_tables():
 
     try:
         with connectable.connect() as connection:
-            merchants_exists = connection.exec_driver_sql(
-                "select to_regclass(:reg)",
+            merchants_exists = connection.execute(
+                sa.text("select to_regclass(:reg)"),
                 {"reg": f"{DB_SCHEMA}.merchants"},
             ).scalar()
-            version_exists = connection.exec_driver_sql(
-                "select to_regclass(:reg)",
+            version_exists = connection.execute(
+                sa.text("select to_regclass(:reg)"),
                 {"reg": f"{DB_SCHEMA}.alembic_version"},
             ).scalar()
     finally:
