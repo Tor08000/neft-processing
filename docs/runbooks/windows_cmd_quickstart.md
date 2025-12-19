@@ -11,9 +11,14 @@ docker compose down -v
 REM 2) пересобрать и запустить
 docker compose up -d --build
 
-REM 3) убедиться, что сервисы запустились
+REM 3) обязательный smoke (pytest)
+make smoke
+
+REM 4) убедиться, что сервисы запустились
 docker compose ps
 ```
+
+Если `make` недоступен в вашей среде (чистый CMD), выполните smoke напрямую: `python -m pytest tests/smoke -q` из корня репозитория.
 
 Если используется CLI v1, все команды выше можно выполнить как `docker-compose.exe ...`.
 

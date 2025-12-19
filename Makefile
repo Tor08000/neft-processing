@@ -112,7 +112,7 @@ test: test-core test-auth test-ai
 # Требует запущенного стека (nginx + сервисы).
 
 health:
-        curl -s "http://localhost/api/v1/health" || echo "core-api health check failed"
+	curl -s "http://localhost/api/v1/health" || echo "core-api health check failed"
 
 health-core: health
 
@@ -122,10 +122,10 @@ health-auth:
 	@echo "Auth-host health endpoint через nginx пока не определён"
 
 health-ai:
-        @echo "AI-service health endpoint через nginx пока не определён"
+	@echo "AI-service health endpoint через nginx пока не определён"
 
 smoke:
-        bash scripts/smoke_local.sh
+	pytest tests/smoke -q
 
 # ----------------------------------------
 # ЧИСТКА
