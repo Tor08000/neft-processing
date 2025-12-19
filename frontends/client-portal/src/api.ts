@@ -1,13 +1,5 @@
-import type { DashboardSummary, Limit, Operation, ClientUser } from "./types";
-
-const gatewayBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
-const normalizePrefix = (raw: string): string => {
-  const value = raw.startsWith("/") ? raw : `/${raw}`;
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-};
-const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/$/, "");
-const API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_CORE_API_BASE ?? "/api/core")}${clientBase}/api/v1`;
-const AUTH_API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_AUTH_API_BASE ?? "/api/auth")}/api/v1/auth`;
+import { AUTH_API_BASE, CLIENT_BASE_PATH, CORE_API_BASE } from "./api/base";
+import type { ClientUser, DashboardSummary, Limit, Operation } from "./types";
 
 interface TokenResponse {
   access_token: string;
@@ -45,7 +37,7 @@ export function handleUnauthorized(error: unknown): boolean {
   if (error instanceof UnauthorizedError) {
     // При 401/403 сбрасываем токен и возвращаем пользователя на экран логина.
     localStorage.removeItem("client_token");
-    window.location.href = `${clientBase}/`;
+    window.location.href = `${CLIENT_BASE_PATH}/`;
     return true;
   }
   return false;
@@ -123,7 +115,7 @@ export async function fetchDashboard(token: string): Promise<{
   recentOperations: Operation[];
   limits: Limit[];
 }> {
-  const response = await fetch(`${API_BASE}/dashboard`, { headers: authHeaders(token) });
+  const response = await fetch(`${CORE_API_BASE}/dashboard`, { headers: authHeaders(token) });
   const body = await parseJsonOrThrow(response, "Не удалось загрузить дашборд");
   return {
     summary: {
@@ -157,7 +149,7 @@ export async function fetchOperations(token: string, params: { status?: string; 
   if (params.limit) search.set("limit", params.limit.toString());
   if (params.offset) search.set("offset", params.offset.toString());
 
-  const response = await fetch(`${API_BASE}/operations?${search.toString()}`, {
+  const response = await fetch(`${CORE_API_BASE}/operations?${search.toString()}`, {
     headers: authHeaders(token),
   });
   const body = await parseJsonOrThrow(response, "Не удалось загрузить операции");
@@ -178,7 +170,7 @@ export async function fetchOperations(token: string, params: { status?: string; 
 }
 
 export async function fetchLimits(token: string): Promise<Limit[]> {
-  const response = await fetch(`${API_BASE}/limits`, { headers: authHeaders(token) });
+  const response = await fetch(`${CORE_API_BASE}/limits`, { headers: authHeaders(token) });
   const body = await parseJsonOrThrow(response, "Не удалось загрузить лимиты");
   return (body.items as any[]).map((item) => ({
     id: item.id,
