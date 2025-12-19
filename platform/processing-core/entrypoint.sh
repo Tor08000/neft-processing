@@ -188,8 +188,7 @@ if debug_sql:
 
 def _collect_required_tables() -> dict[str, str | None]:
     with engine.connect() as conn:
-        with conn.begin():
-            return {name: to_regclass(conn, schema, name) for name in required_tables}
+        return {name: to_regclass(conn, schema, name) for name in required_tables}
 
 
 def _collect_inventory() -> tuple[list[str], list[str]]:
@@ -251,6 +250,7 @@ import sys
 from sqlalchemy import create_engine, text
 
 url = os.getenv("DATABASE_URL")
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
 if not url:
     print("[entrypoint] DATABASE_URL is not set for after-commit probe", file=sys.stderr)
     sys.exit(1)
@@ -264,16 +264,27 @@ engine = create_engine(
 )
 
 with engine.connect() as conn:
-    operations_reg = conn.execute(text("select to_regclass('public.operations')")).scalar_one_or_none()
-    public_table_count = conn.execute(
-        text("select count(*) from information_schema.tables where table_schema='public'")
+    alembic_reg = conn.execute(
+        text("select to_regclass(:regclass)"), {"regclass": f"{schema}.alembic_version"}
+    ).scalar_one_or_none()
+    operations_reg = conn.execute(
+        text("select to_regclass(:regclass)"), {"regclass": f"{schema}.operations"}
+    ).scalar_one_or_none()
+    pg_class_table_count = conn.execute(
+        text(
+            """
+            select count(*)
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = :schema and c.relkind = 'r'
+            """
+        ),
+        {"schema": schema},
     ).scalar_one()
 
-print(f"[entrypoint] after-commit probe: operations regclass in public = {operations_reg}", flush=True)
-print(
-    f"[entrypoint] after-commit probe: table count in public schema = {public_table_count}",
-    flush=True,
-)
+print(f"[entrypoint] after-commit probe: alembic_version regclass = {alembic_reg}", flush=True)
+print(f"[entrypoint] after-commit probe: operations regclass = {operations_reg}", flush=True)
+print(f"[entrypoint] after-commit probe: pg_class table count in {schema} = {pg_class_table_count}", flush=True)
 PY
 }
 
@@ -301,6 +312,35 @@ log_fingerprint_from_url(url=url, schema=schema, emitter=_emit, label=label)
 PY
 }
 
+log_entrypoint_identity() {
+    python - <<'PY'
+import os
+import sys
+
+from app.diagnostics.db_state import log_identity_from_url
+
+schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+url = os.getenv("DATABASE_URL")
+label = os.getenv("IDENTITY_LABEL") or "identity"
+
+if not url:
+    print(f"[entrypoint identity {label}] DATABASE_URL is not set", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+
+def _emit(message: str) -> None:
+    print(message, flush=True)
+
+
+log_identity_from_url(
+    url=url,
+    schema=schema,
+    emitter=_emit,
+    label=f"entrypoint identity {label}",
+)
+PY
+}
+
 assert_alembic_state() {
     heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads -v 2>&1)
     current_output=$(alembic -c "$ALEMBIC_CONFIG" current -v 2>&1)
@@ -316,7 +356,6 @@ assert_alembic_state() {
         python - <<'PY'
 import os
 import re
-import subprocess
 import sys
 
 from alembic.config import Config
@@ -390,7 +429,6 @@ def _regclass(conn, name: str) -> str | None:
 
 heads = _extract_revisions(heads_output)
 current = _extract_revisions(current_output)
-allow_stamp = os.getenv("NEFT_ALLOW_STAMP") == "1"
 
 script_dir = ScriptDirectory.from_config(Config(alembic_config_path))
 script_heads = script_dir.get_heads()
@@ -425,32 +463,15 @@ try:
         ).scalar_one_or_none() is not None
         search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
 
-        if not version_schemas:
-            schema_ready_for_stamp = cards_created and all(table_state.values())
-            if schema_ready_for_stamp and allow_stamp:
-                print(
-                    "[entrypoint] alembic_version missing across schemas; applying stamp head",
-                    flush=True,
-                )
-                subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
-                version_schemas = _version_table_schemas(conn)
-                version_in_target = schema in version_schemas
-            if not version_in_target:
-                user_schemas, user_tables = _collect_inventory(conn)
-                print(
-                    f"[entrypoint] alembic_version missing in target schema '{schema}' (search_path={search_path})",
-                    file=sys.stderr,
-                )
-                print(f"[entrypoint] alembic_version found in schemas: {version_schemas}", file=sys.stderr)
-                print(f"[entrypoint] user schemas: {user_schemas}", file=sys.stderr)
-                print(f"[entrypoint] user tables ({len(user_tables)}): {user_tables}", file=sys.stderr)
-                sys.exit(1)
-
-        if version_schemas and not version_in_target:
+        if not version_in_target:
+            user_schemas, user_tables = _collect_inventory(conn)
             print(
-                f"[entrypoint] alembic_version находится в schema={version_schemas[0]} ожидали TARGET_SCHEMA={schema}",
+                f"[entrypoint] alembic_version missing in target schema '{schema}' (search_path={search_path})",
                 file=sys.stderr,
             )
+            print(f"[entrypoint] alembic_version found in schemas: {version_schemas}", file=sys.stderr)
+            print(f"[entrypoint] user schemas: {user_schemas}", file=sys.stderr)
+            print(f"[entrypoint] user tables ({len(user_tables)}): {user_tables}", file=sys.stderr)
             sys.exit(1)
 
         version_rows = conn.execute(
@@ -630,9 +651,11 @@ PY
 
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
+    IDENTITY_LABEL="pre-attempt-$attempt" log_entrypoint_identity
     DB_FINGERPRINT_LABEL="pre-migration-attempt-$attempt" log_db_fingerprint
 
     if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
+        IDENTITY_LABEL="post-attempt-$attempt" log_entrypoint_identity
         assert_alembic_state
         after_commit_visibility_probe
         if verify_migration_ddls; then
