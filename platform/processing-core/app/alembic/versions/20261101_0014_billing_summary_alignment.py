@@ -10,6 +10,7 @@ import sqlalchemy as sa
 
 from app.alembic.utils import ensure_pg_enum, safe_enum
 from app.models.operation import ProductType
+from app.db.schema import resolve_db_schema
 
 
 # revision identifiers, used by Alembic.
@@ -18,12 +19,14 @@ down_revision = "20261020_0013_operations_limits_alignment"
 branch_labels = None
 depends_on = None
 
+SCHEMA = resolve_db_schema().schema
+
 
 product_type_values = [value.value for value in ProductType]
 billing_status_values = ["PENDING", "FINALIZED"]
 
 
-def _column_exists(bind, table_name: str, column_name: str, schema: str = "public") -> bool:
+def _column_exists(bind, table_name: str, column_name: str, schema: str = SCHEMA) -> bool:
     result = bind.execute(
         sa.text(
             """
@@ -41,8 +44,8 @@ def _column_exists(bind, table_name: str, column_name: str, schema: str = "publi
 
 def upgrade() -> None:
     bind = op.get_bind()
-    ensure_pg_enum(bind, "product_type", values=product_type_values, schema="public")
-    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema="public")
+    ensure_pg_enum(bind, "product_type", values=product_type_values, schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema=SCHEMA)
 
     product_type_enum = safe_enum(bind, "product_type", product_type_values)
     status_enum = safe_enum(bind, "billing_summary_status", billing_status_values)
@@ -74,7 +77,7 @@ def upgrade() -> None:
         "billing_summary",
         sa.Column("client_id", sa.String(length=64), nullable=False),
     )
-    if not _column_exists(bind, "billing_summary", "product_type", schema="public"):
+    if not _column_exists(bind, "billing_summary", "product_type", schema=SCHEMA):
         op.add_column(
             "billing_summary",
             sa.Column("product_type", product_type_enum, nullable=True),
@@ -147,8 +150,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
 
-    ensure_pg_enum(bind, "product_type", values=product_type_values, schema="public")
-    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema="public")
+    ensure_pg_enum(bind, "product_type", values=product_type_values, schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_summary_status", values=billing_status_values, schema=SCHEMA)
 
     product_type_enum = safe_enum(bind, "product_type", product_type_values)
     status_enum = safe_enum(bind, "billing_summary_status", billing_status_values)

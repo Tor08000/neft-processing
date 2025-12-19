@@ -32,9 +32,9 @@ Expected results:
 
 ## C) API health through gateway and direct core-api
 ```cmd
-curl -i "http://localhost/api/core/api/v1/health"
-curl -i "http://localhost/api/core/api/v1/operations?limit=1&offset=0"
-curl -i "http://localhost/api/core/api/v1/transactions?limit=1&offset=0"
+curl -i "http://localhost/api/v1/health"
+curl -i "http://localhost/api/v1/operations?limit=1&offset=0"
+curl -i "http://localhost/api/v1/transactions?limit=1&offset=0"
 
 curl -i "http://localhost:8001/api/v1/health"
 curl -i "http://localhost:8001/api/v1/operations?limit=1&offset=0"

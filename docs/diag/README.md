@@ -10,7 +10,7 @@
    - На Windows установите Docker Desktop и запустите демон; активируйте виртуальное окружение Python с установленным Alembic (`pip install -r platform/processing-core/requirements.txt`).
 2. **Поднимите инфраструктуру (опционально, для health-check).**
    - `docker compose up -d --build` из корня репозитория.
-   - Проверки health зависят от доступности адресов `http://localhost/admin/`, `http://localhost/api/auth/api/v1/health`, `http://localhost/api/core/api/v1/health`.
+   - Проверки health зависят от доступности адресов `http://localhost/admin/`, `http://localhost/api/v1/health`, `http://localhost/admin/api/v1/auth/health`.
 3. **Запустите диагностику.**
    - Базовый прогон:
      ```bash

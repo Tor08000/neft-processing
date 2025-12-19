@@ -5,7 +5,7 @@
 ## Контракты и переменные
 
 - **DATABASE_URL** — единственный источник истины. Формат: `postgresql+psycopg://USER:PASSWORD@HOST:PORT/DB`.
-- **NEFT_DB_SCHEMA** — опциональная схема (по умолчанию `public`). `entrypoint.sh` и `alembic/env.py` выставляют `search_path` в эту схему и создают `alembic_version` там же.
+- **NEFT_DB_SCHEMA** — опциональная схема (по умолчанию `public`). `entrypoint.sh` и `alembic/env.py` выставляют `search_path` только в эту схему и создают `alembic_version` там же (никаких fallback'ов).
 - **ALEMBIC_CONFIG** — путь к конфигу (по умолчанию `app/alembic.ini` внутри контейнера).
 
 ## Команды (из корня репозитория)
@@ -61,5 +61,5 @@ docker compose exec core-api alembic -c app/alembic.ini current
 ## Связанные файлы
 
 - `platform/processing-core/app/alembic/env.py` — search_path + запрет offline.
-- `platform/processing-core/entrypoint.sh` — порядок: wait-for-postgres → `alembic upgrade head` → post-check.
+- `platform/processing-core/entrypoint.sh` — порядок: resolve schema → wait-for-postgres → `alembic upgrade head` → `reset_engine()` → post-check на новом соединении (`operations` + `alembic_version` совпадает с head).
 - `docs/audit/consistency_report.md` — актуальные несостыковки и фиксы.

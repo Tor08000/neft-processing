@@ -11,8 +11,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import column_exists, constraint_exists, ensure_pg_enum, table_exists
+from app.db.schema import resolve_db_schema
 
-SCHEMA = "public"
+SCHEMA = resolve_db_schema().schema
 
 
 def _add_column_if_missing(bind, table_name: str, column: sa.Column) -> None:
@@ -233,12 +234,12 @@ def drop_partial_and_expression_indexes(table_name: str) -> list[str]:
             JOIN pg_class tbl ON tbl.oid = i.indrelid
             JOIN pg_class idx ON idx.oid = i.indexrelid
             JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
-            WHERE ns.nspname = 'public'
+            WHERE ns.nspname = :schema
               AND tbl.relname = :table_name
               AND (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL);
             """
         ),
-        {"table_name": table_name},
+        {"table_name": table_name, "schema": SCHEMA},
     )
 
     dropped_indexes: list[str] = []

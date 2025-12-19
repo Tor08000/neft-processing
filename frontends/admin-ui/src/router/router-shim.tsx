@@ -17,13 +17,13 @@ interface RouterContextValue {
 
 const RouterContext = createContext<RouterContextValue | null>(null);
 
-function normalizeBasePath(rawBase: string | undefined): string {
-  const withLeading = rawBase?.startsWith("/") ? rawBase : `/${rawBase ?? "admin"}`;
+function normalizeBasePath(rawBase: string): string {
+  const withLeading = rawBase.startsWith("/") ? rawBase : `/${rawBase}`;
   const normalized = withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
   return normalized.replace(/\/+/g, "/");
 }
 
-const BASE_PATH = normalizeBasePath(import.meta.env.VITE_ADMIN_BASE_PATH);
+const BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL ?? "/admin/");
 
 function stripBase(pathname: string): string {
   if (pathname.startsWith(BASE_PATH)) {

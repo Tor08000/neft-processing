@@ -6,12 +6,17 @@ from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from app.db.schema import resolve_db_schema
+
 revision = "20261010_0012_client_ids_uuid"
 down_revision = "20260115_0011_operations_indexes"
 branch_labels = None
 depends_on = None
 
 logger = logging.getLogger("alembic.runtime.migration")
+
+SCHEMA = resolve_db_schema().schema
+SCHEMA_QUOTED = f'"{SCHEMA}"'
 
 
 def upgrade() -> None:
@@ -35,7 +40,7 @@ def downgrade() -> None:
 def _table_exists(connection, table: str) -> bool:
     result = connection.execute(
         sa.text("SELECT to_regclass(:table_name)"),
-        {"table_name": f"public.{table}"},
+        {"table_name": f"{SCHEMA}.{table}"},
     )
     return bool(result.scalar())
 
@@ -47,12 +52,12 @@ def _get_column_info(connection, table: str, column: str):
                 """
                 SELECT data_type, udt_name, is_nullable, column_default
                 FROM information_schema.columns
-                WHERE table_schema = 'public'
+                WHERE table_schema = :schema
                   AND table_name = :table
                   AND column_name = :column
                 """
             ),
-            {"table": table, "column": column},
+            {"table": table, "column": column, "schema": SCHEMA},
         )
         .mappings()
         .first()
@@ -64,7 +69,7 @@ def _has_invalid_uuid_values(connection, table: str, column: str) -> bool:
         sa.text(
             f"""
             SELECT 1
-            FROM "{table}"
+            FROM {SCHEMA_QUOTED}."{table}"
             WHERE "{column}" IS NOT NULL
               AND NOT (
                 "{column}"::text ~
@@ -93,7 +98,7 @@ def _convert_to_uuid(connection, table: str, column: str, *, set_default: bool =
         if set_default and not column_info["column_default"]:
             op.execute(
                 sa.text(
-                    f"ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" SET DEFAULT gen_random_uuid()"
+                    f"ALTER TABLE {SCHEMA_QUOTED}.\"{table}\" ALTER COLUMN \"{column}\" SET DEFAULT gen_random_uuid()"
                 )
             )
         return
@@ -110,12 +115,13 @@ def _convert_to_uuid(connection, table: str, column: str, *, set_default: bool =
         type_=postgresql.UUID(as_uuid=True),
         postgresql_using=f'"{column}"::uuid',
         existing_nullable=column_info["is_nullable"] == "YES",
+        schema=SCHEMA,
     )
 
     if set_default:
         op.execute(
             sa.text(
-                f"ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" SET DEFAULT gen_random_uuid()"
+                f"ALTER TABLE {SCHEMA_QUOTED}.\"{table}\" ALTER COLUMN \"{column}\" SET DEFAULT gen_random_uuid()"
             )
         )
 
@@ -141,7 +147,8 @@ def _convert_from_uuid(connection, table: str, column: str, *, drop_default: boo
         type_=sa.BigInteger(),
         postgresql_using=f'"{column}"::text::bigint',
         existing_nullable=column_info["is_nullable"] == "YES",
+        schema=SCHEMA,
     )
 
     if drop_default:
-        op.execute(sa.text(f"ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" DROP DEFAULT"))
+        op.execute(sa.text(f"ALTER TABLE {SCHEMA_QUOTED}.\"{table}\" ALTER COLUMN \"{column}\" DROP DEFAULT"))

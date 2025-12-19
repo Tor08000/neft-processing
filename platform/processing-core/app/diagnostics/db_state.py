@@ -55,7 +55,7 @@ class IdentitySnapshot:
 def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
     """Return the regclass for the given schema-qualified name, if it exists."""
 
-    schema_name = schema or "public"
+    schema_name = schema or SCHEMA_RESOLUTION.schema
     regclass = f"{schema_name}.{name}"
     return connection.execute(text("select to_regclass(:reg)"), {"reg": regclass}).scalar_one_or_none()
 
@@ -157,7 +157,7 @@ def _safe_scalar(connection: Connection, sql: str, params: dict | None = None):
 
 
 def _collect_identity_probe_fields(connection: Connection, schema: str) -> tuple:
-    schema_name = schema or "public"
+    schema_name = schema or SCHEMA_RESOLUTION.schema
 
     server_addr, server_port, current_db, current_user = connection.execute(
         text("select inet_server_addr(), inet_server_port(), current_database(), current_user")
@@ -308,7 +308,7 @@ def log_connection_fingerprint(
     now = _safe_scalar(connection, "SELECT now()")
     _emit(prefix, f"txid_current={txid} now={now}", emitter=emitter)
 
-    target_schema = schema or "public"
+    target_schema = schema or SCHEMA_RESOLUTION.schema
     alembic_reg = to_regclass(connection, target_schema, "alembic_version")
     operations_reg = to_regclass(connection, target_schema, "operations")
     _emit(prefix, f"alembic_version_regclass={alembic_reg} operations_regclass={operations_reg}", emitter=emitter)

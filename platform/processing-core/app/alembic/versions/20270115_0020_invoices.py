@@ -19,12 +19,16 @@ from app.alembic.utils import (
     table_exists,
 )
 from app.models.invoice import InvoiceStatus
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270115_0020"
 down_revision = "20270101_0019_external_request_logs"
 branch_labels = None
 depends_on = None
+
+SCHEMA = resolve_db_schema().schema
+SCHEMA_QUOTED = f'"{SCHEMA}"'
 
 INVOICE_STATUS_VALUES = [status.value for status in InvoiceStatus]
 
@@ -103,4 +107,4 @@ def downgrade() -> None:
         drop_index_if_exists(bind, "ix_invoices_client_id")
         drop_table_if_exists(bind, "invoices")
     if bind.dialect.name == "postgresql":
-        bind.exec_driver_sql("DROP TYPE IF EXISTS public.invoicestatus")
+        bind.exec_driver_sql(f"DROP TYPE IF EXISTS {SCHEMA_QUOTED}.invoicestatus")

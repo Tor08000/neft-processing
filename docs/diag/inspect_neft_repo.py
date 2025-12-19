@@ -321,8 +321,8 @@ def section_health_checks(skip_health: bool) -> bool | None:
         return None
 
     endpoints = {
-        "auth": "http://localhost/api/auth/api/v1/health",
-        "core": "http://localhost/api/core/api/v1/health",
+        "auth": "http://localhost/admin/api/v1/auth/health",
+        "core": "http://localhost/api/v1/health",
         "admin": "http://localhost/admin/",
     }
 

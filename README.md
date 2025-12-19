@@ -9,7 +9,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов:
  - Core API напрямую: `http://localhost:8001/api/v1/health`
-  - Через gateway: `http://localhost/api/core/api/v1/health`
+  - Через gateway: `http://localhost/api/v1/health`
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
@@ -29,12 +29,12 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 ### Админский токен для локальной разработки
 
 1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
-2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
+2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/admin/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
 ```
 call scripts\get_admin_token.cmd
-curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
+curl -i "http://localhost/admin/api/v1/operations?limit=5" ^
   -H "Authorization: Bearer %TOKEN%"
 ```
 
@@ -49,8 +49,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
-    * `/api/auth/api/v1/auth/login`
-    * `/api/core/api/v1/admin/operations`
+    * `/admin/api/v1/auth/login`
+    * `/admin/api/v1/operations`
 * Клиент использует React Query для кэширования (операции: `staleTime=30s`, дашборд: `staleTime=5s`) и динамическую
   подгрузку страниц/тяжёлых компонентов через `React.lazy + Suspense`, чтобы ускорить initial load.
 
@@ -77,14 +77,15 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 ### Разделение публичного и admin API
 
-* Публичные ручки Core API остаются в пространстве `/api/core/api/v1/*`.
-* Все административные операции теперь живут под префиксом `/api/core/api/v1/admin/*` и требуют admin JWT.
-* Admin Web клиент обновлён на использование нового префикса, поэтому старая схема путей `/api/core/api/v1/admin/...` остаётся единственной точкой входа.
+* Gateway проксирует единый публичный API core-api по пути `/api/v1/*`.
+* Админские маршруты идут через `/admin/api/v1/*`, а авторизация — по `/admin/api/v1/auth/*` (прокси в auth-host).
+* Клиентские маршруты идут через `/client/api/v1/*`, авторизация — по `/client/api/v1/auth/*`.
+* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://gateway` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
 
 ### Gateway (Nginx)
 
-* Конфигурация: `services/gateway/nginx.conf` (прокси для `/admin/`, `/api/auth/`, `/api/core/`, `/api/ai/`, favicon и health).
-* Dockerfile: `services/gateway/Dockerfile` (основан на `nginx:1.27-alpine`, копирует конфиг в контейнер и перенаправляет логи в stdout/stderr).
+* Конфигурация: `gateway/nginx.conf` (прокси для `/api/v1/`, `/admin/api/v1/*`, `/client/api/v1/*`, статик `/admin/` и `/client/`, favicon и health).
+* Dockerfile: `gateway/Dockerfile` (основан на `nginx:1.27-alpine`, копирует конфиг в контейнер и перенаправляет логи в stdout/stderr).
 * Сборка и запуск:
   * `docker compose build gateway` — собрать образ с конфигом.
   * `docker compose up -d gateway` — поднять только gateway (или `docker compose up -d --build` для всей среды).

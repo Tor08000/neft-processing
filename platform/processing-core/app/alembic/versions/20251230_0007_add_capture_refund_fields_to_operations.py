@@ -8,14 +8,18 @@ Create Date: 2025-12-30 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
+from app.db.schema import resolve_db_schema
+
 # revision identifiers, used by Alembic.
 revision = "20251230_0007_add_capture_refund_fields_to_operations"
 down_revision = "20251220_0006_auto_fix"
 branch_labels = None
 depends_on = None
 
+SCHEMA = resolve_db_schema().schema
 
-def _column_exists(table: str, column: str, schema: str = "public") -> bool:
+
+def _column_exists(table: str, column: str, schema: str = SCHEMA) -> bool:
     conn = op.get_bind()
     row = conn.execute(
         sa.text(
@@ -35,7 +39,7 @@ def _column_exists(table: str, column: str, schema: str = "public") -> bool:
 
 
 def upgrade():
-    schema = "public"
+    schema = SCHEMA
 
     if not _column_exists("operations", "captured_amount", schema):
         op.add_column(
@@ -51,12 +55,12 @@ def upgrade():
             schema=schema,
         )
 
-    op.execute("UPDATE operations SET captured_amount = 0 WHERE captured_amount IS NULL")
-    op.execute("UPDATE operations SET refunded_amount = 0 WHERE refunded_amount IS NULL")
+    op.execute(sa.text(f'UPDATE "{schema}".operations SET captured_amount = 0 WHERE captured_amount IS NULL'))
+    op.execute(sa.text(f'UPDATE "{schema}".operations SET refunded_amount = 0 WHERE refunded_amount IS NULL'))
 
 
 def downgrade():
-    schema = "public"
+    schema = SCHEMA
 
     if _column_exists("operations", "captured_amount", schema):
         op.drop_column("operations", "captured_amount", schema=schema)

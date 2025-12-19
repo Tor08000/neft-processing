@@ -17,6 +17,7 @@ from app.alembic.utils import (
     ensure_pg_enum,
     safe_enum,
 )
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20260110_0009_create_clearing_table"
@@ -24,11 +25,14 @@ down_revision = "20260101_0008_billing_summary"
 branch_labels = None
 depends_on = None
 
+SCHEMA = resolve_db_schema().schema
+SCHEMA_QUOTED = f'"{SCHEMA}"'
+
 
 def upgrade() -> None:
     bind = op.get_bind()
     ensure_pg_enum(bind, "clearing_status", values=["PENDING"])
-    clearing_status = safe_enum(bind, "clearing_status", values=["PENDING"], schema="public")
+    clearing_status = safe_enum(bind, "clearing_status", values=["PENDING"], schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,
@@ -78,4 +82,4 @@ def downgrade() -> None:
     drop_index_if_exists(bind, "ix_clearing_merchant_id")
     drop_index_if_exists(bind, "ix_clearing_batch_date")
     drop_table_if_exists(bind, "clearing")
-    bind.exec_driver_sql("DROP TYPE IF EXISTS clearing_status")
+    bind.exec_driver_sql(f"DROP TYPE IF EXISTS {SCHEMA_QUOTED}.clearing_status")
