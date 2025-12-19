@@ -120,22 +120,26 @@ connect_kwargs = {
 }
 
 with psycopg.connect(dsn, **connect_kwargs) as conn:
+    conn.autocommit = True
     with conn.cursor() as cur:
-        qualified_ops = f"{_quote_schema(resolution.schema)}.operations"
-        qualified_version = f"{_quote_schema(resolution.schema)}.alembic_version"
+        regclasses: dict[str, str | None] = {}
+        for table in ("alembic_version", "operations"):
+            qualified = f"{_quote_schema(resolution.schema)}.{table}"
+            cur.execute("select to_regclass(%s)", (qualified,))
+            regclasses[table] = cur.fetchone()[0]
 
-        cur.execute("select to_regclass(%s)", (qualified_ops,))
-        operations_reg = cur.fetchone()[0]
-        cur.execute("select to_regclass(%s)", (qualified_version,))
-        version_reg = cur.fetchone()[0]
+        version_reg = regclasses["alembic_version"]
         versions = []
         if version_reg is not None:
-            cur.execute(f"select version_num from {qualified_version}")
+            cur.execute(f'select version_num from "{resolution.schema}".alembic_version')
             versions = [row[0] for row in cur.fetchall()]
 
-if operations_reg is None or version_reg is None:
+missing = [table for table, reg in regclasses.items() if reg is None]
+
+if missing:
     print(
-        f"[entrypoint] required tables missing after migrations: operations={operations_reg} alembic_version={version_reg}",
+        "[entrypoint] required tables missing after migrations: "
+        f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing}",
         file=sys.stderr,
         flush=True,
     )
@@ -144,14 +148,17 @@ if operations_reg is None or version_reg is None:
 unique_versions = set(versions)
 if unique_versions != {head_revision}:
     print(
-        f"[entrypoint] alembic_version mismatch: expected {{{head_revision}}}, found {sorted(unique_versions)}",
+        "[entrypoint] alembic_version mismatch: "
+        f"schema_resolved={resolution.schema} regclass={regclasses} "
+        f"expected={{{head_revision}}} found={sorted(unique_versions)}",
         file=sys.stderr,
         flush=True,
     )
     sys.exit(1)
 
 print(
-    f"[entrypoint] migration check passed: alembic_version={version_reg} operations={operations_reg} head={head_revision}",
+    "[entrypoint] migration check passed: "
+    f"schema_resolved={resolution.schema} regclass={regclasses} head={head_revision}",
     flush=True,
 )
 PY
