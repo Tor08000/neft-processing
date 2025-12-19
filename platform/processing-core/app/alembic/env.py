@@ -34,6 +34,7 @@ def _configure(connection) -> None:
         connection=connection,
         version_table_schema=schema_resolution.schema,
         include_schemas=True,
+        transaction_per_migration=True,
     )
 
 
