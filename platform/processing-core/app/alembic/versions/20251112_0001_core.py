@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.helpers import DB_SCHEMA, ensure_pg_enum, safe_enum
-from app.db import resolve_db_schema, schema_resolution_line
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251112_0001_core"
@@ -23,7 +23,9 @@ branch_labels = None
 depends_on = None
 
 
-SCHEMA, SCHEMA_SOURCE = resolve_db_schema()
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.schema
+SCHEMA_SOURCE = SCHEMA_RESOLUTION.source
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
 ACCOUNT_STATUS_VALUES = ["ACTIVE", "FROZEN", "CLOSED"]
@@ -53,7 +55,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     _ensure_schema(bind)
 
-    print(f"[20251112_0001_core] {schema_resolution_line(SCHEMA, SCHEMA_SOURCE)}")
+    print(f"[20251112_0001_core] {SCHEMA_RESOLUTION.line()}")
 
     ensure_pg_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
     ensure_pg_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)

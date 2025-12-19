@@ -88,7 +88,7 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
     env.update(
         {
             "DATABASE_URL": db_url,
-            "DB_SCHEMA": schema,
+            "NEFT_DB_SCHEMA": schema,
             "ALEMBIC_CONFIG": "app/alembic.ini",
             "MIGRATIONS_RETRIES": "1",
             "SKIP_REDIS_WAIT": "1",

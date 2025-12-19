@@ -14,13 +14,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from app.db import (  # type: ignore  # noqa: E402
-    DB_SCHEMA,
-    DB_SCHEMA_SOURCE,
-    Base,
-    resolve_db_schema,
-    schema_resolution_line,
-)
+from app.db import Base, make_engine_kwargs  # type: ignore  # noqa: E402
+from app.db.schema import DB_SCHEMA, resolve_db_schema, schema_resolution_line
 from app.alembic.helpers import regclass  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
@@ -30,7 +25,16 @@ from app.diagnostics.db_state import (  # noqa: E402
 )
 
 logger = logging.getLogger(__name__)
-x_arguments = context.get_x_argument(as_dictionary=True)
+
+
+def _safe_x_arguments() -> dict[str, Any]:
+    try:
+        return context.get_x_argument(as_dictionary=True)
+    except Exception:  # pragma: no cover - defensive for early imports
+        return {}
+
+
+x_arguments = _safe_x_arguments()
 DEBUG_SQL = os.getenv("DB_DEBUG_SQL") == "1" or str(x_arguments.get("debug_sql", "")).lower() in {
     "1",
     "true",
@@ -53,7 +57,7 @@ def resolve_db_url() -> str:
         raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
     config.set_main_option("sqlalchemy.url", db_url)
-    config.set_main_option("sqlalchemy.echo", "true")
+    config.set_main_option("sqlalchemy.echo", str(DEBUG_SQL).lower())
 
     safe_url = make_url(db_url).render_as_string(hide_password=True)
     logger.info("Using database URL for alembic: %s", safe_url)
@@ -309,10 +313,15 @@ def _require_version_table_in_target(
 
 def run_migrations_online() -> sa.engine.Engine:
     """Запуск миграций в online-режиме (с реальным подключением к БД)."""
-    connectable = sa.engine_from_config(  # type: ignore[attr-defined]
-        context.config.get_section(context.config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    target_schema_resolution = resolve_db_schema()
+    connectable = sa.create_engine(
+        db_url,
+        **make_engine_kwargs(
+            db_url,
+            schema=target_schema_resolution.schema,
+            poolclass=pool.NullPool,
+            echo=DEBUG_SQL,
+        ),
     )
 
     _attach_transaction_logging(connectable)
@@ -321,8 +330,10 @@ def run_migrations_online() -> sa.engine.Engine:
         logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
         EVENT_LOGGER.setLevel(logging.INFO)
 
-    target_schema, target_schema_source = resolve_db_schema()
-    logger.info("Alembic target schema resolved: %s", schema_resolution_line(target_schema, target_schema_source))
+    logger.info(
+        "Alembic target schema resolved: %s",
+        schema_resolution_line(target_schema_resolution.schema, target_schema_resolution.source),
+    )
 
     cmd_opts = getattr(config, "cmd_opts", None)
     invoked_command = getattr(cmd_opts, "cmd", None)
@@ -336,19 +347,21 @@ def run_migrations_online() -> sa.engine.Engine:
             )
 
         _log_connection_identity(connection, label="initial")
-        _configure_connection(connection, target_schema)
-        log_identity_snapshot(connection, schema=target_schema, label="alembic identity pre")
+        _configure_connection(connection, target_schema_resolution.schema)
+        log_identity_snapshot(connection, schema=target_schema_resolution.schema, label="alembic identity pre")
         _log_schema_inventory(connection, label="pre-upgrade")
-        log_connection_fingerprint(connection, schema=target_schema, label="pre-upgrade", emitter=logger.info)
+        log_connection_fingerprint(
+            connection, schema=target_schema_resolution.schema, label="pre-upgrade", emitter=logger.info
+        )
 
         txid_before = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
         logger.info("[tx-probe] before migrations: txid=%s pid=%s", *txid_before)
 
         ensure_alembic_version_length(connection)
 
-        _log_version_table_state(connection, target_schema, label="pre-migrations")
+        _log_version_table_state(connection, target_schema_resolution.schema, label="pre-migrations")
 
-        print("[alembic] version_table_schema=", target_schema, flush=True)
+        print("[alembic] version_table_schema=", target_schema_resolution.schema, flush=True)
         print("[alembic] version_table=", "alembic_version", flush=True)
         print("[alembic] include_schemas=", True, flush=True)
         print("[alembic] dialect=", connection.dialect.name, flush=True)
@@ -361,26 +374,26 @@ def run_migrations_online() -> sa.engine.Engine:
             compare_type=True,
             compare_server_default=True,
             version_table="alembic_version",
-            version_table_schema=target_schema,
+            version_table_schema=target_schema_resolution.schema,
         )
 
         with context.begin_transaction():
             txid_inside = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
             logger.info("[tx-probe] inside transaction: txid=%s pid=%s", *txid_inside)
             context.run_migrations()
-            ops_reg = regclass(connection, f"{target_schema}.operations")
-            ver_reg = regclass(connection, f"{target_schema}.alembic_version")
+            ops_reg = regclass(connection, f"{target_schema_resolution.schema}.operations")
+            ver_reg = regclass(connection, f"{target_schema_resolution.schema}.alembic_version")
             logger.info(
                 "[ddl-visibility] same connection regclass: operations=%s alembic_version=%s",
                 ops_reg,
                 ver_reg,
             )
-        log_identity_snapshot(connection, schema=target_schema, label="alembic identity post")
+        log_identity_snapshot(connection, schema=target_schema_resolution.schema, label="alembic identity post")
 
         txid_after = connection.exec_driver_sql("select txid_current(), pg_backend_pid();").one()
         logger.info("[tx-probe] after migrations (post-commit): txid=%s pid=%s", *txid_after)
-        ops_reg = regclass(connection, f"{target_schema}.operations")
-        ver_reg = regclass(connection, f"{target_schema}.alembic_version")
+        ops_reg = regclass(connection, f"{target_schema_resolution.schema}.operations")
+        ver_reg = regclass(connection, f"{target_schema_resolution.schema}.alembic_version")
         logger.info(
             "[ddl-visibility] same connection after commit regclass: operations=%s alembic_version=%s",
             ops_reg,
@@ -388,9 +401,9 @@ def run_migrations_online() -> sa.engine.Engine:
         )
 
     with connectable.connect() as visibility_connection:
-        _configure_connection(visibility_connection, target_schema)
-        ops_reg = regclass(visibility_connection, f"{target_schema}.operations")
-        ver_reg = regclass(visibility_connection, f"{target_schema}.alembic_version")
+        _configure_connection(visibility_connection, target_schema_resolution.schema)
+        ops_reg = regclass(visibility_connection, f"{target_schema_resolution.schema}.operations")
+        ver_reg = regclass(visibility_connection, f"{target_schema_resolution.schema}.alembic_version")
         logger.info(
             "[ddl-visibility] new connection regclass: operations=%s alembic_version=%s",
             ops_reg,
@@ -399,22 +412,24 @@ def run_migrations_online() -> sa.engine.Engine:
 
     verify_flag = context.get_x_argument(as_dictionary=True).get("verify", "true")
     with connectable.connect() as connection:
-        _configure_connection(connection, target_schema)
-        _log_version_table_state(connection, target_schema, label="post-migrations")
+        _configure_connection(connection, target_schema_resolution.schema)
+        _log_version_table_state(connection, target_schema_resolution.schema, label="post-migrations")
 
-        operations_reg = regclass(connection, f"{target_schema}.operations")
-        version_reg = regclass(connection, f"{target_schema}.alembic_version")
-        version_present_in_target, version_schemas = _require_version_table_in_target(connection, target_schema)
-        table_count = _schema_table_count(connection, target_schema)
+        operations_reg = regclass(connection, f"{target_schema_resolution.schema}.operations")
+        version_reg = regclass(connection, f"{target_schema_resolution.schema}.alembic_version")
+        version_present_in_target, version_schemas = _require_version_table_in_target(
+            connection, target_schema_resolution.schema
+        )
+        table_count = _schema_table_count(connection, target_schema_resolution.schema)
         logger.info(
-            "Post-migrations table count in schema '%s': %s", target_schema, table_count
+            "Post-migrations table count in schema '%s': %s", target_schema_resolution.schema, table_count
         )
 
-        missing_version_table = operations_reg is not None and not version_present_in_target
-        if missing_version_table:
-            _log_missing_version_table_diagnostics(connection, target_schema)
+        if not version_present_in_target and operations_reg is None:
+            _log_missing_version_table_diagnostics(connection, target_schema_resolution.schema)
 
-        if missing_version_table:
+        if operations_reg is not None and not version_present_in_target:
+            _log_missing_version_table_diagnostics(connection, target_schema_resolution.schema)
             raise RuntimeError(
                 "CRITICAL: operations exists but alembic_version is missing; version table config is broken"
             )
@@ -427,12 +442,12 @@ def run_migrations_online() -> sa.engine.Engine:
             if not version_present_in_target:
                 raise RuntimeError(
                     "Post-upgrade verification failed: alembic_version missing in "
-                    f"schema '{target_schema}' (search_path={current_search_path})"
+                    f"schema '{target_schema_resolution.schema}' (search_path={current_search_path})"
                 )
             if operations_reg is None:
                 raise RuntimeError(
                     "Post-upgrade verification failed: operations missing in "
-                    f"schema '{target_schema}' (search_path={current_search_path})"
+                    f"schema '{target_schema_resolution.schema}' (search_path={current_search_path})"
                 )
 
             logger.info(
@@ -442,7 +457,7 @@ def run_migrations_online() -> sa.engine.Engine:
             )
 
             version_rows = connection.execute(
-                sa.text(f'SELECT version_num FROM \"{target_schema}\".alembic_version')
+                sa.text(f'SELECT version_num FROM \"{target_schema_resolution.schema}\".alembic_version')
             ).fetchall()
             version_values = [row[0] for row in version_rows]
 
@@ -458,7 +473,9 @@ def run_migrations_online() -> sa.engine.Engine:
                 )
 
             _log_schema_inventory(connection, label="post-upgrade")
-            log_connection_fingerprint(connection, schema=target_schema, label="post-upgrade", emitter=logger.info)
+            log_connection_fingerprint(
+                connection, schema=target_schema_resolution.schema, label="post-upgrade", emitter=logger.info
+            )
 
     return connectable
 

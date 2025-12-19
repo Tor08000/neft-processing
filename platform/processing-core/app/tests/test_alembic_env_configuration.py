@@ -13,6 +13,7 @@ class DummyConnection:
         self.begin_called = False
         self.executed_sql: list[str] = []
         self.dialect = SimpleNamespace(name="postgresql")
+        self.version_table_exists = True
 
     def __enter__(self):
         return self
@@ -25,17 +26,27 @@ class DummyConnection:
 
     def exec_driver_sql(self, statement, params=None):  # noqa: D401,ARG002
         self.executed_sql.append(statement)
-        return DummyResult(statement)
+        return DummyResult(statement, return_value=params.get("regclass") if params else None)
 
     def execute(self, statement, params=None):  # noqa: D401,ARG002
         sql = str(statement)
         self.executed_sql.append(sql)
+        if "table_name='alembic_version'" in sql:
+            rows = ["public"] if self.version_table_exists else []
+            return DummyResult(sql, rows=rows)
+        if "to_regclass" in sql and params:
+            regclass_name = params.get("name")
+            if not self.version_table_exists and regclass_name and "alembic_version" in regclass_name:
+                return DummyResult(sql, return_value=None)
+            return DummyResult(sql, return_value=regclass_name)
         return DummyResult(sql)
 
 
 class DummyResult:
-    def __init__(self, statement: str):
+    def __init__(self, statement: str, return_value=None, rows: list | None = None):
         self.statement = statement
+        self.return_value = return_value
+        self.rows = rows
 
     def one(self):
         if "txid_current()" in self.statement and "pg_backend_pid()" in self.statement:
@@ -62,27 +73,27 @@ class DummyResult:
     def scalar_one(self):
         if "SHOW search_path" in self.statement:
             return "public"
-        return "dummy-scalar"
+        return self.return_value if self.return_value is not None else "dummy-scalar"
 
     def scalar_one_or_none(self):
         if "SHOW search_path" in self.statement:
             return "public"
-        return None
+        return self.return_value
 
     def one_or_none(self):
         return None
 
     def __iter__(self):
-        return iter([])
+        return iter(self.rows or [])
 
     def scalars(self):
         return self
 
     def all(self):
-        return []
+        return self.rows or []
 
     def fetchall(self):
-        return []
+        return self.rows or []
 
 
 class DummyTransaction:
@@ -154,7 +165,10 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setattr(context, "script", SimpleNamespace(get_heads=lambda: ["head"]), raising=False)
     monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
 
-    def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
+    engine_kwargs: dict[str, object] = {}
+
+    def fake_create_engine(url, **kwargs):  # noqa: ARG001
+        engine_kwargs.update(kwargs)
         return DummyEngine(dummy_connection)
 
     def fake_ensure_alembic_version_length(connection):
@@ -177,7 +191,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
 
     caplog.set_level(logging.INFO, logger="app.alembic.env")
 
-    monkeypatch.setattr("sqlalchemy.engine_from_config", fake_engine_from_config, raising=False)
+    monkeypatch.setattr("sqlalchemy.create_engine", fake_create_engine, raising=False)
     monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
@@ -186,6 +200,7 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     monkeypatch.setattr("alembic.context.configure", fake_configure)
     monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(dummy_connection))
     monkeypatch.setattr("sqlalchemy.inspect", lambda conn: DummyInspector(conn), raising=False)
+    monkeypatch.setattr("app.alembic.env._version_table_schemas", lambda _conn: ["public"])
 
     importlib.import_module("app.alembic.env")
 
@@ -202,6 +217,8 @@ def test_env_uses_database_url_and_online_path(monkeypatch, caplog):
     assert any(sql.startswith("SET search_path TO") for sql in dummy_connection.executed_sql)
     assert dummy_connection.ensure_called is True
     assert dummy_connection.begin_called is True
+    assert engine_kwargs["connect_args"]["prepare_threshold"] == 0
+    assert "search_path" in engine_kwargs["connect_args"]["options"]
 
 
 @pytest.mark.usefixtures("clear_env_module")
@@ -210,32 +227,34 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     dummy_config = DummyConfig()
     dummy_connection = DummyConnection()
     migration_context = DummyMigrationContext()
+    dummy_connection.version_table_exists = False
 
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:supersecret@db:5432/neft")
     monkeypatch.setattr(context, "config", dummy_config, raising=False)
-    monkeypatch.setattr(context, "is_offline_mode", lambda: False, raising=False)
-    monkeypatch.setattr(context, "get_x_argument", lambda as_dictionary=True: {})  # noqa: ARG005
-    monkeypatch.setattr(context, "script", SimpleNamespace(get_heads=lambda: ["head"]), raising=False)
-    monkeypatch.setattr(context, "run_migrations", lambda: None, raising=False)
+    monkeypatch.setenv("ALEMBIC_SKIP_RUN", "1")
 
-    def fake_engine_from_config(config_section, prefix, poolclass):  # noqa: ARG001
+    def fake_create_engine(url, **kwargs):  # noqa: ARG001
         return DummyEngine(dummy_connection)
 
     def fake_ensure_alembic_version_length(connection):  # noqa: ARG001
         connection.ensure_called = True
 
     def fake_configure(**kwargs):  # noqa: ARG001
-        return None
+        return migration_context
 
     def fake_migration_context_configure(connection, opts):  # noqa: ARG002
         migration_context.connection = connection
         migration_context.configure_opts = opts
         return migration_context
 
-    monkeypatch.setattr("sqlalchemy.engine_from_config", fake_engine_from_config, raising=False)
+    monkeypatch.setattr("sqlalchemy.create_engine", fake_create_engine, raising=False)
     monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.alembic.utils.ensure_alembic_version_length", fake_ensure_alembic_version_length
+    )
+    monkeypatch.setattr(
+        "app.alembic.env.regclass",
+        lambda _conn, name: name if "operations" in name else None,
     )
     monkeypatch.setattr(
         "app.diagnostics.db_state.to_regclass", lambda _conn, _schema, name: _schema if name == "operations" else None
@@ -244,11 +263,28 @@ def test_env_fails_if_version_table_missing(monkeypatch):
     monkeypatch.setattr(
         "sqlalchemy.inspect", lambda conn: SimpleNamespace(get_table_names=lambda schema=None: [])
     )
-    monkeypatch.setattr("alembic.context.configure", fake_configure, raising=False)
-    monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(dummy_connection))
+
+    import app.alembic.env as env  # noqa: WPS433
+
+    monkeypatch.setattr(
+        env,
+        "context",
+        SimpleNamespace(
+            config=dummy_config,
+            is_offline_mode=lambda: False,
+            get_x_argument=lambda as_dictionary=True: {},
+            script=SimpleNamespace(get_heads=lambda: ["head"]),
+            run_migrations=lambda: None,
+            configure=fake_configure,
+            begin_transaction=lambda: DummyTransaction(dummy_connection),
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(env.context, "configure", fake_configure, raising=False)
+    monkeypatch.setattr(env.context, "begin_transaction", lambda: DummyTransaction(dummy_connection), raising=False)
 
     with pytest.raises(RuntimeError):
-        importlib.import_module("app.alembic.env")
+        env.run_migrations_online()
 
 
 @pytest.mark.usefixtures("clear_env_module")
@@ -367,11 +403,12 @@ def test_env_rejects_exec_driver_sql_with_params(monkeypatch):
 
     guard_connection = GuardConnection()
 
-    monkeypatch.setattr("sqlalchemy.engine_from_config", lambda *_args, **_kwargs: DummyEngine(guard_connection))
+    monkeypatch.setattr("sqlalchemy.create_engine", lambda *_args, **_kwargs: DummyEngine(guard_connection))
     monkeypatch.setattr("sqlalchemy.event.listen", lambda *args, **kwargs: None)
     monkeypatch.setattr("alembic.context.configure", lambda **kwargs: None)
     monkeypatch.setattr("alembic.context.begin_transaction", lambda: DummyTransaction(guard_connection))
     monkeypatch.setattr("app.alembic.utils.ensure_alembic_version_length", lambda connection: None)
+    monkeypatch.setattr("app.alembic.env._version_table_schemas", lambda _conn: ["public"])
 
     import app.alembic.env as env  # noqa: WPS433
 

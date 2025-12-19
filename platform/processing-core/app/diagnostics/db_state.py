@@ -9,11 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Iterable
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import event, text
 from sqlalchemy.engine import Connection, Engine
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
-from app.db import DB_SCHEMA, DB_SCHEMA_SOURCE, DATABASE_URL, schema_resolution_line
+from app.db import DATABASE_URL, make_engine
+from app.db.schema import DB_SCHEMA, DB_SCHEMA_SOURCE, schema_resolution_line
 
 USER_SCHEMA_FILTER = "('pg_catalog','information_schema','pg_toast')"
 
@@ -62,20 +63,7 @@ def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
 
 def _make_engine(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Engine:
     debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
-    engine_kwargs: dict[str, object] = {
-        "future": True,
-        "pool_pre_ping": True,
-        "echo": debug_sql,
-    }
-
-    if url.startswith("postgresql"):
-        # Keep the requested schema at the front of the search_path for every
-        # connection created via this Engine.
-        engine_kwargs["connect_args"] = {
-            "options": f"-csearch_path={schema},public",
-            "prepare_threshold": 0,
-        }
-    engine = create_engine(url, **engine_kwargs)
+    engine = make_engine(url, schema=schema, echo=debug_sql)
 
     if debug_sql:
         _attach_transaction_logging(engine)
