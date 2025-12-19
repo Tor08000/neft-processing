@@ -39,7 +39,7 @@ def test_postgres_upgrade_creates_core_relations() -> None:
     command.upgrade(alembic_cfg, "head")
 
     with engine.connect() as connection:
-        connection.execute(sa.text("SET search_path TO :schema, public"), {"schema": DB_SCHEMA})
+        connection.execute(sa.text("SET search_path TO :schema"), {"schema": DB_SCHEMA})
         search_path = connection.execute(sa.text("SHOW search_path")).scalar_one()
         regclasses = {
             relation: connection.execute(

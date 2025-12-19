@@ -31,7 +31,7 @@ def raise_schema_error_if_missing(exc: DBAPIError) -> None:
 def ensure_tables_exist(db: Session, *, tables: Sequence[str]) -> None:
     try:
         inspector = inspect(db.bind)
-        schema = None if inspector.dialect.name == "sqlite" else SCHEMA_RESOLUTION.target_schema
+        schema = None if inspector.dialect.name == "sqlite" else SCHEMA_RESOLUTION.schema
         existing = set(inspector.get_table_names(schema=schema))
     except DBAPIError as exc:  # pragma: no cover - defensive branch
         raise_schema_error_if_missing(exc)

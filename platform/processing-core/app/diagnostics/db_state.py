@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """Database connection diagnostics shared between entrypoints and tests."""
 
-import contextlib
 import logging
 import os
 from dataclasses import dataclass
@@ -61,7 +60,7 @@ def to_regclass(connection: Connection, schema: str, name: str) -> str | None:
     return connection.execute(text("select to_regclass(:reg)"), {"reg": regclass}).scalar_one_or_none()
 
 
-def _make_engine(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.target_schema) -> Engine:
+def _make_engine(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.schema) -> Engine:
     debug_sql = os.getenv("DB_DEBUG_SQL") == "1"
     engine = make_engine(url, schema=schema, echo=debug_sql)
 
@@ -84,18 +83,13 @@ def _attach_transaction_logging(engine: Engine) -> None:
         event.listen(engine, name, _log(name))
 
 
-def collect_inventory(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.target_schema) -> ConnectionInventory:
-    resolution = (
-        SCHEMA_RESOLUTION if schema == SCHEMA_RESOLUTION.target_schema else override_schema(schema, source="runtime")
-    )
+def collect_inventory(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.schema) -> ConnectionInventory:
+    resolution = SCHEMA_RESOLUTION if schema == SCHEMA_RESOLUTION.schema else override_schema(schema)
     engine = _make_engine(url=url, schema=schema)
 
     with engine.connect() as conn:
         logger = logging.getLogger(__name__)
-        logger.info(schema_resolution_line(resolution.target_schema, resolution.source))
-        # Ensure the connection uses the same schema the application expects.
-        with contextlib.suppress(Exception):
-            conn.execute(text(resolution.search_path_sql))
+        logger.info(schema_resolution_line(resolution.schema))
 
         server_addr, server_port, current_db, current_user = conn.execute(
             text(
@@ -246,7 +240,7 @@ def collect_identity_snapshot(connection: Connection) -> IdentitySnapshot:
 def log_identity_snapshot(
     connection: Connection,
     *,
-    schema: str = SCHEMA_RESOLUTION.target_schema,
+    schema: str = SCHEMA_RESOLUTION.schema,
     emitter: Callable[[str], None] | None = None,
     label: str | None = None,
 ) -> IdentitySnapshot:
@@ -278,7 +272,7 @@ def log_identity_snapshot(
 def log_connection_fingerprint(
     connection: Connection,
     *,
-    schema: str = SCHEMA_RESOLUTION.target_schema,
+    schema: str = SCHEMA_RESOLUTION.schema,
     emitter: Callable[[str], None] | None = None,
     label: str | None = None,
 ) -> None:
@@ -352,7 +346,7 @@ def log_connection_fingerprint(
 def log_fingerprint_from_url(
     url: str = DATABASE_URL,
     *,
-    schema: str = SCHEMA_RESOLUTION.target_schema,
+    schema: str = SCHEMA_RESOLUTION.schema,
     emitter: Callable[[str], None] | None = None,
     label: str | None = None,
 ) -> None:
@@ -364,7 +358,7 @@ def log_fingerprint_from_url(
 def log_identity_from_url(
     url: str = DATABASE_URL,
     *,
-    schema: str = SCHEMA_RESOLUTION.target_schema,
+    schema: str = SCHEMA_RESOLUTION.schema,
     emitter: Callable[[str], None] | None = None,
     label: str | None = None,
 ) -> IdentitySnapshot:
@@ -376,7 +370,7 @@ def log_identity_from_url(
 def log_identity_probe_from_url(
     url: str = DATABASE_URL,
     *,
-    schema: str = SCHEMA_RESOLUTION.target_schema,
+    schema: str = SCHEMA_RESOLUTION.schema,
     emitter: Callable[[str], None] | None = None,
     label: str | None = None,
 ) -> str:
