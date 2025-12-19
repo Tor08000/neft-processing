@@ -32,9 +32,9 @@ def _ensure_enum_exists(enum_name: str, values: Sequence[str]) -> None:
     if not is_postgres(bind):  # pragma: no cover - defensive for sqlite
         return
 
-    exists = bind.exec_driver_sql(
-        "SELECT 1 FROM pg_type WHERE typname = %s",
-        (enum_name,),
+    exists = bind.execute(
+        sa.text("SELECT 1 FROM pg_type WHERE typname = :enum_name"),
+        {"enum_name": enum_name},
     ).first()
     if exists:
         return
@@ -64,13 +64,15 @@ def _get_column_udt_name(table: str, column: str) -> str | None:
     if not is_postgres(bind):
         return None
 
-    result = bind.exec_driver_sql(
-        """
-        SELECT udt_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = %s AND column_name = %s
-        """,
-        (table, column),
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT udt_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = :table_name AND column_name = :column_name
+            """
+        ),
+        {"table_name": table, "column_name": column},
     ).first()
     return result[0] if result else None
 
@@ -80,15 +82,17 @@ def _get_enum_labels(enum_name: str) -> list[str]:
     if not is_postgres(bind):
         return []
 
-    rows = bind.exec_driver_sql(
-        """
-        SELECT e.enumlabel
-        FROM pg_enum e
-        JOIN pg_type t ON t.oid = e.enumtypid
-        WHERE t.typname = %s
-        ORDER BY e.enumsortorder
-        """,
-        (enum_name,),
+    rows = bind.execute(
+        sa.text(
+            """
+            SELECT e.enumlabel
+            FROM pg_enum e
+            JOIN pg_type t ON t.oid = e.enumtypid
+            WHERE t.typname = :enum_name
+            ORDER BY e.enumsortorder
+            """
+        ),
+        {"enum_name": enum_name},
     ).fetchall()
     return [row[0] for row in rows]
 

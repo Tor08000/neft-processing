@@ -41,15 +41,14 @@ def test_upgrade_creates_required_tables():
     try:
         command.upgrade(cfg, "head")
         with connectable.connect() as connection:
-            version_reg = connection.exec_driver_sql(
-                "select to_regclass(:reg)", {"reg": f"{DB_SCHEMA}.alembic_version"}
+            version_reg = connection.execute(
+                sa.text("select to_regclass(:reg)"),
+                {"reg": f"{DB_SCHEMA}.alembic_version"},
             ).scalar()
             missing = [
                 table
                 for table in REQUIRED_TABLES
-                if connection.exec_driver_sql(
-                    "select to_regclass(:reg)", {"reg": f"{DB_SCHEMA}.{table}"}
-                ).scalar()
+                if connection.execute(sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.{table}"}).scalar()
                 is None
             ]
             versions = connection.exec_driver_sql(
