@@ -1,9 +1,4 @@
-const gatewayBase = (import.meta.env.VITE_API_BASE_URL || "http://gateway").replace(/\/$/, "");
-const normalizePrefix = (raw: string): string => {
-  const value = raw.startsWith("/") ? raw : `/${raw}`;
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-};
-const API_BASE_URL = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_CORE_API_BASE ?? "/api/core")}`;
+import { ADMIN_BASE_URL, CORE_API_BASE } from "./base";
 
 export const TOKEN_STORAGE_KEY = "neft_admin_token";
 
@@ -20,7 +15,7 @@ function normalizeBasePath(rawBase: string): string {
   return normalized.replace(/\/+/g, "/");
 }
 
-const BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL ?? "/admin/");
+const BASE_PATH = normalizeBasePath(ADMIN_BASE_URL);
 
 function redirectToLogin() {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
@@ -32,7 +27,7 @@ function redirectToLogin() {
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
   const fallbackBase = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-  const base = API_BASE_URL || fallbackBase;
+  const base = CORE_API_BASE || fallbackBase;
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   const url = new URL(path.startsWith("/") ? path : `/${path}`, normalizedBase);
   if (params) {

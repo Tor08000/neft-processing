@@ -1,14 +1,6 @@
+import { AUTH_API_BASE, CORE_API_BASE } from "./base";
+
 type ApiBase = "core" | "auth";
-
-const gatewayBase = (import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(/\/$/, "");
-
-const normalizePrefix = (raw: string): string => {
-  const value = raw.startsWith("/") ? raw : `/${raw}`;
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-};
-
-export const CORE_API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_CORE_API_BASE ?? "/api/core")}`;
-export const AUTH_API_BASE = `${gatewayBase}${normalizePrefix(import.meta.env.VITE_AUTH_API_BASE ?? "/api/auth")}`;
 
 export type HttpHeaders = Record<string, string>;
 
