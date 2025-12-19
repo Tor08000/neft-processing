@@ -14,7 +14,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from app.db import DB_SCHEMA, Base  # type: ignore  # noqa: E402
+from app.db import (  # type: ignore  # noqa: E402
+    DB_SCHEMA,
+    DB_SCHEMA_SOURCE,
+    Base,
+    resolve_db_schema,
+    schema_resolution_line,
+)
 from app.alembic.helpers import regclass  # noqa: E402
 from app.alembic.utils import ensure_alembic_version_length  # noqa: E402
 from app import models as _models  # noqa: F401  # E402: ensure models are registered
@@ -315,10 +321,8 @@ def run_migrations_online() -> sa.engine.Engine:
         logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
         EVENT_LOGGER.setLevel(logging.INFO)
 
-    target_schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
-    logger.info(
-        "Alembic target schema resolved: %s (NEFT_DB_SCHEMA/DB_SCHEMA, default=public)", target_schema
-    )
+    target_schema, target_schema_source = resolve_db_schema()
+    logger.info("Alembic target schema resolved: %s", schema_resolution_line(target_schema, target_schema_source))
 
     cmd_opts = getattr(config, "cmd_opts", None)
     invoked_command = getattr(cmd_opts, "cmd", None)

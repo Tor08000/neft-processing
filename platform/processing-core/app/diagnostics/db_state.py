@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
-from app.db import DB_SCHEMA, DATABASE_URL
+from app.db import DB_SCHEMA, DB_SCHEMA_SOURCE, DATABASE_URL, schema_resolution_line
 
 USER_SCHEMA_FILTER = "('pg_catalog','information_schema','pg_toast')"
 
@@ -100,6 +100,8 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = DB_SCHEMA) -> Conne
     engine = _make_engine(url=url, schema=schema)
 
     with engine.connect() as conn:
+        logger = logging.getLogger(__name__)
+        logger.info(schema_resolution_line(schema, DB_SCHEMA_SOURCE))
         # Ensure the connection uses the same schema the application expects.
         with contextlib.suppress(Exception):
             conn.execute(text(f'SET search_path TO "{schema}", public'))

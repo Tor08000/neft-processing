@@ -7,11 +7,10 @@ Create Date: 2027-02-15 00:00:00
 
 from __future__ import annotations
 
-import os
-
 from alembic import op
 
 from app.alembic.helpers import DB_SCHEMA, table_exists
+from app.db import resolve_db_schema, schema_resolution_line
 
 # revision identifiers, used by Alembic.
 revision = "20270215_0021_merge_heads"
@@ -34,7 +33,8 @@ def upgrade() -> None:
     """
 
     bind = op.get_bind()
-    schema = os.getenv("DB_SCHEMA", DB_SCHEMA)
+    schema, source = resolve_db_schema()
+    print(f"[{revision}] {schema_resolution_line(schema, source)}")
 
     missing = [name for name in ("operations", "accounts", "ledger_entries", "limit_configs") if not table_exists(bind, name, schema=schema)]
     if missing:

@@ -1,13 +1,12 @@
 # services/core-api/app/alembic/versions/20251118_0002_operations_journal.py
 
-import os
-
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.alembic.helpers import DB_SCHEMA, table_exists
 from app.alembic.utils import create_index_if_not_exists, drop_index_if_exists, drop_table_if_exists
+from app.db import resolve_db_schema, schema_resolution_line
 
 # revision identifiers, used by Alembic.
 revision = "20251118_0002_operations_journal"
@@ -18,7 +17,8 @@ depends_on = None
 
 def upgrade():
     bind = op.get_bind()
-    schema = os.getenv("DB_SCHEMA", DB_SCHEMA)
+    schema, source = resolve_db_schema()
+    print(f"[{revision}] {schema_resolution_line(schema, source)}")
 
     if not table_exists(bind, "operations", schema=schema):
         raise RuntimeError(
@@ -34,7 +34,8 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    schema = os.getenv("DB_SCHEMA", DB_SCHEMA)
+    schema, source = resolve_db_schema()
+    print(f"[{revision}] {schema_resolution_line(schema, source)}")
 
     drop_index_if_exists(bind, "ix_operations_created_at", schema=schema)
     drop_index_if_exists(bind, "ix_operations_terminal_id", schema=schema)

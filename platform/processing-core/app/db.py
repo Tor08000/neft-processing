@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Generator
 
@@ -13,7 +14,35 @@ from neft_shared.settings import get_settings
 
 settings = get_settings()
 
-DB_SCHEMA = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+
+def resolve_db_schema(env: os._Environ[str] | None = None) -> tuple[str, str]:
+    """Resolve the target DB schema and record its source.
+
+    Resolution order:
+    1. ``NEFT_DB_SCHEMA``
+    2. ``DB_SCHEMA``
+    3. ``public`` (default)
+    """
+
+    env_map = env or os.environ
+    for key in ("NEFT_DB_SCHEMA", "DB_SCHEMA"):
+        value = env_map.get(key)
+        if value:
+            return value, key
+
+    return "public", "default"
+
+
+def schema_resolution_line(schema: str, source: str) -> str:
+    return f"schema_resolved={schema} source={source}"
+
+
+DB_SCHEMA, DB_SCHEMA_SOURCE = resolve_db_schema()
+
+
+def log_schema_resolution(logger: logging.Logger | None = None) -> None:
+    emitter = (logger or logging.getLogger(__name__)).info
+    emitter(schema_resolution_line(DB_SCHEMA, DB_SCHEMA_SOURCE))
 
 
 def _ensure_psycopg_driver(url: str) -> str:

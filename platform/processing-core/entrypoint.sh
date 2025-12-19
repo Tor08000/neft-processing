@@ -10,9 +10,12 @@ export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 python - <<'PY'
 import os
 from sqlalchemy.engine.url import make_url
+from app.db import resolve_db_schema, schema_resolution_line
 
 db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, source = resolve_db_schema()
+
+print(f"[entrypoint] {schema_resolution_line(schema, source)}", flush=True)
 
 if not db_url:
     print("[entrypoint] DATABASE_URL is not set", flush=True)
@@ -22,6 +25,18 @@ else:
     print(f"[entrypoint] DATABASE_URL={masked}", flush=True)
     print(f"[entrypoint] DB_SCHEMA={schema} search_path={search_path}", flush=True)
 PY
+
+eval "$(python - <<'PY'
+from app.db import resolve_db_schema
+
+schema, source = resolve_db_schema()
+
+print(f'DB_SCHEMA_RESOLVED=\"{schema}\"')
+print(f'DB_SCHEMA_SOURCE=\"{source}\"')
+PY
+)"
+
+schema="${DB_SCHEMA_RESOLVED:-public}"
 
 wait_for_postgres() {
     python - <<'PY'
@@ -142,6 +157,76 @@ PY
     set -e
 }
 
+capture_db_id() {
+    eval "$(
+        DB_ID_PREFIX="$1" python - <<'PY'
+import os
+import shlex
+import sys
+
+from sqlalchemy import create_engine, text
+
+from app.db import resolve_db_schema, schema_resolution_line
+
+prefix = os.environ["DB_ID_PREFIX"]
+url = os.getenv("DATABASE_URL")
+schema, schema_source = resolve_db_schema()
+
+if not url:
+    print("[entrypoint] DATABASE_URL is not set for DB identity probe", file=sys.stderr)
+    sys.exit(1)
+
+engine_kwargs = {"future": True, "pool_pre_ping": True}
+if url.startswith("postgresql"):
+    engine_kwargs["connect_args"] = {
+        "options": f"-csearch_path={schema},public",
+        "prepare_threshold": 0,
+    }
+
+engine = create_engine(url, **engine_kwargs)
+
+with engine.connect() as conn:
+    server_addr, server_port, current_db, current_user = conn.execute(
+        text("select inet_server_addr(), inet_server_port(), current_database(), current_user")
+    ).one()
+    db_oid = conn.execute(text("select oid from pg_database where datname=current_database();")).scalar_one_or_none()
+    postmaster_start = conn.execute(text("select pg_postmaster_start_time();")).scalar_one_or_none()
+
+def export(name: str, value) -> None:
+    printable = "" if value is None else str(value)
+    print(f"{name}={shlex.quote(printable)}")
+
+line = (
+    f"DB_ID[{prefix}]: host={server_addr} port={server_port} db={current_db} "
+    f"user={current_user} db_oid={db_oid} postmaster_start_time={postmaster_start} schema={schema}"
+)
+export(f"DB_ID_{prefix}_ADDR", server_addr)
+export(f"DB_ID_{prefix}_PORT", server_port)
+export(f"DB_ID_{prefix}_DB", current_db)
+export(f"DB_ID_{prefix}_USER", current_user)
+export(f"DB_ID_{prefix}_OID", db_oid)
+export(f"DB_ID_{prefix}_PM", postmaster_start)
+export(f"DB_ID_{prefix}_SCHEMA", schema)
+export(f"DB_ID_{prefix}_SOURCE", schema_source)
+export(f"DB_ID_{prefix}_LINE", line)
+print(f"echo {shlex.quote('[entrypoint] ' + schema_resolution_line(schema, schema_source))}")
+print(f"echo {shlex.quote('[entrypoint] ' + line)}")
+PY
+    )"
+}
+
+assert_db_identity_stable() {
+    if [ -z "${DB_ID_PRE_OID}" ] || [ -z "${DB_ID_POST_OID}" ]; then
+        echo "[entrypoint] DB identity guard missing required values" >&2
+        exit 1
+    fi
+
+    if [ "${DB_ID_PRE_OID}" != "${DB_ID_POST_OID}" ] || [ "${DB_ID_PRE_PM}" != "${DB_ID_POST_PM}" ]; then
+        echo "[entrypoint] DB instance changed mid-run: pre oid=${DB_ID_PRE_OID} post oid=${DB_ID_POST_OID} pre start=${DB_ID_PRE_PM} post start=${DB_ID_POST_PM}" >&2
+        exit 1
+    fi
+}
+
 verify_migration_ddls() {
     python - <<'PY'
 import os
@@ -150,8 +235,10 @@ import sys
 from sqlalchemy import create_engine, event, text
 
 from app.diagnostics.db_state import to_regclass
+from app.db import resolve_db_schema, schema_resolution_line
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.getenv("DATABASE_URL")
 required_tables = (
     "alembic_version",
@@ -250,7 +337,10 @@ import sys
 from sqlalchemy import create_engine, text
 
 url = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+from app.db import resolve_db_schema, schema_resolution_line
+
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 if not url:
     print("[entrypoint] DATABASE_URL is not set for after-commit probe", file=sys.stderr)
     sys.exit(1)
@@ -294,8 +384,10 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_fingerprint_from_url
+from app.db import resolve_db_schema, schema_resolution_line
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("DB_FINGERPRINT_LABEL", "")
 
@@ -318,8 +410,10 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_identity_from_url
+from app.db import resolve_db_schema, schema_resolution_line
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("IDENTITY_LABEL") or "identity"
 
@@ -347,8 +441,10 @@ import os
 import sys
 
 from app.diagnostics.db_state import log_identity_probe_from_url
+from app.db import resolve_db_schema, schema_resolution_line
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.getenv("DATABASE_URL")
 label = os.getenv("IDENTITY_PROBE_LABEL")
 
@@ -375,8 +471,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 
 from app.diagnostics.db_state import identity_probe_line
+from app.db import resolve_db_schema, schema_resolution_line
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.getenv("DATABASE_URL")
 if not url:
     print("[entrypoint] DATABASE_URL is not set for post-upgrade table check", file=sys.stderr)
@@ -399,6 +497,39 @@ with engine.connect() as conn:
     alembic_reg = conn.execute(
         text("select to_regclass(:regclass)"), {"regclass": f"{schema}.alembic_version"}
     ).scalar_one_or_none()
+    info_tables = set(
+        conn.execute(
+            text(
+                """
+                select table_name
+                from information_schema.tables
+                where table_schema=:schema and table_name in ('alembic_version','operations')
+                """
+            ),
+            {"schema": schema},
+        ).scalars()
+    )
+    regclass_tables = {
+        name for name, reg in {"alembic_version": alembic_reg, "operations": operations_reg}.items() if reg
+    }
+    if info_tables != regclass_tables:
+        current_schema, search_path = conn.execute(text("select current_schema, current_setting('search_path')")).one()
+        schema_tables = list(
+            conn.execute(
+            text("select table_name from information_schema.tables where table_schema=:schema order by 1"),
+            {"schema": schema},
+        ).scalars()
+        )
+        probe = identity_probe_line(conn, schema=schema, label="post-upgrade")
+        print(
+            "[entrypoint] regclass and information_schema disagree about required tables",
+            file=sys.stderr,
+        )
+        print(f"[entrypoint] regclass_tables={sorted(regclass_tables)} info_tables={sorted(info_tables)}", file=sys.stderr)
+        print(f"[entrypoint] current_schema={current_schema} search_path={search_path}", file=sys.stderr)
+        print(f"[entrypoint] tables_in_schema={schema_tables}", file=sys.stderr)
+        print(f"[entrypoint] {probe}", file=sys.stderr)
+        sys.exit(1)
 
     if operations_reg is None and alembic_reg is None:
         probe = identity_probe_line(conn, schema=schema, label="post-upgrade")
@@ -440,7 +571,10 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+from app.db import resolve_db_schema, schema_resolution_line
+
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 alembic_config_path = os.getenv("ALEMBIC_CONFIG", "app/alembic.ini")
 db_url = os.environ["DATABASE_URL"]
 
@@ -616,7 +750,10 @@ import sys
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+from app.db import resolve_db_schema, schema_resolution_line
+
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.environ.get("DATABASE_URL")
 
 if not url:
@@ -668,7 +805,10 @@ import sys
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-schema = os.getenv("NEFT_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "public"
+from app.db import resolve_db_schema, schema_resolution_line
+
+schema, schema_source = resolve_db_schema()
+print(f"[entrypoint] {schema_resolution_line(schema, schema_source)}", flush=True)
 url = os.environ["DATABASE_URL"]
 
 engine_kwargs = {"future": True, "pool_pre_ping": True}
@@ -726,6 +866,8 @@ print(
 )
 PY
 
+capture_db_id PRE
+
 attempt=1
 while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     log_db_identity_probe "pre-upgrade-$attempt"
@@ -733,6 +875,8 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     DB_FINGERPRINT_LABEL="pre-migration-attempt-$attempt" log_db_fingerprint
 
     if alembic -x debug_sql=1 -c "$ALEMBIC_CONFIG" upgrade head; then
+        capture_db_id POST
+        assert_db_identity_stable
         log_db_identity_probe "post-upgrade-$attempt"
         require_upgrade_tables_present
         IDENTITY_LABEL="post-attempt-$attempt" log_entrypoint_identity
