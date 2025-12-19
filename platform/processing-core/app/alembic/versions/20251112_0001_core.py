@@ -218,10 +218,6 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    if bind.dialect.name == "postgresql":
-        bind.execute(sa.text("COMMIT"))
-
-
 def downgrade() -> None:
     for table in (
         "limit_configs",

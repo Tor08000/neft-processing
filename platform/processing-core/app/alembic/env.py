@@ -201,6 +201,23 @@ def run_migrations_online() -> sa.engine.Engine:
                     operations_reg,
                 )
 
+                script_heads = context.script.get_heads()
+                version_rows = connection.exec_driver_sql(
+                    sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
+                ).fetchall()
+                version_values = [row[0] for row in version_rows]
+
+                if not version_values:
+                    raise RuntimeError(
+                        "Post-upgrade verification failed: alembic_version exists but contains no rows"
+                    )
+
+                if set(version_values) != set(script_heads):
+                    raise RuntimeError(
+                        "Post-upgrade verification failed: alembic_version contents do not match script heads "
+                        f"(db={version_values}, heads={script_heads})"
+                    )
+
                 _log_schema_inventory(connection, label="post-upgrade")
                 log_connection_fingerprint(
                     connection, schema=target_schema, label="post-upgrade", emitter=logger.info

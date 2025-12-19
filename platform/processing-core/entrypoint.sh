@@ -316,14 +316,16 @@ assert_alembic_state() {
         python - <<'PY'
 import os
 import re
+import subprocess
 import sys
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 schema = os.getenv("DB_SCHEMA") or os.getenv("NEFT_DB_SCHEMA") or "public"
-alembic_config_path = os.environ["ALEMBIC_CONFIG"]
+alembic_config_path = os.getenv("ALEMBIC_CONFIG", "app/alembic.ini")
 db_url = os.environ["DATABASE_URL"]
 
 heads_output = os.environ["HEADS_OUTPUT"]
@@ -340,33 +342,16 @@ def _extract_revisions(output: str) -> list[str]:
     return revisions
 
 
+def _regclass(conn, name: str) -> str | None:
+    return conn.execute(text("select to_regclass(:regclass)"), {"regclass": f"{schema}.{name}"}).scalar_one_or_none()
+
+
 heads = _extract_revisions(heads_output)
 current = _extract_revisions(current_output)
 
-if not current_output.strip() or not current:
-    print("[entrypoint] alembic current returned empty output; migration failed", file=sys.stderr)
-    sys.exit(1)
-
-if not heads:
-    print("[entrypoint] alembic heads returned no revisions; migration failed", file=sys.stderr)
-    sys.exit(1)
-
-if set(current) != set(heads):
-    print(
-        f"[entrypoint] alembic current {current} does not match heads {heads}; migration failed",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
 script_dir = ScriptDirectory.from_config(Config(alembic_config_path))
 script_heads = script_dir.get_heads()
-
-if set(current) != set(script_heads):
-    print(
-        f"[entrypoint] alembic current {current} does not match script heads {script_heads}; migration failed",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+script_heads_set = set(script_heads)
 
 engine_kwargs = {"future": True, "pool_pre_ping": True}
 if db_url.startswith("postgresql"):
@@ -376,18 +361,118 @@ if db_url.startswith("postgresql"):
     }
 
 engine = create_engine(db_url, **engine_kwargs)
-with engine.connect() as conn:
-    version_rows = conn.execute(
-        text(f'SELECT version_num FROM "{schema}".alembic_version')
-    ).fetchall()
 
-version_values = [row[0] for row in version_rows]
-if required_revision not in version_values:
+try:
+    with engine.connect() as conn:
+        version_reg = _regclass(conn, "alembic_version")
+        required_tables = ("operations", "accounts", "ledger_entries", "limit_configs")
+        table_state = {name: _regclass(conn, name) for name in required_tables}
+        cards_created = conn.execute(
+            text(
+                """
+                select 1
+                from information_schema.columns
+                where table_schema=:schema
+                  and table_name='cards'
+                  and column_name='created_at'
+                """
+            ),
+            {"schema": schema},
+        ).scalar_one_or_none() is not None
+
+        if version_reg is None:
+            search_path = conn.exec_driver_sql("SHOW search_path").scalar_one_or_none()
+            print(
+                f"[entrypoint] alembic_version missing in schema '{schema}' (search_path={search_path})",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        version_rows = conn.execute(
+            text(f'SELECT version_num FROM "{schema}".alembic_version')
+        ).fetchall()
+        version_values = [row[0] for row in version_rows]
+except SQLAlchemyError as exc:
+    print(f"[entrypoint] failed to inspect alembic state: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+
+def _log_state(prefix: str = "current") -> None:
     print(
-        f"[entrypoint] alembic_version table missing required revision '{required_revision}' (found {version_values})",
+        f"[entrypoint] {prefix}: heads={heads} script_heads={script_heads} current={current} "
+        f"versions_in_db={version_values}",
         file=sys.stderr,
     )
+    missing = [name for name, reg in table_state.items() if reg is None]
+    print(
+        f"[entrypoint] {prefix}: required_tables_missing={missing} cards.created_at={cards_created}",
+        file=sys.stderr,
+    )
+
+
+current_set = set(current)
+heads_set = set(heads)
+version_set = set(version_values)
+
+issues: list[str] = []
+if not current_output.strip() or not current:
+    issues.append("alembic current returned empty output")
+if not heads:
+    issues.append("alembic heads returned no revisions")
+if not version_values:
+    issues.append("alembic_version exists but contains no rows")
+if required_revision not in version_values:
+    issues.append(
+        f"alembic_version table missing required revision '{required_revision}' (found {version_values})"
+    )
+if current_set != heads_set:
+    issues.append(f"alembic current {current} does not match heads {heads}")
+if current_set != script_heads_set:
+    issues.append(f"alembic current {current} does not match script heads {script_heads}")
+if version_set != script_heads_set:
+    issues.append(
+        f"alembic_version contents {version_values} do not match script heads {script_heads}"
+    )
+
+schema_ready_for_stamp = cards_created and all(table_state.values())
+
+if issues:
+    _log_state(prefix="mismatch")
+    if schema_ready_for_stamp:
+        print(
+            "[entrypoint] detected version mismatch while schema is up-to-date; applying alembic stamp head",
+            file=sys.stderr,
+        )
+        subprocess.check_call(["alembic", "-c", alembic_config_path, "stamp", "head"])
+
+        with engine.connect() as conn:
+            stamped_versions = [
+                row[0]
+                for row in conn.execute(
+                    text(f'SELECT version_num FROM "{schema}".alembic_version')
+                ).fetchall()
+            ]
+
+        if set(stamped_versions) != script_heads_set:
+            print(
+                "[entrypoint] stamp head completed but alembic_version still mismatched",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        print(
+            f"[entrypoint] synchronized alembic_version with stamp head: {stamped_versions}",
+            flush=True,
+        )
+        sys.exit(0)
+
+    print("[entrypoint] migration verification failed:", *issues, sep="\n- ", file=sys.stderr)
     sys.exit(1)
+
+print(
+    f"[entrypoint] alembic current = {sorted(current_set)} matches heads {sorted(script_heads_set)}",
+    flush=True,
+)
 PY
 }
 
