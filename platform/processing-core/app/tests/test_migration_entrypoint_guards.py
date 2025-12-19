@@ -51,9 +51,13 @@ def test_upgrade_creates_required_tables():
                 if connection.execute(sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.{table}"}).scalar()
                 is None
             ]
-            versions = connection.exec_driver_sql(
-                sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version')
-            ).scalars().all() if version_reg else []
+            versions = (
+                connection.execute(sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version'))
+                .scalars()
+                .all()
+                if version_reg
+                else []
+            )
     finally:
         connectable.dispose()
 
