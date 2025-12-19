@@ -654,7 +654,7 @@ while [ "$attempt" -le "$MIGRATIONS_RETRIES" ]; do
     IDENTITY_LABEL="pre-attempt-$attempt" log_entrypoint_identity
     DB_FINGERPRINT_LABEL="pre-migration-attempt-$attempt" log_db_fingerprint
 
-    if alembic -c "$ALEMBIC_CONFIG" upgrade head; then
+    if alembic -x debug_sql=1 -c "$ALEMBIC_CONFIG" upgrade head; then
         IDENTITY_LABEL="post-attempt-$attempt" log_entrypoint_identity
         assert_alembic_state
         after_commit_visibility_probe
