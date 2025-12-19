@@ -1,12 +1,15 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
 dist/
 build/
 node_modules/
 .turbo/
 .cache/
 .env
+**/*.bak
+copy
 logs/
 data/
 .vscode/

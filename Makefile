@@ -125,7 +125,7 @@ health-ai:
 	@echo "AI-service health endpoint через nginx пока не определён"
 
 smoke:
-	pytest tests/smoke -q
+	pytest -q tests/test_no_merge_markers.py tests/test_smoke_gateway_routing.py
 
 # ----------------------------------------
 # ЧИСТКА
