@@ -54,6 +54,7 @@ docker compose logs -f client-web
 ```cmd
 docker compose exec core-api alembic -c app/alembic.ini current
 docker compose exec core-api alembic -c app/alembic.ini upgrade head
+docker compose exec core-api alembic -c app/alembic.ini heads
 ```
 
 ## Мини-smoke пакет (без pytest)

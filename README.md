@@ -113,6 +113,14 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 git grep -n "^\<\<\<\<\<\<\<\|^\=\=\=\=\=\=\=\|^\>\>\>\>\>\>\>" -- .
 ```
 
+### Проверка миграций (single head)
+
+Убедитесь, что у Alembic ровно один head (локально или в CI):
+
+```
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
+```
+
 ### Gateway (Nginx)
 
 * Конфигурация: `gateway/nginx.conf` (прокси без rewrite для `/api/core/*`, `/api/auth/*`, `/api/ai/*`, статик `/admin/` и `/client/`, favicon и health).
