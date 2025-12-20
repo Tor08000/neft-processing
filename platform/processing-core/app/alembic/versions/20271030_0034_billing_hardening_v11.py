@@ -44,7 +44,7 @@ def upgrade() -> None:
             sa.Column("billing_period_id", GUID(), sa.ForeignKey("billing_periods.id"), nullable=True),
             schema=SCHEMA,
         )
-    if not index_exists(bind, "ix_invoices_billing_period_id", schema=SCHEMA):
+    if not index_exists(bind, "ix_invoices_billing_period_id", table_name="invoices", schema=SCHEMA):
         op.create_index("ix_invoices_billing_period_id", "invoices", ["billing_period_id"], schema=SCHEMA)
 
     # backfill billing_period_id based on dates
