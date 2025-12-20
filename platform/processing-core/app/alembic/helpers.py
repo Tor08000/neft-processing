@@ -4,6 +4,7 @@ import logging
 from typing import Iterable, Sequence
 
 import sqlalchemy as sa
+from sqlalchemy import text
 from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Connection
@@ -175,46 +176,41 @@ def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[s
     ensure_pg_enum(bind, type_name, values=values, schema=schema)
 
 
-def ensure_pg_enum_value(bind: Connection, enum_name: str, value: str, schema: str | None = DB_SCHEMA) -> None:
-    """Add a value to a PostgreSQL enum type if it's missing (idempotent).
-    Safe for repeated runs; no-op on non-PostgreSQL.
+def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = "public") -> None:
     """
-    if not is_postgres(bind):
+    Ensure Postgres enum type contains a given label.
+    - conn: SQLAlchemy Connection
+    - enum_name: enum type name (without schema)
+    - value: enum label to ensure exists
+    - schema: schema where enum type lives
+    """
+    # 1) Check if enum label exists
+    exists_sql = text("""
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        WHERE n.nspname = :schema
+          AND t.typname = :enum_name
+          AND e.enumlabel = :value
+        LIMIT 1
+    """)
+
+    exists = conn.execute(
+        exists_sql,
+        {"schema": schema, "enum_name": enum_name, "value": value},
+    ).scalar()
+
+    if exists:
         return
 
-    schema = schema or "public"
+    # 2) Add enum label (identifier must be interpolated, value can be bound)
+    # Quote identifiers defensively
+    enum_ident = f'"{schema}"."{enum_name}"' if schema else f'"{enum_name}"'
 
-    stmt = (
-        sa.text(
-            """
-            DO $$
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1
-                FROM pg_enum e
-                JOIN pg_type t ON t.oid = e.enumtypid
-                JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE t.typname = :enum::text
-                  AND e.enumlabel = :value::text
-                  AND n.nspname = :schema::text
-              )
-              THEN
-                EXECUTE format(
-                  'ALTER TYPE %I.%I ADD VALUE %L',
-                  :schema::text, :enum::text, :value::text
-                );
-              END IF;
-            END $$;
-            """
-        )
-        .bindparams(
-            sa.bindparam("enum", type_=sa.String()),
-            sa.bindparam("value", type_=sa.String()),
-            sa.bindparam("schema", type_=sa.String()),
-        )
-    )
-
-    bind.execute(stmt, {"enum": enum_name, "value": value, "schema": schema})
+    # Postgres supports IF NOT EXISTS for ADD VALUE on modern versions.
+    add_sql = text(f"ALTER TYPE {enum_ident} ADD VALUE IF NOT EXISTS :value")
+    conn.execute(add_sql, {"value": value})
 
 
 def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA):
