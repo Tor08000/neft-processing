@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -8,6 +8,14 @@ from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
 from app.schemas.admin.billing import (
+    BillingAdjustmentRequest,
+    BillingAdjustmentResponse,
+    BillingPeriodFilter,
+    BillingPeriodPayload,
+    BillingPeriodRead,
+    BillingPeriodListResponse,
+    BillingReconcileRequest,
+    BillingReconciliationRunResponse,
     BillingRunRequest,
     BillingRunResponse,
     InvoiceGenerateRequest,
@@ -24,8 +32,15 @@ from app.schemas.admin.billing import (
 from app.schemas.reports import BillingSummaryItem
 from app.models.billing_summary import BillingSummary
 from app.models.operation import ProductType
+from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.services.reports_billing import finalize_billing_summary
 from app.services.billing_run import BillingPeriodClosedError, BillingRunService, BillingRunValidationError
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService
+from app.services.reconciliation import BillingReconciliationService
+from app.services.operations_scenarios.adjustments import AdjustmentService
+from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus, RelatedEntityType
+from app.models.operation import Operation
+from app.models.billing_period import BillingPeriodStatus
 from app.services.billing_service import (
     generate_invoices_for_period,
     get_billing_summaries,
@@ -35,6 +50,108 @@ from app.services.invoicing import run_invoice_monthly
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
+
+
+@router.get("/periods", response_model=BillingPeriodListResponse)
+def admin_list_billing_periods(
+    status: BillingPeriodStatus | None = Query(None),
+    period_type: BillingPeriodType | None = Query(None),
+    start_from: datetime | None = Query(None),
+    start_to: datetime | None = Query(None),
+    db: Session = Depends(get_db),
+) -> BillingPeriodListResponse:
+    service = BillingPeriodService(db)
+    items = service.list_periods(status=status, period_type=period_type, start_from=start_from, start_to=start_to)
+    return BillingPeriodListResponse(items=items, total=len(items))
+
+
+@router.post("/periods/lock", response_model=BillingPeriodRead)
+def admin_lock_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+    service = BillingPeriodService(db)
+    try:
+        period = service.lock(
+            period_type=body.period_type,
+            start_at=body.start_at,
+            end_at=body.end_at,
+            tz=body.tz,
+        )
+        db.commit()
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return BillingPeriodRead.model_validate(period)
+
+
+@router.post("/periods/finalize", response_model=BillingPeriodRead)
+def admin_finalize_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+    service = BillingPeriodService(db)
+    try:
+        period = service.finalize(
+            period_type=body.period_type,
+            start_at=body.start_at,
+            end_at=body.end_at,
+            tz=body.tz,
+        )
+        db.commit()
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return BillingPeriodRead.model_validate(period)
+
+
+@router.post("/reconcile", response_model=BillingReconciliationRunResponse)
+def admin_reconcile_billing(body: BillingReconcileRequest, db: Session = Depends(get_db)) -> BillingReconciliationRunResponse:
+    service = BillingReconciliationService(db)
+    try:
+        run = service.run(body.billing_period_id)
+        db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return BillingReconciliationRunResponse(
+        run_id=str(run.id),
+        status=run.status,
+        total_invoices=run.total_invoices,
+        ok_count=run.ok_count,
+        mismatch_count=run.mismatch_count,
+        missing_ledger_count=run.missing_ledger_count,
+    )
+
+
+@router.post("/adjustments", response_model=BillingAdjustmentResponse, status_code=status.HTTP_201_CREATED)
+def admin_create_adjustment(body: BillingAdjustmentRequest, db: Session = Depends(get_db)) -> BillingAdjustmentResponse:
+    period = db.query(BillingPeriod).filter(BillingPeriod.id == body.billing_period_id).one_or_none()
+    if period is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="billing period not found")
+    if period.status not in (BillingPeriodStatus.LOCKED, BillingPeriodStatus.FINALIZED):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="billing period is not locked")
+
+    operation = db.query(Operation).filter(Operation.id == body.operation_id).one_or_none()
+    if operation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="operation not found")
+
+    if body.kind not in (FinancialAdjustmentKind.CREDIT, FinancialAdjustmentKind.DEBIT):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported adjustment kind for billing")
+
+    service = AdjustmentService(db)
+    adjustment = service.ensure_adjustment(
+        idempotency_key=body.idempotency_key,
+        kind=body.kind,
+        related_entity_type=RelatedEntityType.BILLING_PERIOD,
+        related_entity_id=period.id,
+        operation_id=operation.id,
+        amount=body.amount,
+        currency=body.currency,
+        effective_date=body.effective_date,
+    )
+    db.commit()
+    db.refresh(adjustment)
+    return BillingAdjustmentResponse(
+        id=str(adjustment.id),
+        status=adjustment.status,
+        operation_id=str(adjustment.operation_id),
+        billing_period_id=str(period.id),
+        amount=adjustment.amount,
+        currency=adjustment.currency,
+        effective_date=adjustment.effective_date,
+    )
 
 
 @router.post("/run", response_model=BillingRunResponse)
