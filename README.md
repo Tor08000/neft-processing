@@ -101,7 +101,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 Быстрый локальный прогон (Windows CMD):
 
-```
+```bat
 docker compose up -d --build
 pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
@@ -121,6 +121,30 @@ git grep -n "^\<\<\<\<\<\<\<\|^\=\=\=\=\=\=\=\|^\>\>\>\>\>\>\>" -- .
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
 ```
 Ожидается ровно одна строка (единственный head).
+
+### Системный стенд-чеклист (Windows CMD)
+
+Минимальный набор для фиксации статуса (запускать из корня репозитория):
+
+```bat
+docker compose up -d
+docker compose ps
+
+:: Health checks via gateway
+curl http://localhost/api/core/health
+curl http://localhost/metrics
+
+:: Health checks (direct to core-api)
+curl http://localhost:8001/api/core/health
+curl http://localhost:8001/metrics
+
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini current"
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini history --verbose -r -50:"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+```
+
+Gateway и direct ports отличаются. Используйте правильный URL для диагностики.
 
 ### Gateway (Nginx)
 
