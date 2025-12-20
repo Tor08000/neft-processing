@@ -122,6 +122,24 @@ docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.
 ```
 Ожидается ровно одна строка (единственный head).
 
+### Системный стенд-чеклист (Windows CMD)
+
+Минимальный набор для фиксации статуса (запускать из корня репозитория):
+
+```
+bat
+docker compose up -d
+docker compose ps
+
+curl http://localhost:8001/api/core/health
+curl http://localhost:8001/metrics
+
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini current"
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini history --verbose -r -50:"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+```
+
 ### Gateway (Nginx)
 
 * Конфигурация: `gateway/nginx.conf` (прокси без rewrite для `/api/core/*`, `/api/auth/*`, `/api/ai/*`, статик `/admin/` и `/client/`, favicon и health).
