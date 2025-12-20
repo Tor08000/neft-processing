@@ -10,9 +10,11 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
+    column_exists,
     create_index_if_not_exists,
     drop_index_if_exists,
     pg_ensure_enum,
+    safe_enum,
     table_exists,
 )
 from app.db.schema import resolve_db_schema
@@ -25,6 +27,7 @@ depends_on = None
 
 SCHEMA_RESOLUTION = resolve_db_schema()
 SCHEMA = SCHEMA_RESOLUTION.schema
+SCHEMA_PREFIX = f"{SCHEMA}." if SCHEMA else ""
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
 ACCOUNT_OWNER_TYPE_VALUES = ["CLIENT", "PARTNER", "PLATFORM"]
@@ -93,15 +96,15 @@ def upgrade() -> None:
 
     account_type_enum = _account_type_enum(bind)
     account_status_enum = _account_status_enum(bind)
-    account_owner_enum = (
-        postgresql.ENUM(*ACCOUNT_OWNER_TYPE_VALUES, name="accountownertype", create_type=False)
-        if is_pg
-        else sa.Enum(*ACCOUNT_OWNER_TYPE_VALUES, name="accountownertype", native_enum=False)
-    )
+    account_owner_enum = safe_enum(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
     ledger_direction_enum = _ledger_direction_enum(bind)
     json_variant = sa.JSON().with_variant(postgresql.JSONB, "postgresql")
+    accounts_exists = table_exists(bind, "accounts", schema=SCHEMA)
+    owner_type_exists = (
+        column_exists(bind, "accounts", "owner_type", schema=SCHEMA) if accounts_exists else False
+    )
 
-    if not table_exists(bind, "accounts", schema=SCHEMA):
+    if not accounts_exists:
         op.create_table(
             "accounts",
             sa.Column(
@@ -133,10 +136,25 @@ def upgrade() -> None:
             ),
             schema=SCHEMA,
         )
+        accounts_exists = True
+        owner_type_exists = True
+    elif not owner_type_exists:
+        op.add_column(
+            "accounts",
+            sa.Column("owner_type", account_owner_enum, nullable=True, server_default="CLIENT"),
+            schema=SCHEMA,
+        )
+        bind.exec_driver_sql(
+            f"UPDATE {SCHEMA_PREFIX}accounts SET owner_type = :default WHERE owner_type IS NULL",
+            {"default": "CLIENT"},
+        )
+        op.alter_column("accounts", "owner_type", nullable=False, server_default="CLIENT", schema=SCHEMA)
+        owner_type_exists = True
     create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"], schema=SCHEMA)
-    create_index_if_not_exists(bind, "ix_accounts_owner_type", "accounts", ["owner_type"], schema=SCHEMA)
+    if owner_type_exists:
+        create_index_if_not_exists(bind, "ix_accounts_owner_type", "accounts", ["owner_type"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_owner_id", "accounts", ["owner_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"], schema=SCHEMA)
 
