@@ -126,11 +126,15 @@ docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.
 
 Минимальный набор для фиксации статуса (запускать из корня репозитория):
 
-```
-bat
+```bat
 docker compose up -d
 docker compose ps
 
+:: Health checks via gateway
+curl http://localhost/api/core/health
+curl http://localhost/metrics
+
+:: Health checks (direct to core-api)
 curl http://localhost:8001/api/core/health
 curl http://localhost:8001/metrics
 
@@ -139,6 +143,8 @@ docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini history --verbose -r -50:"
 docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
 ```
+
+Gateway и direct ports отличаются. Используйте правильный URL для диагностики.
 
 ### Gateway (Nginx)
 
