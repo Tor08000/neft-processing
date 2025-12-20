@@ -94,7 +94,12 @@ class PostingEngine:
                 before = self.balance_service.current_balance(line.account_id)
                 after = (
                     before
-                    if posting_type in {PostingBatchType.AUTH, PostingBatchType.HOLD}
+                    if posting_type in {
+                        PostingBatchType.AUTH,
+                        PostingBatchType.HOLD,
+                        PostingBatchType.DISPUTE_HOLD,
+                        PostingBatchType.DISPUTE_RELEASE,
+                    }
                     else before + line.amount
                     if line.direction == LedgerDirection.CREDIT
                     else before - line.amount
