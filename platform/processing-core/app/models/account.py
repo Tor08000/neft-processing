@@ -15,6 +15,7 @@ from sqlalchemy import (
 )
 
 from app.db import Base
+from app.db.types import GUID
 
 
 class AccountType(str, Enum):
@@ -48,7 +49,7 @@ class Account(Base):
     )
     client_id = Column(String(64), nullable=False, index=True)
     owner_type = Column(SAEnum(AccountOwnerType), nullable=False, index=True, default=AccountOwnerType.CLIENT)
-    owner_id = Column(String(64), nullable=False, index=True)
+    owner_id = Column(GUID(), nullable=True, index=True)
     card_id = Column(String(64), ForeignKey("cards.id"), nullable=True, index=True)
     tariff_id = Column(String(64), nullable=True)
     currency = Column(String(8), nullable=False)
