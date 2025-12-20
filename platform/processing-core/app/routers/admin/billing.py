@@ -27,6 +27,8 @@ from app.services.billing_service import (
     generate_invoices_for_period,
     get_billing_summaries,
 )
+from app.services.billing import finalize_billing_day, run_billing_daily
+from app.services.invoicing import run_invoice_monthly
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
@@ -79,6 +81,25 @@ def admin_finalize_summary(summary_id: str, db: Session = Depends(get_db)) -> Bi
     except ValueError:
         raise HTTPException(status_code=404, detail="summary not found")
     return BillingSummaryItem.model_validate(summary)
+
+
+@router.post("/run-daily")
+def admin_run_billing_daily(
+    billing_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    summaries = run_billing_daily(billing_date, session=db)
+    resolved_date = billing_date or (summaries[0].billing_date if summaries else None)
+    return {"processed": len(summaries), "billing_date": str(resolved_date) if resolved_date else None}
+
+
+@router.post("/finalize-day")
+def admin_finalize_billing_day(
+    billing_date: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    updated = finalize_billing_day(billing_date, session=db)
+    return {"updated": updated, "billing_date": str(billing_date)}
 
 
 # -------------------------
@@ -207,3 +228,13 @@ def admin_update_invoice_status(
     if updated is None:
         raise HTTPException(status_code=404, detail="invoice not found")
     return InvoiceRead.model_validate(updated, from_attributes=True)
+
+
+@router.post("/invoices/run-monthly")
+def admin_run_monthly_invoices(month: str | None = Query(None), db: Session = Depends(get_db)):
+    try:
+        target_month = date.fromisoformat(f"{month}-01") if month else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid month format, expected YYYY-MM")
+    invoices = run_invoice_monthly(target_month, session=db)
+    return {"created": [invoice.id for invoice in invoices], "count": len(invoices)}

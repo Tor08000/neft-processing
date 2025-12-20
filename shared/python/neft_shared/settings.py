@@ -35,6 +35,8 @@ class Settings:
         "true",
         "yes",
     }
+    NEFT_BILLING_FINALIZE_GRACE_HOURS: int = int(os.getenv("NEFT_BILLING_FINALIZE_GRACE_HOURS", "12"))
+    NEFT_BILLING_DAILY_AT: str = os.getenv("NEFT_BILLING_DAILY_AT", "01:00")
     NEFT_CLEARING_DAILY_ENABLED: bool = os.getenv(
         "NEFT_CLEARING_DAILY_ENABLED", "true"
     ).lower() in {
@@ -42,9 +44,11 @@ class Settings:
         "true",
         "yes",
     }
+    NEFT_CLEARING_DAILY_AT: str = os.getenv("NEFT_CLEARING_DAILY_AT", "02:00")
     NEFT_INVOICE_MONTHLY_ENABLED: bool = os.getenv(
         "NEFT_INVOICE_MONTHLY_ENABLED", "false"
     ).lower() in {"1", "true", "yes"}
+    NEFT_INVOICE_MONTHLY_AT: str = os.getenv("NEFT_INVOICE_MONTHLY_AT", "03:00")
 
     @property
     def redis_dsn(self) -> str:

@@ -11,6 +11,12 @@ from app.models.clearing_batch import ClearingBatch
 from app.models.clearing_batch_operation import ClearingBatchOperation
 from app.models.operation import Operation
 
+CLEARING_TRANSITIONS = {
+    "PENDING": {"SENT"},
+    "SENT": {"CONFIRMED", "FAILED"},
+    "FAILED": {"PENDING"},
+}
+
 
 def _daterange_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
     start = datetime.combine(date_from, datetime.min.time())
@@ -104,6 +110,8 @@ def mark_batch_sent(db: Session, batch_id: str) -> ClearingBatch:
     batch = get_batch(db, batch_id)
     if not batch:
         raise ValueError("batch not found")
+    if "SENT" not in CLEARING_TRANSITIONS.get(batch.status, set()):
+        raise ValueError("invalid transition")
     batch.status = "SENT"
     db.add(batch)
     db.commit()
@@ -115,7 +123,35 @@ def mark_batch_confirmed(db: Session, batch_id: str) -> ClearingBatch:
     batch = get_batch(db, batch_id)
     if not batch:
         raise ValueError("batch not found")
+    if "CONFIRMED" not in CLEARING_TRANSITIONS.get(batch.status, set()):
+        raise ValueError("invalid transition")
     batch.status = "CONFIRMED"
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def mark_batch_failed(db: Session, batch_id: str) -> ClearingBatch:
+    batch = get_batch(db, batch_id)
+    if not batch:
+        raise ValueError("batch not found")
+    if "FAILED" not in CLEARING_TRANSITIONS.get(batch.status, set()):
+        raise ValueError("invalid transition")
+    batch.status = "FAILED"
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def retry_batch(db: Session, batch_id: str) -> ClearingBatch:
+    batch = get_batch(db, batch_id)
+    if not batch:
+        raise ValueError("batch not found")
+    if "PENDING" not in CLEARING_TRANSITIONS.get(batch.status, set()):
+        raise ValueError("invalid transition")
+    batch.status = "PENDING"
     db.add(batch)
     db.commit()
     db.refresh(batch)

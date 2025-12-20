@@ -8,7 +8,7 @@ import json
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.billing_summary import BillingSummary
+from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.operation import Operation
 
 
@@ -96,7 +96,7 @@ def build_billing_summary_for_date(
                 merchant_id=aggregate.merchant_id,
                 total_captured_amount=payload["total_captured_amount"],
                 operations_count=payload["operations_count"],
-                status="PENDING",
+                status=BillingSummaryStatus.PENDING,
                 hash=payload_hash,
                 generated_at=datetime.utcnow(),
             )
@@ -105,7 +105,7 @@ def build_billing_summary_for_date(
             summary.date = op_date
             summary.total_captured_amount = payload["total_captured_amount"]
             summary.operations_count = payload["operations_count"]
-            summary.status = "PENDING"
+            summary.status = BillingSummaryStatus.PENDING
             summary.hash = payload_hash
             summary.generated_at = datetime.utcnow()
             summary.finalized_at = None
@@ -124,7 +124,7 @@ def finalize_billing_summary(db: Session, summary_id: str) -> BillingSummary:
     summary = db.query(BillingSummary).filter(BillingSummary.id == summary_id).first()
     if summary is None:
         raise ValueError("summary not found")
-    summary.status = "FINALIZED"
+    summary.status = BillingSummaryStatus.FINALIZED
     summary.finalized_at = datetime.utcnow()
     db.add(summary)
     db.commit()
