@@ -204,13 +204,14 @@ def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = "public
     if exists:
         return
 
-    # 2) Add enum label (identifier must be interpolated, value can be bound)
-    # Quote identifiers defensively
-    enum_ident = f'"{schema}"."{enum_name}"' if schema else f'"{enum_name}"'
+    # 2) Add enum label (value must be inlined as a literal)
+    value_literal = "'" + value.replace("'", "''") + "'"
 
     # Postgres supports IF NOT EXISTS for ADD VALUE on modern versions.
-    add_sql = text(f"ALTER TYPE {enum_ident} ADD VALUE IF NOT EXISTS :value")
-    conn.execute(add_sql, {"value": value})
+    add_sql = text(
+        f'ALTER TYPE "{schema}"."{enum_name}" ADD VALUE IF NOT EXISTS {value_literal}'
+    )
+    conn.execute(add_sql)
 
 
 def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA):
