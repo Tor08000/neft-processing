@@ -175,10 +175,54 @@ def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[s
     ensure_pg_enum(bind, type_name, values=values, schema=schema)
 
 
+def ensure_pg_enum_value(bind: Connection, enum_name: str, value: str, schema: str = DB_SCHEMA) -> None:
+    """Add a value to a PostgreSQL enum if it is missing."""
+
+    if not is_postgres(bind):
+        return
+
+    bind.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum e
+                JOIN pg_type t ON t.oid = e.enumtypid
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE t.typname = :enum
+                  AND e.enumlabel = :value
+                  AND n.nspname = :schema
+              )
+              THEN
+                EXECUTE format(
+                  'ALTER TYPE %I.%I ADD VALUE %L',
+                  :schema, :enum, :value
+                );
+              END IF;
+            END $$;
+            """
+        ),
+        {"enum": enum_name, "value": value, "schema": schema or "public"},
+    )
+
+
 def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA):
     if is_postgres(bind):
         return postgresql.ENUM(*values, name=enum_name, schema=schema, create_type=False)
     return sa.Enum(*values, name=enum_name, native_enum=False)
+
+
+def pg_enum_or_string(
+    bind: Connection, enum_name: str, values: Sequence[str], *, schema: str = DB_SCHEMA, min_length: int = 32
+):
+    """Use a PostgreSQL enum when available, otherwise fall back to VARCHAR."""
+
+    length = max(min_length, *(len(value) for value in values))
+    if is_postgres(bind):
+        return safe_enum(bind, enum_name, values, schema=schema)
+    return sa.String(length=length)
 
 
 def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SCHEMA) -> None:

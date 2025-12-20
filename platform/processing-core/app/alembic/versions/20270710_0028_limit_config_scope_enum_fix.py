@@ -12,7 +12,14 @@ from typing import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import column_exists, is_postgres, safe_enum, table_exists
+from app.alembic.utils import (
+    column_exists,
+    ensure_pg_enum,
+    ensure_pg_enum_value,
+    is_postgres,
+    safe_enum,
+    table_exists,
+)
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -37,25 +44,7 @@ LIMIT_CONFIG_SCOPE_ENUM_NAME = "limitconfigscope"
 
 def _ensure_enum_exists(enum_name: str, values: Sequence[str]) -> None:
     bind = op.get_bind()
-    if not is_postgres(bind):  # pragma: no cover - defensive for sqlite
-        return
-
-    exists = bind.execute(
-        sa.text(
-            """
-            SELECT 1
-            FROM pg_type t
-            JOIN pg_namespace n ON n.oid = t.typnamespace
-            WHERE n.nspname = :schema AND t.typname = :enum_name
-            """
-        ),
-        {"enum_name": enum_name, "schema": SCHEMA},
-    ).first()
-    if exists:
-        return
-
-    values_sql = ", ".join(f"'{value}'" for value in values)
-    op.execute(sa.text(f"CREATE TYPE {SCHEMA_QUOTED}.{enum_name} AS ENUM ({values_sql})"))
+    ensure_pg_enum(bind, enum_name, values, schema=SCHEMA)
 
 
 def _ensure_enum_labels(enum_name: str, values: Sequence[str]) -> None:
@@ -66,12 +55,8 @@ def _ensure_enum_labels(enum_name: str, values: Sequence[str]) -> None:
         return
 
     _ensure_enum_exists(enum_name, values)
-    existing_labels = _get_enum_labels(enum_name)
-
     for value in values:
-        if value in existing_labels:
-            continue
-        op.execute(sa.text(f"ALTER TYPE {SCHEMA_QUOTED}.{enum_name} ADD VALUE IF NOT EXISTS '{value}'"))
+        ensure_pg_enum_value(bind, enum_name, value, schema=SCHEMA)
 
 
 def _get_column_udt_name(table: str, column: str) -> str | None:
