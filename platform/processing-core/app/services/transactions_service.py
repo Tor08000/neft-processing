@@ -148,6 +148,7 @@ def _perform_posting(db: Session, *, operation: Operation) -> dict:
 
     accounts_repo = AccountsRepository(db)
     ledger_repo = LedgerRepository(db)
+    posting_id = uuid4()
 
     debit_account = accounts_repo.get_or_create_account(
         client_id=operation.client_id,
@@ -164,6 +165,7 @@ def _perform_posting(db: Session, *, operation: Operation) -> dict:
     debit_entry = ledger_repo.post_entry(
         account_id=debit_account.id,
         operation_id=operation.id,
+        posting_id=posting_id,
         direction=LedgerDirection.DEBIT,
         amount=operation.amount,
         currency=operation.currency,
@@ -173,6 +175,7 @@ def _perform_posting(db: Session, *, operation: Operation) -> dict:
     credit_entry = ledger_repo.post_entry(
         account_id=credit_account.id,
         operation_id=operation.id,
+        posting_id=posting_id,
         direction=LedgerDirection.CREDIT,
         amount=operation.amount,
         currency=operation.currency,
@@ -190,6 +193,7 @@ def _perform_refund_posting(db: Session, *, operation: Operation, amount: int) -
 
     accounts_repo = AccountsRepository(db)
     ledger_repo = LedgerRepository(db)
+    posting_id = uuid4()
 
     client_account = accounts_repo.get_or_create_account(
         client_id=operation.client_id,
@@ -206,6 +210,7 @@ def _perform_refund_posting(db: Session, *, operation: Operation, amount: int) -
     merchant_entry = ledger_repo.post_entry(
         account_id=merchant_account.id,
         operation_id=operation.id,
+        posting_id=posting_id,
         direction=LedgerDirection.DEBIT,
         amount=Decimal(amount),
         currency=operation.currency,
@@ -215,6 +220,7 @@ def _perform_refund_posting(db: Session, *, operation: Operation, amount: int) -
     client_entry = ledger_repo.post_entry(
         account_id=client_account.id,
         operation_id=operation.id,
+        posting_id=posting_id,
         direction=LedgerDirection.CREDIT,
         amount=Decimal(amount),
         currency=operation.currency,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -32,18 +32,24 @@ class LedgerRepository:
         *,
         account_id: int,
         operation_id: UUID | None,
+        posting_id: UUID | None = None,
         direction: LedgerDirection,
         amount: Decimal | float | int,
         currency: str,
         posted_at: datetime | None = None,
         value_date: date | None = None,
+        entry_id: UUID | None = None,
+        balance_before: Decimal | None = None,
+        balance_after_override: Decimal | None = None,
+        require_operation: bool = True,
+        sync_balance: bool = True,
         auto_commit: bool = True,
     ) -> LedgerEntry:
         """Create ledger entry and update account balances."""
 
         decimal_amount = Decimal(str(amount))
 
-        if operation_id is not None:
+        if operation_id is not None and require_operation:
             exists = (
                 self.db.query(Operation.id)
                 .filter(Operation.id == operation_id)
@@ -63,31 +69,39 @@ class LedgerRepository:
             self.db.flush()
 
         current = Decimal(balance.current_balance or 0)
-        if direction == LedgerDirection.CREDIT:
-            new_balance = current + decimal_amount
-        else:
-            new_balance = current - decimal_amount
+        computed_after = (
+            balance_after_override
+            if balance_after_override is not None
+            else current + decimal_amount
+            if direction == LedgerDirection.CREDIT
+            else current - decimal_amount
+        )
 
         now = posted_at or datetime.now(timezone.utc)
         entry = LedgerEntry(
             account_id=account_id,
             operation_id=operation_id,
+            posting_id=posting_id or uuid4(),
+            entry_id=entry_id or uuid4(),
             direction=direction,
             amount=decimal_amount,
             currency=currency,
-            balance_after=new_balance,
+            balance_before=balance_before if balance_before is not None else current,
+            balance_after=computed_after,
             posted_at=now,
             value_date=value_date,
         )
         self.db.add(entry)
 
-        balance.current_balance = new_balance
-        balance.available_balance = new_balance
-        balance.updated_at = now
+        if sync_balance:
+            balance.current_balance = computed_after
+            balance.available_balance = computed_after
+            balance.updated_at = now
         if auto_commit:
             self.db.commit()
             self.db.refresh(entry)
-            self.db.refresh(balance)
+            if sync_balance:
+                self.db.refresh(balance)
         else:
             self.db.flush()
         return entry

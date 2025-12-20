@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     func,
@@ -35,6 +36,8 @@ class LedgerEntry(Base):
         primary_key=True,
         autoincrement=True,
     )
+    entry_id: UUIDType = Column(PGUUID(as_uuid=True), nullable=False, unique=True, index=True)
+    posting_id: UUIDType | None = Column(PGUUID(as_uuid=True), nullable=False, index=True)
     account_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("accounts.id", ondelete="CASCADE"),
@@ -50,6 +53,7 @@ class LedgerEntry(Base):
     direction = Column(SAEnum(LedgerDirection), nullable=False)
     amount = Column(Numeric(18, 4), nullable=False)
     currency = Column(String(8), nullable=False)
+    balance_before = Column(Numeric(18, 4), nullable=True)
     balance_after = Column(Numeric(18, 4), nullable=True)
     posted_at = Column(
         DateTime(timezone=True),
@@ -58,6 +62,7 @@ class LedgerEntry(Base):
         index=True,
     )
     value_date = Column(Date, nullable=True)
+    context = Column("metadata", JSON, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover - repr is for debugging
         return f"<LedgerEntry id={self.id} account_id={self.account_id} direction={self.direction}>"

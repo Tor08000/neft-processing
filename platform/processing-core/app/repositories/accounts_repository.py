@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.account import Account, AccountStatus, AccountType, AccountBalance
+from app.models.account import (
+    Account,
+    AccountBalance,
+    AccountOwnerType,
+    AccountStatus,
+    AccountType,
+)
 
 
 class AccountsRepository:
@@ -15,6 +21,8 @@ class AccountsRepository:
         self,
         *,
         client_id: str,
+        owner_type: AccountOwnerType = AccountOwnerType.CLIENT,
+        owner_id: str | None = None,
         currency: str,
         account_type: AccountType,
         card_id: str | None = None,
@@ -24,9 +32,13 @@ class AccountsRepository:
     ) -> Account:
         """Fetch existing account by unique tuple or create a new one."""
 
+        resolved_owner_id = owner_id or client_id
+
         query = (
             self.db.query(Account)
             .filter(Account.client_id == client_id)
+            .filter(Account.owner_type == owner_type)
+            .filter(Account.owner_id == resolved_owner_id)
             .filter(Account.currency == currency)
             .filter(Account.type == account_type)
         )
@@ -47,6 +59,8 @@ class AccountsRepository:
 
         account = Account(
             client_id=client_id,
+            owner_type=owner_type,
+            owner_id=resolved_owner_id,
             currency=currency,
             type=account_type,
             status=status,
