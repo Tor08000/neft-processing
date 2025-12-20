@@ -20,6 +20,9 @@
 | clearing | `platform/processing-core/app/models/clearing.py` | domain |
 | clearing_batch | `platform/processing-core/app/models/clearing_batch.py` | domain |
 | clearing_batch_operation | `platform/processing-core/app/models/clearing_batch_operation.py` | link |
+| settlements | `platform/processing-core/app/models/settlement.py` | domain |
+| payout_orders | `platform/processing-core/app/models/payout_order.py` | domain |
+| payout_events | `platform/processing-core/app/models/payout_event.py` | audit |
 | client_cards | `platform/processing-core/app/models/client_portal.py` | link |
 | client_operations | `platform/processing-core/app/models/client_portal.py` | domain |
 | client_limits | `platform/processing-core/app/models/client_portal.py` | domain |
