@@ -101,7 +101,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 Быстрый локальный прогон (Windows CMD):
 
-```
+```bat
 docker compose up -d --build
 pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
