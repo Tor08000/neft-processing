@@ -65,7 +65,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "financial_adjustment_status", ADJUSTMENT_STATUS, schema=SCHEMA)
     if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
         for value in POSTING_BATCH_NEW_VALUES:
-            op.execute(
+            bind.execute(
                 sa.text(
                     "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
                     "JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = :name AND e.enumlabel = :value "
