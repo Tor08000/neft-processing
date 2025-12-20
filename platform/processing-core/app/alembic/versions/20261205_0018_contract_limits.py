@@ -78,7 +78,7 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-    if not index_exists("ix_tariff_plans_name", schema=SCHEMA):
+    if not index_exists(bind, "ix_tariff_plans_name", schema=SCHEMA):
         op.create_index(
             "ix_tariff_plans_name", "tariff_plans", ["name"], unique=True, schema=SCHEMA
         )
@@ -113,17 +113,17 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
         )
-    if not index_exists("ix_limit_configs_scope", schema=SCHEMA):
+    if not index_exists(bind, "ix_limit_configs_scope", schema=SCHEMA):
         op.create_index("ix_limit_configs_scope", "limit_configs", ["scope"], schema=SCHEMA)
-    if not index_exists("ix_limit_configs_subject", schema=SCHEMA):
+    if not index_exists(bind, "ix_limit_configs_subject", schema=SCHEMA):
         op.create_index(
             "ix_limit_configs_subject", "limit_configs", ["subject_ref"], schema=SCHEMA
         )
-    if not index_exists("ix_limit_configs_enabled", schema=SCHEMA):
+    if not index_exists(bind, "ix_limit_configs_enabled", schema=SCHEMA):
         op.create_index(
             "ix_limit_configs_enabled", "limit_configs", ["enabled"], schema=SCHEMA
         )
-    if not index_exists("ix_limit_configs_scope_subject_type", schema=SCHEMA):
+    if not index_exists(bind, "ix_limit_configs_scope_subject_type", schema=SCHEMA):
         op.create_index(
             "ix_limit_configs_scope_subject_type",
             "limit_configs",
@@ -134,7 +134,7 @@ def upgrade() -> None:
 
     if not column_exists(bind, "operations", "tariff_id", schema=SCHEMA):
         op.add_column("operations", sa.Column("tariff_id", sa.String(length=64), nullable=True), schema=SCHEMA)
-    if not index_exists("ix_operations_tariff_id", schema=SCHEMA):
+    if not index_exists(bind, "ix_operations_tariff_id", schema=SCHEMA):
         op.create_index(
             "ix_operations_tariff_id", "operations", ["tariff_id"], unique=False, schema=SCHEMA
         )
