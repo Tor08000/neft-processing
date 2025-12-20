@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.billing_period import BillingPeriodType
 from app.models.invoice import InvoiceStatus
 
 
@@ -128,3 +129,26 @@ class InvoiceStatusChangeRequest(BaseModel):
 
     status: InvoiceStatus
 
+
+class BillingRunRequest(BaseModel):
+    """Manual billing run parameters."""
+
+    period_type: BillingPeriodType = BillingPeriodType.ADHOC
+    start_at: datetime
+    end_at: datetime
+    tz: str = "UTC"
+    client_id: str | None = None
+
+
+class BillingRunResponse(BaseModel):
+    """Aggregated result of billing run."""
+
+    billing_period_id: str
+    period_from: date
+    period_to: date
+    clients_processed: int
+    invoices_created: int
+    invoices_rebuilt: int
+    invoices_skipped: int
+    invoice_lines_created: int
+    total_amount: int

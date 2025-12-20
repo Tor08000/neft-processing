@@ -8,6 +8,8 @@ from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
 from app.schemas.admin.billing import (
+    BillingRunRequest,
+    BillingRunResponse,
     InvoiceGenerateRequest,
     InvoiceGenerateResponse,
     InvoiceListResponse,
@@ -23,6 +25,7 @@ from app.schemas.reports import BillingSummaryItem
 from app.models.billing_summary import BillingSummary
 from app.models.operation import ProductType
 from app.services.reports_billing import finalize_billing_summary
+from app.services.billing_run import BillingPeriodClosedError, BillingRunService, BillingRunValidationError
 from app.services.billing_service import (
     generate_invoices_for_period,
     get_billing_summaries,
@@ -32,6 +35,35 @@ from app.services.invoicing import run_invoice_monthly
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
+
+
+@router.post("/run", response_model=BillingRunResponse)
+def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) -> BillingRunResponse:
+    service = BillingRunService(db)
+    try:
+        result = service.run(
+            period_type=body.period_type,
+            start_at=body.start_at,
+            end_at=body.end_at,
+            tz=body.tz,
+            client_id=body.client_id,
+        )
+    except BillingRunValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except BillingPeriodClosedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return BillingRunResponse(
+        billing_period_id=str(result.billing_period.id),
+        period_from=result.period_from,
+        period_to=result.period_to,
+        clients_processed=result.clients_processed,
+        invoices_created=result.invoices_created,
+        invoices_rebuilt=result.invoices_rebuilt,
+        invoices_skipped=result.invoices_skipped,
+        invoice_lines_created=result.invoice_lines_created,
+        total_amount=result.total_amount,
+    )
 
 
 @router.get("/summary", response_model=BillingSummaryPage)
