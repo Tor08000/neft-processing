@@ -34,10 +34,6 @@ def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:
     return table_name in inspector.get_table_names(schema=SCHEMA)
 
 
-def _index_exists(inspector: sa.Inspector, table: str, name: str) -> bool:
-    return any(index.get("name") == name for index in inspector.get_indexes(table, schema=SCHEMA))
-
-
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)

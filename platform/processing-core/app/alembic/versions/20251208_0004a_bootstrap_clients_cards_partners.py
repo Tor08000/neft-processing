@@ -27,10 +27,6 @@ def _table_exists(inspector: sa.Inspector, table: str) -> bool:
     return table in inspector.get_table_names()
 
 
-def _index_exists(inspector: sa.Inspector, table: str, name: str) -> bool:
-    return any(index.get("name") == name for index in inspector.get_indexes(table))
-
-
 def _missing_columns(inspector: sa.Inspector, table: str, expected: Iterable[str]) -> set[str]:
     existing = {col["name"] for col in inspector.get_columns(table)}
     return set(expected) - existing
