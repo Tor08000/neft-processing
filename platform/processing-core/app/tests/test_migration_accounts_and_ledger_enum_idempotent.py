@@ -198,3 +198,21 @@ def test_upgrade_adds_owner_id_when_missing(connection: DummyConnection):
     migration.upgrade()
 
     assert indexes_before == connection.indexes
+
+
+def test_upgrade_adds_posting_id_when_missing(connection: DummyConnection):
+    connection.tables.update({"accounts", "account_balances", "ledger_entries"})
+    connection.columns["ledger_entries"].update(
+        ["id", "entry_id", "account_id", "operation_id", "direction", "amount", "currency", "posted_at"]
+    )
+
+    migration.upgrade()
+
+    assert "posting_id" in connection.columns["ledger_entries"]
+    assert "ix_ledger_entries_posting_id" in connection.indexes
+
+    indexes_before = set(connection.indexes)
+
+    migration.upgrade()
+
+    assert indexes_before == connection.indexes

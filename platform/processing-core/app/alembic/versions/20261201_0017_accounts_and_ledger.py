@@ -184,7 +184,12 @@ def upgrade() -> None:
             schema=SCHEMA,
         )
 
-    if not table_exists(bind, "ledger_entries", schema=SCHEMA):
+    ledger_entries_exists = table_exists(bind, "ledger_entries", schema=SCHEMA)
+    posting_id_exists = (
+        column_exists(bind, "ledger_entries", "posting_id", schema=SCHEMA) if ledger_entries_exists else False
+    )
+
+    if not ledger_entries_exists:
         op.create_table(
             "ledger_entries",
             sa.Column(
@@ -194,7 +199,7 @@ def upgrade() -> None:
                 autoincrement=True,
             ),
             sa.Column("entry_id", _uuid_type(bind), nullable=False, unique=True),
-            sa.Column("posting_id", _uuid_type(bind), nullable=False),
+            sa.Column("posting_id", sa.String(length=64), nullable=True),
             sa.Column(
                 "account_id",
                 sa.BigInteger().with_variant(sa.Integer, "sqlite"),
@@ -222,19 +227,27 @@ def upgrade() -> None:
             sa.Column("metadata", json_variant, nullable=True),
             schema=SCHEMA,
         )
-    create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"], schema=SCHEMA)
-    create_index_if_not_exists(bind, "ix_ledger_entries_posting_id", "ledger_entries", ["posting_id"], schema=SCHEMA)
-    create_index_if_not_exists(
-        bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"], schema=SCHEMA
-    )
-    create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"], schema=SCHEMA)
-    create_index_if_not_exists(
-        bind,
-        "ix_ledger_entries_account_operation",
-        "ledger_entries",
-        ["account_id", "operation_id"],
-        schema=SCHEMA,
-    )
+        ledger_entries_exists = True
+        posting_id_exists = True
+    elif not posting_id_exists:
+        op.add_column("ledger_entries", sa.Column("posting_id", sa.String(length=64), nullable=True), schema=SCHEMA)
+        posting_id_exists = True
+
+    if ledger_entries_exists:
+        create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"], schema=SCHEMA)
+        if posting_id_exists:
+            create_index_if_not_exists(bind, "ix_ledger_entries_posting_id", "ledger_entries", ["posting_id"], schema=SCHEMA)
+        create_index_if_not_exists(
+            bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"], schema=SCHEMA
+        )
+        create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"], schema=SCHEMA)
+        create_index_if_not_exists(
+            bind,
+            "ix_ledger_entries_account_operation",
+            "ledger_entries",
+            ["account_id", "operation_id"],
+            schema=SCHEMA,
+        )
 
     if not table_exists(bind, "posting_batches", schema=SCHEMA):
         op.create_table(
