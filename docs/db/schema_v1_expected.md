@@ -31,6 +31,8 @@
 | ledger_entries | `platform/processing-core/app/models/ledger_entry.py` | audit |
 | tariff_plans | `platform/processing-core/app/models/contract_limits.py` | ref |
 | tariff_prices | `platform/processing-core/app/models/contract_limits.py` | ref |
+| client_tariffs | `platform/processing-core/app/models/contract_limits.py` | link |
+| commission_rules | `platform/processing-core/app/models/contract_limits.py` | ref |
 | limit_configs | `platform/processing-core/app/models/contract_limits.py` | domain |
 | partners | `platform/processing-core/app/models/partner.py` | ref |
 | external_request_logs | `platform/processing-core/app/models/external_request_log.py` | audit |

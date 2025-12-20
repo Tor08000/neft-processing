@@ -28,6 +28,8 @@ from .posting_batch import PostingBatch  # noqa: F401
 from .contract_limits import (  # noqa: F401
     TariffPlan,
     TariffPrice,
+    ClientTariff,
+    CommissionRule,
     LimitConfig,
     LimitConfigScope,
     LimitType,
@@ -62,6 +64,8 @@ __all__ = [
     "PostingBatch",
     "TariffPlan",
     "TariffPrice",
+    "ClientTariff",
+    "CommissionRule",
     "LimitConfig",
     "LimitConfigScope",
     "LimitType",
