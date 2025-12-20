@@ -177,7 +177,8 @@ def upgrade() -> None:
     limit_rules_exists = _table_exists(inspector, "limits_rules")
 
     if not limit_rules_exists:
-        op.create_table(
+        create_table_if_not_exists(
+            bind,
             "limits_rules",
             sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
             sa.Column("phase", sa.String(length=16), nullable=False, server_default="AUTH"),
@@ -200,6 +201,7 @@ def upgrade() -> None:
                 server_default=sa.text("NOW()"),
                 nullable=False,
             ),
+            schema=SCHEMA,
         )
         limit_rules_exists = True
         inspector = inspect(bind)

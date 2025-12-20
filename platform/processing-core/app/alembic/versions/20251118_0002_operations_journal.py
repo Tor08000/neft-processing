@@ -2,6 +2,7 @@
 
 from alembic import op
 
+from app.alembic.utils import index_exists
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -16,11 +17,18 @@ def upgrade():
     schema = schema_resolution.schema
     print(f"[{revision}] {schema_resolution.line()}")
 
-    op.create_index("ix_operations_card_id", "operations", ["card_id"], schema=schema)
-    op.create_index("ix_operations_client_id", "operations", ["client_id"], schema=schema)
-    op.create_index("ix_operations_merchant_id", "operations", ["merchant_id"], schema=schema)
-    op.create_index("ix_operations_terminal_id", "operations", ["terminal_id"], schema=schema)
-    op.create_index("ix_operations_created_at", "operations", ["created_at"], schema=schema)
+    bind = op.get_bind()
+
+    if not index_exists(bind, "ix_operations_card_id", schema=schema):
+        op.create_index("ix_operations_card_id", "operations", ["card_id"], schema=schema)
+    if not index_exists(bind, "ix_operations_client_id", schema=schema):
+        op.create_index("ix_operations_client_id", "operations", ["client_id"], schema=schema)
+    if not index_exists(bind, "ix_operations_merchant_id", schema=schema):
+        op.create_index("ix_operations_merchant_id", "operations", ["merchant_id"], schema=schema)
+    if not index_exists(bind, "ix_operations_terminal_id", schema=schema):
+        op.create_index("ix_operations_terminal_id", "operations", ["terminal_id"], schema=schema)
+    if not index_exists(bind, "ix_operations_created_at", schema=schema):
+        op.create_index("ix_operations_created_at", "operations", ["created_at"], schema=schema)
 
 
 def downgrade():

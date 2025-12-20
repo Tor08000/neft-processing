@@ -8,7 +8,7 @@ Create Date: 2026-11-01 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import ensure_pg_enum, safe_enum
+from app.alembic.utils import constraint_exists, ensure_pg_enum, index_exists, safe_enum
 from app.models.operation import ProductType
 from app.db.schema import resolve_db_schema
 
@@ -109,42 +109,54 @@ def upgrade() -> None:
         ),
     )
 
-    op.create_index(
-        "ix_billing_summary_billing_date",
-        "billing_summary",
-        ["billing_date"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_billing_summary_merchant_id",
-        "billing_summary",
-        ["merchant_id"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_billing_summary_client_id",
-        "billing_summary",
-        ["client_id"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_billing_summary_product_type",
-        "billing_summary",
-        ["product_type"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_billing_summary_currency",
-        "billing_summary",
-        ["currency"],
-        unique=False,
-    )
+    if not index_exists(bind, "ix_billing_summary_billing_date", schema=SCHEMA):
+        op.create_index(
+            "ix_billing_summary_billing_date",
+            "billing_summary",
+            ["billing_date"],
+            unique=False,
+            schema=SCHEMA,
+        )
+    if not index_exists(bind, "ix_billing_summary_merchant_id", schema=SCHEMA):
+        op.create_index(
+            "ix_billing_summary_merchant_id",
+            "billing_summary",
+            ["merchant_id"],
+            unique=False,
+            schema=SCHEMA,
+        )
+    if not index_exists(bind, "ix_billing_summary_client_id", schema=SCHEMA):
+        op.create_index(
+            "ix_billing_summary_client_id",
+            "billing_summary",
+            ["client_id"],
+            unique=False,
+            schema=SCHEMA,
+        )
+    if not index_exists(bind, "ix_billing_summary_product_type", schema=SCHEMA):
+        op.create_index(
+            "ix_billing_summary_product_type",
+            "billing_summary",
+            ["product_type"],
+            unique=False,
+            schema=SCHEMA,
+        )
+    if not index_exists(bind, "ix_billing_summary_currency", schema=SCHEMA):
+        op.create_index(
+            "ix_billing_summary_currency",
+            "billing_summary",
+            ["currency"],
+            unique=False,
+            schema=SCHEMA,
+        )
 
-    op.create_unique_constraint(
-        "uq_billing_summary_unique_scope",
-        "billing_summary",
-        ["billing_date", "merchant_id", "client_id", "product_type", "currency"],
-    )
+    if not constraint_exists(bind, "billing_summary", "uq_billing_summary_unique_scope", schema=SCHEMA):
+        op.create_unique_constraint(
+            "uq_billing_summary_unique_scope",
+            "billing_summary",
+            ["billing_date", "merchant_id", "client_id", "product_type", "currency"],
+            schema=SCHEMA,
+        )
 
 
 def downgrade() -> None:

@@ -78,7 +78,7 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    if not accounts_exists:
+    if not table_exists(bind, "accounts", schema=SCHEMA):
         op.create_table(
             "accounts",
             sa.Column(
@@ -161,7 +161,7 @@ def upgrade() -> None:
         column_exists(bind, "ledger_entries", "posting_id", schema=SCHEMA) if ledger_entries_exists else False
     )
 
-    if not ledger_entries_exists:
+    if not table_exists(bind, "ledger_entries", schema=SCHEMA):
         op.create_table(
             "ledger_entries",
             sa.Column(
@@ -253,40 +253,28 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
 
-    drop_index_if_exists(
-        bind, "ix_ledger_entries_posted_at", table_name="ledger_entries", schema=SCHEMA
-    )
-    drop_index_if_exists(
-        bind, "ix_ledger_entries_operation_id", table_name="ledger_entries", schema=SCHEMA
-    )
-    drop_index_if_exists(
-        bind, "ix_ledger_entries_account_id", table_name="ledger_entries", schema=SCHEMA
-    )
-    drop_index_if_exists(
-        bind, "ix_ledger_entries_posting_id", table_name="ledger_entries", schema=SCHEMA
-    )
-    drop_index_if_exists(
-        bind, "ix_ledger_entries_account_operation", table_name="ledger_entries", schema=SCHEMA
-    )
+    drop_index_if_exists(bind, "ix_ledger_entries_posted_at", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_ledger_entries_operation_id", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_ledger_entries_account_id", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_ledger_entries_posting_id", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_ledger_entries_account_operation", schema=SCHEMA)
     if table_exists(bind, "ledger_entries", schema=SCHEMA):
         op.drop_table("ledger_entries", schema=SCHEMA)
 
-    drop_index_if_exists(
-        bind, "ix_posting_batches_idempotency_key", table_name="posting_batches", schema=SCHEMA
-    )
-    drop_index_if_exists(bind, "ix_posting_batches_operation_id", table_name="posting_batches", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_posting_batches_idempotency_key", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_posting_batches_operation_id", schema=SCHEMA)
     if table_exists(bind, "posting_batches", schema=SCHEMA):
         op.drop_table("posting_batches", schema=SCHEMA)
 
     if table_exists(bind, "account_balances", schema=SCHEMA):
         op.drop_table("account_balances", schema=SCHEMA)
 
-    drop_index_if_exists(bind, "ix_accounts_owner_id", table_name="accounts", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_accounts_owner_type", table_name="accounts", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_accounts_status", table_name="accounts", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_accounts_type", table_name="accounts", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_accounts_card_id", table_name="accounts", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_accounts_client_id", table_name="accounts", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_owner_id", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_owner_type", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_status", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_type", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_card_id", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_client_id", schema=SCHEMA)
     if table_exists(bind, "accounts", schema=SCHEMA):
         op.drop_table("accounts", schema=SCHEMA)
 

@@ -260,10 +260,19 @@ def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SC
 # Safe creation helpers
 
 def create_table_if_not_exists(
-    bind: Connection, table_name: str, *columns, schema: str = DB_SCHEMA, **kwargs
+    bind: Connection,
+    table_name: str,
+    *columns,
+    schema: str = DB_SCHEMA,
+    create_fn=None,
+    **kwargs,
 ) -> None:
     if table_exists(bind, table_name, schema=schema):
         logger.info("Table %s.%s already exists, skipping", schema, table_name)
+        return
+
+    if create_fn is not None:
+        create_fn()
         return
 
     op.create_table(table_name, *columns, schema=schema, **kwargs)
