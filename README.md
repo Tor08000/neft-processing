@@ -205,6 +205,15 @@ curl -X POST "http://127.0.0.1/api/core/admin/billing/finalize-day?date=2025-12-
 curl -X POST "http://127.0.0.1/api/core/admin/clearing/run-daily?date=2025-12-19"
 curl -X POST "http://127.0.0.1/api/core/admin/billing/invoices/run-monthly?month=2025-12"
 ```
+Ручной billing run (MVP) через admin API:
+
+```bash
+curl -X POST "http://localhost/api/core/api/v1/admin/billing/run" \
+  -H "Content-Type: application/json" \
+  -d '{"period_type":"ADHOC","start_at":"2025-12-01T00:00:00Z","end_at":"2025-12-31T23:59:59Z","tz":"UTC","client_id":null}'
+```
+
+Статусные заметки и контрольный список: `docs/status/STATUS_20251220.md`.
 
 Smoke/тесты (Windows CMD):
 
