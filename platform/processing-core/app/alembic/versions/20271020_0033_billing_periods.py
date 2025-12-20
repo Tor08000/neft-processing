@@ -1,7 +1,7 @@
 """Billing periods anchor for ledger-driven billing
 
 Revision ID: 20271020_0033_billing_periods
-Revises: 20271015_0032_operational_scenarios_v1
+Revises: 20270901_0031_tariff_commission_rules
 Create Date: 2027-10-20 00:00:00
 """
 
@@ -23,7 +23,7 @@ from app.db.types import GUID
 
 # revision identifiers, used by Alembic.
 revision = "20271020_0033_billing_periods"
-down_revision = "20271015_0032_operational_scenarios_v1"
+down_revision = "20270901_0031_tariff_commission_rules"
 branch_labels = None
 depends_on = None
 

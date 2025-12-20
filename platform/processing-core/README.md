@@ -35,6 +35,7 @@ docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c ./app/alembi
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c ./app/alembic.ini upgrade head"
 docker compose exec postgres psql -U neft -d neft -c "select to_regclass('public.billing_periods');"
 ```
+Expected result: `heads` returns exactly one revision (a single Alembic head).
 
 Run focused tests:
 
