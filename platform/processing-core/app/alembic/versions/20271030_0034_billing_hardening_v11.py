@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.sql import text
 
 from app.db.types import GUID
@@ -28,13 +29,13 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 
-recon_status_enum = sa.Enum(
+recon_status_enum = ENUM(
     BillingReconciliationStatus,
     name="billing_reconciliation_status",
     schema=SCHEMA,
     create_type=False,
 )
-recon_verdict_enum = sa.Enum(
+recon_verdict_enum = ENUM(
     BillingReconciliationVerdict,
     name="billing_reconciliation_verdict",
     schema=SCHEMA,
