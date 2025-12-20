@@ -13,6 +13,9 @@ billing_summary
 clearing
 clearing_batch
 clearing_batch_operation
+settlements
+payout_orders
+payout_events
 client_cards
 client_operations
 client_limits

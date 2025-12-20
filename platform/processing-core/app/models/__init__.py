@@ -15,6 +15,9 @@ from .clearing import Clearing  # noqa: F401
 from .clearing_batch import ClearingBatch  # noqa: F401
 from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
 from .client_portal import ClientCard, ClientLimit, ClientOperation  # noqa: F401
+from .settlement import Settlement, SettlementStatus  # noqa: F401
+from .payout_order import PayoutOrder, PayoutOrderStatus  # noqa: F401
+from .payout_event import PayoutEvent  # noqa: F401
 from .partner import Partner  # noqa: F401
 from .groups import (  # noqa: F401
     CardGroup,
@@ -70,6 +73,11 @@ __all__ = [
     "LimitConfigScope",
     "LimitType",
     "Partner",
+    "Settlement",
+    "SettlementStatus",
+    "PayoutOrder",
+    "PayoutOrderStatus",
+    "PayoutEvent",
     "ExternalRequestLog",
     "Invoice",
     "InvoiceLine",
