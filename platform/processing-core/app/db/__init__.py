@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from neft_shared.settings import get_settings
 
 from .schema import DB_SCHEMA, SCHEMA_RESOLUTION
+from .types import GUID, new_uuid_str
 
 settings = get_settings()
 
@@ -198,6 +199,7 @@ class _EngineProxy:
     def __call__(self) -> Engine:
         return get_engine()
 
+
     def __getattr__(self, item):  # pragma: no cover - passthrough helper
         return getattr(get_engine(), item)
 
@@ -213,3 +215,22 @@ class _SessionLocalProxy:
 # Backward-compatible lazy proxies: avoid engine creation at import-time
 engine = _EngineProxy()
 SessionLocal = _SessionLocalProxy()
+
+
+__all__ = [
+    "Base",
+    "GUID",
+    "new_uuid_str",
+    "DATABASE_URL",
+    "DB_SCHEMA",
+    "SCHEMA_RESOLUTION",
+    "get_db",
+    "get_engine",
+    "get_sessionmaker",
+    "init_db",
+    "make_engine",
+    "make_engine_kwargs",
+    "reset_engine",
+    "engine",
+    "SessionLocal",
+]
