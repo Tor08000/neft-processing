@@ -39,6 +39,15 @@ from .contract_limits import (  # noqa: F401
 )
 from .external_request_log import ExternalRequestLog  # noqa: F401
 from .invoice import Invoice, InvoiceLine, InvoiceStatus  # noqa: F401
+from .refund_request import RefundRequest, RefundRequestStatus, SettlementPolicy  # noqa: F401
+from .reversal import Reversal, ReversalStatus  # noqa: F401
+from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
+from .financial_adjustment import (
+    FinancialAdjustment,
+    FinancialAdjustmentKind,
+    FinancialAdjustmentStatus,
+    RelatedEntityType,
+)  # noqa: F401
 
 __all__ = [
     "Client",
@@ -82,4 +91,17 @@ __all__ = [
     "Invoice",
     "InvoiceLine",
     "InvoiceStatus",
+    "RefundRequest",
+    "RefundRequestStatus",
+    "SettlementPolicy",
+    "Reversal",
+    "ReversalStatus",
+    "Dispute",
+    "DisputeEvent",
+    "DisputeStatus",
+    "DisputeEventType",
+    "FinancialAdjustment",
+    "FinancialAdjustmentKind",
+    "FinancialAdjustmentStatus",
+    "RelatedEntityType",
 ]

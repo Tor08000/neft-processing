@@ -37,7 +37,12 @@ class BalanceService:
             .one()
         )
         amount = Decimal(entry.amount)
-        if posting_type in {PostingBatchType.AUTH, PostingBatchType.HOLD}:
+        if posting_type in {
+            PostingBatchType.AUTH,
+            PostingBatchType.HOLD,
+            PostingBatchType.DISPUTE_HOLD,
+            PostingBatchType.DISPUTE_RELEASE,
+        }:
             balance.hold_balance = Decimal(balance.hold_balance or 0) + (
                 amount if entry.direction == LedgerDirection.DEBIT else -amount
             )
