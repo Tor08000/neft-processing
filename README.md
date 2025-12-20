@@ -159,6 +159,36 @@ PY`.
 * Перезапуск воркеров при росте памяти: `docker compose restart workers`; параметр `CELERY_WORKER_MAX_TASKS_PER_CHILD` автоматически перезапускает процессы после 100 задач, что помогает сбрасывать утечки.
 * Доступ в Flower (внутри сети Docker): откройте `http://flower:5555` и используйте логин/пароль из `FLOWER_BASIC_AUTH`. Для смены пароля пропишите новое значение в `.env` и перезапустите `docker compose up -d flower`.
 
+## Billing / Clearing / Invoicing (jobs)
+
+Новые переменные окружения и флаги:
+
+* `NEFT_COMMISSION_RATE` — ставка комиссии платформы (по умолчанию 0.01).
+* `NEFT_BILLING_TZ` — часовой пояс биллинга (по умолчанию `UTC`).
+* `NEFT_BILLING_DAILY_ENABLED` — включить дневную агрегацию биллинга.
+* `NEFT_CLEARING_DAILY_ENABLED` — включить дневной клиринг.
+* `NEFT_INVOICE_MONTHLY_ENABLED` — включить генерацию ежемесячных счетов.
+* `NEFT_BILLING_FINALIZE_GRACE_HOURS` — сколько часов ожидать перед финализацией дня (late events), по умолчанию 12.
+* `NEFT_BILLING_DAILY_AT` / `NEFT_CLEARING_DAILY_AT` / `NEFT_INVOICE_MONTHLY_AT` — время запуска крон-задач (формат `HH:MM`).
+
+Ручные запуски (Windows CMD):
+
+```cmd
+docker compose up -d --build
+curl -X POST "http://127.0.0.1/api/core/admin/billing/run-daily?date=2025-12-19"
+curl -X POST "http://127.0.0.1/api/core/admin/billing/finalize-day?date=2025-12-19"
+curl -X POST "http://127.0.0.1/api/core/admin/clearing/run-daily?date=2025-12-19"
+curl -X POST "http://127.0.0.1/api/core/admin/billing/invoices/run-monthly?month=2025-12"
+```
+
+Smoke/тесты (Windows CMD):
+
+```cmd
+pytest -q
+pytest -q -m smoke
+python -m pytest -q tests\test_alembic_single_head.py
+```
+
 ## Общий Python-пакет `neft_shared`
 
 В каталоге `shared/python` расположен пакет с общими настройками и логированием.

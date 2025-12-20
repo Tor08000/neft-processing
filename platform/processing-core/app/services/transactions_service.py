@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from neft_shared.logging_setup import get_logger
 
 from app import services
+from app.services.commission import compute_posting_result
 from app.models.account import AccountType
 from app.services import risk_adapter
 from app.services.limits_service import check_contractual_limits
@@ -228,6 +229,34 @@ def _perform_refund_posting(db: Session, *, operation: Operation, amount: int) -
             str(client_account.id): str(client_entry.balance_after),
         },
     }
+
+
+def _merge_posting_snapshot(operation: Operation) -> None:
+    """Attach commission snapshot to posting_result if missing for immutable operations."""
+
+    required_keys = {
+        "currency",
+        "gross_amount",
+        "base_cost",
+        "platform_commission",
+        "commission_rate",
+        "computed_at",
+    }
+    if (
+        operation.posting_result
+        and operation.status
+        in {
+            OperationStatus.COMPLETED,
+            OperationStatus.REFUNDED,
+            OperationStatus.REVERSED,
+        }
+        and required_keys.issubset(operation.posting_result.keys())
+    ):
+        return
+
+    snapshot = compute_posting_result(operation)
+    merged = {**(operation.posting_result or {}), **snapshot}
+    operation.posting_result = merged
 
 
 def _validate_references(
@@ -641,6 +670,7 @@ def commit_operation(
     operation.status = OperationStatus.COMPLETED
     if quantity is not None:
         operation.quantity = quantity
+    _merge_posting_snapshot(operation)
     db.add(operation)
     db.commit()
     db.refresh(operation)
@@ -737,6 +767,7 @@ def refund_operation(
     posting_meta = _perform_refund_posting(db, operation=refund_op, amount=amount)
     refund_op.accounts = posting_meta.get("accounts")
     refund_op.posting_result = posting_meta
+    _merge_posting_snapshot(refund_op)
     db.add(refund_op)
     db.commit()
     db.refresh(refund_op)

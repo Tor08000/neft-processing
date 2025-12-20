@@ -15,7 +15,10 @@ from app.services.clearing import (
     list_batches,
     mark_batch_confirmed,
     mark_batch_sent,
+    mark_batch_failed,
+    retry_batch,
 )
+from app.services.clearing_daily import run_clearing_daily
 
 router = APIRouter(prefix="/clearing", tags=["admin"])
 
@@ -59,6 +62,16 @@ def get_clearing_batch_operations(
     return [ClearingBatchOperationOut.model_validate(op) for op in operations]
 
 
+@router.post("/run-daily")
+def run_daily_clearing(
+    clearing_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    batches = run_clearing_daily(clearing_date, session=db)
+    resolved_date = clearing_date or (batches[0].date_from if batches else None)
+    return {"created": [batch.id for batch in batches], "clearing_date": str(resolved_date) if resolved_date else None}
+
+
 @router.post("/batches/build", response_model=ClearingBatchOut)
 def build_batch(body: BuildBatchRequest = Body(...), db: Session = Depends(get_db)) -> ClearingBatchOut:
     batch = build_clearing_batch_for_period(
@@ -75,8 +88,9 @@ def build_batch(body: BuildBatchRequest = Body(...), db: Session = Depends(get_d
 def mark_batch_sent_endpoint(batch_id: str, db: Session = Depends(get_db)) -> ClearingBatchOut:
     try:
         batch = mark_batch_sent(db, batch_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="batch not found")
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
     return ClearingBatchOut.model_validate(batch)
 
 
@@ -84,6 +98,27 @@ def mark_batch_sent_endpoint(batch_id: str, db: Session = Depends(get_db)) -> Cl
 def mark_batch_confirmed_endpoint(batch_id: str, db: Session = Depends(get_db)) -> ClearingBatchOut:
     try:
         batch = mark_batch_confirmed(db, batch_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="batch not found")
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+    return ClearingBatchOut.model_validate(batch)
+
+
+@router.post("/batches/{batch_id}/mark-failed", response_model=ClearingBatchOut)
+def mark_batch_failed_endpoint(batch_id: str, db: Session = Depends(get_db)) -> ClearingBatchOut:
+    try:
+        batch = mark_batch_failed(db, batch_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+    return ClearingBatchOut.model_validate(batch)
+
+
+@router.post("/batches/{batch_id}/retry", response_model=ClearingBatchOut)
+def retry_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> ClearingBatchOut:
+    try:
+        batch = retry_batch(db, batch_id)
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
     return ClearingBatchOut.model_validate(batch)

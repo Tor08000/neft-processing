@@ -1,6 +1,7 @@
 from uuid import uuid4
 
-from sqlalchemy import Column, Date, DateTime, Integer, String, UniqueConstraint
+from enum import Enum
+from sqlalchemy import Column, Date, DateTime, Integer, String, UniqueConstraint, Index
 from sqlalchemy.sql import func
 from sqlalchemy.types import BigInteger, Numeric
 from sqlalchemy import Enum as SAEnum
@@ -8,6 +9,11 @@ from sqlalchemy.orm import synonym
 
 from app.db import Base
 from app.models.operation import ProductType
+
+
+class BillingSummaryStatus(str, Enum):
+    PENDING = "PENDING"
+    FINALIZED = "FINALIZED"
 
 
 class BillingSummary(Base):
@@ -21,6 +27,7 @@ class BillingSummary(Base):
             "currency",
             name="uq_billing_summary_unique_scope",
         ),
+        Index("ix_billing_summary_status_billing_date", "status", "billing_date"),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -34,8 +41,14 @@ class BillingSummary(Base):
     total_quantity = Column(Numeric(18, 3), nullable=True)
     operations_count = Column(Integer, nullable=False, default=0)
     commission_amount = Column(BigInteger, nullable=False, default=0)
-    status = Column(String(32), nullable=True)
-    generated_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(
+        SAEnum(BillingSummaryStatus),
+        nullable=False,
+        server_default=BillingSummaryStatus.PENDING.value,
+        default=BillingSummaryStatus.PENDING,
+        index=True,
+    )
+    generated_at = Column(DateTime(timezone=True), nullable=True, server_default=func.now())
     finalized_at = Column(DateTime(timezone=True), nullable=True)
     hash = Column(String(128), nullable=True)
 

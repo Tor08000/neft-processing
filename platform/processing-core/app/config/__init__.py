@@ -2,6 +2,7 @@ from importlib import import_module
 from typing import Type
 
 from .base import BaseConfig
+from neft_shared.settings import Settings, get_settings
 
 
 def get_config() -> BaseConfig:
@@ -14,4 +15,6 @@ def get_config() -> BaseConfig:
     except Exception:
         return BaseConfig()
 
-__all__ = ["get_config", "BaseConfig"]
+settings: Settings = get_settings()
+
+__all__ = ["get_config", "BaseConfig", "settings", "Settings"]
