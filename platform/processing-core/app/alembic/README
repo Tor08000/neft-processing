@@ -16,6 +16,13 @@ rules for PostgreSQL migrations:
   `op.create_unique_constraint`, `op.create_foreign_key`, and similar helpers.
 * **Types/enums** — verify existence through `pg_catalog` before creation.
 
+Enum policy
+-----------
+❗ RULE: PostgreSQL ENUM НИКОГДА не создаётся через SQLAlchemy Enum. Всегда создавайте
+типы через `ensure_pg_enum(...)` и используйте `create_type=False` (например, через
+`safe_enum`/`pg_enum_or_string`) в схемах, чтобы `CREATE TABLE` не триггерил
+`CREATE TYPE`.
+
 Tolerant migrations
 -------------------
 The following migrations are verified to be bootstrap-compatible under this

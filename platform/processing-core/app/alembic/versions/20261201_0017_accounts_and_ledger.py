@@ -13,8 +13,8 @@ from app.alembic.utils import (
     column_exists,
     create_index_if_not_exists,
     drop_index_if_exists,
+    pg_enum_or_string,
     pg_ensure_enum,
-    safe_enum,
     table_exists,
 )
 from app.db.types import GUID
@@ -38,45 +38,6 @@ POSTING_BATCH_TYPE_VALUES = ["AUTH", "HOLD", "COMMIT", "CAPTURE", "REFUND", "REV
 POSTING_BATCH_STATUS_VALUES = ["APPLIED", "REVERSED"]
 
 
-def _account_type_enum(bind):
-    if bind.dialect.name == "postgresql":
-        return postgresql.ENUM(
-            *ACCOUNT_TYPE_VALUES, name="accounttype", create_type=False
-        )
-
-    return sa.Enum(
-        *ACCOUNT_TYPE_VALUES,
-        name="accounttype",
-        native_enum=False,
-    )
-
-
-def _account_status_enum(bind):
-    if bind.dialect.name == "postgresql":
-        return postgresql.ENUM(
-            *ACCOUNT_STATUS_VALUES, name="accountstatus", create_type=False
-        )
-
-    return sa.Enum(
-        *ACCOUNT_STATUS_VALUES,
-        name="accountstatus",
-        native_enum=False,
-    )
-
-
-def _ledger_direction_enum(bind):
-    if bind.dialect.name == "postgresql":
-        return postgresql.ENUM(
-            *LEDGER_DIRECTION_VALUES, name="ledgerdirection", create_type=False
-        )
-
-    return sa.Enum(
-        *LEDGER_DIRECTION_VALUES,
-        name="ledgerdirection",
-        native_enum=False,
-    )
-
-
 def _uuid_type(bind):
     if bind.dialect.name == "postgresql":
         return sa.dialects.postgresql.UUID(as_uuid=True)
@@ -85,20 +46,17 @@ def _uuid_type(bind):
 
 def upgrade() -> None:
     bind = op.get_bind()
-    is_pg = bind.dialect.name == "postgresql"
+    pg_ensure_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
+    pg_ensure_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
+    pg_ensure_enum(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
+    pg_ensure_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
+    pg_ensure_enum(bind, "postingbatchtype", POSTING_BATCH_TYPE_VALUES, schema=SCHEMA)
+    pg_ensure_enum(bind, "postingbatchstatus", POSTING_BATCH_STATUS_VALUES, schema=SCHEMA)
 
-    if is_pg:
-        pg_ensure_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
-        pg_ensure_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
-        pg_ensure_enum(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
-        pg_ensure_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
-        pg_ensure_enum(bind, "postingbatchtype", POSTING_BATCH_TYPE_VALUES, schema=SCHEMA)
-        pg_ensure_enum(bind, "postingbatchstatus", POSTING_BATCH_STATUS_VALUES, schema=SCHEMA)
-
-    account_type_enum = _account_type_enum(bind)
-    account_status_enum = _account_status_enum(bind)
-    account_owner_enum = safe_enum(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
-    ledger_direction_enum = _ledger_direction_enum(bind)
+    account_type_enum = pg_enum_or_string(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
+    account_status_enum = pg_enum_or_string(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
+    account_owner_enum = pg_enum_or_string(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
+    ledger_direction_enum = pg_enum_or_string(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
     json_variant = sa.JSON().with_variant(postgresql.JSONB, "postgresql")
     accounts_exists = table_exists(bind, "accounts", schema=SCHEMA)
     owner_type_exists = (
@@ -106,26 +64,18 @@ def upgrade() -> None:
     )
     owner_id_exists = column_exists(bind, "accounts", "owner_id", schema=SCHEMA) if accounts_exists else False
 
-    posting_batch_type_enum = (
-        postgresql.ENUM(
-            *POSTING_BATCH_TYPE_VALUES,
-            name="postingbatchtype",
-            schema=SCHEMA,
-            create_type=False,
-        )
-        if is_pg
-        else sa.Enum(*POSTING_BATCH_TYPE_VALUES, name="postingbatchtype", native_enum=False)
+    posting_batch_type_enum = pg_enum_or_string(
+        bind,
+        "postingbatchtype",
+        POSTING_BATCH_TYPE_VALUES,
+        schema=SCHEMA,
     )
 
-    posting_batch_status_enum = (
-        postgresql.ENUM(
-            *POSTING_BATCH_STATUS_VALUES,
-            name="postingbatchstatus",
-            schema=SCHEMA,
-            create_type=False,
-        )
-        if is_pg
-        else sa.Enum(*POSTING_BATCH_STATUS_VALUES, name="postingbatchstatus", native_enum=False)
+    posting_batch_status_enum = pg_enum_or_string(
+        bind,
+        "postingbatchstatus",
+        POSTING_BATCH_STATUS_VALUES,
+        schema=SCHEMA,
     )
 
     if not accounts_exists:
@@ -341,5 +291,6 @@ def downgrade() -> None:
         op.drop_table("accounts", schema=SCHEMA)
 
     if bind.dialect.name == "postgresql":
+        schema_name = SCHEMA or "public"
         for enum_name in ("postingbatchstatus", "postingbatchtype", "ledgerdirection", "accountstatus", "accounttype", "accountownertype"):
-            bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{SCHEMA}".{enum_name}')
+            bind.exec_driver_sql(f'DROP TYPE IF EXISTS \"{schema_name}\".{enum_name}')

@@ -15,7 +15,8 @@ from app.alembic.helpers import (
     create_table_if_not_exists,
     drop_table_if_exists,
     ensure_pg_enum,
-    safe_enum,
+    ensure_pg_enum_value,
+    pg_enum_or_string,
 )
 from app.db.schema import resolve_db_schema
 
@@ -63,28 +64,17 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "financial_adjustment_kind", ADJUSTMENT_KIND, schema=SCHEMA)
     ensure_pg_enum(bind, "financial_adjustment_related", ADJUSTMENT_RELATED, schema=SCHEMA)
     ensure_pg_enum(bind, "financial_adjustment_status", ADJUSTMENT_STATUS, schema=SCHEMA)
-    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
-        for value in POSTING_BATCH_NEW_VALUES:
-            bind.execute(
-                sa.text(
-                    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
-                    "JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = :name AND e.enumlabel = :value "
-                    "AND n.nspname = :schema) THEN "
-                    "ALTER TYPE {schema}.postingbatchtype ADD VALUE :value; END IF; END $$;".format(
-                        schema=SCHEMA or "public"
-                    )
-                ),
-                {"name": "postingbatchtype", "value": value, "schema": SCHEMA or "public"},
-            )
+    for value in POSTING_BATCH_NEW_VALUES:
+        ensure_pg_enum_value(bind, "postingbatchtype", value, schema=SCHEMA)
 
-    refund_status = safe_enum(bind, "refund_request_status", REFUND_STATUS, schema=SCHEMA)
-    settlement_policy = safe_enum(bind, "settlement_policy", SETTLEMENT_POLICY, schema=SCHEMA)
-    reversal_status = safe_enum(bind, "reversal_status", REVERSAL_STATUS, schema=SCHEMA)
-    dispute_status = safe_enum(bind, "dispute_status", DISPUTE_STATUS, schema=SCHEMA)
-    dispute_event_type = safe_enum(bind, "dispute_event_type", DISPUTE_EVENT_TYPES, schema=SCHEMA)
-    adjustment_kind = safe_enum(bind, "financial_adjustment_kind", ADJUSTMENT_KIND, schema=SCHEMA)
-    adjustment_related = safe_enum(bind, "financial_adjustment_related", ADJUSTMENT_RELATED, schema=SCHEMA)
-    adjustment_status = safe_enum(bind, "financial_adjustment_status", ADJUSTMENT_STATUS, schema=SCHEMA)
+    refund_status = pg_enum_or_string(bind, "refund_request_status", REFUND_STATUS, schema=SCHEMA)
+    settlement_policy = pg_enum_or_string(bind, "settlement_policy", SETTLEMENT_POLICY, schema=SCHEMA)
+    reversal_status = pg_enum_or_string(bind, "reversal_status", REVERSAL_STATUS, schema=SCHEMA)
+    dispute_status = pg_enum_or_string(bind, "dispute_status", DISPUTE_STATUS, schema=SCHEMA)
+    dispute_event_type = pg_enum_or_string(bind, "dispute_event_type", DISPUTE_EVENT_TYPES, schema=SCHEMA)
+    adjustment_kind = pg_enum_or_string(bind, "financial_adjustment_kind", ADJUSTMENT_KIND, schema=SCHEMA)
+    adjustment_related = pg_enum_or_string(bind, "financial_adjustment_related", ADJUSTMENT_RELATED, schema=SCHEMA)
+    adjustment_status = pg_enum_or_string(bind, "financial_adjustment_status", ADJUSTMENT_STATUS, schema=SCHEMA)
 
     operation_fk = "operations.id" if not SCHEMA else f"{SCHEMA}.operations.id"
     dispute_fk = "disputes.id" if not SCHEMA else f"{SCHEMA}.disputes.id"
