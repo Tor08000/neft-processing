@@ -20,6 +20,7 @@ class AccountsRepository:
         card_id: str | None = None,
         tariff_id: str | None = None,
         status: AccountStatus = AccountStatus.ACTIVE,
+        auto_commit: bool = True,
     ) -> Account:
         """Fetch existing account by unique tuple or create a new one."""
 
@@ -53,8 +54,11 @@ class AccountsRepository:
             tariff_id=tariff_id,
         )
         self.db.add(account)
-        self.db.commit()
-        self.db.refresh(account)
+        if auto_commit:
+            self.db.commit()
+            self.db.refresh(account)
+        else:
+            self.db.flush()
         return account
 
     def set_status(self, account_id: int, status: AccountStatus) -> Account:

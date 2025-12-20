@@ -27,6 +27,25 @@ class Settings:
     RISK_RULES_SOURCE: str = os.getenv("RISK_RULES_SOURCE", "CODE").upper()
     RISK_EXPERIMENTAL_RULE_SET: str = os.getenv("RISK_EXPERIMENTAL_RULE_SET", "")
 
+    # Billing & clearing configuration
+    NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))
+    NEFT_BILLING_TZ: str = os.getenv("NEFT_BILLING_TZ", "UTC")
+    NEFT_BILLING_DAILY_ENABLED: bool = os.getenv("NEFT_BILLING_DAILY_ENABLED", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    NEFT_CLEARING_DAILY_ENABLED: bool = os.getenv(
+        "NEFT_CLEARING_DAILY_ENABLED", "true"
+    ).lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    NEFT_INVOICE_MONTHLY_ENABLED: bool = os.getenv(
+        "NEFT_INVOICE_MONTHLY_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
+
     @property
     def redis_dsn(self) -> str:
         """Совместимость с более старым кодом, ожидающим REDIS_DSN."""
