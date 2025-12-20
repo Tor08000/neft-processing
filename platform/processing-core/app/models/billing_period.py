@@ -12,6 +12,7 @@ from app.db.types import GUID, new_uuid_str
 class BillingPeriodType(str, Enum):
     DAILY = "DAILY"
     MONTHLY = "MONTHLY"
+    ADHOC = "ADHOC"
 
 
 class BillingPeriodStatus(str, Enum):
