@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models.billing_period import BillingPeriod, BillingPeriodType
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 
@@ -124,3 +124,28 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
         ).delete(synchronize_session=False)
         session.query(Operation).filter(Operation.client_id == client_id).delete(synchronize_session=False)
         session.commit()
+
+
+def test_billing_run_fails_on_locked_period(admin_client: TestClient, session: Session):
+    start_at = datetime(2025, 12, 1, tzinfo=timezone.utc)
+    end_at = start_at + timedelta(days=1)
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=start_at,
+        end_at=end_at,
+        tz="UTC",
+        status=BillingPeriodStatus.LOCKED,
+    )
+    session.add(period)
+    session.commit()
+
+    payload = {
+        "period_type": BillingPeriodType.ADHOC.value,
+        "start_at": start_at.isoformat(),
+        "end_at": end_at.isoformat(),
+        "tz": "UTC",
+        "client_id": None,
+    }
+
+    response = admin_client.post("/api/v1/admin/billing/run", json=payload)
+    assert response.status_code == 409
