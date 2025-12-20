@@ -17,6 +17,7 @@ from app.alembic.utils import (
     safe_enum,
     table_exists,
 )
+from app.db.types import GUID
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -103,6 +104,7 @@ def upgrade() -> None:
     owner_type_exists = (
         column_exists(bind, "accounts", "owner_type", schema=SCHEMA) if accounts_exists else False
     )
+    owner_id_exists = column_exists(bind, "accounts", "owner_id", schema=SCHEMA) if accounts_exists else False
 
     if not accounts_exists:
         op.create_table(
@@ -115,7 +117,7 @@ def upgrade() -> None:
             ),
             sa.Column("client_id", sa.String(length=64), nullable=False, index=True),
             sa.Column("owner_type", account_owner_enum, nullable=False, server_default="CLIENT"),
-            sa.Column("owner_id", sa.String(length=64), nullable=False, index=True),
+            sa.Column("owner_id", GUID(), nullable=True, index=True),
             sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=True),
             sa.Column("tariff_id", sa.String(length=64), nullable=True),
             sa.Column("currency", sa.String(length=8), nullable=False),
@@ -138,6 +140,7 @@ def upgrade() -> None:
         )
         accounts_exists = True
         owner_type_exists = True
+        owner_id_exists = True
     elif not owner_type_exists:
         op.add_column(
             "accounts",
@@ -147,12 +150,16 @@ def upgrade() -> None:
         op.execute(f"UPDATE {SCHEMA_PREFIX}accounts SET owner_type = 'CLIENT' WHERE owner_type IS NULL")
         op.alter_column("accounts", "owner_type", nullable=False, server_default="CLIENT", schema=SCHEMA)
         owner_type_exists = True
+    if accounts_exists and not owner_id_exists:
+        op.add_column("accounts", sa.Column("owner_id", GUID(), nullable=True), schema=SCHEMA)
+        owner_id_exists = True
     create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"], schema=SCHEMA)
     if owner_type_exists:
         create_index_if_not_exists(bind, "ix_accounts_owner_type", "accounts", ["owner_type"], schema=SCHEMA)
-    create_index_if_not_exists(bind, "ix_accounts_owner_id", "accounts", ["owner_id"], schema=SCHEMA)
+    if owner_id_exists:
+        create_index_if_not_exists(bind, "ix_accounts_owner_id", "accounts", ["owner_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"], schema=SCHEMA)
 
     if not table_exists(bind, "account_balances", schema=SCHEMA):

@@ -130,6 +130,7 @@ def test_upgrade_idempotent(connection: DummyConnection):
     migration.upgrade()
 
     assert connection.tables == {"accounts", "account_balances", "ledger_entries", "posting_batches"}
+    assert connection.columns["accounts"] >= {"owner_type", "owner_id"}
     assert connection.types == {
         "accounttype",
         "accountstatus",
@@ -178,3 +179,22 @@ def test_upgrade_adds_owner_type_when_missing(connection: DummyConnection):
     assert "ix_accounts_owner_type" in connection.indexes
     assert indexes_before == connection.indexes
     assert altered_before == len(connection.altered_columns)
+
+
+def test_upgrade_adds_owner_id_when_missing(connection: DummyConnection):
+    connection.tables.update({"accounts", "account_balances", "ledger_entries"})
+    connection.columns["accounts"].update(
+        ["id", "client_id", "card_id", "tariff_id", "currency", "type", "status", "created_at", "updated_at", "owner_type"]
+    )
+
+    migration.upgrade()
+
+    assert "owner_id" in connection.columns["accounts"]
+    assert "ix_accounts_owner_id" in connection.indexes
+
+    indexes_before = set(connection.indexes)
+    connection.columns["accounts"].add("owner_id")
+
+    migration.upgrade()
+
+    assert indexes_before == connection.indexes
