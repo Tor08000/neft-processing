@@ -98,11 +98,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    drop_index_if_exists(
-        bind, "ix_risk_rule_audits_performed_at", table_name="risk_rule_audits", schema=SCHEMA
-    )
-    drop_index_if_exists(bind, "ix_risk_rule_audits_action", table_name="risk_rule_audits", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_risk_rule_audits_rule_id", table_name="risk_rule_audits", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_risk_rule_audits_performed_at", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_risk_rule_audits_action", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_risk_rule_audits_rule_id", schema=SCHEMA)
     if table_exists(bind, "risk_rule_audits", schema=SCHEMA):
         op.drop_table("risk_rule_audits", schema=SCHEMA)
     risk_rule_audit_action_enum.drop(bind, checkfirst=True)

@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.helpers import DB_SCHEMA, ensure_pg_enum, safe_enum
+from app.alembic.helpers import DB_SCHEMA, create_table_if_not_exists, ensure_pg_enum, safe_enum
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -73,7 +73,8 @@ def upgrade() -> None:
     json_type = _json_type(bind)
     uuid_type = _uuid_type(bind)
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "operations",
         sa.Column("operation_id", sa.String(length=64), primary_key=True, nullable=False),
         sa.Column(
@@ -110,7 +111,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "accounts",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
         sa.Column("client_id", uuid_type, nullable=False),
@@ -130,7 +132,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "account_balances",
         sa.Column(
             "account_id",
@@ -150,7 +153,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "ledger_entries",
         sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
         sa.Column("account_id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), nullable=False),
@@ -168,7 +172,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "limit_configs",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("scope", limit_config_scope_enum, nullable=False),

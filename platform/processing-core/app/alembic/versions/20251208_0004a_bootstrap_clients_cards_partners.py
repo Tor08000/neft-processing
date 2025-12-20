@@ -14,13 +14,17 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import create_index_if_not_exists, create_table_if_not_exists
+from app.alembic.utils import constraint_exists, create_index_if_not_exists, create_table_if_not_exists
+from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251208_0004a_bootstrap_clients_cards_partners"
 down_revision = "20251206_0004_operations_product_fields"
 branch_labels = None
 depends_on = None
+
+SCHEMA_RESOLUTION = resolve_db_schema()
+SCHEMA = SCHEMA_RESOLUTION.schema
 
 
 def _table_exists(inspector: sa.Inspector, table: str) -> bool:
@@ -69,7 +73,8 @@ def upgrade() -> None:
         )
         if "external_id" in missing_columns:
             op.add_column("clients", sa.Column("external_id", sa.String(), nullable=True))
-            op.create_unique_constraint("uq_clients_external_id", "clients", ["external_id"])
+            if not constraint_exists(bind, "clients", "uq_clients_external_id", schema=SCHEMA):
+                op.create_unique_constraint("uq_clients_external_id", "clients", ["external_id"], schema=SCHEMA)
         if "inn" in missing_columns:
             op.add_column("clients", sa.Column("inn", sa.String(), nullable=True))
         if "tariff_plan" in missing_columns:
