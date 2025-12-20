@@ -144,10 +144,7 @@ def upgrade() -> None:
             sa.Column("owner_type", account_owner_enum, nullable=True, server_default="CLIENT"),
             schema=SCHEMA,
         )
-        bind.exec_driver_sql(
-            f"UPDATE {SCHEMA_PREFIX}accounts SET owner_type = :default WHERE owner_type IS NULL",
-            {"default": "CLIENT"},
-        )
+        op.execute(f"UPDATE {SCHEMA_PREFIX}accounts SET owner_type = 'CLIENT' WHERE owner_type IS NULL")
         op.alter_column("accounts", "owner_type", nullable=False, server_default="CLIENT", schema=SCHEMA)
         owner_type_exists = True
     create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"], schema=SCHEMA)
