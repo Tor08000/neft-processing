@@ -12,12 +12,14 @@ from sqlalchemy import (
     ForeignKey,
     Numeric,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import BigInteger
 
 from app.db import Base
+from app.db.types import GUID
 
 
 class InvoiceStatus(str, Enum):
@@ -34,12 +36,21 @@ class Invoice(Base):
     """Client invoice aggregated for a billing period."""
 
     __tablename__ = "invoices"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id",
+            "billing_period_id",
+            "currency",
+            name="uq_invoice_scope",
+        ),
+    )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     client_id = Column(String(64), nullable=False, index=True)
     period_from = Column(Date, nullable=False, index=True)
     period_to = Column(Date, nullable=False, index=True)
     currency = Column(String(3), nullable=False)
+    billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=True, index=True)
 
     total_amount = Column(BigInteger, nullable=False, default=0)
     tax_amount = Column(BigInteger, nullable=False, default=0)
@@ -60,11 +71,18 @@ class InvoiceLine(Base):
     """Line item describing a single billed product or operation."""
 
     __tablename__ = "invoice_lines"
+    __table_args__ = (
+        UniqueConstraint(
+            "invoice_id",
+            "operation_id",
+            name="uq_invoice_line_operation_per_invoice",
+        ),
+    )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
 
-    operation_id = Column(String(128), nullable=True)
+    operation_id = Column(String(128), nullable=False)
     card_id = Column(String(64), nullable=True)
     product_id = Column(String(64), nullable=False)
 

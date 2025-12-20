@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import column_exists, ensure_pg_enum, safe_enum
+from app.alembic.utils import column_exists, ensure_pg_enum, index_exists, safe_enum
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -48,31 +48,6 @@ def table_exists(table_name: str, schema: str = SCHEMA) -> bool:
         {"name": _qualified(table_name, schema)},
     )
     return result.scalar() is not None
-
-
-def index_exists(index_name: str, schema: str = SCHEMA) -> bool:
-    bind = op.get_bind()
-    result = bind.execute(
-        sa.text("SELECT to_regclass(:name)"),
-        {"name": _qualified(index_name, schema)},
-    )
-    return result.scalar() is not None
-
-
-def constraint_exists(constraint_name: str, schema: str = SCHEMA) -> bool:
-    bind = op.get_bind()
-    result = bind.execute(
-        sa.text(
-            """
-            SELECT 1
-            FROM pg_constraint c
-            JOIN pg_namespace n ON n.oid = c.connamespace
-            WHERE n.nspname = :schema AND c.conname = :constraint_name
-            """
-        ),
-        {"schema": schema, "constraint_name": constraint_name},
-    ).first()
-    return result is not None
 
 
 def upgrade() -> None:
