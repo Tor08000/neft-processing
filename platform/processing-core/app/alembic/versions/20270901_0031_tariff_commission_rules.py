@@ -1,7 +1,7 @@
 """Add client tariffs and commission rules tables
 
 Revision ID: 20270901_0031_tariff_commission_rules
-Revises: 20270831_0030_billing_state_machine
+Revises: 20270901_0031_partner_settlements
 Create Date: 2027-09-01 00:31:00
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270901_0031_tariff_commission_rules"
-down_revision = "20270831_0030_billing_state_machine"
+down_revision = "20270901_0031_partner_settlements"
 branch_labels = None
 depends_on = None
 
