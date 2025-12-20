@@ -175,13 +175,16 @@ def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[s
     ensure_pg_enum(bind, type_name, values=values, schema=schema)
 
 
-def ensure_pg_enum_value(bind: Connection, enum_name: str, value: str, schema: str = DB_SCHEMA) -> None:
-    """Add a value to a PostgreSQL enum if it is missing."""
-
+def ensure_pg_enum_value(bind: Connection, enum_name: str, value: str, schema: str | None = DB_SCHEMA) -> None:
+    """Add a value to a PostgreSQL enum type if it's missing (idempotent).
+    Safe for repeated runs; no-op on non-PostgreSQL.
+    """
     if not is_postgres(bind):
         return
 
-    bind.execute(
+    schema = schema or "public"
+
+    stmt = (
         sa.text(
             """
             DO $$
@@ -191,21 +194,27 @@ def ensure_pg_enum_value(bind: Connection, enum_name: str, value: str, schema: s
                 FROM pg_enum e
                 JOIN pg_type t ON t.oid = e.enumtypid
                 JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE t.typname = :enum
-                  AND e.enumlabel = :value
-                  AND n.nspname = :schema
+                WHERE t.typname = :enum::text
+                  AND e.enumlabel = :value::text
+                  AND n.nspname = :schema::text
               )
               THEN
                 EXECUTE format(
                   'ALTER TYPE %I.%I ADD VALUE %L',
-                  :schema, :enum, :value
+                  :schema::text, :enum::text, :value::text
                 );
               END IF;
             END $$;
             """
-        ),
-        {"enum": enum_name, "value": value, "schema": schema or "public"},
+        )
+        .bindparams(
+            sa.bindparam("enum", type_=sa.String()),
+            sa.bindparam("value", type_=sa.String()),
+            sa.bindparam("schema", type_=sa.String()),
+        )
     )
+
+    bind.execute(stmt, {"enum": enum_name, "value": value, "schema": schema})
 
 
 def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: str = DB_SCHEMA):
