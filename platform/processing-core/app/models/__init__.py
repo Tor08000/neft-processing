@@ -22,8 +22,9 @@ from .groups import (  # noqa: F401
     ClientGroup,
     ClientGroupMember,
 )
-from .account import Account, AccountBalance  # noqa: F401
+from .account import Account, AccountBalance, AccountOwnerType  # noqa: F401
 from .ledger_entry import LedgerEntry  # noqa: F401
+from .posting_batch import PostingBatch  # noqa: F401
 from .contract_limits import (  # noqa: F401
     TariffPlan,
     TariffPrice,
@@ -55,8 +56,10 @@ __all__ = [
     "RiskRuleAuditAction",
     "RiskRuleVersion",
     "Account",
+    "AccountOwnerType",
     "AccountBalance",
     "LedgerEntry",
+    "PostingBatch",
     "TariffPlan",
     "TariffPrice",
     "LimitConfig",

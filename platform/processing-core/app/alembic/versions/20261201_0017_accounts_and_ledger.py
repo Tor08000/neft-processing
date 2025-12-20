@@ -27,8 +27,11 @@ SCHEMA_RESOLUTION = resolve_db_schema()
 SCHEMA = SCHEMA_RESOLUTION.schema
 
 ACCOUNT_TYPE_VALUES = ["CLIENT_MAIN", "CLIENT_CREDIT", "CARD_LIMIT", "TECHNICAL"]
+ACCOUNT_OWNER_TYPE_VALUES = ["CLIENT", "PARTNER", "PLATFORM"]
 ACCOUNT_STATUS_VALUES = ["ACTIVE", "FROZEN", "CLOSED"]
 LEDGER_DIRECTION_VALUES = ["DEBIT", "CREDIT"]
+POSTING_BATCH_TYPE_VALUES = ["AUTH", "HOLD", "COMMIT", "CAPTURE", "REFUND", "REVERSAL", "ADJUSTMENT"]
+POSTING_BATCH_STATUS_VALUES = ["APPLIED", "REVERSED"]
 
 
 def _account_type_enum(bind):
@@ -83,11 +86,20 @@ def upgrade() -> None:
     if is_pg:
         pg_ensure_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES, schema=SCHEMA)
         pg_ensure_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES, schema=SCHEMA)
+        pg_ensure_enum(bind, "accountownertype", ACCOUNT_OWNER_TYPE_VALUES, schema=SCHEMA)
         pg_ensure_enum(bind, "ledgerdirection", LEDGER_DIRECTION_VALUES, schema=SCHEMA)
+        pg_ensure_enum(bind, "postingbatchtype", POSTING_BATCH_TYPE_VALUES, schema=SCHEMA)
+        pg_ensure_enum(bind, "postingbatchstatus", POSTING_BATCH_STATUS_VALUES, schema=SCHEMA)
 
     account_type_enum = _account_type_enum(bind)
     account_status_enum = _account_status_enum(bind)
+    account_owner_enum = (
+        postgresql.ENUM(*ACCOUNT_OWNER_TYPE_VALUES, name="accountownertype", create_type=False)
+        if is_pg
+        else sa.Enum(*ACCOUNT_OWNER_TYPE_VALUES, name="accountownertype", native_enum=False)
+    )
     ledger_direction_enum = _ledger_direction_enum(bind)
+    json_variant = sa.JSON().with_variant(postgresql.JSONB, "postgresql")
 
     if not table_exists(bind, "accounts", schema=SCHEMA):
         op.create_table(
@@ -99,6 +111,8 @@ def upgrade() -> None:
                 autoincrement=True,
             ),
             sa.Column("client_id", sa.String(length=64), nullable=False, index=True),
+            sa.Column("owner_type", account_owner_enum, nullable=False, server_default="CLIENT"),
+            sa.Column("owner_id", sa.String(length=64), nullable=False, index=True),
             sa.Column("card_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.cards.id"), nullable=True),
             sa.Column("tariff_id", sa.String(length=64), nullable=True),
             sa.Column("currency", sa.String(length=8), nullable=False),
@@ -122,6 +136,8 @@ def upgrade() -> None:
     create_index_if_not_exists(bind, "ix_accounts_client_id", "accounts", ["client_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_card_id", "accounts", ["card_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_type", "accounts", ["type"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_accounts_owner_type", "accounts", ["owner_type"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_accounts_owner_id", "accounts", ["owner_id"], schema=SCHEMA)
     create_index_if_not_exists(bind, "ix_accounts_status", "accounts", ["status"], schema=SCHEMA)
 
     if not table_exists(bind, "account_balances", schema=SCHEMA):
@@ -135,6 +151,7 @@ def upgrade() -> None:
             ),
             sa.Column("current_balance", sa.Numeric(18, 4), nullable=False, server_default="0"),
             sa.Column("available_balance", sa.Numeric(18, 4), nullable=False, server_default="0"),
+            sa.Column("hold_balance", sa.Numeric(18, 4), nullable=False, server_default="0"),
             sa.Column(
                 "updated_at",
                 sa.DateTime(timezone=True),
@@ -154,6 +171,8 @@ def upgrade() -> None:
                 primary_key=True,
                 autoincrement=True,
             ),
+            sa.Column("entry_id", _uuid_type(bind), nullable=False, unique=True),
+            sa.Column("posting_id", _uuid_type(bind), nullable=False),
             sa.Column(
                 "account_id",
                 sa.BigInteger().with_variant(sa.Integer, "sqlite"),
@@ -169,6 +188,7 @@ def upgrade() -> None:
             sa.Column("direction", ledger_direction_enum, nullable=False),
             sa.Column("amount", sa.Numeric(18, 4), nullable=False),
             sa.Column("currency", sa.String(length=8), nullable=False),
+            sa.Column("balance_before", sa.Numeric(18, 4), nullable=True),
             sa.Column("balance_after", sa.Numeric(18, 4), nullable=True),
             sa.Column(
                 "posted_at",
@@ -177,13 +197,59 @@ def upgrade() -> None:
                 nullable=False,
             ),
             sa.Column("value_date", sa.Date(), nullable=True),
+            sa.Column("metadata", json_variant, nullable=True),
             schema=SCHEMA,
         )
     create_index_if_not_exists(bind, "ix_ledger_entries_account_id", "ledger_entries", ["account_id"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_ledger_entries_posting_id", "ledger_entries", ["posting_id"], schema=SCHEMA)
     create_index_if_not_exists(
         bind, "ix_ledger_entries_operation_id", "ledger_entries", ["operation_id"], schema=SCHEMA
     )
     create_index_if_not_exists(bind, "ix_ledger_entries_posted_at", "ledger_entries", ["posted_at"], schema=SCHEMA)
+    create_index_if_not_exists(
+        bind,
+        "ix_ledger_entries_account_operation",
+        "ledger_entries",
+        ["account_id", "operation_id"],
+        schema=SCHEMA,
+    )
+
+    if not table_exists(bind, "posting_batches", schema=SCHEMA):
+        op.create_table(
+            "posting_batches",
+            sa.Column("id", _uuid_type(bind), primary_key=True, nullable=False),
+            sa.Column("operation_id", _uuid_type(bind), nullable=True),
+            sa.Column(
+                "posting_type",
+                sa.Enum(
+                    "AUTH",
+                    "HOLD",
+                    "COMMIT",
+                    "CAPTURE",
+                    "REFUND",
+                    "REVERSAL",
+                    "ADJUSTMENT",
+                    name="postingbatchtype",
+                ),
+                nullable=False,
+            ),
+            sa.Column(
+                "status",
+                sa.Enum("APPLIED", "REVERSED", name="postingbatchstatus"),
+                nullable=False,
+                server_default="APPLIED",
+            ),
+            sa.Column("idempotency_key", sa.String(length=255), nullable=False, unique=True),
+            sa.Column("hash", sa.String(length=255), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            schema=SCHEMA,
+        )
+        create_index_if_not_exists(
+            bind, "ix_posting_batches_operation_id", "posting_batches", ["operation_id"], schema=SCHEMA
+        )
+        create_index_if_not_exists(
+            bind, "ix_posting_batches_idempotency_key", "posting_batches", ["idempotency_key"], schema=SCHEMA
+        )
 
 
 def downgrade() -> None:
@@ -198,12 +264,27 @@ def downgrade() -> None:
     drop_index_if_exists(
         bind, "ix_ledger_entries_account_id", table_name="ledger_entries", schema=SCHEMA
     )
+    drop_index_if_exists(
+        bind, "ix_ledger_entries_posting_id", table_name="ledger_entries", schema=SCHEMA
+    )
+    drop_index_if_exists(
+        bind, "ix_ledger_entries_account_operation", table_name="ledger_entries", schema=SCHEMA
+    )
     if table_exists(bind, "ledger_entries", schema=SCHEMA):
         op.drop_table("ledger_entries", schema=SCHEMA)
+
+    drop_index_if_exists(
+        bind, "ix_posting_batches_idempotency_key", table_name="posting_batches", schema=SCHEMA
+    )
+    drop_index_if_exists(bind, "ix_posting_batches_operation_id", table_name="posting_batches", schema=SCHEMA)
+    if table_exists(bind, "posting_batches", schema=SCHEMA):
+        op.drop_table("posting_batches", schema=SCHEMA)
 
     if table_exists(bind, "account_balances", schema=SCHEMA):
         op.drop_table("account_balances", schema=SCHEMA)
 
+    drop_index_if_exists(bind, "ix_accounts_owner_id", table_name="accounts", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_accounts_owner_type", table_name="accounts", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_accounts_status", table_name="accounts", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_accounts_type", table_name="accounts", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_accounts_card_id", table_name="accounts", schema=SCHEMA)
@@ -212,5 +293,5 @@ def downgrade() -> None:
         op.drop_table("accounts", schema=SCHEMA)
 
     if bind.dialect.name == "postgresql":
-        for enum_name in ("ledgerdirection", "accountstatus", "accounttype"):
+        for enum_name in ("postingbatchstatus", "postingbatchtype", "ledgerdirection", "accountstatus", "accounttype", "accountownertype"):
             bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{SCHEMA}".{enum_name}')

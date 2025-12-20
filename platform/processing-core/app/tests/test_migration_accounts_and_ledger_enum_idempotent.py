@@ -56,6 +56,9 @@ class DummyConnection:
 
         return DummyResult([])
 
+    def execute(self, *_args, **__):  # noqa: ANN001
+        return DummyResult([])
+
 
 class DummyOp:
     def __init__(self, connection: DummyConnection):
@@ -86,10 +89,13 @@ def test_upgrade_idempotent(connection: DummyConnection):
     migration.upgrade()
     migration.upgrade()
 
-    assert connection.tables == {"accounts", "account_balances", "ledger_entries"}
+    assert connection.tables == {"accounts", "account_balances", "ledger_entries", "posting_batches"}
     assert connection.types == {
         "accounttype",
         "accountstatus",
+        "accountownertype",
+        "postingbatchtype",
+        "postingbatchstatus",
         "ledgerdirection",
     }
     assert connection.indexes == {
@@ -97,7 +103,13 @@ def test_upgrade_idempotent(connection: DummyConnection):
         "ix_accounts_card_id",
         "ix_accounts_type",
         "ix_accounts_status",
+        "ix_accounts_owner_type",
+        "ix_accounts_owner_id",
         "ix_ledger_entries_account_id",
         "ix_ledger_entries_operation_id",
         "ix_ledger_entries_posted_at",
+        "ix_ledger_entries_posting_id",
+        "ix_ledger_entries_account_operation",
+        "ix_posting_batches_operation_id",
+        "ix_posting_batches_idempotency_key",
     }

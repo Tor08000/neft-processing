@@ -176,6 +176,7 @@ def init_db() -> None:
     )
     from app.models.account import Account, AccountBalance  # noqa: F401
     from app.models.ledger_entry import LedgerEntry  # noqa: F401
+    from app.models.posting_batch import PostingBatch  # noqa: F401
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
     engine = get_engine()

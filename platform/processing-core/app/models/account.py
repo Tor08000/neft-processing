@@ -24,6 +24,12 @@ class AccountType(str, Enum):
     TECHNICAL = "TECHNICAL"
 
 
+class AccountOwnerType(str, Enum):
+    CLIENT = "CLIENT"
+    PARTNER = "PARTNER"
+    PLATFORM = "PLATFORM"
+
+
 class AccountStatus(str, Enum):
     ACTIVE = "ACTIVE"
     FROZEN = "FROZEN"
@@ -41,6 +47,8 @@ class Account(Base):
         autoincrement=True,
     )
     client_id = Column(String(64), nullable=False, index=True)
+    owner_type = Column(SAEnum(AccountOwnerType), nullable=False, index=True, default=AccountOwnerType.CLIENT)
+    owner_id = Column(String(64), nullable=False, index=True)
     card_id = Column(String(64), ForeignKey("cards.id"), nullable=True, index=True)
     tariff_id = Column(String(64), nullable=True)
     currency = Column(String(8), nullable=False)
@@ -72,6 +80,7 @@ class AccountBalance(Base):
     )
     current_balance = Column(Numeric(18, 4), nullable=False, default=0)
     available_balance = Column(Numeric(18, 4), nullable=False, default=0)
+    hold_balance = Column(Numeric(18, 4), nullable=False, default=0)
     updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
