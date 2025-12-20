@@ -28,6 +28,20 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 
+recon_status_enum = sa.Enum(
+    BillingReconciliationStatus,
+    name="billing_reconciliation_status",
+    schema=SCHEMA,
+    create_type=False,
+)
+recon_verdict_enum = sa.Enum(
+    BillingReconciliationVerdict,
+    name="billing_reconciliation_verdict",
+    schema=SCHEMA,
+    create_type=False,
+)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -117,7 +131,7 @@ def upgrade() -> None:
             sa.Column("billing_period_id", GUID(), sa.ForeignKey("billing_periods.id"), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum(BillingReconciliationStatus, name="billing_reconciliation_status"),
+                recon_status_enum,
                 nullable=False,
                 server_default=BillingReconciliationStatus.OK.value,
             ),
@@ -153,7 +167,7 @@ def upgrade() -> None:
             sa.Column("currency", sa.String(length=3), nullable=False),
             sa.Column(
                 "verdict",
-                sa.Enum(BillingReconciliationVerdict, name="billing_reconciliation_verdict"),
+                recon_verdict_enum,
                 nullable=False,
                 server_default=BillingReconciliationVerdict.OK.value,
             ),
