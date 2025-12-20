@@ -14,12 +14,15 @@ class FinancialAdjustmentKind(str, Enum):
     REVERSAL_ADJUSTMENT = "REVERSAL_ADJUSTMENT"
     DISPUTE_ADJUSTMENT = "DISPUTE_ADJUSTMENT"
     FEE_ADJUSTMENT = "FEE_ADJUSTMENT"
+    CREDIT = "CREDIT"
+    DEBIT = "DEBIT"
 
 
 class RelatedEntityType(str, Enum):
     REFUND = "REFUND"
     REVERSAL = "REVERSAL"
     DISPUTE = "DISPUTE"
+    BILLING_PERIOD = "BILLING_PERIOD"
 
 
 class FinancialAdjustmentStatus(str, Enum):
