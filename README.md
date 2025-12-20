@@ -120,6 +120,7 @@ git grep -n "^\<\<\<\<\<\<\<\|^\=\=\=\=\=\=\=\|^\>\>\>\>\>\>\>" -- .
 ```
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
 ```
+Ожидается ровно одна строка (единственный head).
 
 ### Gateway (Nginx)
 
