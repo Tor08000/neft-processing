@@ -53,6 +53,7 @@ PRODUCT_TYPE_VALUES = ["ACQUIRING", "PAYOUT", "SUBSCRIPTION"]
 LIMIT_CONFIG_SCOPE_VALUES = ["GLOBAL", "CLIENT", "CARD", "TARIFF"]
 LIMIT_WINDOW_VALUES = ["PER_TX", "DAILY", "MONTHLY"]
 LIMIT_TYPE_VALUES = ["DAILY_VOLUME", "DAILY_AMOUNT", "MONTHLY_AMOUNT", "CREDIT_LIMIT"]
+COMMISSION_RATE_TYPE_VALUES = ["PLATFORM", "PARTNER", "PROMO"]
 
 
 
@@ -95,6 +96,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "limitconfigscope", LIMIT_CONFIG_SCOPE_VALUES)
     ensure_pg_enum(bind, "limittype", LIMIT_TYPE_VALUES)
     ensure_pg_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES)
+    ensure_pg_enum(bind, "commission_rate_type", COMMISSION_RATE_TYPE_VALUES)
 
     account_type_enum = safe_enum(bind, "accounttype", ACCOUNT_TYPE_VALUES)
     account_status_enum = safe_enum(bind, "accountstatus", ACCOUNT_STATUS_VALUES)
@@ -111,6 +113,7 @@ def upgrade() -> None:
     limit_config_scope_enum = safe_enum(bind, "limitconfigscope", LIMIT_CONFIG_SCOPE_VALUES)
     limit_type_enum = safe_enum(bind, "limittype", LIMIT_TYPE_VALUES)
     limit_window_enum = safe_enum(bind, "limitwindow", LIMIT_WINDOW_VALUES)
+    commission_rate_type_enum = safe_enum(bind, "commission_rate_type", COMMISSION_RATE_TYPE_VALUES)
 
     uuid_type = _uuid_type(bind)
     json_type = _json_type(bind)
@@ -140,6 +143,116 @@ def upgrade() -> None:
     create_index_if_not_exists(
         bind, "ix_tariff_plans_name", "tariff_plans", ["name"], unique=True, schema=SCHEMA
     )
+
+    if not _table_exists(bind, "client_tariffs"):
+        op.create_table(
+            "client_tariffs",
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column("client_id", sa.String(length=64), nullable=False),
+            sa.Column("tariff_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.tariff_plans.id"), nullable=False),
+            sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("valid_to", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("NOW()") if bind.dialect.name == "postgresql" else None,
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
+            schema=SCHEMA,
+        )
+    for index_name, columns, unique in (
+        ("ix_client_tariffs_client_id", ["client_id"], False),
+        ("ix_client_tariffs_tariff_id", ["tariff_id"], False),
+        ("ix_client_tariffs_valid_from", ["valid_from"], False),
+        ("ix_client_tariffs_valid_to", ["valid_to"], False),
+        ("ix_client_tariffs_priority", ["priority"], False),
+    ):
+        create_index_if_not_exists(bind, index_name, "client_tariffs", columns, schema=SCHEMA, unique=unique)
+
+    create_table_if_not_exists(
+        bind,
+        "tariff_prices",
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True, autoincrement=True),
+        sa.Column("tariff_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.tariff_plans.id"), nullable=False),
+        sa.Column("product_id", sa.String(length=64), nullable=False),
+        sa.Column("partner_id", sa.String(length=64), nullable=True),
+        sa.Column("azs_id", sa.String(length=64), nullable=True),
+        sa.Column("price_per_liter", sa.Numeric(18, 6), nullable=False),
+        sa.Column("cost_price_per_liter", sa.Numeric(18, 6), nullable=True),
+        sa.Column("currency", sa.String(length=3), nullable=False),
+        sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("valid_to", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("NOW()") if bind.dialect.name == "postgresql" else None,
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        schema=SCHEMA,
+    )
+    for index_name, columns in {
+        "ix_tariff_prices_tariff_id": ["tariff_id"],
+        "ix_tariff_prices_product_id": ["product_id"],
+        "ix_tariff_prices_partner_id": ["partner_id"],
+        "ix_tariff_prices_azs_id": ["azs_id"],
+        "ix_tariff_prices_valid_from": ["valid_from"],
+        "ix_tariff_prices_valid_to": ["valid_to"],
+        "ix_tariff_prices_priority": ["priority"],
+    }.items():
+        create_index_if_not_exists(bind, index_name, "tariff_prices", columns, unique=False, schema=SCHEMA)
+
+    if not _table_exists(bind, "commission_rules"):
+        op.create_table(
+            "commission_rules",
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column("tariff_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.tariff_plans.id"), nullable=False),
+            sa.Column("product_id", sa.String(length=64), nullable=True),
+            sa.Column("partner_id", sa.String(length=64), nullable=True),
+            sa.Column("azs_id", sa.String(length=64), nullable=True),
+            sa.Column("platform_rate", sa.Numeric(6, 4), nullable=False),
+            sa.Column("partner_rate", sa.Numeric(6, 4), nullable=True),
+            sa.Column("promo_rate", sa.Numeric(6, 4), nullable=True),
+            sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("valid_to", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("NOW()") if bind.dialect.name == "postgresql" else None,
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                nullable=False,
+            ),
+            schema=SCHEMA,
+        )
+    for index_name, columns in {
+        "ix_commission_rules_tariff_id": ["tariff_id"],
+        "ix_commission_rules_product_id": ["product_id"],
+        "ix_commission_rules_partner_id": ["partner_id"],
+        "ix_commission_rules_azs_id": ["azs_id"],
+        "ix_commission_rules_valid_from": ["valid_from"],
+        "ix_commission_rules_valid_to": ["valid_to"],
+        "ix_commission_rules_priority": ["priority"],
+    }.items():
+        create_index_if_not_exists(bind, index_name, "commission_rules", columns, unique=False, schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,

@@ -54,6 +54,41 @@ class TariffPrice(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class ClientTariff(Base):
+    """Assignment of tariff plans to clients with optional validity windows."""
+
+    __tablename__ = "client_tariffs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    tariff_id = Column(String(64), ForeignKey("tariff_plans.id"), nullable=False, index=True)
+    valid_from = Column(DateTime(timezone=True), nullable=True, index=True)
+    valid_to = Column(DateTime(timezone=True), nullable=True, index=True)
+    priority = Column(Integer, nullable=False, default=100, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CommissionRule(Base):
+    """Commission overrides per tariff/partner/product."""
+
+    __tablename__ = "commission_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tariff_id = Column(String(64), ForeignKey("tariff_plans.id"), nullable=False, index=True)
+    product_id = Column(String(64), nullable=True, index=True)
+    partner_id = Column(String(64), nullable=True, index=True)
+    azs_id = Column(String(64), nullable=True, index=True)
+    platform_rate = Column(Numeric(6, 4), nullable=False)
+    partner_rate = Column(Numeric(6, 4), nullable=True)
+    promo_rate = Column(Numeric(6, 4), nullable=True)
+    valid_from = Column(DateTime(timezone=True), nullable=True, index=True)
+    valid_to = Column(DateTime(timezone=True), nullable=True, index=True)
+    priority = Column(Integer, nullable=False, default=100, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class LimitConfigScope(str, Enum):
     GLOBAL = "GLOBAL"
     CLIENT = "CLIENT"

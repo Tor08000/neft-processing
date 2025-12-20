@@ -24,6 +24,8 @@ account_balances
 ledger_entries
 tariff_plans
 tariff_prices
+client_tariffs
+commission_rules
 limit_configs
 partners
 external_request_logs
