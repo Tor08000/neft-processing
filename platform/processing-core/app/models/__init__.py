@@ -49,6 +49,12 @@ from .financial_adjustment import (
     FinancialAdjustmentStatus,
     RelatedEntityType,
 )  # noqa: F401
+from .billing_reconciliation import (  # noqa: F401
+    BillingReconciliationItem,
+    BillingReconciliationRun,
+    BillingReconciliationStatus,
+    BillingReconciliationVerdict,
+)
 
 __all__ = [
     "Client",
