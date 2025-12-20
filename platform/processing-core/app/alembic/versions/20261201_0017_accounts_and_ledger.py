@@ -106,6 +106,28 @@ def upgrade() -> None:
     )
     owner_id_exists = column_exists(bind, "accounts", "owner_id", schema=SCHEMA) if accounts_exists else False
 
+    posting_batch_type_enum = (
+        postgresql.ENUM(
+            *POSTING_BATCH_TYPE_VALUES,
+            name="postingbatchtype",
+            schema=SCHEMA,
+            create_type=False,
+        )
+        if is_pg
+        else sa.Enum(*POSTING_BATCH_TYPE_VALUES, name="postingbatchtype", native_enum=False)
+    )
+
+    posting_batch_status_enum = (
+        postgresql.ENUM(
+            *POSTING_BATCH_STATUS_VALUES,
+            name="postingbatchstatus",
+            schema=SCHEMA,
+            create_type=False,
+        )
+        if is_pg
+        else sa.Enum(*POSTING_BATCH_STATUS_VALUES, name="postingbatchstatus", native_enum=False)
+    )
+
     if not accounts_exists:
         op.create_table(
             "accounts",
@@ -256,21 +278,12 @@ def upgrade() -> None:
             sa.Column("operation_id", _uuid_type(bind), nullable=True),
             sa.Column(
                 "posting_type",
-                sa.Enum(
-                    "AUTH",
-                    "HOLD",
-                    "COMMIT",
-                    "CAPTURE",
-                    "REFUND",
-                    "REVERSAL",
-                    "ADJUSTMENT",
-                    name="postingbatchtype",
-                ),
+                posting_batch_type_enum,
                 nullable=False,
             ),
             sa.Column(
                 "status",
-                sa.Enum("APPLIED", "REVERSED", name="postingbatchstatus"),
+                posting_batch_status_enum,
                 nullable=False,
                 server_default="APPLIED",
             ),
