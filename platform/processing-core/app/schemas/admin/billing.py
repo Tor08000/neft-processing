@@ -5,8 +5,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.billing_period import BillingPeriodType
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import InvoiceStatus
+from app.models.billing_reconciliation import BillingReconciliationStatus, BillingReconciliationVerdict
+from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus
 
 
 class TariffPlanRead(BaseModel):
@@ -85,6 +87,7 @@ class InvoiceRead(BaseModel):
 
     id: str
     client_id: str
+    billing_period_id: str | None = None
     period_from: date
     period_to: date
     currency: str
@@ -152,3 +155,79 @@ class BillingRunResponse(BaseModel):
     invoices_skipped: int
     invoice_lines_created: int
     total_amount: int
+
+
+class BillingPeriodFilter(BaseModel):
+    status: BillingPeriodStatus | None = None
+    period_type: BillingPeriodType | None = None
+    start_from: datetime | None = None
+    start_to: datetime | None = None
+
+
+class BillingPeriodPayload(BaseModel):
+    period_type: BillingPeriodType
+    start_at: datetime
+    end_at: datetime
+    tz: str = "UTC"
+
+
+class BillingPeriodRead(BaseModel):
+    id: str
+    period_type: BillingPeriodType
+    start_at: datetime
+    end_at: datetime
+    tz: str
+    status: BillingPeriodStatus
+    locked_at: datetime | None = None
+    finalized_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BillingPeriodListResponse(BaseModel):
+    items: list[BillingPeriodRead]
+    total: int
+
+
+class BillingReconciliationRunResponse(BaseModel):
+    run_id: str
+    status: BillingReconciliationStatus
+    total_invoices: int
+    ok_count: int
+    mismatch_count: int
+    missing_ledger_count: int
+
+
+class BillingReconciliationItemRead(BaseModel):
+    id: str
+    invoice_id: str
+    client_id: str
+    currency: str
+    verdict: BillingReconciliationVerdict
+    diff_json: dict | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BillingAdjustmentRequest(BaseModel):
+    billing_period_id: str
+    operation_id: str
+    kind: FinancialAdjustmentKind
+    amount: int
+    currency: str
+    effective_date: date
+    idempotency_key: str
+
+
+class BillingAdjustmentResponse(BaseModel):
+    id: str
+    status: FinancialAdjustmentStatus
+    operation_id: str
+    billing_period_id: str
+    amount: int
+    currency: str
+    effective_date: date
+
+
+class BillingReconcileRequest(BaseModel):
+    billing_period_id: str

@@ -128,6 +128,7 @@ class BillingRunService:
     def _apply_invoice(
         self,
         *,
+        billing_period: BillingPeriod,
         client_id: str,
         currency: str,
         period_from: date,
@@ -140,6 +141,7 @@ class BillingRunService:
             .filter(Invoice.period_from == period_from)
             .filter(Invoice.period_to == period_to)
             .filter(Invoice.currency == currency)
+            .filter(Invoice.billing_period_id == billing_period.id)
             .first()
         )
 
@@ -149,6 +151,7 @@ class BillingRunService:
         if not invoice:
             invoice = Invoice(
                 client_id=client_id,
+                billing_period_id=billing_period.id,
                 period_from=period_from,
                 period_to=period_to,
                 currency=currency,
@@ -158,6 +161,7 @@ class BillingRunService:
             self.db.flush()
             action = "created"
         else:
+            invoice.billing_period_id = billing_period.id
             self.db.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).delete(synchronize_session=False)
             action = "rebuilt"
 
@@ -228,6 +232,7 @@ class BillingRunService:
                 processed_clients.add(client_key)
                 lines = self._build_lines(items)
                 invoice, action = self._apply_invoice(
+                    billing_period=billing_period,
                     client_id=client_key,
                     currency=currency,
                     period_from=period_from,
