@@ -44,7 +44,7 @@ def upgrade() -> None:
             sa.Column("billing_period_id", GUID(), sa.ForeignKey("billing_periods.id"), nullable=True),
             schema=SCHEMA,
         )
-    if not index_exists(bind, "ix_invoices_billing_period_id", schema=SCHEMA):
+    if not index_exists(bind, "ix_invoices_billing_period_id", table_name="invoices", schema=SCHEMA):
         op.create_index("ix_invoices_billing_period_id", "invoices", ["billing_period_id"], schema=SCHEMA)
 
     # backfill billing_period_id based on dates
@@ -68,7 +68,7 @@ def upgrade() -> None:
     if null_count == 0:
         op.alter_column("invoices", "billing_period_id", nullable=False, schema=SCHEMA)
 
-    if not constraint_exists(bind, "invoices", "uq_invoice_scope", schema=SCHEMA):
+    if not constraint_exists(bind, "uq_invoice_scope", table_name="invoices", schema=SCHEMA):
         op.create_unique_constraint(
             "uq_invoice_scope",
             "invoices",
@@ -84,7 +84,7 @@ def upgrade() -> None:
             )
         )
     op.alter_column("invoice_lines", "operation_id", nullable=False, schema=SCHEMA)
-    if not constraint_exists(bind, "invoice_lines", "uq_invoice_line_operation_per_invoice", schema=SCHEMA):
+    if not constraint_exists(bind, "uq_invoice_line_operation_per_invoice", table_name="invoice_lines", schema=SCHEMA):
         op.create_unique_constraint(
             "uq_invoice_line_operation_per_invoice",
             "invoice_lines",
@@ -160,11 +160,11 @@ def downgrade() -> None:
     op.drop_index("ix_billing_reconciliation_runs_period", table_name="billing_reconciliation_runs", schema=SCHEMA)
     op.drop_table("billing_reconciliation_runs", schema=SCHEMA)
 
-    if constraint_exists(bind, "invoice_lines", "uq_invoice_line_operation_per_invoice", schema=SCHEMA):
+    if constraint_exists(bind, "uq_invoice_line_operation_per_invoice", table_name="invoice_lines", schema=SCHEMA):
         op.drop_constraint("uq_invoice_line_operation_per_invoice", "invoice_lines", schema=SCHEMA)
     op.alter_column("invoice_lines", "operation_id", nullable=True, schema=SCHEMA)
 
-    if constraint_exists(bind, "invoices", "uq_invoice_scope", schema=SCHEMA):
+    if constraint_exists(bind, "uq_invoice_scope", table_name="invoices", schema=SCHEMA):
         op.drop_constraint("uq_invoice_scope", "invoices", schema=SCHEMA)
     op.alter_column("invoices", "billing_period_id", nullable=True, schema=SCHEMA)
     if column_exists(bind, "invoices", "billing_period_id", schema=SCHEMA):
