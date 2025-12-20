@@ -1,7 +1,7 @@
 """Operational scenarios v1: refunds, reversals, disputes, adjustments
 
 Revision ID: 20271015_0032_operational_scenarios_v1
-Revises: 20270901_0031_partner_settlements
+Revises: 20270901_0031_tariff_commission_rules
 Create Date: 2027-10-15 00:00:00
 """
 
@@ -21,7 +21,7 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20271015_0032_operational_scenarios_v1"
-down_revision = "20270901_0031_partner_settlements"
+down_revision = "20270901_0031_tariff_commission_rules"
 branch_labels = None
 depends_on = None
 
