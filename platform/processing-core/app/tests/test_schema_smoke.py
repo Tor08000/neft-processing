@@ -62,6 +62,9 @@ def test_core_tables_exist_after_migrations() -> None:
         cards_regclass = conn.execute(
             text("select to_regclass(:regclass)"), {"regclass": f"{DB_SCHEMA}.cards"}
         ).scalar()
+        billing_periods_regclass = conn.execute(
+            text("select to_regclass(:regclass)"), {"regclass": f"{DB_SCHEMA}.billing_periods"}
+        ).scalar()
         created_at_column = conn.execute(
             text(
                 """
@@ -120,6 +123,7 @@ def test_core_tables_exist_after_migrations() -> None:
         f"{sorted(missing)} in database '{db_name}' schema '{DB_SCHEMA}', current schema '{current_schema}'"
     )
     assert cards_regclass is not None, "cards table is missing after alembic upgrade"
+    assert billing_periods_regclass is not None, "billing_periods table is missing after alembic upgrade"
     assert created_at_column is not None, "cards.created_at column is missing after alembic upgrade"
     assert not missing_types, f"Missing columns for FK type check: {missing_types}"
     assert not mismatched_types, f"FK column types mismatch: {mismatched_types}"

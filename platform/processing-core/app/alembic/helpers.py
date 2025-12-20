@@ -181,6 +181,32 @@ def safe_enum(bind: Connection, enum_name: str, values: Sequence[str], schema: s
     return sa.Enum(*values, name=enum_name, native_enum=False)
 
 
+def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SCHEMA) -> None:
+    """Drop PostgreSQL enum type if it exists, skipping other dialects."""
+
+    if not is_postgres(bind):
+        return
+
+    schema_name = schema or "public"
+    qualified_enum = f"{schema_name}.{enum_name}"
+    bind.exec_driver_sql(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = :schema_name
+                  AND t.typname = :enum_name
+            ) THEN
+                EXECUTE format('DROP TYPE IF EXISTS %s', :qualified_enum);
+            END IF;
+        END $$;
+        """,
+        {"schema_name": schema_name, "enum_name": enum_name, "qualified_enum": qualified_enum},
+    )
+
+
 # Safe creation helpers
 
 def create_table_if_not_exists(
