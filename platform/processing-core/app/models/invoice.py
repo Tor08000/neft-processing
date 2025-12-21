@@ -30,8 +30,11 @@ class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
     SENT = "SENT"
+    DELIVERED = "DELIVERED"
+    PARTIALLY_PAID = "PARTIALLY_PAID"
     PAID = "PAID"
     CANCELLED = "CANCELLED"
+    VOIDED = "VOIDED"
 
 
 class InvoicePdfStatus(str, Enum):
@@ -64,18 +67,27 @@ class Invoice(Base):
     currency = Column(String(3), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=True, index=True)
 
+    due_date = Column(Date, nullable=True, index=True)
+    payment_terms_days = Column(Integer, nullable=True)
+
     total_amount = Column(BigInteger, nullable=False, default=0)
     tax_amount = Column(BigInteger, nullable=False, default=0)
     total_with_tax = Column(BigInteger, nullable=False, default=0)
+    amount_paid = Column(BigInteger, nullable=False, default=0)
+    amount_due = Column(BigInteger, nullable=False, default=0)
 
     status = Column(SAEnum(InvoiceStatus), nullable=False, index=True, default=InvoiceStatus.DRAFT)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
 
     external_number = Column(String(64), nullable=True)
+    external_delivery_id = Column(String(128), nullable=True)
+    external_delivery_provider = Column(String(64), nullable=True)
+    payment_reference = Column(String(128), nullable=True)
     pdf_url = Column(String(512), nullable=True)
     pdf_status = Column(
         SAEnum(InvoicePdfStatus, name="invoice_pdf_status"),
@@ -87,6 +99,9 @@ class Invoice(Base):
     pdf_hash = Column(String(64), nullable=True)
     pdf_version = Column(Integer, nullable=False, default=1, server_default="1")
     pdf_error = Column(Text, nullable=True)
+
+    accounting_exported_at = Column(DateTime(timezone=True), nullable=True)
+    accounting_export_batch_id = Column(GUID(), nullable=True)
 
     lines = relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 

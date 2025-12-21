@@ -92,21 +92,31 @@ class InvoiceRead(BaseModel):
     period_from: date
     period_to: date
     currency: str
+    due_date: date | None = None
+    payment_terms_days: int | None = None
     total_amount: int
     tax_amount: int
     total_with_tax: int
+    amount_paid: int
+    amount_due: int
     status: InvoiceStatus
     created_at: datetime | None = None
     issued_at: datetime | None = None
     sent_at: datetime | None = None
+    delivered_at: datetime | None = None
     paid_at: datetime | None = None
     external_number: str | None = None
+    external_delivery_id: str | None = None
+    external_delivery_provider: str | None = None
+    payment_reference: str | None = None
     pdf_url: str | None = None
     pdf_status: InvoicePdfStatus | None = None
     pdf_generated_at: datetime | None = None
     pdf_hash: str | None = None
     pdf_version: int | None = None
     pdf_error: str | None = None
+    accounting_exported_at: datetime | None = None
+    accounting_export_batch_id: str | None = None
     lines: list[InvoiceLineRead] = []
 
     model_config = ConfigDict(from_attributes=True)
