@@ -55,7 +55,11 @@ class Settings:
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv("NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", "minioadmin"))
     NEFT_S3_SECRET_KEY: str = os.getenv("NEFT_S3_SECRET_KEY", os.getenv("S3_SECRET_KEY", "minioadmin"))
+    NEFT_S3_ENDPOINT: str = os.getenv("NEFT_S3_ENDPOINT", os.getenv("S3_ENDPOINT_URL", "http://minio:9000"))
+    NEFT_S3_REGION: str = os.getenv("NEFT_S3_REGION", os.getenv("S3_REGION", "us-east-1"))
+    NEFT_S3_PUBLIC_URL_BASE: str | None = os.getenv("NEFT_S3_PUBLIC_URL_BASE")
     NEFT_INVOICE_PDF_TEMPLATE_VERSION: int = int(os.getenv("NEFT_INVOICE_PDF_TEMPLATE_VERSION", "1"))
+    NEFT_PDF_AUTO_GENERATE: bool = os.getenv("NEFT_PDF_AUTO_GENERATE", "0").lower() in {"1", "true", "yes"}
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "minioadmin")

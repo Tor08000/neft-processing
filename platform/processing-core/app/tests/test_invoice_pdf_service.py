@@ -28,7 +28,8 @@ def session():
         db.close()
 
 
-def test_generate_invoice_pdf_marks_ready(session):
+def test_generate_invoice_pdf_marks_ready(session, monkeypatch):
+    monkeypatch.setattr("app.services.invoice_pdf.S3Storage.ensure_bucket", lambda self: None)
     invoice = Invoice(
         client_id="client-1",
         period_from=date(2024, 5, 1),

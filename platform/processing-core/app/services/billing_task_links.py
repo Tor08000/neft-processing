@@ -60,3 +60,56 @@ class BillingTaskLinkService:
         )
         self.db.add(link)
         return link
+
+    def create_link(
+        self,
+        *,
+        task_id: str,
+        task_name: str,
+        job_run_id: str,
+        task_type: BillingTaskType,
+        status: BillingTaskStatus,
+        invoice_id: str | None = None,
+        billing_period_id: str | None = None,
+    ) -> BillingTaskLink:
+        """Create a new link without mutating existing records."""
+
+        now = datetime.now(timezone.utc)
+        link = BillingTaskLink(
+            task_id=task_id,
+            task_name=task_name,
+            job_run_id=job_run_id,
+            invoice_id=invoice_id,
+            billing_period_id=billing_period_id,
+            task_type=task_type,
+            status=status,
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(link)
+        return link
+
+    def update_status(
+        self,
+        *,
+        task_id: str,
+        status: BillingTaskStatus,
+        invoice_id: Optional[str] = None,
+        billing_period_id: Optional[str] = None,
+        error: str | None = None,
+    ) -> BillingTaskLink | None:
+        """Update an existing task link in-place."""
+
+        link = self.db.query(BillingTaskLink).filter(BillingTaskLink.task_id == task_id).one_or_none()
+        if link is None:
+            return None
+
+        link.status = status
+        link.updated_at = datetime.now(timezone.utc)
+        link.error = error
+        if invoice_id and not link.invoice_id:
+            link.invoice_id = invoice_id
+        if billing_period_id and not link.billing_period_id:
+            link.billing_period_id = billing_period_id
+        self.db.add(link)
+        return link

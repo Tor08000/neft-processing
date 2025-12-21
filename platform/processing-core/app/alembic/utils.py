@@ -6,6 +6,7 @@ from sqlalchemy import inspect as sa_inspect
 
 from app.alembic.helpers import (  # noqa: F401,F403
     MIN_VERSION_LENGTH,
+    DB_SCHEMA as SCHEMA,
     column_exists,
     constraint_exists,
     create_index_if_not_exists,
