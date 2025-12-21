@@ -16,6 +16,8 @@ PUBLIC_KEY_CACHE_TTL = 300
 EXPECTED_ISSUER = "neft-auth"
 EXPECTED_AUDIENCE = "neft-admin"
 
+ADMIN_ROLES = {"ADMIN", "PLATFORM_ADMIN"}
+
 _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
 
@@ -84,8 +86,18 @@ def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
         except (JWTError, jwk.JWKError, ValueError):
             raise HTTPException(status_code=401, detail="Invalid token")
 
+    admin_roles = set()
+
+    role = payload.get("role")
+    if role:
+        admin_roles.add(role)
+
     roles = payload.get("roles") or []
-    if "ADMIN" not in roles:
+    if isinstance(roles, str):
+        roles = [roles]
+    admin_roles.update(roles)
+
+    if not admin_roles.intersection(ADMIN_ROLES):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     return payload
