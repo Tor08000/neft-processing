@@ -6,6 +6,7 @@ from datetime import date
 from celery import Task
 
 from app.celery_client import celery_client
+from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.models.billing_task_link import BillingTaskStatus, BillingTaskType
@@ -51,7 +52,7 @@ def run_monthly_invoices_task(
                 status=BillingTaskStatus.SUCCESS,
                 billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
             )
-            if invoice.pdf_status in {InvoicePdfStatus.NONE, InvoicePdfStatus.FAILED}:
+            if settings.NEFT_PDF_AUTO_GENERATE and invoice.pdf_status in {InvoicePdfStatus.NONE, InvoicePdfStatus.FAILED}:
                 invoice.pdf_status = InvoicePdfStatus.QUEUED
                 invoice.pdf_error = None
                 session.add(invoice)
@@ -120,9 +121,31 @@ def generate_invoice_pdf(
         session.commit()
 
         invoice = session.query(Invoice).filter_by(id=invoice_id).one()
+        if invoice.pdf_status == InvoicePdfStatus.READY and not force:
+            link_service.upsert(
+                task_id=self.request.id,
+                task_name="billing.generate_invoice_pdf",
+                job_run_id=job_run.id,
+                task_type=BillingTaskType.PDF_GENERATE,
+                status=BillingTaskStatus.SUCCESS,
+                invoice_id=invoice_id,
+            )
+            job_service.succeed(
+                job_run,
+                metrics={
+                    "invoice_id": invoice_id,
+                    "pdf_status": str(invoice.pdf_status),
+                    "pdf_version": invoice.pdf_version,
+                    "skipped": True,
+                },
+            )
+            session.commit()
+            return {"invoice_id": invoice_id, "pdf_status": invoice.pdf_status}
+
         pdf_service = InvoicePdfService(session)
-        pdf_service.generate(invoice, force=force)
+        generated = pdf_service.generate(invoice, force=force)
         session.commit()
+        session.refresh(generated)
 
         link_service.upsert(
             task_id=self.request.id,
@@ -136,12 +159,12 @@ def generate_invoice_pdf(
             job_run,
             metrics={
                 "invoice_id": invoice_id,
-                "pdf_status": str(invoice.pdf_status),
-                "pdf_version": invoice.pdf_version,
+                "pdf_status": str(generated.pdf_status),
+                "pdf_version": generated.pdf_version,
             },
         )
         session.commit()
-        return {"invoice_id": invoice_id, "pdf_status": invoice.pdf_status}
+        return {"invoice_id": invoice_id, "pdf_status": generated.pdf_status}
     except Exception as exc:  # noqa: BLE001
         session.rollback()
         if "job_run" in locals():

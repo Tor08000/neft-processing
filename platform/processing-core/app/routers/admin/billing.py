@@ -55,7 +55,8 @@ from app.services.billing_service import (
 )
 from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
-from app.services.invoice_pdf import InvoicePdfService, InvoicePdfStorage
+from app.services.invoice_pdf import InvoicePdfService
+from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
@@ -493,11 +494,11 @@ def admin_get_invoice_pdf(invoice_id: str, db: Session = Depends(get_db)):
     download_url = None
     if invoice.pdf_url:
         try:
-            storage = InvoicePdfStorage()
+            storage = S3Storage()
             prefix = f"s3://{storage.bucket}/"
             if invoice.pdf_url.startswith(prefix):
                 key = invoice.pdf_url.replace(prefix, "", 1)
-                download_url = storage.get_presigned_url(key)
+                download_url = storage.presign(key)
         except RuntimeError:
             download_url = None
 
@@ -508,6 +509,7 @@ def admin_get_invoice_pdf(invoice_id: str, db: Session = Depends(get_db)):
         pdf_hash=invoice.pdf_hash,
         pdf_version=invoice.pdf_version,
         pdf_error=invoice.pdf_error,
+        pdf_generated_at=invoice.pdf_generated_at,
         download_url=download_url,
     )
 

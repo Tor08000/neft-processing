@@ -45,11 +45,24 @@ def upgrade():
         return
 
     ensure_pg_enum(bind, "billing_job_type", BILLING_JOB_TYPES, schema=SCHEMA)
+    for value in BILLING_JOB_TYPES:
+        ensure_pg_enum_value(bind, "billing_job_type", value, schema=SCHEMA)
+
     ensure_pg_enum(bind, "billing_job_status", BILLING_JOB_STATUSES, schema=SCHEMA)
+    for value in BILLING_JOB_STATUSES:
+        ensure_pg_enum_value(bind, "billing_job_status", value, schema=SCHEMA)
+
     ensure_pg_enum(bind, "invoice_pdf_status", INVOICE_PDF_STATUS, schema=SCHEMA)
+    for value in INVOICE_PDF_STATUS:
+        ensure_pg_enum_value(bind, "invoice_pdf_status", value, schema=SCHEMA)
+
     ensure_pg_enum(bind, "billing_task_type", TASK_TYPES, schema=SCHEMA)
+    for value in TASK_TYPES:
+        ensure_pg_enum_value(bind, "billing_task_type", value, schema=SCHEMA)
+
     ensure_pg_enum(bind, "billing_task_status", TASK_STATUSES, schema=SCHEMA)
-    ensure_pg_enum_value(bind, "billing_job_type", "PDF_GENERATE", schema=SCHEMA)
+    for value in TASK_STATUSES:
+        ensure_pg_enum_value(bind, "billing_task_status", value, schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,
@@ -69,6 +82,10 @@ def upgrade():
             sa.Column("correlation_id", sa.String(length=128), nullable=True),
             sa.Column("invoice_id", sa.String(length=36), nullable=True),
             sa.Column("billing_period_id", GUID(), nullable=True),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.Column("attempts", sa.Integer(), nullable=True, server_default="0"),
+            sa.Column("last_heartbeat_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("result_ref", sa.JSON(), nullable=True),
         ],
         indexes=[
             ("ix_billing_job_runs_type_status_started", ["job_type", "status", "started_at"]),
@@ -77,6 +94,23 @@ def upgrade():
             ("ix_billing_job_runs_billing_period_id", ["billing_period_id"]),
         ],
     )
+
+    if not column_exists(bind, "billing_job_runs", "updated_at", schema=SCHEMA):
+        op.add_column(
+            "billing_job_runs",
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            schema=SCHEMA,
+        )
+    if not column_exists(bind, "billing_job_runs", "attempts", schema=SCHEMA):
+        op.add_column("billing_job_runs", sa.Column("attempts", sa.Integer(), nullable=True, server_default="0"), schema=SCHEMA)
+    if not column_exists(bind, "billing_job_runs", "last_heartbeat_at", schema=SCHEMA):
+        op.add_column(
+            "billing_job_runs",
+            sa.Column("last_heartbeat_at", sa.DateTime(timezone=True), nullable=True),
+            schema=SCHEMA,
+        )
+    if not column_exists(bind, "billing_job_runs", "result_ref", schema=SCHEMA):
+        op.add_column("billing_job_runs", sa.Column("result_ref", sa.JSON(), nullable=True), schema=SCHEMA)
 
     if not column_exists(bind, "invoices", "pdf_status", schema=SCHEMA):
         op.add_column(
@@ -124,17 +158,13 @@ def upgrade():
             sa.Column("task_id", sa.String(length=128), nullable=False, unique=True),
             sa.Column("task_name", sa.String(length=128), nullable=False),
             sa.Column("task_type", sa.Enum(name="billing_task_type", schema=SCHEMA), nullable=False),
-            sa.Column(
-                "job_run_id",
-                GUID(),
-                sa.ForeignKey(f"{SCHEMA}.billing_job_runs.id", ondelete="CASCADE"),
-                nullable=False,
-            ),
+            sa.Column("job_run_id", GUID(), sa.ForeignKey(f"{SCHEMA}.billing_job_runs.id", ondelete="CASCADE"), nullable=False),
             sa.Column("invoice_id", sa.String(length=36), nullable=True),
             sa.Column("billing_period_id", GUID(), nullable=True),
             sa.Column("status", sa.Enum(name="billing_task_status", schema=SCHEMA), nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("error", sa.Text(), nullable=True),
         ],
         indexes=[
             ("ix_billing_task_links_task_id", ["task_id"]),
@@ -143,6 +173,9 @@ def upgrade():
             ("ix_billing_task_links_job_run_id", ["job_run_id"]),
         ],
     )
+
+    if not column_exists(bind, "billing_task_links", "error", schema=SCHEMA):
+        op.add_column("billing_task_links", sa.Column("error", sa.Text(), nullable=True), schema=SCHEMA)
 
 
 def downgrade():

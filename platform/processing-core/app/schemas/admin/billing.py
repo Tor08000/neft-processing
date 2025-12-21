@@ -178,6 +178,7 @@ class InvoicePdfReadResponse(BaseModel):
     pdf_hash: str | None = None
     pdf_version: int | None = None
     pdf_error: str | None = None
+    pdf_generated_at: datetime | None = None
     download_url: str | None = None
 
 

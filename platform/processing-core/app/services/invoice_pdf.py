@@ -3,15 +3,10 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-try:
-    import boto3
-except ImportError:  # pragma: no cover - optional dependency
-    boto3 = None
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -22,43 +17,12 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.s3_storage import S3Storage
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 
 logger = get_logger(__name__)
 settings = get_settings()
-
-
-class InvoicePdfStorage:
-    """Storage helper for invoice PDFs (MinIO/S3)."""
-
-    def __init__(self):
-        if boto3 is None:
-            raise RuntimeError("boto3 is required for PDF storage")
-
-        self.bucket = settings.NEFT_S3_BUCKET or settings.NEFT_INVOICE_PDF_BUCKET
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=settings.S3_ENDPOINT_URL,
-            aws_access_key_id=settings.NEFT_S3_ACCESS_KEY,
-            aws_secret_access_key=settings.NEFT_S3_SECRET_KEY,
-            region_name=settings.S3_REGION,
-        )
-
-    def put_pdf(self, key: str, payload: bytes) -> str:
-        self._client.put_object(Bucket=self.bucket, Key=key, Body=payload, ContentType="application/pdf")
-        return f"s3://{self.bucket}/{key}"
-
-    def get_presigned_url(self, key: str, expires: int = 3600) -> Optional[str]:
-        try:
-            return self._client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expires,
-            )
-        except Exception:  # pragma: no cover - optional presign failure
-            logger.warning("invoice.pdf.presign_failed", extra={"key": key})
-            return None
 
 
 class InvoicePdfService:
@@ -68,7 +32,8 @@ class InvoicePdfService:
         self.db = db
         if any(dep is None for dep in (A4, getSampleStyleSheet, SimpleDocTemplate, Spacer, Table, Paragraph)):
             raise RuntimeError("reportlab is required for PDF generation")
-        self.storage = InvoicePdfStorage()
+        self.storage = S3Storage()
+        self.storage.ensure_bucket()
         self.template_version = settings.NEFT_INVOICE_PDF_TEMPLATE_VERSION
 
     def _pdf_key(self, invoice: Invoice) -> str:
@@ -89,6 +54,8 @@ class InvoicePdfService:
             Spacer(1, 12),
             Paragraph("Lines", styles["Heading2"]),
         ]
+        if invoice.external_number:
+            story.insert(4, Paragraph(f"External #: {invoice.external_number}", styles["Normal"]))
 
         if invoice.lines:
             headers = ["Product", "Amount", "Tax", "Quantity", "Unit price"]
@@ -137,6 +104,7 @@ class InvoicePdfService:
         locked.pdf_status = InvoicePdfStatus.GENERATING
         locked.pdf_error = None
         locked.pdf_generated_at = None
+        locked.pdf_url = None
         locked.pdf_version = (locked.pdf_version or 1) + 1 if force else (locked.pdf_version or 1)
         self.db.add(locked)
         self.db.flush()
@@ -145,7 +113,7 @@ class InvoicePdfService:
             pdf_bytes = self._render_pdf(locked)
             pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
             key = self._pdf_key(locked)
-            pdf_url = self.storage.put_pdf(key, pdf_bytes)
+            pdf_url = self.storage.put_bytes(key, pdf_bytes, content_type="application/pdf")
 
             locked.pdf_status = InvoicePdfStatus.READY
             locked.pdf_generated_at = datetime.now(timezone.utc)
@@ -173,4 +141,4 @@ class InvoicePdfService:
         return locked
 
 
-__all__ = ["InvoicePdfService", "InvoicePdfStorage"]
+__all__ = ["InvoicePdfService"]
