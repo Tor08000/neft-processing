@@ -14,6 +14,10 @@ class BillingMetrics:
     last_run_generated: int = 0
     billing_errors: int = 0
     billed_amounts: Dict[str, int] = field(default_factory=dict)
+    daily_runs: Dict[str, int] = field(default_factory=dict)
+    finalize_runs: Dict[str, int] = field(default_factory=dict)
+    reconcile_runs: Dict[str, int] = field(default_factory=dict)
+    last_run_duration_ms: Dict[str, int] = field(default_factory=dict)
 
     def start_run(self, period_from: str, period_to: str) -> None:
         """Reset per-run counters for a new billing period."""
@@ -32,6 +36,27 @@ class BillingMetrics:
 
         self.billing_errors += 1
 
+    def mark_daily_run(self, status: str, *, duration_ms: int | None = None) -> None:
+        """Track billing daily run attempts by status."""
+
+        self.daily_runs[status] = self.daily_runs.get(status, 0) + 1
+        if duration_ms is not None:
+            self.last_run_duration_ms["billing_daily"] = duration_ms
+
+    def mark_finalize_run(self, status: str, *, duration_ms: int | None = None) -> None:
+        """Track finalize-day run attempts by status."""
+
+        self.finalize_runs[status] = self.finalize_runs.get(status, 0) + 1
+        if duration_ms is not None:
+            self.last_run_duration_ms["billing_finalize"] = duration_ms
+
+    def mark_reconcile_run(self, status: str, *, duration_ms: int | None = None) -> None:
+        """Track reconciliation run attempts by status."""
+
+        self.reconcile_runs[status] = self.reconcile_runs.get(status, 0) + 1
+        if duration_ms is not None:
+            self.last_run_duration_ms["billing_reconcile"] = duration_ms
+
     def observe_billed_amount(self, amount: int, *, period_key: str | None = None) -> None:
         """Track total billed amount per period."""
 
@@ -45,7 +70,10 @@ class BillingMetrics:
         self.last_run_generated = 0
         self.billing_errors = 0
         self.billed_amounts.clear()
+        self.daily_runs.clear()
+        self.finalize_runs.clear()
+        self.reconcile_runs.clear()
+        self.last_run_duration_ms.clear()
 
 
 metrics = BillingMetrics()
-

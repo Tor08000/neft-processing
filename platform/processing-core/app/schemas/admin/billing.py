@@ -97,8 +97,10 @@ class InvoiceRead(BaseModel):
     status: InvoiceStatus
     created_at: datetime | None = None
     issued_at: datetime | None = None
+    sent_at: datetime | None = None
     paid_at: datetime | None = None
     external_number: str | None = None
+    pdf_url: str | None = None
     lines: list[InvoiceLineRead] = []
 
     model_config = ConfigDict(from_attributes=True)

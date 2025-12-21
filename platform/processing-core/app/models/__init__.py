@@ -12,6 +12,7 @@ from .risk_rule import (  # noqa: F401
 )
 from .billing_summary import BillingSummary, BillingSummaryStatus  # noqa: F401
 from .billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType  # noqa: F401
+from .billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType  # noqa: F401
 from .clearing import Clearing  # noqa: F401
 from .clearing_batch import ClearingBatch  # noqa: F401
 from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
@@ -67,6 +68,9 @@ __all__ = [
     "BillingPeriod",
     "BillingPeriodStatus",
     "BillingPeriodType",
+    "BillingJobRun",
+    "BillingJobStatus",
+    "BillingJobType",
     "Clearing",
     "ClearingBatch",
     "ClearingBatchOperation",

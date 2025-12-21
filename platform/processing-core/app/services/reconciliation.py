@@ -15,11 +15,15 @@ from app.models.billing_reconciliation import (
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.ledger_entry import LedgerEntry, LedgerDirection
 from app.models.operation import Operation, OperationStatus
+from app.models.billing_job_run import BillingJobStatus, BillingJobType
+from app.services.billing_job_runs import BillingJobRunService
+from app.services.billing_metrics import metrics as billing_metrics
 
 
 class BillingReconciliationService:
     def __init__(self, db: Session):
         self.db = db
+        self.job_service = BillingJobRunService(db)
 
     def _load_period(self, billing_period_id: str) -> BillingPeriod:
         period = self.db.query(BillingPeriod).filter(BillingPeriod.id == billing_period_id).one_or_none()
@@ -49,10 +53,12 @@ class BillingReconciliationService:
     def run(self, billing_period_id: str) -> BillingReconciliationRun:
         period = self._load_period(billing_period_id)
 
-        run = BillingReconciliationRun(
-            billing_period_id=period.id,
-            status=BillingReconciliationStatus.OK,
+        job_run = self.job_service.start(
+            BillingJobType.RECONCILIATION,
+            params={"billing_period_id": billing_period_id},
         )
+
+        run = BillingReconciliationRun(billing_period_id=period.id, status=BillingReconciliationStatus.OK)
         self.db.add(run)
         self.db.flush()
 
@@ -65,80 +71,97 @@ class BillingReconciliationService:
         total_invoices = 0
         ok_count = mismatch_count = missing_ledger_count = 0
 
-        for invoice in invoices:
-            total_invoices += 1
-            verdict = BillingReconciliationVerdict.OK
-            diff: dict[str, object] = {}
+        try:
+            for invoice in invoices:
+                total_invoices += 1
+                verdict = BillingReconciliationVerdict.OK
+                diff: dict[str, object] = {}
 
-            lines: list[InvoiceLine] = list(invoice.lines or [])
-            line_sum = sum(int(line.line_amount or 0) for line in lines)
-            if line_sum != int(invoice.total_amount or 0):
-                verdict = BillingReconciliationVerdict.MISMATCH
-                diff["invoice_total_mismatch"] = {"expected": int(invoice.total_amount or 0), "actual": line_sum}
+                lines: list[InvoiceLine] = list(invoice.lines or [])
+                line_sum = sum(int(line.line_amount or 0) for line in lines)
+                if line_sum != int(invoice.total_amount or 0):
+                    verdict = BillingReconciliationVerdict.MISMATCH
+                    diff["invoice_total_mismatch"] = {"expected": int(invoice.total_amount or 0), "actual": line_sum}
 
-            missing_ops: list[str] = []
-            bad_status_ops: list[str] = []
-            missing_ledger_ops: list[str] = []
-            ledger_diffs: dict[str, dict[str, str]] = {}
+                missing_ops: list[str] = []
+                bad_status_ops: list[str] = []
+                missing_ledger_ops: list[str] = []
+                ledger_diffs: dict[str, dict[str, str]] = {}
 
-            for line in lines:
-                operation = (
-                    self.db.query(Operation).filter(Operation.operation_id == line.operation_id).one_or_none()
+                for line in lines:
+                    operation = (
+                        self.db.query(Operation).filter(Operation.operation_id == line.operation_id).one_or_none()
+                    )
+                    if operation is None:
+                        missing_ops.append(line.operation_id)
+                        verdict = BillingReconciliationVerdict.MISMATCH
+                        continue
+                    if operation.status not in (OperationStatus.CAPTURED, OperationStatus.COMPLETED):
+                        bad_status_ops.append(operation.operation_id)
+                        verdict = BillingReconciliationVerdict.MISMATCH
+
+                    debit_sum, credit_sum = self._summarize_ledger(str(operation.id))
+                    if debit_sum == 0 and credit_sum == 0:
+                        missing_ledger_ops.append(operation.operation_id)
+                        verdict = BillingReconciliationVerdict.MISSING_LEDGER
+                    else:
+                        ledger_diffs[operation.operation_id] = {
+                            "debit": str(debit_sum),
+                            "credit": str(credit_sum),
+                            "line_amount": str(line.line_amount),
+                        }
+
+                if missing_ops:
+                    diff["missing_operations"] = missing_ops
+                if bad_status_ops:
+                    diff["invalid_operation_status"] = bad_status_ops
+                if missing_ledger_ops:
+                    diff["missing_ledger"] = missing_ledger_ops
+                if ledger_diffs:
+                    diff["ledger_summary"] = ledger_diffs
+
+                item = BillingReconciliationItem(
+                    run_id=run.id,
+                    invoice_id=invoice.id,
+                    client_id=invoice.client_id,
+                    currency=invoice.currency,
+                    verdict=verdict,
+                    diff_json=diff or None,
                 )
-                if operation is None:
-                    missing_ops.append(line.operation_id)
-                    verdict = BillingReconciliationVerdict.MISMATCH
-                    continue
-                if operation.status not in (OperationStatus.CAPTURED, OperationStatus.COMPLETED):
-                    bad_status_ops.append(operation.operation_id)
-                    verdict = BillingReconciliationVerdict.MISMATCH
+                self.db.add(item)
 
-                debit_sum, credit_sum = self._summarize_ledger(str(operation.id))
-                if debit_sum == 0 and credit_sum == 0:
-                    missing_ledger_ops.append(operation.operation_id)
-                    verdict = BillingReconciliationVerdict.MISSING_LEDGER
+                if verdict == BillingReconciliationVerdict.OK:
+                    ok_count += 1
+                elif verdict == BillingReconciliationVerdict.MISSING_LEDGER:
+                    missing_ledger_count += 1
                 else:
-                    ledger_diffs[operation.operation_id] = {
-                        "debit": str(debit_sum),
-                        "credit": str(credit_sum),
-                        "line_amount": str(line.line_amount),
-                    }
+                    mismatch_count += 1
 
-            if missing_ops:
-                diff["missing_operations"] = missing_ops
-            if bad_status_ops:
-                diff["invalid_operation_status"] = bad_status_ops
-            if missing_ledger_ops:
-                diff["missing_ledger"] = missing_ledger_ops
-            if ledger_diffs:
-                diff["ledger_summary"] = ledger_diffs
-
-            item = BillingReconciliationItem(
-                run_id=run.id,
-                invoice_id=invoice.id,
-                client_id=invoice.client_id,
-                currency=invoice.currency,
-                verdict=verdict,
-                diff_json=diff or None,
+            run.total_invoices = total_invoices
+            run.ok_count = ok_count
+            run.mismatch_count = mismatch_count
+            run.missing_ledger_count = missing_ledger_count
+            run.status = (
+                BillingReconciliationStatus.OK
+                if mismatch_count == 0 and missing_ledger_count == 0
+                else BillingReconciliationStatus.PARTIAL
             )
-            self.db.add(item)
-
-            if verdict == BillingReconciliationVerdict.OK:
-                ok_count += 1
-            elif verdict == BillingReconciliationVerdict.MISSING_LEDGER:
-                missing_ledger_count += 1
-            else:
-                mismatch_count += 1
-
-        run.total_invoices = total_invoices
-        run.ok_count = ok_count
-        run.mismatch_count = mismatch_count
-        run.missing_ledger_count = missing_ledger_count
-        run.status = (
-            BillingReconciliationStatus.OK
-            if mismatch_count == 0 and missing_ledger_count == 0
-            else BillingReconciliationStatus.PARTIAL
-        )
-        run.finished_at = run.finished_at or datetime.now(timezone.utc)
-        self.db.flush()
-        return run
+            run.finished_at = run.finished_at or datetime.now(timezone.utc)
+            self.db.flush()
+            result = self.job_service.succeed(
+                job_run,
+                metrics={
+                    "billing_period_id": str(period.id),
+                    "run_id": str(run.id),
+                    "total_invoices": total_invoices,
+                    "ok_count": ok_count,
+                    "mismatch_count": mismatch_count,
+                    "missing_ledger_count": missing_ledger_count,
+                },
+            )
+            billing_metrics.mark_reconcile_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
+            return run
+        except Exception as exc:  # noqa: BLE001
+            result = self.job_service.fail(job_run, error=str(exc))
+            billing_metrics.mark_reconcile_run(BillingJobStatus.FAILED.value, duration_ms=result.duration_ms)
+            raise

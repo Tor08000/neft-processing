@@ -375,6 +375,38 @@ def _billing_metrics() -> list[str]:
         lines.append(f'core_api_billing_amount_total{{period="{period}"}} {amount}')
     if len(lines) == 5:  # no billed amounts
         lines.append('core_api_billing_amount_total{period="unknown"} 0')
+
+    lines.append("# HELP core_api_billing_daily_runs_total Total daily billing runs by status.")
+    lines.append("# TYPE core_api_billing_daily_runs_total counter")
+    if billing_metrics.daily_runs:
+        for status, count in billing_metrics.daily_runs.items():
+            lines.append(f'core_api_billing_daily_runs_total{{status="{status}"}} {count}')
+    else:
+        lines.append('core_api_billing_daily_runs_total{status="unset"} 0')
+
+    lines.append("# HELP core_api_billing_finalize_runs_total Total finalize billing runs by status.")
+    lines.append("# TYPE core_api_billing_finalize_runs_total counter")
+    if billing_metrics.finalize_runs:
+        for status, count in billing_metrics.finalize_runs.items():
+            lines.append(f'core_api_billing_finalize_runs_total{{status="{status}"}} {count}')
+    else:
+        lines.append('core_api_billing_finalize_runs_total{status="unset"} 0')
+
+    lines.append("# HELP core_api_billing_reconcile_runs_total Total reconciliation runs by status.")
+    lines.append("# TYPE core_api_billing_reconcile_runs_total counter")
+    if billing_metrics.reconcile_runs:
+        for status, count in billing_metrics.reconcile_runs.items():
+            lines.append(f'core_api_billing_reconcile_runs_total{{status="{status}"}} {count}')
+    else:
+        lines.append('core_api_billing_reconcile_runs_total{status="unset"} 0')
+
+    lines.append("# HELP core_api_billing_last_run_duration_ms Last billing job duration in milliseconds.")
+    lines.append("# TYPE core_api_billing_last_run_duration_ms gauge")
+    if billing_metrics.last_run_duration_ms:
+        for job, duration in billing_metrics.last_run_duration_ms.items():
+            lines.append(f'core_api_billing_last_run_duration_ms{{job="{job}"}} {duration}')
+    else:
+        lines.append('core_api_billing_last_run_duration_ms{job="unset"} 0')
     return lines
 
 

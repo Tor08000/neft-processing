@@ -36,7 +36,9 @@ class BillingInvoiceData:
     status: InvoiceStatus = InvoiceStatus.DRAFT
     external_number: str | None = None
     issued_at: datetime | None = None
+    sent_at: datetime | None = None
     paid_at: datetime | None = None
+    pdf_url: str | None = None
 
 
 class BillingRepository:
@@ -65,7 +67,9 @@ class BillingRepository:
             status=data.status,
             external_number=data.external_number,
             issued_at=data.issued_at,
+            sent_at=data.sent_at,
             paid_at=data.paid_at,
+            pdf_url=data.pdf_url,
         )
         self.db.add(invoice)
         self.db.flush()
@@ -139,6 +143,8 @@ class BillingRepository:
         invoice.status = status
         if status == InvoiceStatus.ISSUED and invoice.issued_at is None:
             invoice.issued_at = issued_at or datetime.utcnow()
+        if status == InvoiceStatus.SENT and invoice.sent_at is None:
+            invoice.sent_at = datetime.utcnow()
         if status == InvoiceStatus.PAID:
             invoice.paid_at = paid_at or datetime.utcnow()
 
