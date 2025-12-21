@@ -52,6 +52,9 @@ class Settings:
 
     # Invoice PDFs / storage
     NEFT_INVOICE_PDF_BUCKET: str = os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
+    NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
+    NEFT_S3_ACCESS_KEY: str = os.getenv("NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", "minioadmin"))
+    NEFT_S3_SECRET_KEY: str = os.getenv("NEFT_S3_SECRET_KEY", os.getenv("S3_SECRET_KEY", "minioadmin"))
     NEFT_INVOICE_PDF_TEMPLATE_VERSION: int = int(os.getenv("NEFT_INVOICE_PDF_TEMPLATE_VERSION", "1"))
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "minioadmin")

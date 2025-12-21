@@ -1,9 +1,12 @@
 from datetime import date, datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
+from app.models.billing_task_link import BillingTaskStatus, BillingTaskType
 from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
@@ -23,11 +26,14 @@ from app.schemas.admin.billing import (
     InvoiceListResponse,
     InvoiceRead,
     InvoiceStatusChangeRequest,
+    InvoicePdfEnqueueResponse,
+    InvoicePdfReadResponse,
     TariffPlanListResponse,
     TariffPlanRead,
     TariffPriceListResponse,
     TariffPricePayload,
     TariffPriceRead,
+    BillingJobRunListResponse,
 )
 from app.schemas.reports import BillingSummaryItem
 from app.models.billing_summary import BillingSummary
@@ -41,13 +47,15 @@ from app.services.operations_scenarios.adjustments import AdjustmentService
 from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus, RelatedEntityType
 from app.models.operation import Operation
 from app.models.billing_period import BillingPeriodStatus
+from app.services.billing_job_runs import BillingJobRunService
+from app.services.billing_task_links import BillingTaskLinkService
 from app.services.billing_service import (
     generate_invoices_for_period,
     get_billing_summaries,
 )
 from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
-from app.services.invoice_pdf import InvoicePdfService
+from app.services.invoice_pdf import InvoicePdfService, InvoicePdfStorage
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
@@ -382,72 +390,154 @@ def admin_update_invoice_status(
 
 @router.post("/invoices/run-monthly")
 def admin_run_monthly_invoices(month: str | None = Query(None), db: Session = Depends(get_db)):
-    try:
-        target_month = date.fromisoformat(f"{month}-01") if month else None
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid month format, expected YYYY-MM")
-    invoices = run_invoice_monthly(target_month, session=db)
+    if month:
+        try:
+            date.fromisoformat(f"{month}-01")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid month format, expected YYYY-MM") from exc
 
     try:
-        from app.tasks.billing_pdf import generate_invoice_pdf
-    except Exception:
-        generate_invoice_pdf = None
+        from app.tasks.billing_pdf import run_monthly_invoices_task
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="celery_not_available") from exc
 
-    if generate_invoice_pdf:
-        for invoice in invoices:
-            invoice.pdf_status = InvoicePdfStatus.QUEUED
-            db.add(invoice)
-            db.flush()
-            generate_invoice_pdf.delay(invoice.id, correlation_id=str(invoice.billing_period_id))
-        db.commit()
-    return {"created": [invoice.id for invoice in invoices], "count": len(invoices)}
+    correlation_id = str(uuid4())
+    job_service = BillingJobRunService(db)
+    params = {"month": month} if month else None
+    job_run = job_service.start(
+        BillingJobType.INVOICE_MONTHLY,
+        params=params,
+        correlation_id=correlation_id,
+    )
+    db.add(job_run)
+    db.commit()
+
+    async_result = run_monthly_invoices_task.delay(month, job_run_id=str(job_run.id), correlation_id=correlation_id)
+    job_run.celery_task_id = async_result.id
+    job_run.attempts = (job_run.attempts or 0) + 1
+    db.add(job_run)
+
+    link_service = BillingTaskLinkService(db)
+    link_service.upsert(
+        task_id=async_result.id,
+        task_name="billing.generate_monthly_invoices",
+        job_run_id=str(job_run.id),
+        task_type=BillingTaskType.MONTHLY_RUN,
+        status=BillingTaskStatus.QUEUED,
+    )
+    db.commit()
+
+    return {"task_id": async_result.id, "job_run_id": str(job_run.id), "status": "QUEUED"}
 
 
-@router.post("/invoices/{invoice_id}/pdf/regenerate")
-def admin_regenerate_invoice_pdf(
+@router.post("/invoices/{invoice_id}/pdf", response_model=InvoicePdfEnqueueResponse)
+def admin_enqueue_invoice_pdf(
     invoice_id: str,
     force: bool = Query(False),
-    enqueue: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if invoice is None:
         raise HTTPException(status_code=404, detail="invoice not found")
 
-    if enqueue:
-        try:
-            from app.tasks.billing_pdf import generate_invoice_pdf
-        except Exception:
-            generate_invoice_pdf = None
-
-        if generate_invoice_pdf is None:
-            raise HTTPException(status_code=503, detail="celery_not_available")
-
-        invoice.pdf_status = InvoicePdfStatus.QUEUED
-        invoice.pdf_error = None
-        if force:
-            invoice.pdf_version = (invoice.pdf_version or 0) + 1
-        db.add(invoice)
-        db.commit()
-        generate_invoice_pdf.delay(invoice.id, correlation_id=str(invoice.billing_period_id), force=force)
-        return {"invoice_id": invoice.id, "pdf_status": invoice.pdf_status}
-
     try:
-        service = InvoicePdfService(db)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        from app.tasks.billing_pdf import generate_invoice_pdf
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="celery_not_available") from exc
 
-    updated = service.generate(invoice, force=force)
+    job_service = BillingJobRunService(db)
+    link_service = BillingTaskLinkService(db)
+    correlation_id = str(invoice.billing_period_id) if invoice.billing_period_id else str(uuid4())
+
+    job_run = job_service.start(
+        BillingJobType.PDF_GENERATE,
+        params={"invoice_id": invoice_id, "force": force},
+        correlation_id=correlation_id,
+        invoice_id=invoice_id,
+        billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
+    )
+    invoice.pdf_status = InvoicePdfStatus.QUEUED
+    invoice.pdf_error = None
+    db.add(invoice)
+    db.flush()
+
+    async_result = generate_invoice_pdf.delay(
+        invoice.id,
+        correlation_id=correlation_id,
+        force=force,
+        job_run_id=str(job_run.id),
+    )
+    job_run.celery_task_id = async_result.id
+    job_run.attempts = (job_run.attempts or 0) + 1
+    db.add(job_run)
+
+    link_service.upsert(
+        task_id=async_result.id,
+        task_name="billing.generate_invoice_pdf",
+        job_run_id=str(job_run.id),
+        task_type=BillingTaskType.PDF_GENERATE,
+        invoice_id=invoice.id,
+        billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
+        status=BillingTaskStatus.QUEUED,
+    )
     db.commit()
-    db.refresh(updated)
-    return {"invoice_id": updated.id, "pdf_status": updated.pdf_status, "pdf_url": updated.pdf_url}
+    return InvoicePdfEnqueueResponse(task_id=async_result.id, job_run_id=str(job_run.id), pdf_status=invoice.pdf_status)
 
 
-@router.get("/invoices/{invoice_id}/pdf")
+@router.get("/invoices/{invoice_id}/pdf", response_model=InvoicePdfReadResponse)
 def admin_get_invoice_pdf(invoice_id: str, db: Session = Depends(get_db)):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if invoice is None:
         raise HTTPException(status_code=404, detail="invoice not found")
-    if invoice.pdf_status != InvoicePdfStatus.READY or not invoice.pdf_url:
-        raise HTTPException(status_code=409, detail={"status": invoice.pdf_status, "error": invoice.pdf_error})
-    return {"invoice_id": invoice.id, "pdf_url": invoice.pdf_url, "pdf_hash": invoice.pdf_hash}
+
+    download_url = None
+    if invoice.pdf_url:
+        try:
+            storage = InvoicePdfStorage()
+            prefix = f"s3://{storage.bucket}/"
+            if invoice.pdf_url.startswith(prefix):
+                key = invoice.pdf_url.replace(prefix, "", 1)
+                download_url = storage.get_presigned_url(key)
+        except RuntimeError:
+            download_url = None
+
+    return InvoicePdfReadResponse(
+        invoice_id=invoice.id,
+        pdf_status=invoice.pdf_status,
+        pdf_url=invoice.pdf_url,
+        pdf_hash=invoice.pdf_hash,
+        pdf_version=invoice.pdf_version,
+        pdf_error=invoice.pdf_error,
+        download_url=download_url,
+    )
+
+
+@router.get("/jobs", response_model=BillingJobRunListResponse)
+def admin_list_billing_jobs(
+    job_type: BillingJobType | None = Query(None),
+    status: BillingJobStatus | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    invoice_id: str | None = Query(None),
+    billing_period_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> BillingJobRunListResponse:
+    query = db.query(BillingJobRun)
+    if job_type:
+        query = query.filter(BillingJobRun.job_type == job_type)
+    if status:
+        query = query.filter(BillingJobRun.status == status)
+    if date_from:
+        query = query.filter(BillingJobRun.started_at >= date_from)
+    if date_to:
+        query = query.filter(BillingJobRun.started_at <= date_to)
+    if invoice_id:
+        query = query.filter(BillingJobRun.invoice_id == invoice_id)
+    if billing_period_id:
+        query = query.filter(BillingJobRun.billing_period_id == billing_period_id)
+
+    total = query.count()
+    items = query.order_by(BillingJobRun.started_at.desc()).offset(offset).limit(limit).all()
+    return BillingJobRunListResponse(items=items, total=total, limit=limit, offset=offset)

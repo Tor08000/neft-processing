@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import InvoicePdfStatus, InvoiceStatus
 from app.models.billing_reconciliation import BillingReconciliationStatus, BillingReconciliationVerdict
@@ -162,6 +163,47 @@ class BillingRunResponse(BaseModel):
     invoices_skipped: int
     invoice_lines_created: int
     total_amount: int
+
+
+class InvoicePdfEnqueueResponse(BaseModel):
+    task_id: str
+    job_run_id: str
+    pdf_status: InvoicePdfStatus
+
+
+class InvoicePdfReadResponse(BaseModel):
+    invoice_id: str
+    pdf_status: InvoicePdfStatus
+    pdf_url: str | None = None
+    pdf_hash: str | None = None
+    pdf_version: int | None = None
+    pdf_error: str | None = None
+    download_url: str | None = None
+
+
+class BillingJobRunRead(BaseModel):
+    id: str
+    job_type: BillingJobType
+    status: BillingJobStatus
+    params: dict | None = None
+    metrics: dict | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+    celery_task_id: str | None = None
+    correlation_id: str | None = None
+    invoice_id: str | None = None
+    billing_period_id: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BillingJobRunListResponse(BaseModel):
+    items: list[BillingJobRunRead]
+    total: int
+    limit: int
+    offset: int
 
 
 class BillingPeriodFilter(BaseModel):

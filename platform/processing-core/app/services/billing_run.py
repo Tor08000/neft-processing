@@ -231,6 +231,7 @@ class BillingRunService:
                     end_at=end_at,
                     tz=tz,
                 )
+                job_run.billing_period_id = billing_period.id
                 if billing_period.status != BillingPeriodStatus.OPEN:
                     raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")
 

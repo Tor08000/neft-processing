@@ -25,6 +25,14 @@ pytest platform/processing-core/app/tests/test_reversals.py -q
 pytest platform/processing-core/app/tests/test_disputes.py -q
 ```
 
+## Granting ADMIN role for auth-host
+
+Auth endpoints require an `ADMIN` role in the JWT. You can grant it directly in Postgres (works from Windows CMD as well):
+
+```cmd
+docker compose exec postgres psql -U neft -d neft -c "insert into public.user_roles(user_id, role) select id, 'ADMIN' from public.users where email='admin2@neft.local' on conflict do nothing;"
+```
+
 ## GUID/UUID conventions
 
 - Use `app.db.types.GUID()` for all new primary keys and foreign keys to ensure PostgreSQL uses native UUID and SQLite stores `VARCHAR(36)`.

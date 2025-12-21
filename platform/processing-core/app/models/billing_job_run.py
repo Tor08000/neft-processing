@@ -17,6 +17,7 @@ class BillingJobType(str, Enum):
     INVOICE_MONTHLY = "INVOICE_MONTHLY"
     RECONCILIATION = "RECONCILIATION"
     MANUAL_RUN = "MANUAL_RUN"
+    PDF_GENERATE = "PDF_GENERATE"
 
 
 class BillingJobStatus(str, Enum):
@@ -36,8 +37,11 @@ class BillingJobRun(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)
     metrics = Column(JSON, nullable=True)
-    celery_task_id = Column(String, nullable=True)
-    correlation_id = Column(String, nullable=True, index=True)
+    duration_ms = Column(sa.Integer, nullable=True)
+    celery_task_id = Column(String(128), nullable=True, index=True)
+    correlation_id = Column(String(128), nullable=True, index=True)
+    invoice_id = Column(String(36), nullable=True, index=True)
+    billing_period_id = Column(GUID(), nullable=True, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
     attempts = Column(sa.Integer, nullable=True, default=0)
     last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)

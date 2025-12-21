@@ -20,15 +20,17 @@ class BillingTaskLinkService:
     def upsert(
         self,
         *,
-        invoice_id: str,
-        task_type: BillingTaskType,
         task_id: str,
+        task_name: str,
+        job_run_id: str,
+        task_type: BillingTaskType,
         status: BillingTaskStatus,
+        invoice_id: str | None = None,
+        billing_period_id: str | None = None,
         error: str | None = None,
     ) -> BillingTaskLink:
         existing = (
             self.db.query(BillingTaskLink)
-            .filter(BillingTaskLink.invoice_id == invoice_id)
             .filter(BillingTaskLink.task_id == task_id)
             .one_or_none()
         )
@@ -37,14 +39,21 @@ class BillingTaskLinkService:
         if existing:
             existing.status = status
             existing.error = error
+            if invoice_id:
+                existing.invoice_id = invoice_id
+            if billing_period_id:
+                existing.billing_period_id = billing_period_id
             existing.updated_at = now
             self.db.add(existing)
             return existing
 
         link = BillingTaskLink(
-            invoice_id=invoice_id,
-            task_type=task_type,
             task_id=task_id,
+            task_name=task_name,
+            job_run_id=job_run_id,
+            invoice_id=invoice_id,
+            billing_period_id=billing_period_id,
+            task_type=task_type,
             status=status,
             updated_at=now,
             error=error,

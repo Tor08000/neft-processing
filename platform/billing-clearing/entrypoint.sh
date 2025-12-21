@@ -2,7 +2,7 @@
 set -e
 
 ROLE="${ROLE:-worker}"  # worker or beat
-QUEUES="${QUEUES:-celery,default,limits,antifraud,reports}"
+QUEUES="${QUEUES:-celery,default,billing,pdf}"
 
 echo "[entrypoint] starting celery role=${ROLE}"
 

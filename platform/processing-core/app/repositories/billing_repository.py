@@ -42,7 +42,7 @@ class BillingInvoiceData:
     pdf_status: InvoicePdfStatus = InvoicePdfStatus.NONE
     pdf_generated_at: datetime | None = None
     pdf_hash: str | None = None
-    pdf_version: int | None = None
+    pdf_version: int = 1
     pdf_error: str | None = None
 
 
@@ -78,7 +78,7 @@ class BillingRepository:
             pdf_status=data.pdf_status,
             pdf_generated_at=data.pdf_generated_at,
             pdf_hash=data.pdf_hash,
-            pdf_version=data.pdf_version,
+            pdf_version=data.pdf_version if data.pdf_version is not None else 1,
             pdf_error=data.pdf_error,
         )
         self.db.add(invoice)
