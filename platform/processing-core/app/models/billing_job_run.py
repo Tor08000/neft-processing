@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from uuid import uuid4
 
+import sqlalchemy as sa
 from sqlalchemy import Column, DateTime, Enum as SAEnum, String, Text, func
 from sqlalchemy.types import JSON
 
@@ -35,6 +36,12 @@ class BillingJobRun(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)
     metrics = Column(JSON, nullable=True)
+    celery_task_id = Column(String, nullable=True)
+    correlation_id = Column(String, nullable=True, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
+    attempts = Column(sa.Integer, nullable=True, default=0)
+    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
+    result_ref = Column(JSON, nullable=True)
 
 
 __all__ = ["BillingJobRun", "BillingJobStatus", "BillingJobType"]

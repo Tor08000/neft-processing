@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.contract_limits import TariffPlan, TariffPrice
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
 from app.schemas.admin.billing import (
     BillingAdjustmentRequest,
@@ -47,6 +47,7 @@ from app.services.billing_service import (
 )
 from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
+from app.services.invoice_pdf import InvoicePdfService
 from app.repositories.billing_repository import BillingRepository
 
 router = APIRouter(prefix="/billing", tags=["admin"])
@@ -386,4 +387,67 @@ def admin_run_monthly_invoices(month: str | None = Query(None), db: Session = De
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid month format, expected YYYY-MM")
     invoices = run_invoice_monthly(target_month, session=db)
+
+    try:
+        from app.tasks.billing_pdf import generate_invoice_pdf
+    except Exception:
+        generate_invoice_pdf = None
+
+    if generate_invoice_pdf:
+        for invoice in invoices:
+            invoice.pdf_status = InvoicePdfStatus.QUEUED
+            db.add(invoice)
+            db.flush()
+            generate_invoice_pdf.delay(invoice.id, correlation_id=str(invoice.billing_period_id))
+        db.commit()
     return {"created": [invoice.id for invoice in invoices], "count": len(invoices)}
+
+
+@router.post("/invoices/{invoice_id}/pdf/regenerate")
+def admin_regenerate_invoice_pdf(
+    invoice_id: str,
+    force: bool = Query(False),
+    enqueue: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    if enqueue:
+        try:
+            from app.tasks.billing_pdf import generate_invoice_pdf
+        except Exception:
+            generate_invoice_pdf = None
+
+        if generate_invoice_pdf is None:
+            raise HTTPException(status_code=503, detail="celery_not_available")
+
+        invoice.pdf_status = InvoicePdfStatus.QUEUED
+        invoice.pdf_error = None
+        if force:
+            invoice.pdf_version = (invoice.pdf_version or 0) + 1
+        db.add(invoice)
+        db.commit()
+        generate_invoice_pdf.delay(invoice.id, correlation_id=str(invoice.billing_period_id), force=force)
+        return {"invoice_id": invoice.id, "pdf_status": invoice.pdf_status}
+
+    try:
+        service = InvoicePdfService(db)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    updated = service.generate(invoice, force=force)
+    db.commit()
+    db.refresh(updated)
+    return {"invoice_id": updated.id, "pdf_status": updated.pdf_status, "pdf_url": updated.pdf_url}
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+def admin_get_invoice_pdf(invoice_id: str, db: Session = Depends(get_db)):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    if invoice.pdf_status != InvoicePdfStatus.READY or not invoice.pdf_url:
+        raise HTTPException(status_code=409, detail={"status": invoice.pdf_status, "error": invoice.pdf_error})
+    return {"invoice_id": invoice.id, "pdf_url": invoice.pdf_url, "pdf_hash": invoice.pdf_hash}

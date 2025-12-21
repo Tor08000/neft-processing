@@ -25,21 +25,44 @@ class BillingJobRunService:
     def __init__(self, db: Session):
         self.db = db
 
-    def start(self, job_type: BillingJobType, *, params: dict[str, Any] | None = None) -> BillingJobRun:
+    def start(
+        self,
+        job_type: BillingJobType,
+        *,
+        params: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+        celery_task_id: str | None = None,
+    ) -> BillingJobRun:
         run = BillingJobRun(
             job_type=job_type,
             params=params,
             status=BillingJobStatus.STARTED,
+            correlation_id=correlation_id,
+            celery_task_id=celery_task_id,
+            updated_at=datetime.utcnow(),
+            attempts=(1 if celery_task_id else 0),
         )
         self.db.add(run)
         self.db.flush()
-        logger.info("billing.job.start", extra={"job_type": job_type, "params": params})
+        logger.info(
+            "billing.job.start",
+            extra={"job_type": job_type, "params": params, "correlation_id": correlation_id, "celery_task_id": celery_task_id},
+        )
         return run
 
-    def succeed(self, run: BillingJobRun, *, metrics: dict[str, Any] | None = None) -> BillingJobResult:
+    def succeed(
+        self,
+        run: BillingJobRun,
+        *,
+        metrics: dict[str, Any] | None = None,
+        result_ref: dict[str, Any] | None = None,
+    ) -> BillingJobResult:
         run.status = BillingJobStatus.SUCCESS
         run.metrics = metrics
         run.finished_at = datetime.utcnow()
+        run.updated_at = run.finished_at
+        if result_ref is not None:
+            run.result_ref = result_ref
         self.db.add(run)
         self.db.flush()
         duration_ms = _duration_ms(run)
@@ -53,6 +76,7 @@ class BillingJobRunService:
         run.status = BillingJobStatus.FAILED
         run.error = error
         run.finished_at = datetime.utcnow()
+        run.updated_at = run.finished_at
         self.db.add(run)
         self.db.flush()
         duration_ms = _duration_ms(run)
@@ -61,6 +85,12 @@ class BillingJobRunService:
             extra={"job_type": run.job_type, "run_id": run.id, "error": error, "duration_ms": duration_ms},
         )
         return BillingJobResult(run=run, duration_ms=duration_ms)
+
+    def heartbeat(self, run: BillingJobRun) -> None:
+        run.last_heartbeat_at = datetime.utcnow()
+        run.updated_at = run.last_heartbeat_at
+        self.db.add(run)
+        self.db.flush()
 
 
 def _duration_ms(run: BillingJobRun) -> int | None:

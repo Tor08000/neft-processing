@@ -50,6 +50,14 @@ class Settings:
     ).lower() in {"1", "true", "yes"}
     NEFT_INVOICE_MONTHLY_AT: str = os.getenv("NEFT_INVOICE_MONTHLY_AT", "03:00")
 
+    # Invoice PDFs / storage
+    NEFT_INVOICE_PDF_BUCKET: str = os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
+    NEFT_INVOICE_PDF_TEMPLATE_VERSION: int = int(os.getenv("NEFT_INVOICE_PDF_TEMPLATE_VERSION", "1"))
+    S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+    S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
+    S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "minioadmin")
+    S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+
     @property
     def redis_dsn(self) -> str:
         """Совместимость с более старым кодом, ожидающим REDIS_DSN."""

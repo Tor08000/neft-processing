@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Numeric,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -30,6 +31,16 @@ class InvoiceStatus(str, Enum):
     SENT = "SENT"
     PAID = "PAID"
     CANCELLED = "CANCELLED"
+
+
+class InvoicePdfStatus(str, Enum):
+    """Lifecycle of invoice PDF artifact."""
+
+    NONE = "NONE"
+    QUEUED = "QUEUED"
+    GENERATING = "GENERATING"
+    READY = "READY"
+    FAILED = "FAILED"
 
 
 class Invoice(Base):
@@ -65,6 +76,11 @@ class Invoice(Base):
 
     external_number = Column(String(64), nullable=True)
     pdf_url = Column(String(512), nullable=True)
+    pdf_status = Column(SAEnum(InvoicePdfStatus), nullable=False, server_default=InvoicePdfStatus.NONE.value)
+    pdf_generated_at = Column(DateTime(timezone=True), nullable=True)
+    pdf_hash = Column(String(128), nullable=True)
+    pdf_version = Column(Integer, nullable=True)
+    pdf_error = Column(String(2048), nullable=True)
 
     lines = relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 

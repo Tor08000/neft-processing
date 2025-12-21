@@ -6,7 +6,7 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
-from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
 
 
 @dataclass
@@ -39,6 +39,11 @@ class BillingInvoiceData:
     sent_at: datetime | None = None
     paid_at: datetime | None = None
     pdf_url: str | None = None
+    pdf_status: InvoicePdfStatus = InvoicePdfStatus.NONE
+    pdf_generated_at: datetime | None = None
+    pdf_hash: str | None = None
+    pdf_version: int | None = None
+    pdf_error: str | None = None
 
 
 class BillingRepository:
@@ -70,6 +75,11 @@ class BillingRepository:
             sent_at=data.sent_at,
             paid_at=data.paid_at,
             pdf_url=data.pdf_url,
+            pdf_status=data.pdf_status,
+            pdf_generated_at=data.pdf_generated_at,
+            pdf_hash=data.pdf_hash,
+            pdf_version=data.pdf_version,
+            pdf_error=data.pdf_error,
         )
         self.db.add(invoice)
         self.db.flush()
