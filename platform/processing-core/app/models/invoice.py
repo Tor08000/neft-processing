@@ -60,9 +60,11 @@ class Invoice(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
 
     external_number = Column(String(64), nullable=True)
+    pdf_url = Column(String(512), nullable=True)
 
     lines = relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 

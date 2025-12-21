@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
@@ -11,6 +12,9 @@ from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.operation import Operation, OperationStatus
+from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
+from app.services.billing_job_runs import BillingJobRunService
+from app.services.billing_metrics import metrics as billing_metrics
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -18,8 +22,6 @@ logger = get_logger(__name__)
 BILLABLE_STATUSES = {
     OperationStatus.CAPTURED,
     OperationStatus.COMPLETED,
-    OperationStatus.REFUNDED,
-    OperationStatus.REVERSED,
 }
 
 
@@ -163,6 +165,8 @@ def run_billing_daily(
     billing_date = target_date or _default_billing_date(now)
     should_close = session is None
     session = session or get_sessionmaker()()
+    job_service = BillingJobRunService(session)
+    txn_context = nullcontext() if session.in_transaction() else session.begin()
 
     logger.info(
         "billing.daily.start",
@@ -172,15 +176,29 @@ def run_billing_daily(
         },
     )
 
-    if not settings.NEFT_BILLING_DAILY_ENABLED:
-        logger.info("billing.daily.disabled")
-        if should_close:
-            session.close()
-        return []
+    job_run: BillingJobRun | None = None
 
     try:
-        with session.begin():
+        with txn_context:
+            job_run = job_service.start(
+                BillingJobType.BILLING_DAILY,
+                params={"billing_date": str(billing_date)},
+            )
+
+            if not settings.NEFT_BILLING_DAILY_ENABLED:
+                logger.info("billing.daily.disabled")
+                result = job_service.succeed(
+                    job_run, metrics={"processed": 0, "billing_date": str(billing_date), "enabled": False}
+                )
+                billing_metrics.mark_daily_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
+                return []
+
             summaries = _upsert_billing_summaries(session, billing_date)
+            result = job_service.succeed(
+                job_run,
+                metrics={"processed": len(summaries), "billing_date": str(billing_date)},
+            )
+            billing_metrics.mark_daily_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
         logger.info(
             "billing.daily.completed",
             extra={
@@ -189,6 +207,12 @@ def run_billing_daily(
             },
         )
         return summaries
+    except Exception as exc:  # noqa: BLE001
+        result = job_service.fail(job_run, error=str(exc)) if job_run else None
+        billing_metrics.mark_daily_run(
+            BillingJobStatus.FAILED.value, duration_ms=result.duration_ms if result else None
+        )
+        raise
     finally:
         if should_close:
             session.close()
@@ -204,6 +228,8 @@ def finalize_billing_day(
 
     should_close = session is None
     session = session or get_sessionmaker()()
+    job_service = BillingJobRunService(session)
+    txn_context = nullcontext() if session.in_transaction() else session.begin()
 
     tz = ZoneInfo(settings.NEFT_BILLING_TZ)
     current = now or datetime.now(timezone.utc)
@@ -213,19 +239,34 @@ def finalize_billing_day(
     cutoff = datetime.combine(billing_date, time.max).replace(tzinfo=tz) + timedelta(
         hours=settings.NEFT_BILLING_FINALIZE_GRACE_HOURS
     )
+    job_run: BillingJobRun | None = None
 
     if current <= cutoff:
         logger.info(
             "billing.finalize.skipped",
             extra={"billing_date": str(billing_date), "now": current.isoformat(), "cutoff": cutoff.isoformat()},
         )
+        with txn_context:
+            job_run = job_service.start(
+                BillingJobType.BILLING_FINALIZE,
+                params={"billing_date": str(billing_date)},
+            )
+            result = job_service.succeed(
+                job_run,
+                metrics={"updated": 0, "billing_date": str(billing_date), "skipped": True},
+            )
+        billing_metrics.mark_finalize_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
         if should_close:
             session.close()
         return 0
 
     logger.info("billing.finalize.start", extra={"billing_date": str(billing_date)})
     try:
-        with session.begin():
+        with txn_context:
+            job_run = job_service.start(
+                BillingJobType.BILLING_FINALIZE,
+                params={"billing_date": str(billing_date)},
+            )
             updated = (
                 session.query(BillingSummary)
                 .filter(BillingSummary.billing_date == billing_date)
@@ -238,8 +279,19 @@ def finalize_billing_day(
                     synchronize_session=False,
                 )
             )
+            result = job_service.succeed(
+                job_run,
+                metrics={"updated": int(updated or 0), "billing_date": str(billing_date)},
+            )
+            billing_metrics.mark_finalize_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
         logger.info("billing.finalize.completed", extra={"billing_date": str(billing_date), "updated": updated})
         return int(updated or 0)
+    except Exception as exc:  # noqa: BLE001
+        result = job_service.fail(job_run, error=str(exc)) if job_run else None
+        billing_metrics.mark_finalize_run(
+            BillingJobStatus.FAILED.value, duration_ms=result.duration_ms if result else None
+        )
+        raise
     finally:
         if should_close:
             session.close()

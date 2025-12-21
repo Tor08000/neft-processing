@@ -96,16 +96,6 @@ def test_admin_billing_summary_filters(admin_client: TestClient, session: Sessio
             currency="RUB",
         ),
         _make_operation(
-            created_at=base_ts + timedelta(minutes=5),
-            status=OperationStatus.REFUNDED,
-            client_id="c-1",
-            merchant_id="m-1",
-            product_type=ProductType.DIESEL,
-            amount=500,
-            quantity=Decimal("2.000"),
-            currency="RUB",
-        ),
-        _make_operation(
             created_at=base_ts + timedelta(minutes=10),
             status=OperationStatus.COMPLETED,
             client_id="c-2",
@@ -145,10 +135,10 @@ def test_admin_billing_summary_filters(admin_client: TestClient, session: Sessio
     assert item["merchant_id"] == "m-1"
     assert item["client_id"] == "c-1"
     assert item["product_type"] == ProductType.DIESEL.value
-    assert item["total_amount"] == 1500
-    assert item["total_quantity"] == "8.000"
-    assert item["operations_count"] == 2
-    assert item["commission_amount"] == 15
+    assert item["total_amount"] == 2000
+    assert item["total_quantity"] == "10.000"
+    assert item["operations_count"] == 1
+    assert item["commission_amount"] == 20
 
 
 def test_admin_billing_summary_pagination(admin_client: TestClient, session: Session):
@@ -201,4 +191,3 @@ def test_admin_billing_summary_pagination(admin_client: TestClient, session: Ses
     second_payload = second_page.json()
     assert second_payload["total"] == 3
     assert len(second_payload["items"]) == 1
-

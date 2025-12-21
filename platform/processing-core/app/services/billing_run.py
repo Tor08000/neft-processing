@@ -9,8 +9,10 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
+from app.models.billing_job_run import BillingJobType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
+from app.services.billing_job_runs import BillingJobRunService
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -48,6 +50,7 @@ class BillingRunService:
 
     def __init__(self, db: Session):
         self.db = db
+        self.job_service = BillingJobRunService(db)
 
     def _get_or_create_billing_period(
         self,
@@ -207,79 +210,105 @@ class BillingRunService:
             },
         )
 
-        txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
-
-        with txn_context:
-            billing_period = self._get_or_create_billing_period(
-                period_type=period_type,
-                start_at=start_at,
-                end_at=end_at,
-                tz=tz,
-            )
-            if billing_period.status != BillingPeriodStatus.OPEN:
-                raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")
-
-            grouped: dict[tuple[str, str], list[tuple[Operation, int]]] = {}
-            for op, amount in operations:
-                key = (op.client_id, op.currency or "RUB")
-                grouped.setdefault(key, []).append((op, amount))
-
-            invoices_created = 0
-            invoices_rebuilt = 0
-            invoices_skipped = 0
-            invoice_lines_created = 0
-            total_amount = 0
-            processed_clients: set[str] = set()
-
-            for (client_key, currency), items in grouped.items():
-                processed_clients.add(client_key)
-                lines = self._build_lines(items)
-                invoice, action = self._apply_invoice(
-                    billing_period=billing_period,
-                    client_id=client_key,
-                    currency=currency,
-                    period_from=period_from,
-                    period_to=period_to,
-                    lines=lines,
-                )
-
-                if invoice.status != InvoiceStatus.DRAFT:
-                    invoices_skipped += 1
-                    continue
-
-                if action == "created":
-                    invoices_created += 1
-                elif action == "rebuilt":
-                    invoices_rebuilt += 1
-                else:
-                    invoices_skipped += 1
-
-                invoice_lines_created += len(lines)
-                total_amount += invoice.total_amount or 0
-
-            result = BillingRunResult(
-                billing_period=billing_period,
-                period_from=period_from,
-                period_to=period_to,
-                clients_processed=len(processed_clients),
-                invoices_created=invoices_created,
-                invoices_rebuilt=invoices_rebuilt,
-                invoices_skipped=invoices_skipped,
-                invoice_lines_created=invoice_lines_created,
-                total_amount=total_amount,
-            )
-
-        logger.info(
-            "billing.run.completed",
-            extra={
-                "billing_period_id": billing_period.id,
-                "clients_processed": result.clients_processed,
-                "invoices_created": result.invoices_created,
-                "invoices_rebuilt": result.invoices_rebuilt,
-                "invoices_skipped": result.invoices_skipped,
-                "invoice_lines_created": result.invoice_lines_created,
-                "total_amount": result.total_amount,
+        job_run = self.job_service.start(
+            BillingJobType.MANUAL_RUN,
+            params={
+                "period_type": period_type.value if hasattr(period_type, "value") else str(period_type),
+                "start_at": start_at.isoformat(),
+                "end_at": end_at.isoformat(),
+                "tz": tz,
+                "client_id": client_id,
             },
         )
 
-        return result
+        txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
+
+        try:
+            with txn_context:
+                billing_period = self._get_or_create_billing_period(
+                    period_type=period_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                    tz=tz,
+                )
+                if billing_period.status != BillingPeriodStatus.OPEN:
+                    raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")
+
+                grouped: dict[tuple[str, str], list[tuple[Operation, int]]] = {}
+                for op, amount in operations:
+                    key = (op.client_id, op.currency or "RUB")
+                    grouped.setdefault(key, []).append((op, amount))
+
+                invoices_created = 0
+                invoices_rebuilt = 0
+                invoices_skipped = 0
+                invoice_lines_created = 0
+                total_amount = 0
+                processed_clients: set[str] = set()
+
+                for (client_key, currency), items in grouped.items():
+                    processed_clients.add(client_key)
+                    lines = self._build_lines(items)
+                    invoice, action = self._apply_invoice(
+                        billing_period=billing_period,
+                        client_id=client_key,
+                        currency=currency,
+                        period_from=period_from,
+                        period_to=period_to,
+                        lines=lines,
+                    )
+
+                    if invoice.status != InvoiceStatus.DRAFT:
+                        invoices_skipped += 1
+                        continue
+
+                    if action == "created":
+                        invoices_created += 1
+                    elif action == "rebuilt":
+                        invoices_rebuilt += 1
+                    else:
+                        invoices_skipped += 1
+
+                    invoice_lines_created += len(lines)
+                    total_amount += invoice.total_amount or 0
+
+                result = BillingRunResult(
+                    billing_period=billing_period,
+                    period_from=period_from,
+                    period_to=period_to,
+                    clients_processed=len(processed_clients),
+                    invoices_created=invoices_created,
+                    invoices_rebuilt=invoices_rebuilt,
+                    invoices_skipped=invoices_skipped,
+                    invoice_lines_created=invoice_lines_created,
+                    total_amount=total_amount,
+                )
+
+            logger.info(
+                "billing.run.completed",
+                extra={
+                    "billing_period_id": billing_period.id,
+                    "clients_processed": result.clients_processed,
+                    "invoices_created": result.invoices_created,
+                    "invoices_rebuilt": result.invoices_rebuilt,
+                    "invoices_skipped": result.invoices_skipped,
+                    "invoice_lines_created": result.invoice_lines_created,
+                    "total_amount": result.total_amount,
+                },
+            )
+            self.job_service.succeed(
+                job_run,
+                metrics={
+                    "billing_period_id": str(billing_period.id),
+                    "clients_processed": result.clients_processed,
+                    "invoices_created": result.invoices_created,
+                    "invoices_rebuilt": result.invoices_rebuilt,
+                    "invoices_skipped": result.invoices_skipped,
+                    "invoice_lines_created": result.invoice_lines_created,
+                    "total_amount": result.total_amount,
+                },
+            )
+            return result
+        except Exception as exc:  # noqa: BLE001
+            self.job_service.fail(job_run, error=str(exc))
+            raise

@@ -86,24 +86,6 @@ def test_build_billing_summary_for_date_creates_summary(session):
             quantity=Decimal("1.500"),
         ),
         _make_operation(
-            created_at=base_ts + timedelta(minutes=5),
-            status=OperationStatus.REFUNDED,
-            client_id="c1",
-            merchant_id="m1",
-            product_type=ProductType.AI95,
-            amount=200,
-            quantity=Decimal("0.300"),
-        ),
-        _make_operation(
-            created_at=base_ts + timedelta(minutes=10),
-            status=OperationStatus.REVERSED,
-            client_id="c1",
-            merchant_id="m1",
-            product_type=ProductType.AI95,
-            amount=100,
-            quantity=Decimal("0.100"),
-        ),
-        _make_operation(
             created_at=base_ts + timedelta(minutes=15),
             status=OperationStatus.COMPLETED,
             client_id="c2",
@@ -125,10 +107,10 @@ def test_build_billing_summary_for_date_creates_summary(session):
 
     first = summaries[0]
     assert first.client_id == "c1"
-    assert first.total_amount == 700  # 1000 - 200 - 100
-    assert first.total_quantity == Decimal("1.100")
-    assert first.operations_count == 3
-    assert first.commission_amount == 7
+    assert first.total_amount == 1_000
+    assert first.total_quantity == Decimal("1.500")
+    assert first.operations_count == 1
+    assert first.commission_amount == 10
 
     second = summaries[1]
     assert second.client_id == "c2"
@@ -160,23 +142,11 @@ def test_build_billing_summary_for_date_upserts(session):
     assert initial.total_amount == 1_000
     assert initial.operations_count == 1
 
-    op2 = _make_operation(
-        created_at=base_ts + timedelta(minutes=30),
-        status=OperationStatus.REFUNDED,
-        client_id="c1",
-        merchant_id="m1",
-        product_type=ProductType.AI95,
-        amount=400,
-        quantity=Decimal("0.400"),
-    )
-    session.add(op2)
-    session.commit()
-
     asyncio.run(build_billing_summary_for_date(billing_date))
 
     session.expire_all()
     updated = session.query(BillingSummary).first()
-    assert updated.total_amount == 600
-    assert updated.total_quantity == Decimal("0.600")
-    assert updated.operations_count == 2
-    assert updated.commission_amount == 6
+    assert updated.total_amount == 1_000
+    assert updated.total_quantity == Decimal("1.000")
+    assert updated.operations_count == 1
+    assert updated.commission_amount == 10

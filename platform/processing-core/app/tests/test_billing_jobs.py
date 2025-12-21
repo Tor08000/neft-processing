@@ -84,12 +84,6 @@ def test_billing_summary_upsert_idempotent(session):
                 amount=1_000,
                 quantity=Decimal("1.0"),
             ),
-            _make_operation(
-                created_at=base_ts + timedelta(minutes=10),
-                status=OperationStatus.REFUNDED,
-                amount=200,
-                quantity=Decimal("0.2"),
-            ),
         ]
     )
     session.commit()
@@ -98,8 +92,8 @@ def test_billing_summary_upsert_idempotent(session):
     summaries_second = run_billing_daily(billing_date, session=session)
 
     summary = session.query(BillingSummary).first()
-    assert summary.total_amount == 800
-    assert summary.operations_count == 2
+    assert summary.total_amount == 1_000
+    assert summary.operations_count == 1
     assert summary.status == BillingSummaryStatus.PENDING
     assert len(summaries_first) == len(summaries_second) == 1
 

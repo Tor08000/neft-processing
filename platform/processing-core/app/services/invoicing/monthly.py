@@ -12,6 +12,8 @@ from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.invoice import Invoice
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
+from app.models.billing_job_run import BillingJobType
+from app.services.billing_job_runs import BillingJobRunService
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -74,6 +76,11 @@ def run_invoice_monthly(
     period_from, period_to = _month_bounds(month_anchor)
     should_close = session is None
     session = session or get_sessionmaker()()
+    job_service = BillingJobRunService(session)
+    job_run = job_service.start(
+        BillingJobType.INVOICE_MONTHLY,
+        params={"period_from": str(period_from), "period_to": str(period_to)},
+    )
 
     logger.info(
         "invoice.monthly.start",
@@ -85,6 +92,10 @@ def run_invoice_monthly(
     )
 
     if not settings.NEFT_INVOICE_MONTHLY_ENABLED:
+        job_service.succeed(
+            job_run,
+            metrics={"created": 0, "period_from": str(period_from), "period_to": str(period_to), "enabled": False},
+        )
         if should_close:
             session.close()
         logger.info("invoice.monthly.disabled")
@@ -100,6 +111,10 @@ def run_invoice_monthly(
         )
         if not summaries:
             logger.info("invoice.monthly.no_data", extra={"period_from": str(period_from), "period_to": str(period_to)})
+            job_service.succeed(
+                job_run,
+                metrics={"created": 0, "period_from": str(period_from), "period_to": str(period_to), "no_data": True},
+            )
             return []
 
         grouped = _group_summaries(summaries)
@@ -141,7 +156,19 @@ def run_invoice_monthly(
                 "created": len(created),
             },
         )
+        job_service.succeed(
+            job_run,
+            metrics={
+                "created": len(created),
+                "period_from": str(period_from),
+                "period_to": str(period_to),
+                "invoices": [invoice.id for invoice in created],
+            },
+        )
         return created
+    except Exception as exc:  # noqa: BLE001
+        job_service.fail(job_run, error=str(exc))
+        raise
     finally:
         if should_close:
             session.close()
