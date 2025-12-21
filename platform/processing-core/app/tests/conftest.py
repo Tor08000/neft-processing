@@ -36,7 +36,7 @@ try:
     from app.main import app as fastapi_app
     from app.services import admin_auth as _admin_auth
 
-    fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.verify_admin_token
+    fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.require_admin
 except Exception:
     pass
 
@@ -61,12 +61,7 @@ def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
     from app.api.dependencies.admin import require_admin_user
     from app.main import app
 
-    def _admin_override(token: str = Depends(admin_auth._get_bearer_token)) -> dict:
-        services.admin_auth.get_public_key()
-        services.admin_auth.get_public_key(force_refresh=True)
-        return {"roles": ["ADMIN"]}
-
-    app.dependency_overrides[require_admin_user] = _admin_override
+    app.dependency_overrides[require_admin_user] = services.admin_auth.require_admin
 
 
 @pytest.fixture

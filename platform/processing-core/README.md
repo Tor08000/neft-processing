@@ -12,6 +12,11 @@ Admin endpoints (prefixed with `/api/core/v1/admin`):
 - `POST /disputes/{id}/reject` — reject dispute and release hold.
 - `POST /disputes/{id}/close` — finalize accepted/rejected dispute.
 
+Admin JWT roles:
+
+- Auth-host issues the `PLATFORM_ADMIN` role for platform administrators.
+- Core API treats both `ADMIN` and `PLATFORM_ADMIN` as administrator roles for `/api/v1/admin/*` endpoints.
+
 Smoke tests:
 
 ```bash

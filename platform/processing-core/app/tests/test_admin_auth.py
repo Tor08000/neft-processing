@@ -22,13 +22,8 @@ def client():
     from app.api.dependencies.admin import require_admin_user
     from app import services
 
-    def _override(token: str = Depends(services.admin_auth._get_bearer_token)):
-        services.admin_auth.get_public_key()
-        services.admin_auth.get_public_key(force_refresh=True)
-        return {"roles": ["ADMIN"]}
-
     app.dependency_overrides.clear()
-    app.dependency_overrides[require_admin_user] = _override
+    app.dependency_overrides[require_admin_user] = services.admin_auth.require_admin
     assert require_admin_user in app.dependency_overrides
     with TestClient(app) as api_client:
         yield api_client
@@ -68,6 +63,24 @@ def test_admin_access_allowed_for_admin(client: TestClient, admin_token: str):
     assert resp.status_code == 200
 
 
+def test_admin_access_allowed_for_platform_admin(client: TestClient, make_jwt):
+    token = make_jwt(roles=("PLATFORM_ADMIN",))
+    resp = client.get(
+        "/api/v1/admin/merchants",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+
+
+def test_admin_access_allowed_for_role_field_only(client: TestClient, make_jwt):
+    token = make_jwt(roles=(), extra={"role": "PLATFORM_ADMIN"})
+    resp = client.get(
+        "/api/v1/admin/merchants",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+
+
 def test_public_key_refresh_on_validation_error(
     client: TestClient, make_jwt, monkeypatch: pytest.MonkeyPatch, rsa_keys: dict
 ):
@@ -94,4 +107,4 @@ def test_public_key_refresh_on_validation_error(
     )
 
     assert resp.status_code == 200
-    assert services.admin_auth._call_log == [False, True]
+    assert services.admin_auth._call_log[-2:] == [False, True]
