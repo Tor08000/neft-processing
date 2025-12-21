@@ -32,6 +32,16 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
+def _admin_credentials() -> tuple[str, str]:
+    """
+    Optional bootstrap admin credentials.
+    If not set, returns empty values.
+    """
+    email = os.getenv("AUTH_ADMIN_EMAIL", "")
+    password = os.getenv("AUTH_ADMIN_PASSWORD", "")
+    return email, password
+
+
 async def _get_user_from_db(email: str) -> User | None:
     email_normalized = email.strip().lower()
 
@@ -72,7 +82,11 @@ async def public_key() -> str:
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest) -> UserResponse:
     admin_email, _ = _admin_credentials()
-    if payload.email.lower() == admin_email.lower():
+    admin_email = admin_email.strip().lower() if admin_email else ""
+
+    normalized_email = payload.email.strip().lower()
+
+    if admin_email and normalized_email == admin_email:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="admin_email_reserved")
 
     existing = await _get_user_from_db(payload.email)
@@ -176,4 +190,3 @@ async def auth_me(credentials: HTTPAuthorizationCredentials | None = Depends(sec
         subject_type=subject_type,
         client_id=client_id,
     )
-
