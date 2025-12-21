@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
@@ -206,7 +207,9 @@ class BillingRunService:
             },
         )
 
-        with self.db.begin():
+        txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
+
+        with txn_context:
             billing_period = self._get_or_create_billing_period(
                 period_type=period_type,
                 start_at=start_at,

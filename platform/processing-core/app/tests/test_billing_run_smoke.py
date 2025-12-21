@@ -11,6 +11,7 @@ from app.main import app
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
+from app.services.billing_run import BillingRunService
 
 
 @pytest.fixture
@@ -118,6 +119,42 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
             invoice_ids = [row.id for row in session.query(Invoice.id).filter(Invoice.client_id == client_id).all()]
         if invoice_ids:
             session.query(InvoiceLine).filter(InvoiceLine.invoice_id.in_(invoice_ids)).delete(synchronize_session=False)
+        session.query(Invoice).filter(Invoice.client_id == client_id).delete(synchronize_session=False)
+        session.query(BillingPeriod).filter(
+            BillingPeriod.start_at == start_at, BillingPeriod.end_at == end_at
+        ).delete(synchronize_session=False)
+        session.query(Operation).filter(Operation.client_id == client_id).delete(synchronize_session=False)
+        session.commit()
+
+
+def test_billing_run_respects_existing_transaction(session: Session):
+    service = BillingRunService(session)
+    start_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    end_at = start_at + timedelta(days=1)
+    client_id = str(uuid4())
+    operation = None
+
+    try:
+        with session.begin():
+            operation = _make_operation(
+                client_id=client_id,
+                created_at=start_at + timedelta(hours=1),
+                captured_amount=1_000,
+            )
+            session.add(operation)
+            session.flush()
+            service.run(
+                period_type=BillingPeriodType.ADHOC,
+                start_at=start_at,
+                end_at=end_at,
+                tz="UTC",
+                client_id=None,
+            )
+    finally:
+        if operation is not None:
+            session.query(InvoiceLine).filter(InvoiceLine.operation_id == operation.operation_id).delete(
+                synchronize_session=False
+            )
         session.query(Invoice).filter(Invoice.client_id == client_id).delete(synchronize_session=False)
         session.query(BillingPeriod).filter(
             BillingPeriod.start_at == start_at, BillingPeriod.end_at == end_at
