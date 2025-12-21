@@ -25,10 +25,15 @@ celery_client.conf.update(
     task_default_queue=DEFAULT_QUEUE,
     task_default_exchange=DEFAULT_QUEUE,
     task_default_routing_key=DEFAULT_QUEUE,
+    task_routes={
+        "billing.generate_monthly_invoices": {"queue": "billing"},
+        "billing.generate_invoice_pdf": {"queue": "pdf"},
+    },
 )
 
 # Register billing tasks
 try:  # pragma: no cover - optional celery runtime
+    import app.tasks  # noqa: F401
     import app.tasks.billing_pdf  # noqa: F401
 except Exception:
     pass

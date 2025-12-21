@@ -1,17 +1,10 @@
 # platform/processing-core/Dockerfile
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
-
-# нужно для psycopg[binary] и curl для healthcheck'а
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl \
-        build-essential && \
-    rm -rf /var/lib/apt/lists/*
 
 # кладём shared/python как отдельный модуль
 COPY shared/python /opt/python

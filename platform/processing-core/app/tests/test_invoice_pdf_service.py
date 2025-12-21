@@ -54,12 +54,12 @@ def test_generate_invoice_pdf_marks_ready(session):
     service = InvoicePdfService(session)
     key = service._pdf_key(invoice)
 
-    with Stubber(service._s3) as stubber:
+    with Stubber(service.storage._client) as stubber:
         stubber.add_response(
             "put_object",
             {},
             {
-                "Bucket": service.bucket,
+                "Bucket": service.storage.bucket,
                 "Key": key,
                 "Body": ANY,
                 "ContentType": "application/pdf",
@@ -69,5 +69,5 @@ def test_generate_invoice_pdf_marks_ready(session):
         session.commit()
 
     assert generated.pdf_status == InvoicePdfStatus.READY
-    assert generated.pdf_url == f"s3://{service.bucket}/{key}"
+    assert generated.pdf_url == f"s3://{service.storage.bucket}/{key}"
     assert generated.pdf_hash

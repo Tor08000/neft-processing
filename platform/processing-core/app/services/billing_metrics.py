@@ -13,6 +13,8 @@ class BillingMetrics:
     generated_invoices_total: int = 0
     last_run_generated: int = 0
     billing_errors: int = 0
+    pdf_generated_total: int = 0
+    pdf_errors_total: int = 0
     billed_amounts: Dict[str, int] = field(default_factory=dict)
     daily_runs: Dict[str, int] = field(default_factory=dict)
     finalize_runs: Dict[str, int] = field(default_factory=dict)
@@ -35,6 +37,16 @@ class BillingMetrics:
         """Count billing errors in a best-effort way."""
 
         self.billing_errors += 1
+
+    def mark_pdf_generated(self, count: int = 1) -> None:
+        """Count generated PDFs."""
+
+        self.pdf_generated_total += count
+
+    def mark_pdf_error(self) -> None:
+        """Count PDF generation failures."""
+
+        self.pdf_errors_total += 1
 
     def mark_daily_run(self, status: str, *, duration_ms: int | None = None) -> None:
         """Track billing daily run attempts by status."""
@@ -69,6 +81,8 @@ class BillingMetrics:
         self.generated_invoices_total = 0
         self.last_run_generated = 0
         self.billing_errors = 0
+        self.pdf_generated_total = 0
+        self.pdf_errors_total = 0
         self.billed_amounts.clear()
         self.daily_runs.clear()
         self.finalize_runs.clear()

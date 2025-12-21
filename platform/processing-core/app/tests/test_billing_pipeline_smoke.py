@@ -145,7 +145,8 @@ def test_invoice_monthly_smoke(session, monkeypatch):
     )
     session.commit()
 
-    invoices = run_invoice_monthly(target_month, session=session)
+    result = run_invoice_monthly(target_month, session=session)
+    invoices = result.invoices
 
     assert invoices
     assert invoices[0].status == InvoiceStatus.DRAFT

@@ -1,4 +1,4 @@
-"""Add billing_job_runs table and invoice fields
+"""Billing v1.3: job runs, task links, invoice pdf fields
 
 Revision ID: 20271120_0036_billing_job_runs_and_invoice_fields
 Revises: 20271101_0035_billing_period_type_adhoc
@@ -12,9 +12,10 @@ from app.alembic.utils import (
     SCHEMA,
     column_exists,
     create_table_if_not_exists,
-    drop_table_if_exists,
     ensure_pg_enum,
+    ensure_pg_enum_value,
     index_exists,
+    is_postgres,
 )
 from app.db.types import GUID
 
@@ -24,17 +25,31 @@ down_revision = "20271101_0035_billing_period_type_adhoc"
 branch_labels = None
 depends_on = None
 
+BILLING_JOB_TYPES = [
+    "BILLING_DAILY",
+    "BILLING_FINALIZE",
+    "INVOICE_MONTHLY",
+    "RECONCILIATION",
+    "MANUAL_RUN",
+    "PDF_GENERATE",
+]
+BILLING_JOB_STATUSES = ["STARTED", "SUCCESS", "FAILED"]
+INVOICE_PDF_STATUS = ["NONE", "QUEUED", "GENERATING", "READY", "FAILED"]
+TASK_TYPES = ["MONTHLY_RUN", "PDF_GENERATE", "INVOICE_SEND"]
+TASK_STATUSES = ["QUEUED", "RUNNING", "SUCCESS", "FAILED"]
+
 
 def upgrade():
     bind = op.get_bind()
+    if not is_postgres(bind):
+        return
 
-    ensure_pg_enum(
-        bind,
-        "billing_job_type",
-        ["BILLING_DAILY", "BILLING_FINALIZE", "INVOICE_MONTHLY", "RECONCILIATION", "MANUAL_RUN"],
-        schema=SCHEMA,
-    )
-    ensure_pg_enum(bind, "billing_job_status", ["STARTED", "SUCCESS", "FAILED"], schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_job_type", BILLING_JOB_TYPES, schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_job_status", BILLING_JOB_STATUSES, schema=SCHEMA)
+    ensure_pg_enum(bind, "invoice_pdf_status", INVOICE_PDF_STATUS, schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_task_type", TASK_TYPES, schema=SCHEMA)
+    ensure_pg_enum(bind, "billing_task_status", TASK_STATUSES, schema=SCHEMA)
+    ensure_pg_enum_value(bind, "billing_job_type", "PDF_GENERATE", schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,
@@ -49,32 +64,86 @@ def upgrade():
             sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("error", sa.Text(), nullable=True),
             sa.Column("metrics", sa.JSON(), nullable=True),
+            sa.Column("duration_ms", sa.Integer(), nullable=True),
+            sa.Column("celery_task_id", sa.String(length=128), nullable=True),
+            sa.Column("correlation_id", sa.String(length=128), nullable=True),
+            sa.Column("invoice_id", sa.String(length=36), nullable=True),
+            sa.Column("billing_period_id", GUID(), nullable=True),
         ],
         indexes=[
-            ("ix_billing_job_runs_type_status", ["job_type", "status"]),
+            ("ix_billing_job_runs_type_status_started", ["job_type", "status", "started_at"]),
+            ("ix_billing_job_runs_celery_task_id", ["celery_task_id"]),
+            ("ix_billing_job_runs_invoice_id", ["invoice_id"]),
+            ("ix_billing_job_runs_billing_period_id", ["billing_period_id"]),
         ],
     )
 
+    if not column_exists(bind, "invoices", "pdf_status", schema=SCHEMA):
+        op.add_column(
+            "invoices",
+            sa.Column(
+                "pdf_status",
+                sa.Enum(name="invoice_pdf_status", schema=SCHEMA),
+                nullable=False,
+                server_default="NONE",
+            ),
+            schema=SCHEMA,
+        )
     if not column_exists(bind, "invoices", "pdf_url", schema=SCHEMA):
         op.add_column("invoices", sa.Column("pdf_url", sa.String(length=512), nullable=True), schema=SCHEMA)
+    if not column_exists(bind, "invoices", "pdf_hash", schema=SCHEMA):
+        op.add_column("invoices", sa.Column("pdf_hash", sa.String(length=64), nullable=True), schema=SCHEMA)
+    if not column_exists(bind, "invoices", "pdf_version", schema=SCHEMA):
+        op.add_column(
+            "invoices",
+            sa.Column("pdf_version", sa.Integer(), nullable=False, server_default="1"),
+            schema=SCHEMA,
+        )
+    if not column_exists(bind, "invoices", "pdf_generated_at", schema=SCHEMA):
+        op.add_column(
+            "invoices",
+            sa.Column("pdf_generated_at", sa.DateTime(timezone=True), nullable=True),
+            schema=SCHEMA,
+        )
+    if not column_exists(bind, "invoices", "pdf_error", schema=SCHEMA):
+        op.add_column("invoices", sa.Column("pdf_error", sa.Text(), nullable=True), schema=SCHEMA)
     if not column_exists(bind, "invoices", "sent_at", schema=SCHEMA):
         op.add_column("invoices", sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True), schema=SCHEMA)
 
+    if not index_exists(bind, "ix_invoices_pdf_status", schema=SCHEMA):
+        op.create_index("ix_invoices_pdf_status", "invoices", ["pdf_status"], schema=SCHEMA)
     if not index_exists(bind, "ix_invoices_sent_at", schema=SCHEMA):
         op.create_index("ix_invoices_sent_at", "invoices", ["sent_at"], schema=SCHEMA)
 
+    create_table_if_not_exists(
+        bind,
+        "billing_task_links",
+        schema=SCHEMA,
+        columns=[
+            sa.Column("id", GUID(), primary_key=True),
+            sa.Column("task_id", sa.String(length=128), nullable=False, unique=True),
+            sa.Column("task_name", sa.String(length=128), nullable=False),
+            sa.Column("task_type", sa.Enum(name="billing_task_type", schema=SCHEMA), nullable=False),
+            sa.Column(
+                "job_run_id",
+                GUID(),
+                sa.ForeignKey(f"{SCHEMA}.billing_job_runs.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("invoice_id", sa.String(length=36), nullable=True),
+            sa.Column("billing_period_id", GUID(), nullable=True),
+            sa.Column("status", sa.Enum(name="billing_task_status", schema=SCHEMA), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        ],
+        indexes=[
+            ("ix_billing_task_links_task_id", ["task_id"]),
+            ("ix_billing_task_links_invoice_id", ["invoice_id"]),
+            ("ix_billing_task_links_billing_period_id", ["billing_period_id"]),
+            ("ix_billing_task_links_job_run_id", ["job_run_id"]),
+        ],
+    )
+
 
 def downgrade():
-    bind = op.get_bind()
-
-    if index_exists(bind, "ix_invoices_sent_at", schema=SCHEMA):
-        op.drop_index("ix_invoices_sent_at", table_name="invoices", schema=SCHEMA)
-    if column_exists(bind, "invoices", "sent_at", schema=SCHEMA):
-        op.drop_column("invoices", "sent_at", schema=SCHEMA)
-    if column_exists(bind, "invoices", "pdf_url", schema=SCHEMA):
-        op.drop_column("invoices", "pdf_url", schema=SCHEMA)
-
-    drop_table_if_exists(bind, "billing_job_runs", schema=SCHEMA)
-
-    op.execute(f"DROP TYPE IF EXISTS {SCHEMA}.billing_job_type CASCADE")
-    op.execute(f"DROP TYPE IF EXISTS {SCHEMA}.billing_job_status CASCADE")
+    pass

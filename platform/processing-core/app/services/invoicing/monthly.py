@@ -5,18 +5,26 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
-from app.models.invoice import Invoice
+from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
-from app.models.billing_job_run import BillingJobType
+from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class MonthlyInvoiceRunOutcome:
+    invoices: list[Invoice]
+    job_run: "BillingJobRun"
+    metrics: dict[str, object]
 
 
 def _default_month(now: datetime | None = None) -> date:
@@ -69,7 +77,10 @@ def run_invoice_monthly(
     target_month: date | None = None,
     *,
     session: Session | None = None,
-) -> list[Invoice]:
+    correlation_id: str | None = None,
+    celery_task_id: str | None = None,
+    job_run: BillingJobRun | None = None,
+) -> MonthlyInvoiceRunOutcome:
     """Generate monthly invoices from finalized billing summaries."""
 
     month_anchor = target_month or _default_month()
@@ -77,10 +88,20 @@ def run_invoice_monthly(
     should_close = session is None
     session = session or get_sessionmaker()()
     job_service = BillingJobRunService(session)
-    job_run = job_service.start(
-        BillingJobType.INVOICE_MONTHLY,
-        params={"period_from": str(period_from), "period_to": str(period_to)},
-    )
+    if job_run is None:
+        job_run = job_service.start(
+            BillingJobType.INVOICE_MONTHLY,
+            params={"period_from": str(period_from), "period_to": str(period_to)},
+            correlation_id=correlation_id,
+            celery_task_id=celery_task_id,
+        )
+    else:
+        job_run.status = BillingJobStatus.STARTED
+        job_run.params = job_run.params or {"period_from": str(period_from), "period_to": str(period_to)}
+        job_run.celery_task_id = celery_task_id or job_run.celery_task_id
+        job_run.correlation_id = correlation_id or job_run.correlation_id
+        session.add(job_run)
+        session.flush()
 
     logger.info(
         "invoice.monthly.start",
@@ -91,15 +112,21 @@ def run_invoice_monthly(
         },
     )
 
+    metrics: dict[str, object] = {
+        "created": 0,
+        "rebuilt": 0,
+        "skipped": 0,
+        "period_from": str(period_from),
+        "period_to": str(period_to),
+    }
+
     if not settings.NEFT_INVOICE_MONTHLY_ENABLED:
-        job_service.succeed(
-            job_run,
-            metrics={"created": 0, "period_from": str(period_from), "period_to": str(period_to), "enabled": False},
-        )
+        metrics["enabled"] = False
+        job_service.succeed(job_run, metrics=metrics)
         if should_close:
             session.close()
         logger.info("invoice.monthly.disabled")
-        return []
+        return MonthlyInvoiceRunOutcome(invoices=[], job_run=job_run, metrics=metrics)
 
     try:
         summaries = (
@@ -111,11 +138,9 @@ def run_invoice_monthly(
         )
         if not summaries:
             logger.info("invoice.monthly.no_data", extra={"period_from": str(period_from), "period_to": str(period_to)})
-            job_service.succeed(
-                job_run,
-                metrics={"created": 0, "period_from": str(period_from), "period_to": str(period_to), "no_data": True},
-            )
-            return []
+            metrics["no_data"] = True
+            job_service.succeed(job_run, metrics=metrics)
+            return MonthlyInvoiceRunOutcome(invoices=[], job_run=job_run, metrics=metrics)
 
         grouped = _group_summaries(summaries)
         repo = BillingRepository(session)
@@ -128,20 +153,49 @@ def run_invoice_monthly(
                 period_to=period_to,
                 exclude_cancelled=True,
             )
-            if existing:
+            invoice = existing[0] if existing else None
+            if invoice and invoice.status != InvoiceStatus.DRAFT:
+                metrics["skipped"] = int(metrics["skipped"]) + 1  # type: ignore[arg-type]
                 continue
 
             lines = [_build_lines(items) for items in payload["items"].values()]
-            invoice = repo.create_invoice(
-                BillingInvoiceData(
-                    client_id=str(client_id),
-                    period_from=period_from,
-                    period_to=period_to,
-                    currency=currency,
-                    lines=lines,
-                ),
-                auto_commit=False,
-            )
+            if invoice:
+                session.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).delete(
+                    synchronize_session=False
+                )
+                invoice.lines = []
+                invoice.lines.extend(
+                    [
+                        InvoiceLine(
+                            invoice_id=invoice.id,
+                            product_id=line.product_id,
+                            liters=line.liters,
+                            unit_price=line.unit_price,
+                            line_amount=line.line_amount,
+                            tax_amount=line.tax_amount,
+                        )
+                        for line in lines
+                    ]
+                )
+                invoice.total_amount = sum(int(line.line_amount or 0) for line in invoice.lines)
+                invoice.tax_amount = sum(int(line.tax_amount or 0) for line in invoice.lines)
+                invoice.total_with_tax = invoice.total_amount + invoice.tax_amount
+                invoice.status = InvoiceStatus.DRAFT
+                metrics["rebuilt"] = int(metrics["rebuilt"]) + 1  # type: ignore[arg-type]
+                session.add(invoice)
+            else:
+                invoice = repo.create_invoice(
+                    BillingInvoiceData(
+                        client_id=str(client_id),
+                        period_from=period_from,
+                        period_to=period_to,
+                        currency=currency,
+                        lines=lines,
+                        status=InvoiceStatus.ISSUED,
+                    ),
+                    auto_commit=False,
+                )
+                metrics["created"] = int(metrics["created"]) + 1  # type: ignore[arg-type]
             created.append(invoice)
 
         session.commit()
@@ -156,17 +210,11 @@ def run_invoice_monthly(
                 "created": len(created),
             },
         )
-        job_service.succeed(
-            job_run,
-            metrics={
-                "created": len(created),
-                "period_from": str(period_from),
-                "period_to": str(period_to),
-                "invoices": [invoice.id for invoice in created],
-            },
-        )
-        return created
+        metrics["invoices"] = [invoice.id for invoice in created]
+        job_service.succeed(job_run, metrics=metrics)
+        return MonthlyInvoiceRunOutcome(invoices=created, job_run=job_run, metrics=metrics)
     except Exception as exc:  # noqa: BLE001
+        session.rollback()
         job_service.fail(job_run, error=str(exc))
         raise
     finally:

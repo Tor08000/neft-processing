@@ -368,12 +368,18 @@ def _billing_metrics() -> list[str]:
         "# HELP core_api_billing_errors_total Billing errors encountered.",
         "# TYPE core_api_billing_errors_total counter",
         f"core_api_billing_errors_total {billing_metrics.billing_errors}",
+        "# HELP core_api_billing_pdf_generated_total Invoice PDFs generated.",
+        "# TYPE core_api_billing_pdf_generated_total counter",
+        f"core_api_billing_pdf_generated_total {billing_metrics.pdf_generated_total}",
+        "# HELP core_api_billing_pdf_errors_total Invoice PDF generation errors.",
+        "# TYPE core_api_billing_pdf_errors_total counter",
+        f"core_api_billing_pdf_errors_total {billing_metrics.pdf_errors_total}",
         "# HELP core_api_billing_amount_total Total billed amount per period.",
         "# TYPE core_api_billing_amount_total counter",
     ]
     for period, amount in billing_metrics.billed_amounts.items():
         lines.append(f'core_api_billing_amount_total{{period="{period}"}} {amount}')
-    if len(lines) == 5:  # no billed amounts
+    if not billing_metrics.billed_amounts:
         lines.append('core_api_billing_amount_total{period="unknown"} 0')
 
     lines.append("# HELP core_api_billing_daily_runs_total Total daily billing runs by status.")

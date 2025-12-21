@@ -46,6 +46,20 @@ services:
       timeout: 5s
       retries: 5
 
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2024-09-22T00-33-43Z
+    container_name: neft-processing-minio-init-1
+    env_file:
+      - .env.example
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      mc mb -p local/${NEFT_S3_BUCKET:-neft} || true
+      "
+
   admin-web:
     build:
       context: ./frontends/admin-ui
@@ -123,6 +137,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -192,7 +208,7 @@ services:
   workers:
     build:
       context: .
-      dockerfile: platform/billing-clearing/Dockerfile
+      dockerfile: platform/processing-core/Dockerfile
     container_name: neft-processing-workers-1
     env_file:
       - .env.example
@@ -206,11 +222,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_client:celery_client",
+        "worker",
+        "-Q",
+        "celery,default,billing,pdf",
+        "--loglevel=INFO",
+      ]
 
   beat:
     build:
       context: .
-      dockerfile: platform/billing-clearing/Dockerfile
+      dockerfile: platform/processing-core/Dockerfile
     container_name: neft-processing-beat-1
     env_file:
       - .env.example
@@ -225,6 +253,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_client:celery_client",
+        "beat",
+        "--loglevel=INFO",
+      ]
 
   flower:
     build:

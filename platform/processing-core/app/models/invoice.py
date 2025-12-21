@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -76,11 +77,16 @@ class Invoice(Base):
 
     external_number = Column(String(64), nullable=True)
     pdf_url = Column(String(512), nullable=True)
-    pdf_status = Column(SAEnum(InvoicePdfStatus), nullable=False, server_default=InvoicePdfStatus.NONE.value)
+    pdf_status = Column(
+        SAEnum(InvoicePdfStatus, name="invoice_pdf_status"),
+        nullable=False,
+        server_default=InvoicePdfStatus.NONE.value,
+        index=True,
+    )
     pdf_generated_at = Column(DateTime(timezone=True), nullable=True)
-    pdf_hash = Column(String(128), nullable=True)
-    pdf_version = Column(Integer, nullable=True)
-    pdf_error = Column(String(2048), nullable=True)
+    pdf_hash = Column(String(64), nullable=True)
+    pdf_version = Column(Integer, nullable=False, default=1, server_default="1")
+    pdf_error = Column(Text, nullable=True)
 
     lines = relationship("InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
