@@ -26,3 +26,9 @@ celery_client.conf.update(
     task_default_exchange=DEFAULT_QUEUE,
     task_default_routing_key=DEFAULT_QUEUE,
 )
+
+# Register billing tasks
+try:  # pragma: no cover - optional celery runtime
+    import app.tasks.billing_pdf  # noqa: F401
+except Exception:
+    pass

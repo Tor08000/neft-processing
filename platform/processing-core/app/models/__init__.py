@@ -13,6 +13,7 @@ from .risk_rule import (  # noqa: F401
 from .billing_summary import BillingSummary, BillingSummaryStatus  # noqa: F401
 from .billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType  # noqa: F401
 from .billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType  # noqa: F401
+from .billing_task_link import BillingTaskLink, BillingTaskStatus, BillingTaskType  # noqa: F401
 from .clearing import Clearing  # noqa: F401
 from .clearing_batch import ClearingBatch  # noqa: F401
 from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
@@ -40,7 +41,7 @@ from .contract_limits import (  # noqa: F401
     LimitType,
 )
 from .external_request_log import ExternalRequestLog  # noqa: F401
-from .invoice import Invoice, InvoiceLine, InvoiceStatus  # noqa: F401
+from .invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus  # noqa: F401
 from .refund_request import RefundRequest, RefundRequestStatus, SettlementPolicy  # noqa: F401
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401

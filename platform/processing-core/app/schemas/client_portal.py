@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from app.models.invoice import InvoiceStatus
+from app.models.invoice import InvoicePdfStatus, InvoiceStatus
 
 
 class ClientUser(BaseModel):
@@ -158,6 +158,9 @@ class ClientInvoiceSummary(BaseModel):
     created_at: datetime | None = None
     issued_at: datetime | None = None
     paid_at: datetime | None = None
+    pdf_url: str | None = None
+    pdf_status: InvoicePdfStatus | None = None
+    pdf_generated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

@@ -6,7 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
-from app.models.invoice import InvoiceStatus
+from app.models.invoice import InvoicePdfStatus, InvoiceStatus
 from app.models.billing_reconciliation import BillingReconciliationStatus, BillingReconciliationVerdict
 from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus
 
@@ -101,6 +101,11 @@ class InvoiceRead(BaseModel):
     paid_at: datetime | None = None
     external_number: str | None = None
     pdf_url: str | None = None
+    pdf_status: InvoicePdfStatus | None = None
+    pdf_generated_at: datetime | None = None
+    pdf_hash: str | None = None
+    pdf_version: int | None = None
+    pdf_error: str | None = None
     lines: list[InvoiceLineRead] = []
 
     model_config = ConfigDict(from_attributes=True)
