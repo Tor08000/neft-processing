@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import importlib
+import shutil
+import sys
 from pathlib import Path
 from typing import Tuple
-import sys
-import importlib
 
 import pytest
 from fastapi import FastAPI
@@ -36,9 +36,20 @@ def rsa_pair() -> Tuple[str, str]:
     return private_pem, public_pem
 
 
-def _reset_keys_module(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture
+def key_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    directory = tmp_path / "keys"
+    monkeypatch.setenv("AUTH_JWT_KEY_DIR", str(directory))
+    monkeypatch.delenv("AUTH_JWT_PRIVATE_KEY_PATH", raising=False)
+    monkeypatch.delenv("AUTH_JWT_PUBLIC_KEY_PATH", raising=False)
+    return directory
+
+
+def _reset_keys_module(monkeypatch: pytest.MonkeyPatch, key_dir: Path | None = None) -> None:
     monkeypatch.delenv("AUTH_JWT_PRIVATE_KEY", raising=False)
     monkeypatch.delenv("AUTH_JWT_PUBLIC_KEY", raising=False)
+    if key_dir:
+        shutil.rmtree(key_dir, ignore_errors=True)
     import app.services as app_services
 
     sys.modules["app.services"] = app_services
@@ -47,8 +58,8 @@ def _reset_keys_module(monkeypatch: pytest.MonkeyPatch) -> None:
     sys.modules["app.services.keys"] = keys
 
 
-def test_keys_generated_when_env_missing(monkeypatch: pytest.MonkeyPatch):
-    _reset_keys_module(monkeypatch)
+def test_keys_generated_when_env_missing(monkeypatch: pytest.MonkeyPatch, key_dir: Path):
+    _reset_keys_module(monkeypatch, key_dir)
     importlib.reload(keys)
 
     private_pem = keys.get_private_key_pem()
@@ -60,9 +71,9 @@ def test_keys_generated_when_env_missing(monkeypatch: pytest.MonkeyPatch):
     assert public_pem != ""
 
 
-def test_keys_loaded_from_env(monkeypatch: pytest.MonkeyPatch, rsa_pair: Tuple[str, str]):
+def test_keys_loaded_from_env(monkeypatch: pytest.MonkeyPatch, rsa_pair: Tuple[str, str], key_dir: Path):
     private_pem, public_pem = rsa_pair
-    _reset_keys_module(monkeypatch)
+    _reset_keys_module(monkeypatch, key_dir)
     monkeypatch.setenv("AUTH_JWT_PRIVATE_KEY", private_pem)
     monkeypatch.setenv("AUTH_JWT_PUBLIC_KEY", public_pem)
     importlib.reload(keys)
@@ -71,9 +82,9 @@ def test_keys_loaded_from_env(monkeypatch: pytest.MonkeyPatch, rsa_pair: Tuple[s
     assert keys.get_public_key_pem() == public_pem
 
 
-def test_public_key_endpoint_returns_pem(monkeypatch: pytest.MonkeyPatch, rsa_pair: Tuple[str, str]):
+def test_public_key_endpoint_returns_pem(monkeypatch: pytest.MonkeyPatch, rsa_pair: Tuple[str, str], key_dir: Path):
     private_pem, public_pem = rsa_pair
-    _reset_keys_module(monkeypatch)
+    _reset_keys_module(monkeypatch, key_dir)
     monkeypatch.setenv("AUTH_JWT_PRIVATE_KEY", private_pem)
     monkeypatch.setenv("AUTH_JWT_PUBLIC_KEY", public_pem)
     importlib.reload(keys)
@@ -82,7 +93,28 @@ def test_public_key_endpoint_returns_pem(monkeypatch: pytest.MonkeyPatch, rsa_pa
     app.include_router(router)
 
     client = TestClient(app)
-    resp = client.get("/api/v1/auth/public-key")
+    resp = client.get("/v1/auth/public-key")
 
     assert resp.status_code == 200
     assert resp.text == public_pem
+
+
+def test_public_key_endpoint_stable(monkeypatch: pytest.MonkeyPatch, key_dir: Path):
+    _reset_keys_module(monkeypatch, key_dir)
+    importlib.reload(keys)
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    first = client.get("/v1/auth/public-key")
+    assert first.status_code == 200
+
+    # simulate process restart: clear in-memory cache
+    keys._PRIVATE_KEY_PEM = None
+    keys._PUBLIC_KEY_PEM = None
+
+    second = client.get("/v1/auth/public-key")
+
+    assert second.status_code == 200
+    assert second.text == first.text

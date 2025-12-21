@@ -77,3 +77,56 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
     assert payload["subject"] == "admin@example.com"
     assert payload.get("client_id") is None
     assert payload.get("subject_type") == "user"
+
+
+def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    password_hash = hash_password("admin123")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000999",
+        email="admin@example.com",
+        full_name="Demo Admin",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(email: str):
+        if email.lower() == demo_user.email:
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["ADMIN"]
+
+    # ensure keypair is persisted and reused even if in-memory cache is cleared
+    from app import services
+
+    monkeypatch.setattr(services.keys, "_PRIVATE_KEY_PATH", tmp_path / "jwt_private.pem")
+    monkeypatch.setattr(services.keys, "_PUBLIC_KEY_PATH", tmp_path / "jwt_public.pem")
+    services.keys._PRIVATE_KEY_PEM = None
+    services.keys._PUBLIC_KEY_PEM = None
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+
+    client = TestClient(app)
+
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "admin123"},
+    )
+    assert login.status_code == 200
+
+    token = login.json()["access_token"]
+
+    # emulate a fresh process where key cache is empty
+    services.keys._PRIVATE_KEY_PEM = None
+    services.keys._PUBLIC_KEY_PEM = None
+
+    resp = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "admin@example.com"
