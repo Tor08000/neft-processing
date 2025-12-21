@@ -151,12 +151,18 @@ class ClientInvoiceSummary(BaseModel):
     period_from: date
     period_to: date
     currency: str
+    due_date: date | None = None
+    payment_terms_days: int | None = None
     total_amount: int
     tax_amount: int
     total_with_tax: int
+    amount_paid: int
+    amount_due: int
     status: InvoiceStatus
     created_at: datetime | None = None
     issued_at: datetime | None = None
+    sent_at: datetime | None = None
+    delivered_at: datetime | None = None
     paid_at: datetime | None = None
     pdf_url: str | None = None
     pdf_status: InvoicePdfStatus | None = None

@@ -60,6 +60,8 @@ class BillingRepository:
         total_amount = sum(int(line.line_amount or 0) for line in lines)
         tax_amount = sum(int(line.tax_amount or 0) for line in lines)
         total_with_tax = total_amount + tax_amount
+        amount_paid = 0
+        amount_due = total_with_tax - amount_paid
 
         invoice = Invoice(
             client_id=data.client_id,
@@ -69,6 +71,8 @@ class BillingRepository:
             total_amount=total_amount,
             tax_amount=tax_amount,
             total_with_tax=total_with_tax,
+            amount_paid=amount_paid,
+            amount_due=amount_due,
             status=data.status,
             external_number=data.external_number,
             issued_at=data.issued_at,
@@ -155,7 +159,14 @@ class BillingRepository:
             invoice.issued_at = issued_at or datetime.utcnow()
         if status == InvoiceStatus.SENT and invoice.sent_at is None:
             invoice.sent_at = datetime.utcnow()
+        if status == InvoiceStatus.DELIVERED and invoice.delivered_at is None:
+            invoice.delivered_at = datetime.utcnow()
+        if status == InvoiceStatus.PARTIALLY_PAID:
+            invoice.amount_paid = min(invoice.total_with_tax, invoice.amount_paid)
+            invoice.amount_due = max(0, invoice.total_with_tax - invoice.amount_paid)
         if status == InvoiceStatus.PAID:
+            invoice.amount_paid = invoice.total_with_tax
+            invoice.amount_due = 0
             invoice.paid_at = paid_at or datetime.utcnow()
 
         self.db.add(invoice)
