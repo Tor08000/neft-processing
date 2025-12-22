@@ -47,19 +47,16 @@ services:
       retries: 5
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2024-09-22T00-33-43Z
+    image: quay.io/minio/mc:latest
     container_name: neft-processing-minio-init-1
     env_file:
       - .env.example
+    volumes:
+      - ./infra/minio-init.sh:/infra/minio-init.sh:ro
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
-      if [ -n \"${NEFT_S3_BUCKET_INVOICES:-}\" ]; then mc mb -p local/${NEFT_S3_BUCKET_INVOICES:-neft-invoices} || true; fi &&
-      if [ -n \"${NEFT_S3_BUCKET:-}\" ] && [ \"${NEFT_S3_BUCKET:-}\" != \"${NEFT_S3_BUCKET_INVOICES:-}\" ]; then mc mb -p local/${NEFT_S3_BUCKET:-neft} || true; fi
-      "
+    entrypoint: ["/bin/sh", "/infra/minio-init.sh"]
 
   admin-web:
     build:
@@ -107,8 +104,8 @@ services:
       AUTH_KEY_DIR: /data/keys
       AUTH_PRIVATE_KEY_PATH: /data/keys/private.pem
       AUTH_PUBLIC_KEY_PATH: /data/keys/public.pem
-      NEFT_BOOTSTRAP_ADMIN_EMAIL: ${NEFT_BOOTSTRAP_ADMIN_EMAIL:-admin@neft.local}
-      NEFT_BOOTSTRAP_ADMIN_PASSWORD: ${NEFT_BOOTSTRAP_ADMIN_PASSWORD:-Admin123!}
+      NEFT_BOOTSTRAP_ADMIN_EMAIL: ${NEFT_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      NEFT_BOOTSTRAP_ADMIN_PASSWORD: ${NEFT_BOOTSTRAP_ADMIN_PASSWORD:-admin123}
       NEFT_BOOTSTRAP_ADMIN_FULL_NAME: ${NEFT_BOOTSTRAP_ADMIN_FULL_NAME:-Platform Admin}
       NEFT_BOOTSTRAP_ADMIN_ROLES: ${NEFT_BOOTSTRAP_ADMIN_ROLES:-ADMIN,PLATFORM_ADMIN,SUPERADMIN}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}

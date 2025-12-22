@@ -7,7 +7,7 @@ set AUTH_URL=http://localhost:8002/api/v1/auth/login
 set CORE_BILLING=http://localhost/api/v1/admin/billing
 
 echo Logging in to auth-host...
-curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"Admin123!\"}" > token.json
+curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json
 
 echo Extracting access token...
 python -c "import json; import sys; data=json.load(open('token.json')); sys.stdout.write(data.get('access_token',''))" > token.txt
