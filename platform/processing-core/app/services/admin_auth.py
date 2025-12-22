@@ -10,13 +10,19 @@ from jose import JWTError, jwk, jwt
 
 PUBLIC_KEY_URL = os.getenv(
     "ADMIN_PUBLIC_KEY_URL",
-    "http://auth-host:8000/api/v1/auth/public-key",
+    os.getenv("CLIENT_PUBLIC_KEY_URL", "http://auth-host:8000/api/v1/auth/public-key"),
 )
 PUBLIC_KEY_CACHE_TTL = 300
-EXPECTED_ISSUER = "neft-auth"
-EXPECTED_AUDIENCE = "neft-admin"
+EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
+EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
 
-ADMIN_ROLES = {"ADMIN", "PLATFORM_ADMIN"}
+ADMIN_ROLES = {
+    role.strip()
+    for role in os.getenv("ADMIN_ROLES", os.getenv("NEFT_ADMIN_ROLES", "ADMIN")).split(",")
+    if role.strip()
+}
+if not ADMIN_ROLES:
+    ADMIN_ROLES = {"ADMIN"}
 
 _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
@@ -97,7 +103,10 @@ def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
         roles = [roles]
     admin_roles.update(roles)
 
-    if not admin_roles.intersection(ADMIN_ROLES):
+    normalized_roles = {str(item).upper() for item in admin_roles}
+    required = {role.upper() for role in ADMIN_ROLES}
+
+    if not normalized_roles.intersection(required):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     return payload

@@ -8,7 +8,11 @@ from app.models.billing_summary import BillingSummary
 from app.models.clearing import Clearing
 
 
-async def generate_clearing_batches_for_date(clearing_date: date) -> None:
+async def generate_clearing_batches_for_date(
+    clearing_date: date,
+    *,
+    session=None,
+) -> list[Clearing]:
     """
     Aggregate billing summaries for the given date and upsert clearing batches.
 
@@ -17,7 +21,8 @@ async def generate_clearing_batches_for_date(clearing_date: date) -> None:
     billing summary entries for traceability.
     """
 
-    session = get_sessionmaker()()
+    should_close = session is None
+    session = session or get_sessionmaker()()
     try:
         with session.begin():
             summaries = (
@@ -71,8 +76,16 @@ async def generate_clearing_batches_for_date(clearing_date: date) -> None:
                         details=details,
                     )
                     session.add(clearing)
+        updated_batches = (
+            session.query(Clearing)
+            .filter(Clearing.batch_date == clearing_date)
+            .order_by(Clearing.merchant_id, Clearing.currency)
+            .all()
+        )
+        return updated_batches
     finally:
-        session.close()
+        if should_close:
+            session.close()
 
 
 def _apply_filters(
