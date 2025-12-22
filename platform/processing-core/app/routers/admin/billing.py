@@ -214,7 +214,7 @@ def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) ->
             idempotency_key=scope_key,
         )
     except BillingRunValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except BillingPeriodClosedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except BillingRunInProgress as exc:

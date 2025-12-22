@@ -120,6 +120,6 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
         roles_after_second = [r["role"] for r in await cur.fetchall()]
 
     assert user_count == 1
-    assert verify_password("changed", updated_row["password_hash"])
-    assert updated_row["password_hash"] != first_hash
+    assert verify_password("initial", updated_row["password_hash"])
+    assert updated_row["password_hash"] == first_hash
     assert sorted(set(roles_after_first)) == sorted(set(roles_after_second)) == ["ADMIN", "SUPERADMIN"]

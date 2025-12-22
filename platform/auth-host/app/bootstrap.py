@@ -4,7 +4,7 @@ import logging
 from uuid import UUID, uuid4
 
 from app.db import get_conn, init_db
-from app.security import hash_password, verify_password
+from app.security import hash_password
 from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ async def _ensure_demo_user(
                     "UPDATE users SET is_active = TRUE WHERE id = %s",
                     (user_id,),
                 )
-            if not verify_password(password, existing_user.get("password_hash", "")):
+            if not existing_user.get("password_hash"):
                 await cur.execute(
                     "UPDATE users SET password_hash = %s WHERE id = %s",
                     (password_hash, user_id),

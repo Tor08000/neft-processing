@@ -4,9 +4,11 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 1. Скопируйте переменные окружения: `cp -n .env.example .env`.
 2. Заполните доступы администратора в `.env` (значения хранятся только локально):
-   - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`)
-   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`)
-   Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно).
+   - `AUTH_BOOTSTRAP_ENABLED=1`
+   - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`, пример: `admin@example.com`)
+   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`, пример: `admin123`)
+   - `AUTH_BOOTSTRAP_ADMIN_ROLES=ADMIN,PLATFORM_ADMIN,SUPERADMIN`
+   Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно, не затирает пароль существующего пользователя).
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
@@ -32,7 +34,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 ### Хранение ключей и файлов
 
 * Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. После `docker compose down -v` ключи пересоздаются автоматически.
-* Данные MinIO лежат в `minio-data`; бакет создаётся при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`).
+* Данные MinIO лежат в `minio-data`; бакеты создаются при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`, включена идемпотентная настройка версиирования и политик доступа).
 
 ### Вход в админ-панель
 
@@ -48,7 +50,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ### Админский токен для локальной разработки
 
-1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@neft.local` / `Admin123!`).
+1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
 2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
@@ -64,8 +66,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `docker compose up -d --build`
 * Открыть в браузере: `http://localhost/admin/` (или напрямую в контейнер admin-web: `http://localhost:4173/admin/`)
 * В форме логина ввести:
-  * Email: `admin@neft.local`
-  * Пароль: `Admin123!`
+  * Email: `admin@example.com`
+  * Пароль: `admin123`
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
@@ -114,7 +116,7 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
 
-Полный smoke для биллинга/финансов (Windows CMD): `scripts\smoke_billing_finance.cmd` (логин → billing run → invoices → PDF → попытка finance/AR).
+Полный smoke для биллинга/финансов (Windows CMD): `scripts\smoke_billing_v14.cmd` (логин → /auth/me → billing periods → billing run ADHOC → clearing → invoices/PDF → finance best-effort). Расширенный вариант с дополнительными шагами: `scripts\smoke_billing_finance.cmd`.
 
 Docker smoke профайл (Linux/macOS): `docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up --build --abort-on-container-exit smoke-tests`.
 

@@ -5,7 +5,7 @@ set AUTH_BASE=http://localhost:8002/api/v1/auth
 set CORE_BASE=http://localhost:8001/api/v1/admin
 
 echo [1/10] Login to auth-host...
-curl -s -S -X POST "%AUTH_BASE%/login" -H "Content-Type: application/json" -d "{\"email\":\"admin@neft.local\",\"password\":\"Admin123!\"}" > token.json || goto :error
+curl -s -S -X POST "%AUTH_BASE%/login" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json || goto :error
 python -c "import json, pathlib; pathlib.Path('token.txt').write_text(json.load(open('token.json')).get('access_token',''))" || goto :error
 set /p TOKEN=<token.txt
 if "%TOKEN%"=="" goto :error

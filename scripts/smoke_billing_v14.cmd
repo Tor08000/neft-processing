@@ -2,65 +2,98 @@
 setlocal enabledelayedexpansion
 
 set "BASE_URL=http://localhost"
-set "AUTH_URL=%BASE_URL%/api/auth/api/v1/auth/login"
-set "CORE_URL=%BASE_URL%/api/core"
+set "AUTH_URL=%BASE_URL%/api/auth/api/v1/auth"
+set "CORE_URL=%BASE_URL%/api/core/api/v1/admin"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin123"
 
-echo [smoke] logging in as %ADMIN_EMAIL%
 set "TOKEN="
-for /f "usebackq tokens=*" %%t in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $body=@{email='%ADMIN_EMAIL%';password='%ADMIN_PASSWORD%'}; $json=$body | ConvertTo-Json; $resp=Invoke-RestMethod -Method Post -Uri '%AUTH_URL%' -ContentType 'application/json' -Body $json; Write-Output $resp.access_token"`) do set "TOKEN=%%t"
+set "AUTH_HEADER="
+set "INVOICE_ID="
 
+echo [1/10] Login to auth-host...
+curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" > login.json
+for /f "usebackq tokens=*" %%t in (`python -c "import json,sys; print(json.load(open('login.json')).get('access_token',''))"`) do set "TOKEN=%%t"
 if "%TOKEN%"=="" (
-  echo [smoke][ERROR] failed to obtain token
-  exit /b 1
+  echo [FAIL] No access_token returned.
+  goto :fail
 )
-
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
+echo [OK] Token acquired.
 
-echo [smoke] core health
-call :check "%CORE_URL%/health" 200 ""
+call :check_get "[2/10] /auth/me" "%AUTH_URL%/me" "%AUTH_HEADER%" "200" || goto :fail
+call :check_get "[3/10] Billing periods" "%CORE_URL%/billing/periods" "%AUTH_HEADER%" "200" || goto :fail
 
-echo [smoke] billing periods
-call :check "%CORE_URL%/api/v1/admin/billing/periods" 200 "%AUTH_HEADER%"
+set "RUN_BODY={\"period_type\":\"ADHOC\",\"start_at\":\"2024-01-01T00:00:00Z\",\"end_at\":\"2024-01-01T01:00:00Z\",\"tz\":\"UTC\"}"
+call :post_step "[4/10] Billing run (ADHOC)" "%CORE_URL%/billing/run" "!RUN_BODY!" "%AUTH_HEADER%" "200" "" || goto :fail
 
-set "RUN_PAYLOAD={^"period_type^":^"ADHOC^",^"start_at^":^"2024-01-01T00:00:00Z^",^"end_at^":^"2024-01-01T01:00:00Z^",^"tz^":^"UTC^"}"
-echo [smoke] billing run
-call :post "%CORE_URL%/api/v1/admin/billing/run" "!RUN_PAYLOAD!" 200 "%AUTH_HEADER%"
+call :post_step "[5/10] Clearing run" "%CORE_URL%/clearing/run?date=2024-01-02" "" "%AUTH_HEADER%" "200" "202" || goto :fail
 
-set "CLEARING_PAYLOAD={^"clearing_date^":^"2024-01-02^"}"
-echo [smoke] clearing run
-call :post "%CORE_URL%/api/v1/admin/clearing/run" "!CLEARING_PAYLOAD!" 200 "%AUTH_HEADER%"
-
-echo [smoke] completed successfully
-exit /b 0
-
-:check
-set "URL=%~1"
-set "EXPECTED=%~2"
-set "HEADER=%~3"
+echo [6/10] List invoices (grab first id)...
 set "CODE="
-if "%HEADER%"=="" (
-  for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" "%URL%"`) do set "CODE=%%c"
+for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -o invoices.json "%CORE_URL%/billing/invoices?limit=1&offset=0"`) do set "CODE=%%c"
+if not "%CODE%"=="200" (
+  echo [FAIL] Invoices list returned %CODE%.
+  goto :fail
+)
+for /f "usebackq tokens=*" %%i in (`python -c "import json,sys; data=json.load(open('invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')"`) do set "INVOICE_ID=%%i"
+if "%INVOICE_ID%"=="" (
+  echo [SKIP] No invoices yet, skipping PDF step.
 ) else (
-  for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "%HEADER%" "%URL%"`) do set "CODE=%%c"
+  call :post_step "[7/10] Invoice PDF enqueue" "%CORE_URL%/billing/invoices/%INVOICE_ID%/pdf" "" "%AUTH_HEADER%" "200" "202" || goto :fail
 )
-if not "%CODE%"=="%EXPECTED%" (
-  echo [smoke][ERROR] %URL% expected %EXPECTED% got %CODE%
-  exit /b 1
-)
+
+echo [8/10] Finance payment (best-effort)...
+set "PAYMENT_BODY={\"client_id\":\"demo-client\",\"amount\":1,\"currency\":\"RUB\",\"occurred_at\":\"2024-01-02T00:00:00Z\",\"external_ref\":\"smoke\"}"
+call :post_step "[8/10] Finance payment" "%CORE_URL%/finance/payments" "!PAYMENT_BODY!" "%AUTH_HEADER%" "200" "201" || echo [WARN] Finance payment skipped (endpoint unavailable).
+
+echo [9/10] Finance AR balance (best-effort)...
+call :check_get "[9/10] Finance AR balance" "%CORE_URL%/finance/ar/balance?client_id=demo-client" "%AUTH_HEADER%" "200" || echo [WARN] AR balance skipped (endpoint unavailable).
+
+call :check_get "[10/10] Clearing batches" "%CORE_URL%/clearing/batches?limit=5" "%AUTH_HEADER%" "200" || goto :fail
+
+echo [SMOKE] Completed.
 exit /b 0
 
-:post
-set "URL=%~1"
-set "BODY=%~2"
-set "EXPECTED=%~3"
-set "HEADER=%~4"
+:check_get
+set "LABEL=%~1"
+set "URL=%~2"
+set "HEADER=%~3"
+set "EXPECTED=%~4"
 set "CODE="
-for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "Content-Type: application/json" -H "%HEADER%" -d "%BODY%" "%URL%"`) do set "CODE=%%c"
-if not "%CODE%"=="%EXPECTED%" (
-  echo [smoke][ERROR] POST %URL% expected %EXPECTED% got %CODE%
-  exit /b 1
+for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "%HEADER%" "%URL%"`) do set "CODE=%%c"
+if "%CODE%"=="%EXPECTED%" (
+  echo [OK] %LABEL%
+  exit /b 0
 )
-exit /b 0
+echo [FAIL] %LABEL% expected %EXPECTED% got %CODE%
+exit /b 1
+
+:post_step
+set "LABEL=%~1"
+set "URL=%~2"
+set "BODY=%~3"
+set "HEADER=%~4"
+set "EXPECTED=%~5"
+set "ALT=%~6"
+set "CODE="
+if "%BODY%"=="" (
+  for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "%HEADER%" -X POST "%URL%"`) do set "CODE=%%c"
+) else (
+  for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "%HEADER%" -H "Content-Type: application/json" -d "%BODY%" -X POST "%URL%"`) do set "CODE=%%c"
+)
+if "%CODE%"=="%EXPECTED%" (
+  echo [OK] %LABEL%
+  exit /b 0
+)
+if not "%ALT%"=="" if "%CODE%"=="%ALT%" (
+  echo [OK] %LABEL% (%CODE%)
+  exit /b 0
+)
+echo [FAIL] %LABEL% expected %EXPECTED% got %CODE%
+exit /b 1
+
+:fail
+echo [SMOKE] Failed.
+exit /b 1
