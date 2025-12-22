@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
@@ -159,6 +159,14 @@ class BillingRunRequest(BaseModel):
     end_at: datetime
     tz: str = "UTC"
     client_id: str | None = None
+
+    @field_validator("period_type", mode="before")
+    @classmethod
+    def validate_period_type(cls, value: BillingPeriodType | str) -> BillingPeriodType:
+        try:
+            return value if isinstance(value, BillingPeriodType) else BillingPeriodType(value)
+        except Exception as exc:
+            raise ValueError("invalid period_type") from exc
 
 
 class BillingRunResponse(BaseModel):

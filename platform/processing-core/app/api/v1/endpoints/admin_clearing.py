@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.schemas.clearing import (
-    ClearingBatchAdminOut,
-    ClearingBatchListResponse,
+from app.schemas.clearing import ClearingBatchAdminOut, ClearingBatchListResponse
+from app.services.clearing_service import (
+    generate_clearing_batches_for_date,
+    list_clearing_batches,
+    load_clearing_batch,
 )
-from app.services.clearing_service import list_clearing_batches, load_clearing_batch
 
 
 router = APIRouter(
@@ -48,6 +49,21 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> Clearing
     if not batch:
         raise HTTPException(status_code=404, detail="batch not found")
     return ClearingBatchAdminOut.model_validate(batch)
+
+
+@router.post("/run", response_model=ClearingBatchListResponse)
+async def run_clearing_endpoint(
+    clearing_date: date | None = Query(None),
+    date_param: date | None = Query(None, alias="date"),
+    db: Session = Depends(get_db),
+) -> ClearingBatchListResponse:
+    target_date = clearing_date or date_param
+    if target_date is None:
+        raise HTTPException(status_code=422, detail="clearing_date_required")
+
+    batches = await generate_clearing_batches_for_date(target_date, session=db)
+    items = [ClearingBatchAdminOut.model_validate(batch) for batch in batches]
+    return ClearingBatchListResponse(items=items, total=len(items), limit=len(items), offset=0)
 
 
 __all__ = ["router"]

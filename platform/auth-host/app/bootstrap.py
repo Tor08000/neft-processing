@@ -22,7 +22,7 @@ async def _ensure_demo_accounts(settings: Settings) -> None:
     await init_db()
 
     await bootstrap_demo_client(settings=settings)
-    await bootstrap_demo_admin(settings=settings)
+    await bootstrap_admin_account(settings=settings)
 
 
 async def bootstrap_demo_client(settings: Settings | None = None) -> None:
@@ -38,13 +38,21 @@ async def bootstrap_demo_client(settings: Settings | None = None) -> None:
 
 
 async def bootstrap_demo_admin(settings: Settings | None = None) -> None:
+    await bootstrap_admin_account(settings=settings)
+
+
+async def bootstrap_admin_account(settings: Settings | None = None) -> None:
     settings = settings or get_settings()
+    email = (settings.bootstrap_admin_email or settings.demo_admin_email).strip()
+    password = settings.bootstrap_admin_password or settings.demo_admin_password
+    full_name = settings.bootstrap_admin_full_name or settings.demo_admin_full_name
+    roles = settings.bootstrap_admin_roles or settings.demo_admin_roles
     await _ensure_demo_user(
-        email=settings.demo_admin_email.strip(),
-        password=settings.demo_admin_password,
-        full_name=settings.demo_admin_full_name,
-        roles=settings.demo_admin_roles,
-        label="demo admin",
+        email=email,
+        password=password,
+        full_name=full_name,
+        roles=roles,
+        label="bootstrap admin",
     )
 
 

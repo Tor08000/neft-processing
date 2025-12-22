@@ -39,15 +39,20 @@ def rsa_pair() -> Tuple[str, str]:
 @pytest.fixture
 def key_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "keys"
-    monkeypatch.setenv("AUTH_JWT_KEY_DIR", str(directory))
+    monkeypatch.setenv("AUTH_KEY_DIR", str(directory))
+    monkeypatch.delenv("AUTH_JWT_KEY_DIR", raising=False)
     monkeypatch.delenv("AUTH_JWT_PRIVATE_KEY_PATH", raising=False)
     monkeypatch.delenv("AUTH_JWT_PUBLIC_KEY_PATH", raising=False)
+    monkeypatch.delenv("AUTH_PRIVATE_KEY_PATH", raising=False)
+    monkeypatch.delenv("AUTH_PUBLIC_KEY_PATH", raising=False)
     return directory
 
 
 def _reset_keys_module(monkeypatch: pytest.MonkeyPatch, key_dir: Path | None = None) -> None:
     monkeypatch.delenv("AUTH_JWT_PRIVATE_KEY", raising=False)
     monkeypatch.delenv("AUTH_JWT_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("AUTH_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("AUTH_PUBLIC_KEY", raising=False)
     if key_dir:
         shutil.rmtree(key_dir, ignore_errors=True)
     import app.services as app_services

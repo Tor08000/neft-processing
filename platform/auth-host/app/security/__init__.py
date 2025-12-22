@@ -18,8 +18,8 @@ from app.services.keys import get_private_key_pem, get_public_key_pem
 settings = get_settings()
 logger = get_logger(__name__)
 ALGORITHM = "RS256"
-ISSUER = "neft-auth"
-AUDIENCE = "neft-admin"
+ISSUER = settings.auth_issuer
+AUDIENCE = settings.auth_audience
 security_scheme = HTTPBearer(auto_error=False)
 
 

@@ -30,6 +30,8 @@ for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
     _prepend_path(path)
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
+os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
+os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 
 try:
     from app.api.dependencies.admin import require_admin_user
@@ -40,8 +42,8 @@ try:
 except Exception:
     pass
 
-EXPECTED_ISSUER = "neft-auth"
-EXPECTED_AUDIENCE = "neft-admin"
+EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
+EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
 
 
 @pytest.fixture(autouse=True)

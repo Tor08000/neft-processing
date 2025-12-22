@@ -37,8 +37,9 @@ def _admin_credentials() -> tuple[str, str]:
     Optional bootstrap admin credentials.
     If not set, returns empty values.
     """
-    email = os.getenv("AUTH_ADMIN_EMAIL", "")
-    password = os.getenv("AUTH_ADMIN_PASSWORD", "")
+    settings = get_settings()
+    email = os.getenv("AUTH_ADMIN_EMAIL") or settings.bootstrap_admin_email or settings.demo_admin_email
+    password = os.getenv("AUTH_ADMIN_PASSWORD") or settings.bootstrap_admin_password or ""
     return email, password
 
 

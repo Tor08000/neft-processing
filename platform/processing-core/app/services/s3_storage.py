@@ -23,7 +23,11 @@ class S3Storage:
         if boto3 is None:
             raise RuntimeError("boto3 is required for S3/MinIO storage")
 
-        self.bucket = settings.NEFT_S3_BUCKET or settings.NEFT_INVOICE_PDF_BUCKET
+        self.bucket = (
+            settings.NEFT_S3_BUCKET_INVOICES
+            or settings.NEFT_S3_BUCKET
+            or settings.NEFT_INVOICE_PDF_BUCKET
+        )
         self.public_base = (settings.NEFT_S3_PUBLIC_URL_BASE or "").rstrip("/") or None
         self._client = boto3.client(
             "s3",
