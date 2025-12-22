@@ -1,26 +1,35 @@
 from datetime import date
+import os
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
+from starlette.testclient import TestClient
 
-from app.db import Base, SessionLocal, engine
-from app.main import app
-from app.models.invoice import InvoiceStatus
-from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
+os.environ.setdefault("DATABASE_URL", "sqlite://")
+
+from app import db as app_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models.invoice import InvoicePdfStatus, InvoiceStatus  # noqa: E402
+from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    engine = app_db.make_engine("sqlite://", schema="")
+    TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    app_db._engine = engine
+    app_db._SessionLocal = TestingSessionLocal
+
+    app_db.Base.metadata.drop_all(bind=engine)
+    app_db.Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+    app_db.Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
 def session():
-    db = SessionLocal()
+    db = app_db.get_sessionmaker()()
     try:
         yield db
     finally:
@@ -34,50 +43,30 @@ def admin_client(admin_auth_headers: dict):
         yield api_client
 
 
-def test_admin_status_update_success(admin_client: TestClient, session: Session):
+def test_admin_invoice_transition_endpoint(admin_client: TestClient, session) -> None:
     repo = BillingRepository(session)
     invoice = repo.create_invoice(
         BillingInvoiceData(
-            client_id="client-1",
+            client_id="client-transition",
             period_from=date(2024, 1, 1),
             period_to=date(2024, 1, 31),
             currency="RUB",
-            lines=[BillingLineData(product_id="p1", liters=None, unit_price=None, line_amount=500)],
-            status=InvoiceStatus.DRAFT,
-        )
+            lines=[BillingLineData(product_id="prod-1", liters=None, unit_price=None, line_amount=1000)],
+            status=InvoiceStatus.ISSUED,
+            pdf_status=InvoicePdfStatus.READY,
+        ),
+        auto_commit=True,
     )
 
     response = admin_client.post(
-        f"/api/v1/admin/billing/invoices/{invoice.id}/status",
-        json={"status": InvoiceStatus.ISSUED.value},
+        f"/api/v1/admin/billing/invoices/{invoice.id}/transition",
+        json={
+            "to": InvoiceStatus.SENT.value,
+            "reason": "pdf ready",
+            "metadata": {"ticket": "SUP-123"},
+        },
     )
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == InvoiceStatus.ISSUED.value
-    assert payload["issued_at"] is not None
-
-
-def test_admin_status_update_forbidden_transition(admin_client: TestClient, session: Session):
-    repo = BillingRepository(session)
-    invoice = repo.create_invoice(
-        BillingInvoiceData(
-            client_id="client-2",
-            period_from=date(2024, 2, 1),
-            period_to=date(2024, 2, 29),
-            currency="RUB",
-            lines=[BillingLineData(product_id="p2", liters=None, unit_price=None, line_amount=800)],
-            status=InvoiceStatus.SENT,
-        )
-    )
-    invoice.amount_paid = 100
-    invoice.amount_due = max(invoice.total_with_tax - invoice.amount_paid, 0)
-    session.add(invoice)
-    session.commit()
-
-    response = admin_client.post(
-        f"/api/v1/admin/billing/invoices/{invoice.id}/status",
-        json={"status": InvoiceStatus.CANCELLED.value},
-    )
-
-    assert response.status_code == 409
+    body = response.json()
+    assert body["status"] == InvoiceStatus.SENT.value

@@ -26,6 +26,7 @@ from app.schemas.admin.billing import (
     InvoiceListResponse,
     InvoiceRead,
     InvoiceStatusChangeRequest,
+    InvoiceTransitionRequest,
     InvoicePdfEnqueueResponse,
     InvoicePdfReadResponse,
     TariffPlanListResponse,
@@ -56,6 +57,7 @@ from app.services.billing_service import (
 from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
 from app.services.invoice_pdf import InvoicePdfService
+from app.services.invoice_state_machine import InvoiceInvariantError, InvoiceStateMachine, InvalidTransitionError
 from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
 from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
@@ -422,16 +424,63 @@ def admin_update_invoice_status(
     body: InvoiceStatusChangeRequest,
     db: Session = Depends(get_db),
 ) -> InvoiceRead:
-    repo = BillingRepository(db)
-    updated = repo.update_status(
-        invoice_id,
-        body.status,
-        actor="admin_api",
-        reason=body.reason or "manual_status_update",
-    )
-    if updated is None:
+    query = db.query(Invoice).filter(Invoice.id == invoice_id)
+    if getattr(getattr(db.bind, "dialect", None), "name", None) == "postgresql":
+        query = query.with_for_update()
+    invoice = query.one_or_none()
+    if invoice is None:
         raise HTTPException(status_code=404, detail="invoice not found")
-    return InvoiceRead.model_validate(updated, from_attributes=True)
+
+    machine = InvoiceStateMachine(invoice, db=db)
+    try:
+        machine.transition(
+            to=body.status,
+            actor="admin_api",
+            reason=body.reason or "manual_status_update",
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvoiceInvariantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    return InvoiceRead.model_validate(invoice, from_attributes=True)
+
+
+@router.post("/invoices/{invoice_id}/transition", response_model=InvoiceRead)
+def admin_transition_invoice(
+    invoice_id: str,
+    body: InvoiceTransitionRequest,
+    db: Session = Depends(get_db),
+) -> InvoiceRead:
+    query = db.query(Invoice).filter(Invoice.id == invoice_id)
+    if getattr(getattr(db.bind, "dialect", None), "name", None) == "postgresql":
+        query = query.with_for_update()
+    invoice = query.one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    machine = InvoiceStateMachine(invoice, db=db)
+    try:
+        machine.transition(
+            to=body.to,
+            actor="admin",
+            reason=body.reason,
+            payment_amount=body.payment_amount,
+            credit_note_amount=body.credit_note_amount,
+            metadata=body.metadata,
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvoiceInvariantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    return InvoiceRead.model_validate(invoice, from_attributes=True)
 
 
 @router.post("/invoices/run-monthly")

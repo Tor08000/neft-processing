@@ -170,6 +170,8 @@ class ClientInvoiceSummary(BaseModel):
     pdf_url: str | None = None
     pdf_status: InvoicePdfStatus | None = None
     pdf_generated_at: datetime | None = None
+    credited_amount: int | None = None
+    credited_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

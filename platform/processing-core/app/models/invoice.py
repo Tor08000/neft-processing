@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     ForeignKey,
+    JSON,
     Numeric,
     Integer,
     String,
@@ -30,13 +31,11 @@ class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
     SENT = "SENT"
-    DELIVERED = "DELIVERED"
     PARTIALLY_PAID = "PARTIALLY_PAID"
     PAID = "PAID"
+    OVERDUE = "OVERDUE"
     CANCELLED = "CANCELLED"
-    VOIDED = "VOIDED"
-    REFUNDED = "REFUNDED"
-    CLOSED = "CLOSED"
+    CREDITED = "CREDITED"
 
 
 class InvoicePdfStatus(str, Enum):
@@ -104,6 +103,8 @@ class Invoice(Base):
     pdf_hash = Column(String(64), nullable=True)
     pdf_version = Column(Integer, nullable=False, default=1, server_default="1")
     pdf_error = Column(Text, nullable=True)
+    credited_amount = Column(BigInteger, nullable=False, default=0)
+    credited_at = Column(DateTime(timezone=True), nullable=True)
 
     accounting_exported_at = Column(DateTime(timezone=True), nullable=True)
     accounting_export_batch_id = Column(GUID(), nullable=True)
@@ -140,3 +141,18 @@ class InvoiceLine(Base):
     azs_id = Column(String(64), nullable=True)
 
     invoice = relationship("Invoice", back_populates="lines")
+
+
+class InvoiceTransitionLog(Base):
+    """Audit log for every invoice lifecycle transition."""
+
+    __tablename__ = "invoice_transition_logs"
+
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
+    from_status = Column(SAEnum(InvoiceStatus), nullable=False)
+    to_status = Column(SAEnum(InvoiceStatus), nullable=False)
+    actor = Column(String(64), nullable=False)
+    reason = Column(Text, nullable=False)
+    metadata_json = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
