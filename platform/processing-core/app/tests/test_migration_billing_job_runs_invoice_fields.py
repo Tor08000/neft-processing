@@ -20,16 +20,12 @@ class DummyOp:
     def __init__(self, connection: DummyConnection):
         self.connection = connection
         self.added_columns: list[tuple[str, str, str | None]] = []
-        self.created_indexes: list[tuple[str, tuple[str, ...], str | None]] = []
 
     def get_bind(self):
         return self.connection
 
     def add_column(self, table_name, column, schema=None):
         self.added_columns.append((table_name, column.name, schema))
-
-    def create_index(self, name, table_name, columns, schema=None):
-        self.created_indexes.append((name, tuple(columns), schema))
 
 
 def test_upgrade_invokes_enum_and_table_helpers(monkeypatch: pytest.MonkeyPatch):
@@ -39,7 +35,8 @@ def test_upgrade_invokes_enum_and_table_helpers(monkeypatch: pytest.MonkeyPatch)
 
     enum_calls: list[tuple] = []
     enum_value_calls: list[tuple] = []
-    created_tables: list[str] = []
+    created_tables: list[tuple[str, dict]] = []
+    invoice_index_calls: list[tuple[str, tuple[str, ...], str | None]] = []
 
     monkeypatch.setattr(
         migration,
@@ -54,10 +51,16 @@ def test_upgrade_invokes_enum_and_table_helpers(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         migration,
         "create_table_if_not_exists",
-        lambda conn, table_name, **kwargs: created_tables.append(table_name),
+        lambda conn, table_name, **kwargs: created_tables.append((table_name, kwargs)),
     )
     monkeypatch.setattr(migration, "column_exists", lambda *args, **kwargs: False)
-    monkeypatch.setattr(migration, "index_exists", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        migration,
+        "create_index_if_not_exists",
+        lambda conn, index_name, table_name, columns, schema=None: invoice_index_calls.append(
+            (index_name, tuple(columns), schema)
+        ),
+    )
 
     migration.upgrade()
 
@@ -69,11 +72,21 @@ def test_upgrade_invokes_enum_and_table_helpers(monkeypatch: pytest.MonkeyPatch)
     assert ("billing_job_status", "STARTED", migration.SCHEMA) in enum_value_calls
     assert ("invoice_pdf_status", "READY", migration.SCHEMA) in enum_value_calls
 
-    assert set(created_tables) == {"billing_job_runs", "billing_task_links"}
+    created_table_names = {name for name, _kwargs in created_tables}
+    assert created_table_names == {"billing_job_runs", "billing_task_links"}
+
+    job_runs_kwargs = next(kwargs for name, kwargs in created_tables if name == "billing_job_runs")
+    assert "columns" in job_runs_kwargs and "indexes" in job_runs_kwargs
+    assert isinstance(job_runs_kwargs["columns"], list)
+    assert {index[0] for index in job_runs_kwargs["indexes"]} >= {
+        "ix_billing_job_runs_type_status",
+        "ix_billing_job_runs_started_at",
+    }
+
     assert ("invoices", "pdf_status", migration.SCHEMA) in op_mock.added_columns
     assert ("invoices", "pdf_url", migration.SCHEMA) in op_mock.added_columns
     assert ("invoices", "pdf_version", migration.SCHEMA) in op_mock.added_columns
     assert ("invoices", "sent_at", migration.SCHEMA) in op_mock.added_columns
 
-    assert ("ix_invoices_pdf_status", ("pdf_status",), migration.SCHEMA) in op_mock.created_indexes
-    assert ("ix_invoices_sent_at", ("sent_at",), migration.SCHEMA) in op_mock.created_indexes
+    assert ("ix_invoices_pdf_status", ("pdf_status",), migration.SCHEMA) in invoice_index_calls
+    assert ("ix_invoices_sent_at", ("sent_at",), migration.SCHEMA) in invoice_index_calls

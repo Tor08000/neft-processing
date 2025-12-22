@@ -262,20 +262,36 @@ def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SC
 def create_table_if_not_exists(
     bind: Connection,
     table_name: str,
-    *columns,
+    *table_columns: sa.Column,
     schema: str = DB_SCHEMA,
+    columns: Sequence[sa.Column] | None = None,
+    indexes: Sequence[tuple[str, Sequence[str]]] | None = None,
     create_fn=None,
     **kwargs,
 ) -> None:
-    if table_exists(bind, table_name, schema=schema):
-        logger.info("Table %s.%s already exists, skipping", schema, table_name)
-        return
+    keyword_columns = columns
 
-    if create_fn is not None:
-        create_fn()
-        return
+    if table_columns and keyword_columns is not None:
+        raise TypeError("Columns must be provided either positionally or via the `columns` keyword, not both.")
 
-    op.create_table(table_name, *columns, schema=schema, **kwargs)
+    column_list = list(table_columns or keyword_columns or [])
+    index_definitions = list(indexes or [])
+    table_already_exists = table_exists(bind, table_name, schema=schema)
+
+    if table_already_exists:
+        logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
+    else:
+        operations = getattr(bind, "op_override", op)
+
+        if create_fn is not None:
+            create_fn()
+        elif not column_list:
+            raise TypeError("No columns provided for table creation")
+        else:
+            operations.create_table(table_name, *column_list, schema=schema, **kwargs)
+
+    for index_name, index_columns in index_definitions:
+        create_index_if_not_exists(bind, index_name, table_name, index_columns, schema=schema)
 
 
 def drop_table_if_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> None:

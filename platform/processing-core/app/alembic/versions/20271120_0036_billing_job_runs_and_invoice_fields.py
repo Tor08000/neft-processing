@@ -14,7 +14,7 @@ from app.alembic.utils import (
     create_table_if_not_exists,
     ensure_pg_enum,
     ensure_pg_enum_value,
-    index_exists,
+    create_index_if_not_exists,
     is_postgres,
 )
 from app.db.types import GUID
@@ -64,35 +64,40 @@ def upgrade():
     for value in TASK_STATUSES:
         ensure_pg_enum_value(bind, "billing_task_status", value, schema=SCHEMA)
 
+    job_run_columns = [
+        sa.Column("id", GUID(), primary_key=True),
+        sa.Column("job_type", sa.Enum(name="billing_job_type", schema=SCHEMA), nullable=False),
+        sa.Column("params", sa.JSON(), nullable=True),
+        sa.Column("status", sa.Enum(name="billing_job_status", schema=SCHEMA), nullable=False),
+        sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("error", sa.Text(), nullable=True),
+        sa.Column("metrics", sa.JSON(), nullable=True),
+        sa.Column("duration_ms", sa.Integer(), nullable=True),
+        sa.Column("celery_task_id", sa.String(length=128), nullable=True),
+        sa.Column("correlation_id", sa.String(length=128), nullable=True),
+        sa.Column("invoice_id", sa.String(length=36), nullable=True),
+        sa.Column("billing_period_id", GUID(), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column("attempts", sa.Integer(), nullable=True, server_default="0"),
+        sa.Column("last_heartbeat_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("result_ref", sa.JSON(), nullable=True),
+    ]
+    job_run_indexes = [
+        ("ix_billing_job_runs_type_status", ["job_type", "status"]),
+        ("ix_billing_job_runs_type_status_started", ["job_type", "status", "started_at"]),
+        ("ix_billing_job_runs_started_at", ["started_at"]),
+        ("ix_billing_job_runs_finished_at", ["finished_at"]),
+        ("ix_billing_job_runs_celery_task_id", ["celery_task_id"]),
+        ("ix_billing_job_runs_invoice_id", ["invoice_id"]),
+        ("ix_billing_job_runs_billing_period_id", ["billing_period_id"]),
+    ]
     create_table_if_not_exists(
         bind,
         "billing_job_runs",
         schema=SCHEMA,
-        columns=[
-            sa.Column("id", GUID(), primary_key=True),
-            sa.Column("job_type", sa.Enum(name="billing_job_type", schema=SCHEMA), nullable=False),
-            sa.Column("params", sa.JSON(), nullable=True),
-            sa.Column("status", sa.Enum(name="billing_job_status", schema=SCHEMA), nullable=False),
-            sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-            sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("error", sa.Text(), nullable=True),
-            sa.Column("metrics", sa.JSON(), nullable=True),
-            sa.Column("duration_ms", sa.Integer(), nullable=True),
-            sa.Column("celery_task_id", sa.String(length=128), nullable=True),
-            sa.Column("correlation_id", sa.String(length=128), nullable=True),
-            sa.Column("invoice_id", sa.String(length=36), nullable=True),
-            sa.Column("billing_period_id", GUID(), nullable=True),
-            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-            sa.Column("attempts", sa.Integer(), nullable=True, server_default="0"),
-            sa.Column("last_heartbeat_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("result_ref", sa.JSON(), nullable=True),
-        ],
-        indexes=[
-            ("ix_billing_job_runs_type_status_started", ["job_type", "status", "started_at"]),
-            ("ix_billing_job_runs_celery_task_id", ["celery_task_id"]),
-            ("ix_billing_job_runs_invoice_id", ["invoice_id"]),
-            ("ix_billing_job_runs_billing_period_id", ["billing_period_id"]),
-        ],
+        columns=job_run_columns,
+        indexes=job_run_indexes,
     )
 
     if not column_exists(bind, "billing_job_runs", "updated_at", schema=SCHEMA):
@@ -144,10 +149,8 @@ def upgrade():
     if not column_exists(bind, "invoices", "sent_at", schema=SCHEMA):
         op.add_column("invoices", sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True), schema=SCHEMA)
 
-    if not index_exists(bind, "ix_invoices_pdf_status", schema=SCHEMA):
-        op.create_index("ix_invoices_pdf_status", "invoices", ["pdf_status"], schema=SCHEMA)
-    if not index_exists(bind, "ix_invoices_sent_at", schema=SCHEMA):
-        op.create_index("ix_invoices_sent_at", "invoices", ["sent_at"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_invoices_pdf_status", "invoices", ["pdf_status"], schema=SCHEMA)
+    create_index_if_not_exists(bind, "ix_invoices_sent_at", "invoices", ["sent_at"], schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,
