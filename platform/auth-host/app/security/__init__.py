@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status

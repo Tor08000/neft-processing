@@ -4,8 +4,9 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 1. Скопируйте переменные окружения: `cp -n .env.example .env`.
 2. Заполните доступы администратора в `.env` (значения хранятся только локально):
-   - `ADMIN_EMAIL`
-   - `ADMIN_PASSWORD`
+   - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`)
+   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`)
+   Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно).
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
@@ -27,6 +28,11 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
 * AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
+
+### Хранение ключей и файлов
+
+* Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. После `docker compose down -v` ключи пересоздаются автоматически.
+* Данные MinIO лежат в `minio-data`; бакет создаётся при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`).
 
 ### Вход в админ-панель
 
@@ -228,39 +234,12 @@ pytest -q -m smoke
 python -m pytest -q tests\test_alembic_single_head.py
 ```
 
-## Billing/Clearing/Finance runbook
+Интеграционные тесты (compose profile `test` + Postgres/Redis/MinIO/auth/core):
 
-### How to seed demo data
-
-* CLI: `python scripts/seed_billing.py --date YYYY-MM-DD` seeds a demo client/merchant/terminal/card, demo tariff, and 5–10 CAPTURED/COMPLETED operations for the date so billing produces invoices. The script is idempotent; re-running it reuses the same demo identifiers. Requires `DATABASE_URL` and optional auth-host variables (`NEFT_BOOTSTRAP_ADMIN_EMAIL`, etc.) to bootstrap the admin user.
-* API: `POST /api/v1/admin/billing/seed` (requires `ADMIN` role) executes the same seed logic for smoke environments and returns the billing period identifiers.
-
-### How to run billing/clearing/finance smoke
-
-1. Make sure `core-api` and `auth-host` are running (`docker compose --profile smoke up`).
-2. Run the compose smoke profile: `docker compose -f docker-compose.smoke.yml --profile smoke up --build smoke-tests`.
-3. Windows alternative: `scripts/smoke_billing_v14.cmd` performs seed → login → billing run → clearing run → invoice PDF → payment → credit note → reconciliation and prints `billing_period_id`, `invoice_id`, PDF status, and due amounts.
-
-### How to recover after restart
-
-* All admin runs are idempotent and protected by advisory locks; retrying the same scope returns the existing job result instead of duplicating data.
-* Use the same `idempotency_key` (or rely on the default stable key per scope) when replaying:
-  * `/api/v1/admin/billing/run`
-  * `/api/v1/admin/clearing/run`
-  * `/api/v1/admin/billing/invoices/{id}/pdf`
-  * `/api/v1/admin/finance/payments`
-  * `/api/v1/admin/finance/credit-notes`
-* If a run reports `409 already running`, wait for the previous call to finish (or query `/api/v1/admin/billing/jobs`).
-
-### Roles required
-
-* Administrative endpoints above require the `ADMIN` role (and bootstrap users created by the seed script include `ADMIN`, `PLATFORM_ADMIN`, `SUPERADMIN`).
-
-### How idempotency works
-
-* If `idempotency_key` is omitted, a stable key is derived from the request scope (date/period, client, invoice id, etc.).
-* Each admin job takes a Postgres advisory lock based on `job_type + scope`; concurrent calls with the same scope return HTTP 409 (or reuse the existing job run).
-* Successful runs persist their result reference so repeat calls return the same identifiers without creating duplicates.
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.test.yml --profile test up -d --build
+RUN_INTEGRATION_TESTS=1 pytest -m integration platform/processing-core/app/tests
+```
 
 ## Общий Python-пакет `neft_shared`
 

@@ -1,0 +1,17 @@
+services:
+  postgres:
+    profiles: ["test"]
+  redis:
+    profiles: ["test"]
+  minio:
+    profiles: ["test"]
+  minio-init:
+    profiles: ["test"]
+  auth-host:
+    profiles: ["test"]
+  core-api:
+    profiles: ["test"]
+  workers:
+    profiles: ["test"]
+  beat:
+    profiles: ["test"]
