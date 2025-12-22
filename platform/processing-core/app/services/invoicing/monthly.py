@@ -191,7 +191,7 @@ def run_invoice_monthly(
                         period_to=period_to,
                         currency=currency,
                         lines=lines,
-                        status=InvoiceStatus.ISSUED,
+                        status=InvoiceStatus.DRAFT,
                     ),
                     auto_commit=False,
                 )
