@@ -77,4 +77,5 @@ def test_upgrade_adds_finance_columns_and_enum_values(dummy_environment):
     assert ("invoices", "accounting_export_batch_id") in added_columns
 
     assert ("ix_invoices_due_date", ("due_date",), migration.SCHEMA) in created_indexes
+    assert any("UPDATE" in statement.upper() and "AMOUNT_PAID" in statement.upper() for statement in connection.executed)
     assert any("UPDATE" in statement.upper() and "amount_due" in statement for statement in connection.executed)
