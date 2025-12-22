@@ -43,8 +43,9 @@ class S3Storage:
                 raise
 
         params = {"Bucket": self.bucket}
-        if settings.NEFT_S3_REGION:
-            params["CreateBucketConfiguration"] = {"LocationConstraint": settings.NEFT_S3_REGION}
+        region = (settings.NEFT_S3_REGION or "").strip()
+        if region and region != "us-east-1":
+            params["CreateBucketConfiguration"] = {"LocationConstraint": region}
         self._client.create_bucket(**params)
 
     def put_bytes(self, key: str, payload: bytes, *, content_type: str = "application/pdf") -> str:
