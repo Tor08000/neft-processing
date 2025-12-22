@@ -9,10 +9,11 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
-from app.models.billing_job_run import BillingJobType
+from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
 from app.services.billing_job_runs import BillingJobRunService
+from app.services.job_locks import advisory_lock, make_lock_token
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -43,6 +44,10 @@ class BillingRunValidationError(ValueError):
 
 class BillingPeriodClosedError(RuntimeError):
     """Requested billing period is not open for changes."""
+
+
+class BillingRunInProgress(RuntimeError):
+    """Billing run already executing for the requested scope."""
 
 
 class BillingRunService:
@@ -180,6 +185,7 @@ class BillingRunService:
         invoice.tax_amount = sum(int(line.tax_amount or 0) for line in lines)
         invoice.total_with_tax = invoice.total_amount + invoice.tax_amount
         invoice.status = InvoiceStatus.DRAFT
+        invoice.amount_due = max((invoice.total_with_tax or 0) - (invoice.amount_paid or 0), 0)
 
         self.db.flush()
         return invoice, action
@@ -192,6 +198,7 @@ class BillingRunService:
         end_at: datetime,
         tz: str,
         client_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> BillingRunResult:
         try:
             period_type = BillingPeriodType(period_type)
@@ -217,21 +224,64 @@ class BillingRunService:
             },
         )
 
-        job_run = self.job_service.start(
-            BillingJobType.MANUAL_RUN,
-            params={
-                "period_type": period_type.value if hasattr(period_type, "value") else str(period_type),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
-                "tz": tz,
-                "client_id": client_id,
-            },
-        )
+        correlation_id = idempotency_key
+        if correlation_id:
+            existing = self.job_service.find_by_correlation(BillingJobType.MANUAL_RUN, correlation_id)
+            if existing:
+                if existing.status == BillingJobStatus.STARTED:
+                    raise BillingRunInProgress(str(existing.id))
+                if existing.status == BillingJobStatus.SUCCESS and isinstance(existing.result_ref, dict):
+                    billing_period = (
+                        self.db.query(BillingPeriod)
+                        .filter(BillingPeriod.id == existing.result_ref.get("billing_period_id"))
+                        .first()
+                    )
+                    if billing_period:
+                        stored_period_from = existing.result_ref.get("period_from")
+                        stored_period_to = existing.result_ref.get("period_to")
+                        period_from_val = (
+                            date.fromisoformat(stored_period_from) if isinstance(stored_period_from, str) else stored_period_from
+                        )
+                        period_to_val = (
+                            date.fromisoformat(stored_period_to) if isinstance(stored_period_to, str) else stored_period_to
+                        )
+                        return BillingRunResult(
+                            billing_period=billing_period,
+                            period_from=period_from_val,
+                            period_to=period_to_val,
+                            clients_processed=existing.result_ref.get("clients_processed", 0),
+                            invoices_created=existing.result_ref.get("invoices_created", 0),
+                            invoices_rebuilt=existing.result_ref.get("invoices_rebuilt", 0),
+                            invoices_skipped=existing.result_ref.get("invoices_skipped", 0),
+                            invoice_lines_created=existing.result_ref.get("invoice_lines_created", 0),
+                            total_amount=existing.result_ref.get("total_amount", 0),
+                        )
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
+        job_run = None
 
         try:
             with txn_context:
+                lock_token = make_lock_token(
+                    "billing_manual_run",
+                    f"{period_type}:{period_from.isoformat()}:{period_to.isoformat()}:{client_id or '*'}",
+                )
+                with advisory_lock(self.db, lock_token) as acquired:
+                    if not acquired:
+                        raise BillingRunInProgress(correlation_id or "billing_manual_run_locked")
+
+                job_run = self.job_service.start(
+                    BillingJobType.MANUAL_RUN,
+                    params={
+                        "period_type": period_type.value if hasattr(period_type, "value") else str(period_type),
+                        "start_at": start_at.isoformat(),
+                        "end_at": end_at.isoformat(),
+                        "tz": tz,
+                        "client_id": client_id,
+                    },
+                    correlation_id=correlation_id,
+                )
+
                 billing_period = self._get_or_create_billing_period(
                     period_type=period_type,
                     start_at=start_at,
@@ -292,31 +342,43 @@ class BillingRunService:
                     total_amount=total_amount,
                 )
 
-            logger.info(
-                "billing.run.completed",
-                extra={
-                    "billing_period_id": billing_period.id,
-                    "clients_processed": result.clients_processed,
-                    "invoices_created": result.invoices_created,
-                    "invoices_rebuilt": result.invoices_rebuilt,
-                    "invoices_skipped": result.invoices_skipped,
-                    "invoice_lines_created": result.invoice_lines_created,
-                    "total_amount": result.total_amount,
-                },
-            )
-            self.job_service.succeed(
-                job_run,
-                metrics={
-                    "billing_period_id": str(billing_period.id),
-                    "clients_processed": result.clients_processed,
-                    "invoices_created": result.invoices_created,
-                    "invoices_rebuilt": result.invoices_rebuilt,
-                    "invoices_skipped": result.invoices_skipped,
-                    "invoice_lines_created": result.invoice_lines_created,
-                    "total_amount": result.total_amount,
-                },
-            )
-            return result
+                logger.info(
+                    "billing.run.completed",
+                    extra={
+                        "billing_period_id": billing_period.id,
+                        "clients_processed": result.clients_processed,
+                        "invoices_created": result.invoices_created,
+                        "invoices_rebuilt": result.invoices_rebuilt,
+                        "invoices_skipped": result.invoices_skipped,
+                        "invoice_lines_created": result.invoice_lines_created,
+                        "total_amount": result.total_amount,
+                    },
+                )
+                self.job_service.succeed(
+                    job_run,
+                    metrics={
+                        "billing_period_id": str(billing_period.id),
+                        "clients_processed": result.clients_processed,
+                        "invoices_created": result.invoices_created,
+                        "invoices_rebuilt": result.invoices_rebuilt,
+                        "invoices_skipped": result.invoices_skipped,
+                        "invoice_lines_created": result.invoice_lines_created,
+                        "total_amount": result.total_amount,
+                    },
+                    result_ref={
+                        "billing_period_id": str(billing_period.id),
+                        "period_from": str(result.period_from),
+                        "period_to": str(result.period_to),
+                        "clients_processed": result.clients_processed,
+                        "invoices_created": result.invoices_created,
+                        "invoices_rebuilt": result.invoices_rebuilt,
+                        "invoices_skipped": result.invoices_skipped,
+                        "invoice_lines_created": result.invoice_lines_created,
+                        "total_amount": result.total_amount,
+                    },
+                )
+                return result
         except Exception as exc:  # noqa: BLE001
-            self.job_service.fail(job_run, error=str(exc))
+            if job_run:
+                self.job_service.fail(job_run, error=str(exc))
             raise

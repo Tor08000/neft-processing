@@ -34,5 +34,7 @@ partners
 external_request_logs
 invoices
 invoice_lines
+invoice_payments
+credit_notes
 users
 user_roles

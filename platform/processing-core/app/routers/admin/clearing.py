@@ -65,12 +65,18 @@ def get_clearing_batch_operations(
 
 
 @router.post("/run-daily")
-def run_daily_clearing(
+async def run_daily_clearing(
     clearing_date: date | None = Query(None),
+    idempotency_key: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    batches = run_clearing_daily(clearing_date, session=db)
-    resolved_date = clearing_date or (batches[0].date_from if batches else None)
+    target_date = clearing_date or date.today()
+    scope_key = make_stable_key("clearing_run", {"clearing_date": target_date.isoformat()}, idempotency_key)
+    try:
+        batches = await ClearingRunService(db).run(clearing_date=target_date, idempotency_key=scope_key)
+    except ClearingRunInProgress as exc:
+        raise HTTPException(status_code=409, detail="already running") from exc
+    resolved_date = target_date or (batches[0].date_from if batches else None)
     return {"created": [batch.id for batch in batches], "clearing_date": str(resolved_date) if resolved_date else None}
 
 
