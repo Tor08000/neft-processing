@@ -228,6 +228,40 @@ pytest -q -m smoke
 python -m pytest -q tests\test_alembic_single_head.py
 ```
 
+## Billing/Clearing/Finance runbook
+
+### How to seed demo data
+
+* CLI: `python scripts/seed_billing.py --date YYYY-MM-DD` seeds a demo client/merchant/terminal/card, demo tariff, and 5–10 CAPTURED/COMPLETED operations for the date so billing produces invoices. The script is idempotent; re-running it reuses the same demo identifiers. Requires `DATABASE_URL` and optional auth-host variables (`NEFT_BOOTSTRAP_ADMIN_EMAIL`, etc.) to bootstrap the admin user.
+* API: `POST /api/v1/admin/billing/seed` (requires `ADMIN` role) executes the same seed logic for smoke environments and returns the billing period identifiers.
+
+### How to run billing/clearing/finance smoke
+
+1. Make sure `core-api` and `auth-host` are running (`docker compose --profile smoke up`).
+2. Run the compose smoke profile: `docker compose -f docker-compose.smoke.yml --profile smoke up --build smoke-tests`.
+3. Windows alternative: `scripts/smoke_billing_v14.cmd` performs seed → login → billing run → clearing run → invoice PDF → payment → credit note → reconciliation and prints `billing_period_id`, `invoice_id`, PDF status, and due amounts.
+
+### How to recover after restart
+
+* All admin runs are idempotent and protected by advisory locks; retrying the same scope returns the existing job result instead of duplicating data.
+* Use the same `idempotency_key` (or rely on the default stable key per scope) when replaying:
+  * `/api/v1/admin/billing/run`
+  * `/api/v1/admin/clearing/run`
+  * `/api/v1/admin/billing/invoices/{id}/pdf`
+  * `/api/v1/admin/finance/payments`
+  * `/api/v1/admin/finance/credit-notes`
+* If a run reports `409 already running`, wait for the previous call to finish (or query `/api/v1/admin/billing/jobs`).
+
+### Roles required
+
+* Administrative endpoints above require the `ADMIN` role (and bootstrap users created by the seed script include `ADMIN`, `PLATFORM_ADMIN`, `SUPERADMIN`).
+
+### How idempotency works
+
+* If `idempotency_key` is omitted, a stable key is derived from the request scope (date/period, client, invoice id, etc.).
+* Each admin job takes a Postgres advisory lock based on `job_type + scope`; concurrent calls with the same scope return HTTP 409 (or reuse the existing job run).
+* Successful runs persist their result reference so repeat calls return the same identifiers without creating duplicates.
+
 ## Общий Python-пакет `neft_shared`
 
 В каталоге `shared/python` расположен пакет с общими настройками и логированием.

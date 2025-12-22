@@ -51,11 +51,100 @@ services:
           sys.exit("token missing")
       headers = {"Authorization": f"Bearer {token}"}
 
-      print("[smoke] billing periods...")
-      fetch(f"{CORE_URL}/billing/periods", headers=headers)
+      print("[smoke] seed demo data...")
+      status, body = fetch(f"{CORE_URL}/billing/seed", method="POST", headers=headers)
+      seed = json.loads(body.decode())
+      period_from = seed.get("period_from")
+      period_to = seed.get("period_to") or seed.get("period_from")
+      client_id = seed.get("client_id")
+
+      print("[smoke] billing run...")
+      payload = {
+          "period_type": "ADHOC",
+          "start_at": f"{period_from}T00:00:00+00:00",
+          "end_at": f"{period_to}T23:59:59+00:00",
+          "tz": "UTC",
+          "client_id": client_id,
+          "idempotency_key": f"smoke:{period_from}",
+      }
+      status, body = fetch(f"{CORE_URL}/billing/run", method="POST", data=payload, headers=headers)
+      billing_result = json.loads(body.decode())
+      billing_period_id = billing_result.get("billing_period_id") or seed.get("billing_period_id")
+      print("[smoke] billing_period_id", billing_period_id)
 
       print("[smoke] clearing run...")
-      fetch(f"{CORE_URL}/clearing/run?date=2024-01-02", method="POST", headers=headers)
+      status, body = fetch(
+          f"{CORE_URL}/clearing/run?clearing_date={period_from}&idempotency_key=smoke:{period_from}",
+          method="POST",
+          headers=headers,
+      )
+      clearing_result = json.loads(body.decode())
+      print("[smoke] clearing batches", clearing_result.get("total"))
+
+      print("[smoke] fetch invoice...")
+      status, body = fetch(
+          f"{CORE_URL}/billing/invoices?period_from={period_from}&period_to={period_to}&client_id={client_id}",
+          headers=headers,
+      )
+      invoice_list = json.loads(body.decode())
+      invoice_id = invoice_list["items"][0]["id"]
+
+      status, body = fetch(f"{CORE_URL}/billing/invoices/{invoice_id}", headers=headers)
+      invoice_details = json.loads(body.decode())
+      print("[smoke] invoice_id", invoice_id)
+
+      print("[smoke] invoice pdf...")
+      status, body = fetch(
+          f"{CORE_URL}/billing/invoices/{invoice_id}/pdf?idempotency_key=smoke:{invoice_id}",
+          method="POST",
+          headers=headers,
+      )
+      pdf_payload = json.loads(body.decode())
+      print("[smoke] pdf status", pdf_payload.get("pdf_status"))
+
+      print("[smoke] payment...")
+      total_with_tax = int(invoice_details.get("total_with_tax") or invoice_details.get("total_amount"))
+      payment_amount = max(total_with_tax // 2, 1)
+      status, body = fetch(
+          f"{CORE_URL}/finance/payments",
+          method="POST",
+          headers=headers,
+          data={"invoice_id": invoice_id, "amount": payment_amount, "currency": "RUB"},
+      )
+      payment = json.loads(body.decode())
+
+      status, body = fetch(f"{CORE_URL}/billing/invoices/{invoice_id}", headers=headers)
+      after_payment = json.loads(body.decode())
+      if int(after_payment.get("amount_due", 0)) != max(total_with_tax - payment_amount, 0):
+          sys.exit("due amount mismatch after payment")
+      print("[smoke] due after payment", after_payment.get("amount_due"))
+
+      print("[smoke] credit note...")
+      credit_amount = max(payment_amount // 2, 1)
+      status, body = fetch(
+          f"{CORE_URL}/finance/credit-notes",
+          method="POST",
+          headers=headers,
+          data={"invoice_id": invoice_id, "amount": credit_amount, "currency": "RUB", "reason": "smoke"},
+      )
+      credit_note = json.loads(body.decode())
+
+      status, body = fetch(f"{CORE_URL}/billing/invoices/{invoice_id}", headers=headers)
+      after_credit = json.loads(body.decode())
+      expected_due = max(total_with_tax - payment_amount - credit_amount, 0)
+      if int(after_credit.get("amount_due", 0)) != expected_due:
+          sys.exit("due amount mismatch after credit note")
+      print("[smoke] due after credit", after_credit.get("amount_due"))
+
+      print("[smoke] reconciliation...")
+      status, body = fetch(
+          f"{CORE_URL}/billing/reconcile",
+          method="POST",
+          headers=headers,
+          data={"billing_period_id": billing_period_id},
+      )
+      if status not in (200, 202):
+          sys.exit("reconciliation failed")
 
       print("[smoke] OK")
       PY

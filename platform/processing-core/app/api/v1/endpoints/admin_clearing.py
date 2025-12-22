@@ -6,11 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.schemas.clearing import ClearingBatchAdminOut, ClearingBatchListResponse
-from app.services.clearing_service import (
-    generate_clearing_batches_for_date,
-    list_clearing_batches,
-    load_clearing_batch,
-)
+from app.services.clearing_service import list_clearing_batches, load_clearing_batch
+from app.services.clearing_runs import ClearingRunInProgress, ClearingRunService
+from app.services.job_locks import make_stable_key
 
 
 router = APIRouter(
@@ -55,13 +53,19 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> Clearing
 async def run_clearing_endpoint(
     clearing_date: date | None = Query(None),
     date_param: date | None = Query(None, alias="date"),
+    idempotency_key: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> ClearingBatchListResponse:
     target_date = clearing_date or date_param
     if target_date is None:
         raise HTTPException(status_code=422, detail="clearing_date_required")
 
-    batches = await generate_clearing_batches_for_date(target_date, session=db)
+    scope_key = make_stable_key("clearing_run", {"clearing_date": target_date.isoformat()}, idempotency_key)
+    try:
+        batches = await ClearingRunService(db).run(clearing_date=target_date, idempotency_key=scope_key)
+    except ClearingRunInProgress as exc:
+        raise HTTPException(status_code=409, detail="already running") from exc
+
     items = [ClearingBatchAdminOut.model_validate(batch) for batch in batches]
     return ClearingBatchListResponse(items=items, total=len(items), limit=len(items), offset=0)
 

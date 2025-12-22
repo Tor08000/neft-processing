@@ -40,7 +40,7 @@ from app.models.billing_summary import BillingSummary
 from app.models.operation import ProductType
 from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.services.reports_billing import finalize_billing_summary
-from app.services.billing_run import BillingPeriodClosedError, BillingRunService, BillingRunValidationError
+from app.services.billing_run import BillingPeriodClosedError, BillingRunInProgress, BillingRunService, BillingRunValidationError
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService
 from app.services.reconciliation import BillingReconciliationService
 from app.services.operations_scenarios.adjustments import AdjustmentService
@@ -58,6 +58,8 @@ from app.services.invoicing import run_invoice_monthly
 from app.services.invoice_pdf import InvoicePdfService
 from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
+from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
+from app.services.demo_seed import DemoSeeder
 
 router = APIRouter(prefix="/billing", tags=["admin"])
 
@@ -164,9 +166,44 @@ def admin_create_adjustment(body: BillingAdjustmentRequest, db: Session = Depend
     )
 
 
+@router.post("/seed")
+def admin_seed_billing(idempotency_key: str | None = Query(None), db: Session = Depends(get_db)):
+    seeder = DemoSeeder(db)
+    scope_key = make_stable_key("billing_seed", {"seed": "demo"}, idempotency_key)
+    job_service = BillingJobRunService(db)
+    existing = job_service.find_by_correlation(BillingJobType.BILLING_SEED, scope_key)
+    if existing and isinstance(existing.result_ref, dict):
+        return existing.result_ref
+
+    lock_token = make_lock_token("billing_seed", scope_key)
+    with advisory_lock(db, lock_token) as acquired:
+        if not acquired:
+            raise HTTPException(status_code=409, detail="already running")
+
+        job_run = job_service.start(
+            BillingJobType.BILLING_SEED,
+            params={"demo": True},
+            correlation_id=scope_key,
+        )
+        result = seeder.seed()
+        job_service.succeed(job_run, metrics={"billing_period_id": result.get("billing_period_id")}, result_ref=result)
+        return result
+
+
 @router.post("/run", response_model=BillingRunResponse)
 def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) -> BillingRunResponse:
     service = BillingRunService(db)
+    scope_key = make_stable_key(
+        "billing_manual_run",
+        {
+            "period_type": body.period_type.value if hasattr(body.period_type, "value") else str(body.period_type),
+            "start_at": body.start_at.isoformat(),
+            "end_at": body.end_at.isoformat(),
+            "tz": body.tz,
+            "client_id": body.client_id or "*",
+        },
+        body.idempotency_key,
+    )
     try:
         result = service.run(
             period_type=body.period_type,
@@ -174,11 +211,14 @@ def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) ->
             end_at=body.end_at,
             tz=body.tz,
             client_id=body.client_id,
+            idempotency_key=scope_key,
         )
     except BillingRunValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except BillingPeriodClosedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except BillingRunInProgress as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already running") from exc
 
     return BillingRunResponse(
         billing_period_id=str(result.billing_period.id),
@@ -435,6 +475,7 @@ def admin_run_monthly_invoices(month: str | None = Query(None), db: Session = De
 def admin_enqueue_invoice_pdf(
     invoice_id: str,
     force: bool = Query(False),
+    idempotency_key: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
@@ -448,41 +489,62 @@ def admin_enqueue_invoice_pdf(
 
     job_service = BillingJobRunService(db)
     link_service = BillingTaskLinkService(db)
-    correlation_id = str(invoice.billing_period_id) if invoice.billing_period_id else str(uuid4())
+    scope_key = make_stable_key("invoice_pdf", {"invoice_id": invoice_id, "force": force}, idempotency_key)
+    existing = job_service.find_by_correlation(BillingJobType.PDF_GENERATE, scope_key)
+    if existing:
+        if existing.status == BillingJobStatus.STARTED:
+            return InvoicePdfEnqueueResponse(
+                task_id=existing.celery_task_id or "",
+                job_run_id=str(existing.id),
+                pdf_status=invoice.pdf_status,
+            )
+        if existing.status == BillingJobStatus.SUCCESS:
+            return InvoicePdfEnqueueResponse(
+                task_id=existing.celery_task_id or "",
+                job_run_id=str(existing.id),
+                pdf_status=invoice.pdf_status,
+            )
 
-    job_run = job_service.start(
-        BillingJobType.PDF_GENERATE,
-        params={"invoice_id": invoice_id, "force": force},
-        correlation_id=correlation_id,
-        invoice_id=invoice_id,
-        billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
-    )
-    invoice.pdf_status = InvoicePdfStatus.QUEUED
-    invoice.pdf_error = None
-    db.add(invoice)
-    db.flush()
+    correlation_id = scope_key
 
-    async_result = generate_invoice_pdf.delay(
-        invoice.id,
-        correlation_id=correlation_id,
-        force=force,
-        job_run_id=str(job_run.id),
-    )
-    job_run.celery_task_id = async_result.id
-    job_run.attempts = (job_run.attempts or 0) + 1
-    db.add(job_run)
+    lock_token = make_lock_token("invoice_pdf", scope_key)
+    with advisory_lock(db, lock_token) as acquired:
+        if not acquired:
+            raise HTTPException(status_code=409, detail="already running")
 
-    link_service.upsert(
-        task_id=async_result.id,
-        task_name="billing.generate_invoice_pdf",
-        job_run_id=str(job_run.id),
-        task_type=BillingTaskType.PDF_GENERATE,
-        invoice_id=invoice.id,
-        billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
-        status=BillingTaskStatus.QUEUED,
-    )
-    db.commit()
-    return InvoicePdfEnqueueResponse(task_id=async_result.id, job_run_id=str(job_run.id), pdf_status=invoice.pdf_status)
+        job_run = job_service.start(
+            BillingJobType.PDF_GENERATE,
+            params={"invoice_id": invoice_id, "force": force},
+            correlation_id=correlation_id,
+            invoice_id=invoice_id,
+            billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
+        )
+        invoice.pdf_status = InvoicePdfStatus.QUEUED
+        invoice.pdf_error = None
+        db.add(invoice)
+        db.flush()
+
+        async_result = generate_invoice_pdf.delay(
+            invoice.id,
+            correlation_id=correlation_id,
+            force=force,
+            job_run_id=str(job_run.id),
+        )
+        job_run.celery_task_id = async_result.id
+        job_run.attempts = (job_run.attempts or 0) + 1
+        db.add(job_run)
+
+        link_service.upsert(
+            task_id=async_result.id,
+            task_name="billing.generate_invoice_pdf",
+            job_run_id=str(job_run.id),
+            task_type=BillingTaskType.PDF_GENERATE,
+            invoice_id=invoice.id,
+            billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
+            status=BillingTaskStatus.QUEUED,
+        )
+        db.commit()
+        return InvoicePdfEnqueueResponse(task_id=async_result.id, job_run_id=str(job_run.id), pdf_status=invoice.pdf_status)
 
 
 @router.get("/invoices/{invoice_id}/pdf", response_model=InvoicePdfReadResponse)

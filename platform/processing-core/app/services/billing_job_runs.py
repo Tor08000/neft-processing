@@ -25,6 +25,19 @@ class BillingJobRunService:
     def __init__(self, db: Session):
         self.db = db
 
+    def find_by_correlation(
+        self,
+        job_type: BillingJobType,
+        correlation_id: str,
+    ) -> BillingJobRun | None:
+        return (
+            self.db.query(BillingJobRun)
+            .filter(BillingJobRun.job_type == job_type)
+            .filter(BillingJobRun.correlation_id == correlation_id)
+            .order_by(BillingJobRun.started_at.desc())
+            .first()
+        )
+
     def start(
         self,
         job_type: BillingJobType,

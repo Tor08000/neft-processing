@@ -12,6 +12,7 @@ from app.routers.admin import (
     merchants,
     operations,
     refunds,
+    finance,
     reversals,
     risk_rules,
     settlements,
@@ -32,5 +33,6 @@ router.include_router(settlements.router)
 router.include_router(refunds.router)
 router.include_router(reversals.router)
 router.include_router(disputes.router)
+router.include_router(finance.router)
 
 __all__ = ["router"]

@@ -159,6 +159,7 @@ class BillingRunRequest(BaseModel):
     end_at: datetime
     tz: str = "UTC"
     client_id: str | None = None
+    idempotency_key: str | None = None
 
     @field_validator("period_type", mode="before")
     @classmethod
