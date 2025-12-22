@@ -7,6 +7,7 @@ from typing import Optional
 import requests
 from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwk, jwt
+from neft_shared.logging_setup import get_logger
 
 PUBLIC_KEY_URL = os.getenv(
     "ADMIN_PUBLIC_KEY_URL",

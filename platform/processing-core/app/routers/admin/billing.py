@@ -423,7 +423,12 @@ def admin_update_invoice_status(
     db: Session = Depends(get_db),
 ) -> InvoiceRead:
     repo = BillingRepository(db)
-    updated = repo.update_status(invoice_id, body.status)
+    updated = repo.update_status(
+        invoice_id,
+        body.status,
+        actor="admin_api",
+        reason="manual_status_update",
+    )
     if updated is None:
         raise HTTPException(status_code=404, detail="invoice not found")
     return InvoiceRead.model_validate(updated, from_attributes=True)

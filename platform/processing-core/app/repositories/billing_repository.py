@@ -7,6 +7,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
+from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
 
 
 @dataclass
@@ -51,6 +52,7 @@ class BillingRepository:
 
     def __init__(self, db: Session):
         self.db = db
+        self.state_machine = InvoiceStateMachine()
 
     def create_invoice(self, data: BillingInvoiceData, *, auto_commit: bool = True) -> Invoice:
         """Create invoice with lines, computing totals from provided items."""
@@ -104,6 +106,13 @@ class BillingRepository:
             for line in lines
         ]
 
+        context = InvoiceTransitionContext(
+            actor="billing_repository",
+            reason="create_invoice",
+            payments_total=invoice.amount_paid,
+        )
+        self.state_machine.apply_transition(invoice, invoice.status, context=context)
+
         if auto_commit:
             self.db.commit()
             self.db.refresh(invoice)
@@ -147,6 +156,9 @@ class BillingRepository:
         *,
         issued_at: datetime | None = None,
         paid_at: datetime | None = None,
+        actor: str | None = "billing_repository",
+        reason: str | None = "status_update",
+        allow_cancel_paid: bool = False,
     ) -> Invoice | None:
         """Update invoice status and adjust lifecycle timestamps."""
 
@@ -154,20 +166,18 @@ class BillingRepository:
         if invoice is None:
             return None
 
-        invoice.status = status
-        if status == InvoiceStatus.ISSUED and invoice.issued_at is None:
-            invoice.issued_at = issued_at or datetime.utcnow()
-        if status == InvoiceStatus.SENT and invoice.sent_at is None:
-            invoice.sent_at = datetime.utcnow()
-        if status == InvoiceStatus.DELIVERED and invoice.delivered_at is None:
-            invoice.delivered_at = datetime.utcnow()
-        if status == InvoiceStatus.PARTIALLY_PAID:
-            invoice.amount_paid = min(invoice.total_with_tax, invoice.amount_paid)
-            invoice.amount_due = max(0, invoice.total_with_tax - invoice.amount_paid)
+        payments_total = invoice.amount_paid
         if status == InvoiceStatus.PAID:
-            invoice.amount_paid = invoice.total_with_tax
-            invoice.amount_due = 0
-            invoice.paid_at = paid_at or datetime.utcnow()
+            payments_total = invoice.total_with_tax or invoice.total_amount or payments_total
+
+        context = InvoiceTransitionContext(
+            actor=actor,
+            reason=reason,
+            allow_cancel_paid=allow_cancel_paid,
+            payments_total=payments_total,
+        )
+        now_hint = paid_at if status == InvoiceStatus.PAID and paid_at else issued_at
+        self.state_machine.apply_transition(invoice, status, now=now_hint, context=context)
 
         self.db.add(invoice)
         self.db.commit()

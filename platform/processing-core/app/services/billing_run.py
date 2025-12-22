@@ -14,6 +14,7 @@ from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
+from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -56,6 +57,7 @@ class BillingRunService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
+        self.state_machine = InvoiceStateMachine()
 
     def _get_or_create_billing_period(
         self,
@@ -184,8 +186,16 @@ class BillingRunService:
         invoice.total_amount = total_amount
         invoice.tax_amount = sum(int(line.tax_amount or 0) for line in lines)
         invoice.total_with_tax = invoice.total_amount + invoice.tax_amount
-        invoice.status = InvoiceStatus.DRAFT
-        invoice.amount_due = max((invoice.total_with_tax or 0) - (invoice.amount_paid or 0), 0)
+        self.state_machine.apply_transition(
+            invoice,
+            InvoiceStatus.DRAFT,
+            context=InvoiceTransitionContext(
+                actor="billing_run",
+                reason="rebuild_invoice",
+                skip_timestamp_update=True,
+                payments_total=invoice.amount_paid,
+            ),
+        )
 
         self.db.flush()
         return invoice, action
