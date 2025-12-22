@@ -53,6 +53,10 @@ def upgrade():
             sa.Column("amount_paid", sa.BigInteger(), nullable=False, server_default="0"),
             schema=SCHEMA,
         )
+        bind.exec_driver_sql(
+            f"UPDATE {SCHEMA}.invoices "
+            "SET amount_paid = COALESCE(total_with_tax, 0) WHERE status = 'PAID' OR paid_at IS NOT NULL"
+        )
 
     if not column_exists(bind, "invoices", "amount_due", schema=SCHEMA):
         op.add_column(
