@@ -91,6 +91,7 @@ def test_admin_clearing_upserts_existing_rows(admin_client: TestClient, session:
         assert body["updated"] == 1
         assert not body.get("reason")
 
+        session.expire_all()
         stored = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
         assert len(stored) == 2
         refreshed = [item for item in stored if item.merchant_id == "m1"][0]
