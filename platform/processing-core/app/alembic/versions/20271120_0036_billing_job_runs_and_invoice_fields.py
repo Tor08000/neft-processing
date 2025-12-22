@@ -7,6 +7,7 @@ Create Date: 2024-11-20 00:36:00.000000
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
     SCHEMA,
@@ -38,6 +39,12 @@ INVOICE_PDF_STATUS = ["NONE", "QUEUED", "GENERATING", "READY", "FAILED"]
 TASK_TYPES = ["MONTHLY_RUN", "PDF_GENERATE", "INVOICE_SEND"]
 TASK_STATUSES = ["QUEUED", "RUNNING", "SUCCESS", "FAILED"]
 
+billing_job_type_t = postgresql.ENUM(name="billing_job_type", schema=SCHEMA, create_type=False)
+billing_job_status_t = postgresql.ENUM(name="billing_job_status", schema=SCHEMA, create_type=False)
+invoice_pdf_status_t = postgresql.ENUM(name="invoice_pdf_status", schema=SCHEMA, create_type=False)
+billing_task_type_t = postgresql.ENUM(name="billing_task_type", schema=SCHEMA, create_type=False)
+billing_task_status_t = postgresql.ENUM(name="billing_task_status", schema=SCHEMA, create_type=False)
+
 
 def upgrade():
     bind = op.get_bind()
@@ -66,9 +73,9 @@ def upgrade():
 
     job_run_columns = [
         sa.Column("id", GUID(), primary_key=True),
-        sa.Column("job_type", sa.Enum(name="billing_job_type", schema=SCHEMA), nullable=False),
+        sa.Column("job_type", billing_job_type_t, nullable=False),
         sa.Column("params", sa.JSON(), nullable=True),
-        sa.Column("status", sa.Enum(name="billing_job_status", schema=SCHEMA), nullable=False),
+        sa.Column("status", billing_job_status_t, nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
@@ -122,7 +129,7 @@ def upgrade():
             "invoices",
             sa.Column(
                 "pdf_status",
-                sa.Enum(name="invoice_pdf_status", schema=SCHEMA),
+                invoice_pdf_status_t,
                 nullable=False,
                 server_default="NONE",
             ),
@@ -160,11 +167,11 @@ def upgrade():
             sa.Column("id", GUID(), primary_key=True),
             sa.Column("task_id", sa.String(length=128), nullable=False, unique=True),
             sa.Column("task_name", sa.String(length=128), nullable=False),
-            sa.Column("task_type", sa.Enum(name="billing_task_type", schema=SCHEMA), nullable=False),
+            sa.Column("task_type", billing_task_type_t, nullable=False),
             sa.Column("job_run_id", GUID(), sa.ForeignKey(f"{SCHEMA}.billing_job_runs.id", ondelete="CASCADE"), nullable=False),
             sa.Column("invoice_id", sa.String(length=36), nullable=True),
             sa.Column("billing_period_id", GUID(), nullable=True),
-            sa.Column("status", sa.Enum(name="billing_task_status", schema=SCHEMA), nullable=False),
+            sa.Column("status", billing_task_status_t, nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("error", sa.Text(), nullable=True),
