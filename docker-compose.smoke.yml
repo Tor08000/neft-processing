@@ -1,0 +1,61 @@
+services:
+  smoke-tests:
+    profiles:
+      - smoke
+    image: python:3.11-slim
+    env_file:
+      - .env.example
+    depends_on:
+      core-api:
+        condition: service_healthy
+      auth-host:
+        condition: service_healthy
+    entrypoint: >
+      python - <<'PY'
+      import json, os, sys, time, urllib.request
+
+      AUTH_URL = "http://auth-host:8000/api/v1/auth"
+      CORE_URL = "http://core-api:8000/api/v1/admin"
+      email = os.getenv("NEFT_BOOTSTRAP_ADMIN_EMAIL", "admin@neft.local")
+      password = os.getenv("NEFT_BOOTSTRAP_ADMIN_PASSWORD", "Admin123!")
+
+      def fetch(url, *, method="GET", data=None, headers=None):
+          req = urllib.request.Request(url, method=method, headers=headers or {})
+          if data is not None and isinstance(data, dict):
+              body = json.dumps(data).encode()
+              req.data = body
+              req.add_header("Content-Type", "application/json")
+          elif data is not None:
+              req.data = data
+          with urllib.request.urlopen(req, timeout=10) as resp:
+              return resp.status, resp.read()
+
+      def wait_health(url):
+          for _ in range(10):
+              try:
+                  status, _ = fetch(url)
+                  if status == 200:
+                      return
+              except Exception:
+                  time.sleep(1)
+          raise RuntimeError(f"service {url} unhealthy")
+
+      print("[smoke] waiting for services...")
+      wait_health("http://core-api:8000/api/core/health")
+      wait_health("http://auth-host:8000/api/auth/health")
+
+      print("[smoke] login...")
+      status, body = fetch(f"{AUTH_URL}/login", method="POST", data={"email": email, "password": password})
+      token = json.loads(body.decode()).get("access_token")
+      if not token:
+          sys.exit("token missing")
+      headers = {"Authorization": f"Bearer {token}"}
+
+      print("[smoke] billing periods...")
+      fetch(f"{CORE_URL}/billing/periods", headers=headers)
+
+      print("[smoke] clearing run...")
+      fetch(f"{CORE_URL}/clearing/run?date=2024-01-02", method="POST", headers=headers)
+
+      print("[smoke] OK")
+      PY

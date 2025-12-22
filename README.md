@@ -12,13 +12,14 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
  - Gateway health: `http://localhost/health`
   - Core API напрямую: `http://localhost:8001/health`
   - Core API через gateway: `http://localhost/api/core/health`
-  - Auth напрямую: `http://localhost:8002/health`
+ - Auth напрямую: `http://localhost:8002/health`
   - Auth через gateway: `http://localhost/api/auth/health`
   - AI напрямую: `http://localhost:8003/health`
   - AI через gateway: `http://localhost/api/ai/api/v1/health`
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
+6. Для обычной остановки используйте `docker compose down` (без `-v`), чтобы сохранить тома `postgres-data`, `minio-data` и `auth-keys`. Полная очистка с `docker compose down -v` удалит данные БД, ключи и файлы из MinIO.
 
 ### Endpoints & Ports
 
@@ -47,7 +48,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ### Админский токен для локальной разработки
 
-1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
+1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@neft.local` / `Admin123!`).
 2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
@@ -63,8 +64,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `docker compose up -d --build`
 * Открыть в браузере: `http://localhost/admin/` (или напрямую в контейнер admin-web: `http://localhost:4173/admin/`)
 * В форме логина ввести:
-  * Email: `admin@example.com`
-  * Пароль: `admin`
+  * Email: `admin@neft.local`
+  * Пароль: `Admin123!`
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
@@ -113,29 +114,9 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
 
-### Billing/Clearing smoke (Windows CMD)
+Полный smoke для биллинга/финансов (Windows CMD): `scripts\smoke_billing_finance.cmd` (логин → billing run → invoices → PDF → попытка finance/AR).
 
-Быстрый прогон end-to-end без ручных шагов:
-
-```bat
-scripts\smoke_billing_v14.cmd
-```
-
-Скрипт:
-
-* логинится bootstrap-админом (`AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD`);
-* проверяет `/api/core/health`;
-* читает `/api/v1/admin/billing/periods`;
-* запускает ручной биллинг и клиринг (`/api/v1/admin/billing/run`, `/api/v1/admin/clearing/run`);
-* завершает работу с exit code 1 при любом неожиданном статус-коде.
-
-Smoke после рестарта стека:
-
-```bat
-scripts\smoke_restart.cmd
-```
-
-Он рестартует core-сервисы через `docker compose restart`, ждёт несколько секунд и заново прогоняет `smoke_billing_v14.cmd`.
+Docker smoke профайл (Linux/macOS): `docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up --build --abort-on-container-exit smoke-tests`.
 
 Поиск маркеров конфликтов только в трекаемых файлах (без шума от `.venv` и прочего):
 

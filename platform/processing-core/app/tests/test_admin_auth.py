@@ -11,10 +11,14 @@ from app.main import app
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    try:
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:  # pragma: no cover - skip when Postgres is not available
+        pytest.skip(f"Postgres not available: {exc}")
+    else:
+        yield
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
@@ -63,8 +67,8 @@ def test_admin_access_allowed_for_admin(client: TestClient, admin_token: str):
     assert resp.status_code == 200
 
 
-def test_admin_access_allowed_for_platform_admin(client: TestClient, make_jwt):
-    token = make_jwt(roles=("PLATFORM_ADMIN",))
+def test_admin_access_allows_admin_even_with_extra_roles(client: TestClient, make_jwt):
+    token = make_jwt(roles=("ADMIN", "PLATFORM_ADMIN"))
     resp = client.get(
         "/api/v1/admin/merchants",
         headers={"Authorization": f"Bearer {token}"},
@@ -72,13 +76,13 @@ def test_admin_access_allowed_for_platform_admin(client: TestClient, make_jwt):
     assert resp.status_code == 200
 
 
-def test_admin_access_allowed_for_role_field_only(client: TestClient, make_jwt):
+def test_admin_access_denied_when_role_field_missing_admin(client: TestClient, make_jwt):
     token = make_jwt(roles=(), extra={"role": "PLATFORM_ADMIN"})
     resp = client.get(
         "/api/v1/admin/merchants",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 403
 
 
 def test_public_key_refresh_on_validation_error(

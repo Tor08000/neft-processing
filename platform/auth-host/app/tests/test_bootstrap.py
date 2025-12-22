@@ -67,6 +67,9 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
     await db.init_db()
 
     initial_settings = Settings(
+        bootstrap_admin_email="admin@example.com",
+        bootstrap_admin_password="initial",
+        bootstrap_admin_roles=["ADMIN", "SUPERADMIN"],
         demo_admin_email="admin@example.com",
         demo_admin_password="initial",
         demo_admin_roles=["ADMIN", "SUPERADMIN"],
@@ -88,6 +91,9 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
         roles_after_first = [r["role"] for r in await cur.fetchall()]
 
     updated_settings = Settings(
+        bootstrap_admin_email="admin@example.com",
+        bootstrap_admin_password="changed",
+        bootstrap_admin_roles=["ADMIN", "SUPERADMIN"],
         demo_admin_email="admin@example.com",
         demo_admin_password="changed",
         demo_admin_roles=["ADMIN", "SUPERADMIN"],

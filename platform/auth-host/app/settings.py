@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
 from neft_shared.settings import Settings as SharedSettings
@@ -30,12 +31,37 @@ def _roles_env(key: str, default: list[str], *, fallback_keys: Iterable[str] = (
     return default
 
 
+def _path_env(key: str, default: str, *, fallback_keys: Iterable[str] = ()) -> str:
+    for candidate in (key, *fallback_keys):
+        raw = os.getenv(candidate)
+        if raw:
+            return raw
+    return default
+
+
 @dataclass
 class Settings(SharedSettings):
     core_api: str = _env_or_default("CORE_API_URL", "http://core-api:8000/api/v1")
     ai_url: str = _env_or_default("AI_URL", "http://ai-service:8000")
     tenant_id: int = int(_env_or_default("TENANT_ID", "1"))
     service_token: str = _env_or_default("SERVICE_TOKEN", "svc-dev")
+    auth_issuer: str = _env_or_default("NEFT_AUTH_ISSUER", "neft-auth", fallback_keys=("AUTH_ISSUER",))
+    auth_audience: str = _env_or_default("NEFT_AUTH_AUDIENCE", "neft-admin", fallback_keys=("AUTH_AUDIENCE",))
+    auth_key_dir: str = _env_or_default("AUTH_KEY_DIR", "/app/.keys", fallback_keys=("AUTH_JWT_KEY_DIR",))
+    auth_private_key_path: str = field(
+        default_factory=lambda: _path_env(
+            "AUTH_PRIVATE_KEY_PATH",
+            str(Path(_env_or_default("AUTH_KEY_DIR", "/app/.keys", fallback_keys=("AUTH_JWT_KEY_DIR",))) / "jwt_private.pem"),
+            fallback_keys=("AUTH_JWT_PRIVATE_KEY_PATH",),
+        )
+    )
+    auth_public_key_path: str = field(
+        default_factory=lambda: _path_env(
+            "AUTH_PUBLIC_KEY_PATH",
+            str(Path(_env_or_default("AUTH_KEY_DIR", "/app/.keys", fallback_keys=("AUTH_JWT_KEY_DIR",))) / "jwt_public.pem"),
+            fallback_keys=("AUTH_JWT_PUBLIC_KEY_PATH",),
+        )
+    )
 
     demo_client_email: str = _env_or_default(
         "NEFT_DEMO_CLIENT_EMAIL",
@@ -77,6 +103,87 @@ class Settings(SharedSettings):
             "NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)
         )
     )
+    bootstrap_admin_email: str = _env_or_default(
+        "NEFT_BOOTSTRAP_ADMIN_EMAIL",
+        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
+        fallback_keys=("AUTH_ADMIN_EMAIL",),
+    )
+    bootstrap_admin_password: str = _env_or_default(
+        "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
+        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        fallback_keys=("AUTH_ADMIN_PASSWORD",),
+    )
+    bootstrap_admin_full_name: str = _env_or_default(
+        "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
+        _env_or_default("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin", fallback_keys=("DEMO_ADMIN_FULL_NAME",)),
+        fallback_keys=("AUTH_ADMIN_FULL_NAME",),
+    )
+    bootstrap_admin_roles: list[str] = field(
+        default_factory=lambda: _roles_env(
+            "NEFT_BOOTSTRAP_ADMIN_ROLES",
+            _roles_env("NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)),
+            fallback_keys=("AUTH_ADMIN_ROLES",),
+        )
+    )
+
+    def __post_init__(self) -> None:
+        self.core_api = _env_or_default("CORE_API_URL", self.core_api)
+        self.ai_url = _env_or_default("AI_URL", self.ai_url)
+        self.tenant_id = int(_env_or_default("TENANT_ID", str(self.tenant_id)))
+        self.service_token = _env_or_default("SERVICE_TOKEN", self.service_token)
+        self.auth_issuer = _env_or_default("NEFT_AUTH_ISSUER", self.auth_issuer, fallback_keys=("AUTH_ISSUER",))
+        self.auth_audience = _env_or_default("NEFT_AUTH_AUDIENCE", self.auth_audience, fallback_keys=("AUTH_AUDIENCE",))
+        self.auth_key_dir = _env_or_default("AUTH_KEY_DIR", self.auth_key_dir, fallback_keys=("AUTH_JWT_KEY_DIR",))
+        self.auth_private_key_path = _path_env(
+            "AUTH_PRIVATE_KEY_PATH",
+            self.auth_private_key_path,
+            fallback_keys=("AUTH_JWT_PRIVATE_KEY_PATH",),
+        )
+        self.auth_public_key_path = _path_env(
+            "AUTH_PUBLIC_KEY_PATH",
+            self.auth_public_key_path,
+            fallback_keys=("AUTH_JWT_PUBLIC_KEY_PATH",),
+        )
+
+        self.demo_client_email = _env_or_default(
+            "NEFT_DEMO_CLIENT_EMAIL", self.demo_client_email, fallback_keys=("DEMO_CLIENT_EMAIL",)
+        )
+        self.demo_client_password = _env_or_default(
+            "NEFT_DEMO_CLIENT_PASSWORD", self.demo_client_password, fallback_keys=("DEMO_CLIENT_PASSWORD",)
+        )
+        self.demo_client_id = _env_or_default("NEFT_DEMO_CLIENT_ID", self.demo_client_id, fallback_keys=("DEMO_CLIENT_ID",))
+        self.demo_client_full_name = _env_or_default(
+            "NEFT_DEMO_CLIENT_FULL_NAME", self.demo_client_full_name, fallback_keys=("DEMO_CLIENT_FULL_NAME",)
+        )
+        self.demo_client_uuid = _env_or_default(
+            "NEFT_DEMO_CLIENT_UUID", self.demo_client_uuid, fallback_keys=("DEMO_CLIENT_UUID",)
+        )
+
+        self.demo_admin_email = _env_or_default(
+            "NEFT_DEMO_ADMIN_EMAIL", self.demo_admin_email, fallback_keys=("DEMO_ADMIN_EMAIL",)
+        )
+        self.demo_admin_password = _env_or_default(
+            "NEFT_DEMO_ADMIN_PASSWORD", self.demo_admin_password, fallback_keys=("DEMO_ADMIN_PASSWORD",)
+        )
+        self.demo_admin_full_name = _env_or_default(
+            "NEFT_DEMO_ADMIN_FULL_NAME", self.demo_admin_full_name, fallback_keys=("DEMO_ADMIN_FULL_NAME",)
+        )
+        self.demo_admin_roles = _roles_env(
+            "NEFT_DEMO_ADMIN_ROLES", self.demo_admin_roles, fallback_keys=("DEMO_ADMIN_ROLES",)
+        )
+
+        self.bootstrap_admin_email = _env_or_default(
+            "NEFT_BOOTSTRAP_ADMIN_EMAIL", self.bootstrap_admin_email, fallback_keys=("AUTH_ADMIN_EMAIL",)
+        )
+        self.bootstrap_admin_password = _env_or_default(
+            "NEFT_BOOTSTRAP_ADMIN_PASSWORD", self.bootstrap_admin_password, fallback_keys=("AUTH_ADMIN_PASSWORD",)
+        )
+        self.bootstrap_admin_full_name = _env_or_default(
+            "NEFT_BOOTSTRAP_ADMIN_FULL_NAME", self.bootstrap_admin_full_name, fallback_keys=("AUTH_ADMIN_FULL_NAME",)
+        )
+        self.bootstrap_admin_roles = _roles_env(
+            "NEFT_BOOTSTRAP_ADMIN_ROLES", self.bootstrap_admin_roles, fallback_keys=("AUTH_ADMIN_ROLES",)
+        )
 
     bootstrap_enabled: bool = _env_bool("AUTH_BOOTSTRAP_ENABLED", True)
     bootstrap_admin_email: str = _env_or_default(

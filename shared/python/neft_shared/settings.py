@@ -52,6 +52,9 @@ class Settings:
 
     # Invoice PDFs / storage
     NEFT_INVOICE_PDF_BUCKET: str = os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
+    NEFT_S3_BUCKET_INVOICES: str = os.getenv(
+        "NEFT_S3_BUCKET_INVOICES", os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
+    )
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv("NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", "minioadmin"))
     NEFT_S3_SECRET_KEY: str = os.getenv("NEFT_S3_SECRET_KEY", os.getenv("S3_SECRET_KEY", "minioadmin"))

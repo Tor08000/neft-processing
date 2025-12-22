@@ -8,6 +8,7 @@ from typing import Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +16,11 @@ _PRIVATE_KEY_PEM: Optional[str] = None
 _PUBLIC_KEY_PEM: Optional[str] = None
 _KEY_LOCK = threading.Lock()
 
-_DEFAULT_KEY_DIR = Path(os.getenv("AUTH_JWT_KEY_DIR") or os.getenv("AUTH_KEYS_DIR") or "/app/.keys")
-_PRIVATE_KEY_PATH = Path(os.getenv("AUTH_JWT_PRIVATE_KEY_PATH") or (_DEFAULT_KEY_DIR / "jwt_private.pem"))
-_PUBLIC_KEY_PATH = Path(os.getenv("AUTH_JWT_PUBLIC_KEY_PATH") or (_DEFAULT_KEY_DIR / "jwt_public.pem"))
+settings = get_settings()
+
+_DEFAULT_KEY_DIR = Path(settings.auth_key_dir or "/app/.keys")
+_PRIVATE_KEY_PATH = Path(settings.auth_private_key_path or (_DEFAULT_KEY_DIR / "jwt_private.pem"))
+_PUBLIC_KEY_PATH = Path(settings.auth_public_key_path or (_DEFAULT_KEY_DIR / "jwt_public.pem"))
 
 
 def _generate_rsa_key_pair() -> tuple[str, str]:
@@ -35,8 +38,8 @@ def _generate_rsa_key_pair() -> tuple[str, str]:
 
 
 def _load_from_env() -> tuple[str | None, str | None]:
-    private_key_env = os.getenv("AUTH_JWT_PRIVATE_KEY")
-    public_key_env = os.getenv("AUTH_JWT_PUBLIC_KEY")
+    private_key_env = os.getenv("AUTH_JWT_PRIVATE_KEY") or os.getenv("AUTH_PRIVATE_KEY")
+    public_key_env = os.getenv("AUTH_JWT_PUBLIC_KEY") or os.getenv("AUTH_PUBLIC_KEY")
     return private_key_env, public_key_env
 
 

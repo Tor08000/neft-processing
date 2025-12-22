@@ -15,7 +15,9 @@ os.environ["DISABLE_CELERY"] = "1"
 from app import models  # noqa: F401
 from app.api.v1.endpoints.admin_clearing import router as admin_router
 from app.db import Base, get_db
+from app.models.billing_summary import BillingSummary
 from app.models.clearing import Clearing
+from app.models.operation import ProductType
 
 
 @pytest.fixture()
@@ -155,3 +157,49 @@ def test_details_endpoint(admin_client: Tuple[TestClient, sessionmaker]):
     payload = resp.json()
     assert payload["id"] == batch.id
     assert payload["details"] == [{"id": "s1", "total_amount": 999}]
+
+
+def test_run_clearing_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
+    client, SessionLocal = admin_client
+    target_date = date(2024, 1, 2)
+
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                BillingSummary(
+                    id="s1",
+                    billing_date=target_date,
+                    client_id="c1",
+                    merchant_id="m1",
+                    product_type=ProductType.AI92,
+                    currency="RUB",
+                    total_amount=500,
+                    total_captured_amount=500,
+                    operations_count=1,
+                    commission_amount=5,
+                ),
+                BillingSummary(
+                    id="s2",
+                    billing_date=target_date,
+                    client_id="c2",
+                    merchant_id="m1",
+                    product_type=ProductType.AI95,
+                    currency="RUB",
+                    total_amount=700,
+                    total_captured_amount=700,
+                    operations_count=1,
+                    commission_amount=7,
+                ),
+            ]
+        )
+        db.commit()
+
+    resp = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["total_amount"] == 1200
+
+    resp_repeat = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+    assert resp_repeat.status_code == 200
+    assert resp_repeat.json()["total"] == 1
