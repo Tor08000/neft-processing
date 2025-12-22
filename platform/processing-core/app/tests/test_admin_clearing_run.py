@@ -52,10 +52,34 @@ def test_admin_clearing_no_data(admin_client: TestClient, session: Session):
         _cleanup(session, target_date)
 
 
-def test_admin_clearing_skips_existing(admin_client: TestClient, session: Session):
+def test_admin_clearing_upserts_existing_rows(admin_client: TestClient, session: Session):
     target_date = date(2024, 1, 2)
-    clearing = Clearing(batch_date=target_date, merchant_id="m1", currency="RUB", total_amount=0)
+    clearing = Clearing(batch_date=target_date, merchant_id="m1", currency="RUB", total_amount=0, details=[])
     session.add(clearing)
+    session.add(
+        BillingSummary(
+            billing_date=target_date,
+            merchant_id="m1",
+            client_id="c1",
+            currency="RUB",
+            total_amount=500,
+            operations_count=1,
+            commission_amount=0,
+            status=BillingSummaryStatus.FINALIZED,
+        )
+    )
+    session.add(
+        BillingSummary(
+            billing_date=target_date,
+            merchant_id="m2",
+            client_id="c2",
+            currency="USD",
+            total_amount=700,
+            operations_count=1,
+            commission_amount=0,
+            status=BillingSummaryStatus.FINALIZED,
+        )
+    )
     session.commit()
     try:
         response = admin_client.post(
@@ -63,8 +87,15 @@ def test_admin_clearing_skips_existing(admin_client: TestClient, session: Sessio
         )
         assert response.status_code == 200
         body = response.json()
-        assert body["created"] == 0
-        assert body["reason"] == "already_exists"
+        assert body["created"] == 1
+        assert body["updated"] == 1
+        assert not body.get("reason")
+
+        stored = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
+        assert len(stored) == 2
+        refreshed = [item for item in stored if item.merchant_id == "m1"][0]
+        assert refreshed.total_amount == 500
+        assert refreshed.details
     finally:
         _cleanup(session, target_date)
 
@@ -102,6 +133,7 @@ def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session
         assert response.status_code == 200
         body = response.json()
         assert body["created"] == 1
+        assert body["updated"] == 0
         assert body.get("reason") in (None, "")
 
         stored = session.query(Clearing).filter(Clearing.batch_date == target_date).all()
