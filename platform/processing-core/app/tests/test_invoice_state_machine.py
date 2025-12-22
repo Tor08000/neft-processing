@@ -116,3 +116,64 @@ def test_sent_cannot_cancel_with_payments():
         )
 
     assert exc.value.status_code == 409
+
+
+def test_partial_payment_requires_positive_amount():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    machine = InvoiceStateMachine()
+
+    with pytest.raises(HTTPException) as exc:
+        machine.apply_transition(
+            invoice,
+            InvoiceStatus.PARTIALLY_PAID,
+            context=InvoiceTransitionContext(actor="tester", reason="partial", payments_total=0),
+        )
+
+    assert exc.value.status_code == 409
+
+
+def test_paid_requires_full_amount():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    machine = InvoiceStateMachine()
+
+    with pytest.raises(HTTPException) as exc:
+        machine.apply_transition(
+            invoice,
+            InvoiceStatus.PAID,
+            context=InvoiceTransitionContext(actor="tester", reason="underpayment", payments_total=100),
+        )
+
+    assert exc.value.status_code == 409
+
+
+def test_cancel_sets_timestamp_once():
+    now = datetime(2024, 3, 1, 9, 0, 0)
+    invoice = _make_invoice(InvoiceStatus.ISSUED)
+    machine = InvoiceStateMachine(now_provider=lambda: now)
+
+    machine.apply_transition(
+        invoice,
+        InvoiceStatus.CANCELLED,
+        context=InvoiceTransitionContext(actor="tester", reason="cancel"),
+    )
+    second = InvoiceTransitionContext(actor="tester", reason="cancel_again", skip_timestamp_update=False)
+    machine.apply_transition(invoice, InvoiceStatus.CANCELLED, context=second)
+
+    assert invoice.cancelled_at == now
+
+
+def test_normalize_financials_updates_status():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    invoice.amount_paid = 0
+    invoice.amount_due = invoice.total_with_tax
+    machine = InvoiceStateMachine()
+
+    derived = machine.normalize_financials(
+        invoice,
+        context=InvoiceTransitionContext(actor="tester", reason="recalc", payments_total=500),
+    )
+
+    assert derived == InvoiceStatus.PARTIALLY_PAID
+    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
+    assert invoice.amount_paid == 500
+    assert invoice.amount_due == invoice.total_with_tax - 500

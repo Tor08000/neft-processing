@@ -35,6 +35,8 @@ class InvoiceStatus(str, Enum):
     PAID = "PAID"
     CANCELLED = "CANCELLED"
     VOIDED = "VOIDED"
+    REFUNDED = "REFUNDED"
+    CLOSED = "CLOSED"
 
 
 class InvoicePdfStatus(str, Enum):
@@ -81,8 +83,11 @@ class Invoice(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    delivered_at = Column(DateTime(timezone=True), nullable=True)
-    paid_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    refunded_at = Column(DateTime(timezone=True), nullable=True)
 
     external_number = Column(String(64), nullable=True)
     external_delivery_id = Column(String(128), nullable=True)

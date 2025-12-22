@@ -54,37 +54,36 @@ class FinanceService:
         return invoice
 
     def _recalculate_due(self, invoice: Invoice) -> None:
-        payments_total = (
-            self.db.query(func.coalesce(func.sum(InvoicePayment.amount), 0))
-            .filter(InvoicePayment.invoice_id == invoice.id)
-            .scalar()
-        ) or 0
-        credits_total = (
-            self.db.query(func.coalesce(func.sum(CreditNote.amount), 0))
-            .filter(CreditNote.invoice_id == invoice.id)
-            .scalar()
-        ) or 0
-
-        invoice.amount_paid = int(payments_total)
-        invoice.amount_due = max(
-            int((invoice.total_with_tax or invoice.total_amount or 0) - payments_total - credits_total),
-            0,
+        payments_total = int(
+            (
+                self.db.query(func.coalesce(func.sum(InvoicePayment.amount), 0))
+                .filter(InvoicePayment.invoice_id == invoice.id)
+                .scalar()
+            )
+            or 0
         )
-
-        target_status = invoice.status
-        if invoice.amount_due == 0 and invoice.status not in (InvoiceStatus.PAID, InvoiceStatus.VOIDED):
-            target_status = InvoiceStatus.PAID
-        elif invoice.amount_due > 0 and invoice.status not in (InvoiceStatus.VOIDED, InvoiceStatus.CANCELLED):
-            target_status = InvoiceStatus.PARTIALLY_PAID
+        credits_total = int(
+            (
+                self.db.query(func.coalesce(func.sum(CreditNote.amount), 0))
+                .filter(CreditNote.invoice_id == invoice.id)
+                .scalar()
+            )
+            or 0
+        )
 
         context = InvoiceTransitionContext(
             actor="finance_service",
             reason="recalculate_due",
-            payments_total=invoice.amount_paid,
-            credits_total=int(credits_total),
+            payments_total=payments_total,
+            credits_total=credits_total,
+        )
+        derived_status = self.state_machine.normalize_financials(invoice, context=context, update_status=False)
+        target_status = (
+            derived_status
+            if derived_status in (InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID)
+            else invoice.status
         )
         self.state_machine.apply_transition(invoice, target_status, context=context)
-
         self.db.add(invoice)
 
     def apply_payment(

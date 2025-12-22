@@ -427,7 +427,7 @@ def admin_update_invoice_status(
         invoice_id,
         body.status,
         actor="admin_api",
-        reason="manual_status_update",
+        reason=body.reason or "manual_status_update",
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="invoice not found")
