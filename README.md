@@ -4,8 +4,9 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 1. Скопируйте переменные окружения: `cp -n .env.example .env`.
 2. Заполните доступы администратора в `.env` (значения хранятся только локально):
-   - `ADMIN_EMAIL`
-   - `ADMIN_PASSWORD`
+   - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`)
+   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`)
+   Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно).
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
@@ -26,6 +27,11 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
 * AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
+
+### Хранение ключей и файлов
+
+* Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. После `docker compose down -v` ключи пересоздаются автоматически.
+* Данные MinIO лежат в `minio-data`; бакет создаётся при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`).
 
 ### Вход в админ-панель
 
@@ -106,6 +112,30 @@ docker compose up -d --build
 pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
+
+### Billing/Clearing smoke (Windows CMD)
+
+Быстрый прогон end-to-end без ручных шагов:
+
+```bat
+scripts\smoke_billing_v14.cmd
+```
+
+Скрипт:
+
+* логинится bootstrap-админом (`AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD`);
+* проверяет `/api/core/health`;
+* читает `/api/v1/admin/billing/periods`;
+* запускает ручной биллинг и клиринг (`/api/v1/admin/billing/run`, `/api/v1/admin/clearing/run`);
+* завершает работу с exit code 1 при любом неожиданном статус-коде.
+
+Smoke после рестарта стека:
+
+```bat
+scripts\smoke_restart.cmd
+```
+
+Он рестартует core-сервисы через `docker compose restart`, ждёт несколько секунд и заново прогоняет `smoke_billing_v14.cmd`.
 
 Поиск маркеров конфликтов только в трекаемых файлах (без шума от `.venv` и прочего):
 
@@ -221,6 +251,13 @@ Smoke/тесты (Windows CMD):
 pytest -q
 pytest -q -m smoke
 python -m pytest -q tests\test_alembic_single_head.py
+```
+
+Интеграционные тесты (compose profile `test` + Postgres/Redis/MinIO/auth/core):
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.test.yml --profile test up -d --build
+RUN_INTEGRATION_TESTS=1 pytest -m integration platform/processing-core/app/tests
 ```
 
 ## Общий Python-пакет `neft_shared`

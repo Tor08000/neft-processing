@@ -103,6 +103,10 @@ services:
       SERVICE_NAME: auth-host
       UVICORN_HOST: 0.0.0.0
       UVICORN_PORT: 8000
+      AUTH_JWT_KEY_DIR: /data/keys
+      AUTH_KEYS_DIR: /data/keys
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-neft-auth}
+      AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-neft-admin}
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,6 +124,8 @@ services:
       start_period: 15s
     ports:
       - "8002:8000"
+    volumes:
+      - auth-keys:/data/keys
 
   core-api:
     build:
@@ -138,6 +144,8 @@ services:
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      ADMIN_JWT_ISSUER: ${ADMIN_JWT_ISSUER:-neft-auth}
+      ADMIN_JWT_AUDIENCE: ${ADMIN_JWT_AUDIENCE:-neft-admin}
     depends_on:
       postgres:
         condition: service_healthy
@@ -406,3 +414,4 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  auth-keys:

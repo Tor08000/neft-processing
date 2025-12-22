@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
@@ -18,8 +19,8 @@ from app.services.keys import get_private_key_pem, get_public_key_pem
 settings = get_settings()
 logger = get_logger(__name__)
 ALGORITHM = "RS256"
-ISSUER = "neft-auth"
-AUDIENCE = "neft-admin"
+ISSUER = os.getenv("AUTH_JWT_ISSUER", "neft-auth")
+AUDIENCE = os.getenv("AUTH_JWT_AUDIENCE", "neft-admin")
 security_scheme = HTTPBearer(auto_error=False)
 
 

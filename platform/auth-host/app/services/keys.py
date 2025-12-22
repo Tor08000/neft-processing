@@ -15,7 +15,7 @@ _PRIVATE_KEY_PEM: Optional[str] = None
 _PUBLIC_KEY_PEM: Optional[str] = None
 _KEY_LOCK = threading.Lock()
 
-_DEFAULT_KEY_DIR = Path(os.getenv("AUTH_JWT_KEY_DIR", "/app/.keys"))
+_DEFAULT_KEY_DIR = Path(os.getenv("AUTH_JWT_KEY_DIR") or os.getenv("AUTH_KEYS_DIR") or "/app/.keys")
 _PRIVATE_KEY_PATH = Path(os.getenv("AUTH_JWT_PRIVATE_KEY_PATH") or (_DEFAULT_KEY_DIR / "jwt_private.pem"))
 _PUBLIC_KEY_PATH = Path(os.getenv("AUTH_JWT_PUBLIC_KEY_PATH") or (_DEFAULT_KEY_DIR / "jwt_public.pem"))
 

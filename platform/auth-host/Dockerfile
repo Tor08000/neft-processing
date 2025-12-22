@@ -5,11 +5,6 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Базовые зависимости для сборки (если что-то компилируется)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential curl && \
-    rm -rf /var/lib/apt/lists/*
-
 # Кладём общий код
 COPY shared/python /opt/python
 

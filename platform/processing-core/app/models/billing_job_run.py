@@ -22,6 +22,7 @@ class BillingJobType(str, Enum):
     CREDIT_NOTE_PDF = "CREDIT_NOTE_PDF"
     FINANCE_EXPORT = "FINANCE_EXPORT"
     BALANCE_REBUILD = "BALANCE_REBUILD"
+    CLEARING = "CLEARING"
 
 
 class BillingJobStatus(str, Enum):
