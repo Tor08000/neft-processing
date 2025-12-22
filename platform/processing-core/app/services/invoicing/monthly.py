@@ -15,7 +15,7 @@ from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
-from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
+from app.services.invoice_state_machine import InvoiceStateMachine
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -145,7 +145,6 @@ def run_invoice_monthly(
 
         grouped = _group_summaries(summaries)
         repo = BillingRepository(session)
-        state_machine = InvoiceStateMachine()
         created: list[Invoice] = []
 
         for (client_id, currency), payload in grouped.items():
@@ -182,15 +181,10 @@ def run_invoice_monthly(
                 invoice.total_amount = sum(int(line.line_amount or 0) for line in invoice.lines)
                 invoice.tax_amount = sum(int(line.tax_amount or 0) for line in invoice.lines)
                 invoice.total_with_tax = invoice.total_amount + invoice.tax_amount
-                state_machine.apply_transition(
-                    invoice,
-                    InvoiceStatus.DRAFT,
-                    context=InvoiceTransitionContext(
-                        actor="invoice_monthly",
-                        reason="rebuild_invoice",
-                        skip_timestamp_update=True,
-                        payments_total=invoice.amount_paid,
-                    ),
+                InvoiceStateMachine(invoice, db=session).transition(
+                    to=InvoiceStatus.DRAFT,
+                    actor="invoice_monthly",
+                    reason="rebuild_invoice",
                 )
                 metrics["rebuilt"] = int(metrics["rebuilt"]) + 1  # type: ignore[arg-type]
                 session.add(invoice)

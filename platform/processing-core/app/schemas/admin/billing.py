@@ -118,6 +118,8 @@ class InvoiceRead(BaseModel):
     pdf_hash: str | None = None
     pdf_version: int | None = None
     pdf_error: str | None = None
+    credited_amount: int | None = None
+    credited_at: datetime | None = None
     accounting_exported_at: datetime | None = None
     accounting_export_batch_id: str | None = None
     lines: list[InvoiceLineRead] = []
@@ -153,6 +155,16 @@ class InvoiceStatusChangeRequest(BaseModel):
 
     status: InvoiceStatus
     reason: str | None = None
+
+
+class InvoiceTransitionRequest(BaseModel):
+    """Canonical admin transition request with audit metadata."""
+
+    to: InvoiceStatus
+    reason: str
+    payment_amount: int | None = None
+    credit_note_amount: int | None = None
+    metadata: dict | None = None
 
 
 class BillingRunRequest(BaseModel):

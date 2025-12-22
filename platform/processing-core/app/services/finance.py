@@ -4,7 +4,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
@@ -12,7 +12,7 @@ from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, Pay
 from app.models.invoice import Invoice, InvoiceStatus
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
-from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
+from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
 
 
 class FinanceOperationInProgress(RuntimeError):
@@ -41,7 +41,6 @@ class FinanceService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
-        self.state_machine = InvoiceStateMachine()
 
     def _lock_invoice(self, invoice_id: str) -> Invoice:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
@@ -53,38 +52,23 @@ class FinanceService:
             raise InvoiceNotFound(invoice_id)
         return invoice
 
-    def _recalculate_due(self, invoice: Invoice) -> None:
-        payments_total = int(
-            (
-                self.db.query(func.coalesce(func.sum(InvoicePayment.amount), 0))
-                .filter(InvoicePayment.invoice_id == invoice.id)
-                .scalar()
-            )
-            or 0
-        )
-        credits_total = int(
-            (
-                self.db.query(func.coalesce(func.sum(CreditNote.amount), 0))
-                .filter(CreditNote.invoice_id == invoice.id)
-                .scalar()
-            )
-            or 0
-        )
-
-        context = InvoiceTransitionContext(
+    def _apply_financial_transition(
+        self,
+        invoice: Invoice,
+        *,
+        target: InvoiceStatus,
+        payment_amount: int | None = None,
+        credit_note_amount: int | None = None,
+    ) -> None:
+        machine = InvoiceStateMachine(invoice, db=self.db)
+        machine.transition(
+            to=target,
             actor="finance_service",
-            reason="recalculate_due",
-            payments_total=payments_total,
-            credits_total=credits_total,
+            reason="financial_update",
+            payment_amount=payment_amount,
+            credit_note_amount=credit_note_amount,
+            metadata={"source": "finance"},
         )
-        derived_status = self.state_machine.normalize_financials(invoice, context=context, update_status=False)
-        target_status = (
-            derived_status
-            if derived_status in (InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID)
-            else invoice.status
-        )
-        self.state_machine.apply_transition(invoice, target_status, context=context)
-        self.db.add(invoice)
 
     def apply_payment(
         self,
@@ -127,7 +111,22 @@ class FinanceService:
                 status=PaymentStatus.POSTED,
             )
             self.db.add(payment)
-            self._recalculate_due(invoice)
+            current_paid = int(invoice.amount_paid or 0)
+            current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
+            total = int(invoice.total_with_tax or invoice.total_amount or 0)
+            new_total_paid = current_paid + amount
+            outstanding = total - new_total_paid - current_credits
+            target_status = InvoiceStatus.PARTIALLY_PAID if outstanding > 0 else InvoiceStatus.PAID
+
+            try:
+                self._apply_financial_transition(
+                    invoice,
+                    target=target_status,
+                    payment_amount=amount,
+                )
+            except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                raise
 
             self.job_service.succeed(
                 job_run,
@@ -189,7 +188,19 @@ class FinanceService:
                 status=CreditNoteStatus.POSTED,
             )
             self.db.add(credit_note)
-            self._recalculate_due(invoice)
+            try:
+                current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
+                current_paid = int(invoice.amount_paid or 0)
+                total = int(invoice.total_with_tax or invoice.total_amount or 0)
+                remaining_after_credit = total - current_paid - (current_credits + amount)
+                self._apply_financial_transition(
+                    invoice,
+                    target=InvoiceStatus.CREDITED if remaining_after_credit <= 0 else InvoiceStatus.PARTIALLY_PAID,
+                    credit_note_amount=amount,
+                )
+            except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                raise
 
             self.job_service.succeed(
                 job_run,

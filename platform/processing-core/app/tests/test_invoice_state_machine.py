@@ -1,10 +1,17 @@
 from datetime import date, datetime
 
 import pytest
-from fastapi import HTTPException
 
 from app.models.invoice import Invoice, InvoiceStatus
-from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
+from app.services.invoice_state_machine import InvoiceInvariantError, InvoiceStateMachine, InvalidTransitionError
+
+
+class _StubSession:
+    def __init__(self) -> None:
+        self.added = []
+
+    def add(self, obj) -> None:  # pragma: no cover - trivial
+        self.added.append(obj)
 
 
 def _make_invoice(status: InvoiceStatus) -> Invoice:
@@ -22,158 +29,107 @@ def _make_invoice(status: InvoiceStatus) -> Invoice:
     )
 
 
-def test_draft_to_issued_sets_timestamp():
+def test_draft_to_issued_sets_timestamp_and_due():
     now = datetime(2024, 2, 1, 10, 0, 0)
     invoice = _make_invoice(InvoiceStatus.DRAFT)
-    machine = InvoiceStateMachine(now_provider=lambda: now)
+    machine = InvoiceStateMachine(invoice, db=_StubSession(), now_provider=lambda: now)
 
-    machine.apply_transition(
-        invoice,
-        InvoiceStatus.ISSUED,
-        context=InvoiceTransitionContext(actor="tester", reason="issue"),
+    machine.transition(
+        to=InvoiceStatus.ISSUED,
+        actor="tester",
+        reason="issue",
     )
 
     assert invoice.status == InvoiceStatus.ISSUED
     assert invoice.issued_at == now
+    assert invoice.amount_due == invoice.total_with_tax
 
 
-def test_issued_to_sent_sets_sent_at():
-    now = datetime(2024, 2, 2, 12, 0, 0)
-    invoice = _make_invoice(InvoiceStatus.ISSUED)
-    invoice.issued_at = datetime(2024, 2, 1, 10, 0, 0)
-    machine = InvoiceStateMachine(now_provider=lambda: now)
-
-    machine.apply_transition(
-        invoice,
-        InvoiceStatus.SENT,
-        context=InvoiceTransitionContext(actor="tester", reason="send"),
-    )
-
-    assert invoice.status == InvoiceStatus.SENT
-    assert invoice.sent_at == now
-
-
-def test_sent_to_paid_sets_paid_at_and_due():
+def test_sent_to_paid_updates_financials_and_paid_at():
     now = datetime(2024, 2, 3, 14, 0, 0)
     invoice = _make_invoice(InvoiceStatus.SENT)
-    machine = InvoiceStateMachine(now_provider=lambda: now)
+    session = _StubSession()
+    machine = InvoiceStateMachine(invoice, db=session, now_provider=lambda: now)
 
-    machine.apply_transition(
-        invoice,
-        InvoiceStatus.PAID,
-        context=InvoiceTransitionContext(
-            actor="tester",
-            reason="payment",
-            payments_total=invoice.total_with_tax,
-        ),
+    machine.transition(
+        to=InvoiceStatus.PAID,
+        actor="tester",
+        reason="payment",
+        payment_amount=invoice.total_with_tax,
     )
 
     assert invoice.status == InvoiceStatus.PAID
     assert invoice.paid_at == now
     assert invoice.amount_due == 0
     assert invoice.amount_paid == invoice.total_with_tax
+    assert any(log.to_status == InvoiceStatus.PAID for log in session.added)
 
 
-def test_paid_to_sent_forbidden():
-    invoice = _make_invoice(InvoiceStatus.PAID)
-    invoice.amount_paid = invoice.total_with_tax
-    machine = InvoiceStateMachine()
+def test_partial_payment_requires_amount():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
 
-    with pytest.raises(HTTPException) as exc:
-        machine.apply_transition(
-            invoice,
-            InvoiceStatus.SENT,
-            context=InvoiceTransitionContext(actor="tester", reason="revert"),
+    with pytest.raises(InvalidTransitionError):
+        machine.transition(
+            to=InvoiceStatus.PARTIALLY_PAID,
+            actor="tester",
+            reason="partial",
         )
 
-    assert exc.value.status_code == 409
 
-
-def test_cancelled_is_terminal():
-    invoice = _make_invoice(InvoiceStatus.CANCELLED)
-    machine = InvoiceStateMachine()
-
-    with pytest.raises(HTTPException) as exc:
-        machine.apply_transition(
-            invoice,
-            InvoiceStatus.ISSUED,
-            context=InvoiceTransitionContext(actor="tester", reason="resurrect"),
-        )
-
-    assert exc.value.status_code == 409
-
-
-def test_sent_cannot_cancel_with_payments():
+def test_cannot_cancel_with_existing_payment():
     invoice = _make_invoice(InvoiceStatus.SENT)
     invoice.amount_paid = 100
-    machine = InvoiceStateMachine()
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
 
-    with pytest.raises(HTTPException) as exc:
-        machine.apply_transition(
-            invoice,
-            InvoiceStatus.CANCELLED,
-            context=InvoiceTransitionContext(actor="tester", reason="cancel"),
+    with pytest.raises(InvalidTransitionError):
+        machine.transition(
+            to=InvoiceStatus.CANCELLED,
+            actor="tester",
+            reason="cancel",
         )
 
-    assert exc.value.status_code == 409
 
+def test_credit_note_covers_remaining_balance():
+    invoice = _make_invoice(InvoiceStatus.PARTIALLY_PAID)
+    invoice.amount_paid = 600
+    invoice.amount_due = 400
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
 
-def test_partial_payment_requires_positive_amount():
-    invoice = _make_invoice(InvoiceStatus.SENT)
-    machine = InvoiceStateMachine()
-
-    with pytest.raises(HTTPException) as exc:
-        machine.apply_transition(
-            invoice,
-            InvoiceStatus.PARTIALLY_PAID,
-            context=InvoiceTransitionContext(actor="tester", reason="partial", payments_total=0),
-        )
-
-    assert exc.value.status_code == 409
-
-
-def test_paid_requires_full_amount():
-    invoice = _make_invoice(InvoiceStatus.SENT)
-    machine = InvoiceStateMachine()
-
-    with pytest.raises(HTTPException) as exc:
-        machine.apply_transition(
-            invoice,
-            InvoiceStatus.PAID,
-            context=InvoiceTransitionContext(actor="tester", reason="underpayment", payments_total=100),
-        )
-
-    assert exc.value.status_code == 409
-
-
-def test_cancel_sets_timestamp_once():
-    now = datetime(2024, 3, 1, 9, 0, 0)
-    invoice = _make_invoice(InvoiceStatus.ISSUED)
-    machine = InvoiceStateMachine(now_provider=lambda: now)
-
-    machine.apply_transition(
-        invoice,
-        InvoiceStatus.CANCELLED,
-        context=InvoiceTransitionContext(actor="tester", reason="cancel"),
-    )
-    second = InvoiceTransitionContext(actor="tester", reason="cancel_again", skip_timestamp_update=False)
-    machine.apply_transition(invoice, InvoiceStatus.CANCELLED, context=second)
-
-    assert invoice.cancelled_at == now
-
-
-def test_normalize_financials_updates_status():
-    invoice = _make_invoice(InvoiceStatus.SENT)
-    invoice.amount_paid = 0
-    invoice.amount_due = invoice.total_with_tax
-    machine = InvoiceStateMachine()
-
-    derived = machine.normalize_financials(
-        invoice,
-        context=InvoiceTransitionContext(actor="tester", reason="recalc", payments_total=500),
+    machine.transition(
+        to=InvoiceStatus.CREDITED,
+        actor="tester",
+        reason="apply credit",
+        credit_note_amount=400,
     )
 
-    assert derived == InvoiceStatus.PARTIALLY_PAID
-    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
-    assert invoice.amount_paid == 500
-    assert invoice.amount_due == invoice.total_with_tax - 500
+    assert invoice.status == InvoiceStatus.CREDITED
+    assert invoice.amount_due == 0
+    assert invoice.credited_amount == 400
+
+
+def test_overdue_requires_outstanding_due():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    invoice.amount_paid = invoice.total_with_tax
+    invoice.amount_due = 0
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
+
+    with pytest.raises(InvalidTransitionError):
+        machine.transition(
+            to=InvoiceStatus.OVERDUE,
+            actor="tester",
+            reason="scheduler",
+        )
+
+
+def test_invariants_guard_against_negative_due():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
+
+    with pytest.raises(InvoiceInvariantError):
+        machine.transition(
+            to=InvoiceStatus.PAID,
+            actor="tester",
+            reason="bad_payment",
+            payment_amount=-1,
+        )

@@ -1,304 +1,172 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Mapping
 
-from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class InvoiceTransitionContext:
-    actor: str | None
-    reason: str | None
-    source: str | None = None
-    correlation_id: str | None = None
-    metadata: Mapping[str, object] | None = None
-    allow_cancel_paid: bool = False
-    allow_terminal_reopen: bool = False
-    skip_timestamp_update: bool = False
-    payments_total: int | None = None
-    credits_total: int | None = None
+class InvalidTransitionError(RuntimeError):
+    """Raised when a lifecycle transition is not allowed."""
 
 
-@dataclass
-class InvoiceFinancials:
-    payments_total: int
-    credits_total: int
-    total_due: int
-    amount_due: int
+class InvoiceInvariantError(RuntimeError):
+    """Raised when invoice financial invariants are violated."""
 
 
-TERMINAL_STATUSES = {
-    InvoiceStatus.CANCELLED,
-    InvoiceStatus.VOIDED,
-    InvoiceStatus.REFUNDED,
-    InvoiceStatus.CLOSED,
+_ALLOWED_TRANSITIONS: Mapping[InvoiceStatus, set[InvoiceStatus]] = {
+    InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED},
+    InvoiceStatus.ISSUED: {InvoiceStatus.SENT, InvoiceStatus.CANCELLED},
+    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID, InvoiceStatus.CANCELLED, InvoiceStatus.OVERDUE},
+    InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID, InvoiceStatus.CREDITED, InvoiceStatus.OVERDUE},
+    InvoiceStatus.PAID: {InvoiceStatus.CREDITED},
+    InvoiceStatus.OVERDUE: set(),
+    InvoiceStatus.CANCELLED: set(),
+    InvoiceStatus.CREDITED: set(),
 }
 
 
 class InvoiceStateMachine:
-    """Centralized guard for invoice lifecycle transitions."""
+    """Deterministic lifecycle controller for invoices."""
 
-    def __init__(self, now_provider: Callable[[], datetime] | None = None):
+    def __init__(self, invoice: Invoice, *, db: Session, now_provider: Callable[[], datetime] | None = None):
+        self.invoice = invoice
+        self.db = db
         self._now_provider = now_provider or datetime.utcnow
 
-    def _allowed_transitions(self) -> dict[InvoiceStatus, set[InvoiceStatus]]:
-        return {
-            InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED, InvoiceStatus.CANCELLED},
-            InvoiceStatus.ISSUED: {
-                InvoiceStatus.SENT,
-                InvoiceStatus.CANCELLED,
-                InvoiceStatus.PARTIALLY_PAID,
-                InvoiceStatus.PAID,
-            },
-            InvoiceStatus.SENT: {
-                InvoiceStatus.DELIVERED,
-                InvoiceStatus.PARTIALLY_PAID,
-                InvoiceStatus.PAID,
-                InvoiceStatus.CANCELLED,
-            },
-            InvoiceStatus.DELIVERED: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID},
-            InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID, InvoiceStatus.DELIVERED},
-            InvoiceStatus.PAID: {InvoiceStatus.CLOSED, InvoiceStatus.DELIVERED, InvoiceStatus.REFUNDED},
-            InvoiceStatus.CANCELLED: set(),
-            InvoiceStatus.VOIDED: set(),
-            InvoiceStatus.REFUNDED: set(),
-            InvoiceStatus.CLOSED: set(),
-        }
-
-    def _resolve_amounts(self, invoice: Invoice, context: InvoiceTransitionContext) -> InvoiceFinancials:
-        payments_total = int(context.payments_total if context.payments_total is not None else (invoice.amount_paid or 0))
-        credits_total = int(context.credits_total if context.credits_total is not None else 0)
-        total_due = int(invoice.total_with_tax or invoice.total_amount or 0)
-
-        if payments_total < 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="payments_total must be non-negative")
-        if credits_total < 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="credits_total must be non-negative")
-
-        amount_due = max(total_due - payments_total - credits_total, 0)
-        return InvoiceFinancials(
-            payments_total=payments_total,
-            credits_total=credits_total,
-            total_due=total_due,
-            amount_due=amount_due,
-        )
-
-    def _derive_financial_status(
-        self, invoice: Invoice, target_status: InvoiceStatus, *, amounts: InvoiceFinancials
-    ) -> InvoiceStatus:
-        if target_status in TERMINAL_STATUSES:
-            return target_status
-
-        if amounts.amount_due == 0:
-            return InvoiceStatus.PAID
-        if amounts.payments_total > 0 and amounts.amount_due < amounts.total_due:
-            return InvoiceStatus.PARTIALLY_PAID
-        return target_status
-
-    def _log_denied(
-        self,
-        invoice: Invoice,
-        target_status: InvoiceStatus,
-        *,
-        context: InvoiceTransitionContext,
-        reason: str,
-    ) -> None:
-        logger.info(
-            "invoice.transition.denied",
-            extra={
-                "invoice_id": invoice.id,
-                "status": invoice.status.value if invoice.status else None,
-                "target_status": target_status.value if target_status else None,
-                "actor": context.actor,
-                "reason": context.reason,
-                "source": context.source,
-                "correlation_id": context.correlation_id,
-                "metadata": context.metadata or {},
-                "payments_total": context.payments_total,
-                "credits_total": context.credits_total,
-                "denial_reason": reason,
-            },
-        )
-
-    def _validate_transition(
-        self,
-        invoice: Invoice,
-        requested_status: InvoiceStatus,
-        final_status: InvoiceStatus,
-        *,
-        context: InvoiceTransitionContext,
-        amounts: InvoiceFinancials,
-    ) -> None:
-        if invoice.status in TERMINAL_STATUSES and final_status != invoice.status and not context.allow_terminal_reopen:
-            self._log_denied(invoice, requested_status, context=context, reason="terminal_status")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"cannot transition from terminal status {invoice.status}",
-            )
-
-        if invoice.status == requested_status:
+    def _validate_allowed(self, target: InvoiceStatus) -> None:
+        if target == self.invoice.status:
             return
+        allowed = _ALLOWED_TRANSITIONS.get(self.invoice.status, set())
+        if target not in allowed:
+            raise InvalidTransitionError(f"transition {self.invoice.status} -> {target} is not allowed")
 
-        allowed = self._allowed_transitions().get(invoice.status, set())
-        if requested_status not in allowed:
-            self._log_denied(invoice, requested_status, context=context, reason="transition_not_allowed")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"transition {invoice.status} -> {requested_status} is not allowed",
-            )
-        if final_status not in allowed and final_status != invoice.status:
-            self._log_denied(invoice, final_status, context=context, reason="transition_not_allowed")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"transition {invoice.status} -> {final_status} is not allowed",
-            )
+    def _apply_amounts(self, payment_amount: int | None, credit_note_amount: int | None) -> None:
+        total = int(self.invoice.total_with_tax or self.invoice.total_amount or 0)
+        paid = int(self.invoice.amount_paid or 0)
+        credits = int(getattr(self.invoice, "credited_amount", 0) or 0)
 
-        has_payments_or_credits = amounts.payments_total > 0 or amounts.credits_total > 0
-        if final_status == InvoiceStatus.CANCELLED and has_payments_or_credits and not context.allow_cancel_paid:
-            self._log_denied(invoice, final_status, context=context, reason="payments_or_credits_present")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="cannot cancel invoice with payments or credits",
-            )
+        if payment_amount is not None:
+            if payment_amount < 0:
+                raise InvoiceInvariantError("payment_amount must be non-negative")
+            paid += int(payment_amount)
+        if credit_note_amount is not None:
+            if credit_note_amount < 0:
+                raise InvoiceInvariantError("credit_note_amount must be non-negative")
+            credits += int(credit_note_amount)
 
-        outstanding_without_payments = max(amounts.total_due - amounts.credits_total, 0)
-        if final_status == InvoiceStatus.PAID and amounts.payments_total < outstanding_without_payments:
-            self._log_denied(invoice, final_status, context=context, reason="insufficient_payment_for_paid")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="invoice cannot be marked paid while amount is still due",
-            )
+        due = total - paid - credits
+        if paid < 0 or credits < 0 or due < 0:
+            raise InvoiceInvariantError("financial invariants violated")
+        if paid + due + credits != total:
+            raise InvoiceInvariantError("paid + due + credits must equal total")
 
-        if final_status == InvoiceStatus.PARTIALLY_PAID:
-            if amounts.payments_total <= 0 or amounts.payments_total >= outstanding_without_payments:
-                self._log_denied(invoice, final_status, context=context, reason="invalid_partial_payment_amount")
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="partial payment must be greater than zero and less than amount due",
-                )
+        self.invoice.amount_paid = paid
+        self.invoice.amount_due = due
+        self.invoice.credited_amount = credits
 
-        if final_status == InvoiceStatus.CLOSED and invoice.status != InvoiceStatus.PAID:
-            self._log_denied(invoice, final_status, context=context, reason="close_requires_paid")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="invoice must be paid before closing",
-            )
+    def _validate_constraints(self, target: InvoiceStatus, payment_amount: int | None, credit_note_amount: int | None) -> None:
+        total = int(self.invoice.total_with_tax or self.invoice.total_amount or 0)
+        paid = int(self.invoice.amount_paid or 0)
+        credits = int(getattr(self.invoice, "credited_amount", 0) or 0)
+        due = int(self.invoice.amount_due or 0)
 
-    def _apply_timestamps(
-        self,
-        invoice: Invoice,
-        target_status: InvoiceStatus,
-        *,
-        now: datetime,
-        context: InvoiceTransitionContext,
-    ) -> list[str]:
-        updated: list[str] = []
-        if context.skip_timestamp_update:
-            return updated
+        if target == InvoiceStatus.CANCELLED:
+            if paid > 0 or credits > 0:
+                raise InvalidTransitionError("cannot cancel invoice with payments or credits")
 
-        if target_status == InvoiceStatus.ISSUED and invoice.issued_at is None:
-            invoice.issued_at = now
-            updated.append("issued_at")
-        if target_status == InvoiceStatus.SENT and invoice.sent_at is None:
-            invoice.sent_at = now
-            updated.append("sent_at")
-        if target_status == InvoiceStatus.DELIVERED and invoice.delivered_at is None:
-            invoice.delivered_at = now
-            updated.append("delivered_at")
-        if target_status == InvoiceStatus.PAID and invoice.paid_at is None:
-            invoice.paid_at = now
-            updated.append("paid_at")
-        if target_status == InvoiceStatus.CANCELLED and invoice.cancelled_at is None:
-            invoice.cancelled_at = now
-            updated.append("cancelled_at")
-        if target_status == InvoiceStatus.CLOSED and invoice.closed_at is None:
-            invoice.closed_at = now
-            updated.append("closed_at")
-        if target_status == InvoiceStatus.REFUNDED and invoice.refunded_at is None:
-            invoice.refunded_at = now
-            updated.append("refunded_at")
-        return updated
+        if target == InvoiceStatus.SENT and self.invoice.pdf_status != InvoicePdfStatus.READY:
+            raise InvalidTransitionError("invoice pdf must be ready before sending")
 
-    def _normalize_amounts(self, invoice: Invoice, context: InvoiceTransitionContext) -> InvoiceFinancials:
-        amounts = self._resolve_amounts(invoice, context)
-        invoice.amount_paid = amounts.payments_total
-        invoice.amount_due = amounts.amount_due
-        return amounts
+        if target == InvoiceStatus.PARTIALLY_PAID:
+            if paid <= 0 or paid + credits >= total or due <= 0:
+                raise InvalidTransitionError("partial payment must be less than total and greater than zero")
+            if payment_amount is None or payment_amount <= 0:
+                raise InvalidTransitionError("payment amount required for partial payment")
 
-    def normalize_financials(
-        self, invoice: Invoice, *, context: InvoiceTransitionContext, update_status: bool = True
-    ) -> InvoiceStatus:
-        """Normalize paid/due amounts and optionally align lifecycle with payments and credits."""
+        if target == InvoiceStatus.PAID:
+            if due != 0 or paid + credits != total:
+                raise InvalidTransitionError("invoice must be fully settled before marking as paid")
 
-        amounts = self._normalize_amounts(invoice, context)
-        derived_status = self._derive_financial_status(invoice, invoice.status, amounts=amounts)
-        if update_status and invoice.status not in TERMINAL_STATUSES and derived_status != invoice.status:
-            invoice.status = derived_status
-        return derived_status
+        if target == InvoiceStatus.CREDITED:
+            if due != 0:
+                raise InvalidTransitionError("credits must cover remaining balance")
+            if credit_note_amount is None or credit_note_amount <= 0:
+                raise InvalidTransitionError("credit note amount required for credit transition")
 
-    def apply_transition(
-        self,
-        invoice: Invoice,
-        target_status: InvoiceStatus,
-        *,
-        now: datetime | None = None,
-        context: InvoiceTransitionContext,
-    ) -> Invoice:
-        resolved_now = now or self._now_provider()
-        amounts = self._normalize_amounts(invoice, context)
-        final_status = self._derive_financial_status(invoice, target_status, amounts=amounts)
+        if target == InvoiceStatus.OVERDUE and due <= 0:
+            raise InvalidTransitionError("cannot mark overdue when nothing is due")
 
-        if target_status == InvoiceStatus.PAID and final_status != InvoiceStatus.PAID:
-            self._log_denied(invoice, target_status, context=context, reason="insufficient_payment_for_paid")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="invoice cannot be marked paid while amount is still due",
-            )
-        if target_status == InvoiceStatus.PARTIALLY_PAID and final_status != InvoiceStatus.PARTIALLY_PAID:
-            self._log_denied(invoice, target_status, context=context, reason="invalid_partial_payment_amount")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="partial payment must be greater than zero and less than amount due",
-            )
+    def _update_timestamps(self, target: InvoiceStatus, now: datetime) -> None:
+        if target == InvoiceStatus.ISSUED and self.invoice.issued_at is None:
+            self.invoice.issued_at = now
+        if target == InvoiceStatus.SENT and self.invoice.sent_at is None:
+            self.invoice.sent_at = now
+        if target == InvoiceStatus.PAID and self.invoice.paid_at is None:
+            self.invoice.paid_at = now
+        if target == InvoiceStatus.CANCELLED and self.invoice.cancelled_at is None:
+            self.invoice.cancelled_at = now
+        if target == InvoiceStatus.CREDITED and self.invoice.credited_at is None:
+            self.invoice.credited_at = now
 
-        self._validate_transition(
-            invoice,
-            target_status,
-            final_status,
-            context=context,
-            amounts=amounts,
+    def _log_transition(self, from_status: InvoiceStatus, to_status: InvoiceStatus, *, actor: str, reason: str, metadata: Mapping[str, object] | None) -> None:
+        log_entry = InvoiceTransitionLog(
+            invoice_id=self.invoice.id,
+            from_status=from_status,
+            to_status=to_status,
+            actor=actor,
+            reason=reason,
+            metadata_json=dict(metadata) if metadata else None,
         )
+        self.db.add(log_entry)
 
-        previous_status = invoice.status
-        timestamp_fields = self._apply_timestamps(invoice, final_status, now=resolved_now, context=context)
+    def transition(
+        self,
+        to: InvoiceStatus,
+        *,
+        actor: str,
+        reason: str,
+        payment_amount: int | None = None,
+        credit_note_amount: int | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> Invoice:
+        if not actor:
+            raise ValueError("actor is required")
+        if not reason:
+            raise ValueError("reason is required")
 
-        if invoice.status != final_status:
-            invoice.status = final_status
+        from_status = self.invoice.status
+        now = self._now_provider()
+
+        self._validate_allowed(to)
+        self._apply_amounts(payment_amount, credit_note_amount)
+        self._validate_constraints(to, payment_amount, credit_note_amount)
+        self._update_timestamps(to, now)
+        self.invoice.status = to
+
+        self._log_transition(from_status, to, actor=actor, reason=reason, metadata=metadata)
+        self.db.add(self.invoice)
 
         logger.info(
             "invoice.transition.applied",
             extra={
-                "invoice_id": invoice.id,
-                "from_status": previous_status.value if previous_status else None,
-                "to_status": final_status.value if final_status else None,
-                "actor": context.actor,
-                "reason": context.reason,
-                "source": context.source,
-                "correlation_id": context.correlation_id,
-                "metadata": context.metadata or {},
-                "timestamp_fields": timestamp_fields,
-                "amount_due": invoice.amount_due,
-                "amount_paid": invoice.amount_paid,
+                "invoice_id": self.invoice.id,
+                "from_status": from_status.value if from_status else None,
+                "to_status": to.value if to else None,
+                "actor": actor,
+                "reason": reason,
+                "metadata": metadata or {},
+                "amount_paid": self.invoice.amount_paid,
+                "amount_due": self.invoice.amount_due,
+                "credited_amount": getattr(self.invoice, "credited_amount", 0),
             },
         )
-        return invoice
+        return self.invoice
 
 
-__all__ = ["InvoiceStateMachine", "InvoiceTransitionContext"]
+__all__ = ["InvoiceStateMachine", "InvalidTransitionError", "InvoiceInvariantError"]

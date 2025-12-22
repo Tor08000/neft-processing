@@ -8,7 +8,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
-from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
+from app.services.invoice_state_machine import InvoiceStateMachine
 
 
 @dataclass
@@ -53,7 +53,6 @@ class BillingRepository:
 
     def __init__(self, db: Session):
         self.db = db
-        self.state_machine = InvoiceStateMachine()
 
     def create_invoice(self, data: BillingInvoiceData, *, auto_commit: bool = True) -> Invoice:
         """Create invoice with lines, computing totals from provided items."""
@@ -71,12 +70,12 @@ class BillingRepository:
             period_from=data.period_from,
             period_to=data.period_to,
             currency=data.currency,
+            status=InvoiceStatus.DRAFT,
             total_amount=total_amount,
             tax_amount=tax_amount,
             total_with_tax=total_with_tax,
             amount_paid=amount_paid,
             amount_due=amount_due,
-            status=data.status,
             external_number=data.external_number,
             issued_at=data.issued_at,
             sent_at=data.sent_at,
@@ -107,12 +106,12 @@ class BillingRepository:
             for line in lines
         ]
 
-        context = InvoiceTransitionContext(
+        state_machine = InvoiceStateMachine(invoice, db=self.db)
+        state_machine.transition(
+            to=data.status,
             actor="billing_repository",
             reason="create_invoice",
-            payments_total=invoice.amount_paid,
         )
-        self.state_machine.apply_transition(invoice, invoice.status, context=context)
 
         if auto_commit:
             self.db.commit()
@@ -159,7 +158,6 @@ class BillingRepository:
         paid_at: datetime | None = None,
         actor: str | None = "billing_repository",
         reason: str | None = "status_update",
-        allow_cancel_paid: bool = False,
     ) -> Invoice | None:
         """Update invoice status and adjust lifecycle timestamps."""
 
@@ -170,19 +168,12 @@ class BillingRepository:
         if invoice is None:
             return None
 
-        payments_total = invoice.amount_paid
-        if status == InvoiceStatus.PAID:
-            payments_total = invoice.total_with_tax or invoice.total_amount or payments_total
-
-        context = InvoiceTransitionContext(
-            actor=actor,
-            reason=reason,
-            source="billing_repository",
-            allow_cancel_paid=allow_cancel_paid,
-            payments_total=payments_total,
+        state_machine = InvoiceStateMachine(invoice, db=self.db, now_provider=lambda: paid_at or issued_at or datetime.utcnow())
+        state_machine.transition(
+            to=status,
+            actor=actor or "billing_repository",
+            reason=reason or "status_update",
         )
-        now_hint = paid_at if status == InvoiceStatus.PAID and paid_at else issued_at
-        self.state_machine.apply_transition(invoice, status, now=now_hint, context=context)
 
         self.db.add(invoice)
         self.db.commit()
