@@ -75,7 +75,10 @@ class FinanceService:
         if invoice.amount_due == 0 and invoice.status not in (InvoiceStatus.PAID, InvoiceStatus.VOIDED):
             target_status = InvoiceStatus.PAID
         elif invoice.amount_due > 0 and invoice.status not in (InvoiceStatus.VOIDED, InvoiceStatus.CANCELLED):
-            target_status = InvoiceStatus.PARTIALLY_PAID
+            if invoice.status in (InvoiceStatus.PAID, InvoiceStatus.DELIVERED):
+                target_status = invoice.status
+            else:
+                target_status = InvoiceStatus.PARTIALLY_PAID
 
         context = InvoiceTransitionContext(
             actor="finance_service",
