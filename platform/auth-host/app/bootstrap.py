@@ -56,6 +56,31 @@ async def bootstrap_admin_account(settings: Settings | None = None) -> None:
     )
 
 
+async def bootstrap_admin(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    if not settings.bootstrap_enabled:
+        logger.info("auth bootstrap: disabled via AUTH_BOOTSTRAP_ENABLED")
+        return
+
+    email = (settings.bootstrap_admin_email or "").strip()
+    password = settings.bootstrap_admin_password
+    if not email or not password:
+        logger.warning("auth bootstrap: missing credentials, skipping admin bootstrap")
+        return
+
+    status = await _ensure_demo_user(
+        email=email,
+        password=password,
+        full_name=settings.bootstrap_admin_full_name,
+        roles=settings.bootstrap_admin_roles,
+        label="bootstrap admin",
+    )
+    logger.info(
+        "auth bootstrap: admin seed finished",
+        extra={"email": email, "roles": settings.bootstrap_admin_roles, "status": status},
+    )
+
+
 def _safe_uuid(value: str | None) -> UUID:
     try:
         return UUID(str(value))
@@ -71,7 +96,7 @@ async def _ensure_demo_user(
     roles: list[str],
     label: str,
     preferred_id: UUID | None = None,
-) -> None:
+) -> str:
     normalized_email = email.strip().lower()
     password_hash = hash_password(password)
     demo_user_id = preferred_id or uuid4()
@@ -134,6 +159,7 @@ async def _ensure_demo_user(
 
         await conn.commit()
 
+        status = "noop"
         if existing_user:
             logger.info(
                 "%s already exists: email=%s, user_id=%s, updated_roles=%s, password_reset=%s",
@@ -143,3 +169,8 @@ async def _ensure_demo_user(
                 bool(missing_roles),
                 password_reset,
             )
+            status = "updated" if missing_roles or password_reset or not existing_user.get("is_active", True) else "noop"
+        else:
+            logger.info("%s seeded: email=%s, user_id=%s, roles=%s", label, normalized_email, user_id, roles)
+            status = "created"
+        return status

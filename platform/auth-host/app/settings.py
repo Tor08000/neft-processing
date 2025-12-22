@@ -16,6 +16,13 @@ def _env_or_default(key: str, default: str, *, fallback_keys: Iterable[str] = ()
     return default
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _roles_env(key: str, default: list[str], *, fallback_keys: Iterable[str] = ()) -> list[str]:
     for candidate in (key, *fallback_keys):
         raw = os.getenv(candidate)
@@ -177,6 +184,30 @@ class Settings(SharedSettings):
         self.bootstrap_admin_roles = _roles_env(
             "NEFT_BOOTSTRAP_ADMIN_ROLES", self.bootstrap_admin_roles, fallback_keys=("AUTH_ADMIN_ROLES",)
         )
+
+    bootstrap_enabled: bool = _env_bool("AUTH_BOOTSTRAP_ENABLED", True)
+    bootstrap_admin_email: str = _env_or_default(
+        "AUTH_BOOTSTRAP_ADMIN_EMAIL",
+        _env_or_default("AUTH_ADMIN_EMAIL", "admin@example.com"),
+        fallback_keys=("ADMIN_EMAIL",),
+    )
+    bootstrap_admin_password: str = _env_or_default(
+        "AUTH_BOOTSTRAP_ADMIN_PASSWORD",
+        _env_or_default("AUTH_ADMIN_PASSWORD", "admin123"),
+        fallback_keys=("ADMIN_PASSWORD",),
+    )
+    bootstrap_admin_full_name: str = _env_or_default(
+        "AUTH_BOOTSTRAP_ADMIN_FULL_NAME",
+        "Bootstrap Admin",
+        fallback_keys=("ADMIN_FULL_NAME",),
+    )
+    bootstrap_admin_roles: list[str] = field(
+        default_factory=lambda: _roles_env(
+            "AUTH_BOOTSTRAP_ADMIN_ROLES",
+            ["ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"],
+            fallback_keys=("AUTH_ADMIN_ROLES", "ADMIN_ROLES"),
+        )
+    )
 
 
 def get_settings() -> Settings:

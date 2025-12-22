@@ -193,8 +193,15 @@ class BillingRunService:
         tz: str,
         client_id: str | None = None,
     ) -> BillingRunResult:
+        try:
+            period_type = BillingPeriodType(period_type)
+        except ValueError as exc:
+            raise BillingRunValidationError(f"unsupported period_type: {period_type}") from exc
+
         if end_at <= start_at:
             raise BillingRunValidationError("end_at must be greater than start_at")
+        if not tz:
+            raise BillingRunValidationError("tz is required for billing run")
 
         period_from = start_at.date()
         period_to = end_at.date()

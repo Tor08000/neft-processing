@@ -4,8 +4,9 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 1. Скопируйте переменные окружения: `cp -n .env.example .env`.
 2. Заполните доступы администратора в `.env` (значения хранятся только локально):
-   - `ADMIN_EMAIL`
-   - `ADMIN_PASSWORD`
+   - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`)
+   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`)
+   Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно).
 3. Соберите и поднимите сервисы: `docker compose up -d --build`.
 4. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
@@ -27,6 +28,11 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
 * AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
+
+### Хранение ключей и файлов
+
+* Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. После `docker compose down -v` ключи пересоздаются автоматически.
+* Данные MinIO лежат в `minio-data`; бакет создаётся при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`).
 
 ### Вход в админ-панель
 
@@ -226,6 +232,13 @@ Smoke/тесты (Windows CMD):
 pytest -q
 pytest -q -m smoke
 python -m pytest -q tests\test_alembic_single_head.py
+```
+
+Интеграционные тесты (compose profile `test` + Postgres/Redis/MinIO/auth/core):
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.test.yml --profile test up -d --build
+RUN_INTEGRATION_TESTS=1 pytest -m integration platform/processing-core/app/tests
 ```
 
 ## Общий Python-пакет `neft_shared`

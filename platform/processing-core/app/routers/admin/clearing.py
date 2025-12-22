@@ -9,6 +9,7 @@ from app.schemas.clearing import (
     ClearingBatchOperationOut,
     ClearingBatchOut,
 )
+from app.services.billing.daily import _default_billing_date
 from app.services.clearing import (
     build_clearing_batch_for_period,
     get_batch,
@@ -19,6 +20,7 @@ from app.services.clearing import (
     retry_batch,
 )
 from app.services.clearing_daily import run_clearing_daily
+from app.services.clearing_service import run_admin_clearing
 
 router = APIRouter(prefix="/clearing", tags=["admin"])
 
@@ -82,6 +84,16 @@ def build_batch(body: BuildBatchRequest = Body(...), db: Session = Depends(get_d
     )
     _ = batch.operations  # noqa: F841
     return ClearingBatchOut.model_validate(batch)
+
+
+@router.post("/run")
+def run_admin_clearing_endpoint(
+    clearing_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    target_date = clearing_date or _default_billing_date()
+    result = run_admin_clearing(db, clearing_date=target_date)
+    return {"clearing_date": str(target_date), **result}
 
 
 @router.post("/batches/{batch_id}/mark-sent", response_model=ClearingBatchOut)
