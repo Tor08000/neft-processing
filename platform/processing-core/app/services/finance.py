@@ -12,6 +12,7 @@ from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, Pay
 from app.models.invoice import Invoice, InvoiceStatus
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
+from app.services.invoice_state_machine import InvoiceStateMachine, InvoiceTransitionContext
 
 
 class FinanceOperationInProgress(RuntimeError):
@@ -40,6 +41,7 @@ class FinanceService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
+        self.state_machine = InvoiceStateMachine()
 
     def _lock_invoice(self, invoice_id: str) -> Invoice:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
@@ -64,11 +66,24 @@ class FinanceService:
         ) or 0
 
         invoice.amount_paid = int(payments_total)
-        invoice.amount_due = max(int((invoice.total_with_tax or 0) - payments_total - credits_total), 0)
+        invoice.amount_due = max(
+            int((invoice.total_with_tax or invoice.total_amount or 0) - payments_total - credits_total),
+            0,
+        )
+
+        target_status = invoice.status
         if invoice.amount_due == 0 and invoice.status not in (InvoiceStatus.PAID, InvoiceStatus.VOIDED):
-            invoice.status = InvoiceStatus.PAID
+            target_status = InvoiceStatus.PAID
         elif invoice.amount_due > 0 and invoice.status not in (InvoiceStatus.VOIDED, InvoiceStatus.CANCELLED):
-            invoice.status = InvoiceStatus.PARTIALLY_PAID
+            target_status = InvoiceStatus.PARTIALLY_PAID
+
+        context = InvoiceTransitionContext(
+            actor="finance_service",
+            reason="recalculate_due",
+            payments_total=invoice.amount_paid,
+            credits_total=int(credits_total),
+        )
+        self.state_machine.apply_transition(invoice, target_status, context=context)
 
         self.db.add(invoice)
 
