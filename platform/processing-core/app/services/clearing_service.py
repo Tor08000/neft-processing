@@ -136,20 +136,13 @@ def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
     """
     Idempotent clearing run:
     - returns early with reason if no FINALIZED billing summaries
-    - skips creation if clearing rows already exist for the date
+    - upserts clearing rows for the date (create missing or refresh existing)
     - records a billing_job_runs entry for observability
     """
 
     job_service = BillingJobRunService(db)
     job_run = job_service.start(BillingJobType.CLEARING, params={"clearing_date": str(clearing_date)})
     try:
-        existing = db.query(Clearing).filter(Clearing.batch_date == clearing_date).first()
-        if existing:
-            metrics = {"created": 0, "reason": "already_exists"}
-            job_service.succeed(job_run, metrics=metrics)
-            db.commit()
-            return metrics
-
         summaries = (
             db.query(BillingSummary)
             .filter(BillingSummary.billing_date == clearing_date)
@@ -166,7 +159,13 @@ def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
         for summary in summaries:
             grouped[(summary.merchant_id, summary.currency or "XXX")].append(summary)
 
+        existing = {
+            (item.merchant_id, item.currency or "XXX"): item
+            for item in db.query(Clearing).filter(Clearing.batch_date == clearing_date).all()
+        }
+
         created = 0
+        updated = 0
         for (merchant_id, currency), items in grouped.items():
             total_amount = sum(int(item.total_amount or 0) for item in items)
             details = [
@@ -182,17 +181,23 @@ def run_admin_clearing(db: Session, *, clearing_date: date) -> dict:
                 }
                 for item in items
             ]
-            clearing = Clearing(
-                batch_date=clearing_date,
-                merchant_id=merchant_id,
-                currency=currency,
-                total_amount=total_amount,
-                details=details,
-            )
-            db.add(clearing)
-            created += 1
+            clearing = existing.get((merchant_id, currency))
+            if clearing:
+                clearing.total_amount = total_amount
+                clearing.details = details
+                updated += 1
+            else:
+                clearing = Clearing(
+                    batch_date=clearing_date,
+                    merchant_id=merchant_id,
+                    currency=currency,
+                    total_amount=total_amount,
+                    details=details,
+                )
+                db.add(clearing)
+                created += 1
 
-        metrics = {"created": created}
+        metrics = {"created": created, "updated": updated}
         job_service.succeed(job_run, metrics=metrics)
         db.commit()
         return metrics
