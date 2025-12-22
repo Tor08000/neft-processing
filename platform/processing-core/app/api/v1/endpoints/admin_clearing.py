@@ -61,7 +61,7 @@ async def run_clearing_endpoint(
     if target_date is None:
         raise HTTPException(status_code=422, detail="clearing_date_required")
 
-    batches = await generate_clearing_batches_for_date(target_date, session=db)
+    batches = await generate_clearing_batches_for_date(target_date, session=db) or []
     items = [ClearingBatchAdminOut.model_validate(batch) for batch in batches]
     return ClearingBatchListResponse(items=items, total=len(items), limit=len(items), offset=0)
 

@@ -32,7 +32,7 @@ async def generate_clearing_batches_for_date(
             )
 
             if not summaries:
-                return
+                return []
 
             grouped: dict[tuple[str, str], list[BillingSummary]] = defaultdict(list)
             for summary in summaries:

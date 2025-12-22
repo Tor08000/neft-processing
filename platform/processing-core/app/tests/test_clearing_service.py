@@ -136,3 +136,17 @@ def test_generate_is_idempotent():
         assert batches[0].total_amount == 2000
     finally:
         session.close()
+
+
+def test_generate_returns_empty_list_for_missing_summaries():
+    clearing_date = date(2024, 1, 13)
+
+    result = asyncio.run(generate_clearing_batches_for_date(clearing_date))
+    assert result == []
+
+    session = SessionLocal()
+    try:
+        batches = session.query(Clearing).filter(Clearing.batch_date == clearing_date).all()
+        assert batches == []
+    finally:
+        session.close()

@@ -203,3 +203,14 @@ def test_run_clearing_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
     resp_repeat = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
     assert resp_repeat.status_code == 200
     assert resp_repeat.json()["total"] == 1
+
+
+def test_run_clearing_returns_empty_for_missing_summaries(admin_client: Tuple[TestClient, sessionmaker]):
+    client, _ = admin_client
+    target_date = date(2024, 1, 3)
+
+    resp = client.post("/api/v1/admin/clearing/run", params={"clearing_date": target_date.isoformat()})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total"] == 0
+    assert payload["items"] == []
