@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -98,7 +99,7 @@ class BillingRepository:
                 unit_price=line.unit_price,
                 line_amount=line.line_amount,
                 tax_amount=line.tax_amount,
-                operation_id=line.operation_id,
+                operation_id=line.operation_id or f"manual-{uuid4()}",
                 card_id=line.card_id,
                 partner_id=line.partner_id,
                 azs_id=line.azs_id,
@@ -162,7 +163,10 @@ class BillingRepository:
     ) -> Invoice | None:
         """Update invoice status and adjust lifecycle timestamps."""
 
-        invoice = self.get_invoice(invoice_id)
+        query = self.db.query(Invoice).filter(Invoice.id == invoice_id)
+        if getattr(getattr(self.db.bind, "dialect", None), "name", None) == "postgresql":
+            query = query.with_for_update()
+        invoice = query.one_or_none()
         if invoice is None:
             return None
 
@@ -173,6 +177,7 @@ class BillingRepository:
         context = InvoiceTransitionContext(
             actor=actor,
             reason=reason,
+            source="billing_repository",
             allow_cancel_paid=allow_cancel_paid,
             payments_total=payments_total,
         )

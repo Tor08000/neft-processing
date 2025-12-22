@@ -164,6 +164,9 @@ class ClientInvoiceSummary(BaseModel):
     sent_at: datetime | None = None
     delivered_at: datetime | None = None
     paid_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    closed_at: datetime | None = None
+    refunded_at: datetime | None = None
     pdf_url: str | None = None
     pdf_status: InvoicePdfStatus | None = None
     pdf_generated_at: datetime | None = None

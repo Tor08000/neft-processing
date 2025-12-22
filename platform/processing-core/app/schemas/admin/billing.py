@@ -105,6 +105,9 @@ class InvoiceRead(BaseModel):
     sent_at: datetime | None = None
     delivered_at: datetime | None = None
     paid_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    closed_at: datetime | None = None
+    refunded_at: datetime | None = None
     external_number: str | None = None
     external_delivery_id: str | None = None
     external_delivery_provider: str | None = None
@@ -149,6 +152,7 @@ class InvoiceStatusChangeRequest(BaseModel):
     """Payload to move invoice to another lifecycle status."""
 
     status: InvoiceStatus
+    reason: str | None = None
 
 
 class BillingRunRequest(BaseModel):
