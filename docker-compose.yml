@@ -35,7 +35,7 @@ services:
       context: .
       dockerfile: infra/minio.Dockerfile
     container_name: neft-processing-minio-1
-    command: ["minio", "server", "/data", "--console-address", ":9001"]
+    command: ["server", "/data", "--console-address", ":9001"]
     env_file:
       - .env
     environment:
