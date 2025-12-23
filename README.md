@@ -2,7 +2,9 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ## Как поднять систему локально
 
-1. Скопируйте переменные окружения: `cp -n .env.example .env`.
+1. Скопируйте переменные окружения:
+   - Windows CMD: `if not exist .env copy .env.example .env`
+   - Linux/macOS: `cp -n .env.example .env`
 2. В файле `.env` замените плейсхолдеры `change-me` (например, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `NEFT_S3_ACCESS_KEY`, `NEFT_S3_SECRET_KEY`) на реальные значения.
 3. Заполните доступы администратора в `.env` (значения хранятся только локально):
    - `AUTH_BOOTSTRAP_ENABLED=1`

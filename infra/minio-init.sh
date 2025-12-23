@@ -10,11 +10,20 @@ BUCKET_MAIN="${NEFT_S3_BUCKET:-neft}"
 BUCKET_INVOICES="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
 PUBLIC_MAIN="${NEFT_S3_BUCKET_PUBLIC:-0}"
 PUBLIC_INVOICES="${NEFT_S3_BUCKET_INVOICES_PUBLIC:-0}"
+S3_ACCESS_KEY="${NEFT_S3_ACCESS_KEY:-$ACCESS_KEY}"
+S3_SECRET_KEY="${NEFT_S3_SECRET_KEY:-$SECRET_KEY}"
 MAX_RETRIES="${MINIO_INIT_RETRIES:-60}"
 SLEEP_SECONDS="${MINIO_INIT_RETRY_DELAY:-2}"
 
 log() {
   echo "[minio-init] $1"
+}
+
+fail_if_default_creds() {
+  if [ "$ACCESS_KEY" = "change-me" ] || [ "$SECRET_KEY" = "change-me" ] || [ "$S3_ACCESS_KEY" = "change-me" ] || [ "$S3_SECRET_KEY" = "change-me" ]; then
+    log "MINIO_ROOT_USER/MINIO_ROOT_PASSWORD/NEFT_S3_ACCESS_KEY/NEFT_S3_SECRET_KEY must be set to non-default values in .env"
+    exit 1
+  fi
 }
 
 wait_for_minio() {
@@ -61,6 +70,7 @@ if ! command -v mc >/dev/null 2>&1; then
   exit 1
 fi
 
+fail_if_default_creds
 wait_for_minio
 
 ensure_bucket "$BUCKET_MAIN" "$PUBLIC_MAIN"
