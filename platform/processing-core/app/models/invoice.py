@@ -46,10 +46,20 @@ class Invoice(Base):
             "currency",
             name="uq_invoice_scope",
         ),
+        UniqueConstraint(
+            "number",
+            name="uq_invoice_number",
+        ),
+        UniqueConstraint(
+            "clearing_batch_id",
+            name="uq_invoice_clearing_batch",
+        ),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    clearing_batch_id = Column(String(36), ForeignKey("clearing_batch.id"), nullable=True, index=True)
     client_id = Column(String(64), nullable=False, index=True)
+    number = Column(String(64), nullable=True, index=True)
     period_from = Column(Date, nullable=False, index=True)
     period_to = Column(Date, nullable=False, index=True)
     currency = Column(String(3), nullable=False)
@@ -91,6 +101,7 @@ class Invoice(Base):
         server_default=InvoicePdfStatus.NONE.value,
         index=True,
     )
+    pdf_object_key = Column(String(512), nullable=True)
     pdf_generated_at = Column(DateTime(timezone=True), nullable=True)
     pdf_hash = Column(String(64), nullable=True)
     pdf_version = Column(Integer, nullable=False, default=1, server_default="1")

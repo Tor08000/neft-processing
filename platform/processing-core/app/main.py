@@ -65,6 +65,11 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     partners_router = None  # type: ignore
 
+try:
+    from app.api.v1.endpoints.billing_invoices import router as billing_invoices_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    billing_invoices_router = None  # type: ignore
+
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
@@ -312,6 +317,8 @@ if intake_router is not None:
 
 if partners_router is not None:
     app.include_router(partners_router, prefix="")
+if billing_invoices_router is not None:
+    app.include_router(billing_invoices_router, prefix="")
 
 app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_router, prefix=API_PREFIX_CORE)
@@ -334,6 +341,8 @@ if intake_router is not None:
     core_prefixed_router.include_router(intake_router, prefix="")
 if partners_router is not None:
     core_prefixed_router.include_router(partners_router, prefix="")
+if billing_invoices_router is not None:
+    core_prefixed_router.include_router(billing_invoices_router, prefix="")
 
 core_prefixed_router.include_router(admin_router)
 core_prefixed_router.include_router(client_router)

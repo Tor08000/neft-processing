@@ -37,8 +37,9 @@ class InvoicePdfService:
         self.template_version = settings.NEFT_INVOICE_PDF_TEMPLATE_VERSION
 
     def _pdf_key(self, invoice: Invoice) -> str:
-        billing_period = invoice.billing_period_id or "adhoc"
-        return f"invoices/{invoice.client_id}/{billing_period}/{invoice.id}/v{invoice.pdf_version}.pdf"
+        if invoice.pdf_object_key:
+            return invoice.pdf_object_key
+        return f"invoices/{invoice.id}.pdf"
 
     def _render_pdf(self, invoice: Invoice) -> bytes:
         buffer = BytesIO()
@@ -101,18 +102,27 @@ class InvoicePdfService:
         if locked.pdf_status == InvoicePdfStatus.READY and not force:
             return locked
 
+        key = self._pdf_key(locked)
+        if not force and self.storage.exists(key):
+            locked.pdf_status = InvoicePdfStatus.READY
+            locked.pdf_generated_at = locked.pdf_generated_at or datetime.now(timezone.utc)
+            locked.pdf_object_key = key
+            locked.pdf_url = locked.pdf_url or self.storage.public_url(key)
+            self.db.add(locked)
+            return locked
+
         locked.pdf_status = InvoicePdfStatus.GENERATING
         locked.pdf_error = None
         locked.pdf_generated_at = None
         locked.pdf_url = None
-        locked.pdf_version = (locked.pdf_version or 1) + 1 if force else (locked.pdf_version or 1)
+        locked.pdf_version = locked.pdf_version or 1
+        locked.pdf_object_key = key
         self.db.add(locked)
         self.db.flush()
 
         try:
             pdf_bytes = self._render_pdf(locked)
             pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
-            key = self._pdf_key(locked)
             pdf_url = self.storage.put_bytes(key, pdf_bytes, content_type="application/pdf")
 
             locked.pdf_status = InvoicePdfStatus.READY
