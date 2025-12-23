@@ -366,7 +366,10 @@ services:
       retries: 5
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.104.0
+    build:
+      context: .
+      dockerfile: infra/otel-collector.Dockerfile
+    image: neft-processing-otel-collector:latest
     container_name: neft-processing-otel-collector-1
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
@@ -374,10 +377,11 @@ services:
     ports:
       - "4317:4317"
     healthcheck:
-      test: ["CMD", "/otelcol-contrib", "--config=/etc/otel-collector-config.yaml", "--dry-run"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "curl", "-fsS", "http://localhost:13133/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   jaeger:
     image: jaegertracing/all-in-one:1.55
