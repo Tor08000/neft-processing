@@ -22,11 +22,11 @@ class InvoiceInvariantError(RuntimeError):
 _ALLOWED_TRANSITIONS: Mapping[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED},
     InvoiceStatus.ISSUED: {InvoiceStatus.SENT, InvoiceStatus.CANCELLED},
-    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID, InvoiceStatus.CANCELLED, InvoiceStatus.OVERDUE},
-    InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID, InvoiceStatus.CREDITED, InvoiceStatus.OVERDUE},
-    InvoiceStatus.PAID: {InvoiceStatus.CREDITED},
-    InvoiceStatus.OVERDUE: set(),
+    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.CANCELLED},
+    InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID},
+    InvoiceStatus.PAID: set(),
     InvoiceStatus.CANCELLED: set(),
+    InvoiceStatus.OVERDUE: set(),
     InvoiceStatus.CREDITED: set(),
 }
 
@@ -84,20 +84,16 @@ class InvoiceStateMachine:
             raise InvalidTransitionError("invoice pdf must be ready before sending")
 
         if target == InvoiceStatus.PARTIALLY_PAID:
-            if paid <= 0 or paid + credits >= total or due <= 0:
-                raise InvalidTransitionError("partial payment must be less than total and greater than zero")
+            if paid <= 0:
+                raise InvalidTransitionError("partial payment must be greater than zero")
             if payment_amount is None or payment_amount <= 0:
                 raise InvalidTransitionError("payment amount required for partial payment")
+            if due < 0:
+                raise InvalidTransitionError("partial payment cannot overpay invoice")
 
         if target == InvoiceStatus.PAID:
             if due != 0 or paid + credits != total:
                 raise InvalidTransitionError("invoice must be fully settled before marking as paid")
-
-        if target == InvoiceStatus.CREDITED:
-            if due != 0:
-                raise InvalidTransitionError("credits must cover remaining balance")
-            if credit_note_amount is None or credit_note_amount <= 0:
-                raise InvalidTransitionError("credit note amount required for credit transition")
 
         if target == InvoiceStatus.OVERDUE and due <= 0:
             raise InvalidTransitionError("cannot mark overdue when nothing is due")

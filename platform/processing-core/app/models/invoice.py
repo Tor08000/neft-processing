@@ -4,25 +4,12 @@ from datetime import date, datetime
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import (
-    Column,
-    Date,
-    DateTime,
-    Enum as SAEnum,
-    ForeignKey,
-    JSON,
-    Numeric,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import Column, Date, DateTime, ForeignKey, JSON, Numeric, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import BigInteger
 
 from app.db import Base
-from app.db.types import GUID
+from app.db.types import ExistingEnum, GUID
 
 
 class InvoiceStatus(str, Enum):
@@ -77,7 +64,12 @@ class Invoice(Base):
     amount_paid = Column(BigInteger, nullable=False, default=0)
     amount_due = Column(BigInteger, nullable=False, default=0)
 
-    status = Column(SAEnum(InvoiceStatus), nullable=False, index=True, default=InvoiceStatus.DRAFT)
+    status = Column(
+        ExistingEnum(InvoiceStatus, name="invoicestatus"),
+        nullable=False,
+        index=True,
+        default=InvoiceStatus.DRAFT,
+    )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     issued_at = Column(DateTime(timezone=True), nullable=True)
@@ -94,7 +86,7 @@ class Invoice(Base):
     payment_reference = Column(String(128), nullable=True)
     pdf_url = Column(String(512), nullable=True)
     pdf_status = Column(
-        SAEnum(InvoicePdfStatus, name="invoice_pdf_status"),
+        ExistingEnum(InvoicePdfStatus, name="invoice_pdf_status"),
         nullable=False,
         server_default=InvoicePdfStatus.NONE.value,
         index=True,
@@ -150,8 +142,8 @@ class InvoiceTransitionLog(Base):
 
     id = Column(GUID(), primary_key=True, default=uuid4)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
-    from_status = Column(SAEnum(InvoiceStatus), nullable=False)
-    to_status = Column(SAEnum(InvoiceStatus), nullable=False)
+    from_status = Column(ExistingEnum(InvoiceStatus, name="invoicestatus"), nullable=False)
+    to_status = Column(ExistingEnum(InvoiceStatus, name="invoicestatus"), nullable=False)
     actor = Column(String(64), nullable=False)
     reason = Column(Text, nullable=False)
     metadata_json = Column("metadata", JSON, nullable=True)

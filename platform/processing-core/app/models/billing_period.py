@@ -3,10 +3,10 @@ from __future__ import annotations
 from enum import Enum
 
 import sqlalchemy as sa
-from sqlalchemy import Column, DateTime, Enum as SAEnum, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, UniqueConstraint, func
 
 from app.db import Base
-from app.db.types import GUID, new_uuid_str
+from app.db.types import ExistingEnum, GUID, new_uuid_str
 
 
 class BillingPeriodType(str, Enum):
@@ -36,12 +36,12 @@ class BillingPeriod(Base):
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    period_type = Column(SAEnum(BillingPeriodType, name="billing_period_type"), nullable=False)
+    period_type = Column(ExistingEnum(BillingPeriodType, name="billing_period_type"), nullable=False)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=False)
     tz = Column(sa.String(64), nullable=False)
     status = Column(
-        SAEnum(BillingPeriodStatus, name="billing_period_status"),
+        ExistingEnum(BillingPeriodStatus, name="billing_period_status"),
         nullable=False,
         default=BillingPeriodStatus.OPEN,
         server_default=sa.text("'OPEN'"),
