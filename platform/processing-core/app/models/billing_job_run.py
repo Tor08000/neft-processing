@@ -4,11 +4,11 @@ from enum import Enum
 from uuid import uuid4
 
 import sqlalchemy as sa
-from sqlalchemy import Column, DateTime, Enum as SAEnum, String, Text, func
+from sqlalchemy import Column, DateTime, String, Text, func
 from sqlalchemy.types import JSON
 
 from app.db import Base
-from app.db.types import GUID
+from app.db.types import ExistingEnum, GUID
 
 
 class BillingJobType(str, Enum):
@@ -35,9 +35,9 @@ class BillingJobRun(Base):
     __tablename__ = "billing_job_runs"
 
     id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
-    job_type = Column(SAEnum(BillingJobType, name="billing_job_type"), nullable=False)
+    job_type = Column(ExistingEnum(BillingJobType, name="billing_job_type"), nullable=False)
     params = Column(JSON, nullable=True)
-    status = Column(SAEnum(BillingJobStatus, name="billing_job_status"), nullable=False)
+    status = Column(ExistingEnum(BillingJobStatus, name="billing_job_status"), nullable=False)
     started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     finished_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)

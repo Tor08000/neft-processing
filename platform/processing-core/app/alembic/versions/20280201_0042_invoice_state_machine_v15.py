@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
     SCHEMA,
@@ -56,8 +57,16 @@ def upgrade() -> None:
         columns=[
             sa.Column("id", GUID(), primary_key=True),
             sa.Column("invoice_id", sa.String(length=36), nullable=False, index=True),
-            sa.Column("from_status", sa.Enum(name="invoicestatus", schema=SCHEMA), nullable=False),
-            sa.Column("to_status", sa.Enum(name="invoicestatus", schema=SCHEMA), nullable=False),
+            sa.Column(
+                "from_status",
+                postgresql.ENUM(name="invoicestatus", schema=SCHEMA, create_type=False),
+                nullable=False,
+            ),
+            sa.Column(
+                "to_status",
+                postgresql.ENUM(name="invoicestatus", schema=SCHEMA, create_type=False),
+                nullable=False,
+            ),
             sa.Column("actor", sa.String(length=64), nullable=False),
             sa.Column("reason", sa.Text(), nullable=False),
             sa.Column("metadata", sa.JSON(), nullable=True),

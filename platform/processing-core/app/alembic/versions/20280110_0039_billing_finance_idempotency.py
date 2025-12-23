@@ -7,6 +7,7 @@ Create Date: 2028-01-10 00:39:00.000000
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
     SCHEMA,
@@ -55,7 +56,11 @@ def upgrade():
             sa.Column("amount", sa.BigInteger(), nullable=False),
             sa.Column("currency", sa.String(length=3), nullable=False),
             sa.Column("idempotency_key", sa.String(length=128), nullable=False, unique=True, index=True),
-            sa.Column("status", sa.Enum(name="invoice_payment_status", schema=SCHEMA), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(name="invoice_payment_status", schema=SCHEMA, create_type=False),
+                nullable=False,
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         ],
@@ -72,7 +77,11 @@ def upgrade():
             sa.Column("currency", sa.String(length=3), nullable=False),
             sa.Column("reason", sa.String(length=255), nullable=True),
             sa.Column("idempotency_key", sa.String(length=128), nullable=False, unique=True, index=True),
-            sa.Column("status", sa.Enum(name="credit_note_status", schema=SCHEMA), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(name="credit_note_status", schema=SCHEMA, create_type=False),
+                nullable=False,
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         ],

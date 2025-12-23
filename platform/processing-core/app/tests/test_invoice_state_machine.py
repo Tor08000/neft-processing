@@ -52,17 +52,22 @@ def test_sent_to_paid_updates_financials_and_paid_at():
     machine = InvoiceStateMachine(invoice, db=session, now_provider=lambda: now)
 
     machine.transition(
-        to=InvoiceStatus.PAID,
+        to=InvoiceStatus.PARTIALLY_PAID,
         actor="tester",
         reason="payment",
         payment_amount=invoice.total_with_tax,
+    )
+    machine.transition(
+        to=InvoiceStatus.PAID,
+        actor="tester",
+        reason="settle",
     )
 
     assert invoice.status == InvoiceStatus.PAID
     assert invoice.paid_at == now
     assert invoice.amount_due == 0
     assert invoice.amount_paid == invoice.total_with_tax
-    assert any(log.to_status == InvoiceStatus.PAID for log in session.added)
+    assert any(getattr(log, "to_status", None) == InvoiceStatus.PAID for log in session.added)
 
 
 def test_partial_payment_requires_amount():
@@ -97,13 +102,13 @@ def test_credit_note_covers_remaining_balance():
     machine = InvoiceStateMachine(invoice, db=_StubSession())
 
     machine.transition(
-        to=InvoiceStatus.CREDITED,
+        to=InvoiceStatus.PAID,
         actor="tester",
         reason="apply credit",
         credit_note_amount=400,
     )
 
-    assert invoice.status == InvoiceStatus.CREDITED
+    assert invoice.status == InvoiceStatus.PAID
     assert invoice.amount_due == 0
     assert invoice.credited_amount == 400
 
@@ -128,7 +133,7 @@ def test_invariants_guard_against_negative_due():
 
     with pytest.raises(InvoiceInvariantError):
         machine.transition(
-            to=InvoiceStatus.PAID,
+            to=InvoiceStatus.PARTIALLY_PAID,
             actor="tester",
             reason="bad_payment",
             payment_amount=-1,

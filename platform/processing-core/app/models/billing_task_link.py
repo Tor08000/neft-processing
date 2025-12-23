@@ -3,10 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Enum as SAEnum, ForeignKey, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, func
 
 from app.db import Base
-from app.db.types import GUID
+from app.db.types import ExistingEnum, GUID
 
 
 class BillingTaskType(str, Enum):
@@ -33,8 +33,8 @@ class BillingTaskLink(Base):
     job_run_id = Column(GUID(), ForeignKey("billing_job_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     invoice_id = Column(String(36), nullable=True, index=True)
     billing_period_id = Column(GUID(), nullable=True, index=True)
-    task_type = Column(SAEnum(BillingTaskType, name="billing_task_type"), nullable=False)
-    status = Column(SAEnum(BillingTaskStatus, name="billing_task_status"), nullable=False)
+    task_type = Column(ExistingEnum(BillingTaskType, name="billing_task_type"), nullable=False)
+    status = Column(ExistingEnum(BillingTaskStatus, name="billing_task_status"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     error = Column(Text, nullable=True)

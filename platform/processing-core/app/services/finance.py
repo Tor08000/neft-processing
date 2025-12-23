@@ -114,16 +114,34 @@ class FinanceService:
             current_paid = int(invoice.amount_paid or 0)
             current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
             total = int(invoice.total_with_tax or invoice.total_amount or 0)
-            new_total_paid = current_paid + amount
-            outstanding = total - new_total_paid - current_credits
-            target_status = InvoiceStatus.PARTIALLY_PAID if outstanding > 0 else InvoiceStatus.PAID
+            outstanding_before = total - current_paid - current_credits
+
+            if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
+                self.db.rollback()
+                raise InvalidTransitionError(f"payments allowed only from sent/partial, got {invoice.status}")
 
             try:
-                self._apply_financial_transition(
-                    invoice,
-                    target=target_status,
-                    payment_amount=amount,
-                )
+                if invoice.status == InvoiceStatus.SENT:
+                    self._apply_financial_transition(
+                        invoice,
+                        target=InvoiceStatus.PARTIALLY_PAID,
+                        payment_amount=amount,
+                    )
+                    if invoice.amount_due <= 0:
+                        self._apply_financial_transition(
+                            invoice,
+                            target=InvoiceStatus.PAID,
+                        )
+                else:
+                    target_status = InvoiceStatus.PARTIALLY_PAID
+                    if outstanding_before - amount <= 0:
+                        target_status = InvoiceStatus.PAID
+
+                    self._apply_financial_transition(
+                        invoice,
+                        target=target_status,
+                        payment_amount=amount,
+                    )
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
                 raise
@@ -193,11 +211,31 @@ class FinanceService:
                 current_paid = int(invoice.amount_paid or 0)
                 total = int(invoice.total_with_tax or invoice.total_amount or 0)
                 remaining_after_credit = total - current_paid - (current_credits + amount)
-                self._apply_financial_transition(
-                    invoice,
-                    target=InvoiceStatus.CREDITED if remaining_after_credit <= 0 else InvoiceStatus.PARTIALLY_PAID,
-                    credit_note_amount=amount,
-                )
+                if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
+                    self.db.rollback()
+                    raise InvalidTransitionError(f"credit notes allowed only from sent/partial, got {invoice.status}")
+
+                if invoice.status == InvoiceStatus.SENT:
+                    self._apply_financial_transition(
+                        invoice,
+                        target=InvoiceStatus.PARTIALLY_PAID,
+                        credit_note_amount=amount,
+                    )
+                    if invoice.amount_due <= 0:
+                        self._apply_financial_transition(
+                            invoice,
+                            target=InvoiceStatus.PAID,
+                        )
+                else:
+                    target_status = InvoiceStatus.PARTIALLY_PAID
+                    if remaining_after_credit <= 0:
+                        target_status = InvoiceStatus.PAID
+
+                    self._apply_financial_transition(
+                        invoice,
+                        target=target_status,
+                        credit_note_amount=amount,
+                    )
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
                 raise

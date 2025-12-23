@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, Enum as SAEnum, ForeignKey, String, func
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, func
 
 from app.db import Base
-from app.db.types import GUID
+from app.db.types import ExistingEnum, GUID
 
 
 class PaymentStatus(str, Enum):
@@ -26,7 +26,11 @@ class InvoicePayment(Base):
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
-    status = Column(SAEnum(PaymentStatus, name="invoice_payment_status"), nullable=False, default=PaymentStatus.POSTED)
+    status = Column(
+        ExistingEnum(PaymentStatus, name="invoice_payment_status"),
+        nullable=False,
+        default=PaymentStatus.POSTED,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -40,7 +44,11 @@ class CreditNote(Base):
     currency = Column(String(3), nullable=False)
     reason = Column(String(255), nullable=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
-    status = Column(SAEnum(CreditNoteStatus, name="credit_note_status"), nullable=False, default=CreditNoteStatus.POSTED)
+    status = Column(
+        ExistingEnum(CreditNoteStatus, name="credit_note_status"),
+        nullable=False,
+        default=CreditNoteStatus.POSTED,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

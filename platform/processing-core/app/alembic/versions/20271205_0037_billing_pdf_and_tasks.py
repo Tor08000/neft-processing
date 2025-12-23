@@ -7,6 +7,7 @@ Create Date: 2024-12-05 00:37:00.000000
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
     SCHEMA,
@@ -60,10 +61,11 @@ def upgrade():
         ["billing_period_id"],
         schema=SCHEMA,
     )
+    billing_task_type_t = postgresql.ENUM(name="billing_task_type", schema=SCHEMA, create_type=False)
     if not column_exists(bind, "billing_task_links", "task_type", schema=SCHEMA):
         op.add_column(
             "billing_task_links",
-            sa.Column("task_type", sa.Enum(name="billing_task_type", schema=SCHEMA), nullable=False, server_default="PDF_GENERATE"),
+            sa.Column("task_type", billing_task_type_t, nullable=False, server_default="PDF_GENERATE"),
             schema=SCHEMA,
         )
     if not index_exists(bind, "ix_billing_task_links_task_id", schema=SCHEMA):
