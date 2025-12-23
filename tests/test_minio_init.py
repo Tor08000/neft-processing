@@ -63,14 +63,14 @@ def test_minio_init_creates_buckets_and_policies(tmp_path: Path) -> None:
             "NEFT_S3_BUCKET_INVOICES": "neft-invoices",
             "NEFT_S3_BUCKET_PUBLIC": "0",
             "NEFT_S3_BUCKET_INVOICES_PUBLIC": "1",
-            "MINIO_ROOT_USER": "neftminio",
-            "MINIO_ROOT_PASSWORD": "neftminiosecret",
+            "MINIO_ROOT_USER": "change-me",
+            "MINIO_ROOT_PASSWORD": "change-me",
         }
     )
 
     log_contents, stdout = _run_script(tmp_path, env)
 
-    assert "alias set local http://minio:9000 neftminio neftminiosecret" in log_contents
+    assert "alias set local http://minio:9000 change-me change-me" in log_contents
     assert "mb --ignore-existing local/neft" in log_contents
     assert "mb --ignore-existing local/neft-invoices" in log_contents
     assert "version enable local/neft" in log_contents
@@ -100,5 +100,5 @@ def test_minio_init_retries_on_alias_failure(tmp_path: Path) -> None:
     log_contents, stdout = _run_script(tmp_path, env)
 
     assert "alias set fail" in log_contents
-    assert log_contents.count("alias set local http://minio:9000 neftminio neftminiosecret") >= 1
+    assert log_contents.count("alias set local http://minio:9000 change-me change-me") >= 1
     assert "init complete" in stdout

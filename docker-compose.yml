@@ -7,6 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-neft}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neft}
       POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
+      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---auth=scram-sha-256}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -36,8 +37,8 @@ services:
     env_file:
       - .env.example
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-neftminio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-neftminiosecret}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-change-me}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -145,8 +146,8 @@ services:
       UVICORN_HOST: 0.0.0.0
       UVICORN_PORT: 8000
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-change-me}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
@@ -241,8 +242,8 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CELERY_DEFAULT_QUEUE: celery
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-change-me}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
@@ -279,8 +280,8 @@ services:
       CELERY_DEFAULT_QUEUE: celery
       CELERY_BEAT: "true"
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-change-me}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}

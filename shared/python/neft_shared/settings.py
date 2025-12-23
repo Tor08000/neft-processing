@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 _MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER")
 _MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD")
-_DEFAULT_MINIO_USER = _MINIO_ROOT_USER or "neftminio"
-_DEFAULT_MINIO_PASSWORD = _MINIO_ROOT_PASSWORD or "neftminiosecret"
+_DEFAULT_MINIO_USER = _MINIO_ROOT_USER or "change-me"
+_DEFAULT_MINIO_PASSWORD = _MINIO_ROOT_PASSWORD or "change-me"
 
 
 @dataclass
