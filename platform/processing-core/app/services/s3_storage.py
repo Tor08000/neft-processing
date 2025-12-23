@@ -62,6 +62,16 @@ class S3Storage:
         except ClientError:
             return False
 
+    def list_keys(self, prefix: str) -> list[str]:
+        paginator = self._client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for item in page.get("Contents", []):
+                key = item.get("Key")
+                if key:
+                    keys.append(key)
+        return keys
+
     def presign(self, key: str, *, expires: int = 3600) -> Optional[str]:
         try:
             return self._client.generate_presigned_url(
@@ -77,6 +87,9 @@ class S3Storage:
         if self.public_base:
             return f"{self.public_base}/{key}"
         return f"s3://{self.bucket}/{key}"
+
+    def public_url(self, key: str) -> str:
+        return self._public_url(key)
 
 
 __all__ = ["S3Storage"]
