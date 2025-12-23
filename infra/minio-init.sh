@@ -2,29 +2,35 @@
 
 set -e
 
-ALIAS_NAME="local"
-ENDPOINT="${MINIO_ENDPOINT:-${NEFT_S3_ENDPOINT:-http://minio:9000}}"
-ACCESS_KEY="${MINIO_ROOT_USER:-change-me}"
-SECRET_KEY="${MINIO_ROOT_PASSWORD:-change-me}"
-BUCKET_MAIN="${NEFT_S3_BUCKET:-neft}"
-BUCKET_INVOICES="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
-PUBLIC_MAIN="${NEFT_S3_BUCKET_PUBLIC:-0}"
-PUBLIC_INVOICES="${NEFT_S3_BUCKET_INVOICES_PUBLIC:-0}"
-S3_ACCESS_KEY="${NEFT_S3_ACCESS_KEY:-$ACCESS_KEY}"
-S3_SECRET_KEY="${NEFT_S3_SECRET_KEY:-$SECRET_KEY}"
-MAX_RETRIES="${MINIO_INIT_RETRIES:-60}"
-SLEEP_SECONDS="${MINIO_INIT_RETRY_DELAY:-2}"
-
 log() {
   echo "[minio-init] $1"
 }
 
-fail_if_default_creds() {
-  if [ "$ACCESS_KEY" = "change-me" ] || [ "$SECRET_KEY" = "change-me" ] || [ "$S3_ACCESS_KEY" = "change-me" ] || [ "$S3_SECRET_KEY" = "change-me" ]; then
-    log "MINIO_ROOT_USER/MINIO_ROOT_PASSWORD/NEFT_S3_ACCESS_KEY/NEFT_S3_SECRET_KEY must be set to non-default values in .env"
+require_var() {
+  var_name="$1"
+  var_value="$(eval echo \$$var_name)"
+
+  if [ -z "$var_value" ]; then
+    log "ERROR: $var_name is not set"
     exit 1
   fi
 }
+
+require_var MINIO_ROOT_USER
+require_var MINIO_ROOT_PASSWORD
+require_var NEFT_S3_ACCESS_KEY
+require_var NEFT_S3_SECRET_KEY
+
+ALIAS_NAME="local"
+ENDPOINT="${MINIO_ENDPOINT:-${NEFT_S3_ENDPOINT:-http://minio:9000}}"
+ACCESS_KEY="${MINIO_ROOT_USER}"
+SECRET_KEY="${MINIO_ROOT_PASSWORD}"
+BUCKET_MAIN="${NEFT_S3_BUCKET:-neft}"
+BUCKET_INVOICES="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
+S3_ACCESS_KEY="${NEFT_S3_ACCESS_KEY}"
+S3_SECRET_KEY="${NEFT_S3_SECRET_KEY}"
+MAX_RETRIES="${MINIO_INIT_RETRIES:-60}"
+SLEEP_SECONDS="${MINIO_INIT_RETRY_DELAY:-2}"
 
 wait_for_minio() {
   attempt=1
@@ -44,25 +50,19 @@ wait_for_minio() {
 
 ensure_bucket() {
   bucket="$1"
-  public_flag="$2"
 
   if [ -z "$bucket" ]; then
     return
   fi
 
   log "ensuring bucket '$bucket' exists"
-  mc mb --ignore-existing "$ALIAS_NAME/$bucket" >/dev/null 2>&1 || true
+  mc mb --ignore-existing "$ALIAS_NAME/$bucket"
 
   log "enabling versioning for '$bucket'"
-  mc version enable "$ALIAS_NAME/$bucket" >/dev/null 2>&1 || true
+  mc version enable "$ALIAS_NAME/$bucket"
 
-  if [ "$public_flag" = "1" ]; then
-    log "setting public download policy for '$bucket'"
-    mc anonymous set download "$ALIAS_NAME/$bucket" >/dev/null 2>&1 || true
-  else
-    log "enforcing private policy for '$bucket'"
-    mc anonymous set none "$ALIAS_NAME/$bucket" >/dev/null 2>&1 || true
-  fi
+  log "enforcing private policy for '$bucket'"
+  mc anonymous set none "$ALIAS_NAME/$bucket"
 }
 
 if ! command -v mc >/dev/null 2>&1; then
@@ -70,23 +70,16 @@ if ! command -v mc >/dev/null 2>&1; then
   exit 1
 fi
 
-fail_if_default_creds
 wait_for_minio
+mc alias set "$ALIAS_NAME" "$ENDPOINT" "$ACCESS_KEY" "$SECRET_KEY"
 
-ensure_bucket "$BUCKET_MAIN" "$PUBLIC_MAIN"
+ensure_bucket "$BUCKET_MAIN"
 if [ "$BUCKET_INVOICES" != "$BUCKET_MAIN" ]; then
-  ensure_bucket "$BUCKET_INVOICES" "$PUBLIC_INVOICES"
+  ensure_bucket "$BUCKET_INVOICES"
 fi
 
 log "running smoke check: listing buckets and fetching admin info"
-if ! mc ls "$ALIAS_NAME" >/dev/null 2>&1; then
-  log "failed to list buckets via alias '$ALIAS_NAME'"
-  exit 1
-fi
-
-if ! mc admin info "$ALIAS_NAME" >/dev/null 2>&1; then
-  log "failed to fetch admin info via alias '$ALIAS_NAME'"
-  exit 1
-fi
+mc ls "$ALIAS_NAME" >/dev/null 2>&1
+mc admin info "$ALIAS_NAME" >/dev/null 2>&1
 
 log "init complete"
