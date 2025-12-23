@@ -82,6 +82,22 @@ def test_partial_payment_requires_amount():
         )
 
 
+def test_credit_note_allows_partial_from_sent():
+    invoice = _make_invoice(InvoiceStatus.SENT)
+    machine = InvoiceStateMachine(invoice, db=_StubSession())
+
+    machine.transition(
+        to=InvoiceStatus.PARTIALLY_PAID,
+        actor="tester",
+        reason="credit",
+        credit_note_amount=500,
+    )
+
+    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
+    assert invoice.amount_due == 500
+    assert invoice.credited_amount == 500
+
+
 def test_cannot_cancel_with_existing_payment():
     invoice = _make_invoice(InvoiceStatus.SENT)
     invoice.amount_paid = 100

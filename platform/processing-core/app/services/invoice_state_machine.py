@@ -84,10 +84,12 @@ class InvoiceStateMachine:
             raise InvalidTransitionError("invoice pdf must be ready before sending")
 
         if target == InvoiceStatus.PARTIALLY_PAID:
-            if paid <= 0:
-                raise InvalidTransitionError("partial payment must be greater than zero")
-            if payment_amount is None or payment_amount <= 0:
-                raise InvalidTransitionError("payment amount required for partial payment")
+            has_payment = payment_amount is not None and payment_amount > 0
+            has_credit = credit_note_amount is not None and credit_note_amount > 0
+            if not (has_payment or has_credit):
+                raise InvalidTransitionError("partial settlement requires payment or credit")
+            if paid <= 0 and credits <= 0:
+                raise InvalidTransitionError("partial settlement must increase paid or credited amounts")
             if due < 0:
                 raise InvalidTransitionError("partial payment cannot overpay invoice")
 
