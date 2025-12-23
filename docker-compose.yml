@@ -33,7 +33,6 @@ services:
   minio:
     image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     container_name: neft-processing-minio-1
-    restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     env_file:
       - .env
