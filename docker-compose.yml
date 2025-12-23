@@ -31,11 +31,10 @@ services:
       - "6379:6379"
 
   minio:
-    build:
-      context: .
-      dockerfile: infra/minio.Dockerfile
+    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     container_name: neft-processing-minio-1
-    command: ["minio", "server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
     env_file:
       - .env
     environment:
@@ -46,8 +45,16 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
+
+  minio-health:
+    image: curlimages/curl:8.12.1
+    container_name: neft-processing-minio-health-1
+    restart: unless-stopped
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-lc", "sleep infinity"]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      test: ["CMD", "curl", "-fsS", "http://minio:9000/minio/health/ready"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -61,7 +68,7 @@ services:
     volumes:
       - ./infra/minio-init.sh:/infra/minio-init.sh:ro
     depends_on:
-      minio:
+      minio-health:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/infra/minio-init.sh"]
 
