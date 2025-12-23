@@ -4,8 +4,8 @@ set -e
 
 ALIAS_NAME="local"
 ENDPOINT="${MINIO_ENDPOINT:-${NEFT_S3_ENDPOINT:-http://minio:9000}}"
-ACCESS_KEY="${MINIO_ROOT_USER:-minioadmin}"
-SECRET_KEY="${MINIO_ROOT_PASSWORD:-minioadmin}"
+ACCESS_KEY="${MINIO_ROOT_USER:-neftminio}"
+SECRET_KEY="${MINIO_ROOT_PASSWORD:-neftminiosecret}"
 BUCKET_MAIN="${NEFT_S3_BUCKET:-neft}"
 BUCKET_INVOICES="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
 PUBLIC_MAIN="${NEFT_S3_BUCKET_PUBLIC:-0}"
@@ -66,6 +66,17 @@ wait_for_minio
 ensure_bucket "$BUCKET_MAIN" "$PUBLIC_MAIN"
 if [ "$BUCKET_INVOICES" != "$BUCKET_MAIN" ]; then
   ensure_bucket "$BUCKET_INVOICES" "$PUBLIC_INVOICES"
+fi
+
+log "running smoke check: listing buckets and fetching admin info"
+if ! mc ls "$ALIAS_NAME" >/dev/null 2>&1; then
+  log "failed to list buckets via alias '$ALIAS_NAME'"
+  exit 1
+fi
+
+if ! mc admin info "$ALIAS_NAME" >/dev/null 2>&1; then
+  log "failed to fetch admin info via alias '$ALIAS_NAME'"
+  exit 1
 fi
 
 log "init complete"
