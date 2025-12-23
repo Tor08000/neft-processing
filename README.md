@@ -2,15 +2,18 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ## Как поднять систему локально
 
-1. Скопируйте переменные окружения: `cp -n .env.example .env`.
-2. Заполните доступы администратора в `.env` (значения хранятся только локально):
+1. Скопируйте переменные окружения:
+   - Windows CMD: `if not exist .env copy .env.example .env`
+   - Linux/macOS: `cp -n .env.example .env`
+2. В файле `.env` замените плейсхолдеры `change-me` (например, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `NEFT_S3_ACCESS_KEY`, `NEFT_S3_SECRET_KEY`) на реальные значения.
+3. Заполните доступы администратора в `.env` (значения хранятся только локально):
    - `AUTH_BOOTSTRAP_ENABLED=1`
    - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`, пример: `admin@example.com`)
    - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`, пример: `admin123`)
    - `AUTH_BOOTSTRAP_ADMIN_ROLES=ADMIN,PLATFORM_ADMIN,SUPERADMIN`
    Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно, не затирает пароль существующего пользователя).
-3. Соберите и поднимите сервисы: `docker compose up -d --build`.
-4. Проверьте доступность сервисов через gateway и напрямую:
+4. Соберите и поднимите сервисы: `docker compose up -d --build`.
+5. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
   - Core API напрямую: `http://localhost:8001/health`
   - Core API через gateway: `http://localhost/api/core/health`

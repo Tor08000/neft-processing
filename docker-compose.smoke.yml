@@ -4,7 +4,7 @@ services:
       - smoke
     image: python:3.11-slim
     env_file:
-      - .env.example
+      - .env
     depends_on:
       core-api:
         condition: service_healthy
