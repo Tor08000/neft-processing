@@ -6,6 +6,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-neft}
       POSTGRES_USER: ${POSTGRES_USER:-neft}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neft}
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -31,10 +32,12 @@ services:
   minio:
     image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     container_name: neft-processing-minio-1
-    command: ["server", "/data", "--console-address", ":9001"]
+    command: ["minio", "server", "/data", "--console-address", ":9001"]
+    env_file:
+      - .env.example
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-neftminio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-neftminiosecret}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -142,8 +145,8 @@ services:
       UVICORN_HOST: 0.0.0.0
       UVICORN_PORT: 8000
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-minioadmin}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-minioadmin}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
@@ -226,18 +229,20 @@ services:
   workers:
     build:
       context: .
-      dockerfile: platform/processing-core/Dockerfile
+      dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-workers-1
     env_file:
       - .env.example
     environment:
       SERVICE_NAME: workers
+      ROLE: worker
+      QUEUES: celery,default,billing,pdf
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CELERY_DEFAULT_QUEUE: celery
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-minioadmin}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-minioadmin}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
@@ -249,21 +254,11 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command:
-      [
-        "celery",
-        "-A",
-        "app.celery_client:celery_client",
-        "worker",
-        "-Q",
-        "celery,default,billing,pdf",
-        "--loglevel=INFO",
-      ]
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import importlib; import app; importlib.import_module('app.celery_client')\"",
+          "python -c \"from services.workers.app.celery_app import celery_app; import sys; sys.exit(0 if celery_app.control.ping(timeout=5) else 1)\"",
         ]
       interval: 30s
       timeout: 10s
@@ -272,19 +267,20 @@ services:
   beat:
     build:
       context: .
-      dockerfile: platform/processing-core/Dockerfile
+      dockerfile: platform/billing-clearing/Dockerfile
     container_name: neft-processing-beat-1
     env_file:
       - .env.example
     environment:
       SERVICE_NAME: beat
+      ROLE: beat
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CELERY_DEFAULT_QUEUE: celery
       CELERY_BEAT: "true"
       NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
-      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-minioadmin}
-      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-minioadmin}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-neftminio}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-neftminiosecret}
       NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
@@ -296,19 +292,11 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command:
-      [
-        "celery",
-        "-A",
-        "app.celery_client:celery_client",
-        "beat",
-        "--loglevel=INFO",
-      ]
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import importlib; import app; importlib.import_module('app.celery_client')\"",
+          "python -c \"from services.workers.app.celery_app import celery_app; import sys; conn = celery_app.connection(); conn.ensure_connection(max_retries=1); conn.release(); sys.exit(0)\"",
         ]
       interval: 30s
       timeout: 10s
@@ -330,11 +318,13 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      workers:
+        condition: service_healthy
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "curl -fsS --max-time 5 -u ${FLOWER_BASIC_AUTH:-admin:change-me} http://localhost:5555/api/workers?refresh=1"
+          "python -c \"import base64,json,os,sys,urllib.request; auth=os.getenv('FLOWER_BASIC_AUTH','admin:change-me'); req=urllib.request.Request('http://localhost:5555/api/workers?refresh=1', headers={'Authorization': 'Basic ' + base64.b64encode(auth.encode()).decode()}); data=json.load(urllib.request.urlopen(req, timeout=5)); sys.exit(0 if data else 1)\""
         ]
       interval: 10s
       timeout: 5s
@@ -382,18 +372,25 @@ services:
       - ./infra/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
       - "4317:4317"
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "--config=/etc/otel-collector-config.yaml", "--dry-run"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   jaeger:
     image: jaegertracing/all-in-one:1.55
     container_name: neft-processing-jaeger-1
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4317
     ports:
       - "16686:16686"
       - "14250:14250"
     depends_on:
       otel-collector:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:16686"]
       interval: 10s
