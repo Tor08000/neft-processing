@@ -680,10 +680,9 @@ async def list_invoice_audit(
 
 @router.get("/audit/search", response_model=ClientAuditListResponse)
 async def search_audit_by_external_ref(
+    request: Request,
     external_ref: str = Query(..., min_length=1),
-    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request,
     db: Session = Depends(get_db),
     provider: str | None = Query(None),
     date_from: datetime | None = Query(None),
