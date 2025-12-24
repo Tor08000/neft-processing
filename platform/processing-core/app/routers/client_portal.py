@@ -529,6 +529,7 @@ async def get_invoice_details(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientInvoiceDetails:
     client_id = _ensure_client_context(token)
@@ -609,6 +610,7 @@ async def list_invoice_audit(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
@@ -681,6 +683,7 @@ async def search_audit_by_external_ref(
     external_ref: str = Query(..., min_length=1),
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
     provider: str | None = Query(None),
     date_from: datetime | None = Query(None),
@@ -754,6 +757,7 @@ async def create_reconciliation_request(
     payload: ReconciliationRequestCreate,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     _ensure_client_action_allowed(token)
@@ -851,6 +855,7 @@ async def get_reconciliation_request(
     request_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     client_id = _ensure_client_context(token)
@@ -874,6 +879,7 @@ async def download_reconciliation_request(
     request_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     client_id = _ensure_client_context(token)
@@ -907,6 +913,7 @@ async def acknowledge_reconciliation_request(
     request_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     _ensure_client_action_allowed(token)
@@ -955,6 +962,7 @@ async def acknowledge_document(
     document_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> DocumentAcknowledgementResponse:
     _ensure_client_action_allowed(token)
@@ -1061,6 +1069,7 @@ async def create_invoice_message(
     payload: InvoiceMessageCreateRequest,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
     _ensure_client_action_allowed(token)
@@ -1157,6 +1166,7 @@ async def list_invoice_messages(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -1220,6 +1230,7 @@ async def download_invoice_pdf(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ):
     client_id = _ensure_client_context(token)

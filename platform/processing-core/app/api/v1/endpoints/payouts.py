@@ -333,6 +333,7 @@ def download_export_endpoint(
     export_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     export = load_export(db, export_id)
