@@ -15,7 +15,7 @@ router = APIRouter(prefix="/closing-packages", tags=["closing-packages"])
 @router.post("/generate", response_model=ClosingPackageGenerateResponse)
 def generate_closing_package(
     payload: ClosingPackageGenerateRequest,
-    request: Request | None = None,
+    request: Request = Depends(),
     db: Session = Depends(get_db),
     token: dict = Depends(require_admin_user),
 ) -> ClosingPackageGenerateResponse:
