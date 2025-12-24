@@ -285,11 +285,80 @@ button.primary {
   margin-bottom: 0.5rem;
 }
 
+.card__section {
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 1rem;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
   margin: 1rem 0;
+}
+
+.invoice-actions {
+  display: grid;
+  gap: 1.5rem;
+  padding: 1rem 0 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 1.5rem;
+}
+
+.invoice-actions__item {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.thread-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.acknowledged {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.invoice-thread {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.invoice-thread__list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.invoice-thread__message {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.invoice-thread__message.is-client {
+  border-color: #dbeafe;
+  background: #eff6ff;
+}
+
+.invoice-thread__message.is-support {
+  border-color: #e2e8f0;
+  background: #f1f5f9;
 }
 
 .stat {
@@ -339,6 +408,11 @@ button.primary {
 .pill--warning {
   background: #fef3c7;
   color: #92400e;
+}
+
+.pill--danger {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .pill--neutral {
@@ -443,6 +517,25 @@ button.primary {
   padding: 1rem 0;
 }
 
+.empty-state--full {
+  min-height: 60vh;
+  align-content: center;
+  text-align: center;
+}
+
+.error-boundary {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 2rem;
+}
+
+.error-boundary__card {
+  max-width: 520px;
+  text-align: center;
+}
+
 .timeline {
   display: grid;
   gap: 1rem;
@@ -495,6 +588,17 @@ button.primary {
   gap: 0.75rem;
 }
 
+.form-grid__full {
+  grid-column: 1 / -1;
+}
+
+.form-grid__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .form-field {
   display: grid;
   gap: 0.25rem;
@@ -522,4 +626,17 @@ button.primary {
 .error {
   border-color: #fca5a5;
   background: #fff1f2;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #2563eb;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.link-button:hover {
+  text-decoration: underline;
 }

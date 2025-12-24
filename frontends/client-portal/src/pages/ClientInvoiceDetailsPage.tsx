@@ -1,14 +1,16 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { fetchInvoiceAudit, searchAuditByExternalRef } from "../api/audit";
+import { acknowledgeDocument } from "../api/documents";
 import type { AuditFilters } from "../api/audit";
-import { downloadInvoicePdf, fetchInvoiceDetails } from "../api/invoices";
+import { createInvoiceMessage, downloadInvoicePdf, fetchInvoiceDetails, fetchInvoiceMessages } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
-import type { ClientAuditEvent, ClientInvoiceDetails } from "../types/invoices";
+import type { ClientAuditEvent, ClientInvoiceDetails, InvoiceMessage, InvoiceThreadMessages } from "../types/invoices";
 import { CopyButton } from "../components/CopyButton";
 import { formatDate, formatDateTime, formatMoney } from "../utils/format";
 import { getActorLabel, getAuditEventLabel } from "../utils/audit";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
+import { getThreadStatusLabel, getThreadStatusTone } from "../utils/threads";
 
 const EVENT_TYPE_OPTIONS = [
   { value: "INVOICE_CREATED", label: "Счет создан" },
@@ -16,8 +18,12 @@ const EVENT_TYPE_OPTIONS = [
   { value: "PAYMENT_POSTED", label: "Платеж принят" },
   { value: "PAYMENT_FAILED", label: "Платеж отклонен" },
   { value: "REFUND_POSTED", label: "Возврат выполнен" },
-  { value: "INVOICE_PDF_DOWNLOADED", label: "PDF скачан" },
+  { value: "INVOICE_DOWNLOADED", label: "PDF скачан" },
+  { value: "DOCUMENT_ACKNOWLEDGED", label: "Документ подтвержден" },
+  { value: "INVOICE_MESSAGE_CREATED", label: "Сообщение по счету" },
 ];
+
+const ACTION_ROLES = ["CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"];
 
 export function ClientInvoiceDetailsPage() {
   const { id } = useParams();
@@ -37,6 +43,11 @@ export function ClientInvoiceDetailsPage() {
   });
   const [auditSearch, setAuditSearch] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
+  const [ackLoading, setAckLoading] = useState(false);
+  const [thread, setThread] = useState<InvoiceThreadMessages | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [messageSending, setMessageSending] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -47,6 +58,15 @@ export function ClientInvoiceDetailsPage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [id, user]);
+
+  useEffect(() => {
+    if (!invoice) return;
+    setThreadLoading(true);
+    fetchInvoiceMessages(invoice.id, user)
+      .then((data) => setThread(data))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setThreadLoading(false));
+  }, [invoice, user]);
 
   useEffect(() => {
     if (!invoice || activeTab !== "timeline") return;
@@ -60,14 +80,17 @@ export function ClientInvoiceDetailsPage() {
         const auditResponse = auditSearch
           ? await searchAuditByExternalRef(user, { ...filters, externalRef: auditSearch })
           : await fetchInvoiceAudit(invoice.id, user, filters);
+        const publicItems = auditResponse.items.filter(
+          (item) => !item.visibility || item.visibility === "PUBLIC",
+        );
         if (!auditSearch) {
-          setAuditItems(auditResponse.items);
-          setAuditTotal(auditResponse.total);
+          setAuditItems(publicItems);
+          setAuditTotal(publicItems.length);
           return;
         }
         const paymentIds = new Set(invoice.payments.map((payment) => payment.id));
         const refundIds = new Set(invoice.refunds.map((refund) => refund.id));
-        const scoped = auditResponse.items.filter((item) => {
+        const scoped = publicItems.filter((item) => {
           if (item.entity_id === invoice.id) return true;
           if (paymentIds.has(item.entity_id)) return true;
           if (refundIds.has(item.entity_id)) return true;
@@ -89,6 +112,9 @@ export function ClientInvoiceDetailsPage() {
     if (!error) return null;
     if (error.includes("invoice_not_found")) return "Документ не найден";
     if (error.includes("invoice_forbidden")) return "Нет доступа";
+    if (error.includes("message_rate_limited")) return "Слишком много сообщений. Попробуйте позже.";
+    if (error.includes("message_empty")) return "Сообщение пустое.";
+    if (error.includes("forbidden")) return "Нет доступа";
     return error;
   }, [error]);
 
@@ -98,6 +124,72 @@ export function ClientInvoiceDetailsPage() {
       await downloadInvoicePdf(invoice.id, user);
     } catch (err) {
       setError((err as Error).message);
+    }
+  };
+
+  const canAct = useMemo(() => {
+    const roles = user?.roles ?? [];
+    return roles.some((role) => ACTION_ROLES.includes(role));
+  }, [user?.roles]);
+
+  const handleAcknowledge = async () => {
+    if (!invoice) return;
+    setAckLoading(true);
+    try {
+      const result = await acknowledgeDocument("INVOICE_PDF", invoice.id, user);
+      setInvoice((prev) =>
+        prev
+          ? {
+              ...prev,
+              acknowledged: result.acknowledged,
+              ack_at: result.ack_at,
+            }
+          : prev,
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAckLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!invoice || !messageText.trim()) return;
+    setMessageSending(true);
+    try {
+      const response = await createInvoiceMessage(invoice.id, messageText.trim(), user);
+      const newMessage: InvoiceMessage = {
+        id: response.message_id,
+        sender_type: "CLIENT",
+        sender_user_id: user?.clientId ?? null,
+        sender_email: user?.email ?? null,
+        message: messageText.trim(),
+        created_at: new Date().toISOString(),
+      };
+      setThread((prev) => {
+        if (!prev) {
+          return {
+            thread_id: response.thread_id,
+            status: response.status,
+            items: [newMessage],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          };
+        }
+        return {
+          ...prev,
+          thread_id: response.thread_id,
+          status: response.status,
+          items: [...prev.items, newMessage],
+          total: prev.total + 1,
+        };
+      });
+      setMessageText("");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setMessageSending(false);
     }
   };
 
@@ -123,6 +215,12 @@ export function ClientInvoiceDetailsPage() {
       Boolean(auditSearch);
     return hasFilters ? "Ничего не найдено по фильтрам" : "История пока пуста";
   }, [auditFilters.dateFrom, auditFilters.dateTo, auditFilters.eventType, auditItems.length, auditSearch]);
+
+  const handleMessageInput = (evt: ChangeEvent<HTMLTextAreaElement>) => {
+    setMessageText(evt.target.value);
+    evt.target.style.height = "auto";
+    evt.target.style.height = `${evt.target.scrollHeight}px`;
+  };
 
   if (error) {
     return (
@@ -162,6 +260,79 @@ export function ClientInvoiceDetailsPage() {
         <button type="button" className="secondary" onClick={handleDownload} disabled={!invoice.pdf_available}>
           Скачать PDF
         </button>
+      </div>
+
+      <div className="invoice-actions">
+        <div className="invoice-actions__item">
+          <h3>Подтверждение получения</h3>
+          {invoice.acknowledged ? (
+            <div className="acknowledged">
+              <span className="pill pill--success">Получено ✓</span>
+              <span className="muted">
+                {invoice.ack_at ? `Подтверждено ${formatDateTime(invoice.ack_at)}` : "Получение подтверждено"}
+              </span>
+            </div>
+          ) : (
+            <>
+              <p className="muted">Подтвердите, что документ получен.</p>
+              <button
+                type="button"
+                onClick={handleAcknowledge}
+                disabled={!canAct || ackLoading || !invoice.pdf_available}
+              >
+                {ackLoading ? "Подтверждаем..." : "Подтвердить получение"}
+              </button>
+              {!invoice.pdf_available ? (
+                <p className="muted small">PDF пока недоступен, подтверждение невозможно.</p>
+              ) : null}
+              {!canAct ? <p className="muted small">Действие доступно только администраторам клиента.</p> : null}
+            </>
+          )}
+        </div>
+        <div className="invoice-actions__item">
+          <div className="thread-header">
+            <h3>Вопрос по счету</h3>
+            {thread?.status ? (
+              <span className={`pill ${getThreadStatusTone(thread.status)}`}>{getThreadStatusLabel(thread.status)}</span>
+            ) : null}
+          </div>
+          <textarea
+            value={messageText}
+            onChange={handleMessageInput}
+            placeholder="Напишите вопрос по счету"
+            rows={1}
+            disabled={!canAct || messageSending}
+          />
+          <button type="button" onClick={handleSendMessage} disabled={!canAct || messageSending || !messageText.trim()}>
+            {messageSending ? "Отправляем..." : "Отправить"}
+          </button>
+          {!canAct ? <p className="muted small">Действие доступно только администраторам клиента.</p> : null}
+
+          <div className="invoice-thread">
+            {threadLoading ? (
+              <div className="skeleton-stack">
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+              </div>
+            ) : !thread || thread.items.length === 0 ? (
+              <div className="empty-state">
+                <p className="muted">Сообщений пока нет.</p>
+                <p className="muted small">Задайте вопрос, и мы вернемся с ответом.</p>
+              </div>
+            ) : (
+              <div className="invoice-thread__list">
+                {thread.items.map((item) => (
+                  <div key={item.id} className={`invoice-thread__message ${item.sender_type === "CLIENT" ? "is-client" : "is-support"}`}>
+                    <div className="muted small">
+                      {item.sender_type === "CLIENT" ? "Вы" : "Поддержка"} · {formatDateTime(item.created_at)}
+                    </div>
+                    <div>{item.message}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="tabs">
@@ -340,7 +511,12 @@ export function ClientInvoiceDetailsPage() {
               <div className="skeleton-line" />
             </div>
           ) : auditItems.length === 0 ? (
-            <p className="muted">{auditEmptyState}</p>
+            <div className="empty-state">
+              <p className="muted">{auditEmptyState}</p>
+              <button type="button" className="ghost" onClick={() => setAuditFilters((prev) => ({ ...prev }))}>
+                Обновить
+              </button>
+            </div>
           ) : (
             <div className="timeline-list">
               {auditItems.map((event) => (

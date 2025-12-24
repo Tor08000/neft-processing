@@ -45,6 +45,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     persist(null);
   }, [persist]);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+    window.addEventListener("client-auth-logout", handleUnauthorized);
+    return () => window.removeEventListener("client-auth-logout", handleUnauthorized);
+  }, [logout]);
+
   const reviveSession = useCallback(
     async (stored: AuthSession) => {
       try {

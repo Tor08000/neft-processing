@@ -13,7 +13,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.models.audit_log import ActorType, AuditLog
+from app.models.audit_log import ActorType, AuditLog, AuditVisibility
 from app.services.audit_metrics import metrics as audit_metrics
 
 
@@ -189,6 +189,7 @@ class AuditService:
                 "entity_type": record.entity_type,
                 "entity_id": record.entity_id,
                 "action": record.action,
+                "visibility": record.visibility,
                 "before": record.before,
                 "after": record.after,
                 "diff": record.diff,
@@ -205,6 +206,7 @@ class AuditService:
         entity_type: str,
         entity_id: str,
         action: str,
+        visibility: AuditVisibility = AuditVisibility.INTERNAL,
         before: dict | None = None,
         after: dict | None = None,
         diff: dict | None = None,
@@ -240,6 +242,7 @@ class AuditService:
                 "entity_type": entity_type,
                 "entity_id": entity_id,
                 "action": action,
+                "visibility": visibility,
                 "before": sanitized_before,
                 "after": sanitized_after,
                 "diff": sanitized_diff,
@@ -266,6 +269,7 @@ class AuditService:
             entity_type=entity_type,
             entity_id=entity_id,
             action=action,
+            visibility=visibility,
             before=sanitized_before,
             after=sanitized_after,
             diff=sanitized_diff,

@@ -1,16 +1,19 @@
-import { FormEvent, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { FormEvent, useMemo, useState } from "react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/finance/invoices", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
 
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={returnUrl} replace />;
   }
 
   const handleSubmit = async (event: FormEvent) => {
@@ -19,6 +22,7 @@ export function LoginPage() {
     setFieldError(null);
     try {
       await login(email, password);
+      navigate(returnUrl, { replace: true });
     } catch (err) {
       console.error("Ошибка входа", err);
       setFieldError("Ошибка авторизации, попробуйте позже");

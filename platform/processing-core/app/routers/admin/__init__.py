@@ -4,6 +4,7 @@ from app.api.dependencies.admin import require_admin_user
 from app.routers.admin import (
     accounts,
     billing,
+    client_actions,
     clearing,
     dashboard,
     disputes,
@@ -34,5 +35,6 @@ router.include_router(refunds.router)
 router.include_router(reversals.router)
 router.include_router(disputes.router)
 router.include_router(finance.router)
+router.include_router(client_actions.router)
 
 __all__ = ["router"]

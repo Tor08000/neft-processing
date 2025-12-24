@@ -187,6 +187,14 @@ export function ClientInvoicesPage() {
         <div className="empty-state">
           <p className="muted">Счета не найдены.</p>
           <p className="muted small">Попробуйте изменить фильтры или выбрать другой период.</p>
+          <div className="actions">
+            <button type="button" className="ghost" onClick={() => setFilters((prev) => ({ ...prev, status: [] }))}>
+              Сбросить фильтры
+            </button>
+            <button type="button" className="ghost" onClick={() => setOffset(0)}>
+              Обновить
+            </button>
+          </div>
         </div>
       ) : (
         <table className="table">

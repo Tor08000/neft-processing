@@ -1,7 +1,7 @@
 import { CORE_API_BASE } from "./http";
 import { request } from "./http";
 import type { AuthSession } from "./types";
-import type { ClientInvoiceDetails, ClientInvoiceList } from "../types/invoices";
+import type { ClientInvoiceDetails, ClientInvoiceList, InvoiceThreadMessages } from "../types/invoices";
 
 const withToken = (user: AuthSession | null): string | undefined => user?.token;
 
@@ -48,6 +48,34 @@ export async function fetchInvoiceDetails(id: string, user: AuthSession | null):
     throw new Error(await response.text());
   }
   return response.json() as Promise<ClientInvoiceDetails>;
+}
+
+export function fetchInvoiceMessages(
+  id: string,
+  user: AuthSession | null,
+  params: { limit?: number; offset?: number } = {},
+): Promise<InvoiceThreadMessages> {
+  const search = new URLSearchParams();
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.offset) search.set("offset", String(params.offset));
+  const query = search.toString();
+  const path = query ? `/invoices/${id}/messages?${query}` : `/invoices/${id}/messages`;
+  return request<InvoiceThreadMessages>(path, { method: "GET" }, withToken(user));
+}
+
+export function createInvoiceMessage(
+  id: string,
+  message: string,
+  user: AuthSession | null,
+): Promise<{ thread_id: string; message_id: string; status: string }> {
+  return request<{ thread_id: string; message_id: string; status: string }>(
+    `/invoices/${id}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    },
+    withToken(user),
+  );
 }
 
 const parseFilename = (header: string | null): string | null => {
