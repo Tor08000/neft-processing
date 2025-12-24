@@ -392,6 +392,14 @@ button.primary {
   text-align: left;
 }
 
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1rem;
+  gap: 1rem;
+}
+
 .pill {
   display: inline-flex;
   padding: 0.15rem 0.6rem;

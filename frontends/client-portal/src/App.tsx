@@ -15,6 +15,7 @@ import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
 import { ClientInvoiceDetailsPage } from "./pages/ClientInvoiceDetailsPage";
 import { FinanceExportsPage } from "./pages/FinanceExportsPage";
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
+import { ClosingDocumentsPage } from "./pages/ClosingDocumentsPage";
 import { useAuth } from "./auth/AuthContext";
 
 interface AppProps {
@@ -42,6 +43,7 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/finance/invoices" element={<ClientInvoicesPage />} />
             <Route path="/finance/invoices/:id" element={<ClientInvoiceDetailsPage />} />
             <Route path="/finance/invoices/:id/messages" element={<ClientInvoiceDetailsPage />} />
+            <Route path="/finance/documents" element={<ClosingDocumentsPage />} />
             <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
             <Route path="/finance/exports" element={<FinanceExportsPage />} />
             <Route path="/operations" element={<OperationsPage />} />
