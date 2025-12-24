@@ -44,7 +44,7 @@ def upgrade() -> None:
 
     op.execute(
         f"""
-        CREATE UNIQUE INDEX {SCHEMA}.uq_invoice_payments_provider_external_ref
+        CREATE UNIQUE INDEX IF NOT EXISTS {SCHEMA}.uq_invoice_payments_provider_external_ref
         ON {SCHEMA}.invoice_payments (COALESCE(provider, ''), external_ref)
         """
     )
