@@ -23,7 +23,7 @@ def _add_column_if_missing(bind, table_name: str, column: sa.Column) -> None:
 
 def _drop_column_if_exists(bind, table_name: str, column_name: str) -> None:
     if column_exists(bind, table_name, column_name, schema=SCHEMA):
-        op.drop_column(column_name, table_name=table_name, schema=SCHEMA)
+        op.drop_column(table_name, column_name, schema=SCHEMA)
 
 # revision identifiers, used by Alembic.
 revision = "20261020_0013"

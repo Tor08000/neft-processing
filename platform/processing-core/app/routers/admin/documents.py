@@ -18,7 +18,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 def download_document_admin(
     document_id: str,
     file_type: DocumentFileType,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(require_admin_user),
 ) -> Response:
