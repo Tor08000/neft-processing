@@ -87,6 +87,7 @@ def mark_reconciliation_in_progress(
 @router.post("/reconciliation-requests/{request_id}/attach-result", response_model=ReconciliationRequestOut)
 def attach_reconciliation_result(
     request_id: str,
+    request: Request,
     payload: ReconciliationAttachResultRequest,
     request: Request,
     token: dict = Depends(require_admin_user),
@@ -145,6 +146,7 @@ def mark_reconciliation_sent(
 @router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
 def admin_create_invoice_message(
     invoice_id: str,
+    request: Request,
     payload: AdminInvoiceMessageRequest,
     request: Request,
     token: dict = Depends(require_admin_user),

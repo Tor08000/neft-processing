@@ -123,6 +123,7 @@ def get_invoice_endpoint(invoice_id: str, db: Session = Depends(get_db)) -> Invo
 @router.post("/invoices/{invoice_id}/payments", response_model=InvoicePaymentResponse, status_code=201)
 def create_invoice_payment(
     invoice_id: str,
+    request: Request,
     payload: InvoicePaymentRequest,
     request: Request,
     token: dict = Depends(client_portal_user),
@@ -206,6 +207,7 @@ def create_invoice_payment(
 @router.post("/invoices/{invoice_id}/refunds", response_model=InvoiceRefundResponse, status_code=201)
 def create_invoice_refund(
     invoice_id: str,
+    request: Request,
     payload: InvoiceRefundRequest,
     request: Request,
     token: dict = Depends(client_portal_user),

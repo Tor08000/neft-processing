@@ -48,6 +48,7 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 
 @router.post("/close-period", response_model=PayoutBatchSummary)
 def close_period_endpoint(
+    request: Request,
     payload: PayoutClosePeriodRequest,
     request: Request,
     db: Session = Depends(get_db),
@@ -124,6 +125,7 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutBa
 @router.post("/batches/{batch_id}/mark-sent", response_model=PayoutBatchSummary)
 def mark_sent_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutMarkRequest,
     request: Request,
     db: Session = Depends(get_db),
@@ -157,6 +159,7 @@ def mark_sent_endpoint(
 @router.post("/batches/{batch_id}/mark-settled", response_model=PayoutBatchSummary)
 def mark_settled_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutMarkRequest,
     request: Request,
     db: Session = Depends(get_db),
@@ -228,6 +231,7 @@ def reconcile_endpoint(
 @router.post("/batches/{batch_id}/export", response_model=PayoutExportOut)
 def create_export_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutExportCreateRequest,
     request: Request,
     db: Session = Depends(get_db),

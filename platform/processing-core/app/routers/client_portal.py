@@ -754,6 +754,7 @@ async def search_audit_by_external_ref(
 
 @router.post("/reconciliation-requests", response_model=ReconciliationRequestOut, status_code=201)
 async def create_reconciliation_request(
+    request: Request,
     payload: ReconciliationRequestCreate,
     request: Request,
     token: dict = Depends(client_portal_user),
@@ -1066,6 +1067,7 @@ async def acknowledge_document(
 @router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
 async def create_invoice_message(
     invoice_id: str,
+    request: Request,
     payload: InvoiceMessageCreateRequest,
     request: Request,
     token: dict = Depends(client_portal_user),
