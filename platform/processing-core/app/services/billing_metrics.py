@@ -18,6 +18,8 @@ class BillingMetrics:
     invoice_paid_total: int = 0
     invoice_payment_amount_total: int = 0
     invoice_payment_errors_total: int = 0
+    invoice_payments_posted_total: int = 0
+    invoice_payments_failed_total: int = 0
     billed_amounts: Dict[str, int] = field(default_factory=dict)
     daily_runs: Dict[str, int] = field(default_factory=dict)
     finalize_runs: Dict[str, int] = field(default_factory=dict)
@@ -60,6 +62,16 @@ class BillingMetrics:
         """Track total amount received via payments."""
 
         self.invoice_payment_amount_total += amount
+
+    def mark_payment_posted(self, count: int = 1) -> None:
+        """Count successfully posted payments."""
+
+        self.invoice_payments_posted_total += count
+
+    def mark_payment_failed(self, count: int = 1) -> None:
+        """Count failed payment attempts."""
+
+        self.invoice_payments_failed_total += count
 
     def mark_payment_error(self) -> None:
         """Count payment processing failures."""
@@ -104,6 +116,8 @@ class BillingMetrics:
         self.invoice_paid_total = 0
         self.invoice_payment_amount_total = 0
         self.invoice_payment_errors_total = 0
+        self.invoice_payments_posted_total = 0
+        self.invoice_payments_failed_total = 0
         self.billed_amounts.clear()
         self.daily_runs.clear()
         self.finalize_runs.clear()

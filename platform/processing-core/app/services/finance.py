@@ -83,18 +83,26 @@ class FinanceService:
         currency: str,
         idempotency_key: str,
         external_ref: str | None = None,
+        provider: str | None = None,
     ) -> PaymentResult:
-        if external_ref:
-            existing_by_ref = (
-                self.db.query(InvoicePayment)
-                .filter(InvoicePayment.external_ref == external_ref)
-                .one_or_none()
-            )
-            if existing_by_ref:
-                if existing_by_ref.invoice_id != invoice_id:
-                    raise PaymentReferenceConflict(external_ref)
-                invoice = self._lock_invoice(invoice_id)
-                return PaymentResult(payment=existing_by_ref, invoice=invoice)
+        try:
+            if external_ref:
+                existing_by_ref = (
+                    self.db.query(InvoicePayment)
+                    .filter(InvoicePayment.external_ref == external_ref)
+                    .one_or_none()
+                )
+                if existing_by_ref:
+                    if existing_by_ref.invoice_id != invoice_id:
+                        billing_metrics.mark_payment_error()
+                        billing_metrics.mark_payment_failed()
+                        raise PaymentReferenceConflict(external_ref)
+                    invoice = self._lock_invoice(invoice_id)
+                    return PaymentResult(payment=existing_by_ref, invoice=invoice)
+        except InvoiceNotFound:
+            billing_metrics.mark_payment_error()
+            billing_metrics.mark_payment_failed()
+            raise
 
         existing = (
             self.db.query(InvoicePayment)
@@ -112,6 +120,8 @@ class FinanceService:
             lock_token = make_lock_token("finance_payment", idempotency_key)
             with advisory_lock(self.db, lock_token) as acquired:
                 if not acquired:
+                    billing_metrics.mark_payment_error()
+                    billing_metrics.mark_payment_failed()
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
@@ -122,6 +132,7 @@ class FinanceService:
                     "amount": amount,
                     "currency": currency,
                     "external_ref": external_ref,
+                    "provider": provider,
                 },
                 correlation_id=idempotency_key,
                 invoice_id=invoice_id,
@@ -132,6 +143,7 @@ class FinanceService:
                 currency=currency,
                 idempotency_key=idempotency_key,
                 external_ref=external_ref,
+                provider=provider,
                 status=PaymentStatus.POSTED,
             )
             self.db.add(payment)
@@ -161,6 +173,7 @@ class FinanceService:
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
                 billing_metrics.mark_payment_error()
+                billing_metrics.mark_payment_failed()
                 raise
 
             self.job_service.succeed(
@@ -177,6 +190,7 @@ class FinanceService:
                     "due_amount": invoice.amount_due,
                 },
             )
+            billing_metrics.mark_payment_posted()
             billing_metrics.mark_payment_amount(amount)
             if invoice.status == InvoiceStatus.PAID:
                 billing_metrics.mark_invoice_paid()

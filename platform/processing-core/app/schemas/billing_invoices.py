@@ -42,6 +42,7 @@ class InvoiceOut(BaseModel):
 class InvoicePaymentRequest(BaseModel):
     amount: int = Field(..., gt=0)
     external_ref: str = Field(..., min_length=1, max_length=128)
+    provider: str | None = Field(default=None, max_length=64)
 
 
 class InvoicePaymentResponse(BaseModel):
