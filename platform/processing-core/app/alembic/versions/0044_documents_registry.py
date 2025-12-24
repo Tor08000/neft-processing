@@ -1,7 +1,7 @@
 """Add documents registry tables.
 
 Revision ID: 0044_documents_registry
-Revises: 0043_client_actions_enterprise
+Revises: 20280320_0043_client_actions_enterprise
 Create Date: 2028-03-25 00:00:00
 """
 
@@ -20,7 +20,7 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "0044_documents_registry"
-down_revision = "0043_client_actions_enterprise"
+down_revision = "20280320_0043_client_actions_enterprise"
 branch_labels = None
 depends_on = None
 
