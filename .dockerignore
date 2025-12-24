@@ -25,6 +25,7 @@ Thumbs.db
 
 # misc
 .env
+.admin_token
 logs/
 data/
 build/

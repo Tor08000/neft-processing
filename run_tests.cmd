@@ -4,8 +4,13 @@ setlocal ENABLEDELAYEDEXPANSION
 REM ==============================
 REM  НАСТРОЙКИ
 REM ==============================
-set BASE_URL=http://localhost:8001
-set REQ_FILE=req.json
+set "BASE_URL=http://localhost:8001"
+set "REQ_FILE=req.json"
+
+if not exist "%REQ_FILE%" (
+  echo [ERROR] Файл запроса "%REQ_FILE%" не найден.
+  exit /b 1
+)
 
 echo ==============================================
 echo   NEFT Processing - тестовый прогон операций
@@ -61,10 +66,15 @@ REM =========================================================
 :auth
 REM :auth OUT_VAR_NAME
 set OUTVAR=%1
+set "OP_ID="
 echo.
 echo --- AUTH (terminal-auth) ---
 for /f "tokens=2 delims=:," %%A in ('curl -s -X POST "%BASE_URL%/api/v1/processing/terminal-auth" -H "Content-Type: application/json" -d "@%REQ_FILE%" ^| findstr "operation_id"') do (
-    set OP_ID=%%~A
+    set "OP_ID=%%~A"
+)
+if "!OP_ID!"=="" (
+  echo [ERROR] AUTH не вернул operation_id.
+  exit /b 1
 )
 echo AUTH operation_id=!OP_ID!
 set %OUTVAR%=!OP_ID!
@@ -77,10 +87,15 @@ REM :capture AUTH_ID AMOUNT OUT_VAR_NAME
 set AUTH_ID=%1
 set AMOUNT=%2
 set OUTVAR=%3
+set "CAP_ID="
 echo.
 echo --- CAPTURE (AUTH_ID=%AUTH_ID%, amount=%AMOUNT%) ---
 for /f "tokens=2 delims=:," %%A in ('curl -s -X POST "%BASE_URL%/api/v1/transactions/%AUTH_ID%/capture" -H "Content-Type: application/json" -d "{\"amount\": %AMOUNT%}" ^| findstr "\"operation_id\""') do (
-    set CAP_ID=%%~A
+    set "CAP_ID=%%~A"
+)
+if "!CAP_ID!"=="" (
+  echo [ERROR] CAPTURE не вернул operation_id.
+  exit /b 1
 )
 echo CAPTURE operation_id=!CAP_ID!
 set %OUTVAR%=!CAP_ID!
