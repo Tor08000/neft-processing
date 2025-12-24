@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
+from app.models.audit_log import ActorType
 from app.schemas.payouts import (
     PayoutBatchDetail,
     PayoutBatchListResponse,
@@ -20,6 +21,7 @@ from app.schemas.payouts import (
     PayoutMarkRequest,
     PayoutReconcileResponse,
 )
+from app.services.audit_service import AuditService, request_context_from_request
 from app.services.payout_exports import (
     PayoutExportConflictError,
     PayoutExportError,
@@ -45,9 +47,13 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 
 
 @router.post("/close-period", response_model=PayoutBatchSummary)
-def close_period_endpoint(payload: PayoutClosePeriodRequest, db: Session = Depends(get_db)) -> PayoutBatchSummary:
+def close_period_endpoint(
+    payload: PayoutClosePeriodRequest,
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> PayoutBatchSummary:
     try:
-        batch = close_payout_period(
+        result = close_payout_period(
             db,
             tenant_id=payload.tenant_id,
             partner_id=payload.partner_id,
@@ -58,7 +64,22 @@ def close_period_endpoint(payload: PayoutClosePeriodRequest, db: Session = Depen
         if str(exc) == "invalid_period":
             raise HTTPException(status_code=422, detail="invalid period") from exc
         raise
+    batch = result.batch
     items_count = len(batch.items)
+    if result.created:
+        AuditService(db).audit(
+            event_type="PAYOUT_BATCH_CREATED",
+            entity_type="payout_batch",
+            entity_id=batch.id,
+            action="CREATE",
+            after={
+                "state": batch.state.value if hasattr(batch.state, "value") else str(batch.state),
+                "tenant_id": batch.tenant_id,
+                "partner_id": batch.partner_id,
+                "total_amount": str(batch.total_amount),
+            },
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
     return PayoutBatchSummary(
         batch_id=batch.id,
         state=batch.state.value if hasattr(batch.state, "value") else str(batch.state),
@@ -104,10 +125,11 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutBa
 def mark_sent_endpoint(
     batch_id: str,
     payload: PayoutMarkRequest,
+    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
-        batch = mark_batch_sent(
+        result = mark_batch_sent(
             db,
             batch_id=batch_id,
             provider=payload.provider,
@@ -118,17 +140,29 @@ def mark_sent_endpoint(
     except PayoutError as exc:
         detail = "invalid_state" if str(exc) == "invalid_state" else "batch_not_found"
         raise HTTPException(status_code=409 if detail == "invalid_state" else 404, detail=detail) from exc
-    return PayoutBatchSummary.from_batch(batch)
+    if not result.is_replay:
+        AuditService(db).audit(
+            event_type="PAYOUT_STATUS_CHANGED",
+            entity_type="payout_batch",
+            entity_id=result.batch.id,
+            action="UPDATE_STATE",
+            before={"state": result.previous_state.value if hasattr(result.previous_state, "value") else str(result.previous_state)},
+            after={"state": result.batch.state.value if hasattr(result.batch.state, "value") else str(result.batch.state)},
+            external_refs={"provider": payload.provider, "external_ref": payload.external_ref},
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
+    return PayoutBatchSummary.from_batch(result.batch)
 
 
 @router.post("/batches/{batch_id}/mark-settled", response_model=PayoutBatchSummary)
 def mark_settled_endpoint(
     batch_id: str,
     payload: PayoutMarkRequest,
+    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
-        batch = mark_batch_settled(
+        result = mark_batch_settled(
             db,
             batch_id=batch_id,
             provider=payload.provider,
@@ -139,11 +173,26 @@ def mark_settled_endpoint(
     except PayoutError as exc:
         detail = "invalid_state" if str(exc) == "invalid_state" else "batch_not_found"
         raise HTTPException(status_code=409 if detail == "invalid_state" else 404, detail=detail) from exc
-    return PayoutBatchSummary.from_batch(batch)
+    if not result.is_replay:
+        AuditService(db).audit(
+            event_type="PAYOUT_STATUS_CHANGED",
+            entity_type="payout_batch",
+            entity_id=result.batch.id,
+            action="UPDATE_STATE",
+            before={"state": result.previous_state.value if hasattr(result.previous_state, "value") else str(result.previous_state)},
+            after={"state": result.batch.state.value if hasattr(result.batch.state, "value") else str(result.batch.state)},
+            external_refs={"provider": payload.provider, "external_ref": payload.external_ref},
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
+    return PayoutBatchSummary.from_batch(result.batch)
 
 
 @router.get("/batches/{batch_id}/reconcile", response_model=PayoutReconcileResponse)
-def reconcile_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutReconcileResponse:
+def reconcile_endpoint(
+    batch_id: str,
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> PayoutReconcileResponse:
     try:
         result = reconcile_batch(db, batch_id)
     except PayoutError as exc:
@@ -152,6 +201,21 @@ def reconcile_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutRe
     diff_amount = result.computed_amount - result.recorded_amount
     diff_count = result.computed_count - result.recorded_count
     status_value = "OK" if diff_amount == 0 and diff_count == 0 else "MISMATCH"
+    event_type = "PAYOUT_RECONCILE_OK" if status_value == "OK" else "PAYOUT_RECONCILE_MISMATCH"
+    AuditService(db).audit(
+        event_type=event_type,
+        entity_type="payout_batch",
+        entity_id=result.batch.id,
+        action="RECONCILE",
+        after={
+            "computed_amount": str(result.computed_amount),
+            "recorded_amount": str(result.recorded_amount),
+            "computed_count": result.computed_count,
+            "recorded_count": result.recorded_count,
+            "status": status_value,
+        },
+        request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+    )
     return PayoutReconcileResponse(
         batch_id=result.batch.id,
         computed={"total_amount": result.computed_amount, "operations_count": result.computed_count},
@@ -165,6 +229,7 @@ def reconcile_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutRe
 def create_export_endpoint(
     batch_id: str,
     payload: PayoutExportCreateRequest,
+    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -179,12 +244,58 @@ def create_export_endpoint(
             bank_format_code=payload.bank_format_code,
         )
         export = result.export
+        audit_ctx = request_context_from_request(request, actor_type=ActorType.SYSTEM)
+        external_refs = None
+        if payload.external_ref or payload.provider:
+            external_refs = {"provider": payload.provider, "external_ref": payload.external_ref}
+        if result.created:
+            AuditService(db).audit(
+                event_type="PAYOUT_EXPORT_CREATED",
+                entity_type="payout_export",
+                entity_id=export.id,
+                action="EXPORT",
+                after={"batch_id": export.batch_id, "format": export.format.value},
+                external_refs=external_refs,
+                request_ctx=audit_ctx,
+            )
+        if export.state.value == "UPLOADED":
+            AuditService(db).audit(
+                event_type="PAYOUT_EXPORT_UPLOADED",
+                entity_type="payout_export",
+                entity_id=export.id,
+                action="EXPORT",
+                after={"object_key": export.object_key, "size_bytes": export.size_bytes},
+                external_refs=external_refs,
+                request_ctx=audit_ctx,
+            )
+        if not result.created:
+            AuditService(db).audit(
+                event_type="PAYOUT_EXPORT_IDEMPOTENT_REPLAY",
+                entity_type="payout_export",
+                entity_id=export.id,
+                action="IDEMPOTENT_REPLAY",
+                external_refs=external_refs,
+                request_ctx=audit_ctx,
+            )
         payout_metrics.mark_export(export.format.value, export.state.value)
         if export.size_bytes:
             payout_metrics.mark_export_bytes(export.format.value, int(export.size_bytes))
         return PayoutExportOut.from_export(export)
     except PayoutExportConflictError as exc:
         payout_metrics.mark_export_error()
+        AuditService(db).audit(
+            event_type="PAYOUT_EXPORT_CONFLICT_EXTERNAL_REF",
+            entity_type="payout_export",
+            entity_id=batch_id,
+            action="EXPORT",
+            external_refs={
+                "provider": payload.provider,
+                "external_ref": payload.external_ref,
+            }
+            if payload.external_ref or payload.provider
+            else None,
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
         raise HTTPException(status_code=409, detail="external_ref_conflict") from exc
     except PayoutExportError as exc:
         payout_metrics.mark_export_error()
@@ -217,8 +328,13 @@ def list_export_formats_endpoint() -> PayoutExportFormatListResponse:
     return PayoutExportFormatListResponse(items=list_bank_formats())
 
 
-@router.get("/exports/{export_id}/download", dependencies=[Depends(require_admin_user)])
-def download_export_endpoint(export_id: str, db: Session = Depends(get_db)) -> Response:
+@router.get("/exports/{export_id}/download")
+def download_export_endpoint(
+    export_id: str,
+    token: dict = Depends(require_admin_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> Response:
     export = load_export(db, export_id)
     if not export:
         payout_metrics.mark_export_download_error()
@@ -256,6 +372,19 @@ def download_export_endpoint(export_id: str, db: Session = Depends(get_db)) -> R
             f"{export.batch.date_to.isoformat()}.{extension}"
         )
     payout_metrics.mark_export_download(export.format.value)
+    AuditService(db).audit(
+        event_type="PAYOUT_EXPORT_DOWNLOADED",
+        entity_type="payout_export",
+        entity_id=export.id,
+        action="DOWNLOAD",
+        external_refs={
+            "provider": export.provider,
+            "external_ref": export.external_ref,
+        }
+        if export.external_ref or export.provider
+        else None,
+        request_ctx=request_context_from_request(request, token=token),
+    )
     return Response(
         content=payload,
         media_type=content_type,

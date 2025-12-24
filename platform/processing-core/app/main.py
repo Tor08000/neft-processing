@@ -25,6 +25,7 @@ from app.services.bootstrap import ensure_default_refs
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
+from app.services.audit_metrics import metrics as audit_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveResult,
@@ -546,6 +547,27 @@ def _intake_metrics() -> list[str]:
     ]
 
 
+def _audit_metrics() -> list[str]:
+    event_lines = [
+        f'core_api_audit_events_total{event_type="{event_type}"} {count}'
+        for event_type, count in audit_metrics.events_total.items()
+    ]
+    if not event_lines:
+        event_lines.append('core_api_audit_events_total{event_type="unset"} 0')
+
+    return [
+        "# HELP core_api_audit_events_total Total audit events by type.",
+        "# TYPE core_api_audit_events_total counter",
+        *event_lines,
+        "# HELP core_api_audit_write_errors_total Audit write errors.",
+        "# TYPE core_api_audit_write_errors_total counter",
+        f"core_api_audit_write_errors_total {audit_metrics.write_errors_total}",
+        "# HELP core_api_audit_verify_broken_total Audit chain verification failures.",
+        "# TYPE core_api_audit_verify_broken_total counter",
+        f"core_api_audit_verify_broken_total {audit_metrics.verify_broken_total}",
+    ]
+
+
 def _risk_metrics() -> list[str]:
     latency_p95 = _percentile(risk_metrics.latencies_ms, 95) or 0
     connection_lines = [
@@ -587,6 +609,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_posting_metrics())
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
+    lines.extend(_audit_metrics())
     return "\n".join(lines) + "\n"
 
 
