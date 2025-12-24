@@ -1,0 +1,3 @@
+# Revisions that already existed on main and must never be removed or renamed.
+20260701_0009_client_portal
+0047_merge_heads
