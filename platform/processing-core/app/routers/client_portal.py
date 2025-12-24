@@ -527,6 +527,7 @@ async def list_invoices(
 @router.get("/invoices/{invoice_id}", response_model=ClientInvoiceDetails)
 async def get_invoice_details(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -607,6 +608,7 @@ async def get_invoice_details(
 @router.get("/invoices/{invoice_id}/audit", response_model=ClientAuditListResponse)
 async def list_invoice_audit(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -679,6 +681,7 @@ async def list_invoice_audit(
 @router.get("/audit/search", response_model=ClientAuditListResponse)
 async def search_audit_by_external_ref(
     external_ref: str = Query(..., min_length=1),
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -752,6 +755,7 @@ async def search_audit_by_external_ref(
 @router.post("/reconciliation-requests", response_model=ReconciliationRequestOut, status_code=201)
 async def create_reconciliation_request(
     payload: ReconciliationRequestCreate,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -849,6 +853,7 @@ async def list_reconciliation_requests(
 @router.get("/reconciliation-requests/{request_id}", response_model=ReconciliationRequestOut)
 async def get_reconciliation_request(
     request_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -872,6 +877,7 @@ async def get_reconciliation_request(
 @router.get("/reconciliation-requests/{request_id}/download")
 async def download_reconciliation_request(
     request_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -905,6 +911,7 @@ async def download_reconciliation_request(
 @router.post("/reconciliation-requests/{request_id}/ack", response_model=ReconciliationRequestOut)
 async def acknowledge_reconciliation_request(
     request_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -953,6 +960,7 @@ async def acknowledge_reconciliation_request(
 async def acknowledge_document(
     document_type: str,
     document_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -1059,6 +1067,7 @@ async def acknowledge_document(
 async def create_invoice_message(
     invoice_id: str,
     payload: InvoiceMessageCreateRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -1155,6 +1164,7 @@ async def create_invoice_message(
 @router.get("/invoices/{invoice_id}/messages", response_model=InvoiceThreadMessagesResponse)
 async def list_invoice_messages(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -1218,6 +1228,7 @@ async def list_invoice_messages(
 @router.get("/invoices/{invoice_id}/pdf")
 async def download_invoice_pdf(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),

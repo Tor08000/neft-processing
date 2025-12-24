@@ -131,6 +131,7 @@ def list_documents(
 def download_document(
     document_id: str,
     file_type: DocumentFileType,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -176,6 +177,7 @@ def download_document(
 @router.post("/documents/{document_id}/ack", response_model=DocumentAcknowledgementResponse, status_code=201)
 def acknowledge_document(
     document_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -254,6 +256,7 @@ def acknowledge_document(
 @router.post("/closing-packages/{package_id}/ack", response_model=ClosingPackageAckResponse)
 def acknowledge_closing_package(
     package_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),

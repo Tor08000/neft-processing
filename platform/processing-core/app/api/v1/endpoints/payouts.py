@@ -331,6 +331,7 @@ def list_export_formats_endpoint() -> PayoutExportFormatListResponse:
 @router.get("/exports/{export_id}/download")
 def download_export_endpoint(
     export_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
     request: Request,
     db: Session = Depends(get_db),

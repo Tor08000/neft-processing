@@ -124,6 +124,7 @@ def get_invoice_endpoint(invoice_id: str, db: Session = Depends(get_db)) -> Invo
 def create_invoice_payment(
     invoice_id: str,
     payload: InvoicePaymentRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -206,6 +207,7 @@ def create_invoice_payment(
 def create_invoice_refund(
     invoice_id: str,
     payload: InvoiceRefundRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -315,6 +317,7 @@ def list_invoice_refunds(
 @router.get("/invoices/{invoice_id}/pdf")
 def download_invoice_pdf(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     request: Request,
     db: Session = Depends(get_db),

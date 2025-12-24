@@ -146,6 +146,7 @@ def mark_reconciliation_sent(
 def admin_create_invoice_message(
     invoice_id: str,
     payload: AdminInvoiceMessageRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
     request: Request,
     db: Session = Depends(get_db),
@@ -205,6 +206,7 @@ def admin_create_invoice_message(
 @router.post("/invoice-threads/{thread_id}/close", response_model=InvoiceThreadCloseResponse)
 def close_invoice_thread(
     thread_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
     request: Request,
     db: Session = Depends(get_db),
