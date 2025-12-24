@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchPayoutBatchDetails, fetchPayoutBatches, fetchPayoutExports, createPayoutExport } from "../api/payouts";
+import {
+  fetchPayoutBatchDetails,
+  fetchPayoutBatches,
+  fetchPayoutExports,
+  createPayoutExport,
+  fetchPayoutExportFormats,
+} from "../api/payouts";
 import { Loader } from "../components/Loader/Loader";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { Table, type Column } from "../components/Table/Table";
@@ -15,6 +21,8 @@ export const PayoutBatchesPage: React.FC = () => {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [provider, setProvider] = useState("bank");
   const [externalRef, setExternalRef] = useState("");
+  const [exportFormat, setExportFormat] = useState<"CSV" | "XLSX">("CSV");
+  const [bankFormatCode, setBankFormatCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { data: batchesData = [], isFetching, isLoading, error, refetch } = useQuery({
@@ -49,13 +57,20 @@ export const PayoutBatchesPage: React.FC = () => {
     staleTime: 10_000,
   });
 
+  const { data: exportFormats = [] } = useQuery({
+    queryKey: ["payouts", "export-formats"],
+    queryFn: () => fetchPayoutExportFormats(),
+    staleTime: 60_000,
+  });
+
   const exportMutation = useMutation({
-    mutationFn: (format: "CSV") => {
+    mutationFn: (format: "CSV" | "XLSX") => {
       if (!selectedBatchId) return Promise.reject(new Error("No batch selected"));
       return createPayoutExport(selectedBatchId, {
         format,
         provider: provider || undefined,
         external_ref: externalRef || undefined,
+        bank_format_code: format === "XLSX" ? bankFormatCode || undefined : undefined,
       });
     },
     onSuccess: () => {
@@ -63,7 +78,13 @@ export const PayoutBatchesPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["payouts", selectedBatchId, "exports"] });
     },
     onError: (err: Error) => {
-      setErrorMessage(err.message);
+      if (err.message.includes("external_ref_conflict")) {
+        setErrorMessage("external_ref already used");
+      } else if (err.message.includes("bank_format_required")) {
+        setErrorMessage("Bank template is required for XLSX export");
+      } else {
+        setErrorMessage(err.message);
+      }
     },
   });
 
@@ -80,6 +101,7 @@ export const PayoutBatchesPage: React.FC = () => {
 
   const exportColumns: Column<PayoutExportFile>[] = [
     { key: "format", title: "Format", render: (row) => row.format },
+    { key: "bank_format_code", title: "Bank template", render: (row) => row.bank_format_code || "-" },
     { key: "state", title: "State", render: (row) => <StatusBadge status={row.state} /> },
     { key: "provider", title: "Provider", render: (row) => row.provider || "-" },
     { key: "external_ref", title: "External ref", render: (row) => row.external_ref || "-" },
@@ -160,6 +182,38 @@ export const PayoutBatchesPage: React.FC = () => {
                 <h3 style={{ marginTop: 0 }}>Registry / Export</h3>
                 <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
                   <label>
+                    Format
+                    <select
+                      value={exportFormat}
+                      onChange={(e) => {
+                        const next = e.target.value as "CSV" | "XLSX";
+                        setExportFormat(next);
+                        if (next === "CSV") {
+                          setBankFormatCode("");
+                        }
+                      }}
+                    >
+                      <option value="CSV">CSV</option>
+                      <option value="XLSX">XLSX</option>
+                    </select>
+                  </label>
+                  {exportFormat === "XLSX" && (
+                    <label>
+                      Bank template
+                      <select
+                        value={bankFormatCode}
+                        onChange={(e) => setBankFormatCode(e.target.value)}
+                      >
+                        <option value="">Select template</option>
+                        {exportFormats.map((format) => (
+                          <option key={format.code} value={format.code}>
+                            {format.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label>
                     Provider
                     <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="bank" />
                   </label>
@@ -169,9 +223,17 @@ export const PayoutBatchesPage: React.FC = () => {
                   </label>
                 </div>
                 <div className="actions">
-                  <button onClick={() => exportMutation.mutate("CSV")} disabled={exportMutation.isPending}>
-                    Generate CSV
+                  <button
+                    onClick={() => exportMutation.mutate(exportFormat)}
+                    disabled={
+                      exportMutation.isPending || (exportFormat === "XLSX" && !bankFormatCode)
+                    }
+                  >
+                    Generate {exportFormat}
                   </button>
+                  {exportFormat === "XLSX" && !bankFormatCode && (
+                    <span style={{ color: "#64748b", fontSize: 12 }}>Select a bank template to continue.</span>
+                  )}
                 </div>
                 {errorMessage && <p style={{ color: "#dc2626", marginTop: 8 }}>{errorMessage}</p>}
               </div>

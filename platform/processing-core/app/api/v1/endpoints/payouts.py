@@ -16,6 +16,7 @@ from app.schemas.payouts import (
     PayoutExportCreateRequest,
     PayoutExportListResponse,
     PayoutExportOut,
+    PayoutExportFormatListResponse,
     PayoutMarkRequest,
     PayoutReconcileResponse,
 )
@@ -26,6 +27,7 @@ from app.services.payout_exports import (
     list_payout_exports,
     load_export,
 )
+from app.services.payout_export_xlsx import build_filename, list_bank_formats
 from app.services.payout_metrics import metrics as payout_metrics
 from app.services.payouts_service import (
     PayoutConflictError,
@@ -166,12 +168,15 @@ def create_export_endpoint(
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
+        if payload.format.value == "XLSX" and not payload.bank_format_code:
+            raise HTTPException(status_code=400, detail="bank_format_required")
         result = create_payout_export(
             db,
             batch_id=batch_id,
             export_format=payload.format,
             provider=payload.provider,
             external_ref=payload.external_ref,
+            bank_format_code=payload.bank_format_code,
         )
         export = result.export
         payout_metrics.mark_export(export.format.value, export.state.value)
@@ -190,6 +195,10 @@ def create_export_endpoint(
             raise HTTPException(status_code=409, detail="invalid_state") from exc
         if reason == "format_not_supported":
             raise HTTPException(status_code=400, detail="format_not_supported") from exc
+        if reason == "bank_format_required":
+            raise HTTPException(status_code=400, detail="bank_format_required") from exc
+        if reason == "bank_format_not_found":
+            raise HTTPException(status_code=400, detail="bank_format_not_found") from exc
         raise HTTPException(status_code=400, detail="export_failed") from exc
     except Exception as exc:
         payout_metrics.mark_export_error()
@@ -201,6 +210,11 @@ def list_exports_endpoint(batch_id: str, db: Session = Depends(get_db)) -> Payou
     exports = list_payout_exports(db, batch_id=batch_id)
     items = [PayoutExportOut.from_export(export) for export in exports]
     return PayoutExportListResponse(items=items)
+
+
+@router.get("/export-formats", response_model=PayoutExportFormatListResponse)
+def list_export_formats_endpoint() -> PayoutExportFormatListResponse:
+    return PayoutExportFormatListResponse(items=list_bank_formats())
 
 
 @router.get("/exports/{export_id}/download", dependencies=[Depends(require_admin_user)])
@@ -222,10 +236,25 @@ def download_export_endpoint(export_id: str, db: Session = Depends(get_db)) -> R
     if export.format.value == "XLSX":
         content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         extension = "xlsx"
-    filename = (
-        f"payout_{export.batch.partner_id}_{export.batch.date_from.isoformat()}_"
-        f"{export.batch.date_to.isoformat()}.{extension}"
-    )
+    if export.format.value == "XLSX":
+        try:
+            filename = build_filename(
+                format_code=export.bank_format_code,
+                partner_id=export.batch.partner_id,
+                date_from=export.batch.date_from,
+                date_to=export.batch.date_to,
+                external_ref=export.external_ref,
+            )
+        except ValueError:
+            filename = (
+                f"payout_{export.batch.partner_id}_{export.batch.date_from.isoformat()}_"
+                f"{export.batch.date_to.isoformat()}.{extension}"
+            )
+    else:
+        filename = (
+            f"payout_{export.batch.partner_id}_{export.batch.date_from.isoformat()}_"
+            f"{export.batch.date_to.isoformat()}.{extension}"
+        )
     payout_metrics.mark_export_download(export.format.value)
     return Response(
         content=payload,
