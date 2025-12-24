@@ -1,0 +1,311 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal
+
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
+
+from app.models.operation import Operation, OperationStatus
+from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
+from app.services.payout_metrics import metrics as payout_metrics
+
+
+class PayoutError(Exception):
+    """Domain error for payout lifecycle violations."""
+
+
+class PayoutConflictError(PayoutError):
+    """Raised when external references conflict."""
+
+
+@dataclass(frozen=True)
+class PayoutReconcileResult:
+    batch: PayoutBatch
+    computed_amount: Decimal
+    computed_count: int
+    recorded_amount: Decimal
+    recorded_count: int
+
+
+def _operations_query(
+    db: Session,
+    *,
+    partner_id: str,
+    date_from: date,
+    date_to: date,
+):
+    return (
+        db.query(Operation)
+        .filter(Operation.merchant_id == partner_id)
+        .filter(Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]))
+        .filter(func.date(Operation.created_at) >= date_from)
+        .filter(func.date(Operation.created_at) <= date_to)
+    )
+
+
+def close_payout_period(
+    db: Session,
+    *,
+    tenant_id: int,
+    partner_id: str,
+    date_from: date,
+    date_to: date,
+) -> PayoutBatch:
+    if date_from > date_to:
+        raise ValueError("invalid_period")
+
+    existing = (
+        db.query(PayoutBatch)
+        .filter(PayoutBatch.tenant_id == tenant_id)
+        .filter(PayoutBatch.partner_id == partner_id)
+        .filter(PayoutBatch.date_from == date_from)
+        .filter(PayoutBatch.date_to == date_to)
+        .one_or_none()
+    )
+    if existing:
+        return existing
+
+    amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
+    total_amount, total_qty, operations_count = (
+        db.query(
+            func.coalesce(func.sum(amount_expr), 0),
+            func.coalesce(func.sum(Operation.quantity), 0),
+            func.count(Operation.id),
+        )
+        .select_from(Operation)
+        .filter(Operation.merchant_id == partner_id)
+        .filter(Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]))
+        .filter(func.date(Operation.created_at) >= date_from)
+        .filter(func.date(Operation.created_at) <= date_to)
+        .one()
+    )
+
+    total_amount_decimal = Decimal(total_amount or 0)
+    total_qty_decimal = Decimal(total_qty or 0)
+    operations_count_int = int(operations_count or 0)
+
+    batch = PayoutBatch(
+        tenant_id=tenant_id,
+        partner_id=partner_id,
+        date_from=date_from,
+        date_to=date_to,
+        state=PayoutBatchState.READY,
+        total_amount=total_amount_decimal,
+        total_qty=total_qty_decimal,
+        operations_count=operations_count_int,
+    )
+    item = PayoutItem(
+        amount_gross=total_amount_decimal,
+        commission_amount=Decimal("0"),
+        amount_net=total_amount_decimal,
+        qty=total_qty_decimal,
+        operations_count=operations_count_int,
+    )
+    batch.items.append(item)
+
+    db.add(batch)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = (
+            db.query(PayoutBatch)
+            .filter(PayoutBatch.tenant_id == tenant_id)
+            .filter(PayoutBatch.partner_id == partner_id)
+            .filter(PayoutBatch.date_from == date_from)
+            .filter(PayoutBatch.date_to == date_to)
+            .one_or_none()
+        )
+        if existing:
+            return existing
+        payout_metrics.mark_error()
+        raise PayoutError("payout_batch_create_failed") from exc
+
+    db.commit()
+    payout_metrics.mark_created(total_amount_decimal)
+    db.refresh(batch)
+    return batch
+
+
+def list_payout_batches(
+    db: Session,
+    *,
+    partner_id: str | None,
+    state: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[PayoutBatch], int]:
+    query = db.query(PayoutBatch)
+    if partner_id:
+        query = query.filter(PayoutBatch.partner_id == partner_id)
+    if state:
+        query = query.filter(PayoutBatch.state == state)
+    if date_from:
+        query = query.filter(PayoutBatch.date_from >= date_from)
+    if date_to:
+        query = query.filter(PayoutBatch.date_to <= date_to)
+
+    total = query.count()
+    items = (
+        query.order_by(PayoutBatch.date_from.desc(), PayoutBatch.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return items, total
+
+
+def load_payout_batch(db: Session, batch_id: str) -> PayoutBatch | None:
+    return (
+        db.query(PayoutBatch)
+        .options(selectinload(PayoutBatch.items))
+        .filter(PayoutBatch.id == batch_id)
+        .one_or_none()
+    )
+
+
+def mark_batch_sent(
+    db: Session,
+    *,
+    batch_id: str,
+    provider: str,
+    external_ref: str,
+) -> PayoutBatch:
+    batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
+    if not batch:
+        raise PayoutError("batch_not_found")
+
+    if batch.state in {PayoutBatchState.SENT, PayoutBatchState.SETTLED}:
+        if batch.provider == provider and batch.external_ref == external_ref:
+            return batch
+        raise PayoutConflictError("external_ref_conflict")
+
+    if batch.state != PayoutBatchState.READY:
+        raise PayoutError("invalid_state")
+
+    conflict = (
+        db.query(PayoutBatch)
+        .filter(PayoutBatch.provider == provider)
+        .filter(PayoutBatch.external_ref == external_ref)
+        .filter(PayoutBatch.id != batch.id)
+        .one_or_none()
+    )
+    if conflict:
+        raise PayoutConflictError("external_ref_conflict")
+
+    batch.state = PayoutBatchState.SENT
+    batch.provider = provider
+    batch.external_ref = external_ref
+    batch.sent_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise PayoutConflictError("external_ref_conflict") from exc
+
+    db.refresh(batch)
+    return batch
+
+
+def mark_batch_settled(
+    db: Session,
+    *,
+    batch_id: str,
+    provider: str,
+    external_ref: str,
+) -> PayoutBatch:
+    batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
+    if not batch:
+        raise PayoutError("batch_not_found")
+
+    if batch.state == PayoutBatchState.SETTLED:
+        if batch.provider == provider and batch.external_ref == external_ref:
+            return batch
+        raise PayoutConflictError("external_ref_conflict")
+
+    if batch.state != PayoutBatchState.SENT:
+        raise PayoutError("invalid_state")
+
+    if batch.provider != provider or batch.external_ref != external_ref:
+        raise PayoutConflictError("external_ref_conflict")
+
+    batch.state = PayoutBatchState.SETTLED
+    batch.settled_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise PayoutConflictError("external_ref_conflict") from exc
+
+    payout_metrics.mark_settled()
+    db.refresh(batch)
+    return batch
+
+
+def reconcile_batch(db: Session, batch_id: str) -> PayoutReconcileResult:
+    batch = (
+        db.query(PayoutBatch)
+        .options(selectinload(PayoutBatch.items))
+        .filter(PayoutBatch.id == batch_id)
+        .one_or_none()
+    )
+    if not batch:
+        raise PayoutError("batch_not_found")
+
+    amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
+    computed_amount, computed_count = (
+        db.query(
+            func.coalesce(func.sum(amount_expr), 0),
+            func.count(Operation.id),
+        )
+        .select_from(Operation)
+        .filter(Operation.merchant_id == batch.partner_id)
+        .filter(Operation.status.in_([OperationStatus.CAPTURED, OperationStatus.COMPLETED]))
+        .filter(func.date(Operation.created_at) >= batch.date_from)
+        .filter(func.date(Operation.created_at) <= batch.date_to)
+        .one()
+    )
+
+    recorded_amount = Decimal("0")
+    recorded_count = 0
+    if batch.items:
+        for item in batch.items:
+            recorded_amount += Decimal(item.amount_net or 0)
+            recorded_count += int(item.operations_count or 0)
+    else:
+        recorded_amount = Decimal(batch.total_amount or 0)
+        recorded_count = int(batch.operations_count or 0)
+
+    computed_amount_decimal = Decimal(computed_amount or 0)
+    computed_count_int = int(computed_count or 0)
+
+    if computed_amount_decimal != recorded_amount or computed_count_int != recorded_count:
+        payout_metrics.mark_reconcile_mismatch()
+
+    return PayoutReconcileResult(
+        batch=batch,
+        computed_amount=computed_amount_decimal,
+        computed_count=computed_count_int,
+        recorded_amount=recorded_amount,
+        recorded_count=recorded_count,
+    )
+
+
+__all__ = [
+    "PayoutConflictError",
+    "PayoutError",
+    "PayoutReconcileResult",
+    "close_payout_period",
+    "list_payout_batches",
+    "load_payout_batch",
+    "mark_batch_sent",
+    "mark_batch_settled",
+    "reconcile_batch",
+]
