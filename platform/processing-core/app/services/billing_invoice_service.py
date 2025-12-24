@@ -39,14 +39,21 @@ def close_clearing_period(
     if existing:
         return existing
 
-    tenant_merchant_id = f"tenant-{tenant_id}"
-    base_query = (
-        db.query(Operation)
-        .filter(Operation.merchant_id == tenant_merchant_id)
-        .filter(Operation.status == OperationStatus.CAPTURED)
-        .filter(func.date(Operation.created_at) >= period_from)
-        .filter(func.date(Operation.created_at) <= period_to)
+    tenant_merchant_id = (
+        db.query(ClearingBatch.merchant_id)
+        .filter(ClearingBatch.tenant_id == tenant_id)
+        .order_by(ClearingBatch.closed_at.desc(), ClearingBatch.created_at.desc())
+        .limit(1)
+        .scalar()
     )
+    filters = [
+        Operation.status == OperationStatus.CAPTURED,
+        func.date(Operation.created_at) >= period_from,
+        func.date(Operation.created_at) <= period_to,
+    ]
+    if tenant_merchant_id:
+        filters.append(Operation.merchant_id == tenant_merchant_id)
+    base_query = db.query(Operation).filter(*filters)
 
     amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
     total_amount, total_qty, txn_count = (
@@ -55,16 +62,13 @@ def close_clearing_period(
             func.coalesce(func.sum(Operation.quantity), 0),
             func.count(Operation.id),
         )
-        .filter(Operation.merchant_id == tenant_merchant_id)
-        .filter(Operation.status == OperationStatus.CAPTURED)
-        .filter(func.date(Operation.created_at) >= period_from)
-        .filter(func.date(Operation.created_at) <= period_to)
+        .filter(*filters)
         .one()
     )
 
     merchant_id = base_query.with_entities(Operation.merchant_id).limit(1).scalar()
     if not merchant_id:
-        merchant_id = tenant_merchant_id
+        merchant_id = tenant_merchant_id or "unknown"
 
     batch = ClearingBatch(
         merchant_id=merchant_id,
