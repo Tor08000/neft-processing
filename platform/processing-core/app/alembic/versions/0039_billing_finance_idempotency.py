@@ -1,6 +1,6 @@
 """Billing v1.4.1 finance/idempotency extensions
 
-Revision ID: 20280110_0039_billing_finance_idempotency
+Revision ID: 0039_billing_finance_idempotency
 Revises: 20271220_0038_finance_invoice_extensions
 Create Date: 2028-01-10 00:39:00.000000
 """
@@ -21,7 +21,7 @@ from app.alembic.utils import (
 from app.db.types import GUID
 
 # revision identifiers, used by Alembic.
-revision = "20280110_0039_billing_finance_idempotency"
+revision = "0039_billing_finance_idempotency"
 down_revision = "20271220_0038_finance_invoice_extensions"
 branch_labels = None
 depends_on = None

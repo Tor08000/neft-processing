@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus
 from app.models.invoice import Invoice, InvoiceStatus
+from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
@@ -21,6 +22,10 @@ class FinanceOperationInProgress(RuntimeError):
 
 class InvoiceNotFound(RuntimeError):
     """Invoice missing for finance operation."""
+
+
+class PaymentReferenceConflict(RuntimeError):
+    """Payment external reference points to a different invoice."""
 
 
 @dataclass
@@ -77,7 +82,20 @@ class FinanceService:
         amount: int,
         currency: str,
         idempotency_key: str,
+        external_ref: str | None = None,
     ) -> PaymentResult:
+        if external_ref:
+            existing_by_ref = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.external_ref == external_ref)
+                .one_or_none()
+            )
+            if existing_by_ref:
+                if existing_by_ref.invoice_id != invoice_id:
+                    raise PaymentReferenceConflict(external_ref)
+                invoice = self._lock_invoice(invoice_id)
+                return PaymentResult(payment=existing_by_ref, invoice=invoice)
+
         existing = (
             self.db.query(InvoicePayment)
             .filter(InvoicePayment.idempotency_key == idempotency_key)
@@ -99,7 +117,12 @@ class FinanceService:
             invoice = self._lock_invoice(invoice_id)
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_PAYMENT,
-                params={"invoice_id": invoice_id, "amount": amount, "currency": currency},
+                params={
+                    "invoice_id": invoice_id,
+                    "amount": amount,
+                    "currency": currency,
+                    "external_ref": external_ref,
+                },
                 correlation_id=idempotency_key,
                 invoice_id=invoice_id,
             )
@@ -108,6 +131,7 @@ class FinanceService:
                 amount=amount,
                 currency=currency,
                 idempotency_key=idempotency_key,
+                external_ref=external_ref,
                 status=PaymentStatus.POSTED,
             )
             self.db.add(payment)
@@ -118,32 +142,25 @@ class FinanceService:
 
             if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
                 self.db.rollback()
+                billing_metrics.mark_payment_error()
                 raise InvalidTransitionError(f"payments allowed only from sent/partial, got {invoice.status}")
 
             try:
-                if invoice.status == InvoiceStatus.SENT:
-                    self._apply_financial_transition(
-                        invoice,
-                        target=InvoiceStatus.PARTIALLY_PAID,
-                        payment_amount=amount,
-                    )
-                    if invoice.amount_due <= 0:
-                        self._apply_financial_transition(
-                            invoice,
-                            target=InvoiceStatus.PAID,
-                        )
-                else:
-                    target_status = InvoiceStatus.PARTIALLY_PAID
-                    if outstanding_before - amount <= 0:
-                        target_status = InvoiceStatus.PAID
+                if amount > outstanding_before:
+                    raise InvoiceInvariantError("payment exceeds outstanding balance")
 
-                    self._apply_financial_transition(
-                        invoice,
-                        target=target_status,
-                        payment_amount=amount,
-                    )
+                target_status = InvoiceStatus.PARTIALLY_PAID
+                if amount >= outstanding_before:
+                    target_status = InvoiceStatus.PAID
+
+                self._apply_financial_transition(
+                    invoice,
+                    target=target_status,
+                    payment_amount=amount,
+                )
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
+                billing_metrics.mark_payment_error()
                 raise
 
             self.job_service.succeed(
@@ -160,6 +177,9 @@ class FinanceService:
                     "due_amount": invoice.amount_due,
                 },
             )
+            billing_metrics.mark_payment_amount(amount)
+            if invoice.status == InvoiceStatus.PAID:
+                billing_metrics.mark_invoice_paid()
             return PaymentResult(payment=payment, invoice=invoice)
 
     def create_credit_note(

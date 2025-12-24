@@ -1,7 +1,7 @@
 """Invoice state machine v1.5 hardening
 
-Revision ID: 20280201_0042
-Revises: 20280121_0041
+Revision ID: 0042_invoice_state_machine_v15
+Revises: 0041_invoice_lifecycle_hardening
 Create Date: 2028-02-01 00:42:00.000000
 """
 
@@ -21,8 +21,8 @@ from app.alembic.utils import (
 from app.db.types import GUID
 
 # revision identifiers, used by Alembic.
-revision = "20280201_0042_invoice_state_machine_v15"
-down_revision = "20280121_0041_invoice_lifecycle_hardening"
+revision = "0042_invoice_state_machine_v15"
+down_revision = "0041_invoice_lifecycle_hardening"
 branch_labels = None
 depends_on = None
 

@@ -3,17 +3,29 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.client import client_portal_user
 from app.db import get_db
+from app.models.invoice import Invoice
 from app.schemas.billing_invoices import (
     ClosePeriodRequest,
     ClosePeriodResponse,
     InvoiceGenerateResponse,
     InvoiceOut,
+    InvoicePaymentRequest,
+    InvoicePaymentResponse,
 )
-from app.models.invoice import Invoice
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
+from app.services.finance import (
+    FinanceOperationInProgress,
+    FinanceService,
+    InvoiceNotFound,
+    PaymentReferenceConflict,
+)
+from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
+from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
 
@@ -23,8 +35,8 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
     try:
         batch = close_clearing_period(
             db,
-            period_from=payload.from_date,
-            period_to=payload.to_date,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
             tenant_id=payload.tenant_id,
         )
     except ValueError as exc:
@@ -76,6 +88,75 @@ def get_invoice_endpoint(invoice_id: str, db: Session = Depends(get_db)) -> Invo
         pdf_object_key=invoice.pdf_object_key,
         issued_at=invoice.issued_at,
     )
+
+
+@router.post("/invoices/{invoice_id}/payments", response_model=InvoicePaymentResponse, status_code=201)
+def create_invoice_payment(
+    invoice_id: str,
+    payload: InvoicePaymentRequest,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> InvoicePaymentResponse:
+    invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    client_id = token.get("client_id")
+    if not client_id or str(invoice.client_id) != str(client_id):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    service = FinanceService(db)
+    try:
+        result = service.apply_payment(
+            invoice_id=invoice_id,
+            amount=payload.amount,
+            currency=invoice.currency,
+            idempotency_key=payload.external_ref,
+            external_ref=payload.external_ref,
+        )
+    except InvoiceNotFound as exc:
+        raise HTTPException(status_code=404, detail="invoice not found") from exc
+    except PaymentReferenceConflict as exc:
+        raise HTTPException(status_code=409, detail="payment reference conflict") from exc
+    except FinanceOperationInProgress as exc:
+        raise HTTPException(status_code=409, detail="already running") from exc
+    except (InvalidTransitionError, InvoiceInvariantError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return InvoicePaymentResponse(
+        payment_id=str(result.payment.id),
+        invoice_id=result.payment.invoice_id,
+        amount=result.payment.amount,
+        currency=result.payment.currency,
+        due_amount=result.invoice.amount_due,
+        invoice_status=result.invoice.status.value,
+        status=result.payment.status.value if result.payment.status else "POSTED",
+    )
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+def download_invoice_pdf(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    client_id = token.get("client_id")
+    if not client_id or str(invoice.client_id) != str(client_id):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    if not invoice.pdf_object_key:
+        raise HTTPException(status_code=404, detail="pdf not found")
+
+    storage = S3Storage()
+    pdf_bytes = storage.get_bytes(invoice.pdf_object_key)
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="pdf not found")
+
+    return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 __all__ = ["router"]

@@ -25,6 +25,7 @@ class InvoicePayment(Base):
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
+    external_ref = Column(String(128), nullable=True, unique=True, index=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     status = Column(
         ExistingEnum(PaymentStatus, name="invoice_payment_status"),

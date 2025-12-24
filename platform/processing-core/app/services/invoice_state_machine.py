@@ -22,7 +22,7 @@ class InvoiceInvariantError(RuntimeError):
 _ALLOWED_TRANSITIONS: Mapping[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED},
     InvoiceStatus.ISSUED: {InvoiceStatus.SENT, InvoiceStatus.CANCELLED},
-    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.CANCELLED},
+    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID, InvoiceStatus.CANCELLED},
     InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID},
     InvoiceStatus.PAID: set(),
     InvoiceStatus.CANCELLED: set(),

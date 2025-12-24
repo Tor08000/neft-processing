@@ -1,7 +1,7 @@
 """Invoice lifecycle hardening
 
-Revision ID: 20280121_0041
-Revises: 20280120_0040
+Revision ID: 0041_invoice_lifecycle_hardening
+Revises: 0040_merge_heads
 Create Date: 2028-01-21 00:41:00.000000
 """
 
@@ -19,8 +19,8 @@ from app.alembic.utils import (
 )
 
 # revision identifiers, used by Alembic.
-revision = "20280121_0041_invoice_lifecycle_hardening"
-down_revision = "20280120_0040"
+revision = "0041_invoice_lifecycle_hardening"
+down_revision = "0040_merge_heads"
 branch_labels = None
 depends_on = None
 

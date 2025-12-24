@@ -66,7 +66,7 @@ def test_billing_idempotency_close_period():
     _seed_captured_operations(target_date)
 
     with TestClient(app) as client:
-        payload = {"from": target_date.isoformat(), "to": target_date.isoformat(), "tenant_id": 1}
+        payload = {"date_from": target_date.isoformat(), "date_to": target_date.isoformat(), "tenant_id": 1}
         resp_first = client.post("/api/v1/billing/close-period", json=payload)
         resp_second = client.post("/api/v1/billing/close-period", json=payload)
 
@@ -88,6 +88,19 @@ def test_billing_idempotency_close_period():
         session.close()
 
 
+def test_close_period_requires_date_fields():
+    target_date = date.today()
+    _seed_captured_operations(target_date)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/billing/close-period",
+            json={"from": target_date.isoformat(), "to": target_date.isoformat(), "tenant_id": 1},
+        )
+
+    assert response.status_code == 422
+
+
 def test_invoice_generate_idempotency():
     target_date = date.today()
     _seed_captured_operations(target_date)
@@ -95,7 +108,7 @@ def test_invoice_generate_idempotency():
     with TestClient(app) as client:
         batch_resp = client.post(
             "/api/v1/billing/close-period",
-            json={"from": target_date.isoformat(), "to": target_date.isoformat(), "tenant_id": 1},
+            json={"date_from": target_date.isoformat(), "date_to": target_date.isoformat(), "tenant_id": 1},
         )
         batch_id = batch_resp.json()["batch_id"]
 
@@ -122,7 +135,7 @@ def test_pdf_idempotency_single_object():
     with TestClient(app) as client:
         batch_resp = client.post(
             "/api/v1/billing/close-period",
-            json={"from": target_date.isoformat(), "to": target_date.isoformat(), "tenant_id": 1},
+            json={"date_from": target_date.isoformat(), "date_to": target_date.isoformat(), "tenant_id": 1},
         )
         batch_id = batch_resp.json()["batch_id"]
 
