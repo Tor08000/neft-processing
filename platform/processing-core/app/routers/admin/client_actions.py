@@ -89,7 +89,6 @@ def attach_reconciliation_result(
     request_id: str,
     request: Request,
     payload: ReconciliationAttachResultRequest,
-    request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
@@ -148,9 +147,7 @@ def admin_create_invoice_message(
     invoice_id: str,
     request: Request,
     payload: AdminInvoiceMessageRequest,
-    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
@@ -210,7 +207,6 @@ def close_invoice_thread(
     thread_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceThreadCloseResponse:
     thread = db.query(InvoiceThread).filter(InvoiceThread.id == thread_id).one_or_none()
