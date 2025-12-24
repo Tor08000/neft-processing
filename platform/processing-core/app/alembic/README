@@ -30,3 +30,42 @@ policy:
 
 * `20261205_0018_contract_limits` — table, index, and column creation are
   guarded with `to_regclass`/catalog checks and column existence queries.
+
+Resolving conflicting revisions
+-------------------------------
+When multiple heads appear, identify and merge them before applying migrations.
+
+1. Inspect current heads:
+
+   ```
+   docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads
+   ```
+
+2. If more than one head exists, merge them and commit the merge revision:
+
+   ```
+   docker compose run --rm --entrypoint "" core-api alembic merge <head1> <head2>
+   ```
+
+3. Remove obsolete/duplicate revision files only after the merge revision is
+   committed and verified.
+
+4. Apply migrations to the target database:
+
+   ```
+   docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
+   ```
+
+CI/CD guardrails and next steps
+-------------------------------
+CI enforces:
+
+* Protected revisions are present (`app.alembic.check_protected_revisions`).
+* A single Alembic head exists (`alembic heads`).
+* All revision identifiers are unique (`app.alembic.check_revision_uniqueness`).
+
+Follow-up automation steps:
+
+* Add migration checks to any additional pipelines (e.g., release workflows).
+* Require a merge revision file whenever multiple heads are detected.
+* Keep the migration smoke job as a gate before deployment.
