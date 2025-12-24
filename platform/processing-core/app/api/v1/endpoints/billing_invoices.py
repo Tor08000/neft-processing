@@ -64,7 +64,7 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
 @router.post("/invoices/generate", response_model=InvoiceGenerateResponse)
 def generate_invoice_endpoint(
     batch_id: str = Query(...),
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceGenerateResponse:
     run_pdf_sync = os.getenv("DISABLE_CELERY", "0") == "1"
@@ -124,8 +124,8 @@ def get_invoice_endpoint(invoice_id: str, db: Session = Depends(get_db)) -> Invo
 def create_invoice_payment(
     invoice_id: str,
     payload: InvoicePaymentRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> InvoicePaymentResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -206,8 +206,8 @@ def create_invoice_payment(
 def create_invoice_refund(
     invoice_id: str,
     payload: InvoiceRefundRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> InvoiceRefundResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -315,8 +315,8 @@ def list_invoice_refunds(
 @router.get("/invoices/{invoice_id}/pdf")
 def download_invoice_pdf(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> Response:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
