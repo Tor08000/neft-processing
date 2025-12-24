@@ -34,7 +34,7 @@ def _update_reconciliation_status(
     status: ReconciliationRequestStatus,
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict | None,
     event_type: str,
     visibility: AuditVisibility,
@@ -147,7 +147,7 @@ def admin_create_invoice_message(
     invoice_id: str,
     payload: AdminInvoiceMessageRequest,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
@@ -206,7 +206,7 @@ def admin_create_invoice_message(
 def close_invoice_thread(
     thread_id: str,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceThreadCloseResponse:
     thread = db.query(InvoiceThread).filter(InvoiceThread.id == thread_id).one_or_none()

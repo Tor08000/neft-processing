@@ -49,7 +49,7 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 @router.post("/close-period", response_model=PayoutBatchSummary)
 def close_period_endpoint(
     payload: PayoutClosePeriodRequest,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -125,7 +125,7 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutBa
 def mark_sent_endpoint(
     batch_id: str,
     payload: PayoutMarkRequest,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -158,7 +158,7 @@ def mark_sent_endpoint(
 def mark_settled_endpoint(
     batch_id: str,
     payload: PayoutMarkRequest,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -190,7 +190,7 @@ def mark_settled_endpoint(
 @router.get("/batches/{batch_id}/reconcile", response_model=PayoutReconcileResponse)
 def reconcile_endpoint(
     batch_id: str,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutReconcileResponse:
     try:
@@ -229,7 +229,7 @@ def reconcile_endpoint(
 def create_export_endpoint(
     batch_id: str,
     payload: PayoutExportCreateRequest,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -332,7 +332,7 @@ def list_export_formats_endpoint() -> PayoutExportFormatListResponse:
 def download_export_endpoint(
     export_id: str,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     export = load_export(db, export_id)
