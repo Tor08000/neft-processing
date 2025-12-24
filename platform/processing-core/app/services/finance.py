@@ -125,8 +125,8 @@ class FinanceService:
 
         with txn_context:
             lock_token = make_lock_token("finance_payment", idempotency_key)
-            with advisory_lock(self.db, lock_token):
-                pass
+            with advisory_lock(self.db, lock_token) as acquired:
+                if not acquired:
                     billing_metrics.mark_payment_failed()
                     raise FinanceOperationInProgress(idempotency_key)
 
