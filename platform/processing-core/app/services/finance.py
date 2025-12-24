@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import AuditLog
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus
 from app.models.invoice import Invoice, InvoiceStatus
@@ -202,6 +203,19 @@ class FinanceService:
             billing_metrics.mark_payment_amount(amount)
             if invoice.status == InvoiceStatus.PAID:
                 billing_metrics.mark_invoice_paid()
+            self.db.add(
+                AuditLog(
+                    actor="system",
+                    action="PAYMENT_POSTED",
+                    target=str(payment.id),
+                    payload={
+                        "entity_type": "payment",
+                        "invoice_id": invoice_id,
+                        "external_refs": {"provider": provider, "external_ref": external_ref},
+                        "after": {"amount": amount, "status": payment.status.value, "currency": currency},
+                    },
+                )
+            )
             return PaymentResult(payment=payment, invoice=invoice)
 
     def create_credit_note(
@@ -414,4 +428,17 @@ class FinanceService:
                 },
             )
             billing_metrics.mark_refund_posted()
+            self.db.add(
+                AuditLog(
+                    actor="system",
+                    action="REFUND_POSTED",
+                    target=str(refund.id),
+                    payload={
+                        "entity_type": "refund",
+                        "invoice_id": invoice_id,
+                        "external_refs": {"provider": provider, "external_ref": external_ref},
+                        "after": {"amount": amount, "status": refund.status.value, "currency": currency},
+                    },
+                )
+            )
             return CreditNoteResult(credit_note=refund, invoice=invoice)

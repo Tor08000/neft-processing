@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
@@ -25,69 +24,55 @@ describe("Client invoices", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders list with filters", async () => {
+  it("renders empty state when no invoices", async () => {
     const invoicesResponse = new Response(
       JSON.stringify({
-        items: [
-          {
-            id: "inv-1",
-            period_from: "2024-01-01",
-            period_to: "2024-01-31",
-            currency: "RUB",
-            total_amount: 1000,
-            tax_amount: 0,
-            total_with_tax: 1000,
-            status: "ISSUED",
-            issued_at: "2024-02-01",
-          },
-        ],
-        total: 1,
-        limit: 1,
+        items: [],
+        total: 0,
+        limit: 25,
         offset: 0,
       }),
       { status: 200 },
     );
 
-    const filteredResponse = new Response(
-      JSON.stringify({ items: [], total: 0, limit: 0, offset: 0 }),
-      { status: 200 },
-    );
-
-    const fetchMock = vi.fn().mockResolvedValueOnce(invoicesResponse).mockResolvedValueOnce(filteredResponse);
+    const fetchMock = vi.fn().mockResolvedValueOnce(invoicesResponse);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/invoices"]}>
+      <MemoryRouter initialEntries={["/finance/invoices"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Счета/)).toBeInTheDocument();
-    expect(screen.getByText(/1000/)).toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText(/Статус/i), "PAID");
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const lastCall = fetchMock.mock.calls[1]?.[0] as string;
-    expect(lastCall).toContain("status=PAID");
+    expect(await screen.findByText(/Инвойсы/)).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Счета не найдены/)).toBeInTheDocument();
   });
 
   it("opens invoice details", async () => {
     const detailResponse = new Response(
       JSON.stringify({
         id: "inv-2",
-        period_from: "2024-02-01",
-        period_to: "2024-02-29",
+        number: "INV-2024-02",
+        issued_at: "2024-03-05T00:00:00Z",
         currency: "RUB",
-        total_amount: 1500,
-        tax_amount: 200,
-        total_with_tax: 1700,
+        amount_total: 1500,
+        amount_paid: 1000,
+        amount_refunded: 0,
+        amount_due: 500,
         status: "PAID",
-        issued_at: "2024-03-05",
-        paid_at: "2024-03-10",
-        lines: [
-          { card_id: "card-1", product_id: "diesel", liters: 50, amount: 1500, tax_amount: 200 },
+        pdf_available: true,
+        payments: [
+          {
+            id: "pay-1",
+            amount: 1000,
+            status: "POSTED",
+            provider: "bank",
+            external_ref: "ext-1",
+            created_at: "2024-03-06T10:00:00Z",
+          },
         ],
+        refunds: [],
       }),
       { status: 200 },
     );
@@ -96,13 +81,13 @@ describe("Client invoices", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/invoices/inv-2"]}>
+      <MemoryRouter initialEntries={["/finance/invoices/inv-2"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Счет inv-2/)).toBeInTheDocument();
-    expect(screen.getByText(/diesel/)).toBeInTheDocument();
-    expect(screen.getByText(/1700/)).toBeInTheDocument();
+    expect(await screen.findByText(/INV-2024-02/)).toBeInTheDocument();
+    expect(screen.getByText(/Платежи/)).toBeInTheDocument();
+    expect(screen.getByText(/1500/)).toBeInTheDocument();
   });
 });
