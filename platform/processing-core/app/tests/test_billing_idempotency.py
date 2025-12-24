@@ -28,7 +28,7 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
 
 
-def _seed_captured_operations(target_date: date, count: int = 3) -> None:
+def _seed_captured_operations(target_date: date, count: int = 3, tenant_id: int = 1) -> None:
     session = get_sessionmaker()()
     base_dt = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
     for idx in range(count):
@@ -39,7 +39,7 @@ def _seed_captured_operations(target_date: date, count: int = 3) -> None:
             status=OperationStatus.CAPTURED,
             created_at=base_dt + timedelta(hours=idx + 1),
             updated_at=base_dt + timedelta(hours=idx + 1),
-            merchant_id="m-1",
+            merchant_id=f"tenant-{tenant_id}",
             terminal_id="t-1",
             client_id="client-1",
             card_id="card-1",
