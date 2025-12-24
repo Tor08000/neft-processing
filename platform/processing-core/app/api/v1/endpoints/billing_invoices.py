@@ -63,8 +63,8 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
 
 @router.post("/invoices/generate", response_model=InvoiceGenerateResponse)
 def generate_invoice_endpoint(
-    batch_id: str = Query(...),
     request: Request,
+    batch_id: str = Query(...),
     db: Session = Depends(get_db),
 ) -> InvoiceGenerateResponse:
     run_pdf_sync = os.getenv("DISABLE_CELERY", "0") == "1"
