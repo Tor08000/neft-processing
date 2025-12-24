@@ -1,7 +1,7 @@
 """Billing v0: clearing batch and invoice fields
 
 Revision ID: 20250210_0043_billing_invoice_clearing_batch_fields
-Revises: 20280201_0042_invoice_state_machine_v15
+Revises: 0042_invoice_state_machine_v15
 Create Date: 2025-02-10 00:43:00.000000
 """
 
@@ -22,7 +22,7 @@ from app.alembic.utils import (
 
 # revision identifiers, used by Alembic.
 revision = "20250210_0043_billing_invoice_clearing_batch_fields"
-down_revision = "20280201_0042_invoice_state_machine_v15"
+down_revision = "0042_invoice_state_machine_v15"
 branch_labels = None
 depends_on = None
 

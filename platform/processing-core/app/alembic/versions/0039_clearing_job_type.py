@@ -1,6 +1,6 @@
 """Add clearing job type for admin runs
 
-Revision ID: 20280115_0039_clearing_job_type
+Revision ID: 0039_clearing_job_type
 Revises: 20271220_0038_finance_invoice_extensions
 Create Date: 2025-01-15 00:39:00.000000
 """
@@ -12,7 +12,7 @@ from alembic import op
 from app.alembic.utils import SCHEMA, ensure_pg_enum_value, is_postgres
 
 # revision identifiers, used by Alembic.
-revision = "20280115_0039_clearing_job_type"
+revision = "0039_clearing_job_type"
 down_revision = "20271220_0038_finance_invoice_extensions"
 branch_labels = None
 depends_on = None

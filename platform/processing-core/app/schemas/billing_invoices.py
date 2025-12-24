@@ -7,11 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClosePeriodRequest(BaseModel):
-    from_date: date = Field(..., alias="from")
-    to_date: date = Field(..., alias="to")
+    date_from: date
+    date_to: date
     tenant_id: int
-
-    model_config = ConfigDict(populate_by_name=True)
 
 
 class ClosePeriodResponse(BaseModel):
@@ -39,3 +37,18 @@ class InvoiceOut(BaseModel):
     issued_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InvoicePaymentRequest(BaseModel):
+    amount: int = Field(..., gt=0)
+    external_ref: str = Field(..., min_length=1, max_length=128)
+
+
+class InvoicePaymentResponse(BaseModel):
+    payment_id: str
+    invoice_id: str
+    amount: int
+    currency: str
+    due_amount: int
+    invoice_status: str
+    status: str

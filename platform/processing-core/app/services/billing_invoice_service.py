@@ -20,20 +20,22 @@ logger = get_logger(__name__)
 def close_clearing_period(
     db: Session,
     *,
-    period_from: date,
-    period_to: date,
+    date_from: date,
+    date_to: date,
     tenant_id: int,
 ) -> ClearingBatch:
-    if period_from > period_to:
+    # Use date_from/date_to consistently with the unique constraint on
+    # (tenant_id, date_from, date_to); do not introduce parallel period_from/period_to fields.
+    if date_from > date_to:
         raise ValueError("invalid_period")
 
-    billing_metrics.start_run(period_from.isoformat(), period_to.isoformat())
+    billing_metrics.start_run(date_from.isoformat(), date_to.isoformat())
 
     existing = (
         db.query(ClearingBatch)
         .filter(ClearingBatch.tenant_id == tenant_id)
-        .filter(ClearingBatch.date_from == period_from)
-        .filter(ClearingBatch.date_to == period_to)
+        .filter(ClearingBatch.date_from == date_from)
+        .filter(ClearingBatch.date_to == date_to)
         .one_or_none()
     )
     if existing:
@@ -42,8 +44,8 @@ def close_clearing_period(
     base_query = (
         db.query(Operation)
         .filter(Operation.status == OperationStatus.CAPTURED)
-        .filter(func.date(Operation.created_at) >= period_from)
-        .filter(func.date(Operation.created_at) <= period_to)
+        .filter(func.date(Operation.created_at) >= date_from)
+        .filter(func.date(Operation.created_at) <= date_to)
     )
 
     amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
@@ -54,8 +56,8 @@ def close_clearing_period(
             func.count(Operation.id),
         )
         .filter(Operation.status == OperationStatus.CAPTURED)
-        .filter(func.date(Operation.created_at) >= period_from)
-        .filter(func.date(Operation.created_at) <= period_to)
+        .filter(func.date(Operation.created_at) >= date_from)
+        .filter(func.date(Operation.created_at) <= date_to)
         .one()
     )
 
@@ -66,8 +68,8 @@ def close_clearing_period(
     batch = ClearingBatch(
         merchant_id=merchant_id,
         tenant_id=tenant_id,
-        date_from=period_from,
-        date_to=period_to,
+        date_from=date_from,
+        date_to=date_to,
         total_amount=int(total_amount or 0),
         total_qty=Decimal(total_qty or 0),
         operations_count=int(txn_count or 0),
@@ -81,12 +83,12 @@ def close_clearing_period(
     except IntegrityError:
         db.rollback()
         existing = (
-            db.query(ClearingBatch)
-            .filter(ClearingBatch.tenant_id == tenant_id)
-            .filter(ClearingBatch.date_from == period_from)
-            .filter(ClearingBatch.date_to == period_to)
-            .one_or_none()
-        )
+        db.query(ClearingBatch)
+        .filter(ClearingBatch.tenant_id == tenant_id)
+        .filter(ClearingBatch.date_from == date_from)
+        .filter(ClearingBatch.date_to == date_to)
+        .one_or_none()
+    )
         if existing:
             return existing
         raise
@@ -140,13 +142,18 @@ def generate_invoice_for_batch(
 
     existing = db.query(Invoice).filter(Invoice.clearing_batch_id == batch_id).one_or_none()
     if existing:
+        if not existing.pdf_object_key:
+            existing.pdf_object_key = f"invoices/{existing.id}.pdf"
+            db.add(existing)
         if run_pdf_sync and not existing.pdf_url:
             _generate_invoice_pdf_sync(db, existing)
-            db.commit()
+        db.commit()
         return existing
 
     try:
         total_amount = int(batch.total_amount or 0)
+        initial_status = InvoiceStatus.SENT if run_pdf_sync else InvoiceStatus.ISSUED
+        issued_at = datetime.now(timezone.utc)
         invoice = Invoice(
             clearing_batch_id=batch.id,
             client_id=_resolve_invoice_client_id(db, batch),
@@ -160,8 +167,9 @@ def generate_invoice_for_batch(
             total_with_tax=total_amount,
             amount_paid=0,
             amount_due=total_amount,
-            status=InvoiceStatus.ISSUED,
-            issued_at=datetime.now(timezone.utc),
+            status=initial_status,
+            issued_at=issued_at,
+            sent_at=issued_at if initial_status == InvoiceStatus.SENT else None,
             pdf_status=InvoicePdfStatus.QUEUED if not run_pdf_sync else InvoicePdfStatus.NONE,
             pdf_object_key=None,
         )

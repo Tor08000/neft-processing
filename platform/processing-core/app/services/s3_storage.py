@@ -72,6 +72,16 @@ class S3Storage:
                     keys.append(key)
         return keys
 
+    def get_bytes(self, key: str) -> Optional[bytes]:
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=key)
+            body = response.get("Body")
+            if body is None:
+                return None
+            return body.read()
+        except ClientError:
+            return None
+
     def presign(self, key: str, *, expires: int = 3600) -> Optional[str]:
         try:
             return self._client.generate_presigned_url(
