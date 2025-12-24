@@ -26,7 +26,16 @@ branch_labels = None
 depends_on = None
 
 SCHEMA = resolve_db_schema().schema
-SCHEMA_QUOTED = f'"{SCHEMA}"'
+
+
+def _quote_schema(schema: str) -> str:
+    if not schema:
+        return ""
+    escaped = schema.replace('"', '""')
+    return f'"{escaped}"'
+
+
+SCHEMA_QUOTED = _quote_schema(SCHEMA)
 
 
 def upgrade() -> None:
@@ -82,4 +91,5 @@ def downgrade() -> None:
     drop_index_if_exists(bind, "ix_clearing_merchant_id")
     drop_index_if_exists(bind, "ix_clearing_batch_date")
     drop_table_if_exists(bind, "clearing")
-    bind.exec_driver_sql(f"DROP TYPE IF EXISTS {SCHEMA_QUOTED}.clearing_status")
+    qualified_schema = f"{SCHEMA_QUOTED}." if SCHEMA_QUOTED else ""
+    bind.exec_driver_sql(f"DROP TYPE IF EXISTS {qualified_schema}clearing_status")

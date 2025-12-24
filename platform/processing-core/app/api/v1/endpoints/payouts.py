@@ -48,8 +48,8 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 
 @router.post("/close-period", response_model=PayoutBatchSummary)
 def close_period_endpoint(
+    request: Request,
     payload: PayoutClosePeriodRequest,
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -124,8 +124,8 @@ def get_batch_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutBa
 @router.post("/batches/{batch_id}/mark-sent", response_model=PayoutBatchSummary)
 def mark_sent_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutMarkRequest,
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -157,8 +157,8 @@ def mark_sent_endpoint(
 @router.post("/batches/{batch_id}/mark-settled", response_model=PayoutBatchSummary)
 def mark_settled_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutMarkRequest,
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -190,7 +190,7 @@ def mark_settled_endpoint(
 @router.get("/batches/{batch_id}/reconcile", response_model=PayoutReconcileResponse)
 def reconcile_endpoint(
     batch_id: str,
-    request: Request | None = None,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutReconcileResponse:
     try:
@@ -228,8 +228,8 @@ def reconcile_endpoint(
 @router.post("/batches/{batch_id}/export", response_model=PayoutExportOut)
 def create_export_endpoint(
     batch_id: str,
+    request: Request,
     payload: PayoutExportCreateRequest,
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -331,8 +331,8 @@ def list_export_formats_endpoint() -> PayoutExportFormatListResponse:
 @router.get("/exports/{export_id}/download")
 def download_export_endpoint(
     export_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> Response:
     export = load_export(db, export_id)

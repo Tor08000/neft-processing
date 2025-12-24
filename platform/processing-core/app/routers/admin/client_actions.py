@@ -34,7 +34,7 @@ def _update_reconciliation_status(
     status: ReconciliationRequestStatus,
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict | None,
     event_type: str,
     visibility: AuditVisibility,
@@ -66,8 +66,8 @@ def _get_reconciliation_request(db: Session, request_id: str) -> ReconciliationR
 @router.post("/reconciliation-requests/{request_id}/mark-in-progress", response_model=ReconciliationRequestOut)
 def mark_reconciliation_in_progress(
     request_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
@@ -87,9 +87,9 @@ def mark_reconciliation_in_progress(
 @router.post("/reconciliation-requests/{request_id}/attach-result", response_model=ReconciliationRequestOut)
 def attach_reconciliation_result(
     request_id: str,
+    request: Request,
     payload: ReconciliationAttachResultRequest,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
@@ -123,8 +123,8 @@ def attach_reconciliation_result(
 @router.post("/reconciliation-requests/{request_id}/mark-sent", response_model=ReconciliationRequestOut)
 def mark_reconciliation_sent(
     request_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
@@ -145,9 +145,9 @@ def mark_reconciliation_sent(
 @router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
 def admin_create_invoice_message(
     invoice_id: str,
+    request: Request,
     payload: AdminInvoiceMessageRequest,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
@@ -205,8 +205,8 @@ def admin_create_invoice_message(
 @router.post("/invoice-threads/{thread_id}/close", response_model=InvoiceThreadCloseResponse)
 def close_invoice_thread(
     thread_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> InvoiceThreadCloseResponse:
     thread = db.query(InvoiceThread).filter(InvoiceThread.id == thread_id).one_or_none()
