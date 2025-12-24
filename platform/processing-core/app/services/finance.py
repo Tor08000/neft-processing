@@ -89,7 +89,10 @@ class FinanceService:
             if external_ref:
                 existing_by_ref = (
                     self.db.query(InvoicePayment)
-                    .filter(InvoicePayment.external_ref == external_ref)
+                    .filter(
+                        InvoicePayment.external_ref == external_ref,
+                        InvoicePayment.provider == provider,
+                    )
                     .one_or_none()
                 )
                 if existing_by_ref:
