@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, UniqueConstraint, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID
@@ -20,13 +20,20 @@ class CreditNoteStatus(str, Enum):
 
 class InvoicePayment(Base):
     __tablename__ = "invoice_payments"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "external_ref",
+            name="uq_invoice_payments_provider_external_ref",
+        ),
+    )
 
     id = Column(GUID(), primary_key=True)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
     provider = Column(String(64), nullable=True)
-    external_ref = Column(String(128), nullable=True, unique=True, index=True)
+    external_ref = Column(String(128), nullable=True, index=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     status = Column(
         ExistingEnum(PaymentStatus, name="invoice_payment_status"),
