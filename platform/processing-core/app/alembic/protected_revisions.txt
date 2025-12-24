@@ -25,6 +25,7 @@
 20251230_0007_add_capture_refund_fields_to_operations
 2025_11_01_init
 20260101_0008_billing_summary
+20260701_0009_client_portal
 20260110_0009_billing_summary_extend
 20260110_0009_create_clearing_table
 20260110_0010_clearing
