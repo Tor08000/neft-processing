@@ -66,8 +66,8 @@ def _get_reconciliation_request(db: Session, request_id: str) -> ReconciliationR
 @router.post("/reconciliation-requests/{request_id}/mark-in-progress", response_model=ReconciliationRequestOut)
 def mark_reconciliation_in_progress(
     request_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
@@ -88,8 +88,8 @@ def mark_reconciliation_in_progress(
 def attach_reconciliation_result(
     request_id: str,
     payload: ReconciliationAttachResultRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
@@ -123,8 +123,8 @@ def attach_reconciliation_result(
 @router.post("/reconciliation-requests/{request_id}/mark-sent", response_model=ReconciliationRequestOut)
 def mark_reconciliation_sent(
     request_id: str,
+    request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
     request_item = _get_reconciliation_request(db, request_id)
