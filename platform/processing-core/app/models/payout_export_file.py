@@ -37,6 +37,7 @@ class PayoutExportFile(Base):
     state = Column(SAEnum(PayoutExportState, name="payout_export_state"), nullable=False)
     provider = Column(String(64), nullable=True)
     external_ref = Column(String(128), nullable=True)
+    bank_format_code = Column(String(64), nullable=True)
     object_key = Column(String(512), nullable=False)
     bucket = Column(String(128), nullable=False)
     sha256 = Column(String(64), nullable=True)

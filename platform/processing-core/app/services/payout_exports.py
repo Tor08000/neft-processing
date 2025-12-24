@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
 from app.models.payout_export_file import PayoutExportFile, PayoutExportFormat, PayoutExportState
+from app.services.payout_export_xlsx import (
+    PayoutXlsxResult,
+    generate_payout_registry_xlsx,
+)
 from app.services.s3_storage import S3Storage
 
 
@@ -28,11 +32,23 @@ class PayoutExportResult:
     created: bool
 
 
-def _build_object_key(batch: PayoutBatch, export_format: PayoutExportFormat) -> str:
+def _build_object_key(
+    batch: PayoutBatch,
+    export_format: PayoutExportFormat,
+    *,
+    bank_format_code: str | None,
+    external_ref: str | None,
+    export_id: str,
+) -> str:
     date_from = batch.date_from.isoformat()
     date_to = batch.date_to.isoformat()
-    extension = export_format.value.lower()
-    return f"payouts/{batch.partner_id}/{date_from}_{date_to}/{batch.id}/registry.{extension}"
+    if export_format == PayoutExportFormat.XLSX:
+        ref = external_ref or f"export-{export_id}"
+        return (
+            f"payouts/{batch.partner_id}/{date_from}_{date_to}/{batch.id}/"
+            f"{bank_format_code}_{ref}.xlsx"
+        )
+    return f"payouts/{batch.partner_id}/{date_from}_{date_to}/{batch.id}/registry.csv"
 
 
 def _render_csv(batch: PayoutBatch, generated_at: datetime) -> bytes:
@@ -97,12 +113,14 @@ def _find_existing_export(
     *,
     batch_id: str,
     export_format: PayoutExportFormat,
+    bank_format_code: str | None,
     provider: str | None,
     external_ref: str | None,
 ) -> PayoutExportFile | None:
     query = db.query(PayoutExportFile).filter(
         PayoutExportFile.batch_id == batch_id,
         PayoutExportFile.format == export_format,
+        PayoutExportFile.bank_format_code == bank_format_code,
         PayoutExportFile.provider == provider,
     )
     if external_ref is None:
@@ -119,7 +137,11 @@ def create_payout_export(
     export_format: PayoutExportFormat,
     provider: str | None,
     external_ref: str | None,
+    bank_format_code: str | None = None,
 ) -> PayoutExportResult:
+    if export_format == PayoutExportFormat.XLSX and not bank_format_code:
+        raise PayoutExportError("bank_format_required")
+
     batch = _load_batch(db, batch_id)
     if not batch:
         raise PayoutExportError("batch_not_found")
@@ -143,6 +165,7 @@ def create_payout_export(
         db,
         batch_id=batch_id,
         export_format=export_format,
+        bank_format_code=bank_format_code,
         provider=provider,
         external_ref=external_ref,
     )
@@ -158,19 +181,46 @@ def create_payout_export(
             state=PayoutExportState.DRAFT,
             provider=provider,
             external_ref=external_ref,
-            object_key=_build_object_key(batch, export_format),
+            bank_format_code=bank_format_code,
+            object_key="",
             bucket=settings.NEFT_S3_BUCKET_PAYOUTS,
         )
         db.add(export_record)
         db.flush()
         created = True
+        export_record.object_key = _build_object_key(
+            batch,
+            export_format,
+            bank_format_code=bank_format_code,
+            external_ref=external_ref,
+            export_id=export_record.id,
+        )
+        db.flush()
 
     generated_at = datetime.now(timezone.utc)
     try:
-        if export_format != PayoutExportFormat.CSV:
+        payload: bytes
+        meta: dict | None = None
+        if export_format == PayoutExportFormat.CSV:
+            payload = _render_csv(batch, generated_at=generated_at)
+        elif export_format == PayoutExportFormat.XLSX:
+            if not bank_format_code:
+                raise PayoutExportError("bank_format_required")
+            try:
+                xlsx_result: PayoutXlsxResult = generate_payout_registry_xlsx(
+                    db,
+                    batch_id=batch.id,
+                    format_code=bank_format_code,
+                    provider=provider,
+                    external_ref=external_ref,
+                )
+            except ValueError as exc:
+                raise PayoutExportError(str(exc)) from exc
+            payload = xlsx_result.payload
+            meta = xlsx_result.meta
+        else:
             raise PayoutExportError("format_not_supported")
 
-        payload = _render_csv(batch, generated_at=generated_at)
         payload_hash = hashlib.sha256(payload).hexdigest()
         storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_PAYOUTS)
         storage.put_bytes(
@@ -185,6 +235,8 @@ def create_payout_export(
         export_record.size_bytes = len(payload)
         export_record.error_message = None
         export_record.bucket = storage.bucket
+        if meta is not None:
+            export_record.meta = meta
         db.flush()
     except Exception as exc:
         export_record.state = PayoutExportState.FAILED

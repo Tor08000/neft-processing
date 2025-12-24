@@ -122,6 +122,7 @@ class PayoutExportCreateRequest(BaseModel):
     format: PayoutExportFormat = Field(..., description="CSV or XLSX")
     provider: str | None = Field(default=None, max_length=64)
     external_ref: str | None = Field(default=None, max_length=128)
+    bank_format_code: str | None = Field(default=None, max_length=64)
 
 
 class PayoutExportOut(BaseModel):
@@ -131,6 +132,7 @@ class PayoutExportOut(BaseModel):
     state: str
     provider: str | None = None
     external_ref: str | None = None
+    bank_format_code: str | None = None
     object_key: str
     bucket: str
     sha256: str | None = None
@@ -152,6 +154,7 @@ class PayoutExportOut(BaseModel):
             state=export.state.value if isinstance(export.state, PayoutExportState) else str(export.state),
             provider=export.provider,
             external_ref=export.external_ref,
+            bank_format_code=export.bank_format_code,
             object_key=export.object_key,
             bucket=export.bucket,
             sha256=export.sha256,
@@ -166,3 +169,12 @@ class PayoutExportOut(BaseModel):
 
 class PayoutExportListResponse(BaseModel):
     items: list[PayoutExportOut]
+
+
+class PayoutExportFormatInfo(BaseModel):
+    code: str
+    title: str
+
+
+class PayoutExportFormatListResponse(BaseModel):
+    items: list[PayoutExportFormatInfo]

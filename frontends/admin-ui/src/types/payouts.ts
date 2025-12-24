@@ -43,6 +43,7 @@ export interface PayoutExportFile {
   state: string;
   provider?: string | null;
   external_ref?: string | null;
+  bank_format_code?: string | null;
   object_key: string;
   bucket: string;
   sha256?: string | null;
@@ -51,4 +52,9 @@ export interface PayoutExportFile {
   uploaded_at?: string | null;
   error_message?: string | null;
   download_url: string;
+}
+
+export interface PayoutExportFormatInfo {
+  code: string;
+  title: string;
 }
