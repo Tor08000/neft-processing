@@ -87,11 +87,12 @@ class FinanceService:
     ) -> PaymentResult:
         try:
             if external_ref:
-                existing_by_ref = (
-                    self.db.query(InvoicePayment)
-                    .filter(InvoicePayment.external_ref == external_ref)
-                    .one_or_none()
-                )
+                query = self.db.query(InvoicePayment).filter(InvoicePayment.external_ref == external_ref)
+                if provider is None:
+                    query = query.filter(InvoicePayment.provider.is_(None))
+                else:
+                    query = query.filter(InvoicePayment.provider == provider)
+                existing_by_ref = query.one_or_none()
                 if existing_by_ref:
                     if existing_by_ref.invoice_id != invoice_id:
                         billing_metrics.mark_payment_error()

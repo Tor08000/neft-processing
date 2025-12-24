@@ -26,6 +26,7 @@ from app.services.finance import (
     PaymentReferenceConflict,
 )
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
+from app.services.job_locks import make_stable_key
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
@@ -112,11 +113,15 @@ def create_invoice_payment(
 
     service = FinanceService(db)
     try:
+        idempotency_key = make_stable_key(
+            "invoice_payment",
+            {"external_ref": payload.external_ref, "provider": payload.provider},
+        )
         result = service.apply_payment(
             invoice_id=invoice_id,
             amount=payload.amount,
             currency=invoice.currency,
-            idempotency_key=payload.external_ref,
+            idempotency_key=idempotency_key,
             external_ref=payload.external_ref,
             provider=payload.provider,
         )
