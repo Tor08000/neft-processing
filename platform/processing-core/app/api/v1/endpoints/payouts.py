@@ -3,18 +3,30 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.schemas.payouts import (
     PayoutBatchDetail,
     PayoutBatchListResponse,
     PayoutBatchSummary,
     PayoutClosePeriodRequest,
+    PayoutExportCreateRequest,
+    PayoutExportListResponse,
+    PayoutExportOut,
     PayoutMarkRequest,
     PayoutReconcileResponse,
 )
+from app.services.payout_exports import (
+    PayoutExportConflictError,
+    PayoutExportError,
+    create_payout_export,
+    list_payout_exports,
+    load_export,
+)
+from app.services.payout_metrics import metrics as payout_metrics
 from app.services.payouts_service import (
     PayoutConflictError,
     PayoutError,
@@ -25,6 +37,7 @@ from app.services.payouts_service import (
     mark_batch_settled,
     reconcile_batch,
 )
+from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 
@@ -143,6 +156,81 @@ def reconcile_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutRe
         recorded={"total_amount": result.recorded_amount, "operations_count": result.recorded_count},
         diff={"amount": diff_amount, "count": diff_count},
         status=status_value,
+    )
+
+
+@router.post("/batches/{batch_id}/export", response_model=PayoutExportOut)
+def create_export_endpoint(
+    batch_id: str,
+    payload: PayoutExportCreateRequest,
+    db: Session = Depends(get_db),
+) -> PayoutExportOut:
+    try:
+        result = create_payout_export(
+            db,
+            batch_id=batch_id,
+            export_format=payload.format,
+            provider=payload.provider,
+            external_ref=payload.external_ref,
+        )
+        export = result.export
+        payout_metrics.mark_export(export.format.value, export.state.value)
+        if export.size_bytes:
+            payout_metrics.mark_export_bytes(export.format.value, int(export.size_bytes))
+        return PayoutExportOut.from_export(export)
+    except PayoutExportConflictError as exc:
+        payout_metrics.mark_export_error()
+        raise HTTPException(status_code=409, detail="external_ref_conflict") from exc
+    except PayoutExportError as exc:
+        payout_metrics.mark_export_error()
+        reason = str(exc)
+        if reason == "batch_not_found":
+            raise HTTPException(status_code=404, detail="batch_not_found") from exc
+        if reason == "invalid_state":
+            raise HTTPException(status_code=409, detail="invalid_state") from exc
+        if reason == "format_not_supported":
+            raise HTTPException(status_code=400, detail="format_not_supported") from exc
+        raise HTTPException(status_code=400, detail="export_failed") from exc
+    except Exception as exc:
+        payout_metrics.mark_export_error()
+        raise HTTPException(status_code=500, detail="export_failed") from exc
+
+
+@router.get("/batches/{batch_id}/exports", response_model=PayoutExportListResponse)
+def list_exports_endpoint(batch_id: str, db: Session = Depends(get_db)) -> PayoutExportListResponse:
+    exports = list_payout_exports(db, batch_id=batch_id)
+    items = [PayoutExportOut.from_export(export) for export in exports]
+    return PayoutExportListResponse(items=items)
+
+
+@router.get("/exports/{export_id}/download", dependencies=[Depends(require_admin_user)])
+def download_export_endpoint(export_id: str, db: Session = Depends(get_db)) -> Response:
+    export = load_export(db, export_id)
+    if not export:
+        payout_metrics.mark_export_download_error()
+        raise HTTPException(status_code=404, detail="export_not_found")
+    storage = S3Storage(bucket=export.bucket)
+    payload = storage.get_bytes(export.object_key)
+    if payload is None:
+        payout_metrics.mark_export_download_error()
+        raise HTTPException(status_code=404, detail="file_not_found")
+    if not export.batch:
+        payout_metrics.mark_export_download_error()
+        raise HTTPException(status_code=404, detail="batch_not_found")
+    content_type = "text/csv"
+    extension = "csv"
+    if export.format.value == "XLSX":
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        extension = "xlsx"
+    filename = (
+        f"payout_{export.batch.partner_id}_{export.batch.date_from.isoformat()}_"
+        f"{export.batch.date_to.isoformat()}.{extension}"
+    )
+    payout_metrics.mark_export_download(export.format.value)
+    return Response(
+        content=payload,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

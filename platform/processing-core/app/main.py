@@ -452,12 +452,38 @@ def _billing_metrics() -> list[str]:
 
 
 def _payout_metrics() -> list[str]:
+    export_state_lines = [
+        f'core_api_payout_exports_total{{format="{export_format}",state="{state}"}} {count}'
+        for (export_format, state), count in payout_metrics.exports_total.items()
+    ]
+    if not export_state_lines:
+        export_state_lines.append('core_api_payout_exports_total{format="unset",state="unset"} 0')
+
+    export_bytes_lines = [
+        f'core_api_payout_export_bytes_total{{format="{export_format}"}} {count}'
+        for export_format, count in payout_metrics.export_bytes_total.items()
+    ]
+    if not export_bytes_lines:
+        export_bytes_lines.append('core_api_payout_export_bytes_total{format="unset"} 0')
+
+    export_download_lines = [
+        f'core_api_payout_export_download_total{{format="{export_format}"}} {count}'
+        for export_format, count in payout_metrics.export_download_total.items()
+    ]
+    if not export_download_lines:
+        export_download_lines.append('core_api_payout_export_download_total{format="unset"} 0')
+
     return [
         f"core_api_payout_batches_created_total {payout_metrics.batches_created_total}",
         f"core_api_payout_batches_errors_total {payout_metrics.batches_errors_total}",
         f"core_api_payout_batches_settled_total {payout_metrics.batches_settled_total}",
         f"core_api_payout_reconcile_mismatch_total {payout_metrics.reconcile_mismatch_total}",
         f"core_api_payout_amount_total {payout_metrics.payout_amount_total}",
+        *export_state_lines,
+        f"core_api_payout_export_errors_total {payout_metrics.export_errors_total}",
+        *export_bytes_lines,
+        *export_download_lines,
+        f"core_api_payout_export_download_errors_total {payout_metrics.export_download_errors_total}",
     ]
 
 

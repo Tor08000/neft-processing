@@ -16,6 +16,9 @@ clearing_batch_operation
 settlements
 payout_orders
 payout_events
+payout_batches
+payout_items
+payout_export_files
 client_cards
 client_operations
 client_limits

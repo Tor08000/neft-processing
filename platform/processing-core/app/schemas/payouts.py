@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
+from app.models.payout_export_file import PayoutExportFile, PayoutExportFormat, PayoutExportState
 
 
 class PayoutClosePeriodRequest(BaseModel):
@@ -115,3 +116,53 @@ class PayoutReconcileResponse(BaseModel):
     recorded: dict
     diff: dict
     status: str
+
+
+class PayoutExportCreateRequest(BaseModel):
+    format: PayoutExportFormat = Field(..., description="CSV or XLSX")
+    provider: str | None = Field(default=None, max_length=64)
+    external_ref: str | None = Field(default=None, max_length=128)
+
+
+class PayoutExportOut(BaseModel):
+    export_id: str
+    batch_id: str
+    format: str
+    state: str
+    provider: str | None = None
+    external_ref: str | None = None
+    object_key: str
+    bucket: str
+    sha256: str | None = None
+    size_bytes: int | None = None
+    generated_at: datetime | None = None
+    uploaded_at: datetime | None = None
+    error_message: str | None = None
+    meta: dict | None = None
+    download_url: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_export(cls, export: PayoutExportFile) -> "PayoutExportOut":
+        return cls(
+            export_id=export.id,
+            batch_id=export.batch_id,
+            format=export.format.value if isinstance(export.format, PayoutExportFormat) else str(export.format),
+            state=export.state.value if isinstance(export.state, PayoutExportState) else str(export.state),
+            provider=export.provider,
+            external_ref=export.external_ref,
+            object_key=export.object_key,
+            bucket=export.bucket,
+            sha256=export.sha256,
+            size_bytes=export.size_bytes,
+            generated_at=export.generated_at,
+            uploaded_at=export.uploaded_at,
+            error_message=export.error_message,
+            meta=export.meta,
+            download_url=f"/api/v1/payouts/exports/{export.id}/download",
+        )
+
+
+class PayoutExportListResponse(BaseModel):
+    items: list[PayoutExportOut]

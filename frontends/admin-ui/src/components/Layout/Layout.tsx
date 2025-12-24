@@ -8,6 +8,7 @@ const navItems = [
   { to: "/accounts", label: "Balances" },
   { to: "/operations", label: "Operations" },
   { to: "/billing", label: "Billing" },
+  { to: "/payouts", label: "Payouts" },
   { to: "/integration", label: "Integration Monitoring" },
   { to: "/analytics/risk", label: "Risk analytics" },
   { to: "/risk/rules", label: "Risk rules" },
