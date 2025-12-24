@@ -1,6 +1,6 @@
 """Harden client actions schema and add audit visibility.
 
-Revision ID: 20280320_0043_client_actions_enterprise
+Revision ID: 0043_client_actions_enterprise
 Revises: 20280315_0042_client_actions_v1
 Create Date: 2028-03-20 00:00:00
 """
@@ -14,7 +14,7 @@ from app.alembic.helpers import column_exists, ensure_pg_enum, ensure_pg_enum_va
 from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
-revision = "20280320_0043_client_actions_enterprise"
+revision = "0043_client_actions_enterprise"
 down_revision = "20280315_0042_client_actions_v1"
 branch_labels = None
 depends_on = None
@@ -118,7 +118,7 @@ def upgrade() -> None:
     if column_exists(bind, "reconciliation_requests", "requested_at", schema=SCHEMA):
         op.execute(
             sa.text(
-                f\"UPDATE {_qualify('reconciliation_requests')} SET requested_at=created_at WHERE requested_at IS NULL\"
+                f"UPDATE {_qualify('reconciliation_requests')} SET requested_at=created_at WHERE requested_at IS NULL"
             )
         )
         op.alter_column(
