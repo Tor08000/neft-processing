@@ -23,6 +23,7 @@ from app.routers.client import router as client_router
 from app.routers.client_portal import router as client_portal_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -69,6 +70,11 @@ try:
     from app.api.v1.endpoints.billing_invoices import router as billing_invoices_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     billing_invoices_router = None  # type: ignore
+
+try:
+    from app.api.v1.endpoints.payouts import router as payouts_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    payouts_router = None  # type: ignore
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
@@ -319,6 +325,8 @@ if partners_router is not None:
     app.include_router(partners_router, prefix="")
 if billing_invoices_router is not None:
     app.include_router(billing_invoices_router, prefix="")
+if payouts_router is not None:
+    app.include_router(payouts_router, prefix="")
 
 app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_router, prefix=API_PREFIX_CORE)
@@ -343,6 +351,8 @@ if partners_router is not None:
     core_prefixed_router.include_router(partners_router, prefix="")
 if billing_invoices_router is not None:
     core_prefixed_router.include_router(billing_invoices_router, prefix="")
+if payouts_router is not None:
+    core_prefixed_router.include_router(payouts_router, prefix="")
 
 core_prefixed_router.include_router(admin_router)
 core_prefixed_router.include_router(client_router)
@@ -441,6 +451,16 @@ def _billing_metrics() -> list[str]:
     return lines
 
 
+def _payout_metrics() -> list[str]:
+    return [
+        f"core_api_payout_batches_created_total {payout_metrics.batches_created_total}",
+        f"core_api_payout_batches_errors_total {payout_metrics.batches_errors_total}",
+        f"core_api_payout_batches_settled_total {payout_metrics.batches_settled_total}",
+        f"core_api_payout_reconcile_mismatch_total {payout_metrics.reconcile_mismatch_total}",
+        f"core_api_payout_amount_total {payout_metrics.payout_amount_total}",
+    ]
+
+
 def _posting_metrics() -> list[str]:
     latency_p99 = _percentile(posting_metrics.latencies_ms, 99) or 0
     status_lines = [
@@ -537,6 +557,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
         "core_api_up 1",
     ]
     lines.extend(_billing_metrics())
+    lines.extend(_payout_metrics())
     lines.extend(_posting_metrics())
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
