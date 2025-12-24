@@ -18,6 +18,7 @@ from app.schemas.billing_invoices import (
     InvoicePaymentResponse,
 )
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
+from app.services.billing_metrics import metrics as billing_metrics
 from app.services.finance import (
     FinanceOperationInProgress,
     FinanceService,
@@ -99,10 +100,14 @@ def create_invoice_payment(
 ) -> InvoicePaymentResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
     if invoice is None:
+        billing_metrics.mark_payment_error()
+        billing_metrics.mark_payment_failed()
         raise HTTPException(status_code=404, detail="invoice not found")
 
     client_id = token.get("client_id")
     if not client_id or str(invoice.client_id) != str(client_id):
+        billing_metrics.mark_payment_error()
+        billing_metrics.mark_payment_failed()
         raise HTTPException(status_code=403, detail="forbidden")
 
     service = FinanceService(db)
@@ -113,6 +118,7 @@ def create_invoice_payment(
             currency=invoice.currency,
             idempotency_key=payload.external_ref,
             external_ref=payload.external_ref,
+            provider=payload.provider,
         )
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
@@ -120,8 +126,10 @@ def create_invoice_payment(
         raise HTTPException(status_code=409, detail="payment reference conflict") from exc
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
-    except (InvalidTransitionError, InvoiceInvariantError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvoiceInvariantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return InvoicePaymentResponse(
         payment_id=str(result.payment.id),

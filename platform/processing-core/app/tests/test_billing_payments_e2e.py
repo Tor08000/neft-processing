@@ -14,7 +14,8 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
-from app.models.invoice import InvoiceStatus
+from app.models.finance import InvoicePayment
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 
 
@@ -57,6 +58,28 @@ def _seed_captured_operations(target_date: date, count: int = 2) -> None:
         session.add(op)
     session.commit()
     session.close()
+
+
+def _create_invoice(total: int, status: InvoiceStatus = InvoiceStatus.SENT) -> str:
+    session = get_sessionmaker()()
+    invoice = Invoice(
+        client_id="client-1",
+        period_from=date.today(),
+        period_to=date.today(),
+        currency="RUB",
+        total_amount=total,
+        tax_amount=0,
+        total_with_tax=total,
+        amount_paid=0,
+        amount_due=total,
+        status=status,
+        pdf_status=InvoicePdfStatus.READY,
+    )
+    session.add(invoice)
+    session.commit()
+    invoice_id = invoice.id
+    session.close()
+    return invoice_id
 
 
 def test_invoice_payment_flow(client_auth_headers: dict):
@@ -106,3 +129,79 @@ def test_invoice_payment_flow(client_auth_headers: dict):
         assert remaining_payment.status_code == 201
         remaining_payload = remaining_payment.json()
         assert remaining_payload["invoice_status"] == InvoiceStatus.PAID.value
+
+
+def test_payment_idempotency_external_ref(client_auth_headers: dict):
+    invoice_id = _create_invoice(100)
+
+    with TestClient(app) as client:
+        client.headers.update(client_auth_headers)
+        first = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 40, "external_ref": "IDEMP-1"},
+        )
+        assert first.status_code == 201
+        first_payload = first.json()
+
+        second = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 40, "external_ref": "IDEMP-1"},
+        )
+        assert second.status_code == 201
+        second_payload = second.json()
+        assert second_payload["payment_id"] == first_payload["payment_id"]
+        assert second_payload["due_amount"] == first_payload["due_amount"]
+
+    session = get_sessionmaker()()
+    payments = session.query(InvoicePayment).filter_by(invoice_id=invoice_id).all()
+    invoice = session.query(Invoice).filter_by(id=invoice_id).one()
+    assert len(payments) == 1
+    assert invoice.amount_paid == 40
+    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
+    session.close()
+
+
+def test_partial_then_full_payment(client_auth_headers: dict):
+    invoice_id = _create_invoice(100)
+
+    with TestClient(app) as client:
+        client.headers.update(client_auth_headers)
+        partial = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 30, "external_ref": "PART-1"},
+        )
+        assert partial.status_code == 201
+        assert partial.json()["invoice_status"] == InvoiceStatus.PARTIALLY_PAID.value
+
+        full = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 70, "external_ref": "PART-2"},
+        )
+        assert full.status_code == 201
+        assert full.json()["invoice_status"] == InvoiceStatus.PAID.value
+
+        extra = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 10, "external_ref": "PART-3"},
+        )
+        assert extra.status_code == 409
+
+
+def test_overpayment_rejected(client_auth_headers: dict):
+    invoice_id = _create_invoice(100)
+
+    with TestClient(app) as client:
+        client.headers.update(client_auth_headers)
+        response = client.post(
+            f"/api/v1/invoices/{invoice_id}/payments",
+            json={"amount": 120, "external_ref": "OVERPAY-1"},
+        )
+        assert response.status_code == 400
+
+    session = get_sessionmaker()()
+    payments = session.query(InvoicePayment).filter_by(invoice_id=invoice_id).all()
+    invoice = session.query(Invoice).filter_by(id=invoice_id).one()
+    assert len(payments) == 0
+    assert invoice.status == InvoiceStatus.SENT
+    assert invoice.amount_paid == 0
+    session.close()
