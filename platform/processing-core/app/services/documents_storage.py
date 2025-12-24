@@ -29,6 +29,7 @@ class DocumentsStorage:
     @staticmethod
     def build_object_key(
         *,
+        tenant_id: int,
         client_id: str,
         period_from: date,
         period_to: date,
@@ -38,7 +39,7 @@ class DocumentsStorage:
     ) -> str:
         ext = "pdf" if file_type == DocumentFileType.PDF else "xlsx"
         return (
-            f"documents/{client_id}/{period_from:%Y-%m-%d}_{period_to:%Y-%m-%d}/"
+            f"documents/{tenant_id}/{client_id}/{period_from:%Y-%m-%d}_{period_to:%Y-%m-%d}/"
             f"v{version}/{document_type.value}.{ext}"
         )
 
@@ -65,4 +66,3 @@ class DocumentsStorage:
 
     def exists(self, object_key: str) -> bool:
         return self.storage.exists(object_key)
-

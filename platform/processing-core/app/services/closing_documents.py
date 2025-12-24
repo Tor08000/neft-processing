@@ -311,6 +311,7 @@ class ClosingDocumentsService:
         content_type: str = "application/pdf",
     ) -> DocumentFile:
         object_key = self.storage.build_object_key(
+            tenant_id=document.tenant_id,
             client_id=document.client_id,
             period_from=document.period_from,
             period_to=document.period_to,
