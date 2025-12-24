@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Iterable, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
 from app.models.account import Account, AccountBalance
+from app.models.audit_log import AuditLog
 from app.models.card import Card
 from app.models.client import Client
 from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
-from app.models.invoice import InvoiceStatus
+from app.models.finance import CreditNote, InvoicePayment
+from app.models.invoice import Invoice, InvoiceStatus
 from app.models.ledger_entry import LedgerDirection, LedgerEntry
 from app.models.operation import Operation, RiskResult
 from app.repositories.billing_repository import BillingRepository
@@ -25,8 +29,14 @@ from app.schemas.client_portal import (
     CardLimit,
     ClientCard,
     ClientCardsResponse,
+    ClientAuditEvent,
+    ClientAuditListResponse,
+    ClientExportItem,
+    ClientExportListResponse,
     ClientInvoiceDetails,
     ClientInvoiceListResponse,
+    ClientInvoicePayment,
+    ClientInvoiceRefund,
     ClientInvoiceSummary,
     ClientProfile,
     OperationDetails,
@@ -34,6 +44,7 @@ from app.schemas.client_portal import (
     OperationsPage,
     StatementResponse,
 )
+from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/v1/client", tags=["client-portal"])
 
@@ -78,6 +89,73 @@ def _parse_enum_value(raw: str, enum_cls):
             return enum_cls(raw.split(".")[-1])
         except Exception as exc:  # pragma: no cover - defensive
             raise HTTPException(status_code=400, detail="invalid_limit_config") from exc
+
+
+def _parse_status_values(raw_values: list[str] | None) -> list[InvoiceStatus] | None:
+    if not raw_values:
+        return None
+    parsed: list[InvoiceStatus] = []
+    for value in raw_values:
+        parsed.append(_parse_enum_value(value, InvoiceStatus))
+    return list(dict.fromkeys(parsed))
+
+
+def _sanitize_audit_snapshot(snapshot: dict | None) -> dict | None:
+    if not snapshot:
+        return None
+    allowed = {"amount", "status", "currency", "number"}
+    return {key: value for key, value in snapshot.items() if key in allowed}
+
+
+def _sanitize_external_refs(payload: dict | None) -> dict | None:
+    if not payload:
+        return None
+    external_refs = payload.get("external_refs")
+    if isinstance(external_refs, dict):
+        return {
+            "provider": external_refs.get("provider"),
+            "external_ref": external_refs.get("external_ref"),
+        }
+    provider = payload.get("provider")
+    external_ref = payload.get("external_ref")
+    if provider or external_ref:
+        return {"provider": provider, "external_ref": external_ref}
+    return None
+
+
+def _resolve_actor_type(actor: str | None, payload: dict | None) -> str | None:
+    if payload and payload.get("actor_type"):
+        return payload.get("actor_type")
+    if not actor:
+        return None
+    if actor.lower() in {"system"}:
+        return "SYSTEM"
+    return "SERVICE"
+
+
+def _resolve_actor_id(actor: str | None, payload: dict | None) -> str | None:
+    if payload and payload.get("actor_id"):
+        return payload.get("actor_id")
+    return actor
+
+
+def _infer_entity_type(
+    entity_id: str,
+    *,
+    invoice_id: str,
+    payment_ids: set[str],
+    refund_ids: set[str],
+    payload: dict | None,
+) -> str:
+    if payload and payload.get("entity_type"):
+        return str(payload.get("entity_type"))
+    if entity_id == invoice_id:
+        return "invoice"
+    if entity_id in payment_ids:
+        return "payment"
+    if entity_id in refund_ids:
+        return "refund"
+    return "invoice"
 
 
 def _attach_limits(db: Session, cards: Iterable[Card]) -> list[ClientCard]:
@@ -333,24 +411,49 @@ async def operation_details(
 async def list_invoices(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
-    period_from: date | None = Query(None, alias="from"),
-    period_to: date | None = Query(None, alias="to"),
-    status: str | None = None,
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    status: list[str] | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("issued_at:desc"),
 ) -> ClientInvoiceListResponse:
     client_id = _ensure_client_context(token)
     repo = BillingRepository(db)
+    issued_from = datetime.combine(date_from, time.min) if date_from else None
+    issued_to = datetime.combine(date_to, time.max) if date_to else None
 
-    parsed_status = _parse_enum_value(status, InvoiceStatus) if status else None
+    parsed_statuses = _parse_status_values(status)
+    sort_value = sort.strip().lower()
+    if sort_value not in {"issued_at:desc", "issued_at:asc", "issued_at desc", "issued_at asc", "-issued_at"}:
+        raise HTTPException(status_code=400, detail="invalid_sort")
+    sort_desc = sort_value in {"issued_at:desc", "issued_at desc", "-issued_at"}
 
-    invoices = repo.find_invoices(
+    invoices, total = repo.list_invoices(
         client_id=client_id,
-        period_from=period_from,
-        period_to=period_to,
-        status=parsed_status,
+        issued_from=issued_from,
+        issued_to=issued_to,
+        status=parsed_statuses,
         exclude_cancelled=True,
+        limit=limit,
+        offset=offset,
+        sort_desc=sort_desc,
     )
-    items = [ClientInvoiceSummary.model_validate(invoice, from_attributes=True) for invoice in invoices]
-    return ClientInvoiceListResponse(items=items, total=len(items), limit=len(items), offset=0)
+    items = [
+        ClientInvoiceSummary(
+            id=invoice.id,
+            number=invoice.number or invoice.external_number or invoice.id,
+            issued_at=invoice.issued_at or invoice.created_at,
+            status=invoice.status,
+            amount_total=Decimal(invoice.total_with_tax or invoice.total_amount or 0),
+            amount_paid=Decimal(invoice.amount_paid or 0),
+            amount_refunded=Decimal(invoice.amount_refunded or 0),
+            amount_due=Decimal(invoice.amount_due or 0),
+            currency=invoice.currency,
+        )
+        for invoice in invoices
+    ]
+    return ClientInvoiceListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/invoices/{invoice_id}", response_model=ClientInvoiceDetails)
@@ -364,8 +467,248 @@ async def get_invoice_details(
     invoice = repo.get_invoice(invoice_id)
     if invoice is None or str(invoice.client_id) != client_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    payments = (
+        db.query(InvoicePayment)
+        .filter(InvoicePayment.invoice_id == invoice_id)
+        .order_by(InvoicePayment.created_at.asc())
+        .all()
+    )
+    refunds = (
+        db.query(CreditNote)
+        .filter(CreditNote.invoice_id == invoice_id)
+        .order_by(CreditNote.created_at.asc())
+        .all()
+    )
 
-    return ClientInvoiceDetails.model_validate(invoice, from_attributes=True)
+    return ClientInvoiceDetails(
+        id=invoice.id,
+        number=invoice.number or invoice.external_number or invoice.id,
+        issued_at=invoice.issued_at or invoice.created_at,
+        status=invoice.status,
+        amount_total=Decimal(invoice.total_with_tax or invoice.total_amount or 0),
+        amount_paid=Decimal(invoice.amount_paid or 0),
+        amount_refunded=Decimal(invoice.amount_refunded or 0),
+        amount_due=Decimal(invoice.amount_due or 0),
+        currency=invoice.currency,
+        pdf_available=bool(invoice.pdf_object_key),
+        payments=[
+            ClientInvoicePayment(
+                id=str(payment.id),
+                amount=Decimal(payment.amount or 0),
+                status=payment.status.value if payment.status else "POSTED",
+                provider=payment.provider,
+                external_ref=payment.external_ref,
+                created_at=payment.created_at,
+            )
+            for payment in payments
+        ],
+        refunds=[
+            ClientInvoiceRefund(
+                id=str(refund.id),
+                amount=Decimal(refund.amount or 0),
+                status=refund.status.value if refund.status else "POSTED",
+                provider=refund.provider,
+                external_ref=refund.external_ref,
+                created_at=refund.created_at,
+                reason=refund.reason,
+            )
+            for refund in refunds
+        ],
+    )
+
+
+@router.get("/invoices/{invoice_id}/audit", response_model=ClientAuditListResponse)
+async def list_invoice_audit(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    event_type: list[str] | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ClientAuditListResponse:
+    client_id = _ensure_client_context(token)
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+    if invoice is None or str(invoice.client_id) != client_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    payment_ids = {
+        str(payment.id)
+        for payment in db.query(InvoicePayment.id).filter(InvoicePayment.invoice_id == invoice_id).all()
+    }
+    refund_ids = {
+        str(refund.id)
+        for refund in db.query(CreditNote.id).filter(CreditNote.invoice_id == invoice_id).all()
+    }
+    entity_ids = {invoice_id, *payment_ids, *refund_ids}
+
+    query = db.query(AuditLog).filter(AuditLog.target.in_(entity_ids))
+    if date_from:
+        query = query.filter(AuditLog.ts >= date_from)
+    if date_to:
+        query = query.filter(AuditLog.ts <= date_to)
+    if event_type:
+        query = query.filter(AuditLog.action.in_(event_type))
+
+    total = query.count()
+    logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).offset(offset).limit(limit).all()
+
+    items = []
+    for log in logs:
+        payload = log.payload if isinstance(log.payload, dict) else {}
+        entity_id = str(log.target or "")
+        items.append(
+            ClientAuditEvent(
+                id=str(log.id),
+                ts=log.ts,
+                event_type=log.action or "",
+                entity_type=_infer_entity_type(
+                    entity_id,
+                    invoice_id=invoice_id,
+                    payment_ids=payment_ids,
+                    refund_ids=refund_ids,
+                    payload=payload,
+                ),
+                entity_id=entity_id,
+                action=payload.get("action") or log.action,
+                actor_type=_resolve_actor_type(log.actor, payload),
+                actor_id=_resolve_actor_id(log.actor, payload),
+                external_refs=_sanitize_external_refs(payload),
+                before=_sanitize_audit_snapshot(payload.get("before") if payload else None),
+                after=_sanitize_audit_snapshot(payload.get("after") if payload else None),
+                hash=log.hash,
+                prev_hash=payload.get("prev_hash") if payload else None,
+            )
+        )
+    return ClientAuditListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/audit/search", response_model=ClientAuditListResponse)
+async def search_audit_by_external_ref(
+    external_ref: str = Query(..., min_length=1),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    provider: str | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    event_type: list[str] | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ClientAuditListResponse:
+    client_id = _ensure_client_context(token)
+    invoice_ids = [row.id for row in db.query(Invoice.id).filter(Invoice.client_id == client_id).all()]
+    payment_ids = [
+        str(row.id)
+        for row in db.query(InvoicePayment.id)
+        .join(Invoice, Invoice.id == InvoicePayment.invoice_id)
+        .filter(Invoice.client_id == client_id)
+        .all()
+    ]
+    refund_ids = [
+        str(row.id)
+        for row in db.query(CreditNote.id)
+        .join(Invoice, Invoice.id == CreditNote.invoice_id)
+        .filter(Invoice.client_id == client_id)
+        .all()
+    ]
+    entity_ids = {*(invoice_ids or []), *payment_ids, *refund_ids}
+    if not entity_ids:
+        return ClientAuditListResponse(items=[], total=0, limit=limit, offset=offset)
+
+    query = db.query(AuditLog).filter(AuditLog.target.in_(entity_ids))
+    if date_from:
+        query = query.filter(AuditLog.ts >= date_from)
+    if date_to:
+        query = query.filter(AuditLog.ts <= date_to)
+    if event_type:
+        query = query.filter(AuditLog.action.in_(event_type))
+
+    payload_text = cast(AuditLog.payload, String)
+    query = query.filter(payload_text.ilike(f"%{external_ref}%"))
+    if provider:
+        query = query.filter(payload_text.ilike(f"%{provider}%"))
+
+    total = query.count()
+    logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).offset(offset).limit(limit).all()
+    items = []
+    for log in logs:
+        payload = log.payload if isinstance(log.payload, dict) else {}
+        entity_id = str(log.target or "")
+        items.append(
+            ClientAuditEvent(
+                id=str(log.id),
+                ts=log.ts,
+                event_type=log.action or "",
+                entity_type=_infer_entity_type(
+                    entity_id,
+                    invoice_id=entity_id if entity_id in invoice_ids else "",
+                    payment_ids=set(payment_ids),
+                    refund_ids=set(refund_ids),
+                    payload=payload,
+                ),
+                entity_id=entity_id,
+                action=payload.get("action") or log.action,
+                actor_type=_resolve_actor_type(log.actor, payload),
+                actor_id=_resolve_actor_id(log.actor, payload),
+                external_refs=_sanitize_external_refs(payload),
+                before=_sanitize_audit_snapshot(payload.get("before") if payload else None),
+                after=_sanitize_audit_snapshot(payload.get("after") if payload else None),
+                hash=log.hash,
+                prev_hash=payload.get("prev_hash") if payload else None,
+            )
+        )
+    return ClientAuditListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def download_invoice_pdf(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+):
+    client_id = _ensure_client_context(token)
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    if str(invoice.client_id) != client_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not invoice.pdf_object_key:
+        raise HTTPException(status_code=404, detail="pdf_not_found")
+
+    storage = S3Storage()
+    pdf_bytes = storage.get_bytes(invoice.pdf_object_key)
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="pdf_not_found")
+
+    filename = f"{invoice.number or invoice.external_number or invoice.id}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@router.get("/exports", response_model=ClientExportListResponse)
+async def list_exports(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientExportListResponse:
+    client_id = _ensure_client_context(token)
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.client_id == client_id)
+        .filter(Invoice.pdf_object_key.isnot(None))
+        .order_by(Invoice.issued_at.desc().nullslast(), Invoice.created_at.desc())
+        .all()
+    )
+    items = [
+        ClientExportItem(
+            type="INVOICE_PDF",
+            title=f"Счет {invoice.number or invoice.external_number or invoice.id}",
+            created_at=invoice.issued_at or invoice.created_at,
+            download_url=f"/api/v1/client/invoices/{invoice.id}/pdf",
+        )
+        for invoice in invoices
+    ]
+    return ClientExportListResponse(items=items)
 
 
 @router.get("/balances", response_model=BalancesResponse)

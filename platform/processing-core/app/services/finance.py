@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import AuditLog
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus
 from app.models.invoice import Invoice, InvoiceStatus
