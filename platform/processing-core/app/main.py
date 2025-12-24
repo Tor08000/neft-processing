@@ -20,6 +20,7 @@ from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
 from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
+from app.routers import client_documents as client_documents_router
 from app.routers.client_portal import router as client_portal_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.billing_metrics import metrics as billing_metrics
@@ -335,6 +336,7 @@ app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+app.include_router(client_documents_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -358,6 +360,7 @@ if payouts_router is not None:
 core_prefixed_router.include_router(admin_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(client_portal_router)
+core_prefixed_router.include_router(client_documents_router)
 
 
 # -----------------------------------------------------------------------------

@@ -4,10 +4,12 @@ from app.api.dependencies.admin import require_admin_user
 from app.routers.admin import (
     accounts,
     billing,
+    closing_packages,
     client_actions,
     clearing,
     dashboard,
     disputes,
+    documents,
     integration_monitoring,
     limits,
     merchants,
@@ -28,6 +30,7 @@ router.include_router(dashboard.router)
 router.include_router(merchants.router)
 router.include_router(clearing.router)
 router.include_router(billing.router)
+router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
 router.include_router(integration_monitoring.router)
 router.include_router(settlements.router)
@@ -36,5 +39,6 @@ router.include_router(reversals.router)
 router.include_router(disputes.router)
 router.include_router(finance.router)
 router.include_router(client_actions.router)
+router.include_router(documents.router)
 
 __all__ = ["router"]

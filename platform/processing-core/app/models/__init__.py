@@ -74,6 +74,15 @@ from .billing_reconciliation import (  # noqa: F401
     BillingReconciliationStatus,
     BillingReconciliationVerdict,
 )
+from .documents import (  # noqa: F401
+    ClosingPackage,
+    ClosingPackageStatus,
+    Document,
+    DocumentFile,
+    DocumentFileType,
+    DocumentStatus,
+    DocumentType,
+)
 
 __all__ = [
     "Client",
@@ -158,4 +167,11 @@ __all__ = [
     "FinancialAdjustmentKind",
     "FinancialAdjustmentStatus",
     "RelatedEntityType",
+    "Document",
+    "DocumentFile",
+    "DocumentType",
+    "DocumentStatus",
+    "DocumentFileType",
+    "ClosingPackage",
+    "ClosingPackageStatus",
 ]

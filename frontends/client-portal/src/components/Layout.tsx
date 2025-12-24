@@ -32,6 +32,7 @@ export function Layout() {
           <NavLink to="/cards">Карты</NavLink>
           <div className="nav-section">Финансы</div>
           <NavLink to="/finance/invoices">Счета</NavLink>
+          <NavLink to="/finance/documents">Документы</NavLink>
           <NavLink to="/finance/reconciliation">Акт сверки</NavLink>
           <NavLink to="/finance/exports">Отчеты</NavLink>
           <NavLink to="/operations">Операции</NavLink>
