@@ -27,6 +27,7 @@
 20260101_0008_billing_summary
 20260110_0009_billing_summary_extend
 20260110_0009_create_clearing_table
+20260701_0009_client_portal
 20260110_0010_clearing
 20260115_0011_operations_indexes
 20261010_0012_client_ids_uuid
