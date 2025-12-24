@@ -16,10 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Start postgres
-        run: docker compose up -d postgres
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up -d postgres
+      - name: Check protected alembic revisions
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+            core-api python -m app.alembic.check_protected_revisions
       - name: Check alembic heads
         run: |
-          heads="$(docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads)"
+          heads="$(docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads)"
           count="$(printf "%s\n" "$heads" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
           if [ "$count" -ne 1 ]; then
             echo "Expected 1 alembic head, got $count"
@@ -28,4 +32,4 @@ jobs:
             exit 1
           fi
       - name: Alembic upgrade head
-        run: docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
