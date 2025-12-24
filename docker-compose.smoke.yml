@@ -1,4 +1,12 @@
 services:
+  postgres:
+    profiles:
+      - smoke
+
+  core-api:
+    profiles:
+      - smoke
+
   smoke-minio:
     profiles:
       - smoke

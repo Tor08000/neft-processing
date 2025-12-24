@@ -51,8 +51,11 @@ select version_num from alembic_version
 
 ```bash
 alembic heads
-alembic stamp <merge>
+alembic stamp <merge_head>
 ```
+
+> ⚠️ `stamp` is acceptable for dev environments. In production, treat this as an incident and
+> investigate how the revision disappeared before modifying `alembic_version`.
 
 ## Known root cause: wrong schema
 
