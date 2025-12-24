@@ -15,7 +15,9 @@ except ImportError:  # pragma: no cover - optional dependency
     A4 = None
     getSampleStyleSheet = SimpleDocTemplate = Spacer = Table = Paragraph = None
 
+from app.models.audit_log import ActorType
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus
+from app.services.audit_service import AuditService, RequestContext
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.s3_storage import S3Storage
 from neft_shared.logging_setup import get_logger
@@ -130,6 +132,18 @@ class InvoicePdfService:
             locked.pdf_hash = pdf_hash
             locked.pdf_url = pdf_url
             self.db.add(locked)
+            AuditService(self.db).audit(
+                event_type="INVOICE_PDF_UPLOADED",
+                entity_type="invoice",
+                entity_id=locked.id,
+                action="CREATE",
+                after={
+                    "pdf_url": pdf_url,
+                    "pdf_hash": pdf_hash,
+                    "pdf_object_key": locked.pdf_object_key,
+                },
+                request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id="invoice_pdf"),
+            )
             logger.info(
                 "invoice.pdf.generated",
                 extra={
