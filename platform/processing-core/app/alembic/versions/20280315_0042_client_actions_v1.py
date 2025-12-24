@@ -30,15 +30,16 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 RECONCILIATION_REQUEST_STATUS = [
-    "NEW",
+    "REQUESTED",
     "IN_PROGRESS",
-    "READY",
+    "GENERATED",
     "SENT",
+    "ACKNOWLEDGED",
     "REJECTED",
     "CANCELLED",
 ]
-INVOICE_THREAD_STATUS = ["OPEN", "CLOSED"]
-INVOICE_MESSAGE_SENDER = ["CLIENT", "SUPPORT"]
+INVOICE_THREAD_STATUS = ["OPEN", "WAITING_SUPPORT", "WAITING_CLIENT", "RESOLVED", "CLOSED"]
+INVOICE_MESSAGE_SENDER = ["CLIENT", "SUPPORT", "SYSTEM"]
 
 
 def upgrade() -> None:
@@ -76,9 +77,17 @@ def upgrade() -> None:
         sa.Column("status", reconciliation_status_enum, nullable=False, server_default=RECONCILIATION_REQUEST_STATUS[0]),
         sa.Column("requested_by_user_id", sa.Text(), nullable=True),
         sa.Column("requested_by_email", sa.Text(), nullable=True),
-        sa.Column("note", sa.Text(), nullable=True),
+        sa.Column("requested_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("result_object_key", sa.Text(), nullable=True),
         sa.Column("result_bucket", sa.Text(), nullable=True),
+        sa.Column("result_hash_sha256", sa.String(length=64), nullable=True),
+        sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("note_client", sa.Text(), nullable=True),
+        sa.Column("note_ops", sa.Text(), nullable=True),
+        sa.Column("meta", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint("date_from <= date_to", name="ck_reconciliation_requests_period"),
@@ -93,10 +102,14 @@ def upgrade() -> None:
         sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("document_type", sa.String(length=64), nullable=False),
         sa.Column("document_id", sa.String(length=64), nullable=False),
+        sa.Column("document_object_key", sa.Text(), nullable=True),
+        sa.Column("document_hash", sa.String(length=64), nullable=True),
         sa.Column("ack_by_user_id", sa.Text(), nullable=True),
         sa.Column("ack_by_email", sa.Text(), nullable=True),
+        sa.Column("ack_ip", sa.Text(), nullable=True),
+        sa.Column("ack_user_agent", sa.Text(), nullable=True),
         sa.Column("ack_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("meta", sa.JSON(), nullable=True),
+        sa.Column("ack_method", sa.String(length=32), nullable=True),
         sa.UniqueConstraint("client_id", "document_type", "document_id", name="uq_document_acknowledgements_scope"),
         schema=SCHEMA,
     )
@@ -144,18 +157,9 @@ def upgrade() -> None:
     )
     create_index_if_not_exists(
         bind,
-        "ix_document_acknowledgements_client_doc",
+        "ix_document_acknowledgements_ack_at",
         "document_acknowledgements",
-        ["client_id", "document_type", "document_id"],
-        unique=True,
-        schema=SCHEMA,
-    )
-    create_index_if_not_exists(
-        bind,
-        "ix_invoice_threads_invoice",
-        "invoice_threads",
-        ["invoice_id"],
-        unique=True,
+        ["ack_at"],
         schema=SCHEMA,
     )
     create_index_if_not_exists(
@@ -163,6 +167,20 @@ def upgrade() -> None:
         "ix_invoice_threads_client",
         "invoice_threads",
         ["client_id"],
+        schema=SCHEMA,
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_invoice_threads_status",
+        "invoice_threads",
+        ["status"],
+        schema=SCHEMA,
+    )
+    create_index_if_not_exists(
+        bind,
+        "ix_invoice_threads_last_message_at",
+        "invoice_threads",
+        ["last_message_at"],
         schema=SCHEMA,
     )
     create_index_if_not_exists(
@@ -179,6 +197,13 @@ def upgrade() -> None:
         ["sender_type"],
         schema=SCHEMA,
     )
+    create_index_if_not_exists(
+        bind,
+        "ix_invoice_messages_created_at",
+        "invoice_messages",
+        ["created_at"],
+        schema=SCHEMA,
+    )
 
 
 def downgrade() -> None:
@@ -186,9 +211,11 @@ def downgrade() -> None:
 
     drop_index_if_exists(bind, "ix_invoice_messages_sender", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_invoice_messages_thread", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_messages_created_at", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_threads_last_message_at", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_threads_status", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_invoice_threads_client", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_invoice_threads_invoice", schema=SCHEMA)
-    drop_index_if_exists(bind, "ix_document_acknowledgements_client_doc", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_document_acknowledgements_ack_at", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_reconciliation_requests_status", schema=SCHEMA)
     drop_index_if_exists(bind, "ix_reconciliation_requests_client_period", schema=SCHEMA)
 
