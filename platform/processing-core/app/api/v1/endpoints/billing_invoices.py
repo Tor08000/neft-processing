@@ -125,7 +125,9 @@ def create_invoice_payment(
     invoice_id: str,
     request: Request,
     payload: InvoicePaymentRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoicePaymentResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -207,7 +209,9 @@ def create_invoice_refund(
     invoice_id: str,
     request: Request,
     payload: InvoiceRefundRequest,
+    request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceRefundResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -317,6 +321,7 @@ def download_invoice_pdf(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()

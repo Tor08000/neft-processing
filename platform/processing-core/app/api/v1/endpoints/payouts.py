@@ -50,6 +50,7 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 def close_period_endpoint(
     request: Request,
     payload: PayoutClosePeriodRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -126,6 +127,7 @@ def mark_sent_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -159,6 +161,7 @@ def mark_settled_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -230,6 +233,7 @@ def create_export_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutExportCreateRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -333,6 +337,7 @@ def download_export_endpoint(
     export_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     export = load_export(db, export_id)

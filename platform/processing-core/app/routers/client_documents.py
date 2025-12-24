@@ -133,6 +133,7 @@ def download_document(
     file_type: DocumentFileType,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     client_id = _ensure_client_context(token)
@@ -178,6 +179,7 @@ def acknowledge_document(
     document_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> DocumentAcknowledgementResponse:
     _ensure_client_action_allowed(token)
@@ -256,6 +258,7 @@ def acknowledge_closing_package(
     package_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClosingPackageAckResponse:
     _ensure_client_action_allowed(token)
