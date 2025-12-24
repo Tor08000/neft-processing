@@ -61,6 +61,7 @@ export async function request<T>(
   const response = await fetch(`${apiBase}${path}`, { ...init, headers });
 
   if (response.status === 401) {
+    window.dispatchEvent(new Event("client-auth-logout"));
     throw new UnauthorizedError();
   }
   if (response.status === 422) {

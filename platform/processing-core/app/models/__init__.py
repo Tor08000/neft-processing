@@ -49,10 +49,19 @@ from .contract_limits import (  # noqa: F401
 from .external_request_log import ExternalRequestLog  # noqa: F401
 from .invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog  # noqa: F401
 from .finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus  # noqa: F401
-from .audit_log import ActorType, AuditLog  # noqa: F401
+from .audit_log import ActorType, AuditLog, AuditVisibility  # noqa: F401
 from .refund_request import RefundRequest, RefundRequestStatus, SettlementPolicy  # noqa: F401
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
+from .client_actions import (  # noqa: F401
+    DocumentAcknowledgement,
+    InvoiceMessage,
+    InvoiceMessageSenderType,
+    InvoiceThread,
+    InvoiceThreadStatus,
+    ReconciliationRequest,
+    ReconciliationRequestStatus,
+)
 from .financial_adjustment import (
     FinancialAdjustment,
     FinancialAdjustmentKind,
@@ -128,6 +137,7 @@ __all__ = [
     "CreditNoteStatus",
     "AuditLog",
     "ActorType",
+    "AuditVisibility",
     "RefundRequest",
     "RefundRequestStatus",
     "SettlementPolicy",
@@ -137,6 +147,13 @@ __all__ = [
     "DisputeEvent",
     "DisputeStatus",
     "DisputeEventType",
+    "DocumentAcknowledgement",
+    "InvoiceMessage",
+    "InvoiceMessageSenderType",
+    "InvoiceThread",
+    "InvoiceThreadStatus",
+    "ReconciliationRequest",
+    "ReconciliationRequestStatus",
     "FinancialAdjustment",
     "FinancialAdjustmentKind",
     "FinancialAdjustmentStatus",

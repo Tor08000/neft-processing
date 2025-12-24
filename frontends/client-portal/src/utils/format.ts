@@ -22,7 +22,7 @@ export function formatLiters(quantity?: number | string | null): string {
   if (quantity === undefined || quantity === null) return "—";
   const value = typeof quantity === "string" ? Number(quantity) : quantity;
   if (Number.isNaN(value)) return String(quantity);
-  return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(value);
 }
 
 export function formatDate(dateStr?: string | null): string {

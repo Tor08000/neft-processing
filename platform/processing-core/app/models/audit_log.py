@@ -16,6 +16,11 @@ class ActorType(str, Enum):
     SYSTEM = "SYSTEM"
 
 
+class AuditVisibility(str, Enum):
+    PUBLIC = "PUBLIC"
+    INTERNAL = "INTERNAL"
+
+
 JSONB_TYPE = postgresql.JSONB(none_as_null=True)
 JSON_TYPE = JSON().with_variant(JSONB_TYPE, "postgresql")
 
@@ -43,6 +48,12 @@ class AuditLog(Base):
     entity_type = Column(Text, nullable=False, index=True)
     entity_id = Column(Text, nullable=False, index=True)
     action = Column(Text, nullable=False)
+    visibility = Column(
+        ExistingEnum(AuditVisibility, name="audit_visibility"),
+        nullable=False,
+        server_default=AuditVisibility.INTERNAL.value,
+        index=True,
+    )
 
     before = Column(JSON_TYPE, nullable=True)
     after = Column(JSON_TYPE, nullable=True)
@@ -63,4 +74,4 @@ class AuditLog(Base):
     )
 
 
-__all__ = ["ActorType", "AuditLog"]
+__all__ = ["ActorType", "AuditLog", "AuditVisibility"]

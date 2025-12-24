@@ -169,6 +169,8 @@ class ClientInvoiceDetails(ClientInvoiceSummary):
     """Detailed invoice representation with payments and refunds."""
 
     pdf_available: bool = False
+    acknowledged: bool = False
+    ack_at: datetime | None = None
     payments: List[ClientInvoicePayment] = Field(default_factory=list)
     refunds: List[ClientInvoiceRefund] = Field(default_factory=list)
 
@@ -200,6 +202,7 @@ class ClientAuditEvent(BaseModel):
     entity_type: str
     entity_id: str
     action: str | None = None
+    visibility: str | None = None
     actor_type: str | None = None
     actor_id: str | None = None
     external_refs: dict | None = None

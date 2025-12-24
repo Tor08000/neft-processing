@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
-from app.models.audit_log import ActorType
+from app.models.audit_log import ActorType, AuditVisibility
 from app.models.finance import CreditNote
 from app.models.invoice import Invoice
 from app.schemas.billing_invoices import (
@@ -83,6 +83,7 @@ def generate_invoice_endpoint(
         entity_type="invoice",
         entity_id=invoice.id,
         action="CREATE" if result.created else "IDEMPOTENT_REPLAY",
+        visibility=AuditVisibility.PUBLIC,
         after={
             "status": invoice.status.value,
             "total_amount": invoice.total_amount,
@@ -173,6 +174,7 @@ def create_invoice_payment(
         entity_type="payment",
         entity_id=str(result.payment.id),
         action=action,
+        visibility=AuditVisibility.PUBLIC if event_type == "PAYMENT_POSTED" else AuditVisibility.INTERNAL,
         after={
             "invoice_id": result.payment.invoice_id,
             "amount": result.payment.amount,
@@ -246,6 +248,7 @@ def create_invoice_refund(
         entity_type="refund",
         entity_id=str(result.credit_note.id),
         action=action,
+        visibility=AuditVisibility.PUBLIC if event_type == "REFUND_POSTED" else AuditVisibility.INTERNAL,
         after={
             "invoice_id": result.credit_note.invoice_id,
             "amount": result.credit_note.amount,

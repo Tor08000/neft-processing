@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
+import re
 from decimal import Decimal
 from typing import Iterable, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
@@ -14,9 +15,18 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
 from app.models.account import Account, AccountBalance
-from app.models.audit_log import AuditLog
+from app.models.audit_log import AuditLog, AuditVisibility
 from app.models.card import Card
 from app.models.client import Client
+from app.models.client_actions import (
+    DocumentAcknowledgement,
+    InvoiceMessage,
+    InvoiceMessageSenderType,
+    InvoiceThread,
+    InvoiceThreadStatus,
+    ReconciliationRequest,
+    ReconciliationRequestStatus,
+)
 from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.invoice import Invoice, InvoiceStatus
@@ -44,6 +54,17 @@ from app.schemas.client_portal import (
     OperationsPage,
     StatementResponse,
 )
+from app.schemas.client_actions import (
+    DocumentAcknowledgementResponse,
+    InvoiceMessageCreateRequest,
+    InvoiceMessageCreateResponse,
+    InvoiceMessageOut,
+    InvoiceThreadMessagesResponse,
+    ReconciliationRequestCreate,
+    ReconciliationRequestList,
+    ReconciliationRequestOut,
+)
+from app.services.audit_service import AuditService, request_context_from_request
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/v1/client", tags=["client-portal"])
@@ -72,6 +93,24 @@ def _ensure_client_context(token: dict) -> str:
     return str(client_id)
 
 
+def _ensure_tenant_context(token: dict) -> int:
+    tenant_id = token.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="Missing tenant context")
+    return int(tenant_id)
+
+
+def _ensure_client_action_allowed(token: dict) -> None:
+    allowed_roles = {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"}
+    roles = token.get("roles") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    if token.get("role"):
+        roles.append(token["role"])
+    if not allowed_roles.intersection({str(role) for role in roles}):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
 def _as_uuid(value: str) -> UUID:
     try:
         return UUID(str(value))
@@ -98,6 +137,35 @@ def _parse_status_values(raw_values: list[str] | None) -> list[InvoiceStatus] | 
     for value in raw_values:
         parsed.append(_parse_enum_value(value, InvoiceStatus))
     return list(dict.fromkeys(parsed))
+
+
+def _parse_reconciliation_status_values(
+    raw_values: list[str] | None,
+) -> list[ReconciliationRequestStatus] | None:
+    if not raw_values:
+        return None
+    parsed: list[ReconciliationRequestStatus] = []
+    for value in raw_values:
+        parsed.append(_parse_enum_value(value, ReconciliationRequestStatus))
+    return list(dict.fromkeys(parsed))
+
+
+def _audit_forbidden_access(
+    *,
+    token: dict,
+    request: Request | None,
+    db: Session,
+    entity_type: str,
+    entity_id: str,
+) -> None:
+    AuditService(db).audit(
+        event_type="CLIENT_ACCESS_FORBIDDEN",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action="FORBIDDEN",
+        visibility=AuditVisibility.INTERNAL,
+        request_ctx=request_context_from_request(request, token=token),
+    )
 
 
 def _sanitize_audit_snapshot(snapshot: dict | None) -> dict | None:
@@ -460,13 +528,23 @@ async def list_invoices(
 async def get_invoice_details(
     invoice_id: str,
     token: dict = Depends(client_portal_user),
+    request: Request | None = None,
     db: Session = Depends(get_db),
 ) -> ClientInvoiceDetails:
     client_id = _ensure_client_context(token)
     repo = BillingRepository(db)
     invoice = repo.get_invoice(invoice_id)
-    if invoice is None or str(invoice.client_id) != client_id:
+    if invoice is None:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    if str(invoice.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice",
+            entity_id=str(invoice_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
     payments = (
         db.query(InvoicePayment)
         .filter(InvoicePayment.invoice_id == invoice_id)
@@ -478,6 +556,13 @@ async def get_invoice_details(
         .filter(CreditNote.invoice_id == invoice_id)
         .order_by(CreditNote.created_at.asc())
         .all()
+    )
+    acknowledgement = (
+        db.query(DocumentAcknowledgement)
+        .filter(DocumentAcknowledgement.client_id == client_id)
+        .filter(DocumentAcknowledgement.document_type == "INVOICE_PDF")
+        .filter(DocumentAcknowledgement.document_id == invoice_id)
+        .one_or_none()
     )
 
     return ClientInvoiceDetails(
@@ -491,6 +576,8 @@ async def get_invoice_details(
         amount_due=Decimal(invoice.amount_due or 0),
         currency=invoice.currency,
         pdf_available=bool(invoice.pdf_object_key),
+        acknowledged=bool(acknowledgement),
+        ack_at=acknowledgement.ack_at if acknowledgement else None,
         payments=[
             ClientInvoicePayment(
                 id=str(payment.id),
@@ -521,6 +608,7 @@ async def get_invoice_details(
 async def list_invoice_audit(
     invoice_id: str,
     token: dict = Depends(client_portal_user),
+    request: Request | None = None,
     db: Session = Depends(get_db),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
@@ -530,8 +618,17 @@ async def list_invoice_audit(
 ) -> ClientAuditListResponse:
     client_id = _ensure_client_context(token)
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
-    if invoice is None or str(invoice.client_id) != client_id:
+    if invoice is None:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    if str(invoice.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice",
+            entity_id=str(invoice_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
 
     payment_ids = {
         str(payment.id)
@@ -543,42 +640,37 @@ async def list_invoice_audit(
     }
     entity_ids = {invoice_id, *payment_ids, *refund_ids}
 
-    query = db.query(AuditLog).filter(AuditLog.target.in_(entity_ids))
+    query = db.query(AuditLog).filter(AuditLog.entity_id.in_(entity_ids))
+    query = query.filter(AuditLog.visibility == AuditVisibility.PUBLIC)
     if date_from:
         query = query.filter(AuditLog.ts >= date_from)
     if date_to:
         query = query.filter(AuditLog.ts <= date_to)
     if event_type:
-        query = query.filter(AuditLog.action.in_(event_type))
+        query = query.filter(AuditLog.event_type.in_(event_type))
 
     total = query.count()
     logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).offset(offset).limit(limit).all()
 
     items = []
     for log in logs:
-        payload = log.payload if isinstance(log.payload, dict) else {}
-        entity_id = str(log.target or "")
+        entity_id = str(log.entity_id or "")
         items.append(
             ClientAuditEvent(
                 id=str(log.id),
                 ts=log.ts,
-                event_type=log.action or "",
-                entity_type=_infer_entity_type(
-                    entity_id,
-                    invoice_id=invoice_id,
-                    payment_ids=payment_ids,
-                    refund_ids=refund_ids,
-                    payload=payload,
-                ),
+                event_type=log.event_type or "",
+                entity_type=log.entity_type,
                 entity_id=entity_id,
-                action=payload.get("action") or log.action,
-                actor_type=_resolve_actor_type(log.actor, payload),
-                actor_id=_resolve_actor_id(log.actor, payload),
-                external_refs=_sanitize_external_refs(payload),
-                before=_sanitize_audit_snapshot(payload.get("before") if payload else None),
-                after=_sanitize_audit_snapshot(payload.get("after") if payload else None),
+                action=log.action,
+                visibility=log.visibility.value if log.visibility else None,
+                actor_type=log.actor_type.value if log.actor_type else None,
+                actor_id=log.actor_id,
+                external_refs=_sanitize_external_refs(log.external_refs),
+                before=_sanitize_audit_snapshot(log.before),
+                after=_sanitize_audit_snapshot(log.after),
                 hash=log.hash,
-                prev_hash=payload.get("prev_hash") if payload else None,
+                prev_hash=log.prev_hash,
             )
         )
     return ClientAuditListResponse(items=items, total=total, limit=limit, offset=offset)
@@ -588,6 +680,7 @@ async def list_invoice_audit(
 async def search_audit_by_external_ref(
     external_ref: str = Query(..., min_length=1),
     token: dict = Depends(client_portal_user),
+    request: Request | None = None,
     db: Session = Depends(get_db),
     provider: str | None = Query(None),
     date_from: datetime | None = Query(None),
@@ -616,55 +709,517 @@ async def search_audit_by_external_ref(
     if not entity_ids:
         return ClientAuditListResponse(items=[], total=0, limit=limit, offset=offset)
 
-    query = db.query(AuditLog).filter(AuditLog.target.in_(entity_ids))
+    query = db.query(AuditLog).filter(AuditLog.entity_id.in_(entity_ids))
+    query = query.filter(AuditLog.visibility == AuditVisibility.PUBLIC)
     if date_from:
         query = query.filter(AuditLog.ts >= date_from)
     if date_to:
         query = query.filter(AuditLog.ts <= date_to)
     if event_type:
-        query = query.filter(AuditLog.action.in_(event_type))
+        query = query.filter(AuditLog.event_type.in_(event_type))
 
-    payload_text = cast(AuditLog.payload, String)
-    query = query.filter(payload_text.ilike(f"%{external_ref}%"))
+    external_refs = cast(AuditLog.external_refs, String)
+    query = query.filter(external_refs.ilike(f"%{external_ref}%"))
     if provider:
-        query = query.filter(payload_text.ilike(f"%{provider}%"))
+        query = query.filter(external_refs.ilike(f"%{provider}%"))
 
     total = query.count()
     logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).offset(offset).limit(limit).all()
     items = []
     for log in logs:
-        payload = log.payload if isinstance(log.payload, dict) else {}
-        entity_id = str(log.target or "")
+        entity_id = str(log.entity_id or "")
         items.append(
             ClientAuditEvent(
                 id=str(log.id),
                 ts=log.ts,
-                event_type=log.action or "",
-                entity_type=_infer_entity_type(
-                    entity_id,
-                    invoice_id=entity_id if entity_id in invoice_ids else "",
-                    payment_ids=set(payment_ids),
-                    refund_ids=set(refund_ids),
-                    payload=payload,
-                ),
+                event_type=log.event_type or "",
+                entity_type=log.entity_type,
                 entity_id=entity_id,
-                action=payload.get("action") or log.action,
-                actor_type=_resolve_actor_type(log.actor, payload),
-                actor_id=_resolve_actor_id(log.actor, payload),
-                external_refs=_sanitize_external_refs(payload),
-                before=_sanitize_audit_snapshot(payload.get("before") if payload else None),
-                after=_sanitize_audit_snapshot(payload.get("after") if payload else None),
+                action=log.action,
+                visibility=log.visibility.value if log.visibility else None,
+                actor_type=log.actor_type.value if log.actor_type else None,
+                actor_id=log.actor_id,
+                external_refs=_sanitize_external_refs(log.external_refs),
+                before=_sanitize_audit_snapshot(log.before),
+                after=_sanitize_audit_snapshot(log.after),
                 hash=log.hash,
-                prev_hash=payload.get("prev_hash") if payload else None,
+                prev_hash=log.prev_hash,
             )
         )
     return ClientAuditListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.post("/reconciliation-requests", response_model=ReconciliationRequestOut, status_code=201)
+async def create_reconciliation_request(
+    payload: ReconciliationRequestCreate,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> ReconciliationRequestOut:
+    _ensure_client_action_allowed(token)
+    client_id = _ensure_client_context(token)
+    tenant_id = _ensure_tenant_context(token)
+
+    active_statuses = [
+        ReconciliationRequestStatus.REQUESTED,
+        ReconciliationRequestStatus.IN_PROGRESS,
+        ReconciliationRequestStatus.GENERATED,
+        ReconciliationRequestStatus.SENT,
+    ]
+    existing = (
+        db.query(ReconciliationRequest)
+        .filter(ReconciliationRequest.client_id == client_id)
+        .filter(ReconciliationRequest.date_from == payload.date_from)
+        .filter(ReconciliationRequest.date_to == payload.date_to)
+        .filter(ReconciliationRequest.status.in_(active_statuses))
+        .order_by(ReconciliationRequest.created_at.desc())
+        .first()
+    )
+    if existing:
+        return ReconciliationRequestOut.model_validate(existing)
+
+    new_request = ReconciliationRequest(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+        note_client=payload.note,
+        requested_by_user_id=token.get("user_id") or token.get("sub"),
+        requested_by_email=token.get("email"),
+        status=ReconciliationRequestStatus.REQUESTED,
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+
+    AuditService(db).audit(
+        event_type="RECONCILIATION_REQUEST_CREATED",
+        entity_type="reconciliation_request",
+        entity_id=str(new_request.id),
+        action="CREATE",
+        visibility=AuditVisibility.PUBLIC,
+        after={
+            "status": new_request.status.value,
+            "date_from": new_request.date_from,
+            "date_to": new_request.date_to,
+        },
+        request_ctx=request_context_from_request(request, token=token),
+    )
+
+    return ReconciliationRequestOut.model_validate(new_request)
+
+
+@router.get("/reconciliation-requests", response_model=ReconciliationRequestList)
+async def list_reconciliation_requests(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    status: list[str] | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ReconciliationRequestList:
+    client_id = _ensure_client_context(token)
+    parsed_statuses = _parse_reconciliation_status_values(status)
+
+    query = db.query(ReconciliationRequest).filter(ReconciliationRequest.client_id == client_id)
+    if parsed_statuses:
+        query = query.filter(ReconciliationRequest.status.in_(parsed_statuses))
+    if date_from:
+        query = query.filter(ReconciliationRequest.date_from >= date_from)
+    if date_to:
+        query = query.filter(ReconciliationRequest.date_to <= date_to)
+
+    total = query.count()
+    items = (
+        query.order_by(ReconciliationRequest.created_at.desc(), ReconciliationRequest.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return ReconciliationRequestList(
+        items=[ReconciliationRequestOut.model_validate(item) for item in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/reconciliation-requests/{request_id}", response_model=ReconciliationRequestOut)
+async def get_reconciliation_request(
+    request_id: str,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> ReconciliationRequestOut:
+    client_id = _ensure_client_context(token)
+    request_item = db.query(ReconciliationRequest).filter(ReconciliationRequest.id == request_id).one_or_none()
+    if request_item is None:
+        raise HTTPException(status_code=404, detail="reconciliation_request_not_found")
+    if str(request_item.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="reconciliation_request",
+            entity_id=str(request_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+    return ReconciliationRequestOut.model_validate(request_item)
+
+
+@router.get("/reconciliation-requests/{request_id}/download")
+async def download_reconciliation_request(
+    request_id: str,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+):
+    client_id = _ensure_client_context(token)
+    request_item = db.query(ReconciliationRequest).filter(ReconciliationRequest.id == request_id).one_or_none()
+    if request_item is None:
+        raise HTTPException(status_code=404, detail="reconciliation_request_not_found")
+    if str(request_item.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="reconciliation_request",
+            entity_id=str(request_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not request_item.result_object_key:
+        raise HTTPException(status_code=404, detail="reconciliation_result_not_found")
+
+    storage = S3Storage(bucket=request_item.result_bucket)
+    result_bytes = storage.get_bytes(request_item.result_object_key)
+    if not result_bytes:
+        raise HTTPException(status_code=404, detail="reconciliation_result_not_found")
+
+    filename = f"reconciliation_{request_item.date_from}_{request_item.date_to}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=result_bytes, media_type="application/pdf", headers=headers)
+
+
+@router.post("/reconciliation-requests/{request_id}/ack", response_model=ReconciliationRequestOut)
+async def acknowledge_reconciliation_request(
+    request_id: str,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> ReconciliationRequestOut:
+    _ensure_client_action_allowed(token)
+    client_id = _ensure_client_context(token)
+    request_item = db.query(ReconciliationRequest).filter(ReconciliationRequest.id == request_id).one_or_none()
+    if request_item is None:
+        raise HTTPException(status_code=404, detail="reconciliation_request_not_found")
+    if str(request_item.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="reconciliation_request",
+            entity_id=str(request_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    if request_item.status == ReconciliationRequestStatus.ACKNOWLEDGED:
+        return ReconciliationRequestOut.model_validate(request_item)
+
+    request_item.status = ReconciliationRequestStatus.ACKNOWLEDGED
+    request_item.acknowledged_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(request_item)
+
+    AuditService(db).audit(
+        event_type="RECONCILIATION_ACKNOWLEDGED",
+        entity_type="reconciliation_request",
+        entity_id=str(request_item.id),
+        action="UPDATE",
+        visibility=AuditVisibility.PUBLIC,
+        after={"status": request_item.status.value, "acknowledged_at": request_item.acknowledged_at},
+        request_ctx=request_context_from_request(request, token=token),
+    )
+
+    return ReconciliationRequestOut.model_validate(request_item)
+
+
+@router.post(
+    "/documents/{document_type}/{document_id}/ack",
+    response_model=DocumentAcknowledgementResponse,
+    status_code=201,
+)
+async def acknowledge_document(
+    document_type: str,
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> DocumentAcknowledgementResponse:
+    _ensure_client_action_allowed(token)
+    client_id = _ensure_client_context(token)
+    tenant_id = _ensure_tenant_context(token)
+
+    invoice = None
+    reconciliation_request = None
+    if document_type == "INVOICE_PDF":
+        invoice = db.query(Invoice).filter(Invoice.id == document_id).one_or_none()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="invoice_not_found")
+        if str(invoice.client_id) != client_id:
+            _audit_forbidden_access(
+                token=token,
+                request=request,
+                db=db,
+                entity_type="invoice",
+                entity_id=str(document_id),
+            )
+            raise HTTPException(status_code=403, detail="forbidden")
+    elif document_type == "ACT_RECONCILIATION":
+        reconciliation_request = (
+            db.query(ReconciliationRequest).filter(ReconciliationRequest.id == document_id).one_or_none()
+        )
+        if reconciliation_request is None:
+            raise HTTPException(status_code=404, detail="reconciliation_request_not_found")
+        if str(reconciliation_request.client_id) != client_id:
+            _audit_forbidden_access(
+                token=token,
+                request=request,
+                db=db,
+                entity_type="reconciliation_request",
+                entity_id=str(document_id),
+            )
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        raise HTTPException(status_code=400, detail="unsupported_document_type")
+
+    existing = (
+        db.query(DocumentAcknowledgement)
+        .filter(DocumentAcknowledgement.client_id == client_id)
+        .filter(DocumentAcknowledgement.document_type == document_type)
+        .filter(DocumentAcknowledgement.document_id == document_id)
+        .one_or_none()
+    )
+    if existing:
+        return DocumentAcknowledgementResponse(
+            acknowledged=True,
+            ack_at=existing.ack_at,
+            document_type=existing.document_type,
+            document_object_key=existing.document_object_key,
+            document_hash=existing.document_hash,
+        )
+
+    request_ctx = request_context_from_request(request, token=token)
+    document_object_key = None
+    document_hash = None
+    if invoice:
+        document_object_key = invoice.pdf_object_key
+        document_hash = invoice.pdf_hash
+    if reconciliation_request:
+        document_object_key = reconciliation_request.result_object_key
+        document_hash = reconciliation_request.result_hash_sha256
+    acknowledgement = DocumentAcknowledgement(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        document_type=document_type,
+        document_id=document_id,
+        document_object_key=document_object_key,
+        document_hash=document_hash,
+        ack_by_user_id=token.get("user_id") or token.get("sub"),
+        ack_by_email=token.get("email"),
+        ack_ip=request_ctx.ip if request_ctx else None,
+        ack_user_agent=request_ctx.user_agent if request_ctx else None,
+        ack_method="UI",
+    )
+    db.add(acknowledgement)
+    db.commit()
+    db.refresh(acknowledgement)
+
+    AuditService(db).audit(
+        event_type="DOCUMENT_ACKNOWLEDGED",
+        entity_type="document",
+        entity_id=document_id,
+        action="CREATE",
+        visibility=AuditVisibility.PUBLIC,
+        after={"document_type": document_type, "ack_at": acknowledgement.ack_at},
+        request_ctx=request_ctx,
+    )
+
+    return DocumentAcknowledgementResponse(
+        acknowledged=True,
+        ack_at=acknowledgement.ack_at,
+        document_type=document_type,
+        document_object_key=acknowledgement.document_object_key,
+        document_hash=acknowledgement.document_hash,
+    )
+
+
+@router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
+async def create_invoice_message(
+    invoice_id: str,
+    payload: InvoiceMessageCreateRequest,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+) -> InvoiceMessageCreateResponse:
+    _ensure_client_action_allowed(token)
+    client_id = _ensure_client_context(token)
+    _ensure_tenant_context(token)
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    if str(invoice.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice",
+            entity_id=str(invoice_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    thread = db.query(InvoiceThread).filter(InvoiceThread.invoice_id == invoice_id).one_or_none()
+    if thread and str(thread.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice_thread",
+            entity_id=str(thread.id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+    if thread is None:
+        thread = InvoiceThread(
+            invoice_id=invoice_id,
+            client_id=client_id,
+            status=InvoiceThreadStatus.WAITING_SUPPORT,
+        )
+        db.add(thread)
+        db.flush()
+    elif thread.status == InvoiceThreadStatus.CLOSED:
+        raise HTTPException(status_code=409, detail="thread_closed")
+    else:
+        thread.status = InvoiceThreadStatus.WAITING_SUPPORT
+
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=1)
+    recent_count = (
+        db.query(InvoiceMessage)
+        .filter(InvoiceMessage.thread_id == thread.id)
+        .filter(InvoiceMessage.sender_type == InvoiceMessageSenderType.CLIENT)
+        .filter(InvoiceMessage.created_at >= window_start)
+        .count()
+    )
+    if recent_count >= 10:
+        raise HTTPException(status_code=429, detail="message_rate_limited")
+
+    clean_message = re.sub(r"<[^>]*>", "", payload.message or "").strip()
+    if not clean_message:
+        raise HTTPException(status_code=422, detail="message_empty")
+
+    message = InvoiceMessage(
+        thread_id=thread.id,
+        sender_type=InvoiceMessageSenderType.CLIENT,
+        sender_user_id=token.get("user_id") or token.get("sub"),
+        sender_email=token.get("email"),
+        message=clean_message,
+    )
+    thread.last_message_at = now
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    AuditService(db).audit(
+        event_type="INVOICE_MESSAGE_CREATED",
+        entity_type="invoice",
+        entity_id=invoice_id,
+        action="CREATE",
+        visibility=AuditVisibility.PUBLIC,
+        after={
+            "thread_id": str(thread.id),
+            "message_id": str(message.id),
+            "sender_type": message.sender_type.value,
+        },
+        request_ctx=request_context_from_request(request, token=token),
+    )
+
+    return InvoiceMessageCreateResponse(
+        thread_id=str(thread.id),
+        message_id=str(message.id),
+        status=thread.status.value,
+    )
+
+
+@router.get("/invoices/{invoice_id}/messages", response_model=InvoiceThreadMessagesResponse)
+async def list_invoice_messages(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    request: Request | None = None,
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> InvoiceThreadMessagesResponse:
+    client_id = _ensure_client_context(token)
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    if str(invoice.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice",
+            entity_id=str(invoice_id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    thread = db.query(InvoiceThread).filter(InvoiceThread.invoice_id == invoice_id).one_or_none()
+    if thread and str(thread.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice_thread",
+            entity_id=str(thread.id),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+    if thread is None:
+        return InvoiceThreadMessagesResponse(items=[], total=0, limit=limit, offset=offset)
+
+    query = db.query(InvoiceMessage).filter(InvoiceMessage.thread_id == thread.id)
+    total = query.count()
+    messages = query.order_by(InvoiceMessage.created_at.asc()).offset(offset).limit(limit).all()
+
+    return InvoiceThreadMessagesResponse(
+        thread_id=str(thread.id),
+        status=thread.status.value,
+        created_at=thread.created_at,
+        closed_at=thread.closed_at,
+        last_message_at=thread.last_message_at,
+        items=[
+            InvoiceMessageOut(
+                id=str(item.id),
+                sender_type=item.sender_type.value,
+                sender_user_id=item.sender_user_id,
+                sender_email=item.sender_email,
+                message=item.message,
+                created_at=item.created_at,
+            )
+            for item in messages
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/invoices/{invoice_id}/pdf")
 async def download_invoice_pdf(
     invoice_id: str,
     token: dict = Depends(client_portal_user),
+    request: Request | None = None,
     db: Session = Depends(get_db),
 ):
     client_id = _ensure_client_context(token)
@@ -672,6 +1227,13 @@ async def download_invoice_pdf(
     if invoice is None:
         raise HTTPException(status_code=404, detail="invoice_not_found")
     if str(invoice.client_id) != client_id:
+        _audit_forbidden_access(
+            token=token,
+            request=request,
+            db=db,
+            entity_type="invoice",
+            entity_id=str(invoice_id),
+        )
         raise HTTPException(status_code=403, detail="forbidden")
     if not invoice.pdf_object_key:
         raise HTTPException(status_code=404, detail="pdf_not_found")
