@@ -39,8 +39,10 @@ def close_clearing_period(
     if existing:
         return existing
 
+    tenant_merchant_id = f"tenant-{tenant_id}"
     base_query = (
         db.query(Operation)
+        .filter(Operation.merchant_id == tenant_merchant_id)
         .filter(Operation.status == OperationStatus.CAPTURED)
         .filter(func.date(Operation.created_at) >= period_from)
         .filter(func.date(Operation.created_at) <= period_to)
@@ -53,6 +55,7 @@ def close_clearing_period(
             func.coalesce(func.sum(Operation.quantity), 0),
             func.count(Operation.id),
         )
+        .filter(Operation.merchant_id == tenant_merchant_id)
         .filter(Operation.status == OperationStatus.CAPTURED)
         .filter(func.date(Operation.created_at) >= period_from)
         .filter(func.date(Operation.created_at) <= period_to)
@@ -61,7 +64,7 @@ def close_clearing_period(
 
     merchant_id = base_query.with_entities(Operation.merchant_id).limit(1).scalar()
     if not merchant_id:
-        merchant_id = f"tenant-{tenant_id}"
+        merchant_id = tenant_merchant_id
 
     batch = ClearingBatch(
         merchant_id=merchant_id,
@@ -103,6 +106,7 @@ def _invoice_number_for(invoice_id: str, *, period_to: date) -> str:
 def _resolve_invoice_client_id(db: Session, batch: ClearingBatch) -> str:
     client_id = (
         db.query(Operation.client_id)
+        .filter(Operation.merchant_id == batch.merchant_id)
         .filter(Operation.status == OperationStatus.CAPTURED)
         .filter(func.date(Operation.created_at) >= batch.date_from)
         .filter(func.date(Operation.created_at) <= batch.date_to)
@@ -119,6 +123,7 @@ def _resolve_invoice_client_id(db: Session, batch: ClearingBatch) -> str:
 def _resolve_invoice_currency(db: Session, batch: ClearingBatch) -> str:
     currency = (
         db.query(Operation.currency)
+        .filter(Operation.merchant_id == batch.merchant_id)
         .filter(Operation.status == OperationStatus.CAPTURED)
         .filter(func.date(Operation.created_at) >= batch.date_from)
         .filter(func.date(Operation.created_at) <= batch.date_to)
