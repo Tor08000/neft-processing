@@ -21,6 +21,10 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
             core-api python -m app.alembic.check_protected_revisions
+      - name: Check alembic revision uniqueness
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+            core-api python -m app.alembic.check_revision_uniqueness
       - name: Check alembic heads
         run: |
           count="$(docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \

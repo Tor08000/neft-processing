@@ -552,7 +552,7 @@ def _intake_metrics() -> list[str]:
 
 def _audit_metrics() -> list[str]:
     event_lines = [
-        f'core_api_audit_events_total{event_type="{event_type}"} {count}'
+        f"core_api_audit_events_total{{event_type='{event_type}'}} {count}"
         for event_type, count in audit_metrics.events_total.items()
     ]
     if not event_lines:
