@@ -7,6 +7,8 @@ from typing import Callable, Mapping
 from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
+from app.models.audit_log import ActorType
+from app.services.audit_service import AuditService, RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +157,7 @@ class InvoiceStateMachine:
         credit_note_amount: int | None = None,
         refund_amount: int | None = None,
         metadata: Mapping[str, object] | None = None,
+        request_ctx: RequestContext | None = None,
     ) -> Invoice:
         if not actor:
             raise ValueError("actor is required")
@@ -162,6 +165,13 @@ class InvoiceStateMachine:
             raise ValueError("reason is required")
 
         from_status = self.invoice.status
+        before_snapshot = {
+            "status": from_status.value if from_status else None,
+            "amount_paid": int(self.invoice.amount_paid or 0),
+            "amount_due": int(self.invoice.amount_due or 0),
+            "amount_refunded": int(getattr(self.invoice, "amount_refunded", 0) or 0),
+            "credited_amount": int(getattr(self.invoice, "credited_amount", 0) or 0),
+        }
         now = self._now_provider()
 
         self._validate_allowed(to)
@@ -172,6 +182,26 @@ class InvoiceStateMachine:
 
         self._log_transition(from_status, to, actor=actor, reason=reason, metadata=metadata)
         self.db.add(self.invoice)
+
+        after_snapshot = {
+            "status": self.invoice.status.value if self.invoice.status else None,
+            "amount_paid": int(self.invoice.amount_paid or 0),
+            "amount_due": int(self.invoice.amount_due or 0),
+            "amount_refunded": int(getattr(self.invoice, "amount_refunded", 0) or 0),
+            "credited_amount": int(getattr(self.invoice, "credited_amount", 0) or 0),
+        }
+        if hasattr(self.db, "query"):
+            audit_ctx = request_ctx or RequestContext(actor_type=ActorType.SERVICE, actor_id=actor)
+            AuditService(self.db).audit(
+                event_type="INVOICE_STATUS_CHANGED",
+                entity_type="invoice",
+                entity_id=self.invoice.id,
+                action="UPDATE_STATE",
+                before=before_snapshot,
+                after=after_snapshot,
+                reason=reason,
+                request_ctx=audit_ctx,
+            )
 
         logger.info(
             "invoice.transition.applied",

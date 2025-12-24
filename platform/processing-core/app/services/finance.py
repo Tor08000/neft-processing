@@ -15,6 +15,7 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
+from app.services.audit_service import RequestContext
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
 
 
@@ -38,12 +39,14 @@ class RefundReferenceConflict(RuntimeError):
 class PaymentResult:
     payment: InvoicePayment
     invoice: Invoice
+    is_replay: bool = False
 
 
 @dataclass
 class CreditNoteResult:
     credit_note: CreditNote
     invoice: Invoice
+    is_replay: bool = False
 
 
 class FinanceService:
@@ -71,6 +74,7 @@ class FinanceService:
         payment_amount: int | None = None,
         credit_note_amount: int | None = None,
         refund_amount: int | None = None,
+        request_ctx: RequestContext | None = None,
     ) -> None:
         machine = InvoiceStateMachine(invoice, db=self.db)
         machine.transition(
@@ -81,6 +85,7 @@ class FinanceService:
             credit_note_amount=credit_note_amount,
             refund_amount=refund_amount,
             metadata={"source": "finance"},
+            request_ctx=request_ctx,
         )
 
     def apply_payment(
@@ -92,6 +97,7 @@ class FinanceService:
         idempotency_key: str,
         external_ref: str | None = None,
         provider: str | None = None,
+        request_ctx: RequestContext | None = None,
     ) -> PaymentResult:
         try:
             if external_ref:
@@ -107,7 +113,7 @@ class FinanceService:
                         billing_metrics.mark_payment_failed()
                         raise PaymentReferenceConflict(external_ref)
                     invoice = self._lock_invoice(invoice_id)
-                    return PaymentResult(payment=existing_by_ref, invoice=invoice)
+                    return PaymentResult(payment=existing_by_ref, invoice=invoice, is_replay=True)
         except InvoiceNotFound:
             billing_metrics.mark_payment_error()
             billing_metrics.mark_payment_failed()
@@ -120,15 +126,15 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
-            return PaymentResult(payment=existing, invoice=invoice)
+            return PaymentResult(payment=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
         job_run = None
 
         with txn_context:
             lock_token = make_lock_token("finance_payment", idempotency_key)
-            with advisory_lock(self.db, lock_token):
-                pass
+            with advisory_lock(self.db, lock_token) as acquired:
+                if not acquired:
                     billing_metrics.mark_payment_failed()
                     raise FinanceOperationInProgress(idempotency_key)
 
@@ -178,6 +184,7 @@ class FinanceService:
                     invoice,
                     target=target_status,
                     payment_amount=amount,
+                    request_ctx=request_ctx,
                 )
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
@@ -203,20 +210,7 @@ class FinanceService:
             billing_metrics.mark_payment_amount(amount)
             if invoice.status == InvoiceStatus.PAID:
                 billing_metrics.mark_invoice_paid()
-            self.db.add(
-                AuditLog(
-                    actor="system",
-                    action="PAYMENT_POSTED",
-                    target=str(payment.id),
-                    payload={
-                        "entity_type": "payment",
-                        "invoice_id": invoice_id,
-                        "external_refs": {"provider": provider, "external_ref": external_ref},
-                        "after": {"amount": amount, "status": payment.status.value, "currency": currency},
-                    },
-                )
-            )
-            return PaymentResult(payment=payment, invoice=invoice)
+            return PaymentResult(payment=payment, invoice=invoice, is_replay=False)
 
     def create_credit_note(
         self,
@@ -226,6 +220,7 @@ class FinanceService:
         currency: str,
         reason: str | None,
         idempotency_key: str,
+        request_ctx: RequestContext | None = None,
     ) -> CreditNoteResult:
         existing = (
             self.db.query(CreditNote)
@@ -234,7 +229,7 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
-            return CreditNoteResult(credit_note=existing, invoice=invoice)
+            return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
         job_run = None
@@ -277,11 +272,13 @@ class FinanceService:
                         invoice,
                         target=InvoiceStatus.PARTIALLY_PAID,
                         credit_note_amount=amount,
+                        request_ctx=request_ctx,
                     )
                     if invoice.amount_due <= 0:
                         self._apply_financial_transition(
                             invoice,
                             target=InvoiceStatus.PAID,
+                            request_ctx=request_ctx,
                         )
                 else:
                     target_status = InvoiceStatus.PARTIALLY_PAID
@@ -292,6 +289,7 @@ class FinanceService:
                         invoice,
                         target=target_status,
                         credit_note_amount=amount,
+                        request_ctx=request_ctx,
                     )
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
@@ -311,7 +309,7 @@ class FinanceService:
                     "due_amount": invoice.amount_due,
                 },
             )
-            return CreditNoteResult(credit_note=credit_note, invoice=invoice)
+            return CreditNoteResult(credit_note=credit_note, invoice=invoice, is_replay=False)
 
     def create_refund(
         self,
@@ -322,6 +320,7 @@ class FinanceService:
         reason: str | None,
         external_ref: str | None,
         provider: str | None,
+        request_ctx: RequestContext | None = None,
     ) -> CreditNoteResult:
         if external_ref:
             existing_by_ref = (
@@ -334,7 +333,7 @@ class FinanceService:
                 if existing_by_ref.invoice_id != invoice_id:
                     raise RefundReferenceConflict(external_ref)
                 invoice = self._lock_invoice(invoice_id)
-                return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice)
+                return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
         job_run = None
@@ -394,6 +393,7 @@ class FinanceService:
                     invoice,
                     target=target_status,
                     refund_amount=amount,
+                    request_ctx=request_ctx,
                 )
                 self.db.flush()
             except IntegrityError:
@@ -407,7 +407,7 @@ class FinanceService:
                     )
                     if existing:
                         invoice = self._lock_invoice(invoice_id)
-                        return CreditNoteResult(credit_note=existing, invoice=invoice)
+                        return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
                 raise
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
@@ -428,17 +428,4 @@ class FinanceService:
                 },
             )
             billing_metrics.mark_refund_posted()
-            self.db.add(
-                AuditLog(
-                    actor="system",
-                    action="REFUND_POSTED",
-                    target=str(refund.id),
-                    payload={
-                        "entity_type": "refund",
-                        "invoice_id": invoice_id,
-                        "external_refs": {"provider": provider, "external_ref": external_ref},
-                        "after": {"amount": amount, "status": refund.status.value, "currency": currency},
-                    },
-                )
-            )
-            return CreditNoteResult(credit_note=refund, invoice=invoice)
+            return CreditNoteResult(credit_note=refund, invoice=invoice, is_replay=False)

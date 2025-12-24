@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -15,6 +16,12 @@ from app.services.invoice_pdf import InvoicePdfService
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class InvoiceGenerationResult:
+    invoice: Invoice
+    created: bool
 
 
 def close_clearing_period(
@@ -135,7 +142,7 @@ def generate_invoice_for_batch(
     *,
     batch_id: str,
     run_pdf_sync: bool,
-) -> Invoice:
+) -> InvoiceGenerationResult:
     batch = db.query(ClearingBatch).filter(ClearingBatch.id == batch_id).one_or_none()
     if not batch:
         raise ValueError("batch_not_found")
@@ -148,7 +155,7 @@ def generate_invoice_for_batch(
         if run_pdf_sync and not existing.pdf_url:
             _generate_invoice_pdf_sync(db, existing)
         db.commit()
-        return existing
+        return InvoiceGenerationResult(invoice=existing, created=False)
 
     try:
         total_amount = int(batch.total_amount or 0)
@@ -184,7 +191,7 @@ def generate_invoice_for_batch(
         db.rollback()
         existing = db.query(Invoice).filter(Invoice.clearing_batch_id == batch_id).one_or_none()
         if existing:
-            return existing
+            return InvoiceGenerationResult(invoice=existing, created=False)
         raise
     except Exception:  # noqa: BLE001
         billing_metrics.mark_error()
@@ -202,7 +209,7 @@ def generate_invoice_for_batch(
             generate_invoice_pdf.delay(invoice.id)
         except Exception:  # noqa: BLE001
             logger.warning("invoice.pdf.enqueue_failed", extra={"invoice_id": invoice.id})
-    return invoice
+    return InvoiceGenerationResult(invoice=invoice, created=True)
 
 
 def _generate_invoice_pdf_sync(db: Session, invoice: Invoice) -> None:
@@ -210,4 +217,4 @@ def _generate_invoice_pdf_sync(db: Session, invoice: Invoice) -> None:
     pdf_service.generate(invoice, force=False)
 
 
-__all__ = ["close_clearing_period", "generate_invoice_for_batch"]
+__all__ = ["close_clearing_period", "generate_invoice_for_batch", "InvoiceGenerationResult"]

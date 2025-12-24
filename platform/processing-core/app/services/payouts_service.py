@@ -30,6 +30,19 @@ class PayoutReconcileResult:
     recorded_count: int
 
 
+@dataclass(frozen=True)
+class PayoutBatchResult:
+    batch: PayoutBatch
+    created: bool
+
+
+@dataclass(frozen=True)
+class PayoutStateResult:
+    batch: PayoutBatch
+    previous_state: PayoutBatchState
+    is_replay: bool
+
+
 def _operations_query(
     db: Session,
     *,
@@ -53,7 +66,7 @@ def close_payout_period(
     partner_id: str,
     date_from: date,
     date_to: date,
-) -> PayoutBatch:
+) -> PayoutBatchResult:
     if date_from > date_to:
         raise ValueError("invalid_period")
 
@@ -66,7 +79,7 @@ def close_payout_period(
         .one_or_none()
     )
     if existing:
-        return existing
+        return PayoutBatchResult(batch=existing, created=False)
 
     amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
     total_amount, total_qty, operations_count = (
@@ -127,7 +140,7 @@ def close_payout_period(
     db.commit()
     payout_metrics.mark_created(total_amount_decimal)
     db.refresh(batch)
-    return batch
+    return PayoutBatchResult(batch=batch, created=True)
 
 
 def list_payout_batches(
@@ -175,14 +188,14 @@ def mark_batch_sent(
     batch_id: str,
     provider: str,
     external_ref: str,
-) -> PayoutBatch:
+) -> PayoutStateResult:
     batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
     if not batch:
         raise PayoutError("batch_not_found")
 
     if batch.state in {PayoutBatchState.SENT, PayoutBatchState.SETTLED}:
         if batch.provider == provider and batch.external_ref == external_ref:
-            return batch
+            return PayoutStateResult(batch=batch, previous_state=batch.state, is_replay=True)
         raise PayoutConflictError("external_ref_conflict")
 
     if batch.state != PayoutBatchState.READY:
@@ -198,6 +211,7 @@ def mark_batch_sent(
     if conflict:
         raise PayoutConflictError("external_ref_conflict")
 
+    previous_state = batch.state
     batch.state = PayoutBatchState.SENT
     batch.provider = provider
     batch.external_ref = external_ref
@@ -210,7 +224,7 @@ def mark_batch_sent(
         raise PayoutConflictError("external_ref_conflict") from exc
 
     db.refresh(batch)
-    return batch
+    return PayoutStateResult(batch=batch, previous_state=previous_state, is_replay=False)
 
 
 def mark_batch_settled(
@@ -219,14 +233,14 @@ def mark_batch_settled(
     batch_id: str,
     provider: str,
     external_ref: str,
-) -> PayoutBatch:
+) -> PayoutStateResult:
     batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
     if not batch:
         raise PayoutError("batch_not_found")
 
     if batch.state == PayoutBatchState.SETTLED:
         if batch.provider == provider and batch.external_ref == external_ref:
-            return batch
+            return PayoutStateResult(batch=batch, previous_state=batch.state, is_replay=True)
         raise PayoutConflictError("external_ref_conflict")
 
     if batch.state != PayoutBatchState.SENT:
@@ -235,6 +249,7 @@ def mark_batch_settled(
     if batch.provider != provider or batch.external_ref != external_ref:
         raise PayoutConflictError("external_ref_conflict")
 
+    previous_state = batch.state
     batch.state = PayoutBatchState.SETTLED
     batch.settled_at = datetime.now(timezone.utc)
 
@@ -246,7 +261,7 @@ def mark_batch_settled(
 
     payout_metrics.mark_settled()
     db.refresh(batch)
-    return batch
+    return PayoutStateResult(batch=batch, previous_state=previous_state, is_replay=False)
 
 
 def reconcile_batch(db: Session, batch_id: str) -> PayoutReconcileResult:
@@ -302,6 +317,8 @@ __all__ = [
     "PayoutConflictError",
     "PayoutError",
     "PayoutReconcileResult",
+    "PayoutBatchResult",
+    "PayoutStateResult",
     "close_payout_period",
     "list_payout_batches",
     "load_payout_batch",
