@@ -45,6 +45,9 @@ def create_unique_index_if_not_exists(
     if not is_postgres(bind):
         return
 
+    if "." in index_name:
+        index_name = index_name.rsplit(".", 1)[-1]
+
     query = text(
         """
         SELECT 1
@@ -57,8 +60,9 @@ def create_unique_index_if_not_exists(
     if exists is not None:
         return
 
+    schema_name = schema or "public"
     bind.exec_driver_sql(
-        f"CREATE UNIQUE INDEX {index_name} ON {schema}.{table_name} {columns_sql}"
+        f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {schema_name}.{table_name} {columns_sql}"
     )
 
 
