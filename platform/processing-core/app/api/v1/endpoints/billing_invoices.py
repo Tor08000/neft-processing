@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
+from app.models.finance import CreditNote
 from app.models.invoice import Invoice
 from app.schemas.billing_invoices import (
     ClosePeriodRequest,
@@ -16,6 +17,10 @@ from app.schemas.billing_invoices import (
     InvoiceOut,
     InvoicePaymentRequest,
     InvoicePaymentResponse,
+    InvoiceRefundList,
+    InvoiceRefundOut,
+    InvoiceRefundRequest,
+    InvoiceRefundResponse,
 )
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
 from app.services.billing_metrics import metrics as billing_metrics
@@ -24,6 +29,7 @@ from app.services.finance import (
     FinanceService,
     InvoiceNotFound,
     PaymentReferenceConflict,
+    RefundReferenceConflict,
 )
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
 from app.services.s3_storage import S3Storage
@@ -140,6 +146,89 @@ def create_invoice_payment(
         invoice_status=result.invoice.status.value,
         status=result.payment.status.value if result.payment.status else "POSTED",
     )
+
+
+@router.post("/invoices/{invoice_id}/refunds", response_model=InvoiceRefundResponse, status_code=201)
+def create_invoice_refund(
+    invoice_id: str,
+    payload: InvoiceRefundRequest,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> InvoiceRefundResponse:
+    invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    client_id = token.get("client_id")
+    if not client_id or str(invoice.client_id) != str(client_id):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    service = FinanceService(db)
+    try:
+        result = service.create_refund(
+            invoice_id=invoice_id,
+            amount=payload.amount,
+            currency=invoice.currency,
+            reason=payload.reason,
+            external_ref=payload.external_ref,
+            provider=payload.provider,
+        )
+    except InvoiceNotFound as exc:
+        raise HTTPException(status_code=404, detail="invoice not found") from exc
+    except RefundReferenceConflict as exc:
+        raise HTTPException(status_code=409, detail="refund reference conflict") from exc
+    except FinanceOperationInProgress as exc:
+        raise HTTPException(status_code=409, detail="already running") from exc
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvoiceInvariantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return InvoiceRefundResponse(
+        refund_id=str(result.credit_note.id),
+        invoice_id=result.credit_note.invoice_id,
+        status=result.credit_note.status.value if result.credit_note.status else "POSTED",
+        amount=result.credit_note.amount,
+        amount_refunded_total=result.invoice.amount_refunded,
+        invoice_state=result.invoice.status.value,
+    )
+
+
+@router.get("/invoices/{invoice_id}/refunds", response_model=InvoiceRefundList)
+def list_invoice_refunds(
+    invoice_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> InvoiceRefundList:
+    invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+
+    client_id = token.get("client_id")
+    if not client_id or str(invoice.client_id) != str(client_id):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    refunds = (
+        db.query(CreditNote)
+        .filter(CreditNote.invoice_id == invoice_id)
+        .order_by(CreditNote.created_at.asc())
+        .all()
+    )
+    items = [
+        InvoiceRefundOut(
+            refund_id=str(refund.id),
+            invoice_id=refund.invoice_id,
+            amount=refund.amount,
+            currency=refund.currency,
+            provider=refund.provider,
+            external_ref=refund.external_ref,
+            reason=refund.reason,
+            status=refund.status.value if refund.status else "POSTED",
+            created_at=refund.created_at,
+        )
+        for refund in refunds
+    ]
+    return InvoiceRefundList(items=items)
 
 
 @router.get("/invoices/{invoice_id}/pdf")

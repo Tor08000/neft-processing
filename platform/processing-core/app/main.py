@@ -396,6 +396,9 @@ def _billing_metrics() -> list[str]:
         "# HELP core_api_invoice_payment_errors_total Invoice payment errors.",
         "# TYPE core_api_invoice_payment_errors_total counter",
         f"core_api_invoice_payment_errors_total {billing_metrics.invoice_payment_errors_total}",
+        "# HELP core_api_invoice_refunds_total Total invoice refunds posted.",
+        "# TYPE core_api_invoice_refunds_total counter",
+        f"core_api_invoice_refunds_total {billing_metrics.invoice_refunds_total}",
         "# HELP core_api_billing_amount_total Total billed amount per period.",
         "# TYPE core_api_billing_amount_total counter",
     ]

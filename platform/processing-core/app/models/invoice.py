@@ -73,6 +73,7 @@ class Invoice(Base):
     total_with_tax = Column(BigInteger, nullable=False, default=0)
     amount_paid = Column(BigInteger, nullable=False, default=0)
     amount_due = Column(BigInteger, nullable=False, default=0)
+    amount_refunded = Column(BigInteger, nullable=False, default=0)
 
     status = Column(
         ExistingEnum(InvoiceStatus, name="invoicestatus"),

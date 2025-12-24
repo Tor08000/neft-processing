@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
@@ -26,6 +27,10 @@ class InvoiceNotFound(RuntimeError):
 
 class PaymentReferenceConflict(RuntimeError):
     """Payment external reference points to a different invoice."""
+
+
+class RefundReferenceConflict(RuntimeError):
+    """Refund external reference points to a different invoice."""
 
 
 @dataclass
@@ -64,6 +69,7 @@ class FinanceService:
         target: InvoiceStatus,
         payment_amount: int | None = None,
         credit_note_amount: int | None = None,
+        refund_amount: int | None = None,
     ) -> None:
         machine = InvoiceStateMachine(invoice, db=self.db)
         machine.transition(
@@ -72,6 +78,7 @@ class FinanceService:
             reason="financial_update",
             payment_amount=payment_amount,
             credit_note_amount=credit_note_amount,
+            refund_amount=refund_amount,
             metadata={"source": "finance"},
         )
 
@@ -118,9 +125,8 @@ class FinanceService:
 
         with txn_context:
             lock_token = make_lock_token("finance_payment", idempotency_key)
-            with advisory_lock(self.db, lock_token) as acquired:
-                if not acquired:
-                    billing_metrics.mark_payment_error()
+            with advisory_lock(self.db, lock_token):
+                pass
                     billing_metrics.mark_payment_failed()
                     raise FinanceOperationInProgress(idempotency_key)
 
@@ -149,8 +155,9 @@ class FinanceService:
             self.db.add(payment)
             current_paid = int(invoice.amount_paid or 0)
             current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
+            current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
             total = int(invoice.total_with_tax or invoice.total_amount or 0)
-            outstanding_before = total - current_paid - current_credits
+            outstanding_before = total - current_paid - current_credits + current_refunded
 
             if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
                 self.db.rollback()
@@ -242,9 +249,10 @@ class FinanceService:
             self.db.add(credit_note)
             try:
                 current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
+                current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
                 current_paid = int(invoice.amount_paid or 0)
                 total = int(invoice.total_with_tax or invoice.total_amount or 0)
-                remaining_after_credit = total - current_paid - (current_credits + amount)
+                remaining_after_credit = total - current_paid - (current_credits + amount) + current_refunded
                 if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
                     self.db.rollback()
                     raise InvalidTransitionError(f"credit notes allowed only from sent/partial, got {invoice.status}")
@@ -289,3 +297,120 @@ class FinanceService:
                 },
             )
             return CreditNoteResult(credit_note=credit_note, invoice=invoice)
+
+    def create_refund(
+        self,
+        *,
+        invoice_id: str,
+        amount: int,
+        currency: str,
+        reason: str | None,
+        external_ref: str | None,
+        provider: str | None,
+    ) -> CreditNoteResult:
+        if external_ref:
+            existing_by_ref = (
+                self.db.query(CreditNote)
+                .filter(CreditNote.external_ref == external_ref)
+                .filter(CreditNote.provider == provider)
+                .one_or_none()
+            )
+            if existing_by_ref:
+                if existing_by_ref.invoice_id != invoice_id:
+                    raise RefundReferenceConflict(external_ref)
+                invoice = self._lock_invoice(invoice_id)
+                return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice)
+
+        txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
+        job_run = None
+
+        with txn_context:
+            lock_token = make_lock_token("finance_refund", external_ref or f"{invoice_id}:{amount}")
+            with advisory_lock(self.db, lock_token) as acquired:
+                if not acquired:
+                    billing_metrics.mark_payment_error()
+
+            invoice = self._lock_invoice(invoice_id)
+            if invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID}:
+                self.db.rollback()
+                raise InvalidTransitionError(
+                    f"refunds allowed only from paid/partial, got {invoice.status}"
+                )
+
+            job_run = self.job_service.start(
+                BillingJobType.FINANCE_CREDIT_NOTE,
+                params={
+                    "invoice_id": invoice_id,
+                    "amount": amount,
+                    "currency": currency,
+                    "reason": reason,
+                    "external_ref": external_ref,
+                    "provider": provider,
+                },
+                correlation_id=external_ref or f"refund:{invoice_id}",
+                invoice_id=invoice_id,
+            )
+
+            refund = CreditNote(
+                invoice_id=invoice_id,
+                amount=amount,
+                currency=currency,
+                reason=reason,
+                idempotency_key=external_ref or f"refund:{invoice_id}:{amount}",
+                external_ref=external_ref,
+                provider=provider,
+                status=CreditNoteStatus.POSTED,
+            )
+            self.db.add(refund)
+
+            try:
+                current_paid = int(invoice.amount_paid or 0)
+                current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
+                refundable = current_paid - current_refunded
+                if amount > refundable:
+                    raise InvoiceInvariantError("refund exceeds paid amount")
+
+                net_paid_after = current_paid - (current_refunded + amount)
+                target_status = InvoiceStatus.PARTIALLY_PAID
+                if net_paid_after <= 0:
+                    target_status = InvoiceStatus.SENT
+
+                self._apply_financial_transition(
+                    invoice,
+                    target=target_status,
+                    refund_amount=amount,
+                )
+                self.db.flush()
+            except IntegrityError:
+                self.db.rollback()
+                if external_ref:
+                    existing = (
+                        self.db.query(CreditNote)
+                        .filter(CreditNote.external_ref == external_ref)
+                        .filter(CreditNote.provider == provider)
+                        .one_or_none()
+                    )
+                    if existing:
+                        invoice = self._lock_invoice(invoice_id)
+                        return CreditNoteResult(credit_note=existing, invoice=invoice)
+                raise
+            except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                raise
+
+            self.job_service.succeed(
+                job_run,
+                metrics={
+                    "invoice_id": invoice_id,
+                    "amount": amount,
+                    "currency": currency,
+                    "due_amount": invoice.amount_due,
+                },
+                result_ref={
+                    "invoice_id": invoice_id,
+                    "credit_note_id": str(refund.id),
+                    "due_amount": invoice.amount_due,
+                },
+            )
+            billing_metrics.mark_refund_posted()
+            return CreditNoteResult(credit_note=refund, invoice=invoice)

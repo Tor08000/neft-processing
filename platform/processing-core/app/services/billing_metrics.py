@@ -20,6 +20,7 @@ class BillingMetrics:
     invoice_payment_errors_total: int = 0
     invoice_payments_posted_total: int = 0
     invoice_payments_failed_total: int = 0
+    invoice_refunds_total: int = 0
     billed_amounts: Dict[str, int] = field(default_factory=dict)
     daily_runs: Dict[str, int] = field(default_factory=dict)
     finalize_runs: Dict[str, int] = field(default_factory=dict)
@@ -78,6 +79,11 @@ class BillingMetrics:
 
         self.invoice_payment_errors_total += 1
 
+    def mark_refund_posted(self, count: int = 1) -> None:
+        """Count posted refunds."""
+
+        self.invoice_refunds_total += count
+
     def mark_daily_run(self, status: str, *, duration_ms: int | None = None) -> None:
         """Track billing daily run attempts by status."""
 
@@ -118,6 +124,7 @@ class BillingMetrics:
         self.invoice_payment_errors_total = 0
         self.invoice_payments_posted_total = 0
         self.invoice_payments_failed_total = 0
+        self.invoice_refunds_total = 0
         self.billed_amounts.clear()
         self.daily_runs.clear()
         self.finalize_runs.clear()
