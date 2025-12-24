@@ -75,8 +75,35 @@ echo "[entrypoint] waiting for postgres..."
 wait_for_postgres
 
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
+MIGRATION_LOG=${MIGRATION_LOG:-/tmp/alembic_migration.log}
+
+echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
+heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads 2>&1)
+heads_count=$(printf "%s\n" "$heads_output" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+if [ "$heads_count" -ne 1 ]; then
+    echo "[entrypoint] migration validation failed; multiple heads detected" >&2
+    echo "$heads_output" >&2
+    echo "[entrypoint] create merge revision with: alembic merge <head1> <head2>" >&2
+    echo "[entrypoint] migration validation failed; run scripts\\check_migrations.cmd" >&2
+    if [ "${ENTRYPOINT_MIGRATION_KEEPALIVE}" = "1" ]; then
+        echo "[entrypoint] ENTRYPOINT_MIGRATION_KEEPALIVE=1; keeping container alive" >&2
+        tail -f /dev/null
+    fi
+    exit 1
+fi
+
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
-alembic -c "$ALEMBIC_CONFIG" upgrade head
+if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then
+    echo "[entrypoint] migration validation failed; last log lines:" >&2
+    tail -n 200 "$MIGRATION_LOG" >&2 || true
+    echo "[entrypoint] migration validation failed; run scripts\\check_migrations.cmd" >&2
+    echo "[entrypoint] migration log saved to $MIGRATION_LOG" >&2
+    if [ "${ENTRYPOINT_MIGRATION_KEEPALIVE}" = "1" ]; then
+        echo "[entrypoint] ENTRYPOINT_MIGRATION_KEEPALIVE=1; keeping container alive" >&2
+        tail -f /dev/null
+    fi
+    exit 1
+fi
 
 python - <<'PY'
 from app.db import reset_engine
