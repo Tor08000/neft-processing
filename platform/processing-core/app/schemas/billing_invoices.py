@@ -53,3 +53,35 @@ class InvoicePaymentResponse(BaseModel):
     due_amount: int
     invoice_status: str
     status: str
+
+
+class InvoiceRefundRequest(BaseModel):
+    amount: int = Field(..., gt=0)
+    external_ref: str = Field(..., min_length=1, max_length=128)
+    provider: str = Field(..., max_length=64)
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class InvoiceRefundResponse(BaseModel):
+    refund_id: str
+    invoice_id: str
+    status: str
+    amount: int
+    amount_refunded_total: int
+    invoice_state: str
+
+
+class InvoiceRefundOut(BaseModel):
+    refund_id: str
+    invoice_id: str
+    amount: int
+    currency: str
+    provider: str | None = None
+    external_ref: str | None = None
+    reason: str | None = None
+    status: str
+    created_at: datetime | None = None
+
+
+class InvoiceRefundList(BaseModel):
+    items: list[InvoiceRefundOut]

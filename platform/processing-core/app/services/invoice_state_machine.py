@@ -23,8 +23,8 @@ _ALLOWED_TRANSITIONS: Mapping[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED},
     InvoiceStatus.ISSUED: {InvoiceStatus.SENT, InvoiceStatus.CANCELLED},
     InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID, InvoiceStatus.CANCELLED},
-    InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID},
-    InvoiceStatus.PAID: set(),
+    InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID, InvoiceStatus.SENT},
+    InvoiceStatus.PAID: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.SENT},
     InvoiceStatus.CANCELLED: set(),
     InvoiceStatus.OVERDUE: set(),
     InvoiceStatus.CREDITED: set(),
@@ -46,10 +46,16 @@ class InvoiceStateMachine:
         if target not in allowed:
             raise InvalidTransitionError(f"transition {self.invoice.status} -> {target} is not allowed")
 
-    def _apply_amounts(self, payment_amount: int | None, credit_note_amount: int | None) -> None:
+    def _apply_amounts(
+        self,
+        payment_amount: int | None,
+        credit_note_amount: int | None,
+        refund_amount: int | None,
+    ) -> None:
         total = int(self.invoice.total_with_tax or self.invoice.total_amount or 0)
         paid = int(self.invoice.amount_paid or 0)
         credits = int(getattr(self.invoice, "credited_amount", 0) or 0)
+        refunded = int(getattr(self.invoice, "amount_refunded", 0) or 0)
 
         if payment_amount is not None:
             if payment_amount < 0:
@@ -59,40 +65,58 @@ class InvoiceStateMachine:
             if credit_note_amount < 0:
                 raise InvoiceInvariantError("credit_note_amount must be non-negative")
             credits += int(credit_note_amount)
+        if refund_amount is not None:
+            if refund_amount < 0:
+                raise InvoiceInvariantError("refund_amount must be non-negative")
+            refunded += int(refund_amount)
 
-        due = total - paid - credits
-        if paid < 0 or credits < 0 or due < 0:
+        due = total - paid - credits + refunded
+        if paid < 0 or credits < 0 or refunded < 0 or due < 0:
             raise InvoiceInvariantError("financial invariants violated")
-        if paid + due + credits != total:
-            raise InvoiceInvariantError("paid + due + credits must equal total")
+        if paid + credits - refunded + due != total:
+            raise InvoiceInvariantError("paid + credits - refunded + due must equal total")
 
         self.invoice.amount_paid = paid
         self.invoice.amount_due = due
         self.invoice.credited_amount = credits
+        self.invoice.amount_refunded = refunded
 
-    def _validate_constraints(self, target: InvoiceStatus, payment_amount: int | None, credit_note_amount: int | None) -> None:
+    def _validate_constraints(
+        self,
+        target: InvoiceStatus,
+        payment_amount: int | None,
+        credit_note_amount: int | None,
+        refund_amount: int | None,
+    ) -> None:
         total = int(self.invoice.total_with_tax or self.invoice.total_amount or 0)
         paid = int(self.invoice.amount_paid or 0)
         credits = int(getattr(self.invoice, "credited_amount", 0) or 0)
         due = int(self.invoice.amount_due or 0)
+        refunded = int(getattr(self.invoice, "amount_refunded", 0) or 0)
 
         if target == InvoiceStatus.CANCELLED:
-            if paid > 0 or credits > 0:
+            if paid > 0 or credits > 0 or refunded > 0:
                 raise InvalidTransitionError("cannot cancel invoice with payments or credits")
 
         if target == InvoiceStatus.SENT and self.invoice.pdf_status != InvoicePdfStatus.READY:
             raise InvalidTransitionError("invoice pdf must be ready before sending")
 
         if target == InvoiceStatus.PARTIALLY_PAID:
-            if paid <= 0:
+            if paid <= 0 and (credit_note_amount is None or credit_note_amount <= 0):
                 raise InvalidTransitionError("partial payment must be greater than zero")
-            if payment_amount is None or payment_amount <= 0:
-                raise InvalidTransitionError("payment amount required for partial payment")
+            if (
+                (payment_amount is None or payment_amount <= 0)
+                and (refund_amount is None or refund_amount <= 0)
+                and (credit_note_amount is None or credit_note_amount <= 0)
+            ):
+                raise InvalidTransitionError(
+                    "payment, refund, or credit note amount required for partial payment"
+                )
             if due < 0:
                 raise InvalidTransitionError("partial payment cannot overpay invoice")
 
         if target == InvoiceStatus.PAID:
-            if due != 0 or paid + credits != total:
+            if due != 0 or paid + credits - refunded != total:
                 raise InvalidTransitionError("invoice must be fully settled before marking as paid")
 
         if target == InvoiceStatus.OVERDUE and due <= 0:
@@ -129,6 +153,7 @@ class InvoiceStateMachine:
         reason: str,
         payment_amount: int | None = None,
         credit_note_amount: int | None = None,
+        refund_amount: int | None = None,
         metadata: Mapping[str, object] | None = None,
     ) -> Invoice:
         if not actor:
@@ -140,8 +165,8 @@ class InvoiceStateMachine:
         now = self._now_provider()
 
         self._validate_allowed(to)
-        self._apply_amounts(payment_amount, credit_note_amount)
-        self._validate_constraints(to, payment_amount, credit_note_amount)
+        self._apply_amounts(payment_amount, credit_note_amount, refund_amount)
+        self._validate_constraints(to, payment_amount, credit_note_amount, refund_amount)
         self._update_timestamps(to, now)
         self.invoice.status = to
 
@@ -160,6 +185,7 @@ class InvoiceStateMachine:
                 "amount_paid": self.invoice.amount_paid,
                 "amount_due": self.invoice.amount_due,
                 "credited_amount": getattr(self.invoice, "credited_amount", 0),
+                "amount_refunded": getattr(self.invoice, "amount_refunded", 0),
             },
         )
         return self.invoice

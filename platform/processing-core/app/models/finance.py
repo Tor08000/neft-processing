@@ -16,6 +16,7 @@ class PaymentStatus(str, Enum):
 class CreditNoteStatus(str, Enum):
     POSTED = "POSTED"
     FAILED = "FAILED"
+    REVERSED = "REVERSED"
 
 
 class InvoicePayment(Base):
@@ -53,6 +54,8 @@ class CreditNote(Base):
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
+    provider = Column(String(64), nullable=True)
+    external_ref = Column(String(128), nullable=True, index=True)
     reason = Column(String(255), nullable=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     status = Column(
