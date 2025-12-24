@@ -68,7 +68,7 @@ def close_payout_period(
     if existing:
         return existing
 
-    amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
+    amount_expr = func.coalesce(func.nullif(Operation.amount_settled, 0), Operation.amount)
     total_amount, total_qty, operations_count = (
         db.query(
             func.coalesce(func.sum(amount_expr), 0),
