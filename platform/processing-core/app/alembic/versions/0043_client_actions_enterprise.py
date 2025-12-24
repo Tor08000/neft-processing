@@ -41,6 +41,30 @@ def _qualify(name: str) -> str:
     return name
 
 
+def _enum_value_exists(bind, enum_name: str, value: str) -> bool:
+    if not is_postgres(bind):
+        return False
+    schema = SCHEMA or "public"
+    return (
+        bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE n.nspname = :schema
+                  AND t.typname = :enum_name
+                  AND e.enumlabel = :value
+                LIMIT 1
+                """
+            ),
+            {"schema": schema, "enum_name": enum_name, "value": value},
+        ).scalar()
+        is not None
+    )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -73,16 +97,18 @@ def upgrade() -> None:
         )
 
     if column_exists(bind, "reconciliation_requests", "status", schema=SCHEMA):
-        op.execute(
-            sa.text(
-                f"UPDATE {_qualify('reconciliation_requests')} SET status='REQUESTED' WHERE status='NEW'"
+        if _enum_value_exists(bind, "reconciliation_request_status", "NEW"):
+            op.execute(
+                sa.text(
+                    f"UPDATE {_qualify('reconciliation_requests')} SET status='REQUESTED' WHERE status='NEW'"
+                )
             )
-        )
-        op.execute(
-            sa.text(
-                f"UPDATE {_qualify('reconciliation_requests')} SET status='GENERATED' WHERE status='READY'"
+        if _enum_value_exists(bind, "reconciliation_request_status", "READY"):
+            op.execute(
+                sa.text(
+                    f"UPDATE {_qualify('reconciliation_requests')} SET status='GENERATED' WHERE status='READY'"
+                )
             )
-        )
         op.alter_column(
             "reconciliation_requests",
             "status",
