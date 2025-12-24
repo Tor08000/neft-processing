@@ -11,3 +11,21 @@ jobs:
           python-version: 3.11
       - name: Run tests
         run: echo "Add tests"
+  migration-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start postgres
+        run: docker compose up -d postgres
+      - name: Check alembic heads
+        run: |
+          heads="$(docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads)"
+          count="$(printf "%s\n" "$heads" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+          if [ "$count" -ne 1 ]; then
+            echo "Expected 1 alembic head, got $count"
+            echo "$heads"
+            echo "Resolve with: alembic merge <head1> <head2>"
+            exit 1
+          fi
+      - name: Alembic upgrade head
+        run: docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
