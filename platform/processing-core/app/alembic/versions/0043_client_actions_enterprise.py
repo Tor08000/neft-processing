@@ -74,11 +74,15 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "invoice_message_sender_type", INVOICE_MESSAGE_SENDERS, schema=SCHEMA)
 
     if is_postgres(bind):
-        for value in ["REQUESTED", "GENERATED", "ACKNOWLEDGED"]:
-            ensure_pg_enum_value(bind, "reconciliation_request_status", value, schema=SCHEMA or "public")
-        for value in ["WAITING_SUPPORT", "WAITING_CLIENT", "RESOLVED"]:
-            ensure_pg_enum_value(bind, "invoice_thread_status", value, schema=SCHEMA or "public")
-        ensure_pg_enum_value(bind, "invoice_message_sender_type", "SYSTEM", schema=SCHEMA or "public")
+        enum_schema = SCHEMA or "public"
+        for value in AUDIT_VISIBILITY:
+            ensure_pg_enum_value(bind, "audit_visibility", value, schema=enum_schema)
+        for value in RECONCILIATION_STATUSES:
+            ensure_pg_enum_value(bind, "reconciliation_request_status", value, schema=enum_schema)
+        for value in INVOICE_THREAD_STATUSES:
+            ensure_pg_enum_value(bind, "invoice_thread_status", value, schema=enum_schema)
+        for value in INVOICE_MESSAGE_SENDERS:
+            ensure_pg_enum_value(bind, "invoice_message_sender_type", value, schema=enum_schema)
 
     if not column_exists(bind, "audit_log", "visibility", schema=SCHEMA):
         visibility_enum = safe_enum(bind, "audit_visibility", AUDIT_VISIBILITY, schema=SCHEMA)
