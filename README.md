@@ -9,7 +9,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 3. Заполните доступы администратора в `.env` (значения хранятся только локально):
    - `AUTH_BOOTSTRAP_ENABLED=1`
    - `AUTH_BOOTSTRAP_ADMIN_EMAIL` (fallback: `ADMIN_EMAIL`, пример: `admin@example.com`)
-   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`, пример: `admin123`)
+   - `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (fallback: `ADMIN_PASSWORD`, пример: `change-me`)
    - `AUTH_BOOTSTRAP_ADMIN_ROLES=ADMIN,PLATFORM_ADMIN,SUPERADMIN`
    Эти переменные используются для автоматического создания/обновления администратора при старте `auth-host` (идемпотентно, не затирает пароль существующего пользователя).
 4. Соберите и поднимите сервисы: `docker compose up -d --build`.
@@ -53,7 +53,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ### Админский токен для локальной разработки
 
-1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (по умолчанию `admin@example.com` / `admin123`).
+1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (например, `admin@example.com` / `change-me`).
 2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
@@ -70,7 +70,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * Открыть в браузере: `http://localhost/admin/` (или напрямую в контейнер admin-web: `http://localhost:4173/admin/`)
 * В форме логина ввести:
   * Email: `admin@example.com`
-  * Пароль: `admin123`
+  * Пароль: `change-me`
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
@@ -87,14 +87,14 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 ### Клиентский кабинет (реальные данные)
 
 * Доступ: `http://localhost/client/`.
-* Демо-креды: `client@neft.local` / `client` (значения можно изменить в `.env`).
+* Демо-креды: `client@neft.local` / `change-me` (значения можно изменить в `.env`).
 * Что внутри: операции, лимиты и дашборд читают реальные записи из БД (`client_operations`, `client_limits`, `client_cards`).
 * Быстрый старт:
   1. `cp -n .env.example .env` и при необходимости скорректируйте `DEMO_CLIENT_*`.
   2. `docker compose up -d --build`.
   3. Откройте клиентский портал, авторизуйтесь демо-клиентом — увидите seeded-операции/лимиты из базы.
 * Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/api/core/client/api/v1/...` через gateway.
-* Для демо-доступа используется единый аккаунт клиента (по умолчанию `client@neft.local / client`). Креды можно переопределить через
+* Для демо-доступа используется единый аккаунт клиента (по умолчанию `client@neft.local / change-me`). Креды можно переопределить через
   переменные окружения `DEMO_CLIENT_EMAIL` и `DEMO_CLIENT_PASSWORD` в `.env`.
 * Авторизация клиентских API защищена JWT: логин по пути `/api/auth/api/v1/auth/login`, последующие запросы к `/api/core/client/api/v1/client/*`
   выполняются с заголовком `Authorization: Bearer <token>`; при 401/403 клиент сбрасывает токен и возвращает пользователя на экран логина.
