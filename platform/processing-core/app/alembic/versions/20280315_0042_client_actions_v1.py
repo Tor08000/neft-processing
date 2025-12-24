@@ -13,6 +13,9 @@ import sqlalchemy as sa
 from app.alembic.helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
+    drop_index_if_exists,
+    drop_pg_enum_if_exists,
+    drop_table_if_exists,
     ensure_pg_enum,
     safe_enum,
 )
@@ -179,5 +182,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Keep migration idempotent; no downgrade to avoid data loss.
-    pass
+    bind = op.get_bind()
+
+    drop_index_if_exists(bind, "ix_invoice_messages_sender", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_messages_thread", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_threads_client", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_invoice_threads_invoice", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_document_acknowledgements_client_doc", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_reconciliation_requests_status", schema=SCHEMA)
+    drop_index_if_exists(bind, "ix_reconciliation_requests_client_period", schema=SCHEMA)
+
+    drop_table_if_exists(bind, "invoice_messages", schema=SCHEMA)
+    drop_table_if_exists(bind, "invoice_threads", schema=SCHEMA)
+    drop_table_if_exists(bind, "document_acknowledgements", schema=SCHEMA)
+    drop_table_if_exists(bind, "reconciliation_requests", schema=SCHEMA)
+
+    drop_pg_enum_if_exists(bind, "invoice_message_sender_type", schema=SCHEMA)
+    drop_pg_enum_if_exists(bind, "invoice_thread_status", schema=SCHEMA)
+    drop_pg_enum_if_exists(bind, "reconciliation_request_status", schema=SCHEMA)
