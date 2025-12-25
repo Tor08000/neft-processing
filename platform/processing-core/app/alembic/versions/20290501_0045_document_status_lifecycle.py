@@ -18,7 +18,7 @@ from app.db.schema import resolve_db_schema
 revision = "20290501_0045_document_status_lifecycle"
 down_revision = "20280415_0044_accounting_export_batches"
 branch_labels = None
-depends_on = ("0044_documents_registry",)
+depends_on = None
 
 DOCUMENT_STATUSES = ["DRAFT", "ISSUED", "ACKNOWLEDGED", "FINALIZED", "VOID"]
 CLOSING_PACKAGE_STATUSES = ["DRAFT", "ISSUED", "ACKNOWLEDGED", "FINALIZED", "VOID"]
