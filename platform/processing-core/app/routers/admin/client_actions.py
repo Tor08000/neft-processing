@@ -24,18 +24,9 @@ from app.schemas.client_actions import (
     ReconciliationAttachResultRequest,
     ReconciliationRequestOut,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 
 router = APIRouter()
-
-SENSITIVE_TOKEN_FIELDS = {"access_token", "email", "id_token", "refresh_token", "token"}
-
-
-def _sanitize_token(token: dict | None) -> dict | None:
-    if not token:
-        return None
-    return {key: value for key, value in token.items() if key not in SENSITIVE_TOKEN_FIELDS}
-
 
 def _update_reconciliation_status(
     request_item: ReconciliationRequest,
@@ -61,7 +52,7 @@ def _update_reconciliation_status(
         visibility=visibility,
         before={"status": before_status.value if before_status else None},
         after={"status": request_item.status.value, **(note or {})},
-        request_ctx=request_context_from_request(request, token=_sanitize_token(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
 
@@ -123,7 +114,7 @@ def attach_reconciliation_result(
             "result_object_key": payload.object_key,
             "result_hash_sha256": payload.result_hash_sha256,
         },
-        request_ctx=request_context_from_request(request, token=_sanitize_token(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return ReconciliationRequestOut.model_validate(request_item)
@@ -202,7 +193,7 @@ def admin_create_invoice_message(
             "message_id": str(message.id),
             "sender_type": message.sender_type.value,
         },
-        request_ctx=request_context_from_request(request, token=_sanitize_token(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return InvoiceMessageCreateResponse(
@@ -235,7 +226,7 @@ def close_invoice_thread(
         action="UPDATE",
         visibility=AuditVisibility.INTERNAL,
         after={"status": thread.status.value, "closed_at": thread.closed_at},
-        request_ctx=request_context_from_request(request, token=_sanitize_token(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return InvoiceThreadCloseResponse(thread_id=str(thread.id), status=thread.status.value, closed_at=thread.closed_at)

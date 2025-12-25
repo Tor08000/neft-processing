@@ -64,7 +64,7 @@ from app.schemas.client_actions import (
     ReconciliationRequestList,
     ReconciliationRequestOut,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/v1/client", tags=["client-portal"])
@@ -164,7 +164,7 @@ def _audit_forbidden_access(
         entity_id=entity_id,
         action="FORBIDDEN",
         visibility=AuditVisibility.INTERNAL,
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
 
@@ -803,7 +803,7 @@ async def create_reconciliation_request(
             "date_from": new_request.date_from,
             "date_to": new_request.date_to,
         },
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return ReconciliationRequestOut.model_validate(new_request)
@@ -939,7 +939,7 @@ async def acknowledge_reconciliation_request(
         action="UPDATE",
         visibility=AuditVisibility.PUBLIC,
         after={"status": request_item.status.value, "acknowledged_at": request_item.acknowledged_at},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return ReconciliationRequestOut.model_validate(request_item)
@@ -1010,7 +1010,7 @@ async def acknowledge_document(
             document_hash=existing.document_hash,
         )
 
-    request_ctx = request_context_from_request(request, token=token)
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     document_object_key = None
     document_hash = None
     if invoice:
@@ -1142,7 +1142,7 @@ async def create_invoice_message(
             "message_id": str(message.id),
             "sender_type": message.sender_type.value,
         },
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return InvoiceMessageCreateResponse(

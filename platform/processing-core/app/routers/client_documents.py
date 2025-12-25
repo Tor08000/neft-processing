@@ -26,7 +26,7 @@ from app.schemas.closing_documents import (
     ClientDocumentSummary,
     DocumentAcknowledgementResponse,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.documents_storage import DocumentsStorage
 
 router = APIRouter(prefix="/api/v1/client", tags=["client-documents"])
@@ -167,7 +167,7 @@ def download_document(
         action="READ",
         visibility=AuditVisibility.PUBLIC,
         after={"file_type": file_type.value},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return Response(content=payload, media_type=file_record.content_type, headers=headers)
@@ -239,7 +239,7 @@ def acknowledge_document(
         action="UPDATE",
         visibility=AuditVisibility.PUBLIC,
         after={"document_type": document.document_type.value, "ack_at": acknowledgement.ack_at},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return DocumentAcknowledgementResponse(
@@ -281,7 +281,7 @@ def acknowledge_closing_package(
         action="UPDATE",
         visibility=AuditVisibility.PUBLIC,
         after={"status": package.status.value, "ack_at": package.ack_at},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return ClosingPackageAckResponse(acknowledged=True, ack_at=package.ack_at)
