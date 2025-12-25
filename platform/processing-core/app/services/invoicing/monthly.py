@@ -156,7 +156,6 @@ def run_invoice_monthly(
             .filter(BillingSummary.billing_date >= period_from)
             .filter(BillingSummary.billing_date <= period_to)
             .filter(BillingSummary.status == BillingSummaryStatus.FINALIZED)
-            .filter(BillingSummary.billing_period_id == period.id)
             .all()
         )
         if not summaries:
