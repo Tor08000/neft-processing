@@ -9,12 +9,15 @@ from io import StringIO
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
+from app.models.billing_period import BillingPeriod
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
 from app.models.payout_export_file import PayoutExportFile, PayoutExportFormat, PayoutExportState
 from app.services.payout_export_xlsx import (
     PayoutXlsxResult,
     generate_payout_registry_xlsx,
 )
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
 
 
@@ -138,6 +141,7 @@ def create_payout_export(
     provider: str | None,
     external_ref: str | None,
     bank_format_code: str | None = None,
+    token: dict | None = None,
 ) -> PayoutExportResult:
     if export_format == PayoutExportFormat.XLSX and not bank_format_code:
         raise PayoutExportError("bank_format_required")
@@ -147,6 +151,34 @@ def create_payout_export(
         raise PayoutExportError("batch_not_found")
     if batch.state not in {PayoutBatchState.READY, PayoutBatchState.SENT, PayoutBatchState.SETTLED}:
         raise PayoutExportError("invalid_state")
+
+    period_status = None
+    billing_period_id = None
+    if batch.meta and isinstance(batch.meta, dict):
+        billing_period_id = batch.meta.get("billing_period_id")
+    if billing_period_id:
+        period = db.query(BillingPeriod).filter(BillingPeriod.id == billing_period_id).one_or_none()
+        if period and period.status:
+            period_status = period.status.value
+
+    actor = actor_from_token(token)
+    resource = ResourceContext(
+        resource_type="PAYOUT_BATCH",
+        tenant_id=actor.tenant_id or int(batch.tenant_id),
+        client_id=None,
+        status=period_status,
+    )
+    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
+    if not decision.allowed:
+        audit_access_denied(
+            db,
+            actor=actor,
+            action=Action.PAYOUT_EXPORT_CREATE,
+            resource=resource,
+            decision=decision,
+            token=token,
+        )
+        raise PolicyAccessDenied(decision)
 
     if external_ref:
         conflict = (

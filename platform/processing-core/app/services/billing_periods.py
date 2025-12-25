@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 
 
 _ALLOWED_TRANSITIONS = {
@@ -34,6 +36,27 @@ class BillingPeriodConflict(ValueError):
 class BillingPeriodService:
     def __init__(self, db: Session):
         self.db = db
+        self.policy_engine = PolicyEngine()
+
+    def _enforce_policy(
+        self,
+        *,
+        token: dict | None,
+        action: Action,
+        resource: ResourceContext,
+    ) -> None:
+        actor = actor_from_token(token)
+        decision = self.policy_engine.check(actor=actor, action=action, resource=resource)
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=action,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
 
     def get_or_create(self, *, period_type: BillingPeriodType, start_at: datetime, end_at: datetime, tz: str) -> BillingPeriod:
         period = (
@@ -79,8 +102,26 @@ class BillingPeriodService:
                 f"Billing period cannot transition from {current.value} to {target.value}"
             )
 
-    def lock(self, *, period_type: BillingPeriodType, start_at: datetime, end_at: datetime, tz: str) -> BillingPeriod:
+    def lock(
+        self,
+        *,
+        period_type: BillingPeriodType,
+        start_at: datetime,
+        end_at: datetime,
+        tz: str,
+        token: dict | None = None,
+    ) -> BillingPeriod:
         period = self.get_or_create(period_type=period_type, start_at=start_at, end_at=end_at, tz=tz)
+        self._enforce_policy(
+            token=token,
+            action=Action.BILLING_PERIOD_LOCK,
+            resource=ResourceContext(
+                resource_type="BILLING_PERIOD",
+                tenant_id=actor_from_token(token).tenant_id,
+                client_id=None,
+                status=period.status.value if period.status else None,
+            ),
+        )
         self.require_transition(period.status, BillingPeriodStatus.LOCKED)
         if period.status != BillingPeriodStatus.LOCKED:
             period.status = BillingPeriodStatus.LOCKED
@@ -89,8 +130,26 @@ class BillingPeriodService:
             self.db.flush()
         return period
 
-    def finalize(self, *, period_type: BillingPeriodType, start_at: datetime, end_at: datetime, tz: str) -> BillingPeriod:
+    def finalize(
+        self,
+        *,
+        period_type: BillingPeriodType,
+        start_at: datetime,
+        end_at: datetime,
+        tz: str,
+        token: dict | None = None,
+    ) -> BillingPeriod:
         period = self.get_or_create(period_type=period_type, start_at=start_at, end_at=end_at, tz=tz)
+        self._enforce_policy(
+            token=token,
+            action=Action.BILLING_PERIOD_FINALIZE,
+            resource=ResourceContext(
+                resource_type="BILLING_PERIOD",
+                tenant_id=actor_from_token(token).tenant_id,
+                client_id=None,
+                status=period.status.value if period.status else None,
+            ),
+        )
         self.require_transition(period.status, BillingPeriodStatus.FINALIZED)
         if period.status != BillingPeriodStatus.FINALIZED:
             period.status = BillingPeriodStatus.FINALIZED

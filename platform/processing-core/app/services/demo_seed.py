@@ -246,6 +246,7 @@ class DemoSeeder:
 
         # Trigger a billing run to ensure invoices exist for smoke flows.
         billing_service = BillingRunService(self.db)
+        seed_token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "demo_seed"}
         result = billing_service.run(
             period_type=BillingPeriodType.ADHOC,
             start_at=datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc),
@@ -253,6 +254,7 @@ class DemoSeeder:
             tz="UTC",
             client_id=None,
             idempotency_key=scope_key,
+            token=seed_token,
         )
 
         result.billing_period.status = BillingPeriodStatus.FINALIZED

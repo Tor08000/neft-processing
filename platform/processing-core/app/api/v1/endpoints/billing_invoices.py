@@ -36,6 +36,7 @@ from app.services.finance import (
 )
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
 from app.services.job_locks import make_stable_key
+from app.services.policy import PolicyAccessDenied
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
@@ -179,7 +180,10 @@ def create_invoice_payment(
             external_ref=payload.external_ref,
             provider=payload.provider,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except PaymentReferenceConflict as exc:
@@ -261,7 +265,10 @@ def create_invoice_refund(
             external_ref=payload.external_ref,
             provider=payload.provider,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except RefundReferenceConflict as exc:

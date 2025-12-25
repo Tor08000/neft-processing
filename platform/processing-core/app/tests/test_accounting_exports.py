@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import csv
 import pytest
+from fastapi.testclient import TestClient
 
 os.environ.setdefault("DISABLE_CELERY", "1")
 os.environ.setdefault("NEFT_S3_ENDPOINT", "http://minio:9000")
@@ -14,6 +15,7 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 
 from app.config import settings
 from app.db import Base, engine, get_sessionmaker
+from app.main import app
 from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportType
 from app.models.audit_log import ActorType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
@@ -59,12 +61,14 @@ def test_accounting_export_gating_requires_finalized_period():
     session.commit()
 
     service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     with pytest.raises(AccountingExportForbidden):
         service.create_export(
             period_id=str(period.id),
             export_type=AccountingExportType.CHARGES,
             export_format=AccountingExportFormat.CSV,
             request_ctx=_request_ctx(),
+            token=token,
         )
 
     finalized = _make_period(status=BillingPeriodStatus.FINALIZED)
@@ -76,6 +80,7 @@ def test_accounting_export_gating_requires_finalized_period():
         export_type=AccountingExportType.CHARGES,
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
+        token=token,
     )
     assert batch.state.value == "CREATED"
     session.close()
@@ -105,12 +110,14 @@ def test_accounting_export_determinism_same_input():
     session.commit()
 
     service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     batch_v1 = service.create_export(
         period_id=str(period.id),
         export_type=AccountingExportType.CHARGES,
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
         version=1,
+        token=token,
     )
     batch_v2 = service.create_export(
         period_id=str(period.id),
@@ -118,10 +125,11 @@ def test_accounting_export_determinism_same_input():
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
         version=2,
+        token=token,
     )
 
-    batch_v1 = service.generate_export(batch_id=batch_v1.id, request_ctx=_request_ctx())
-    batch_v2 = service.generate_export(batch_id=batch_v2.id, request_ctx=_request_ctx())
+    batch_v1 = service.generate_export(batch_id=batch_v1.id, request_ctx=_request_ctx(), token=token)
+    batch_v2 = service.generate_export(batch_id=batch_v2.id, request_ctx=_request_ctx(), token=token)
     session.commit()
 
     storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_ACCOUNTING_EXPORTS)
@@ -139,12 +147,14 @@ def test_accounting_export_idempotency():
     session.commit()
 
     service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     first = service.create_export(
         period_id=str(period.id),
         export_type=AccountingExportType.CHARGES,
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
         version=1,
+        token=token,
     )
     second = service.create_export(
         period_id=str(period.id),
@@ -152,6 +162,7 @@ def test_accounting_export_idempotency():
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
         version=1,
+        token=token,
     )
     session.commit()
 
@@ -208,14 +219,16 @@ def test_accounting_export_settlement_csv_fields():
     session.commit()
 
     service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     batch = service.create_export(
         period_id=str(settlement_period.id),
         export_type=AccountingExportType.SETTLEMENT,
         export_format=AccountingExportFormat.CSV,
         request_ctx=_request_ctx(),
         version=1,
+        token=token,
     )
-    batch = service.generate_export(batch_id=batch.id, request_ctx=_request_ctx())
+    batch = service.generate_export(batch_id=batch.id, request_ctx=_request_ctx(), token=token)
     session.commit()
 
     storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_ACCOUNTING_EXPORTS)
@@ -240,4 +253,30 @@ def test_accounting_export_settlement_csv_fields():
     assert rows[1][2] == "PAYMENT"
     assert rows[1][8] == "bank"
     assert rows[1][9] == "payment-1"
+    session.close()
+
+
+def test_accounting_export_confirm_requires_superadmin(admin_auth_headers):
+    session = get_sessionmaker()()
+    period = _make_period(status=BillingPeriodStatus.FINALIZED)
+    session.add(period)
+    session.commit()
+
+    service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
+    batch = service.create_export(
+        period_id=str(period.id),
+        export_type=AccountingExportType.CHARGES,
+        export_format=AccountingExportFormat.CSV,
+        request_ctx=_request_ctx(),
+        token=token,
+    )
+    session.commit()
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/v1/admin/accounting/exports/{batch.id}/confirm",
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 403
     session.close()

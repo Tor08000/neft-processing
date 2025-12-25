@@ -125,6 +125,7 @@ def test_payment_allocates_after_lock_without_mutating_charges(session):
         amount=400,
         currency="RUB",
         idempotency_key="alloc-payment",
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
     )
 
     session.refresh(result.invoice)
@@ -180,12 +181,14 @@ def test_payment_allocation_is_idempotent(session):
         amount=200,
         currency="RUB",
         idempotency_key="idem-payment",
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
     )
     second = service.apply_payment(
         invoice_id=invoice.id,
         amount=200,
         currency="RUB",
         idempotency_key="idem-payment",
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
     )
 
     allocations = (
@@ -215,6 +218,7 @@ def test_credit_note_allocation_after_lock(session):
         currency="RUB",
         reason="adjustment",
         idempotency_key="credit-after-lock",
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
     )
 
     allocation = (

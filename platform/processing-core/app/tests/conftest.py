@@ -95,7 +95,7 @@ def make_jwt(rsa_keys: dict):
 
 @pytest.fixture
 def admin_token(make_jwt):
-    return make_jwt(roles=("ADMIN",))
+    return make_jwt(roles=("ADMIN", "ADMIN_FINANCE"))
 
 
 @pytest.fixture

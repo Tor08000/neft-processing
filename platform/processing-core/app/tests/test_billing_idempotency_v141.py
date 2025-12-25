@@ -111,9 +111,22 @@ def test_finance_payment_and_credit_note_idempotent(session):
     session.commit()
 
     finance = FinanceService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     payment_key = "idem-payment"
-    payment = finance.apply_payment(invoice_id=invoice.id, amount=100, currency="RUB", idempotency_key=payment_key)
-    payment_repeat = finance.apply_payment(invoice_id=invoice.id, amount=100, currency="RUB", idempotency_key=payment_key)
+    payment = finance.apply_payment(
+        invoice_id=invoice.id,
+        amount=100,
+        currency="RUB",
+        idempotency_key=payment_key,
+        token=token,
+    )
+    payment_repeat = finance.apply_payment(
+        invoice_id=invoice.id,
+        amount=100,
+        currency="RUB",
+        idempotency_key=payment_key,
+        token=token,
+    )
     assert payment.payment.id == payment_repeat.payment.id
 
     credit_key = "idem-credit"
@@ -123,6 +136,7 @@ def test_finance_payment_and_credit_note_idempotent(session):
         currency="RUB",
         reason="test",
         idempotency_key=credit_key,
+        token=token,
     )
     credit_repeat = finance.create_credit_note(
         invoice_id=invoice.id,
@@ -130,6 +144,7 @@ def test_finance_payment_and_credit_note_idempotent(session):
         currency="RUB",
         reason="test",
         idempotency_key=credit_key,
+        token=token,
     )
     assert credit.credit_note.id == credit_repeat.credit_note.id
     assert credit_repeat.invoice.amount_due == credit.invoice.amount_due

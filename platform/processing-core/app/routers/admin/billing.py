@@ -45,6 +45,7 @@ from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.services.reports_billing import finalize_billing_summary
 from app.services.billing_run import BillingPeriodClosedError, BillingRunInProgress, BillingRunService, BillingRunValidationError
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService
+from app.services.policy import PolicyAccessDenied
 from app.services.reconciliation import BillingReconciliationService
 from app.services.operations_scenarios.adjustments import AdjustmentService
 from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus, RelatedEntityType
@@ -122,8 +123,12 @@ def admin_lock_billing_period(
             start_at=body.start_at,
             end_at=body.end_at,
             tz=body.tz,
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingPeriodConflict as exc:
         AuditService(db).audit(
             event_type="BILLING_PERIOD_LOCK_CONFLICT",
@@ -162,8 +167,12 @@ def admin_finalize_billing_period(
             start_at=body.start_at,
             end_at=body.end_at,
             tz=body.tz,
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingPeriodConflict as exc:
         AuditService(db).audit(
             event_type="BILLING_PERIOD_FINALIZE_CONFLICT",
@@ -270,7 +279,11 @@ def admin_seed_billing(idempotency_key: str | None = Query(None), db: Session = 
 
 
 @router.post("/run", response_model=BillingRunResponse)
-def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) -> BillingRunResponse:
+def admin_run_billing(
+    body: BillingRunRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> BillingRunResponse:
     service = BillingRunService(db)
     scope_key = make_stable_key(
         "billing_manual_run",
@@ -291,7 +304,10 @@ def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) ->
             tz=body.tz,
             client_id=body.client_id,
             idempotency_key=scope_key,
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingRunValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except BillingPeriodClosedError as exc:
