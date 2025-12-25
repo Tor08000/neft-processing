@@ -22,13 +22,6 @@ SCHEMA = resolve_db_schema().schema
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    columns = inspector.get_columns("invoice_settlement_allocations", schema=SCHEMA)
-    settlement_column = next((column for column in columns if column["name"] == "settlement_period_id"), None)
-    if settlement_column and isinstance(settlement_column["type"], postgresql.UUID):
-        return
-
     op.alter_column(
         "invoice_settlement_allocations",
         "settlement_period_id",
@@ -39,13 +32,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    columns = inspector.get_columns("invoice_settlement_allocations", schema=SCHEMA)
-    settlement_column = next((column for column in columns if column["name"] == "settlement_period_id"), None)
-    if settlement_column and isinstance(settlement_column["type"], sa.String):
-        return
-
     op.alter_column(
         "invoice_settlement_allocations",
         "settlement_period_id",
