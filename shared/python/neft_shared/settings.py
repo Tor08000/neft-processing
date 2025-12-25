@@ -63,6 +63,9 @@ class Settings:
     )
     NEFT_S3_BUCKET_PAYOUTS: str = os.getenv("NEFT_S3_BUCKET_PAYOUTS", "neft-payouts")
     NEFT_S3_BUCKET_DOCUMENTS: str = os.getenv("NEFT_S3_BUCKET_DOCUMENTS", "neft-documents")
+    NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: str = os.getenv(
+        "NEFT_S3_BUCKET_ACCOUNTING_EXPORTS", "accounting-exports"
+    )
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv(
         "NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)

@@ -61,6 +61,7 @@ def test_minio_init_creates_buckets_and_policies(tmp_path: Path) -> None:
             "MINIO_INIT_RETRY_DELAY": "0",
             "NEFT_S3_BUCKET": "neft",
             "NEFT_S3_BUCKET_INVOICES": "neft-invoices",
+            "NEFT_S3_BUCKET_ACCOUNTING_EXPORTS": "accounting-exports",
             "NEFT_S3_BUCKET_PUBLIC": "0",
             "NEFT_S3_BUCKET_INVOICES_PUBLIC": "1",
             "MINIO_ROOT_USER": "change-me",
@@ -73,10 +74,13 @@ def test_minio_init_creates_buckets_and_policies(tmp_path: Path) -> None:
     assert "alias set local http://minio:9000 change-me change-me" in log_contents
     assert "mb --ignore-existing local/neft" in log_contents
     assert "mb --ignore-existing local/neft-invoices" in log_contents
+    assert "mb --ignore-existing local/accounting-exports" in log_contents
     assert "version enable local/neft" in log_contents
     assert "version enable local/neft-invoices" in log_contents
+    assert "version enable local/accounting-exports" in log_contents
     assert "anonymous set none local/neft" in log_contents
     assert "anonymous set download local/neft-invoices" in log_contents
+    assert "anonymous set none local/accounting-exports" in log_contents
     assert "ls local" in log_contents
     assert "admin info local" in log_contents
     assert "init complete" in stdout

@@ -27,6 +27,7 @@ services:
       bucket_main="${NEFT_S3_BUCKET:-neft}"
       bucket_invoices="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
       bucket_payouts="${NEFT_S3_BUCKET_PAYOUTS:-neft-payouts}"
+      bucket_accounting="${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}"
 
       echo "[smoke-minio] configuring mc alias..."
       mc alias set local "$endpoint" "$access" "$secret" >/dev/null
@@ -38,6 +39,9 @@ services:
       fi
       if [ "$bucket_payouts" != "$bucket_main" ] && [ "$bucket_payouts" != "$bucket_invoices" ]; then
         mc stat "local/${bucket_payouts}" >/dev/null
+      fi
+      if [ "$bucket_accounting" != "$bucket_main" ] && [ "$bucket_accounting" != "$bucket_invoices" ] && [ "$bucket_accounting" != "$bucket_payouts" ]; then
+        mc stat "local/${bucket_accounting}" >/dev/null
       fi
 
       echo "[smoke-minio] ok"
