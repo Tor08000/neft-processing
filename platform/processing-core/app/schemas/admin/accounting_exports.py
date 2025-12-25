@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.accounting_export_batch import (
@@ -38,6 +40,11 @@ class AccountingExportBatchRead(BaseModel):
     uploaded_at: datetime | None = None
     downloaded_at: datetime | None = None
     confirmed_at: datetime | None = None
+    erp_system: str | None = None
+    erp_import_id: str | None = None
+    erp_status: str | None = None
+    erp_message: str | None = None
+    erp_processed_at: datetime | None = None
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -50,8 +57,17 @@ class AccountingExportBatchListResponse(BaseModel):
     offset: int
 
 
+class AccountingExportConfirmRequest(BaseModel):
+    erp_system: str = Field(..., description="ERP system name (1C, SAP, etc)")
+    erp_import_id: str = Field(..., description="ERP import identifier")
+    status: Literal["CONFIRMED", "REJECTED"]
+    message: str | None = None
+    processed_at: datetime
+
+
 __all__ = [
     "AccountingExportBatchListResponse",
     "AccountingExportBatchRead",
+    "AccountingExportConfirmRequest",
     "AccountingExportCreateRequest",
 ]

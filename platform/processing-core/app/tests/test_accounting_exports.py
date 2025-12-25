@@ -16,7 +16,7 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 from app.config import settings
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
-from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportType
+from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportState, AccountingExportType
 from app.models.audit_log import ActorType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.finance import InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
@@ -235,28 +235,35 @@ def test_accounting_export_settlement_csv_fields():
     payload = storage.get_bytes(batch.object_key)
     assert payload is not None
 
-    rows = list(csv.reader(payload.decode("utf-8").splitlines()))
-    assert rows[0] == [
-        "settlement_period_id",
-        "invoice_id",
+    rows = list(csv.reader(payload.decode("utf-8").splitlines(), delimiter=";"))
+    assert rows[0] == ["# minor_units=2"]
+    assert rows[1] == [
+        "batch_id",
+        "entry_id",
+        "tenant_id",
+        "client_id",
+        "posting_date",
+        "document_id",
+        "document_number",
         "source_type",
         "source_id",
-        "amount",
-        "currency",
-        "applied_at",
-        "charge_period_id",
         "provider",
         "external_ref",
+        "currency",
+        "amount_gross",
+        "charge_period_from",
+        "charge_period_to",
+        "contract_ref",
+        "counterparty_ref",
     ]
-    assert rows[1][0] == str(settlement_period.id)
-    assert rows[1][1] == invoice.id
-    assert rows[1][2] == "PAYMENT"
-    assert rows[1][8] == "bank"
-    assert rows[1][9] == "payment-1"
+    assert rows[2][5] == invoice.id
+    assert rows[2][7] == "PAYMENT"
+    assert rows[2][9] == "bank"
+    assert rows[2][10] == "payment-1"
     session.close()
 
 
-def test_accounting_export_confirm_requires_superadmin(admin_auth_headers):
+def test_accounting_export_confirm_allows_finance_role(admin_auth_headers):
     session = get_sessionmaker()()
     period = _make_period(status=BillingPeriodStatus.FINALIZED)
     session.add(period)
@@ -276,7 +283,88 @@ def test_accounting_export_confirm_requires_superadmin(admin_auth_headers):
     with TestClient(app) as client:
         response = client.post(
             f"/api/v1/admin/accounting/exports/{batch.id}/confirm",
+            json={
+                "erp_system": "1C",
+                "erp_import_id": "import-1",
+                "status": "CONFIRMED",
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            },
             headers=admin_auth_headers,
         )
-        assert response.status_code == 403
+        assert response.status_code == 200
+    session.close()
+
+
+def test_accounting_export_confirm_idempotent():
+    session = get_sessionmaker()()
+    period = _make_period(status=BillingPeriodStatus.FINALIZED)
+    session.add(period)
+    session.commit()
+
+    service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
+    batch = service.create_export(
+        period_id=str(period.id),
+        export_type=AccountingExportType.CHARGES,
+        export_format=AccountingExportFormat.CSV,
+        request_ctx=_request_ctx(),
+        token=token,
+    )
+    session.commit()
+
+    processed_at = datetime.now(timezone.utc)
+    batch = service.confirm_export(
+        batch_id=batch.id,
+        request_ctx=_request_ctx(),
+        erp_system="SAP",
+        erp_import_id="sap-1",
+        status="CONFIRMED",
+        processed_at=processed_at,
+        token=token,
+    )
+    session.commit()
+
+    repeat = service.confirm_export(
+        batch_id=batch.id,
+        request_ctx=_request_ctx(),
+        erp_system="SAP",
+        erp_import_id="sap-1",
+        status="CONFIRMED",
+        processed_at=processed_at,
+        token=token,
+    )
+    assert repeat.id == batch.id
+    assert repeat.state == AccountingExportState.CONFIRMED
+    session.close()
+
+
+def test_accounting_export_reject_marks_failed():
+    session = get_sessionmaker()()
+    period = _make_period(status=BillingPeriodStatus.FINALIZED)
+    session.add(period)
+    session.commit()
+
+    service = AccountingExportService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
+    batch = service.create_export(
+        period_id=str(period.id),
+        export_type=AccountingExportType.CHARGES,
+        export_format=AccountingExportFormat.CSV,
+        request_ctx=_request_ctx(),
+        token=token,
+    )
+    session.commit()
+
+    rejected = service.confirm_export(
+        batch_id=batch.id,
+        request_ctx=_request_ctx(),
+        erp_system="1C",
+        erp_import_id="reject-1",
+        status="REJECTED",
+        message="format_error",
+        processed_at=datetime.now(timezone.utc),
+        token=token,
+    )
+    assert rejected.state == AccountingExportState.FAILED
+    assert rejected.error_message == "format_error"
     session.close()

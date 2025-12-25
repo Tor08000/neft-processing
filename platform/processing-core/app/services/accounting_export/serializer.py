@@ -7,7 +7,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from io import StringIO
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Iterable
+
+from app.services.accounting_export.canonical import AccountingEntry, entry_to_dict
 
 
 def _normalize_value(value: Any) -> Any:
@@ -42,63 +45,66 @@ def _csv_value(value: Any) -> str:
     return str(normalized)
 
 
-def _serialize_csv(rows: list[dict[str, Any]], *, columns: list[str]) -> bytes:
+def _serialize_csv(
+    rows: Iterable[dict[str, Any]],
+    *,
+    columns: list[str],
+    delimiter: str = ",",
+    preamble: str | None = None,
+) -> bytes:
     output = StringIO()
-    writer = csv.writer(output, lineterminator="\n")
+    if preamble:
+        output.write(preamble.rstrip("\n") + "\n")
+    writer = csv.writer(output, lineterminator="\n", delimiter=delimiter)
     writer.writerow(columns)
     for row in rows:
         writer.writerow([_csv_value(row.get(column)) for column in columns])
     return output.getvalue().encode("utf-8")
 
 
-def serialize_charges_csv(rows: list[dict[str, Any]]) -> bytes:
-    columns = [
-        "period_id",
-        "invoice_id",
-        "invoice_number",
-        "client_id",
-        "issued_at",
-        "period_from",
-        "period_to",
-        "currency",
-        "total_amount",
-        "tax_amount",
-        "total_with_tax",
-        "status",
-        "pdf_hash",
-        "external_number",
-    ]
-    return _serialize_csv(rows, columns=columns)
+def _sorted_entries(entries: Iterable[AccountingEntry]) -> list[AccountingEntry]:
+    return sorted(
+        entries,
+        key=lambda entry: (
+            entry.entry_id,
+            entry.document_id,
+            entry.source_id or "",
+        ),
+    )
 
 
-def serialize_settlement_csv(rows: list[dict[str, Any]]) -> bytes:
-    columns = [
-        "settlement_period_id",
-        "invoice_id",
-        "source_type",
-        "source_id",
-        "amount",
-        "currency",
-        "applied_at",
-        "charge_period_id",
-        "provider",
-        "external_ref",
+def serialize_entries_csv(
+    entries: Iterable[AccountingEntry],
+    *,
+    columns: list[str],
+    delimiter: str = ";",
+    preamble: str | None = None,
+    row_builder: Callable[[AccountingEntry], dict[str, Any]] | None = None,
+) -> bytes:
+    rows = [
+        (row_builder(entry) if row_builder else entry_to_dict(entry))
+        for entry in _sorted_entries(entries)
     ]
-    return _serialize_csv(rows, columns=columns)
+    return _serialize_csv(rows, columns=columns, delimiter=delimiter, preamble=preamble)
 
 
 def serialize_accounting_export_json(
-    header: dict[str, Any],
-    records: list[dict[str, Any]],
+    meta: dict[str, Any],
+    entries: Iterable[AccountingEntry],
 ) -> tuple[bytes, str]:
-    records_payload = _normalize_json_payload(records)
-    records_checksum = hashlib.sha256(_canonical_json(records_payload).encode("utf-8")).hexdigest()
-    payload = {"header": {**header, "checksum": records_checksum}, "records": records_payload}
+    entries_payload = [entry_to_dict(entry) for entry in _sorted_entries(entries)]
+    normalized_entries = _normalize_json_payload(entries_payload)
+    records_checksum = hashlib.sha256(_canonical_json(normalized_entries).encode("utf-8")).hexdigest()
+    payload = {"meta": {**meta, "sha256": records_checksum}, "entries": normalized_entries}
     return _canonical_json(payload).encode("utf-8"), records_checksum
+
+
+def serialize_metadata_json(payload: dict[str, Any]) -> bytes:
+    return _canonical_json(payload).encode("utf-8")
 
 
 __all__ = [
     "serialize_accounting_export_json",
-    "serialize_charges_csv",
-    "serialize_settlement_csv",
+    "serialize_entries_csv",
+    "serialize_metadata_json",
 ]
