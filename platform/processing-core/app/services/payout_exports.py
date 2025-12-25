@@ -184,8 +184,9 @@ def create_payout_export(
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)
-    if decision.outcome != "ALLOW":
-        raise PayoutExportError(f"decision_{decision.outcome.lower()}")
+    if decision.outcome != DecisionOutcome.ALLOW:
+        reason = "manual_review_required" if decision.outcome == DecisionOutcome.MANUAL_REVIEW else "risk_decline"
+        raise PayoutExportError(reason)
     policy_decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
     if not policy_decision.allowed:
         audit_access_denied(

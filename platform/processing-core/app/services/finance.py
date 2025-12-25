@@ -27,7 +27,7 @@ from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.audit_service import RequestContext
 from app.services.audit_service import AuditService
-from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
@@ -449,8 +449,8 @@ class FinanceService:
                 },
             )
             decision = DecisionEngine(self.db).evaluate(decision_context)
-            if decision.outcome != "ALLOW":
-                raise InvalidTransitionError(f"DECISION_{decision.outcome}")
+            if decision.outcome != DecisionOutcome.ALLOW:
+                raise InvalidTransitionError(f"DECISION_{decision.outcome.value}")
             self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
             self._require_settlement_period(invoice, action="credit_note")
             job_run = self.job_service.start(

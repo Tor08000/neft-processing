@@ -16,7 +16,7 @@ from app.models.operation import Operation, OperationStatus
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_pdf import InvoicePdfService
-from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -213,8 +213,8 @@ def generate_invoice_for_batch(
             },
         )
         decision = DecisionEngine(db).evaluate(decision_context)
-        if decision.outcome != "ALLOW":
-            raise ValueError(f"DECISION_{decision.outcome}")
+        if decision.outcome != DecisionOutcome.ALLOW:
+            raise ValueError(f"DECISION_{decision.outcome.value}")
         invoice = Invoice(
             clearing_batch_id=batch.id,
             client_id=client_id,

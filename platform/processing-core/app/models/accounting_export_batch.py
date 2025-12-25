@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import BigInteger, Column, DateTime, Index, Integer, String, Text, func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import foreign, relationship
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -57,7 +57,12 @@ class AccountingExportBatch(Base):
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    billing_period = relationship("BillingPeriod", backref="accounting_export_batches", viewonly=True)
+    billing_period = relationship(
+        "BillingPeriod",
+        primaryjoin="BillingPeriod.id == foreign(AccountingExportBatch.billing_period_id)",
+        backref="accounting_export_batches",
+        viewonly=True,
+    )
 
 
 __all__ = [

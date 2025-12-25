@@ -25,7 +25,7 @@ from app.services.accounting_export.serializer import (
     serialize_settlement_csv,
 )
 from app.services.audit_service import AuditService, RequestContext
-from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
@@ -94,8 +94,9 @@ class AccountingExportService:
             },
         )
         decision = DecisionEngine(self.db).evaluate(decision_context)
-        if decision.outcome != "ALLOW":
-            raise AccountingExportForbidden(f"decision_{decision.outcome.lower()}")
+        if decision.outcome != DecisionOutcome.ALLOW:
+            reason = "manual_review_required" if decision.outcome == DecisionOutcome.MANUAL_REVIEW else "risk_decline"
+            raise AccountingExportRiskDeclined(reason)
         policy_decision = self.policy_engine.check(
             actor=actor,
             action=Action.ACCOUNTING_EXPORT_CREATE,
