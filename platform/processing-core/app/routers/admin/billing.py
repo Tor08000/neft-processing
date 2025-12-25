@@ -38,6 +38,7 @@ from app.schemas.admin.billing import (
     BillingJobRunListResponse,
 )
 from app.schemas.reports import BillingSummaryItem
+from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.models.billing_summary import BillingSummary
 from app.models.operation import ProductType
 from app.models.billing_period import BillingPeriod, BillingPeriodType
@@ -64,8 +65,34 @@ from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
 from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
 from app.services.demo_seed import DemoSeeder
+from app.services.settlement_allocations import list_settlement_summary
 
 router = APIRouter(prefix="/billing", tags=["admin"])
+
+
+@router.get("/settlement-summary", response_model=SettlementSummaryResponse)
+def admin_settlement_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    client_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> SettlementSummaryResponse:
+    rows = list_settlement_summary(db, date_from=date_from, date_to=date_to, client_id=client_id)
+    items = [
+        SettlementSummaryItem(
+            settlement_period_id=row.settlement_period_id,
+            period_start=row.period_start,
+            period_end=row.period_end,
+            currency=row.currency,
+            total_payments=row.total_payments,
+            total_credits=row.total_credits,
+            total_refunds=row.total_refunds,
+            total_net=row.total_payments - row.total_credits - row.total_refunds,
+            allocations_count=row.allocations_count,
+        )
+        for row in rows
+    ]
+    return SettlementSummaryResponse(items=items, total=len(items))
 
 
 @router.get("/periods", response_model=BillingPeriodListResponse)

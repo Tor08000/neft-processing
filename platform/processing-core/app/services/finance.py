@@ -4,6 +4,8 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Tuple
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,13 +13,22 @@ from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
-from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus
+from app.models.finance import (
+    CreditNote,
+    CreditNoteStatus,
+    InvoicePayment,
+    InvoiceSettlementAllocation,
+    PaymentStatus,
+    SettlementSourceType,
+)
 from app.models.invoice import Invoice, InvoiceStatus
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.audit_service import RequestContext
+from app.services.audit_service import AuditService
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
+from app.services.settlement_allocations import resolve_settlement_period
 
 
 class FinanceOperationInProgress(RuntimeError):
@@ -77,8 +88,87 @@ class FinanceService:
         )
         if not period:
             raise InvalidTransitionError("billing period not found")
-        if period.status != BillingPeriodStatus.FINALIZED:
+        if period.status not in {BillingPeriodStatus.FINALIZED, BillingPeriodStatus.LOCKED}:
             raise InvalidTransitionError(f"billing period {period.id} is {period.status.value} for {action}")
+
+    def _resolve_tenant_id(self, request_ctx: RequestContext | None) -> int:
+        if request_ctx and request_ctx.tenant_id is not None:
+            return int(request_ctx.tenant_id)
+        return 0
+
+    def _ensure_settlement_allocation(
+        self,
+        *,
+        invoice: Invoice,
+        source_type: SettlementSourceType,
+        source_id: str,
+        amount: int,
+        currency: str,
+        applied_at: datetime | None,
+        request_ctx: RequestContext | None,
+    ) -> InvoiceSettlementAllocation:
+        existing = (
+            self.db.query(InvoiceSettlementAllocation)
+            .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+            .filter(InvoiceSettlementAllocation.source_type == source_type)
+            .filter(InvoiceSettlementAllocation.source_id == source_id)
+            .one_or_none()
+        )
+        if existing:
+            return existing
+
+        event_at = applied_at or datetime.now(timezone.utc)
+        settlement_period = resolve_settlement_period(self.db, event_at=event_at)
+        allocation = InvoiceSettlementAllocation(
+            invoice_id=invoice.id,
+            tenant_id=self._resolve_tenant_id(request_ctx),
+            client_id=invoice.client_id,
+            settlement_period_id=settlement_period.id,
+            source_type=source_type,
+            source_id=source_id,
+            amount=amount,
+            currency=currency,
+            applied_at=event_at,
+        )
+        try:
+            with self.db.begin_nested():
+                self.db.add(allocation)
+                self.db.flush()
+        except IntegrityError:
+            existing = (
+                self.db.query(InvoiceSettlementAllocation)
+                .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+                .filter(InvoiceSettlementAllocation.source_type == source_type)
+                .filter(InvoiceSettlementAllocation.source_id == source_id)
+                .one_or_none()
+            )
+            if existing:
+                return existing
+            raise
+
+        event_type = {
+            SettlementSourceType.PAYMENT: "INVOICE_PAYMENT_ALLOCATED",
+            SettlementSourceType.CREDIT_NOTE: "CREDIT_NOTE_ALLOCATED",
+            SettlementSourceType.REFUND: "REFUND_ALLOCATED",
+        }[source_type]
+        AuditService(self.db).audit(
+            event_type=event_type,
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="SETTLEMENT_ALLOCATED",
+            after={
+                "invoice_id": invoice.id,
+                "source_type": source_type.value,
+                "source_id": source_id,
+                "amount": amount,
+                "currency": currency,
+                "settlement_period_id": str(settlement_period.id),
+                "charge_period_id": str(invoice.billing_period_id) if invoice.billing_period_id else None,
+            },
+            request_ctx=request_ctx,
+        )
+
+        return allocation
 
     def _apply_financial_transition(
         self,
@@ -127,6 +217,15 @@ class FinanceService:
                         billing_metrics.mark_payment_failed()
                         raise PaymentReferenceConflict(external_ref)
                     invoice = self._lock_invoice(invoice_id)
+                    self._ensure_settlement_allocation(
+                        invoice=invoice,
+                        source_type=SettlementSourceType.PAYMENT,
+                        source_id=str(existing_by_ref.id),
+                        amount=int(existing_by_ref.amount),
+                        currency=existing_by_ref.currency,
+                        applied_at=existing_by_ref.created_at,
+                        request_ctx=request_ctx,
+                    )
                     return PaymentResult(payment=existing_by_ref, invoice=invoice, is_replay=True)
         except InvoiceNotFound:
             billing_metrics.mark_payment_error()
@@ -140,6 +239,15 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.PAYMENT,
+                source_id=str(existing.id),
+                amount=int(existing.amount),
+                currency=existing.currency,
+                applied_at=existing.created_at,
+                request_ctx=request_ctx,
+            )
             return PaymentResult(payment=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -207,6 +315,16 @@ class FinanceService:
                 billing_metrics.mark_payment_failed()
                 raise
 
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.PAYMENT,
+                source_id=str(payment.id),
+                amount=amount,
+                currency=currency,
+                applied_at=payment.created_at,
+                request_ctx=request_ctx,
+            )
+
             self.job_service.succeed(
                 job_run,
                 metrics={
@@ -244,6 +362,15 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.CREDIT_NOTE,
+                source_id=str(existing.id),
+                amount=int(existing.amount),
+                currency=existing.currency,
+                applied_at=existing.created_at,
+                request_ctx=request_ctx,
+            )
             return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -311,6 +438,16 @@ class FinanceService:
                 self.db.rollback()
                 raise
 
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.CREDIT_NOTE,
+                source_id=str(credit_note.id),
+                amount=amount,
+                currency=currency,
+                applied_at=credit_note.created_at,
+                request_ctx=request_ctx,
+            )
+
             self.job_service.succeed(
                 job_run,
                 metrics={
@@ -349,6 +486,15 @@ class FinanceService:
                 if existing_by_ref.invoice_id != invoice_id:
                     raise RefundReferenceConflict(external_ref)
                 invoice = self._lock_invoice(invoice_id)
+                self._ensure_settlement_allocation(
+                    invoice=invoice,
+                    source_type=SettlementSourceType.REFUND,
+                    source_id=str(existing_by_ref.id),
+                    amount=int(existing_by_ref.amount),
+                    currency=existing_by_ref.currency,
+                    applied_at=existing_by_ref.created_at,
+                    request_ctx=request_ctx,
+                )
                 return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -424,11 +570,30 @@ class FinanceService:
                     )
                     if existing:
                         invoice = self._lock_invoice(invoice_id)
+                        self._ensure_settlement_allocation(
+                            invoice=invoice,
+                            source_type=SettlementSourceType.REFUND,
+                            source_id=str(existing.id),
+                            amount=int(existing.amount),
+                            currency=existing.currency,
+                            applied_at=existing.created_at,
+                            request_ctx=request_ctx,
+                        )
                         return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
                 raise
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
                 raise
+
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.REFUND,
+                source_id=str(refund.id),
+                amount=amount,
+                currency=currency,
+                applied_at=refund.created_at,
+                request_ctx=request_ctx,
+            )
 
             self.job_service.succeed(
                 job_run,

@@ -37,6 +37,7 @@ def create_payment(
             amount=body.amount,
             currency=body.currency,
             idempotency_key=scope_key,
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
         )
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
@@ -101,6 +102,7 @@ def create_credit_note(
             currency=body.currency,
             reason=body.reason,
             idempotency_key=scope_key,
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
         )
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc

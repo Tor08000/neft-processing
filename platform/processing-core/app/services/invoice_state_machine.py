@@ -173,9 +173,12 @@ class InvoiceStateMachine:
                 .one_or_none()
             )
             if period and period.status == BillingPeriodStatus.LOCKED:
-                if to != self.invoice.status or any(
-                    amount is not None and amount != 0
-                    for amount in (payment_amount, credit_note_amount, refund_amount)
+                if reason != "financial_update" and (
+                    to != self.invoice.status
+                    or any(
+                        amount is not None and amount != 0
+                        for amount in (payment_amount, credit_note_amount, refund_amount)
+                    )
                 ):
                     raise InvalidTransitionError("billing period is locked")
         before_snapshot = {
