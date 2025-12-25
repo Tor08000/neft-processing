@@ -96,8 +96,8 @@ def mark_reconciliation_in_progress(
 @router.post("/reconciliation-requests/{request_id}/attach-result", response_model=ReconciliationRequestOut)
 def attach_reconciliation_result(
     request_id: str,
-    request: Request,
     payload: ReconciliationAttachResultRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
@@ -109,6 +109,7 @@ def attach_reconciliation_result(
     request_item.status = ReconciliationRequestStatus.GENERATED
     request_item.generated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(request_item)
 
     AuditService(db).audit(
         event_type="RECONCILIATION_GENERATED",
@@ -125,7 +126,6 @@ def attach_reconciliation_result(
         request_ctx=request_context_from_request(request, token=_sanitize_token(token)),
     )
 
-    db.refresh(request_item)
     return ReconciliationRequestOut.model_validate(request_item)
 
 
@@ -154,8 +154,8 @@ def mark_reconciliation_sent(
 @router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
 def admin_create_invoice_message(
     invoice_id: str,
-    request: Request,
     payload: AdminInvoiceMessageRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
@@ -189,6 +189,7 @@ def admin_create_invoice_message(
     db.add(message)
     db.commit()
     db.refresh(message)
+    db.refresh(thread)
 
     AuditService(db).audit(
         event_type="INVOICE_MESSAGE_CREATED",
