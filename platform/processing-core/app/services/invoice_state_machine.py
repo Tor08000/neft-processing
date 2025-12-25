@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.models.audit_log import ActorType
 from app.services.audit_service import AuditService, RequestContext
 
@@ -191,6 +192,27 @@ class InvoiceStateMachine:
         now = self._now_provider()
 
         self._validate_allowed(to)
+        if to == InvoiceStatus.ISSUED:
+            tenant_id = int(request_ctx.tenant_id) if request_ctx and request_ctx.tenant_id is not None else 0
+            actor_type = "ADMIN" if request_ctx and request_ctx.actor_type == ActorType.USER else "SYSTEM"
+            decision_context = DecisionContext(
+                tenant_id=tenant_id,
+                client_id=self.invoice.client_id,
+                actor_type=actor_type,
+                action=DecisionAction.INVOICE_ISSUE,
+                amount=int(self.invoice.total_with_tax or self.invoice.total_amount or 0),
+                currency=self.invoice.currency,
+                invoice_id=self.invoice.id,
+                billing_period_id=str(self.invoice.billing_period_id) if self.invoice.billing_period_id else None,
+                history={},
+                metadata={
+                    "invoice_status": from_status.value if from_status else None,
+                    "actor_roles": request_ctx.actor_roles if request_ctx else [],
+                },
+            )
+            decision = DecisionEngine(self.db).evaluate(decision_context)
+            if decision.outcome != "ALLOW":
+                raise InvalidTransitionError(f"DECISION_{decision.outcome}")
         self._apply_amounts(payment_amount, credit_note_amount, refund_amount)
         self._validate_constraints(to, payment_amount, credit_note_amount, refund_amount)
         self._update_timestamps(to, now)

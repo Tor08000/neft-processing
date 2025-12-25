@@ -15,6 +15,7 @@ from app import services
 from app.services.commission import compute_posting_result
 from app.models.account import AccountType
 from app.services import risk_adapter
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.limits_service import check_contractual_limits
 from app.services.posting_metrics import metrics as posting_metrics
 from app.models.card import Card
@@ -289,6 +290,8 @@ def _validate_references(
     if merchant is None or merchant.status != "ACTIVE":
         raise InvalidOperationState("MERCHANT_INACTIVE")
 
+    return client, card, terminal, merchant
+
 
 def decline_operation(
     db: Session,
@@ -377,7 +380,7 @@ def authorize_operation(
         return existing
 
     try:
-        _validate_references(
+        client, card, terminal, merchant = _validate_references(
             db,
             client_id=client_id,
             card_id=card_id,
@@ -389,6 +392,40 @@ def authorize_operation(
             db,
             ext_operation_id=ext_operation_id,
             reason=str(exc),
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+        )
+
+    decision_context = DecisionContext(
+        tenant_id=0,
+        client_id=client_id,
+        actor_type="SYSTEM",
+        action=DecisionAction.PAYMENT_AUTHORIZE,
+        amount=amount,
+        currency=currency,
+        payment_method="CARD",
+        history={},
+        metadata={
+            "client_status": client.status,
+            "card_status": card.status,
+            "merchant_status": merchant.status,
+            "terminal_status": terminal.status,
+            "actor_roles": [],
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != "ALLOW":
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason=f"DECISION_{decision.outcome}",
             amount=amount,
             currency=currency,
             client_id=client_id,
@@ -671,6 +708,23 @@ def commit_operation(
     commit_amount = amount if amount is not None else operation.amount
     if commit_amount <= 0 or commit_amount > operation.amount:
         raise AmountExceeded("COMMIT_AMOUNT_INVALID")
+
+    decision_context = DecisionContext(
+        tenant_id=0,
+        client_id=operation.client_id,
+        actor_type="SYSTEM",
+        action=DecisionAction.PAYMENT_CAPTURE,
+        amount=commit_amount,
+        currency=operation.currency,
+        payment_method="CARD",
+        history={},
+        metadata={
+            "operation_id": operation.operation_id,
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != "ALLOW":
+        raise InvalidOperationState(f"DECISION_{decision.outcome}")
 
     operation.amount_settled = commit_amount
     operation.status = OperationStatus.COMPLETED

@@ -66,6 +66,7 @@ from app.schemas.client_actions import (
 )
 from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.s3_storage import S3Storage
 from app.services.settlement_allocations import list_settlement_summary
 
@@ -1037,6 +1038,23 @@ async def acknowledge_document(
             document_object_key=existing.document_object_key,
             document_hash=existing.document_hash,
         )
+
+    decision_context = DecisionContext(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        actor_type="CLIENT",
+        action=DecisionAction.DOCUMENT_FINALIZE,
+        invoice_id=document_id,
+        history={},
+        metadata={
+            "document_type": document_type,
+            "document_acknowledged": True,
+            "actor_roles": token.get("roles", []),
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != "ALLOW":
+        raise HTTPException(status_code=403, detail=f"decision_{decision.outcome.lower()}")
 
     request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     document_object_key = None

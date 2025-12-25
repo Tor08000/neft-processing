@@ -27,6 +27,7 @@ from app.schemas.closing_documents import (
     DocumentAcknowledgementResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.documents_storage import DocumentsStorage
 
 router = APIRouter(prefix="/api/v1/client", tags=["client-documents"])
@@ -205,6 +206,24 @@ def acknowledge_document(
             document_object_key=existing.document_object_key,
             document_hash=existing.document_hash,
         )
+
+    decision_context = DecisionContext(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        actor_type="CLIENT",
+        action=DecisionAction.DOCUMENT_FINALIZE,
+        invoice_id=str(document.id),
+        history={},
+        metadata={
+            "document_type": document.document_type.value,
+            "document_status": document.status.value if document.status else None,
+            "document_acknowledged": True,
+            "actor_roles": token.get("roles", []),
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != "ALLOW":
+        raise HTTPException(status_code=403, detail=f"decision_{decision.outcome.lower()}")
 
     ack_at = datetime.now(timezone.utc)
     document.status = DocumentStatus.ACKNOWLEDGED
