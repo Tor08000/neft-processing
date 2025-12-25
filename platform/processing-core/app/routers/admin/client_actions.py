@@ -28,6 +28,15 @@ from app.services.audit_service import AuditService, request_context_from_reques
 
 router = APIRouter()
 
+# Minimal set of fields to keep in audit context to avoid leaking JWT claims.
+_TOKEN_CTX_KEYS = ("user_id", "sub", "client_id", "email", "roles", "role", "tenant_id")
+
+
+def _sanitize_token_for_audit(token: dict | None) -> dict | None:
+    if not token:
+        return None
+    return {key: token[key] for key in _TOKEN_CTX_KEYS if key in token}
+
 
 def _update_reconciliation_status(
     request_item: ReconciliationRequest,
@@ -43,6 +52,7 @@ def _update_reconciliation_status(
     before_status = request_item.status
     request_item.status = status
     db.commit()
+    db.refresh(request_item)
 
     AuditService(db).audit(
         event_type=event_type,
@@ -52,7 +62,7 @@ def _update_reconciliation_status(
         visibility=visibility,
         before={"status": before_status.value if before_status else None},
         after={"status": request_item.status.value, **(note or {})},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
 
@@ -87,8 +97,8 @@ def mark_reconciliation_in_progress(
 @router.post("/reconciliation-requests/{request_id}/attach-result", response_model=ReconciliationRequestOut)
 def attach_reconciliation_result(
     request_id: str,
-    request: Request,
     payload: ReconciliationAttachResultRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> ReconciliationRequestOut:
@@ -100,6 +110,7 @@ def attach_reconciliation_result(
     request_item.status = ReconciliationRequestStatus.GENERATED
     request_item.generated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(request_item)
 
     AuditService(db).audit(
         event_type="RECONCILIATION_GENERATED",
@@ -113,10 +124,9 @@ def attach_reconciliation_result(
             "result_object_key": payload.object_key,
             "result_hash_sha256": payload.result_hash_sha256,
         },
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
-    db.refresh(request_item)
     return ReconciliationRequestOut.model_validate(request_item)
 
 
@@ -145,8 +155,8 @@ def mark_reconciliation_sent(
 @router.post("/invoices/{invoice_id}/messages", response_model=InvoiceMessageCreateResponse, status_code=201)
 def admin_create_invoice_message(
     invoice_id: str,
-    request: Request,
     payload: AdminInvoiceMessageRequest,
+    request: Request,
     token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> InvoiceMessageCreateResponse:
@@ -180,6 +190,7 @@ def admin_create_invoice_message(
     db.add(message)
     db.commit()
     db.refresh(message)
+    db.refresh(thread)
 
     AuditService(db).audit(
         event_type="INVOICE_MESSAGE_CREATED",
@@ -192,7 +203,7 @@ def admin_create_invoice_message(
             "message_id": str(message.id),
             "sender_type": message.sender_type.value,
         },
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return InvoiceMessageCreateResponse(
@@ -216,6 +227,7 @@ def close_invoice_thread(
     thread.status = InvoiceThreadStatus.CLOSED
     thread.closed_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(thread)
 
     AuditService(db).audit(
         event_type="INVOICE_THREAD_CLOSED",
@@ -224,7 +236,7 @@ def close_invoice_thread(
         action="UPDATE",
         visibility=AuditVisibility.INTERNAL,
         after={"status": thread.status.value, "closed_at": thread.closed_at},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return InvoiceThreadCloseResponse(thread_id=str(thread.id), status=thread.status.value, closed_at=thread.closed_at)
