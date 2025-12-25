@@ -1,7 +1,7 @@
 """Align document status lifecycle with legal finalization.
 
 Revision ID: 20290501_0045_document_status_lifecycle
-Revises: 0044_documents_registry
+Revises: 20280415_0044_accounting_export_batches
 Create Date: 2029-05-01 00:00:00
 """
 
@@ -16,9 +16,9 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20290501_0045_document_status_lifecycle"
-down_revision = "0044_documents_registry"
+down_revision = "20280415_0044_accounting_export_batches"
 branch_labels = None
-depends_on = None
+depends_on = ("0044_documents_registry",)
 
 DOCUMENT_STATUSES = ["DRAFT", "ISSUED", "ACKNOWLEDGED", "FINALIZED", "VOID"]
 CLOSING_PACKAGE_STATUSES = ["DRAFT", "ISSUED", "ACKNOWLEDGED", "FINALIZED", "VOID"]
