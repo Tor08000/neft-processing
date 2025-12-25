@@ -20,6 +20,7 @@ from app.services.audit_metrics import metrics as audit_metrics
 SENSITIVE_KEYS = {"password", "pin", "secret", "token"}
 MAX_JSON_BYTES = 32 * 1024
 GENESIS_HASH = "GENESIS"
+AUDIT_TOKEN_ALLOWLIST = {"user_id", "sub", "client_id", "email", "roles", "role", "tenant_id"}
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,12 @@ def request_context_from_request(
         trace_id=trace_id,
         tenant_id=tenant_id,
     )
+
+
+def _sanitize_token_for_audit(token: dict | None) -> dict | None:
+    if not token:
+        return None
+    return {key: token[key] for key in AUDIT_TOKEN_ALLOWLIST if key in token}
 
 
 def _normalize_value(value: Any) -> Any:

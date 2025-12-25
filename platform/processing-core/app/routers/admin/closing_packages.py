@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.schemas.closing_documents import ClosingPackageGenerateRequest, ClosingPackageGenerateResponse
-from app.services.audit_service import request_context_from_request
+from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.closing_documents import ClosingDocumentsService
 
 router = APIRouter(prefix="/closing-packages", tags=["closing-packages"])
@@ -29,7 +29,7 @@ def generate_closing_package(
         period_from=payload.date_from,
         period_to=payload.date_to,
         force_new_version=payload.force_new_version,
-        actor=request_context_from_request(request, token=token),
+        actor=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return ClosingPackageGenerateResponse(

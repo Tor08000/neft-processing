@@ -23,7 +23,7 @@ from app.schemas.billing_invoices import (
     InvoiceRefundRequest,
     InvoiceRefundResponse,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.finance import (
@@ -125,9 +125,7 @@ def create_invoice_payment(
     invoice_id: str,
     request: Request,
     payload: InvoicePaymentRequest,
-    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoicePaymentResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -155,7 +153,7 @@ def create_invoice_payment(
             idempotency_key=idempotency_key,
             external_ref=payload.external_ref,
             provider=payload.provider,
-            request_ctx=request_context_from_request(request, token=token),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
         )
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
@@ -168,7 +166,7 @@ def create_invoice_payment(
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    audit_ctx = request_context_from_request(request, token=token)
+    audit_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     event_type = "PAYMENT_IDEMPOTENT_REPLAY" if result.is_replay else "PAYMENT_POSTED"
     action = "IDEMPOTENT_REPLAY" if result.is_replay else "CREATE"
     AuditService(db).audit(
@@ -209,9 +207,7 @@ def create_invoice_refund(
     invoice_id: str,
     request: Request,
     payload: InvoiceRefundRequest,
-    request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> InvoiceRefundResponse:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -231,7 +227,7 @@ def create_invoice_refund(
             reason=payload.reason,
             external_ref=payload.external_ref,
             provider=payload.provider,
-            request_ctx=request_context_from_request(request, token=token),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
         )
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
@@ -244,7 +240,7 @@ def create_invoice_refund(
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    audit_ctx = request_context_from_request(request, token=token)
+    audit_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     event_type = "REFUND_IDEMPOTENT_REPLAY" if result.is_replay else "REFUND_POSTED"
     action = "IDEMPOTENT_REPLAY" if result.is_replay else "CREATE"
     AuditService(db).audit(
@@ -321,7 +317,6 @@ def download_invoice_pdf(
     invoice_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     invoice = db.query(Invoice).filter_by(id=invoice_id).one_or_none()
@@ -346,7 +341,7 @@ def download_invoice_pdf(
         entity_id=invoice.id,
         action="DOWNLOAD",
         after={"pdf_object_key": invoice.pdf_object_key},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return Response(content=pdf_bytes, media_type="application/pdf")

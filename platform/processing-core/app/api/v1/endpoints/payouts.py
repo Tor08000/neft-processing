@@ -21,7 +21,7 @@ from app.schemas.payouts import (
     PayoutMarkRequest,
     PayoutReconcileResponse,
 )
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.payout_exports import (
     PayoutExportConflictError,
     PayoutExportError,
@@ -50,7 +50,6 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 def close_period_endpoint(
     request: Request,
     payload: PayoutClosePeriodRequest,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -127,7 +126,6 @@ def mark_sent_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -161,7 +159,6 @@ def mark_settled_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -233,7 +230,6 @@ def create_export_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutExportCreateRequest,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -337,7 +333,6 @@ def download_export_endpoint(
     export_id: str,
     request: Request,
     token: dict = Depends(require_admin_user),
-    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     export = load_export(db, export_id)
@@ -388,7 +383,7 @@ def download_export_endpoint(
         }
         if export.external_ref or export.provider
         else None,
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     return Response(
         content=payload,

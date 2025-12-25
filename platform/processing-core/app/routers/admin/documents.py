@@ -8,7 +8,7 @@ from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.audit_log import AuditVisibility
 from app.models.documents import Document, DocumentFile, DocumentFileType
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.documents_storage import DocumentsStorage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -51,8 +51,7 @@ def download_document_admin(
         action="READ",
         visibility=AuditVisibility.PUBLIC,
         after={"file_type": file_type.value},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
 
     return Response(content=payload, media_type=file_record.content_type, headers=headers)
-
