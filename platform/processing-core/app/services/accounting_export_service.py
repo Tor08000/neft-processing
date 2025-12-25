@@ -93,6 +93,7 @@ class AccountingExportService:
             metadata={
                 "billing_period_status": period.status.value if period.status else None,
                 "actor_roles": actor.roles,
+                "subject_id": str(period.id),
             },
         )
         decision = DecisionEngine(self.db).evaluate(decision_context)
@@ -200,6 +201,7 @@ class AccountingExportService:
             client_id=actor_id,
             amount=None,
             action=RiskScoreAction.INVOICE,
+            metadata={"subject_id": str(batch.id)},
         )
         decision_result = decision_engine.evaluate(decision_ctx)
         if decision_result.outcome != DecisionOutcome.ALLOW:

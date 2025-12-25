@@ -30,3 +30,39 @@ async def update_model(request: TrainingRequest) -> TrainingResponse:
         trained_at=info.trained_at,
         metrics=info.metrics,
     )
+
+
+@router.post("/activate-model", response_model=TrainingResponse)
+async def activate_model(request: TrainingRequest) -> TrainingResponse:
+    info = model_registry.update(ModelType(request.model_type), metrics=request.metrics)
+    return TrainingResponse(
+        model_type=info.model_type,
+        model_version=info.version,
+        status="updated",
+        trained_at=info.trained_at,
+        metrics=info.metrics,
+    )
+
+
+@router.post("/models/train", response_model=TrainingResponse)
+async def train_model_v3(request: TrainingRequest) -> TrainingResponse:
+    info = model_registry.train(ModelType(request.model_type), metrics=request.metrics)
+    return TrainingResponse(
+        model_type=info.model_type,
+        model_version=info.version,
+        status="trained",
+        trained_at=info.trained_at,
+        metrics=info.metrics,
+    )
+
+
+@router.post("/models/activate", response_model=TrainingResponse)
+async def activate_model_v3(request: TrainingRequest) -> TrainingResponse:
+    info = model_registry.update(ModelType(request.model_type), metrics=request.metrics)
+    return TrainingResponse(
+        model_type=info.model_type,
+        model_version=info.version,
+        status="updated",
+        trained_at=info.trained_at,
+        metrics=info.metrics,
+    )

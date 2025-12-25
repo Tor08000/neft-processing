@@ -181,6 +181,7 @@ def create_payout_export(
         metadata={
             "billing_period_status": period_status,
             "actor_roles": actor.roles,
+            "subject_id": str(batch.id),
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)
@@ -206,6 +207,7 @@ def create_payout_export(
         client_id=actor_id,
         amount=float(batch.total_amount or 0),
         action=RiskScoreAction.PAYOUT,
+        metadata={"subject_id": str(batch.id)},
     )
     decision_result = decision_engine.evaluate(decision_ctx)
     if decision_result.outcome != DecisionOutcome.ALLOW:

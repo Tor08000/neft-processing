@@ -429,6 +429,7 @@ def authorize_operation(
             "merchant_status": merchant.status,
             "terminal_status": terminal.status,
             "actor_roles": [],
+            "subject_id": ext_operation_id,
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)
@@ -495,6 +496,7 @@ def authorize_operation(
         client_id=client_id,
         amount=amount,
         action=RiskScoreAction.PAYMENT,
+        metadata={"subject_id": ext_operation_id},
     )
     decision_result = decision_engine.evaluate(decision_ctx)
     if decision_result.outcome != DecisionOutcome.ALLOW:
@@ -773,6 +775,7 @@ def commit_operation(
         history={},
         metadata={
             "operation_id": operation.operation_id,
+            "subject_id": operation.operation_id,
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)

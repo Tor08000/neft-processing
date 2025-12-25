@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from app.models.risk_score import RiskLevel
+from app.models.risk_types import RiskDecisionType
 
 
 class DecisionOutcome(str, Enum):
@@ -22,6 +23,9 @@ class DecisionResult:
     rule_hits: list[str] = field(default_factory=list)
     model_version: str | None = None
     explain: dict = field(default_factory=dict)
+    risk_decision: RiskDecisionType | None = None
+    threshold_set_id: str | None = None
+    policy_id: str | None = None
 
     def to_payload(self) -> dict:
         return {
@@ -33,4 +37,7 @@ class DecisionResult:
             "rule_hits": list(self.rule_hits),
             "model_version": self.model_version,
             "explain": self.explain,
+            "risk_decision": self.risk_decision.value if self.risk_decision else None,
+            "threshold_set_id": self.threshold_set_id,
+            "policy_id": self.policy_id,
         }

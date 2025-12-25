@@ -446,6 +446,7 @@ class FinanceService:
                     "invoice_status": invoice.status.value if invoice.status else None,
                     "billing_period_status": self._policy_resource_for_invoice(invoice, tenant_id=tenant_id).status,
                     "actor_roles": token.get("roles") if token else [],
+                    "subject_id": invoice.id,
                 },
             )
             decision = DecisionEngine(self.db).evaluate(decision_context)

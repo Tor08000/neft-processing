@@ -210,6 +210,7 @@ def generate_invoice_for_batch(
             metadata={
                 "billing_period_status": period.status.value if period.status else None,
                 "initial_status": initial_status.value,
+                "subject_id": batch.id,
             },
         )
         decision = DecisionEngine(db).evaluate(decision_context)
