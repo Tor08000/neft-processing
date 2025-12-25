@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.helpers import create_index_if_not_exists, create_table_if_not_exists, ensure_pg_enum, safe_enum
 from app.db.schema import resolve_db_schema
@@ -39,7 +40,12 @@ def upgrade() -> None:
         sa.Column("invoice_id", sa.String(length=36), sa.ForeignKey(invoice_fk), nullable=False),
         sa.Column("tenant_id", sa.Integer(), nullable=False),
         sa.Column("client_id", sa.String(length=64), nullable=False),
-        sa.Column("settlement_period_id", sa.String(length=36), sa.ForeignKey(period_fk), nullable=False),
+        sa.Column(
+            "settlement_period_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey(period_fk),
+            nullable=False,
+        ),
         sa.Column("source_type", source_type_enum, nullable=False),
         sa.Column("source_id", sa.String(length=36), nullable=False),
         sa.Column("amount", sa.BigInteger(), nullable=False),
