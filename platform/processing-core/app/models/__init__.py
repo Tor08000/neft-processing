@@ -98,6 +98,7 @@ from .documents import (  # noqa: F401
     DocumentStatus,
     DocumentType,
 )
+from .immutability import ImmutableRecordError  # noqa: F401
 
 __all__ = [
     "Client",
@@ -199,4 +200,5 @@ __all__ = [
     "DocumentFileType",
     "ClosingPackage",
     "ClosingPackageStatus",
+    "ImmutableRecordError",
 ]
