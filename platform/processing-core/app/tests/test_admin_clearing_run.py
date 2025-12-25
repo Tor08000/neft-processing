@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.main import app
 from app.models.billing_job_run import BillingJobRun, BillingJobType
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.clearing import Clearing
 
@@ -33,6 +34,9 @@ def _cleanup(session: Session, target_date: date):
     session.query(Clearing).filter(Clearing.batch_date == target_date).delete(synchronize_session=False)
     session.query(BillingSummary).filter(BillingSummary.billing_date == target_date).delete(synchronize_session=False)
     session.query(BillingJobRun).filter(BillingJobRun.job_type == BillingJobType.CLEARING).delete(
+        synchronize_session=False
+    )
+    session.query(BillingPeriod).filter(BillingPeriod.start_at <= datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc)).delete(
         synchronize_session=False
     )
     session.commit()
@@ -71,9 +75,19 @@ def test_admin_clearing_skips_existing(admin_client: TestClient, session: Sessio
 
 def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session: Session):
     target_date = date(2024, 1, 3)
+    period = BillingPeriod(
+        period_type=BillingPeriodType.DAILY,
+        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.OPEN,
+    )
+    session.add(period)
+    session.flush()
     summaries = [
         BillingSummary(
             billing_date=target_date,
+            billing_period_id=period.id,
             merchant_id="m-one",
             client_id="c1",
             currency="RUB",
@@ -84,6 +98,7 @@ def test_admin_clearing_creates_from_summaries(admin_client: TestClient, session
         ),
         BillingSummary(
             billing_date=target_date,
+            billing_period_id=period.id,
             merchant_id="m-one",
             client_id="c2",
             currency="RUB",

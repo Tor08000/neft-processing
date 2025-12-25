@@ -15,6 +15,7 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 from app.config import settings
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.services.s3_storage import S3Storage
 
@@ -58,8 +59,23 @@ def _seed_captured_operations(target_date: date, partner_id: str, count: int = 3
     session.close()
 
 
+def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None:
+    session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=status,
+    )
+    session.add(period)
+    session.commit()
+    session.close()
+
+
 def _create_batch(client: TestClient, target_date: date, partner_id: str) -> str:
     _seed_captured_operations(target_date, partner_id)
+    _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
     payload = {
         "tenant_id": 1,
         "partner_id": partner_id,

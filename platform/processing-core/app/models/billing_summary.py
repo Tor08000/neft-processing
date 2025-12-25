@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from enum import Enum
-from sqlalchemy import Column, Date, DateTime, Integer, String, UniqueConstraint, Index
+from sqlalchemy import Column, Date, DateTime, Integer, String, UniqueConstraint, Index, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.types import BigInteger, Numeric
 from sqlalchemy import Enum as SAEnum
@@ -9,6 +9,7 @@ from sqlalchemy.orm import synonym
 
 from app.db import Base
 from app.models.operation import ProductType
+from app.db.types import GUID
 
 
 class BillingSummaryStatus(str, Enum):
@@ -32,6 +33,7 @@ class BillingSummary(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     billing_date = Column(Date, nullable=False, index=True)
+    billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False, index=True)
     client_id = Column(String(64), nullable=True, index=True)
     merchant_id = Column(String(64), nullable=False, index=True)
     product_type = Column(SAEnum(ProductType), nullable=True, index=True)

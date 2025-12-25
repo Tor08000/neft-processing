@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.invoice_state_machine import InvoiceStateMachine
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -129,12 +131,32 @@ def run_invoice_monthly(
         logger.info("invoice.monthly.disabled")
         return MonthlyInvoiceRunOutcome(invoices=[], job_run=job_run, metrics=metrics)
 
+    period_service = BillingPeriodService(session)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=period_from,
+        date_to=period_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.MONTHLY,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        job_service.fail(
+            job_run,
+            error=f"Billing period {period.id} is {period.status.value}",
+        )
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
     try:
         summaries = (
             session.query(BillingSummary)
             .filter(BillingSummary.billing_date >= period_from)
             .filter(BillingSummary.billing_date <= period_to)
             .filter(BillingSummary.status == BillingSummaryStatus.FINALIZED)
+            .filter(BillingSummary.billing_period_id == period.id)
             .all()
         )
         if not summaries:
@@ -161,6 +183,8 @@ def run_invoice_monthly(
 
             lines = [_build_lines(items) for items in payload["items"].values()]
             if invoice:
+                if not invoice.billing_period_id:
+                    invoice.billing_period_id = period.id
                 session.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).delete(
                     synchronize_session=False
                 )
@@ -197,6 +221,7 @@ def run_invoice_monthly(
                         currency=currency,
                         lines=lines,
                         status=InvoiceStatus.ISSUED,
+                        billing_period_id=str(period.id),
                     ),
                     auto_commit=False,
                 )

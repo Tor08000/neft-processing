@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from app.db import get_sessionmaker
 from app.main import app
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.finance import CreditNote
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.services.finance import FinanceService
@@ -14,11 +15,21 @@ from app.services.finance import FinanceService
 
 def _create_paid_invoice(total: int) -> str:
     session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.FINALIZED,
+    )
+    session.add(period)
+    session.flush()
     invoice = Invoice(
         client_id="client-1",
         period_from=date.today(),
         period_to=date.today(),
         currency="RUB",
+        billing_period_id=period.id,
         total_amount=total,
         tax_amount=0,
         total_with_tax=total,

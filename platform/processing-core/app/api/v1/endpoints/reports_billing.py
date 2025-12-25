@@ -2,7 +2,7 @@ from datetime import date, datetime
 import csv
 from io import StringIO
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -16,6 +16,8 @@ from app.schemas.reports import (
     TurnoverReportResponse,
 )
 from app.services.reports import get_turnover_report
+from app.services.audit_service import AuditService, request_context_from_request
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.reports_billing import (
     build_billing_summary_for_date,
     list_billing_summaries,
@@ -95,14 +97,26 @@ def get_daily_billing_report(
     summary="Пересчитать агрегаты биллинга за период",
 )
 def rebuild_billing_summary(
+    request: Request,
     date_from: date = Query(...),
     date_to: date = Query(...),
     merchant_id: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[BillingSummaryItem]:
-    summaries = build_billing_summary_for_date(
-        db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
-    )
+    try:
+        summaries = build_billing_summary_for_date(
+            db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
+        )
+    except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_SUMMARY_REBUILD_CONFLICT",
+            entity_type="billing_summary",
+            entity_id=None,
+            action="REBUILD_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request),
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return [
         BillingSummaryItem(

@@ -19,6 +19,8 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
 from app.models.audit_log import ActorType, AuditLog
+from app.models.invoice import Invoice
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 from app.services.audit_service import AuditService, RequestContext
 
@@ -61,6 +63,20 @@ def _seed_captured_operations(target_date: date, *, merchant_id: str, client_id:
                 authorized=True,
             )
         )
+    session.commit()
+    session.close()
+
+
+def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None:
+    session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=status,
+    )
+    session.add(period)
     session.commit()
     session.close()
 
@@ -161,6 +177,7 @@ def test_audit_search_by_external_ref(admin_auth_headers: dict):
 def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers: dict):
     target_date = date.today()
     _seed_captured_operations(target_date, merchant_id="m-1", client_id="client-1")
+    _seed_billing_period(target_date, BillingPeriodStatus.OPEN)
 
     with TestClient(app) as client:
         close_resp = client.post(
@@ -173,6 +190,13 @@ def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers:
         invoice_resp = client.post("/api/v1/invoices/generate", params={"batch_id": batch_id})
         assert invoice_resp.status_code == 200
         invoice_id = invoice_resp.json()["invoice_id"]
+        session = get_sessionmaker()()
+        invoice = session.query(Invoice).filter(Invoice.id == invoice_id).one()
+        period = session.query(BillingPeriod).filter(BillingPeriod.id == invoice.billing_period_id).one()
+        period.status = BillingPeriodStatus.FINALIZED
+        session.add(period)
+        session.commit()
+        session.close()
 
         client.headers.update(client_auth_headers)
         payment_resp = client.post(
@@ -188,6 +212,7 @@ def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers:
         assert refund_resp.status_code == 201
 
         _seed_captured_operations(target_date, merchant_id="partner-1", client_id="client-2")
+        _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
         payout_resp = client.post(
             "/api/v1/payouts/close-period",
             json={

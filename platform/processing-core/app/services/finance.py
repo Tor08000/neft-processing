@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.finance import CreditNote, CreditNoteStatus, InvoicePayment, PaymentStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.services.billing_metrics import metrics as billing_metrics
@@ -65,6 +66,19 @@ class FinanceService:
         if not invoice:
             raise InvoiceNotFound(invoice_id)
         return invoice
+
+    def _require_settlement_period(self, invoice: Invoice, *, action: str) -> None:
+        if not invoice.billing_period_id:
+            return
+        period = (
+            self.db.query(BillingPeriod)
+            .filter(BillingPeriod.id == invoice.billing_period_id)
+            .one_or_none()
+        )
+        if not period:
+            raise InvalidTransitionError("billing period not found")
+        if period.status != BillingPeriodStatus.FINALIZED:
+            raise InvalidTransitionError(f"billing period {period.id} is {period.status.value} for {action}")
 
     def _apply_financial_transition(
         self,
@@ -139,6 +153,7 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            self._require_settlement_period(invoice, action="payment")
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_PAYMENT,
                 params={
@@ -241,6 +256,7 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            self._require_settlement_period(invoice, action="credit_note")
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_CREDIT_NOTE,
                 params={"invoice_id": invoice_id, "amount": amount, "currency": currency, "reason": reason},
@@ -345,6 +361,7 @@ class FinanceService:
                     billing_metrics.mark_payment_error()
 
             invoice = self._lock_invoice(invoice_id)
+            self._require_settlement_period(invoice, action="refund")
             if invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID}:
                 self.db.rollback()
                 raise InvalidTransitionError(

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -10,6 +10,7 @@ from app.models.billing_task_link import BillingTaskStatus, BillingTaskType
 from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.schemas.admin.billing import (
     BillingAdjustmentRequest,
     BillingAdjustmentResponse,
@@ -58,6 +59,7 @@ from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
 from app.services.invoice_pdf import InvoicePdfService
 from app.services.invoice_state_machine import InvoiceInvariantError, InvoiceStateMachine, InvalidTransitionError
+from app.api.dependencies.admin import require_admin_user
 from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
 from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
@@ -80,7 +82,12 @@ def admin_list_billing_periods(
 
 
 @router.post("/periods/lock", response_model=BillingPeriodRead)
-def admin_lock_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+def admin_lock_billing_period(
+    body: BillingPeriodPayload,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> BillingPeriodRead:
     service = BillingPeriodService(db)
     try:
         period = service.lock(
@@ -91,12 +98,36 @@ def admin_lock_billing_period(body: BillingPeriodPayload, db: Session = Depends(
         )
         db.commit()
     except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_LOCK_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="LOCK_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).audit(
+        event_type="BILLING_PERIOD_LOCKED",
+        entity_type="billing_period",
+        entity_id=str(period.id),
+        action="LOCK",
+        after={
+            "status": period.status.value if period.status else None,
+            "locked_at": period.locked_at,
+        },
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
     return BillingPeriodRead.model_validate(period)
 
 
 @router.post("/periods/finalize", response_model=BillingPeriodRead)
-def admin_finalize_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+def admin_finalize_billing_period(
+    body: BillingPeriodPayload,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> BillingPeriodRead:
     service = BillingPeriodService(db)
     try:
         period = service.finalize(
@@ -107,7 +138,26 @@ def admin_finalize_billing_period(body: BillingPeriodPayload, db: Session = Depe
         )
         db.commit()
     except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_FINALIZE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="FINALIZE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).audit(
+        event_type="BILLING_PERIOD_FINALIZED",
+        entity_type="billing_period",
+        entity_id=str(period.id),
+        action="FINALIZE",
+        after={
+            "status": period.status.value if period.status else None,
+            "finalized_at": period.finalized_at,
+        },
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
     return BillingPeriodRead.model_validate(period)
 
 
@@ -281,6 +331,8 @@ def admin_finalize_summary(summary_id: str, db: Session = Depends(get_db)) -> Bi
         summary = finalize_billing_summary(db, summary_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="summary not found")
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return BillingSummaryItem.model_validate(summary)
 
 
@@ -289,7 +341,10 @@ def admin_run_billing_daily(
     billing_date: date | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    summaries = run_billing_daily(billing_date, session=db)
+    try:
+        summaries = run_billing_daily(billing_date, session=db)
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     resolved_date = billing_date or (summaries[0].billing_date if summaries else None)
     return {"processed": len(summaries), "billing_date": str(resolved_date) if resolved_date else None}
 
@@ -409,12 +464,15 @@ def admin_get_invoice(invoice_id: str, db: Session = Depends(get_db)) -> Invoice
 
 @router.post("/invoices/generate", response_model=InvoiceGenerateResponse, status_code=status.HTTP_202_ACCEPTED)
 def admin_generate_invoices(body: InvoiceGenerateRequest, db: Session = Depends(get_db)) -> InvoiceGenerateResponse:
-    invoices = generate_invoices_for_period(
-        db,
-        period_from=body.period_from,
-        period_to=body.period_to,
-        status=body.status,
-    )
+    try:
+        invoices = generate_invoices_for_period(
+            db,
+            period_from=body.period_from,
+            period_to=body.period_to,
+            status=body.status,
+        )
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return InvoiceGenerateResponse(created_ids=[invoice.id for invoice in invoices])
 
 

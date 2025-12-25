@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus, OperationType
 from app.models.payout_batch import PayoutItem
 
@@ -51,9 +52,24 @@ def _seed_captured_operations(target_date: date, partner_id: str, count: int = 3
     session.close()
 
 
+def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None:
+    session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=status,
+    )
+    session.add(period)
+    session.commit()
+    session.close()
+
+
 def test_payout_close_period_idempotent():
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
+    _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
 
     client = TestClient(app)
     payload = {
@@ -82,6 +98,7 @@ def test_payout_close_period_idempotent():
 def test_payout_state_transitions():
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
+    _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
 
     client = TestClient(app)
     payload = {
@@ -123,6 +140,7 @@ def test_payout_state_transitions():
 def test_payout_reconcile_ok():
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
+    _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
 
     client = TestClient(app)
     payload = {
@@ -146,6 +164,7 @@ def test_payout_unique_external_ref():
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
     _seed_captured_operations(target_date, "partner-2")
+    _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
 
     client = TestClient(app)
     payload_one = {

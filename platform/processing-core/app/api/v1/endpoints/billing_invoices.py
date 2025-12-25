@@ -25,6 +25,7 @@ from app.schemas.billing_invoices import (
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.finance import (
     FinanceOperationInProgress,
@@ -41,7 +42,11 @@ router = APIRouter(prefix="/api/v1", tags=["billing"])
 
 
 @router.post("/billing/close-period", response_model=ClosePeriodResponse)
-def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get_db)) -> ClosePeriodResponse:
+def close_period_endpoint(
+    payload: ClosePeriodRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ClosePeriodResponse:
     try:
         batch = close_clearing_period(
             db,
@@ -53,6 +58,16 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
         if str(exc) == "invalid_period":
             raise HTTPException(status_code=422, detail="invalid period") from exc
         raise
+    except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_CLOSE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="CLOSE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request),
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ClosePeriodResponse(
         batch_id=batch.id,
         txn_count=batch.operations_count,
@@ -74,6 +89,16 @@ def generate_invoice_endpoint(
         if str(exc) == "batch_not_found":
             raise HTTPException(status_code=404, detail="batch not found") from exc
         raise
+    except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_INVOICE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="INVOICE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     invoice = result.invoice
     audit_service = AuditService(db)
@@ -162,6 +187,14 @@ def create_invoice_payment(
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
     except InvalidTransitionError as exc:
+        AuditService(db).audit(
+            event_type="PAYMENT_CONFLICT",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            action="PAYMENT_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -236,6 +269,14 @@ def create_invoice_refund(
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
     except InvalidTransitionError as exc:
+        AuditService(db).audit(
+            event_type="REFUND_CONFLICT",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            action="REFUND_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -93,15 +93,15 @@ def test_lock_and_finalize_flow(sqlite_session):
     start_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
 
-    locked = service.lock(period_type=BillingPeriodType.DAILY, start_at=start_at, end_at=end_at, tz="UTC")
-    sqlite_session.commit()
-    assert locked.status == BillingPeriodStatus.LOCKED
-    assert locked.locked_at is not None
-
     finalized = service.finalize(period_type=BillingPeriodType.DAILY, start_at=start_at, end_at=end_at, tz="UTC")
     sqlite_session.commit()
     assert finalized.status == BillingPeriodStatus.FINALIZED
     assert finalized.finalized_at is not None
 
+    locked = service.lock(period_type=BillingPeriodType.DAILY, start_at=start_at, end_at=end_at, tz="UTC")
+    sqlite_session.commit()
+    assert locked.status == BillingPeriodStatus.LOCKED
+    assert locked.locked_at is not None
+
     with pytest.raises(BillingPeriodConflict):
-        service.lock(period_type=BillingPeriodType.DAILY, start_at=start_at, end_at=end_at, tz="UTC")
+        service.finalize(period_type=BillingPeriodType.DAILY, start_at=start_at, end_at=end_at, tz="UTC")

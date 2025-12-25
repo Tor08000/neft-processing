@@ -64,6 +64,18 @@ def close_period_endpoint(
         if str(exc) == "invalid_period":
             raise HTTPException(status_code=422, detail="invalid period") from exc
         raise
+    except PayoutError as exc:
+        if str(exc) == "billing_period_not_finalized":
+            AuditService(db).audit(
+                event_type="PAYOUT_BATCH_CONFLICT",
+                entity_type="payout_batch",
+                entity_id=None,
+                action="CREATE_DENIED",
+                reason=str(exc),
+                request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+            )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     batch = result.batch
     items_count = len(batch.items)
     if result.created:
@@ -151,6 +163,18 @@ def mark_sent_endpoint(
             external_refs={"provider": payload.provider, "external_ref": payload.external_ref},
             request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
         )
+        AuditService(db).audit(
+            event_type="PAYOUT_SENT",
+            entity_type="payout_batch",
+            entity_id=result.batch.id,
+            action="MARK_SENT",
+            after={
+                "state": result.batch.state.value if hasattr(result.batch.state, "value") else str(result.batch.state),
+                "provider": result.batch.provider,
+                "external_ref": result.batch.external_ref,
+            },
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
     return PayoutBatchSummary.from_batch(result.batch)
 
 
@@ -182,6 +206,18 @@ def mark_settled_endpoint(
             before={"state": result.previous_state.value if hasattr(result.previous_state, "value") else str(result.previous_state)},
             after={"state": result.batch.state.value if hasattr(result.batch.state, "value") else str(result.batch.state)},
             external_refs={"provider": payload.provider, "external_ref": payload.external_ref},
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
+        AuditService(db).audit(
+            event_type="PAYOUT_SETTLED",
+            entity_type="payout_batch",
+            entity_id=result.batch.id,
+            action="MARK_SETTLED",
+            after={
+                "state": result.batch.state.value if hasattr(result.batch.state, "value") else str(result.batch.state),
+                "provider": result.batch.provider,
+                "external_ref": result.batch.external_ref,
+            },
             request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
         )
     return PayoutBatchSummary.from_batch(result.batch)
@@ -265,6 +301,15 @@ def create_export_endpoint(
                 entity_id=export.id,
                 action="EXPORT",
                 after={"object_key": export.object_key, "size_bytes": export.size_bytes},
+                external_refs=external_refs,
+                request_ctx=audit_ctx,
+            )
+            AuditService(db).audit(
+                event_type="PAYOUT_EXPORTED",
+                entity_type="payout_export",
+                entity_id=export.id,
+                action="EXPORT",
+                after={"batch_id": export.batch_id, "format": export.format.value},
                 external_refs=external_refs,
                 request_ctx=audit_ctx,
             )

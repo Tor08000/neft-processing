@@ -6,6 +6,7 @@ from typing import Callable, Mapping
 
 from sqlalchemy.orm import Session
 
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
 from app.models.audit_log import ActorType
 from app.services.audit_service import AuditService, RequestContext
@@ -165,6 +166,18 @@ class InvoiceStateMachine:
             raise ValueError("reason is required")
 
         from_status = self.invoice.status
+        if self.invoice.billing_period_id:
+            period = (
+                self.db.query(BillingPeriod)
+                .filter(BillingPeriod.id == self.invoice.billing_period_id)
+                .one_or_none()
+            )
+            if period and period.status == BillingPeriodStatus.LOCKED:
+                if to != self.invoice.status or any(
+                    amount is not None and amount != 0
+                    for amount in (payment_amount, credit_note_amount, refund_amount)
+                ):
+                    raise InvalidTransitionError("billing period is locked")
         before_snapshot = {
             "status": from_status.value if from_status else None,
             "amount_paid": int(self.invoice.amount_paid or 0),

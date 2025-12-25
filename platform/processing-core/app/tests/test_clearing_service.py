@@ -1,9 +1,10 @@
 import asyncio
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
 from app.db import Base, SessionLocal, engine
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary
 from app.models.clearing import Clearing
 from app.models.operation import ProductType
@@ -22,6 +23,19 @@ def _create_summary(**kwargs):
     session = SessionLocal()
     try:
         with session.begin():
+            billing_date = kwargs.get("billing_date")
+            period_id = kwargs.get("billing_period_id")
+            if billing_date and not period_id:
+                period = BillingPeriod(
+                    period_type=BillingPeriodType.DAILY,
+                    start_at=datetime.combine(billing_date, datetime.min.time(), tzinfo=timezone.utc),
+                    end_at=datetime.combine(billing_date, datetime.max.time(), tzinfo=timezone.utc),
+                    tz="UTC",
+                    status=BillingPeriodStatus.OPEN,
+                )
+                session.add(period)
+                session.flush()
+                kwargs["billing_period_id"] = period.id
             summary = BillingSummary(**kwargs)
             session.add(summary)
         return summary

@@ -8,8 +8,11 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus
 from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
+from app.services.billing_periods import BillingPeriodService, period_bounds_for_dates
 from app.services.payout_metrics import metrics as payout_metrics
 
 
@@ -69,6 +72,20 @@ def close_payout_period(
 ) -> PayoutBatchResult:
     if date_from > date_to:
         raise ValueError("invalid_period")
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=date_from,
+        date_to=date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status not in {BillingPeriodStatus.FINALIZED, BillingPeriodStatus.LOCKED}:
+        raise PayoutError("billing_period_not_finalized")
 
     existing = (
         db.query(PayoutBatch)
@@ -109,6 +126,7 @@ def close_payout_period(
         total_amount=total_amount_decimal,
         total_qty=total_qty_decimal,
         operations_count=operations_count_int,
+        meta={"billing_period_id": str(period.id)},
     )
     item = PayoutItem(
         amount_gross=total_amount_decimal,
