@@ -7,11 +7,18 @@ Create Date: 2029-06-01 00:00:00
 
 from __future__ import annotations
 
+import logging
+
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import column_exists, constraint_exists, create_index_if_not_exists, table_exists
-from app.db.types import GUID
+from app.alembic.helpers import (
+    column_exists,
+    constraint_exists,
+    create_index_if_not_exists,
+    is_postgres,
+    table_exists,
+)
 from app.db.schema import resolve_db_schema
 
 
@@ -21,6 +28,24 @@ branch_labels = None
 depends_on = None
 
 SCHEMA = resolve_db_schema().schema
+LOGGER = logging.getLogger(__name__)
+
+
+def _is_uuid_column(bind, table_name: str, column_name: str, schema: str) -> bool:
+    if not is_postgres(bind):
+        return False
+
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT data_type, udt_name
+            FROM information_schema.columns
+            WHERE table_schema = :schema AND table_name = :table_name AND column_name = :column_name
+            """
+        ),
+        {"schema": schema, "table_name": table_name, "column_name": column_name},
+    ).first()
+    return bool(result and result.udt_name == "uuid")
 
 
 def upgrade() -> None:
@@ -39,7 +64,7 @@ def upgrade() -> None:
         if not column_exists(bind, "invoices", "reconciliation_request_id", schema=SCHEMA):
             op.add_column(
                 "invoices",
-                sa.Column("reconciliation_request_id", GUID(), nullable=True),
+                sa.Column("reconciliation_request_id", sa.String(length=36), nullable=True),
                 schema=SCHEMA,
             )
         create_index_if_not_exists(
@@ -49,7 +74,12 @@ def upgrade() -> None:
             ["reconciliation_request_id"],
             schema=SCHEMA,
         )
-        if not constraint_exists(
+        if _is_uuid_column(bind, "invoices", "reconciliation_request_id", schema=SCHEMA):
+            LOGGER.warning(
+                "Skipping foreign key creation for invoices.reconciliation_request_id "
+                "because column type is UUID; follow-up migration will fix the type."
+            )
+        elif not constraint_exists(
             bind, "invoices", "fk_invoices_reconciliation_request_id", schema=SCHEMA
         ):
             op.create_foreign_key(
