@@ -83,6 +83,7 @@ class Document(Base):
     number = Column(Text, nullable=True)
     source_entity_type = Column(Text, nullable=True)
     source_entity_id = Column(Text, nullable=True)
+    document_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     generated_at = Column(DateTime(timezone=True), nullable=True)

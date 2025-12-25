@@ -248,6 +248,7 @@ class ClosingDocumentsService:
             payload.xlsx_bytes,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        document.document_hash = pdf_file.sha256
         document.files.extend([pdf_file, xlsx_file])
         self.db.commit()
         self.db.refresh(document)
