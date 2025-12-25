@@ -16,7 +16,7 @@ from app.db.schema import resolve_db_schema
 
 
 revision = "20290601_0047_document_chain_reconciliation"
-down_revision = "20290520_0046_risk_scores"
+down_revision = "20290601_0046a_documents_bootstrap"
 branch_labels = None
 depends_on = None
 
