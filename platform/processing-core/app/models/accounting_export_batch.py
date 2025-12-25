@@ -55,6 +55,11 @@ class AccountingExportBatch(Base):
     uploaded_at = Column(DateTime(timezone=True), nullable=True)
     downloaded_at = Column(DateTime(timezone=True), nullable=True)
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    erp_system = Column(String(32), nullable=True)
+    erp_import_id = Column(String(128), nullable=True)
+    erp_status = Column(String(16), nullable=True)
+    erp_message = Column(Text, nullable=True)
+    erp_processed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     billing_period = relationship(

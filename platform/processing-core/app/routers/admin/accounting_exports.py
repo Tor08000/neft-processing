@@ -10,6 +10,7 @@ from app.models.accounting_export_batch import AccountingExportFormat, Accountin
 from app.schemas.admin.accounting_exports import (
     AccountingExportBatchListResponse,
     AccountingExportBatchRead,
+    AccountingExportConfirmRequest,
     AccountingExportCreateRequest,
 )
 from app.services.accounting_export_service import (
@@ -143,6 +144,7 @@ def download_export(
         payload = service.download_export(
             batch_id=batch_id,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
         batch = service._load_batch(batch_id)
         db.commit()
@@ -152,6 +154,9 @@ def download_export(
     except AccountingExportInvalidState as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except AccountingExportError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -165,6 +170,7 @@ def download_export(
 @router.post("/exports/{batch_id}/confirm", response_model=AccountingExportBatchRead)
 def confirm_export(
     batch_id: str,
+    body: AccountingExportConfirmRequest,
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(require_admin_user),
@@ -174,12 +180,20 @@ def confirm_export(
         batch = service.confirm_export(
             batch_id=batch_id,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            erp_system=body.erp_system,
+            erp_import_id=body.erp_import_id,
+            status=body.status,
+            message=body.message,
+            processed_at=body.processed_at,
             token=token,
         )
         db.commit()
     except PolicyAccessDenied as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AccountingExportInvalidState as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except AccountingExportNotFound as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

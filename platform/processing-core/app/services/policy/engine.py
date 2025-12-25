@@ -11,6 +11,7 @@ from app.services.policy.resources import ResourceContext
 
 _ADMIN_FINANCE_ROLES = {"ADMIN_FINANCE", "SUPERADMIN"}
 _ADMIN_ACCOUNTING_ROLES = {"ADMIN_ACCOUNTING", "SUPERADMIN"}
+_ADMIN_EXPORT_ROLES = {"ADMIN_FINANCE", "ADMIN_ACCOUNTING", "SUPERADMIN"}
 _CLIENT_ACK_ROLES = {"CLIENT_OWNER", "CLIENT_ADMIN"}
 
 
@@ -138,7 +139,7 @@ class PolicyEngine:
     def _accounting_export_create(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
         if denial := self._require_admin(actor, policy="accounting_export_create_admin_only"):
             return denial
-        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+        if not self._has_role(actor, _ADMIN_EXPORT_ROLES):
             return PolicyDecision(False, policy="accounting_export_create_role", reason="missing_role")
         if resource.status not in {"FINALIZED", "LOCKED"}:
             return PolicyDecision(False, policy="accounting_export_create_status", reason="period_not_finalized")
@@ -147,7 +148,7 @@ class PolicyEngine:
     def _accounting_export_confirm(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
         if denial := self._require_admin(actor, policy="accounting_export_confirm_admin_only"):
             return denial
-        if not self._has_role(actor, _ADMIN_ACCOUNTING_ROLES):
+        if not self._has_role(actor, _ADMIN_EXPORT_ROLES):
             return PolicyDecision(False, policy="accounting_export_confirm_role", reason="missing_role")
         return PolicyDecision(True, policy="accounting_export_confirm_allowed")
 

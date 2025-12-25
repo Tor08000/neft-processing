@@ -23,6 +23,7 @@ from app.routers.client import router as client_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
 from app.services.bootstrap import ensure_default_refs
+from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
@@ -571,6 +572,17 @@ def _audit_metrics() -> list[str]:
     ]
 
 
+def _accounting_export_metrics() -> list[str]:
+    return [
+        "# HELP core_api_accounting_export_overdue_total Accounting export batches overdue for generation.",
+        "# TYPE core_api_accounting_export_overdue_total counter",
+        f"core_api_accounting_export_overdue_total {accounting_export_metrics.overdue_batches_total}",
+        "# HELP core_api_accounting_export_unconfirmed_total Accounting export batches overdue for confirmation.",
+        "# TYPE core_api_accounting_export_unconfirmed_total counter",
+        f"core_api_accounting_export_unconfirmed_total {accounting_export_metrics.unconfirmed_batches_total}",
+    ]
+
+
 def _risk_metrics() -> list[str]:
     latency_p95 = _percentile(risk_metrics.latencies_ms, 95) or 0
     connection_lines = [
@@ -613,6 +625,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
     lines.extend(_audit_metrics())
+    lines.extend(_accounting_export_metrics())
     return "\n".join(lines) + "\n"
 
 

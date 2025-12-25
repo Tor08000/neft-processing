@@ -19,11 +19,11 @@ from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice
 from app.models.risk_score import RiskScoreAction
-from app.services.accounting_export.serializer import (
-    serialize_accounting_export_json,
-    serialize_charges_csv,
-    serialize_settlement_csv,
-)
+from app.services.accounting_export.canonical import AccountingEntry
+from app.services.accounting_export.formats.csv_1c import serialize_charges_csv, serialize_settlement_csv
+from app.services.accounting_export.formats.json_sap import serialize_sap_json
+from app.services.accounting_export.mappers import map_charges_entries, map_settlement_entries
+from app.services.accounting_export.serializer import serialize_metadata_json
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
@@ -239,6 +239,13 @@ class AccountingExportService:
             batch.error_message = None
             self.db.flush()
 
+            metadata_payload, metadata_checksum, metadata_key = self._build_metadata_payload(
+                batch,
+                export_checksum=checksum,
+                generated_at=generated_at,
+            )
+            storage.put_bytes(metadata_key, metadata_payload, content_type="application/json")
+
             self._audit_event(
                 event_type="ACCOUNTING_EXPORT_UPLOADED",
                 batch=batch,
@@ -247,6 +254,8 @@ class AccountingExportService:
                     "object_key": batch.object_key,
                     "bucket": batch.bucket,
                     "size_bytes": batch.size_bytes,
+                    "metadata_key": metadata_key,
+                    "metadata_checksum": metadata_checksum,
                 },
             )
         except Exception as exc:
@@ -268,8 +277,31 @@ class AccountingExportService:
         *,
         batch_id: str,
         request_ctx: RequestContext | None,
+        token: dict | None = None,
     ) -> bytes:
         batch = self._load_batch(batch_id)
+        actor = actor_from_token(token)
+        resource = ResourceContext(
+            resource_type="ACCOUNTING_EXPORT",
+            tenant_id=actor.tenant_id,
+            client_id=None,
+            status=None,
+        )
+        decision = self.policy_engine.check(
+            actor=actor,
+            action=Action.ACCOUNTING_EXPORT_CREATE,
+            resource=resource,
+        )
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=Action.ACCOUNTING_EXPORT_CREATE,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
         if not batch.object_key or not batch.bucket:
             raise AccountingExportInvalidState("export_not_uploaded")
 
@@ -300,6 +332,11 @@ class AccountingExportService:
         *,
         batch_id: str,
         request_ctx: RequestContext | None,
+        erp_system: str,
+        erp_import_id: str,
+        status: str,
+        processed_at: datetime,
+        message: str | None = None,
         token: dict | None = None,
     ) -> AccountingExportBatch:
         batch = self._load_batch(batch_id)
@@ -325,14 +362,44 @@ class AccountingExportService:
                 token=token,
             )
             raise PolicyAccessDenied(decision)
-        batch.state = AccountingExportState.CONFIRMED
-        batch.confirmed_at = datetime.now(timezone.utc)
+        if status not in {"CONFIRMED", "REJECTED"}:
+            raise AccountingExportError("invalid_confirm_status")
+        if batch.erp_import_id and batch.erp_import_id != erp_import_id:
+            raise AccountingExportInvalidState("erp_import_id_conflict")
+        if batch.erp_import_id == erp_import_id and batch.erp_status == status:
+            return batch
+        if batch.state == AccountingExportState.CONFIRMED and status != "CONFIRMED":
+            raise AccountingExportInvalidState("export_already_confirmed")
+
+        batch.erp_system = erp_system
+        batch.erp_import_id = erp_import_id
+        batch.erp_status = status
+        batch.erp_message = message
+        batch.erp_processed_at = processed_at
+
+        if status == "CONFIRMED":
+            batch.state = AccountingExportState.CONFIRMED
+            batch.confirmed_at = datetime.now(timezone.utc)
+            batch.error_message = None
+            event_type = "ACCOUNTING_EXPORT_CONFIRMED"
+        else:
+            batch.state = AccountingExportState.FAILED
+            batch.error_message = message
+            event_type = "ACCOUNTING_EXPORT_REJECTED"
+
         self.db.flush()
 
         self._audit_event(
-            event_type="ACCOUNTING_EXPORT_CONFIRMED",
+            event_type=event_type,
             batch=batch,
             request_ctx=request_ctx,
+            extra={
+                "erp_system": erp_system,
+                "erp_import_id": erp_import_id,
+                "erp_status": status,
+                "erp_message": message,
+                "erp_processed_at": processed_at,
+            },
         )
 
         return batch
@@ -410,68 +477,53 @@ class AccountingExportService:
 
     def _build_payload(self, batch: AccountingExportBatch, *, generated_at: datetime) -> AccountingExportPayload:
         if batch.export_type == AccountingExportType.CHARGES:
-            records = self._load_charge_records(str(batch.billing_period_id))
+            entries = self._load_charge_entries(batch)
             if batch.format == AccountingExportFormat.CSV:
-                payload = serialize_charges_csv(records)
+                payload = serialize_charges_csv(entries)
             elif batch.format == AccountingExportFormat.JSON:
-                payload, _ = serialize_accounting_export_json(
-                    {
-                        "period_id": str(batch.billing_period_id),
-                        "export_type": batch.export_type.value,
-                        "generated_at": generated_at,
-                    },
-                    records,
+                payload, _ = serialize_sap_json(
+                    batch_id=str(batch.id),
+                    export_type=batch.export_type.value,
+                    generated_at=generated_at,
+                    entries=entries,
+                    records_count=len(entries),
                 )
             else:
                 raise AccountingExportError("format_not_supported")
-            return AccountingExportPayload(payload=payload, records_count=len(records))
+            return AccountingExportPayload(payload=payload, records_count=len(entries))
 
         if batch.export_type == AccountingExportType.SETTLEMENT:
-            records = self._load_settlement_records(str(batch.billing_period_id))
+            entries = self._load_settlement_entries(batch)
             if batch.format == AccountingExportFormat.CSV:
-                payload = serialize_settlement_csv(records)
+                payload = serialize_settlement_csv(entries)
             elif batch.format == AccountingExportFormat.JSON:
-                payload, _ = serialize_accounting_export_json(
-                    {
-                        "period_id": str(batch.billing_period_id),
-                        "export_type": batch.export_type.value,
-                        "generated_at": generated_at,
-                    },
-                    records,
+                payload, _ = serialize_sap_json(
+                    batch_id=str(batch.id),
+                    export_type=batch.export_type.value,
+                    generated_at=generated_at,
+                    entries=entries,
+                    records_count=len(entries),
                 )
             else:
                 raise AccountingExportError("format_not_supported")
-            return AccountingExportPayload(payload=payload, records_count=len(records))
+            return AccountingExportPayload(payload=payload, records_count=len(entries))
 
         raise AccountingExportError("export_type_not_supported")
 
-    def _load_charge_records(self, period_id: str) -> list[dict[str, Any]]:
-        invoices = self.db.query(Invoice).filter(Invoice.billing_period_id == period_id).all()
-        records = [
-            {
-                "period_id": period_id,
-                "invoice_id": invoice.id,
-                "invoice_number": invoice.number,
-                "client_id": invoice.client_id,
-                "issued_at": invoice.issued_at,
-                "period_from": invoice.period_from,
-                "period_to": invoice.period_to,
-                "currency": invoice.currency,
-                "total_amount": int(invoice.total_amount),
-                "tax_amount": int(invoice.tax_amount),
-                "total_with_tax": int(invoice.total_with_tax),
-                "status": invoice.status,
-                "pdf_hash": invoice.pdf_hash,
-                "external_number": invoice.external_number,
-            }
-            for invoice in invoices
-        ]
-        return sorted(records, key=lambda record: (record["invoice_id"], record["invoice_number"] or ""))
+    def _load_charge_entries(self, batch: AccountingExportBatch) -> list[AccountingEntry]:
+        invoices = (
+            self.db.query(Invoice)
+            .filter(Invoice.billing_period_id == str(batch.billing_period_id))
+            .order_by(Invoice.id.asc())
+            .all()
+        )
+        return map_charges_entries(batch=batch, invoices=invoices)
 
-    def _load_settlement_records(self, period_id: str) -> list[dict[str, Any]]:
+    def _load_settlement_entries(self, batch: AccountingExportBatch) -> list[AccountingEntry]:
         allocations = (
             self.db.query(InvoiceSettlementAllocation)
-            .filter(InvoiceSettlementAllocation.settlement_period_id == period_id)
+            .filter(InvoiceSettlementAllocation.settlement_period_id == str(batch.billing_period_id))
+            .order_by(InvoiceSettlementAllocation.applied_at.asc())
             .all()
         )
         invoice_ids = {allocation.invoice_id for allocation in allocations}
@@ -479,6 +531,13 @@ class AccountingExportService:
             self.db.query(Invoice).filter(Invoice.id.in_(invoice_ids)).all() if invoice_ids else []
         )
         invoice_map = {invoice.id: invoice for invoice in invoices}
+        period_ids = {str(invoice.billing_period_id) for invoice in invoices if invoice.billing_period_id}
+        periods = (
+            self.db.query(BillingPeriod).filter(BillingPeriod.id.in_(period_ids)).all()
+            if period_ids
+            else []
+        )
+        period_map = {str(period.id): period for period in periods}
 
         payments = self._load_payment_sources(
             allocations, source_types={SettlementSourceType.PAYMENT}
@@ -487,39 +546,13 @@ class AccountingExportService:
             allocations, source_types={SettlementSourceType.CREDIT_NOTE, SettlementSourceType.REFUND}
         )
 
-        records = []
-        for allocation in allocations:
-            invoice = invoice_map.get(allocation.invoice_id)
-            provider = None
-            external_ref = None
-            if allocation.source_type == SettlementSourceType.PAYMENT:
-                provider, external_ref = payments.get(allocation.source_id, (None, None))
-            else:
-                provider, external_ref = credits.get(allocation.source_id, (None, None))
-
-            records.append(
-                {
-                    "settlement_period_id": str(allocation.settlement_period_id),
-                    "invoice_id": allocation.invoice_id,
-                    "source_type": allocation.source_type,
-                    "source_id": allocation.source_id,
-                    "amount": int(allocation.amount),
-                    "currency": allocation.currency,
-                    "applied_at": allocation.applied_at,
-                    "charge_period_id": str(invoice.billing_period_id) if invoice and invoice.billing_period_id else None,
-                    "provider": provider,
-                    "external_ref": external_ref,
-                }
-            )
-
-        return sorted(
-            records,
-            key=lambda record: (
-                record["invoice_id"],
-                record["source_type"].value if record["source_type"] else "",
-                record["source_id"],
-                record["applied_at"].isoformat() if record["applied_at"] else "",
-            ),
+        return map_settlement_entries(
+            batch=batch,
+            allocations=allocations,
+            invoices=invoice_map,
+            billing_periods=period_map,
+            payments=payments,
+            credits=credits,
         )
 
     def _load_payment_sources(
@@ -527,7 +560,7 @@ class AccountingExportService:
         allocations: Iterable[InvoiceSettlementAllocation],
         *,
         source_types: set[SettlementSourceType],
-    ) -> dict[str, tuple[str | None, str | None]]:
+    ) -> dict[str, InvoicePayment]:
         source_ids = {
             allocation.source_id
             for allocation in allocations
@@ -536,14 +569,14 @@ class AccountingExportService:
         if not source_ids:
             return {}
         payments = self.db.query(InvoicePayment).filter(InvoicePayment.id.in_(source_ids)).all()
-        return {str(payment.id): (payment.provider, payment.external_ref) for payment in payments}
+        return {str(payment.id): payment for payment in payments}
 
     def _load_credit_sources(
         self,
         allocations: Iterable[InvoiceSettlementAllocation],
         *,
         source_types: set[SettlementSourceType],
-    ) -> dict[str, tuple[str | None, str | None]]:
+    ) -> dict[str, CreditNote]:
         source_ids = {
             allocation.source_id
             for allocation in allocations
@@ -552,7 +585,7 @@ class AccountingExportService:
         if not source_ids:
             return {}
         credits = self.db.query(CreditNote).filter(CreditNote.id.in_(source_ids)).all()
-        return {str(credit.id): (credit.provider, credit.external_ref) for credit in credits}
+        return {str(credit.id): credit for credit in credits}
 
     def _stable_generated_at(self, period: BillingPeriod, batch: AccountingExportBatch) -> datetime:
         if period.locked_at:
@@ -570,6 +603,38 @@ class AccountingExportService:
             f"accounting/{batch.billing_period_id}/{batch.export_type.value}/"
             f"{batch.format.value}/v{version}/{checksum}.{extension}"
         )
+
+    def _build_metadata_payload(
+        self,
+        batch: AccountingExportBatch,
+        *,
+        export_checksum: str,
+        generated_at: datetime,
+    ) -> tuple[bytes, str, str]:
+        object_key = batch.object_key or self._build_object_key(batch, export_checksum)
+        metadata_key = f"{object_key}.metadata.json"
+        payload = {
+            "schema_version": "1.0",
+            "batch_id": str(batch.id),
+            "period_id": str(batch.billing_period_id),
+            "export_type": batch.export_type.value,
+            "format": batch.format.value,
+            "records_count": batch.records_count,
+            "object_key": object_key,
+            "object_key_metadata": metadata_key,
+            "sha256": export_checksum,
+            "generated_at": generated_at,
+            "timestamps": {
+                "created_at": batch.created_at,
+                "generated_at": generated_at,
+                "uploaded_at": batch.uploaded_at,
+            },
+            "minor_units": 2,
+        }
+        metadata_checksum = hashlib.sha256(serialize_metadata_json(payload)).hexdigest()
+        payload["sha256_metadata"] = metadata_checksum
+        metadata_payload = serialize_metadata_json(payload)
+        return metadata_payload, metadata_checksum, metadata_key
 
     @staticmethod
     def _build_idempotency_key(
