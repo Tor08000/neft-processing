@@ -24,3 +24,29 @@ class ScoreResponse(BaseModel):
     decision: Decision
     reason: str
     reasons: List[str] = Field(default_factory=list)
+
+
+from .risk_score import (  # noqa: E402
+    ExplainFeature,
+    ExplainPayload,
+    ModelType,
+    RiskCategory,
+    RiskScoreRequest,
+    RiskScoreResponse,
+    TrainingRequest,
+    TrainingResponse,
+)
+
+__all__ = [
+    "Decision",
+    "ScoreRequest",
+    "ScoreResponse",
+    "ExplainFeature",
+    "ExplainPayload",
+    "ModelType",
+    "RiskCategory",
+    "RiskScoreRequest",
+    "RiskScoreResponse",
+    "TrainingRequest",
+    "TrainingResponse",
+]
