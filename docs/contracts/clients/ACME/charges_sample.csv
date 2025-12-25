@@ -1,0 +1,2 @@
+batch_id;entry_id;tenant_id;client_id;posting_date;period_from;period_to;document_type;document_id;document_number;currency;amount_gross;vat_amount;amount_net;contract_ref;counterparty_ref
+b-2025-01;e-001;1;ACME_CORP;2025-02-01;2025-01-01;2025-01-31;INVOICE;inv-001;INV-001;RUB;120000;20000;100000;CTR-01;CP-01

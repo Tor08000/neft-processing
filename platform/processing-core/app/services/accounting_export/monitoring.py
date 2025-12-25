@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.accounting_export_batch import AccountingExportBatch, AccountingExportState
+from app.services.accounting_export.alerting import notify_sla_breach
 from app.services.accounting_export.metrics import metrics
 from app.services.audit_service import AuditService
 
@@ -42,6 +43,17 @@ def check_overdue_batches(db: Session) -> dict[str, int]:
     audit_service = AuditService(db)
     for batch in overdue_created:
         metrics.mark_overdue()
+        notify_sla_breach(
+            payload={
+                "batch_id": str(batch.id),
+                "period_id": str(batch.billing_period_id),
+                "export_type": batch.export_type.value,
+                "format": batch.format.value,
+                "state": batch.state.value,
+                "sla": "generate",
+                "deadline_minutes": settings.ACCOUNTING_EXPORT_SLA_GENERATE_MINUTES,
+            }
+        )
         audit_service.audit(
             event_type="ACCOUNTING_EXPORT_SLA_BREACH",
             entity_type="accounting_export_batch",
@@ -60,6 +72,17 @@ def check_overdue_batches(db: Session) -> dict[str, int]:
 
     for batch in unconfirmed:
         metrics.mark_unconfirmed()
+        notify_sla_breach(
+            payload={
+                "batch_id": str(batch.id),
+                "period_id": str(batch.billing_period_id),
+                "export_type": batch.export_type.value,
+                "format": batch.format.value,
+                "state": batch.state.value,
+                "sla": "confirm",
+                "deadline_hours": settings.ACCOUNTING_EXPORT_SLA_CONFIRM_HOURS,
+            }
+        )
         audit_service.audit(
             event_type="ACCOUNTING_EXPORT_SLA_BREACH",
             entity_type="accounting_export_batch",
