@@ -28,6 +28,8 @@ from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.audit_service import RequestContext
 from app.services.audit_service import AuditService
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 from app.services.settlement_allocations import resolve_settlement_period
 
 
@@ -67,6 +69,7 @@ class FinanceService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
+        self.policy_engine = PolicyEngine()
 
     def _lock_invoice(self, invoice_id: str) -> Invoice:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
@@ -95,6 +98,44 @@ class FinanceService:
         if request_ctx and request_ctx.tenant_id is not None:
             return int(request_ctx.tenant_id)
         return 0
+
+    def _policy_resource_for_invoice(self, invoice: Invoice, *, tenant_id: int) -> ResourceContext:
+        period_status = None
+        if invoice.billing_period_id:
+            period = (
+                self.db.query(BillingPeriod)
+                .filter(BillingPeriod.id == invoice.billing_period_id)
+                .one_or_none()
+            )
+            if period and period.status:
+                period_status = period.status.value
+        return ResourceContext(
+            resource_type="INVOICE",
+            tenant_id=tenant_id,
+            client_id=invoice.client_id,
+            status=period_status,
+        )
+
+    def _enforce_policy(
+        self,
+        *,
+        token: dict | None,
+        action: Action,
+        invoice: Invoice,
+    ) -> None:
+        actor = actor_from_token(token)
+        resource = self._policy_resource_for_invoice(invoice, tenant_id=actor.tenant_id)
+        decision = self.policy_engine.check(actor=actor, action=action, resource=resource)
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=action,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
 
     def _ensure_settlement_allocation(
         self,
@@ -202,6 +243,7 @@ class FinanceService:
         external_ref: str | None = None,
         provider: str | None = None,
         request_ctx: RequestContext | None = None,
+        token: dict | None = None,
     ) -> PaymentResult:
         try:
             if external_ref:
@@ -217,6 +259,7 @@ class FinanceService:
                         billing_metrics.mark_payment_failed()
                         raise PaymentReferenceConflict(external_ref)
                     invoice = self._lock_invoice(invoice_id)
+                    self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
                     self._ensure_settlement_allocation(
                         invoice=invoice,
                         source_type=SettlementSourceType.PAYMENT,
@@ -239,6 +282,7 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
+            self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
             self._ensure_settlement_allocation(
                 invoice=invoice,
                 source_type=SettlementSourceType.PAYMENT,
@@ -261,6 +305,7 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
             self._require_settlement_period(invoice, action="payment")
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_PAYMENT,
@@ -354,6 +399,7 @@ class FinanceService:
         reason: str | None,
         idempotency_key: str,
         request_ctx: RequestContext | None = None,
+        token: dict | None = None,
     ) -> CreditNoteResult:
         existing = (
             self.db.query(CreditNote)
@@ -362,6 +408,7 @@ class FinanceService:
         )
         if existing:
             invoice = self._lock_invoice(invoice_id)
+            self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
             self._ensure_settlement_allocation(
                 invoice=invoice,
                 source_type=SettlementSourceType.CREDIT_NOTE,
@@ -383,6 +430,7 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
             self._require_settlement_period(invoice, action="credit_note")
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_CREDIT_NOTE,
@@ -474,6 +522,7 @@ class FinanceService:
         external_ref: str | None,
         provider: str | None,
         request_ctx: RequestContext | None = None,
+        token: dict | None = None,
     ) -> CreditNoteResult:
         if external_ref:
             existing_by_ref = (
@@ -486,6 +535,7 @@ class FinanceService:
                 if existing_by_ref.invoice_id != invoice_id:
                     raise RefundReferenceConflict(external_ref)
                 invoice = self._lock_invoice(invoice_id)
+                self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
                 self._ensure_settlement_allocation(
                     invoice=invoice,
                     source_type=SettlementSourceType.REFUND,
@@ -507,6 +557,7 @@ class FinanceService:
                     billing_metrics.mark_payment_error()
 
             invoice = self._lock_invoice(invoice_id)
+            self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
             self._require_settlement_period(invoice, action="refund")
             if invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID}:
                 self.db.rollback()

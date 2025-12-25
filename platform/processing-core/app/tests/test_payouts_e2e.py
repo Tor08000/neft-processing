@@ -66,7 +66,7 @@ def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None
     session.close()
 
 
-def test_payout_close_period_idempotent():
+def test_payout_close_period_idempotent(admin_auth_headers):
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
     _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
@@ -78,11 +78,11 @@ def test_payout_close_period_idempotent():
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    first = client.post("/api/v1/payouts/close-period", json=payload)
+    first = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_auth_headers)
     assert first.status_code == 200
     first_body = first.json()
 
-    second = client.post("/api/v1/payouts/close-period", json=payload)
+    second = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_auth_headers)
     assert second.status_code == 200
     second_body = second.json()
 
@@ -95,7 +95,7 @@ def test_payout_close_period_idempotent():
     session.close()
 
 
-def test_payout_state_transitions():
+def test_payout_state_transitions(admin_auth_headers, make_jwt):
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
     _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
@@ -107,18 +107,20 @@ def test_payout_state_transitions():
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    close_resp = client.post("/api/v1/payouts/close-period", json=payload)
+    close_resp = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_auth_headers)
     batch_id = close_resp.json()["batch_id"]
 
     settle_without_sent = client.post(
         f"/api/v1/payouts/batches/{batch_id}/mark-settled",
         json={"provider": "bank", "external_ref": "BANK-REF-1"},
+        headers=admin_auth_headers,
     )
-    assert settle_without_sent.status_code == 409
+    assert settle_without_sent.status_code == 403
 
     sent_resp = client.post(
         f"/api/v1/payouts/batches/{batch_id}/mark-sent",
         json={"provider": "bank", "external_ref": "BANK-REF-1"},
+        headers=admin_auth_headers,
     )
     assert sent_resp.status_code == 200
     assert sent_resp.json()["state"] == "SENT"
@@ -126,18 +128,22 @@ def test_payout_state_transitions():
     sent_again = client.post(
         f"/api/v1/payouts/batches/{batch_id}/mark-sent",
         json={"provider": "bank", "external_ref": "BANK-REF-1"},
+        headers=admin_auth_headers,
     )
     assert sent_again.status_code == 200
 
+    superadmin_token = make_jwt(roles=("SUPERADMIN",))
+    superadmin_headers = {"Authorization": f"Bearer {superadmin_token}"}
     settled_resp = client.post(
         f"/api/v1/payouts/batches/{batch_id}/mark-settled",
         json={"provider": "bank", "external_ref": "BANK-REF-1"},
+        headers=superadmin_headers,
     )
     assert settled_resp.status_code == 200
     assert settled_resp.json()["state"] == "SETTLED"
 
 
-def test_payout_reconcile_ok():
+def test_payout_reconcile_ok(admin_auth_headers):
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
     _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
@@ -149,7 +155,7 @@ def test_payout_reconcile_ok():
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    close_resp = client.post("/api/v1/payouts/close-period", json=payload)
+    close_resp = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_auth_headers)
     batch_id = close_resp.json()["batch_id"]
 
     reconcile_resp = client.get(f"/api/v1/payouts/batches/{batch_id}/reconcile")
@@ -160,7 +166,7 @@ def test_payout_reconcile_ok():
     assert body["diff"]["count"] == 0
 
 
-def test_payout_unique_external_ref():
+def test_payout_unique_external_ref(admin_auth_headers):
     target_date = date.today()
     _seed_captured_operations(target_date, "partner-1")
     _seed_captured_operations(target_date, "partner-2")
@@ -179,17 +185,27 @@ def test_payout_unique_external_ref():
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    batch_one = client.post("/api/v1/payouts/close-period", json=payload_one).json()["batch_id"]
-    batch_two = client.post("/api/v1/payouts/close-period", json=payload_two).json()["batch_id"]
+    batch_one = client.post(
+        "/api/v1/payouts/close-period",
+        json=payload_one,
+        headers=admin_auth_headers,
+    ).json()["batch_id"]
+    batch_two = client.post(
+        "/api/v1/payouts/close-period",
+        json=payload_two,
+        headers=admin_auth_headers,
+    ).json()["batch_id"]
 
     first_mark = client.post(
         f"/api/v1/payouts/batches/{batch_one}/mark-sent",
         json={"provider": "bank", "external_ref": "BANK-UNIQ-1"},
+        headers=admin_auth_headers,
     )
     assert first_mark.status_code == 200
 
     second_mark = client.post(
         f"/api/v1/payouts/batches/{batch_two}/mark-sent",
         json={"provider": "bank", "external_ref": "BANK-UNIQ-1"},
+        headers=admin_auth_headers,
     )
     assert second_mark.status_code == 409

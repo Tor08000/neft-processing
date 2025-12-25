@@ -73,7 +73,7 @@ def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None
     session.close()
 
 
-def _create_batch(client: TestClient, target_date: date, partner_id: str) -> str:
+def _create_batch(client: TestClient, target_date: date, partner_id: str, admin_headers: dict) -> str:
     _seed_captured_operations(target_date, partner_id)
     _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
     payload = {
@@ -82,22 +82,29 @@ def _create_batch(client: TestClient, target_date: date, partner_id: str) -> str
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    response = client.post("/api/v1/payouts/close-period", json=payload)
+    response = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_headers)
     assert response.status_code == 200
     return response.json()["batch_id"]
 
-
-def test_payout_export_idempotent():
+def test_payout_export_idempotent(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_id = _create_batch(client, target_date, "partner-1")
+        batch_id = _create_batch(client, target_date, "partner-1", admin_auth_headers)
 
         payload = {"format": "CSV", "provider": "bank", "external_ref": "BANK-REG-001"}
-        first = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        first = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert first.status_code == 200
         first_body = first.json()
 
-        second = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        second = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert second.status_code == 200
         second_body = second.json()
 
@@ -112,9 +119,13 @@ def test_payout_export_idempotent():
 def test_payout_export_download_returns_bytes(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_id = _create_batch(client, target_date, "partner-2")
+        batch_id = _create_batch(client, target_date, "partner-2", admin_auth_headers)
         payload = {"format": "CSV", "provider": "bank", "external_ref": "BANK-REG-002"}
-        create_resp = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        create_resp = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert create_resp.status_code == 200
         export_id = create_resp.json()["export_id"]
 
@@ -128,15 +139,38 @@ def test_payout_export_download_returns_bytes(admin_auth_headers):
         assert b"item_id" in download_resp.content
 
 
-def test_payout_export_external_ref_conflict():
+def test_payout_export_external_ref_conflict(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_one = _create_batch(client, target_date, "partner-3")
-        batch_two = _create_batch(client, target_date, "partner-4")
+        batch_one = _create_batch(client, target_date, "partner-3", admin_auth_headers)
+        batch_two = _create_batch(client, target_date, "partner-4", admin_auth_headers)
 
         payload = {"format": "CSV", "provider": "bank", "external_ref": "BANK-REG-003"}
-        first = client.post(f"/api/v1/payouts/batches/{batch_one}/export", json=payload)
+        first = client.post(
+            f"/api/v1/payouts/batches/{batch_one}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert first.status_code == 200
 
-        conflict = client.post(f"/api/v1/payouts/batches/{batch_two}/export", json=payload)
+        conflict = client.post(
+            f"/api/v1/payouts/batches/{batch_two}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert conflict.status_code == 409
+
+
+def test_payout_export_requires_finance_role(admin_auth_headers, make_jwt):
+    target_date = date.today()
+    admin_only_token = make_jwt(roles=("ADMIN",))
+    admin_only_headers = {"Authorization": f"Bearer {admin_only_token}"}
+    with TestClient(app) as client:
+        batch_id = _create_batch(client, target_date, "partner-5", admin_auth_headers)
+        payload = {"format": "CSV", "provider": "bank", "external_ref": "BANK-REG-004"}
+        response = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_only_headers,
+        )
+        assert response.status_code == 403

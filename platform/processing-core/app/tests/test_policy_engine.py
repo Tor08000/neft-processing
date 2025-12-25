@@ -1,0 +1,85 @@
+from app.services.policy import Action, ActorContext, PolicyEngine, ResourceContext
+
+
+def test_admin_finance_can_finalize_period():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="ADMIN",
+        tenant_id=1,
+        client_id=None,
+        roles={"ADMIN_FINANCE"},
+        user_id="user-1",
+    )
+    resource = ResourceContext(
+        resource_type="BILLING_PERIOD",
+        tenant_id=1,
+        client_id=None,
+        status="OPEN",
+    )
+
+    decision = engine.check(actor=actor, action=Action.BILLING_PERIOD_FINALIZE, resource=resource)
+
+    assert decision.allowed
+
+
+def test_client_cannot_finalize_period():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="CLIENT",
+        tenant_id=1,
+        client_id="client-1",
+        roles={"CLIENT_OWNER"},
+        user_id="client-user",
+    )
+    resource = ResourceContext(
+        resource_type="BILLING_PERIOD",
+        tenant_id=1,
+        client_id=None,
+        status="OPEN",
+    )
+
+    decision = engine.check(actor=actor, action=Action.BILLING_PERIOD_FINALIZE, resource=resource)
+
+    assert not decision.allowed
+
+
+def test_admin_without_finance_role_cannot_finalize_period():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="ADMIN",
+        tenant_id=1,
+        client_id=None,
+        roles={"ADMIN"},
+        user_id="user-2",
+    )
+    resource = ResourceContext(
+        resource_type="BILLING_PERIOD",
+        tenant_id=1,
+        client_id=None,
+        status="OPEN",
+    )
+
+    decision = engine.check(actor=actor, action=Action.BILLING_PERIOD_FINALIZE, resource=resource)
+
+    assert not decision.allowed
+
+
+def test_finalize_denied_for_wrong_status():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="ADMIN",
+        tenant_id=1,
+        client_id=None,
+        roles={"ADMIN_FINANCE"},
+        user_id="user-3",
+    )
+    resource = ResourceContext(
+        resource_type="BILLING_PERIOD",
+        tenant_id=1,
+        client_id=None,
+        status="FINALIZED",
+    )
+
+    decision = engine.check(actor=actor, action=Action.BILLING_PERIOD_FINALIZE, resource=resource)
+
+    assert not decision.allowed

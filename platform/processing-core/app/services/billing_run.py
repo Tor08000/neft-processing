@@ -15,6 +15,8 @@ from app.models.operation import Operation, OperationStatus
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.invoice_state_machine import InvoiceStateMachine
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -57,6 +59,7 @@ class BillingRunService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
+        self.policy_engine = PolicyEngine()
 
     def _get_or_create_billing_period(
         self,
@@ -203,6 +206,7 @@ class BillingRunService:
         tz: str,
         client_id: str | None = None,
         idempotency_key: str | None = None,
+        token: dict | None = None,
     ) -> BillingRunResult:
         try:
             period_type = BillingPeriodType(period_type)
@@ -281,6 +285,28 @@ class BillingRunService:
                     end_at=end_at,
                     tz=tz,
                 )
+                actor = actor_from_token(token)
+                resource = ResourceContext(
+                    resource_type="BILLING_PERIOD",
+                    tenant_id=actor.tenant_id,
+                    client_id=None,
+                    status=billing_period.status.value if billing_period.status else None,
+                )
+                decision = self.policy_engine.check(
+                    actor=actor,
+                    action=Action.INVOICE_ISSUE,
+                    resource=resource,
+                )
+                if not decision.allowed:
+                    audit_access_denied(
+                        self.db,
+                        actor=actor,
+                        action=Action.INVOICE_ISSUE,
+                        resource=resource,
+                        decision=decision,
+                        token=token,
+                    )
+                    raise PolicyAccessDenied(decision)
                 job_run.billing_period_id = billing_period.id
                 if billing_period.status != BillingPeriodStatus.OPEN:
                     raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")

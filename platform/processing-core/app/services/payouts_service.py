@@ -14,6 +14,8 @@ from app.models.operation import Operation, OperationStatus
 from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
 from app.services.billing_periods import BillingPeriodService, period_bounds_for_dates
 from app.services.payout_metrics import metrics as payout_metrics
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 
 
 class PayoutError(Exception):
@@ -69,6 +71,7 @@ def close_payout_period(
     partner_id: str,
     date_from: date,
     date_to: date,
+    token: dict | None = None,
 ) -> PayoutBatchResult:
     if date_from > date_to:
         raise ValueError("invalid_period")
@@ -84,6 +87,24 @@ def close_payout_period(
         end_at=period_end,
         tz=settings.NEFT_BILLING_TZ,
     )
+    actor = actor_from_token(token)
+    resource = ResourceContext(
+        resource_type="PAYOUT_BATCH",
+        tenant_id=actor.tenant_id or tenant_id,
+        client_id=None,
+        status=period.status.value if period.status else None,
+    )
+    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
+    if not decision.allowed:
+        audit_access_denied(
+            db,
+            actor=actor,
+            action=Action.PAYOUT_EXPORT_CREATE,
+            resource=resource,
+            decision=decision,
+            token=token,
+        )
+        raise PolicyAccessDenied(decision)
     if period.status not in {BillingPeriodStatus.FINALIZED, BillingPeriodStatus.LOCKED}:
         raise PayoutError("billing_period_not_finalized")
 
@@ -251,10 +272,30 @@ def mark_batch_settled(
     batch_id: str,
     provider: str,
     external_ref: str,
+    token: dict | None = None,
 ) -> PayoutStateResult:
     batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
     if not batch:
         raise PayoutError("batch_not_found")
+
+    actor = actor_from_token(token)
+    resource = ResourceContext(
+        resource_type="PAYOUT_BATCH",
+        tenant_id=actor.tenant_id or int(batch.tenant_id),
+        client_id=None,
+        status=None,
+    )
+    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CONFIRM, resource=resource)
+    if not decision.allowed:
+        audit_access_denied(
+            db,
+            actor=actor,
+            action=Action.PAYOUT_EXPORT_CONFIRM,
+            resource=resource,
+            decision=decision,
+            token=token,
+        )
+        raise PolicyAccessDenied(decision)
 
     if batch.state == PayoutBatchState.SETTLED:
         if batch.provider == provider and batch.external_ref == external_ref:

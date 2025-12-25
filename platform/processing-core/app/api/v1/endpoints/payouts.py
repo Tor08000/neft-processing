@@ -41,6 +41,7 @@ from app.services.payouts_service import (
     mark_batch_settled,
     reconcile_batch,
 )
+from app.services.policy import PolicyAccessDenied
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
@@ -50,6 +51,7 @@ router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
 def close_period_endpoint(
     request: Request,
     payload: PayoutClosePeriodRequest,
+    token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -59,7 +61,10 @@ def close_period_endpoint(
             partner_id=payload.partner_id,
             date_from=payload.date_from,
             date_to=payload.date_to,
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "invalid_period":
             raise HTTPException(status_code=422, detail="invalid period") from exc
@@ -138,6 +143,7 @@ def mark_sent_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
+    token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -183,6 +189,7 @@ def mark_settled_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutMarkRequest,
+    token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> PayoutBatchSummary:
     try:
@@ -191,7 +198,10 @@ def mark_settled_endpoint(
             batch_id=batch_id,
             provider=payload.provider,
             external_ref=payload.external_ref,
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PayoutConflictError as exc:
         raise HTTPException(status_code=409, detail="external_ref_conflict") from exc
     except PayoutError as exc:
@@ -266,6 +276,7 @@ def create_export_endpoint(
     batch_id: str,
     request: Request,
     payload: PayoutExportCreateRequest,
+    token: dict = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
@@ -278,6 +289,7 @@ def create_export_endpoint(
             provider=payload.provider,
             external_ref=payload.external_ref,
             bank_format_code=payload.bank_format_code,
+            token=token,
         )
         export = result.export
         audit_ctx = request_context_from_request(request, actor_type=ActorType.SYSTEM)
@@ -326,6 +338,9 @@ def create_export_endpoint(
         if export.size_bytes:
             payout_metrics.mark_export_bytes(export.format.value, int(export.size_bytes))
         return PayoutExportOut.from_export(export)
+    except PolicyAccessDenied as exc:
+        payout_metrics.mark_export_error()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PayoutExportConflictError as exc:
         payout_metrics.mark_export_error()
         AuditService(db).audit(

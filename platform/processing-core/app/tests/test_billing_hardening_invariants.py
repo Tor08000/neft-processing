@@ -13,8 +13,9 @@ from app.services.billing.daily import run_billing_daily
 from app.services.billing_periods import BillingPeriodConflict
 from app.services.billing_run import BillingPeriodClosedError, BillingRunService
 from app.services.finance import FinanceService
+from app.services.policy import PolicyAccessDenied
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
-from app.services.payouts_service import PayoutError, close_payout_period
+from app.services.payouts_service import close_payout_period
 
 
 @pytest.fixture(autouse=True)
@@ -125,6 +126,7 @@ def test_billing_run_blocks_invoice_lines_after_finalize(session):
     session.commit()
 
     service = BillingRunService(session)
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
     with pytest.raises(BillingPeriodClosedError):
         service.run(
             period_type=BillingPeriodType.ADHOC,
@@ -132,6 +134,7 @@ def test_billing_run_blocks_invoice_lines_after_finalize(session):
             end_at=end_at,
             tz="UTC",
             client_id=None,
+            token=token,
         )
 
 
@@ -145,14 +148,16 @@ def test_payout_blocked_before_finalize_allows_after_lock(session):
     )
     _seed_operation(session, target_date=target_date)
     session.commit()
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
 
-    with pytest.raises(PayoutError):
+    with pytest.raises(PolicyAccessDenied):
         close_payout_period(
             session,
             tenant_id=1,
             partner_id="m-1",
             date_from=target_date,
             date_to=target_date,
+            token=token,
         )
 
     period.status = BillingPeriodStatus.LOCKED
@@ -165,6 +170,7 @@ def test_payout_blocked_before_finalize_allows_after_lock(session):
         partner_id="m-1",
         date_from=target_date,
         date_to=target_date,
+        token=token,
     )
     assert result.batch.state.value == "READY"
 
@@ -200,6 +206,7 @@ def test_payments_allowed_after_finalize(session):
         amount=400,
         currency="RUB",
         idempotency_key="pay-finalized",
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"},
     )
     assert result.payment.invoice_id == invoice.id
     assert result.invoice.status == InvoiceStatus.PARTIALLY_PAID

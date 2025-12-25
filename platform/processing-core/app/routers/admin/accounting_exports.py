@@ -20,6 +20,7 @@ from app.services.accounting_export_service import (
     AccountingExportService,
 )
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
+from app.services.policy import PolicyAccessDenied
 
 router = APIRouter(prefix="/accounting", tags=["admin-accounting"])
 
@@ -40,8 +41,12 @@ def create_export(
             version=body.version,
             force=body.force,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except AccountingExportForbidden as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -69,8 +74,12 @@ def generate_export(
             batch_id=batch_id,
             force=force,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except AccountingExportForbidden as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -165,8 +174,12 @@ def confirm_export(
         batch = service.confirm_export(
             batch_id=batch_id,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except AccountingExportNotFound as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

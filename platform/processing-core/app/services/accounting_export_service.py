@@ -24,6 +24,8 @@ from app.services.accounting_export.serializer import (
     serialize_settlement_csv,
 )
 from app.services.audit_service import AuditService, RequestContext
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
 
 
@@ -52,6 +54,7 @@ class AccountingExportPayload:
 class AccountingExportService:
     def __init__(self, db: Session):
         self.db = db
+        self.policy_engine = PolicyEngine()
 
     def create_export(
         self,
@@ -62,8 +65,31 @@ class AccountingExportService:
         request_ctx: RequestContext | None,
         version: int = 1,
         force: bool = False,
+        token: dict | None = None,
     ) -> AccountingExportBatch:
         period = self._load_period(period_id)
+        actor = actor_from_token(token)
+        resource = ResourceContext(
+            resource_type="ACCOUNTING_EXPORT",
+            tenant_id=actor.tenant_id,
+            client_id=None,
+            status=period.status.value if period.status else None,
+        )
+        decision = self.policy_engine.check(
+            actor=actor,
+            action=Action.ACCOUNTING_EXPORT_CREATE,
+            resource=resource,
+        )
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=Action.ACCOUNTING_EXPORT_CREATE,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
         self._require_period_finalized(period, request_ctx=request_ctx)
 
         idempotency_key = self._build_idempotency_key(
@@ -107,6 +133,7 @@ class AccountingExportService:
         batch_id: str,
         request_ctx: RequestContext | None,
         force: bool = False,
+        token: dict | None = None,
     ) -> AccountingExportBatch:
         batch = self._load_batch(batch_id)
         if batch.state in {
@@ -120,6 +147,28 @@ class AccountingExportService:
             raise AccountingExportInvalidState("export_failed")
 
         period = self._load_period(str(batch.billing_period_id))
+        actor = actor_from_token(token)
+        resource = ResourceContext(
+            resource_type="ACCOUNTING_EXPORT",
+            tenant_id=actor.tenant_id,
+            client_id=None,
+            status=period.status.value if period.status else None,
+        )
+        decision = self.policy_engine.check(
+            actor=actor,
+            action=Action.ACCOUNTING_EXPORT_CREATE,
+            resource=resource,
+        )
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=Action.ACCOUNTING_EXPORT_CREATE,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
         self._require_period_finalized(period, request_ctx=request_ctx)
 
         generated_at = self._stable_generated_at(period, batch)
@@ -216,8 +265,31 @@ class AccountingExportService:
         *,
         batch_id: str,
         request_ctx: RequestContext | None,
+        token: dict | None = None,
     ) -> AccountingExportBatch:
         batch = self._load_batch(batch_id)
+        actor = actor_from_token(token)
+        resource = ResourceContext(
+            resource_type="ACCOUNTING_EXPORT",
+            tenant_id=actor.tenant_id,
+            client_id=None,
+            status=None,
+        )
+        decision = self.policy_engine.check(
+            actor=actor,
+            action=Action.ACCOUNTING_EXPORT_CONFIRM,
+            resource=resource,
+        )
+        if not decision.allowed:
+            audit_access_denied(
+                self.db,
+                actor=actor,
+                action=Action.ACCOUNTING_EXPORT_CONFIRM,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise PolicyAccessDenied(decision)
         batch.state = AccountingExportState.CONFIRMED
         batch.confirmed_at = datetime.now(timezone.utc)
         self.db.flush()

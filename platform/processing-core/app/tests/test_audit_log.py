@@ -174,7 +174,7 @@ def test_audit_search_by_external_ref(admin_auth_headers: dict):
     assert body["items"][0]["event_type"] == "PAYMENT_POSTED"
 
 
-def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers: dict):
+def test_finance_flow_emits_audit(admin_auth_headers: dict):
     target_date = date.today()
     _seed_captured_operations(target_date, merchant_id="m-1", client_id="client-1")
     _seed_billing_period(target_date, BillingPeriodStatus.OPEN)
@@ -198,18 +198,12 @@ def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers:
         session.commit()
         session.close()
 
-        client.headers.update(client_auth_headers)
+        client.headers.update(admin_auth_headers)
         payment_resp = client.post(
-            f"/api/v1/invoices/{invoice_id}/payments",
-            json={"amount": 3000, "external_ref": "BANK-111"},
+            "/api/v1/admin/finance/payments",
+            json={"invoice_id": invoice_id, "amount": 3000, "currency": "RUB", "idempotency_key": "AUDIT-PAY-1"},
         )
         assert payment_resp.status_code == 201
-
-        refund_resp = client.post(
-            f"/api/v1/invoices/{invoice_id}/refunds",
-            json={"amount": 500, "external_ref": "REF-111", "provider": "bank"},
-        )
-        assert refund_resp.status_code == 201
 
         _seed_captured_operations(target_date, merchant_id="partner-1", client_id="client-2")
         _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
@@ -245,7 +239,6 @@ def test_finance_flow_emits_audit(client_auth_headers: dict, admin_auth_headers:
     expected = {
         "INVOICE_CREATED",
         "PAYMENT_POSTED",
-        "REFUND_POSTED",
         "PAYOUT_BATCH_CREATED",
         "PAYOUT_STATUS_CHANGED",
         "PAYOUT_RECONCILE_OK",

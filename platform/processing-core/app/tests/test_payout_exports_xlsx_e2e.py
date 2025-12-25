@@ -77,7 +77,7 @@ def _seed_billing_period(target_date: date, status: BillingPeriodStatus) -> None
     session.close()
 
 
-def _create_batch(client: TestClient, target_date: date, partner_id: str) -> str:
+def _create_batch(client: TestClient, target_date: date, partner_id: str, admin_headers: dict) -> str:
     _seed_captured_operations(target_date, partner_id)
     _seed_billing_period(target_date, BillingPeriodStatus.FINALIZED)
     payload = {
@@ -86,7 +86,7 @@ def _create_batch(client: TestClient, target_date: date, partner_id: str) -> str
         "date_from": target_date.isoformat(),
         "date_to": target_date.isoformat(),
     }
-    response = client.post("/api/v1/payouts/close-period", json=payload)
+    response = client.post("/api/v1/payouts/close-period", json=payload, headers=admin_headers)
     assert response.status_code == 200
     return response.json()["batch_id"]
 
@@ -105,10 +105,10 @@ def _seed_partner_meta(batch_id: str) -> None:
     session.close()
 
 
-def test_payout_export_xlsx_idempotent():
+def test_payout_export_xlsx_idempotent(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_id = _create_batch(client, target_date, "partner-xlsx-1")
+        batch_id = _create_batch(client, target_date, "partner-xlsx-1", admin_auth_headers)
         _seed_partner_meta(batch_id)
 
         payload = {
@@ -117,11 +117,19 @@ def test_payout_export_xlsx_idempotent():
             "provider": "bank",
             "external_ref": "BANK-REG-101",
         }
-        first = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        first = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert first.status_code == 200
         first_body = first.json()
 
-        second = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        second = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert second.status_code == 200
         second_body = second.json()
 
@@ -136,7 +144,7 @@ def test_payout_export_xlsx_idempotent():
 def test_payout_export_xlsx_download_content(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_id = _create_batch(client, target_date, "partner-xlsx-2")
+        batch_id = _create_batch(client, target_date, "partner-xlsx-2", admin_auth_headers)
         _seed_partner_meta(batch_id)
 
         payload = {
@@ -145,7 +153,11 @@ def test_payout_export_xlsx_download_content(admin_auth_headers):
             "provider": "bank",
             "external_ref": "BANK-REG-102",
         }
-        create_resp = client.post(f"/api/v1/payouts/batches/{batch_id}/export", json=payload)
+        create_resp = client.post(
+            f"/api/v1/payouts/batches/{batch_id}/export",
+            json=payload,
+            headers=admin_auth_headers,
+        )
         assert create_resp.status_code == 200
         export_id = create_resp.json()["export_id"]
 
@@ -172,15 +184,19 @@ def test_payout_export_xlsx_download_content(admin_auth_headers):
         assert worksheet.max_row == 1 + len(items)
 
 
-def test_payout_export_xlsx_external_ref_conflict():
+def test_payout_export_xlsx_external_ref_conflict(admin_auth_headers):
     target_date = date.today()
     with TestClient(app) as client:
-        batch_one = _create_batch(client, target_date, "partner-xlsx-3")
-        batch_two = _create_batch(client, target_date, "partner-xlsx-4")
+        batch_one = _create_batch(client, target_date, "partner-xlsx-3", admin_auth_headers)
+        batch_two = _create_batch(client, target_date, "partner-xlsx-4", admin_auth_headers)
         _seed_partner_meta(batch_two)
 
         payload_csv = {"format": "CSV", "provider": "bank", "external_ref": "BANK-REG-103"}
-        first = client.post(f"/api/v1/payouts/batches/{batch_one}/export", json=payload_csv)
+        first = client.post(
+            f"/api/v1/payouts/batches/{batch_one}/export",
+            json=payload_csv,
+            headers=admin_auth_headers,
+        )
         assert first.status_code == 200
 
         payload_xlsx = {
@@ -189,5 +205,9 @@ def test_payout_export_xlsx_external_ref_conflict():
             "provider": "bank",
             "external_ref": "BANK-REG-103",
         }
-        conflict = client.post(f"/api/v1/payouts/batches/{batch_two}/export", json=payload_xlsx)
+        conflict = client.post(
+            f"/api/v1/payouts/batches/{batch_two}/export",
+            json=payload_xlsx,
+            headers=admin_auth_headers,
+        )
         assert conflict.status_code == 409
