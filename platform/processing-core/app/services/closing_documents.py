@@ -47,7 +47,7 @@ class ClosingDocumentsService:
         actor: RequestContext,
     ) -> ClosingPackageResult:
         existing = self._latest_package(tenant_id, client_id, period_from, period_to)
-        if existing and existing.status == ClosingPackageStatus.GENERATED and not force_new_version:
+        if existing and existing.status == ClosingPackageStatus.ISSUED and not force_new_version:
             docs = self._load_documents(existing)
             return ClosingPackageResult(package=existing, documents=docs)
 
@@ -66,7 +66,7 @@ class ClosingDocumentsService:
             period_to=period_to,
             document_type=DocumentType.INVOICE,
             version=version,
-            status=DocumentStatus.GENERATED,
+            status=DocumentStatus.ISSUED,
             actor=actor,
             source_entity_type="invoice",
             source_entity_id=invoice_id,
@@ -79,7 +79,7 @@ class ClosingDocumentsService:
             period_to=period_to,
             document_type=DocumentType.ACT,
             version=version,
-            status=DocumentStatus.GENERATED,
+            status=DocumentStatus.ISSUED,
             actor=actor,
             source_entity_type="billing_period",
         )
@@ -90,7 +90,7 @@ class ClosingDocumentsService:
             period_to=period_to,
             document_type=DocumentType.RECONCILIATION_ACT,
             version=version,
-            status=DocumentStatus.GENERATED,
+            status=DocumentStatus.ISSUED,
             actor=actor,
             source_entity_type="billing_period",
         )
@@ -100,20 +100,21 @@ class ClosingDocumentsService:
             client_id=client_id,
             period_from=period_from,
             period_to=period_to,
-            status=ClosingPackageStatus.GENERATED,
+            status=ClosingPackageStatus.ISSUED,
             version=version,
             invoice_document_id=document_map[DocumentType.INVOICE].id,
             act_document_id=document_map[DocumentType.ACT].id,
             recon_document_id=document_map[DocumentType.RECONCILIATION_ACT].id,
             created_at=datetime.now(timezone.utc),
             generated_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(timezone.utc),
         )
         self.db.add(package)
         self.db.commit()
         self.db.refresh(package)
 
         AuditService(self.db).audit(
-            event_type="CLOSING_PACKAGE_GENERATED",
+            event_type="CLOSING_PACKAGE_ISSUED",
             entity_type="closing_package",
             entity_id=str(package.id),
             action="CREATE",
@@ -155,6 +156,44 @@ class ClosingDocumentsService:
             .order_by(desc(ClosingPackage.version))
             .first()
         )
+
+    def finalize_package(self, package: ClosingPackage, *, actor: RequestContext) -> ClosingPackage:
+        if package.status == ClosingPackageStatus.FINALIZED:
+            return package
+        if package.status != ClosingPackageStatus.ACKNOWLEDGED:
+            raise ValueError("closing_package_not_acknowledged")
+
+        documents = self._load_documents(package)
+        not_finalized = [
+            document.document_type.value
+            for document in documents.values()
+            if document.status != DocumentStatus.FINALIZED
+        ]
+        if not_finalized:
+            raise ValueError("documents_not_finalized")
+
+        package.status = ClosingPackageStatus.FINALIZED
+        self.db.commit()
+
+        AuditService(self.db).audit(
+            event_type="CLOSING_PACKAGE_FINALIZED",
+            entity_type="closing_package",
+            entity_id=str(package.id),
+            action="UPDATE",
+            visibility=AuditVisibility.PUBLIC,
+            after={
+                "status": package.status.value,
+                "version": package.version,
+                "document_ids": {
+                    "invoice": str(package.invoice_document_id) if package.invoice_document_id else None,
+                    "act": str(package.act_document_id) if package.act_document_id else None,
+                    "reconciliation": str(package.recon_document_id) if package.recon_document_id else None,
+                },
+            },
+            request_ctx=actor,
+        )
+
+        return package
 
     def _resolve_invoice(self, client_id: str, period_from: date, period_to: date) -> Invoice | None:
         return (
@@ -213,8 +252,12 @@ class ClosingDocumentsService:
         self.db.commit()
         self.db.refresh(document)
 
+        pdf_hash = next(
+            (file.sha256 for file in document.files if file.file_type == DocumentFileType.PDF),
+            None,
+        )
         AuditService(self.db).audit(
-            event_type="DOCUMENT_GENERATED",
+            event_type="DOCUMENT_ISSUED",
             entity_type="document",
             entity_id=str(document.id),
             action="CREATE",
@@ -223,6 +266,7 @@ class ClosingDocumentsService:
                 "document_type": document.document_type.value,
                 "version": document.version,
                 "file_types": [file.file_type.value for file in document.files],
+                "document_hash": pdf_hash,
             },
             request_ctx=actor,
         )
