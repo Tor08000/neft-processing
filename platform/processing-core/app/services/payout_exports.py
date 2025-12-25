@@ -12,6 +12,8 @@ from app.config import settings
 from app.models.billing_period import BillingPeriod
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
 from app.models.payout_export_file import PayoutExportFile, PayoutExportFormat, PayoutExportState
+from app.models.risk_score import RiskScoreAction
+from app.services.decision import DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.payout_export_xlsx import (
     PayoutXlsxResult,
     generate_payout_registry_xlsx,
@@ -195,6 +197,19 @@ def create_payout_export(
             token=token,
         )
         raise PolicyAccessDenied(policy_decision)
+
+    decision_engine = DecisionEngine(db)
+    actor_id = actor.user_id or actor.client_id or f"tenant-{batch.tenant_id}"
+    decision_ctx = DecisionContext(
+        tenant_id=actor.tenant_id or int(batch.tenant_id),
+        client_id=actor_id,
+        amount=float(batch.total_amount or 0),
+        action=RiskScoreAction.PAYOUT,
+    )
+    decision_result = decision_engine.evaluate(decision_ctx)
+    if decision_result.outcome != DecisionOutcome.ALLOW:
+        reason = "manual_review_required" if decision_result.outcome == DecisionOutcome.MANUAL_REVIEW else "risk_decline"
+        raise PayoutExportError(reason)
 
     if external_ref:
         conflict = (

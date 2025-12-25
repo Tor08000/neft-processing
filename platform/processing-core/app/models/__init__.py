@@ -82,6 +82,7 @@ from .financial_adjustment import (
     FinancialAdjustmentStatus,
     RelatedEntityType,
 )  # noqa: F401
+from .risk_score import RiskLevel, RiskScore, RiskScoreAction  # noqa: F401
 from .billing_reconciliation import (  # noqa: F401
     BillingReconciliationItem,
     BillingReconciliationRun,
@@ -188,6 +189,9 @@ __all__ = [
     "FinancialAdjustmentKind",
     "FinancialAdjustmentStatus",
     "RelatedEntityType",
+    "RiskLevel",
+    "RiskScore",
+    "RiskScoreAction",
     "Document",
     "DocumentFile",
     "DocumentType",

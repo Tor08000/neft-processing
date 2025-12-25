@@ -18,6 +18,7 @@ from app.models.audit_log import AuditVisibility
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice
+from app.models.risk_score import RiskScoreAction
 from app.services.accounting_export.serializer import (
     serialize_accounting_export_json,
     serialize_charges_csv,
@@ -44,6 +45,10 @@ class AccountingExportNotFound(AccountingExportError):
 
 class AccountingExportInvalidState(AccountingExportError):
     """Raised when export cannot be processed due to its state."""
+
+
+class AccountingExportRiskDeclined(AccountingExportError):
+    """Raised when export is declined by risk scoring."""
 
 
 @dataclass(frozen=True)
@@ -185,6 +190,19 @@ class AccountingExportService:
                 token=token,
             )
             raise PolicyAccessDenied(decision)
+        decision_engine = DecisionEngine(self.db)
+        actor_id = actor.user_id or actor.client_id or f"tenant-{actor.tenant_id}"
+        decision_ctx = DecisionContext(
+            tenant_id=actor.tenant_id,
+            client_id=actor_id,
+            amount=None,
+            action=RiskScoreAction.INVOICE,
+        )
+        decision_result = decision_engine.evaluate(decision_ctx)
+        if decision_result.outcome != DecisionOutcome.ALLOW:
+            reason = "manual_review_required" if decision_result.outcome == DecisionOutcome.MANUAL_REVIEW else "risk_decline"
+            raise AccountingExportRiskDeclined(reason)
+
         self._require_period_finalized(period, request_ctx=request_ctx)
 
         generated_at = self._stable_generated_at(period, batch)
