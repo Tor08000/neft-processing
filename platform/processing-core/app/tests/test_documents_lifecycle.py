@@ -1,0 +1,130 @@
+from datetime import date
+
+from fastapi.testclient import TestClient
+
+import pytest
+
+from app.db import Base, SessionLocal, engine
+from app.main import app
+from app.models.audit_log import AuditLog
+from app.models.client_actions import DocumentAcknowledgement
+from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
+from app.services.document_chain import compute_ack_hash
+
+
+@pytest.fixture(autouse=True)
+def clean_db():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+def _seed_document(session, *, status: DocumentStatus, doc_hash: str, version: int = 1) -> Document:
+    document = Document(
+        tenant_id=1,
+        client_id="client-1",
+        document_type=DocumentType.INVOICE,
+        period_from=date(2025, 1, 1),
+        period_to=date(2025, 1, 31),
+        status=status,
+        version=version,
+    )
+    session.add(document)
+    session.flush()
+    session.add(
+        DocumentFile(
+            document_id=document.id,
+            file_type=DocumentFileType.PDF,
+            bucket="docs",
+            object_key=f"docs/{document.id}.pdf",
+            sha256=doc_hash,
+            size_bytes=100,
+            content_type="application/pdf",
+        )
+    )
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+def test_document_ack_hash_mismatch_returns_conflict(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 201
+
+        document_file = session.query(DocumentFile).filter(DocumentFile.document_id == document.id).one()
+        document_file.sha256 = "hash-2"
+        session.commit()
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 409
+    finally:
+        session.close()
+
+
+def test_document_ack_hash_reproducible(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 201
+
+        acknowledgement = (
+            session.query(DocumentAcknowledgement)
+            .filter(DocumentAcknowledgement.document_id == str(document.id))
+            .one()
+        )
+        audit_entry = (
+            session.query(AuditLog)
+            .filter(AuditLog.event_type == "DOCUMENT_ACKNOWLEDGED")
+            .filter(AuditLog.entity_id == str(document.id))
+            .one()
+        )
+        ack_by = acknowledgement.ack_by_user_id or acknowledgement.ack_by_email or ""
+        expected_hash = compute_ack_hash(acknowledgement.document_hash, acknowledgement.ack_at, ack_by)
+        assert audit_entry.after["ack_hash"] == expected_hash
+    finally:
+        session.close()
+
+
+def test_document_finalize_blocks_void(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+        admin_token = make_jwt(roles=("ADMIN", "ADMIN_FINANCE"))
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 201
+
+        with TestClient(app, headers={"Authorization": f"Bearer {admin_token}"}) as api_client:
+            response = api_client.post(f"/api/v1/admin/documents/{document.id}/finalize")
+            assert response.status_code == 200
+
+            response = api_client.post(f"/api/v1/admin/documents/{document.id}/void")
+            assert response.status_code == 409
+    finally:
+        session.close()

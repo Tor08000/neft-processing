@@ -512,7 +512,11 @@ def test_document_acknowledgement_idempotent(db_session, make_jwt):
         )
     )
 
-    token = make_jwt(roles=("CLIENT_ADMIN",), client_id=str(client_id), extra={"tenant_id": 1})
+    token = make_jwt(
+        roles=("CLIENT_ADMIN",),
+        client_id=str(client_id),
+        extra={"tenant_id": 1, "email": "client@example.com"},
+    )
     with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
         first = api_client.post(f"/api/v1/client/documents/INVOICE_PDF/{invoice.id}/ack")
         second = api_client.post(f"/api/v1/client/documents/INVOICE_PDF/{invoice.id}/ack")

@@ -7,18 +7,18 @@ const TYPE_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Черновик",
-  GENERATED: "Сформирован",
-  SENT: "Отправлен",
+  ISSUED: "Опубликован",
   ACKNOWLEDGED: "Подтвержден",
-  CANCELLED: "Отменен",
+  FINALIZED: "Зафиксирован",
+  VOID: "Отозван",
 };
 
 const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
   DRAFT: "neutral",
-  GENERATED: "warning",
-  SENT: "neutral",
+  ISSUED: "warning",
   ACKNOWLEDGED: "success",
-  CANCELLED: "danger",
+  FINALIZED: "success",
+  VOID: "danger",
 };
 
 export const getDocumentTypeLabel = (value: string): string => TYPE_LABELS[value] ?? value;
