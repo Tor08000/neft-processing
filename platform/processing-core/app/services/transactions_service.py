@@ -21,11 +21,13 @@ from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
+from app.models.risk_score import RiskLevel as DecisionRiskLevel, RiskScoreAction
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
 from app.models.ledger_entry import LedgerDirection
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
+from app.services.decision import DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
 from app.services.risk_adapter import (
     OperationContext,
@@ -132,6 +134,15 @@ def _to_risk_level(value: str | RiskLevel | RiskDecisionLevel | None) -> RiskLev
     if normalized == RiskDecisionLevel.MANUAL_REVIEW.value:
         return RiskLevel.MANUAL_REVIEW
     return RiskLevel.__members__.get(normalized, RiskLevel.MEDIUM)
+
+
+def _decision_risk_to_result(level: DecisionRiskLevel) -> RiskLevel:
+    return {
+        DecisionRiskLevel.LOW: RiskLevel.LOW,
+        DecisionRiskLevel.MEDIUM: RiskLevel.MEDIUM,
+        DecisionRiskLevel.HIGH: RiskLevel.HIGH,
+        DecisionRiskLevel.VERY_HIGH: RiskLevel.BLOCK,
+    }[level]
 
 
 def _fetch_operation_by_ext_id(db: Session, ext_operation_id: str) -> Operation | None:
@@ -432,6 +443,38 @@ def authorize_operation(
             limit_payload=limit_result.model_dump(),
         )
 
+    decision_engine = DecisionEngine(db)
+    decision_ctx = DecisionContext(
+        tenant_id=0,
+        client_id=client_id,
+        amount=amount,
+        action=RiskScoreAction.PAYMENT,
+    )
+    decision_result = decision_engine.evaluate(decision_ctx)
+    if decision_result.outcome != DecisionOutcome.ALLOW:
+        decline_reason = "RISK_SCORE_DECLINE"
+        risk_result = _decision_risk_to_result(decision_result.risk_level)
+        if decision_result.outcome == DecisionOutcome.MANUAL_REVIEW:
+            decline_reason = "RISK_MANUAL_REVIEW"
+            risk_result = RiskLevel.MANUAL_REVIEW
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason=decline_reason,
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            limit_payload=limit_result.model_dump(),
+            risk_payload={"decision_engine": decision_result.to_payload()},
+            risk_result=risk_result,
+        )
+
     risk_context = OperationContext(
         client_id=client_id,
         card_id=card_id,
@@ -491,6 +534,7 @@ def authorize_operation(
         )
 
     risk_payload = risk_evaluation.to_payload()
+    risk_payload["decision_engine"] = decision_result.to_payload()
 
     contract_limits = check_contractual_limits(
         db,
