@@ -27,6 +27,7 @@ from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.audit_service import RequestContext
 from app.services.audit_service import AuditService
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTransitionError, InvoiceInvariantError
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
@@ -430,6 +431,26 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            tenant_id = self._resolve_tenant_id(request_ctx)
+            decision_context = DecisionContext(
+                tenant_id=tenant_id,
+                client_id=invoice.client_id,
+                actor_type="ADMIN",
+                action=DecisionAction.CREDIT_NOTE_CREATE,
+                amount=amount,
+                currency=currency,
+                invoice_id=invoice.id,
+                billing_period_id=str(invoice.billing_period_id) if invoice.billing_period_id else None,
+                history={},
+                metadata={
+                    "invoice_status": invoice.status.value if invoice.status else None,
+                    "billing_period_status": self._policy_resource_for_invoice(invoice, tenant_id=tenant_id).status,
+                    "actor_roles": token.get("roles") if token else [],
+                },
+            )
+            decision = DecisionEngine(self.db).evaluate(decision_context)
+            if decision.outcome != "ALLOW":
+                raise InvalidTransitionError(f"DECISION_{decision.outcome}")
             self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
             self._require_settlement_period(invoice, action="credit_note")
             job_run = self.job_service.start(

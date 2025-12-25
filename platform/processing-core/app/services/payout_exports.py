@@ -18,6 +18,7 @@ from app.services.payout_export_xlsx import (
     PayoutXlsxResult,
     generate_payout_registry_xlsx,
 )
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
@@ -170,17 +171,32 @@ def create_payout_export(
         client_id=None,
         status=period_status,
     )
-    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
-    if not decision.allowed:
+    decision_context = DecisionContext(
+        tenant_id=actor.tenant_id or int(batch.tenant_id),
+        client_id=None,
+        actor_type="ADMIN",
+        action=DecisionAction.PAYOUT_EXPORT,
+        billing_period_id=billing_period_id,
+        history={},
+        metadata={
+            "billing_period_status": period_status,
+            "actor_roles": actor.roles,
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != "ALLOW":
+        raise PayoutExportError(f"decision_{decision.outcome.lower()}")
+    policy_decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
+    if not policy_decision.allowed:
         audit_access_denied(
             db,
             actor=actor,
             action=Action.PAYOUT_EXPORT_CREATE,
             resource=resource,
-            decision=decision,
+            decision=policy_decision,
             token=token,
         )
-        raise PolicyAccessDenied(decision)
+        raise PolicyAccessDenied(policy_decision)
 
     decision_engine = DecisionEngine(db)
     actor_id = actor.user_id or actor.client_id or f"tenant-{batch.tenant_id}"

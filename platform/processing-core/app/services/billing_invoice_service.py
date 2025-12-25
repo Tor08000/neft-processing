@@ -16,6 +16,7 @@ from app.models.operation import Operation, OperationStatus
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_pdf import InvoicePdfService
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -195,14 +196,33 @@ def generate_invoice_for_batch(
         total_amount = int(batch.total_amount or 0)
         initial_status = InvoiceStatus.SENT if run_pdf_sync else InvoiceStatus.ISSUED
         issued_at = datetime.now(timezone.utc)
+        client_id = _resolve_invoice_client_id(db, batch)
+        currency = _resolve_invoice_currency(db, batch)
+        decision_context = DecisionContext(
+            tenant_id=0,
+            client_id=client_id,
+            actor_type="SYSTEM",
+            action=DecisionAction.INVOICE_ISSUE,
+            amount=total_amount,
+            currency=currency,
+            billing_period_id=str(period.id),
+            history={},
+            metadata={
+                "billing_period_status": period.status.value if period.status else None,
+                "initial_status": initial_status.value,
+            },
+        )
+        decision = DecisionEngine(db).evaluate(decision_context)
+        if decision.outcome != "ALLOW":
+            raise ValueError(f"DECISION_{decision.outcome}")
         invoice = Invoice(
             clearing_batch_id=batch.id,
-            client_id=_resolve_invoice_client_id(db, batch),
+            client_id=client_id,
             number="",
             external_number=None,
             period_from=batch.date_from,
             period_to=batch.date_to,
-            currency=_resolve_invoice_currency(db, batch),
+            currency=currency,
             billing_period_id=period.id,
             total_amount=total_amount,
             tax_amount=0,

@@ -370,6 +370,8 @@ def create_export_endpoint(
             raise HTTPException(status_code=400, detail="bank_format_required") from exc
         if reason == "bank_format_not_found":
             raise HTTPException(status_code=400, detail="bank_format_not_found") from exc
+        if reason.startswith("decision_"):
+            raise HTTPException(status_code=403, detail=reason) from exc
         raise HTTPException(status_code=400, detail="export_failed") from exc
     except Exception as exc:
         payout_metrics.mark_export_error()
