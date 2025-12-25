@@ -33,10 +33,10 @@ class DocumentType(str, Enum):
 
 class DocumentStatus(str, Enum):
     DRAFT = "DRAFT"
-    GENERATED = "GENERATED"
-    SENT = "SENT"
+    ISSUED = "ISSUED"
     ACKNOWLEDGED = "ACKNOWLEDGED"
-    CANCELLED = "CANCELLED"
+    FINALIZED = "FINALIZED"
+    VOID = "VOID"
 
 
 class DocumentFileType(str, Enum):
@@ -46,10 +46,10 @@ class DocumentFileType(str, Enum):
 
 class ClosingPackageStatus(str, Enum):
     DRAFT = "DRAFT"
-    GENERATED = "GENERATED"
-    SENT = "SENT"
+    ISSUED = "ISSUED"
     ACKNOWLEDGED = "ACKNOWLEDGED"
-    CANCELLED = "CANCELLED"
+    FINALIZED = "FINALIZED"
+    VOID = "VOID"
 
 
 class Document(Base):

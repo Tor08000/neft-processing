@@ -15,10 +15,10 @@ const DOCUMENT_TYPES = [
 
 const STATUS_TYPES = [
   { value: "", label: "Все статусы" },
-  { value: "GENERATED", label: "Сформирован" },
-  { value: "SENT", label: "Отправлен" },
+  { value: "ISSUED", label: "Опубликован" },
   { value: "ACKNOWLEDGED", label: "Подтвержден" },
-  { value: "CANCELLED", label: "Отменен" },
+  { value: "FINALIZED", label: "Зафиксирован" },
+  { value: "VOID", label: "Отозван" },
 ];
 
 const DEFAULT_LIMIT = 25;
@@ -95,7 +95,7 @@ export function ClosingDocumentsPage() {
 
   const canAcknowledge = useMemo(() => {
     const roles = user?.roles ?? [];
-    return roles.some((role) => ["CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"].includes(role));
+    return roles.some((role) => ["CLIENT_OWNER", "CLIENT_ADMIN"].includes(role));
   }, [user?.roles]);
 
   const totalRange = useMemo(() => {

@@ -66,6 +66,7 @@ from app.schemas.client_actions import (
 )
 from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.document_chain import compute_ack_hash
 from app.services.s3_storage import S3Storage
 from app.services.settlement_allocations import list_settlement_summary
 
@@ -1022,22 +1023,6 @@ async def acknowledge_document(
     else:
         raise HTTPException(status_code=400, detail="unsupported_document_type")
 
-    existing = (
-        db.query(DocumentAcknowledgement)
-        .filter(DocumentAcknowledgement.client_id == client_id)
-        .filter(DocumentAcknowledgement.document_type == document_type)
-        .filter(DocumentAcknowledgement.document_id == document_id)
-        .one_or_none()
-    )
-    if existing:
-        return DocumentAcknowledgementResponse(
-            acknowledged=True,
-            ack_at=existing.ack_at,
-            document_type=existing.document_type,
-            document_object_key=existing.document_object_key,
-            document_hash=existing.document_hash,
-        )
-
     request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     document_object_key = None
     document_hash = None
@@ -1047,6 +1032,63 @@ async def acknowledge_document(
     if reconciliation_request:
         document_object_key = reconciliation_request.result_object_key
         document_hash = reconciliation_request.result_hash_sha256
+    if not document_hash:
+        AuditService(db).audit(
+            event_type="DOCUMENT_IMMUTABILITY_VIOLATION",
+            entity_type="document",
+            entity_id=document_id,
+            action="UPDATE",
+            visibility=AuditVisibility.PUBLIC,
+            after={"reason": "document_hash_missing", "document_type": document_type},
+            request_ctx=request_ctx,
+        )
+        raise HTTPException(status_code=409, detail="document_hash_missing")
+
+    existing = (
+        db.query(DocumentAcknowledgement)
+        .filter(DocumentAcknowledgement.client_id == client_id)
+        .filter(DocumentAcknowledgement.document_type == document_type)
+        .filter(DocumentAcknowledgement.document_id == document_id)
+        .one_or_none()
+    )
+    if existing:
+        if existing.document_hash != document_hash:
+            AuditService(db).audit(
+                event_type="DOCUMENT_IMMUTABILITY_VIOLATION",
+                entity_type="document",
+                entity_id=document_id,
+                action="UPDATE",
+                visibility=AuditVisibility.PUBLIC,
+                after={
+                    "reason": "ack_hash_mismatch",
+                    "document_type": document_type,
+                    "ack_hash": existing.document_hash,
+                    "current_hash": document_hash,
+                },
+                request_ctx=request_ctx,
+            )
+            raise HTTPException(status_code=409, detail="ack_hash_mismatch")
+        return DocumentAcknowledgementResponse(
+            acknowledged=True,
+            ack_at=existing.ack_at,
+            document_type=existing.document_type,
+            document_object_key=existing.document_object_key,
+            document_hash=existing.document_hash,
+        )
+    ack_by_user_id = token.get("user_id") or token.get("sub")
+    ack_by_email = token.get("email")
+    if not ack_by_user_id or not ack_by_email:
+        AuditService(db).audit(
+            event_type="DOCUMENT_IMMUTABILITY_VIOLATION",
+            entity_type="document",
+            entity_id=document_id,
+            action="UPDATE",
+            visibility=AuditVisibility.PUBLIC,
+            after={"reason": "ack_actor_missing", "document_type": document_type},
+            request_ctx=request_ctx,
+        )
+        raise HTTPException(status_code=409, detail="ack_actor_missing")
+
     acknowledgement = DocumentAcknowledgement(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -1054,8 +1096,8 @@ async def acknowledge_document(
         document_id=document_id,
         document_object_key=document_object_key,
         document_hash=document_hash,
-        ack_by_user_id=token.get("user_id") or token.get("sub"),
-        ack_by_email=token.get("email"),
+        ack_by_user_id=ack_by_user_id,
+        ack_by_email=ack_by_email,
         ack_ip=request_ctx.ip if request_ctx else None,
         ack_user_agent=request_ctx.user_agent if request_ctx else None,
         ack_method="UI",
@@ -1064,13 +1106,20 @@ async def acknowledge_document(
     db.commit()
     db.refresh(acknowledgement)
 
+    ack_by = acknowledgement.ack_by_user_id or acknowledgement.ack_by_email or ""
+    ack_hash = compute_ack_hash(acknowledgement.document_hash, acknowledgement.ack_at, ack_by)
     AuditService(db).audit(
         event_type="DOCUMENT_ACKNOWLEDGED",
         entity_type="document",
         entity_id=document_id,
         action="CREATE",
         visibility=AuditVisibility.PUBLIC,
-        after={"document_type": document_type, "ack_at": acknowledgement.ack_at},
+        after={
+            "document_type": document_type,
+            "ack_at": acknowledgement.ack_at,
+            "document_hash": acknowledgement.document_hash,
+            "ack_hash": ack_hash,
+        },
         request_ctx=request_ctx,
     )
 

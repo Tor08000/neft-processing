@@ -11,6 +11,8 @@ class ResourceContext:
         "INVOICE",
         "PAYOUT_BATCH",
         "ACCOUNTING_EXPORT",
+        "DOCUMENT",
+        "CLOSING_PACKAGE",
     ]
     tenant_id: int
     client_id: str | None

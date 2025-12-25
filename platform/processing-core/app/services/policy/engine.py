@@ -11,6 +11,7 @@ from app.services.policy.resources import ResourceContext
 
 _ADMIN_FINANCE_ROLES = {"ADMIN_FINANCE", "SUPERADMIN"}
 _ADMIN_ACCOUNTING_ROLES = {"ADMIN_ACCOUNTING", "SUPERADMIN"}
+_CLIENT_ACK_ROLES = {"CLIENT_OWNER", "CLIENT_ADMIN"}
 
 
 class PolicyAccessDenied(PermissionError):
@@ -47,6 +48,14 @@ class PolicyEngine:
             return self._accounting_export_create(actor, resource)
         if action == Action.ACCOUNTING_EXPORT_CONFIRM:
             return self._accounting_export_confirm(actor, resource)
+        if action == Action.DOCUMENT_ACKNOWLEDGE:
+            return self._document_acknowledge(actor, resource)
+        if action == Action.DOCUMENT_FINALIZE:
+            return self._document_finalize(actor, resource)
+        if action == Action.CLOSING_PACKAGE_ACK:
+            return self._closing_package_ack(actor, resource)
+        if action == Action.CLOSING_PACKAGE_FINALIZE:
+            return self._closing_package_finalize(actor, resource)
         if action == Action.BILLING_PERIOD_REOPEN:
             return PolicyDecision(False, policy="billing_period_reopen_disabled", reason="action_disabled")
         return PolicyDecision(False, policy="unsupported_action", reason="unsupported_action")
@@ -141,6 +150,46 @@ class PolicyEngine:
         if not self._has_role(actor, _ADMIN_ACCOUNTING_ROLES):
             return PolicyDecision(False, policy="accounting_export_confirm_role", reason="missing_role")
         return PolicyDecision(True, policy="accounting_export_confirm_allowed")
+
+    def _document_acknowledge(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if actor.actor_type == "SYSTEM":
+            return PolicyDecision(True, policy="document_acknowledge_system")
+        if actor.actor_type != "CLIENT":
+            return PolicyDecision(False, policy="document_acknowledge_client_only", reason="actor_not_client")
+        if not self._has_role(actor, _CLIENT_ACK_ROLES):
+            return PolicyDecision(False, policy="document_acknowledge_role", reason="missing_role")
+        if resource.status != "ISSUED":
+            return PolicyDecision(False, policy="document_acknowledge_status", reason="status_not_issued")
+        return PolicyDecision(True, policy="document_acknowledge_allowed")
+
+    def _document_finalize(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="document_finalize_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="document_finalize_role", reason="missing_role")
+        if resource.status != "ACKNOWLEDGED":
+            return PolicyDecision(False, policy="document_finalize_status", reason="status_not_acknowledged")
+        return PolicyDecision(True, policy="document_finalize_allowed")
+
+    def _closing_package_ack(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if actor.actor_type == "SYSTEM":
+            return PolicyDecision(True, policy="closing_package_ack_system")
+        if actor.actor_type != "CLIENT":
+            return PolicyDecision(False, policy="closing_package_ack_client_only", reason="actor_not_client")
+        if not self._has_role(actor, _CLIENT_ACK_ROLES):
+            return PolicyDecision(False, policy="closing_package_ack_role", reason="missing_role")
+        if resource.status != "ISSUED":
+            return PolicyDecision(False, policy="closing_package_ack_status", reason="status_not_issued")
+        return PolicyDecision(True, policy="closing_package_ack_allowed")
+
+    def _closing_package_finalize(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="closing_package_finalize_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="closing_package_finalize_role", reason="missing_role")
+        if resource.status != "ACKNOWLEDGED":
+            return PolicyDecision(False, policy="closing_package_finalize_status", reason="status_not_acknowledged")
+        return PolicyDecision(True, policy="closing_package_finalize_allowed")
 
 
 def audit_access_denied(
