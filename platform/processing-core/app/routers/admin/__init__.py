@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies.admin import require_admin_user
 from app.routers.admin import (
+    accounting_exports,
     accounts,
     billing,
     closing_packages,
@@ -29,6 +30,7 @@ router.include_router(operations.router)
 router.include_router(dashboard.router)
 router.include_router(merchants.router)
 router.include_router(clearing.router)
+router.include_router(accounting_exports.router)
 router.include_router(billing.router)
 router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
