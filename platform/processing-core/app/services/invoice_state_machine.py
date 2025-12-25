@@ -208,6 +208,7 @@ class InvoiceStateMachine:
                 metadata={
                     "invoice_status": from_status.value if from_status else None,
                     "actor_roles": request_ctx.actor_roles if request_ctx else [],
+                    "subject_id": self.invoice.id,
                 },
             )
             decision = DecisionEngine(self.db).evaluate(decision_context)

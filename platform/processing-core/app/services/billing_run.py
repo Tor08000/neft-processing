@@ -346,6 +346,7 @@ class BillingRunService:
                         client_id=client_key,
                         amount=invoice_amount,
                         action=RiskScoreAction.INVOICE,
+                        metadata={"subject_id": f"{billing_period.id}:{client_key}"},
                     )
                     decision_result = decision_engine.evaluate(decision_ctx)
                     if decision_result.outcome != DecisionOutcome.ALLOW:

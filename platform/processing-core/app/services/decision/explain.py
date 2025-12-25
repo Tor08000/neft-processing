@@ -14,6 +14,9 @@ def build_explain(
     risk_score: int | None,
     model_version: str | None,
     evaluated_at: datetime,
+    policy: dict | None = None,
+    decision: dict | None = None,
+    top_reasons: list[dict] | None = None,
 ) -> dict:
     return {
         "matched_rules": matched_rules,
@@ -24,6 +27,9 @@ def build_explain(
             "score": risk_score,
             "model_version": model_version,
         },
+        "policy": policy,
+        "decision": decision,
+        "top_reasons": top_reasons or [],
         "timestamps": {
             "evaluated_at": evaluated_at.isoformat(),
         },
