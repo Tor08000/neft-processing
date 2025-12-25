@@ -217,17 +217,6 @@ class BillingRunService:
         period_from = start_at.date()
         period_to = end_at.date()
 
-        operations = self._query_billable_operations(start_at=start_at, end_at=end_at, client_id=client_id)
-        logger.info(
-            "billing.run.operations_found",
-            extra={
-                "count": len(operations),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
-                "client_filter": client_id,
-            },
-        )
-
         correlation_id = idempotency_key
         if correlation_id:
             existing = self.job_service.find_by_correlation(BillingJobType.MANUAL_RUN, correlation_id)
@@ -295,6 +284,17 @@ class BillingRunService:
                 job_run.billing_period_id = billing_period.id
                 if billing_period.status != BillingPeriodStatus.OPEN:
                     raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")
+
+                operations = self._query_billable_operations(start_at=start_at, end_at=end_at, client_id=client_id)
+                logger.info(
+                    "billing.run.operations_found",
+                    extra={
+                        "count": len(operations),
+                        "start_at": start_at.isoformat(),
+                        "end_at": end_at.isoformat(),
+                        "client_filter": client_id,
+                    },
+                )
 
                 grouped: dict[tuple[str, str], list[tuple[Operation, int]]] = {}
                 for op, amount in operations:

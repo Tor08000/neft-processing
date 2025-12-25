@@ -1,5 +1,5 @@
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Tuple
 
 import pytest
@@ -15,6 +15,7 @@ os.environ["DISABLE_CELERY"] = "1"
 from app import models  # noqa: F401
 from app.api.v1.endpoints.admin_clearing import router as admin_router
 from app.db import Base, get_db
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary
 from app.models.clearing import Clearing
 from app.models.operation import ProductType
@@ -63,6 +64,19 @@ def _create_batch(db: Session, **kwargs) -> Clearing:
     db.commit()
     db.refresh(batch)
     return batch
+
+
+def _create_period(db: Session, target_date: date) -> BillingPeriod:
+    period = BillingPeriod(
+        period_type=BillingPeriodType.DAILY,
+        start_at=datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(target_date, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.OPEN,
+    )
+    db.add(period)
+    db.flush()
+    return period
 
 
 def test_listing_with_filters(admin_client: Tuple[TestClient, sessionmaker]):
@@ -164,11 +178,13 @@ def test_run_clearing_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
     target_date = date(2024, 1, 2)
 
     with SessionLocal() as db:
+        period = _create_period(db, target_date)
         db.add_all(
             [
                 BillingSummary(
                     id="s1",
                     billing_date=target_date,
+                    billing_period_id=period.id,
                     client_id="c1",
                     merchant_id="m1",
                     product_type=ProductType.AI92,
@@ -181,6 +197,7 @@ def test_run_clearing_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
                 BillingSummary(
                     id="s2",
                     billing_date=target_date,
+                    billing_period_id=period.id,
                     client_id="c2",
                     merchant_id="m1",
                     product_type=ProductType.AI95,

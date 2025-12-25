@@ -8,7 +8,9 @@ from uuid import uuid4
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.invoice_state_machine import InvoiceStateMachine
 
 
@@ -37,6 +39,7 @@ class BillingInvoiceData:
     currency: str
     lines: Iterable[BillingLineData]
     status: InvoiceStatus = InvoiceStatus.DRAFT
+    billing_period_id: str | None = None
     external_number: str | None = None
     issued_at: datetime | None = None
     sent_at: datetime | None = None
@@ -66,11 +69,23 @@ class BillingRepository:
         amount_paid = 0
         amount_due = total_with_tax - amount_paid
 
+        if data.billing_period_id:
+            period = (
+                self.db.query(BillingPeriod)
+                .filter(BillingPeriod.id == data.billing_period_id)
+                .one_or_none()
+            )
+            if not period:
+                raise ValueError("billing period not found")
+            if period.status != BillingPeriodStatus.OPEN:
+                raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
         invoice = Invoice(
             client_id=data.client_id,
             period_from=data.period_from,
             period_to=data.period_to,
             currency=data.currency,
+            billing_period_id=data.billing_period_id,
             status=InvoiceStatus.DRAFT,
             total_amount=total_amount,
             tax_amount=tax_amount,

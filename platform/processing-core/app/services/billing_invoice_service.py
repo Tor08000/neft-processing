@@ -8,10 +8,13 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.clearing_batch import ClearingBatch
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_pdf import InvoicePdfService
 from neft_shared.logging_setup import get_logger
 
@@ -37,6 +40,20 @@ def close_clearing_period(
         raise ValueError("invalid_period")
 
     billing_metrics.start_run(date_from.isoformat(), date_to.isoformat())
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=date_from,
+        date_to=date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
 
     existing = (
         db.query(ClearingBatch)
@@ -147,8 +164,25 @@ def generate_invoice_for_batch(
     if not batch:
         raise ValueError("batch_not_found")
 
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=batch.date_from,
+        date_to=batch.date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
     existing = db.query(Invoice).filter(Invoice.clearing_batch_id == batch_id).one_or_none()
     if existing:
+        if not existing.billing_period_id:
+            existing.billing_period_id = period.id
         if not existing.pdf_object_key:
             existing.pdf_object_key = f"invoices/{existing.id}.pdf"
             db.add(existing)
@@ -169,6 +203,7 @@ def generate_invoice_for_batch(
             period_from=batch.date_from,
             period_to=batch.date_to,
             currency=_resolve_invoice_currency(db, batch),
+            billing_period_id=period.id,
             total_amount=total_amount,
             tax_amount=0,
             total_with_tax=total_amount,

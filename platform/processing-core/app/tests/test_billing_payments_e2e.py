@@ -14,6 +14,7 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.finance import InvoicePayment
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
@@ -62,11 +63,21 @@ def _seed_captured_operations(target_date: date, count: int = 2) -> None:
 
 def _create_invoice(total: int, status: InvoiceStatus = InvoiceStatus.SENT) -> str:
     session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.FINALIZED,
+    )
+    session.add(period)
+    session.flush()
     invoice = Invoice(
         client_id="client-1",
         period_from=date.today(),
         period_to=date.today(),
         currency="RUB",
+        billing_period_id=period.id,
         total_amount=total,
         tax_amount=0,
         total_with_tax=total,
@@ -102,6 +113,13 @@ def test_invoice_payment_flow(client_auth_headers: dict):
         assert invoice_resp.status_code == 200
         invoice_payload = invoice_resp.json()
         invoice_id = invoice_payload["invoice_id"]
+        session = get_sessionmaker()()
+        invoice = session.query(Invoice).filter(Invoice.id == invoice_id).one()
+        period = session.query(BillingPeriod).filter(BillingPeriod.id == invoice.billing_period_id).one()
+        period.status = BillingPeriodStatus.FINALIZED
+        session.add(period)
+        session.commit()
+        session.close()
 
         pdf_resp = client.get(f"/api/v1/invoices/{invoice_id}/pdf")
         assert pdf_resp.status_code == 200

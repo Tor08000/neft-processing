@@ -14,7 +14,7 @@ from app.main import app
 from app.models.billing_job_run import BillingJobRun, BillingJobType
 from app.models.billing_period import BillingPeriod
 from app.models.billing_summary import BillingSummary
-from app.models.invoice import Invoice
+from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.services.clearing_runs import ClearingRunInProgress, ClearingRunService
 from app.services.demo_seed import DemoSeeder, DEMO_CLIENT_ID
 from app.services.finance import FinanceOperationInProgress, FinanceService
@@ -105,6 +105,10 @@ def test_finance_payment_and_credit_note_idempotent(session):
     DemoSeeder(session).seed(billing_date=billing_date)
     invoice = session.query(Invoice).filter(Invoice.client_id == DEMO_CLIENT_ID).first()
     assert invoice is not None
+    invoice.status = InvoiceStatus.SENT
+    invoice.pdf_status = InvoicePdfStatus.READY
+    session.add(invoice)
+    session.commit()
 
     finance = FinanceService(session)
     payment_key = "idem-payment"

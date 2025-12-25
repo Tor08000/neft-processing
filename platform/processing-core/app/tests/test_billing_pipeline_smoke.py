@@ -1,11 +1,12 @@
 import shutil
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 
 from app.config import settings
 from app.db import Base, SessionLocal, engine, reset_engine
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.clearing_batch import ClearingBatch
 from app.models.invoice import InvoiceStatus
@@ -75,6 +76,19 @@ def _operation_for_date(target_date: date, *, client_id: str = "c1", merchant_id
     )
 
 
+def _create_period(session, date_from: date, date_to: date, period_type: BillingPeriodType) -> BillingPeriod:
+    period = BillingPeriod(
+        period_type=period_type,
+        start_at=datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.OPEN,
+    )
+    session.add(period)
+    session.flush()
+    return period
+
+
 def test_billing_daily_smoke(session):
     billing_date = date(2024, 6, 1)
     session.add_all(
@@ -115,10 +129,12 @@ def test_clearing_daily_smoke(session):
 def test_invoice_monthly_smoke(session, monkeypatch):
     monkeypatch.setattr(settings, "NEFT_INVOICE_MONTHLY_ENABLED", True)
     target_month = date(2024, 5, 1)
+    period = _create_period(session, date(2024, 5, 1), date(2024, 5, 31), BillingPeriodType.MONTHLY)
     session.add_all(
         [
             BillingSummary(
                 billing_date=date(2024, 5, 10),
+                billing_period_id=period.id,
                 client_id="client-1",
                 merchant_id="m1",
                 product_type=ProductType.AI92,
@@ -131,6 +147,7 @@ def test_invoice_monthly_smoke(session, monkeypatch):
             ),
             BillingSummary(
                 billing_date=date(2024, 5, 11),
+                billing_period_id=period.id,
                 client_id="client-1",
                 merchant_id="m2",
                 product_type=ProductType.AI95,

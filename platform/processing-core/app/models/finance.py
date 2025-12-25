@@ -5,7 +5,7 @@ from enum import Enum
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, func
 
 from app.db import Base
-from app.db.types import ExistingEnum, GUID
+from app.db.types import ExistingEnum, GUID, new_uuid_str
 
 
 class PaymentStatus(str, Enum):
@@ -22,7 +22,7 @@ class CreditNoteStatus(str, Enum):
 class InvoicePayment(Base):
     __tablename__ = "invoice_payments"
 
-    id = Column(GUID(), primary_key=True)
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
@@ -50,7 +50,7 @@ class InvoicePayment(Base):
 class CreditNote(Base):
     __tablename__ = "credit_notes"
 
-    id = Column(GUID(), primary_key=True)
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)

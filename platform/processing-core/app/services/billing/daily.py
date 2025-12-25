@@ -11,10 +11,13 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
+from app.services.billing_summary_hash import hash_payload
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -90,7 +93,12 @@ def _aggregate_operations(session: Session, billing_date: date):
     )
 
 
-def _upsert_billing_summaries(session: Session, billing_date: date) -> list[BillingSummary]:
+def _upsert_billing_summaries(
+    session: Session,
+    *,
+    billing_date: date,
+    billing_period_id: str,
+) -> list[BillingSummary]:
     aggregates = _aggregate_operations(session, billing_date)
     if not aggregates:
         logger.info("billing.daily.no_operations", extra={"billing_date": str(billing_date)})
@@ -103,7 +111,12 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
             item.product_type,
             item.currency,
         ): item
-        for item in session.query(BillingSummary).filter(BillingSummary.billing_date == billing_date).all()
+        for item in (
+            session.query(BillingSummary)
+            .filter(BillingSummary.billing_date == billing_date)
+            .filter(BillingSummary.billing_period_id == billing_period_id)
+            .all()
+        )
     }
 
     updated_items: list[BillingSummary] = []
@@ -121,6 +134,20 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
         total_quantity = aggregate.total_quantity
         operations_count = int(aggregate.operations_count or 0)
         commission_amount = _commission(total_amount)
+        payload_hash = hash_payload(
+            {
+                "billing_date": billing_date,
+                "billing_period_id": billing_period_id,
+                "client_id": aggregate.client_id,
+                "merchant_id": aggregate.merchant_id,
+                "product_type": aggregate.product_type,
+                "currency": aggregate.currency,
+                "total_amount": total_amount,
+                "total_quantity": total_quantity,
+                "operations_count": operations_count,
+                "commission_amount": commission_amount,
+            }
+        )
 
         summary = existing.get(key)
         if summary and summary.status == BillingSummaryStatus.FINALIZED:
@@ -133,9 +160,11 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
             summary.operations_count = operations_count
             summary.commission_amount = commission_amount
             summary.generated_at = now
+            summary.hash = payload_hash
         else:
             summary = BillingSummary(
                 billing_date=billing_date,
+                billing_period_id=billing_period_id,
                 client_id=aggregate.client_id,
                 merchant_id=aggregate.merchant_id,
                 product_type=aggregate.product_type,
@@ -147,6 +176,7 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
                 commission_amount=commission_amount,
                 status=BillingSummaryStatus.PENDING,
                 generated_at=now,
+                hash=payload_hash,
             )
             session.add(summary)
         updated_items.append(summary)
@@ -193,7 +223,26 @@ def run_billing_daily(
                 billing_metrics.mark_daily_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
                 return []
 
-            summaries = _upsert_billing_summaries(session, billing_date)
+            period_service = BillingPeriodService(session)
+            period_start, period_end = period_bounds_for_dates(
+                date_from=billing_date,
+                date_to=billing_date,
+                tz=settings.NEFT_BILLING_TZ,
+            )
+            period = period_service.get_or_create(
+                period_type=BillingPeriodType.DAILY,
+                start_at=period_start,
+                end_at=period_end,
+                tz=settings.NEFT_BILLING_TZ,
+            )
+            if period.status != BillingPeriodStatus.OPEN:
+                raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
+            summaries = _upsert_billing_summaries(
+                session,
+                billing_date=billing_date,
+                billing_period_id=str(period.id),
+            )
             result = job_service.succeed(
                 job_run,
                 metrics={"processed": len(summaries), "billing_date": str(billing_date)},
