@@ -24,6 +24,7 @@ from app.services.accounting_export.serializer import (
     serialize_settlement_csv,
 )
 from app.services.audit_service import AuditService, RequestContext
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
@@ -75,21 +76,36 @@ class AccountingExportService:
             client_id=None,
             status=period.status.value if period.status else None,
         )
-        decision = self.policy_engine.check(
+        decision_context = DecisionContext(
+            tenant_id=actor.tenant_id or 0,
+            client_id=None,
+            actor_type="ADMIN",
+            action=DecisionAction.ACCOUNTING_EXPORT,
+            billing_period_id=str(period.id),
+            history={},
+            metadata={
+                "billing_period_status": period.status.value if period.status else None,
+                "actor_roles": actor.roles,
+            },
+        )
+        decision = DecisionEngine(self.db).evaluate(decision_context)
+        if decision.outcome != "ALLOW":
+            raise AccountingExportForbidden(f"decision_{decision.outcome.lower()}")
+        policy_decision = self.policy_engine.check(
             actor=actor,
             action=Action.ACCOUNTING_EXPORT_CREATE,
             resource=resource,
         )
-        if not decision.allowed:
+        if not policy_decision.allowed:
             audit_access_denied(
                 self.db,
                 actor=actor,
                 action=Action.ACCOUNTING_EXPORT_CREATE,
                 resource=resource,
-                decision=decision,
+                decision=policy_decision,
                 token=token,
             )
-            raise PolicyAccessDenied(decision)
+            raise PolicyAccessDenied(policy_decision)
         self._require_period_finalized(period, request_ctx=request_ctx)
 
         idempotency_key = self._build_idempotency_key(
