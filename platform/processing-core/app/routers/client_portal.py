@@ -818,6 +818,16 @@ async def create_reconciliation_request(
         status=ReconciliationRequestStatus.REQUESTED,
     )
     db.add(new_request)
+    db.flush()
+
+    (
+        db.query(Invoice)
+        .filter(Invoice.client_id == client_id)
+        .filter(Invoice.period_from >= payload.date_from)
+        .filter(Invoice.period_to <= payload.date_to)
+        .filter(Invoice.reconciliation_request_id.is_(None))
+        .update({"reconciliation_request_id": new_request.id}, synchronize_session=False)
+    )
     db.commit()
     db.refresh(new_request)
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus, InvoiceTransitionLog
-from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.models.audit_log import ActorType
 from app.services.audit_service import AuditService, RequestContext
 
@@ -211,8 +211,8 @@ class InvoiceStateMachine:
                 },
             )
             decision = DecisionEngine(self.db).evaluate(decision_context)
-            if decision.outcome != "ALLOW":
-                raise InvalidTransitionError(f"DECISION_{decision.outcome}")
+            if decision.outcome != DecisionOutcome.ALLOW:
+                raise InvalidTransitionError(f"DECISION_{decision.outcome.value}")
         self._apply_amounts(payment_amount, credit_note_amount, refund_amount)
         self._validate_constraints(to, payment_amount, credit_note_amount, refund_amount)
         self._update_timestamps(to, now)

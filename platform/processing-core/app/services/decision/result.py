@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from enum import Enum
 
-DecisionOutcome = Literal["ALLOW", "DECLINE", "MANUAL_REVIEW"]
+from app.models.risk_score import RiskLevel
+
+
+class DecisionOutcome(str, Enum):
+    ALLOW = "ALLOW"
+    DECLINE = "DECLINE"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
 
 
 @dataclass(frozen=True)
@@ -12,6 +18,19 @@ class DecisionResult:
     decision_version: str
     outcome: DecisionOutcome
     risk_score: int | None
-    rule_hits: list[str]
-    model_version: str | None
-    explain: dict
+    risk_level: RiskLevel | None = None
+    rule_hits: list[str] = field(default_factory=list)
+    model_version: str | None = None
+    explain: dict = field(default_factory=dict)
+
+    def to_payload(self) -> dict:
+        return {
+            "decision_id": self.decision_id,
+            "decision_version": self.decision_version,
+            "outcome": self.outcome.value if hasattr(self.outcome, "value") else self.outcome,
+            "risk_score": self.risk_score,
+            "risk_level": self.risk_level.value if self.risk_level else None,
+            "rule_hits": list(self.rule_hits),
+            "model_version": self.model_version,
+            "explain": self.explain,
+        }

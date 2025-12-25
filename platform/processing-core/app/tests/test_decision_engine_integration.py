@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db import Base, SessionLocal, engine
+from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.accounting_export_batch import AccountingExportFormat, AccountingExportType
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.card import Card
@@ -33,6 +33,25 @@ class _ApprovedLimits:
 
     def model_dump(self):
         return {"approved": True, "applied_rule_id": self.applied_rule_id}
+
+
+@pytest.fixture(autouse=True)
+def _use_sqlite(monkeypatch: pytest.MonkeyPatch):
+    import app.db as db
+
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(db, "DATABASE_URL", "sqlite:///:memory:", raising=False)
+    monkeypatch.setattr(db, "raw_db_url", "sqlite:///:memory:", raising=False)
+    reset_engine()
+
+
+@pytest.fixture(autouse=True)
+def _reset_db(_use_sqlite):
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
 
 
 def _decline_result() -> DecisionResult:

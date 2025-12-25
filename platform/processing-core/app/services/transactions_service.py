@@ -432,11 +432,18 @@ def authorize_operation(
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)
-    if decision.outcome != "ALLOW":
+    if decision.outcome != DecisionOutcome.ALLOW:
+        decline_reason = "RISK_SCORE_DECLINE"
+        risk_result = RiskLevel.MEDIUM
+        if decision.outcome == DecisionOutcome.MANUAL_REVIEW:
+            decline_reason = "RISK_MANUAL_REVIEW"
+            risk_result = RiskLevel.MANUAL_REVIEW
+        elif decision.risk_level:
+            risk_result = _decision_risk_to_result(decision.risk_level)
         return decline_operation(
             db,
             ext_operation_id=ext_operation_id,
-            reason=f"DECISION_{decision.outcome}",
+            reason=decline_reason,
             amount=amount,
             currency=currency,
             client_id=client_id,
@@ -446,6 +453,8 @@ def authorize_operation(
             merchant_id=merchant_id,
             product_id=product_id,
             product_type=product_type,
+            risk_payload={"decision_engine": decision.to_payload()},
+            risk_result=risk_result,
         )
 
     limits_request = CheckAndReserveRequest(
@@ -767,8 +776,8 @@ def commit_operation(
         },
     )
     decision = DecisionEngine(db).evaluate(decision_context)
-    if decision.outcome != "ALLOW":
-        raise InvalidOperationState(f"DECISION_{decision.outcome}")
+    if decision.outcome != DecisionOutcome.ALLOW:
+        raise InvalidOperationState(f"DECISION_{decision.outcome.value}")
 
     operation.amount_settled = commit_amount
     operation.status = OperationStatus.COMPLETED

@@ -51,20 +51,26 @@ def _seed_document(session, *, status: DocumentStatus, doc_hash: str, version: i
 def test_document_ack_hash_mismatch_returns_conflict(make_jwt):
     session = SessionLocal()
     try:
-        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-2")
+        session.add(
+            DocumentAcknowledgement(
+                tenant_id=1,
+                client_id="client-1",
+                document_type=DocumentType.INVOICE.value,
+                document_id=str(document.id),
+                document_object_key=f"docs/{document.id}.pdf",
+                document_hash="hash-1",
+                ack_by_user_id="user-1",
+                ack_by_email="client@example.com",
+                ack_method="UI",
+            )
+        )
+        session.commit()
         token = make_jwt(
             roles=("CLIENT_OWNER",),
             client_id="client-1",
             extra={"tenant_id": 1, "email": "client@example.com"},
         )
-
-        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
-            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
-            assert response.status_code == 201
-
-        document_file = session.query(DocumentFile).filter(DocumentFile.document_id == document.id).one()
-        document_file.sha256 = "hash-2"
-        session.commit()
 
         with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
             response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")

@@ -10,22 +10,27 @@ from sqlalchemy.orm import Session
 from app.db.types import new_uuid_str
 from app.models.audit_log import ActorType, AuditVisibility
 from app.models.decision_result import DecisionResult as DecisionResultRecord
+from app.models.risk_score import RiskLevel
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision.context import DecisionContext
 from app.services.decision.explain import build_explain
 from app.services.decision.result import DecisionOutcome, DecisionResult
-from app.services.decision.rules import Rule, default_rules
+from app.services.decision.rules import Rule, apply_scoring_rules, default_rules
 from app.services.decision.scoring import RiskScorer, StubRiskScorer
 from app.services.decision.versions import DECISION_ENGINE_VERSION
 
 
-_OUTCOME_SEVERITY = {"DECLINE": 2, "MANUAL_REVIEW": 1, "ALLOW": 0}
+_OUTCOME_SEVERITY = {
+    DecisionOutcome.DECLINE: 2,
+    DecisionOutcome.MANUAL_REVIEW: 1,
+    DecisionOutcome.ALLOW: 0,
+}
 
 
 class DecisionEngine:
     def __init__(
         self,
-        db: Session,
+        db: Session | None = None,
         *,
         rules: list[Rule] | None = None,
         scorer: RiskScorer | None = None,
@@ -38,7 +43,13 @@ class DecisionEngine:
         self.scorer = scorer or StubRiskScorer()
         self.threshold = threshold
         self.version = version
-        self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+        if now_provider is not None:
+            self.now_provider = now_provider
+        elif db is None:
+            fixed = datetime(2000, 1, 1, tzinfo=timezone.utc)
+            self.now_provider = lambda: fixed
+        else:
+            self.now_provider = lambda: datetime.now(timezone.utc)
 
     def evaluate(self, ctx: DecisionContext) -> DecisionResult:
         payload = ctx.to_payload()
@@ -48,24 +59,38 @@ class DecisionEngine:
         matched_rules: list[str] = []
         rule_explanations: dict[str, str] = {}
         rule_outcome: DecisionOutcome | None = None
+        risk_level: RiskLevel | None = None
+        reason_codes: list[str] = []
+        scoring_rule_ids: list[str] = []
 
-        for rule in self.rules:
-            if rule.when(ctx):
-                matched_rules.append(rule.id)
-                rule_explanations[rule.id] = rule.explain
-                rule_outcome = _max_outcome(rule_outcome, rule.outcome)
+        if ctx.scoring_rules:
+            risk_level, reason_codes, scoring_rule_ids = apply_scoring_rules(ctx, ctx.scoring_rules)
+            matched_rules.extend(scoring_rule_ids)
+            for idx, code in enumerate(reason_codes):
+                rule_explanations[scoring_rule_ids[idx]] = code
+            if risk_level in {RiskLevel.HIGH, RiskLevel.VERY_HIGH}:
+                rule_outcome = DecisionOutcome.DECLINE
+        else:
+            for rule in self.rules:
+                if rule.when(ctx):
+                    matched_rules.append(rule.id)
+                    rule_explanations[rule.id] = rule.explain
+                    rule_outcome = _max_outcome(rule_outcome, rule.outcome)
 
         risk_score = None
         model_version = None
         outcome: DecisionOutcome
 
-        if rule_outcome in {"DECLINE", "MANUAL_REVIEW"}:
+        if rule_outcome in {DecisionOutcome.DECLINE, DecisionOutcome.MANUAL_REVIEW}:
             outcome = rule_outcome
         else:
             score = self.scorer.score(ctx)
             risk_score = score.score
             model_version = score.model_version
-            outcome = "MANUAL_REVIEW" if risk_score > self.threshold else "ALLOW"
+            outcome = DecisionOutcome.MANUAL_REVIEW if risk_score > self.threshold else DecisionOutcome.ALLOW
+
+        if risk_level:
+            risk_score = _score_from_risk_level(risk_level)
 
         evaluated_at = self.now_provider()
         explain = build_explain(
@@ -77,31 +102,36 @@ class DecisionEngine:
             model_version=model_version,
             evaluated_at=evaluated_at,
         )
+        if reason_codes:
+            explain["reason_codes"] = reason_codes
+            explain["rules_fired"] = scoring_rule_ids
 
         decision_id = new_uuid_str()
-        record = DecisionResultRecord(
-            id=new_uuid_str(),
-            decision_id=decision_id,
-            decision_version=self.version,
-            action=ctx.action.value,
-            outcome=outcome,
-            risk_score=risk_score,
-            rule_hits=matched_rules,
-            model_version=model_version,
-            context_hash=context_hash,
-            explain=explain,
-            created_at=evaluated_at,
-        )
-        self.db.add(record)
-        self.db.flush()
+        if self.db is not None:
+            record = DecisionResultRecord(
+                id=new_uuid_str(),
+                decision_id=decision_id,
+                decision_version=self.version,
+                action=ctx.action.value if hasattr(ctx.action, "value") else ctx.action,
+                outcome=outcome.value,
+                risk_score=risk_score,
+                rule_hits=matched_rules,
+                model_version=model_version,
+                context_hash=context_hash,
+                explain=explain,
+                created_at=evaluated_at,
+            )
+            self.db.add(record)
+            self.db.flush()
 
-        self._audit_decision(ctx, decision_id, outcome, risk_score, matched_rules, model_version)
+            self._audit_decision(ctx, decision_id, outcome, risk_score, matched_rules, model_version)
 
         return DecisionResult(
             decision_id=decision_id,
             decision_version=self.version,
             outcome=outcome,
             risk_score=risk_score,
+            risk_level=risk_level,
             rule_hits=matched_rules,
             model_version=model_version,
             explain=explain,
@@ -117,9 +147,9 @@ class DecisionEngine:
         model_version: str | None,
     ) -> None:
         event_type = {
-            "ALLOW": "DECISION_MADE",
-            "DECLINE": "DECISION_DECLINED",
-            "MANUAL_REVIEW": "DECISION_MANUAL_REVIEW",
+            DecisionOutcome.ALLOW: "DECISION_MADE",
+            DecisionOutcome.DECLINE: "DECISION_DECLINED",
+            DecisionOutcome.MANUAL_REVIEW: "DECISION_MANUAL_REVIEW",
         }[outcome]
         request_ctx = RequestContext(
             actor_type=_map_actor_type(ctx.actor_type),
@@ -136,8 +166,8 @@ class DecisionEngine:
             visibility=AuditVisibility.INTERNAL,
             after={
                 "decision_id": decision_id,
-                "action": ctx.action.value,
-                "outcome": outcome,
+                "action": ctx.action.value if hasattr(ctx.action, "value") else ctx.action,
+                "outcome": outcome.value,
                 "score": risk_score,
                 "rules": rule_hits,
                 "model_version": model_version,
@@ -167,3 +197,12 @@ def _max_outcome(current: DecisionOutcome | None, new: DecisionOutcome) -> Decis
     if _OUTCOME_SEVERITY[new] > _OUTCOME_SEVERITY[current]:
         return new
     return current
+
+
+def _score_from_risk_level(level: RiskLevel) -> int:
+    return {
+        RiskLevel.LOW: 10,
+        RiskLevel.MEDIUM: 40,
+        RiskLevel.HIGH: 80,
+        RiskLevel.VERY_HIGH: 95,
+    }[level]
