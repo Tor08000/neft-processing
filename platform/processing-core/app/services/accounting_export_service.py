@@ -20,9 +20,11 @@ from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllo
 from app.models.invoice import Invoice
 from app.models.risk_score import RiskScoreAction
 from app.services.accounting_export.canonical import AccountingEntry
+from app.services.accounting_export.delivery import DeliveryPayload, build_delivery_adapter
 from app.services.accounting_export.formats.csv_1c import serialize_charges_csv, serialize_settlement_csv
 from app.services.accounting_export.formats.json_sap import serialize_sap_json
 from app.services.accounting_export.mappers import map_charges_entries, map_settlement_entries
+from app.services.accounting_export.onboarding_profiles import get_onboarding_profile
 from app.services.accounting_export.serializer import serialize_metadata_json
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
@@ -399,6 +401,61 @@ class AccountingExportService:
                 "erp_status": status,
                 "erp_message": message,
                 "erp_processed_at": processed_at,
+            },
+        )
+
+        return batch
+
+    def deliver_export(
+        self,
+        *,
+        batch_id: str,
+        client_id: str,
+        request_ctx: RequestContext | None,
+    ) -> AccountingExportBatch:
+        batch = self._load_batch(batch_id)
+        if not batch.object_key or not batch.bucket:
+            raise AccountingExportInvalidState("export_not_uploaded")
+
+        profile = get_onboarding_profile(client_id)
+        adapter = build_delivery_adapter(profile)
+
+        storage = S3Storage(bucket=batch.bucket)
+        payload = storage.get_bytes(batch.object_key)
+        if payload is None:
+            raise AccountingExportNotFound("export_payload_missing")
+
+        export_checksum = batch.checksum_sha256 or hashlib.sha256(payload).hexdigest()
+        generated_at = batch.generated_at or datetime.now(timezone.utc)
+        metadata_payload, metadata_checksum, metadata_key = self._build_metadata_payload(
+            batch,
+            export_checksum=export_checksum,
+            generated_at=generated_at,
+        )
+
+        adapter_result = adapter.deliver(
+            payloads=[
+                DeliveryPayload(
+                    filename=batch.object_key.split("/")[-1],
+                    payload=payload,
+                    content_type=self._content_type(batch.format),
+                ),
+                DeliveryPayload(
+                    filename=metadata_key.split("/")[-1],
+                    payload=metadata_payload,
+                    content_type="application/json",
+                ),
+            ]
+        )
+
+        self._audit_event(
+            event_type="ACCOUNTING_EXPORT_DELIVERED",
+            batch=batch,
+            request_ctx=request_ctx,
+            extra={
+                "delivery_target": adapter_result.target,
+                "delivery_files": adapter_result.files,
+                "metadata_checksum": metadata_checksum,
             },
         )
 

@@ -68,6 +68,10 @@ class Settings:
     )
     ACCOUNTING_EXPORT_SLA_GENERATE_MINUTES: int = int(os.getenv("ACCOUNTING_EXPORT_SLA_GENERATE_MINUTES", "10"))
     ACCOUNTING_EXPORT_SLA_CONFIRM_HOURS: int = int(os.getenv("ACCOUNTING_EXPORT_SLA_CONFIRM_HOURS", "48"))
+    ACCOUNTING_EXPORT_ALERTING_ENABLED: bool = os.getenv(
+        "ACCOUNTING_EXPORT_ALERTING_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
+    ACCOUNTING_EXPORT_ALERTING_TARGETS: str = os.getenv("ACCOUNTING_EXPORT_ALERTING_TARGETS", "")
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv(
         "NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)

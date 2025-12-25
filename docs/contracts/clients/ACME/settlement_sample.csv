@@ -1,0 +1,2 @@
+batch_id;entry_id;tenant_id;client_id;posting_date;document_id;document_number;source_type;source_id;provider;external_ref;currency;amount_gross;charge_period_from;charge_period_to;contract_ref;counterparty_ref
+b-2025-01;e-101;1;ACME_CORP;2025-02-02;pay-001;PAY-001;PAYMENT;src-001;BANK;EXT-001;RUB;120000;2025-01-01;2025-01-31;CTR-01;CP-01

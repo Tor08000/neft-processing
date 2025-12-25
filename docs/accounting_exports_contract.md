@@ -153,3 +153,51 @@ Rules:
 - `REJECTED` sets batch state to `FAILED` and stores `error_message`.
 - Repeating the same `erp_import_id` is idempotent.
 - Different `erp_import_id` for an already confirmed batch returns 409.
+
+---
+
+# Client Appendix: ACME_CORP (1C / CSV)
+
+## ERP profile
+- ERP: 1C (8.3)
+- Export format: CSV
+- Delivery: SFTP
+- Timezone: Europe/Moscow
+- Currency: RUB
+- VAT rules: standard_ru (20%, 0%, без НДС)
+- Decimal policy: minor_units (2)
+- Delimiter: `;`
+- Encoding: UTF-8
+- Confirmation required: yes
+
+## Columns (ACME-specific)
+Uses the standard CSV contract (see above) with the following strict typing:
+
+### CHARGES
+```
+batch_id;entry_id;tenant_id;client_id;posting_date;period_from;period_to;document_type;document_id;document_number;currency;amount_gross;vat_amount;amount_net;contract_ref;counterparty_ref
+```
+
+### SETTLEMENT
+```
+batch_id;entry_id;tenant_id;client_id;posting_date;document_id;document_number;source_type;source_id;provider;external_ref;currency;amount_gross;charge_period_from;charge_period_to;contract_ref;counterparty_ref
+```
+
+## Rounding & VAT
+- All monetary amounts are in minor units (integer, 2 decimals).
+- VAT rates allowed: 20%, 0%, без НДС (represented via `vat_amount=0` and `vat_rate=null` when not applicable).
+
+## Import errors (ACME)
+Any of the following are treated as ERP import errors:
+- Missing required column or invalid delimiter/encoding.
+- Unknown VAT code or VAT mismatch with `amount_gross`.
+- Invalid date format (`YYYY-MM-DD` required).
+- Duplicate `entry_id` within a batch.
+
+## Confirmation
+- `CONFIRMED` means the batch is accepted as accounting truth.
+- Corrections are only allowed via a new batch.
+
+## Samples
+- `docs/contracts/clients/ACME/charges_sample.csv`
+- `docs/contracts/clients/ACME/settlement_sample.csv`
