@@ -18,6 +18,7 @@ from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJ
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.invoice_state_machine import InvoiceStateMachine
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
+from app.services.finance_invariants import FinancialInvariantChecker
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -225,6 +226,7 @@ def run_invoice_monthly(
                     ),
                     auto_commit=False,
                 )
+                FinancialInvariantChecker(session).check_invoice(invoice)
                 metrics["created"] = int(metrics["created"]) + 1  # type: ignore[arg-type]
             created.append(invoice)
 

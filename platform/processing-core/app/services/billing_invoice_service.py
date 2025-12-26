@@ -16,6 +16,7 @@ from app.models.operation import Operation, OperationStatus
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_pdf import InvoicePdfService
+from app.services.finance_invariants import FinancialInvariantChecker
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from neft_shared.logging_setup import get_logger
 
@@ -242,6 +243,7 @@ def generate_invoice_for_batch(
         invoice.number = number
         invoice.external_number = number
         invoice.pdf_object_key = f"invoices/{invoice.id}.pdf"
+        FinancialInvariantChecker(db).check_invoice(invoice)
         billing_metrics.mark_generated()
     except IntegrityError:
         db.rollback()

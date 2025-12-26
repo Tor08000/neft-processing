@@ -32,6 +32,7 @@ from app.services.invoice_state_machine import InvoiceStateMachine, InvalidTrans
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
 from app.services.settlement_allocations import resolve_settlement_period
+from app.services.finance_invariants import FinancialInvariantChecker, FinancialInvariantViolation
 
 
 class FinanceOperationInProgress(RuntimeError):
@@ -71,6 +72,7 @@ class FinanceService:
         self.db = db
         self.job_service = BillingJobRunService(db)
         self.policy_engine = PolicyEngine()
+        self.invariant_checker = FinancialInvariantChecker(db)
 
     def _lock_invoice(self, invoice_id: str) -> Invoice:
         stmt = select(Invoice).where(Invoice.id == invoice_id)
@@ -148,6 +150,7 @@ class FinanceService:
         currency: str,
         applied_at: datetime | None,
         request_ctx: RequestContext | None,
+        override: bool = False,
     ) -> InvoiceSettlementAllocation:
         existing = (
             self.db.query(InvoiceSettlementAllocation)
@@ -161,6 +164,13 @@ class FinanceService:
 
         event_at = applied_at or datetime.now(timezone.utc)
         settlement_period = resolve_settlement_period(self.db, event_at=event_at)
+        self.invariant_checker.check_settlement_allocation(
+            invoice=invoice,
+            amount=amount,
+            settlement_period_id=str(settlement_period.id),
+            override=override,
+            request_ctx=request_ctx,
+        )
         allocation = InvoiceSettlementAllocation(
             invoice_id=invoice.id,
             tenant_id=self._resolve_tenant_id(request_ctx),
@@ -307,6 +317,19 @@ class FinanceService:
 
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+            try:
+                self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
+                self.invariant_checker.check_payment_application(
+                    invoice,
+                    amount=amount,
+                    idempotency_key=idempotency_key,
+                    request_ctx=request_ctx,
+                )
+            except FinancialInvariantViolation:
+                self.db.rollback()
+                billing_metrics.mark_payment_error()
+                billing_metrics.mark_payment_failed()
+                raise
             self._require_settlement_period(invoice, action="payment")
             job_run = self.job_service.start(
                 BillingJobType.FINANCE_PAYMENT,
@@ -342,9 +365,6 @@ class FinanceService:
                 raise InvalidTransitionError(f"payments allowed only from sent/partial, got {invoice.status}")
 
             try:
-                if amount > outstanding_before:
-                    raise InvoiceInvariantError("payment exceeds outstanding balance")
-
                 target_status = InvoiceStatus.PARTIALLY_PAID
                 if amount >= outstanding_before:
                     target_status = InvoiceStatus.PAID
@@ -355,7 +375,13 @@ class FinanceService:
                     payment_amount=amount,
                     request_ctx=request_ctx,
                 )
+                self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
             except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                billing_metrics.mark_payment_error()
+                billing_metrics.mark_payment_failed()
+                raise
+            except FinancialInvariantViolation:
                 self.db.rollback()
                 billing_metrics.mark_payment_error()
                 billing_metrics.mark_payment_failed()
@@ -431,6 +457,7 @@ class FinanceService:
                     raise FinanceOperationInProgress(idempotency_key)
 
             invoice = self._lock_invoice(invoice_id)
+            self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
             tenant_id = self._resolve_tenant_id(request_ctx)
             decision_context = DecisionContext(
                 tenant_id=tenant_id,
@@ -504,7 +531,11 @@ class FinanceService:
                         credit_note_amount=amount,
                         request_ctx=request_ctx,
                     )
+                self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
             except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                raise
+            except FinancialInvariantViolation:
                 self.db.rollback()
                 raise
 
@@ -580,6 +611,13 @@ class FinanceService:
 
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
+            self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
+            self.invariant_checker.check_refund(
+                invoice,
+                amount=amount,
+                reference=external_ref or f"refund:{invoice_id}",
+                request_ctx=request_ctx,
+            )
             self._require_settlement_period(invoice, action="refund")
             if invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID}:
                 self.db.rollback()
@@ -616,10 +654,6 @@ class FinanceService:
             try:
                 current_paid = int(invoice.amount_paid or 0)
                 current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
-                refundable = current_paid - current_refunded
-                if amount > refundable:
-                    raise InvoiceInvariantError("refund exceeds paid amount")
-
                 net_paid_after = current_paid - (current_refunded + amount)
                 target_status = InvoiceStatus.PARTIALLY_PAID
                 if net_paid_after <= 0:
@@ -632,6 +666,7 @@ class FinanceService:
                     request_ctx=request_ctx,
                 )
                 self.db.flush()
+                self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx)
             except IntegrityError:
                 self.db.rollback()
                 if external_ref:
@@ -655,6 +690,9 @@ class FinanceService:
                         return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
                 raise
             except (InvalidTransitionError, InvoiceInvariantError):
+                self.db.rollback()
+                raise
+            except FinancialInvariantViolation:
                 self.db.rollback()
                 raise
 
