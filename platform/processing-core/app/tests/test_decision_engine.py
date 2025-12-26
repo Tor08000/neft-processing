@@ -6,6 +6,7 @@ from app.db import Base, engine, get_sessionmaker
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
 from app.models.payout_export_file import PayoutExportFormat
+from app.models.risk_types import RiskDecisionType
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.decision.scoring import StubRiskScorer
 from app.services.payout_exports import PayoutExportError, create_payout_export
@@ -64,6 +65,26 @@ def test_rules_limit_decline():
 
     result = engine_instance.evaluate(context)
     assert result.outcome == "DECLINE"
+    session.close()
+
+
+def test_rules_blocked_client_declines_action():
+    session = get_sessionmaker()()
+    engine_instance = DecisionEngine(session, scorer=StubRiskScorer(default_score=10), now_provider=_fixed_now)
+    context = DecisionContext(
+        tenant_id=1,
+        client_id="client-1",
+        actor_type="SYSTEM",
+        action=DecisionAction.PAYMENT_AUTHORIZE,
+        amount=500,
+        currency="RUB",
+        history={},
+        metadata={"client_status": "BLOCKED"},
+    )
+
+    result = engine_instance.evaluate(context)
+    assert result.outcome == "DECLINE"
+    assert result.risk_decision == RiskDecisionType.BLOCK
     session.close()
 
 

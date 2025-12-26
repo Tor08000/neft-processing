@@ -11,15 +11,15 @@ const DOCUMENT_TYPES = [
   { value: "INVOICE", label: "Счет" },
   { value: "ACT", label: "Акт" },
   { value: "RECONCILIATION_ACT", label: "Акт сверки" },
-  { value: "CLOSING_PACKAGE", label: "Закрывающий пакет" },
+  { value: "CLOSING_PACKAGE", label: "Закрывающий пакет (closing_package)" },
 ];
 
 const STATUS_TYPES = [
   { value: "", label: "Все статусы" },
-  { value: "ISSUED", label: "Опубликован" },
-  { value: "ACKNOWLEDGED", label: "Подтвержден" },
-  { value: "FINALIZED", label: "Зафиксирован" },
-  { value: "VOID", label: "Отозван" },
+  { value: "ISSUED", label: "ISSUED" },
+  { value: "ACKNOWLEDGED", label: "ACKNOWLEDGED" },
+  { value: "FINALIZED", label: "FINALIZED" },
+  { value: "VOID", label: "VOID" },
 ];
 
 const SIGNATURE_TYPES = [

@@ -134,3 +134,80 @@ def test_document_finalize_blocks_void(make_jwt):
             assert response.status_code == 409
     finally:
         session.close()
+
+
+def test_document_list_links_to_details(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            listing = api_client.get("/api/v1/client/documents")
+            assert listing.status_code == 200
+            payload = listing.json()
+            assert payload["total"] == 1
+            assert payload["items"][0]["id"] == str(document.id)
+            assert payload["items"][0]["pdf_hash"] == "hash-1"
+
+            details = api_client.get(f"/api/v1/client/documents/{document.id}")
+            assert details.status_code == 200
+            detail_payload = details.json()
+            assert detail_payload["id"] == str(document.id)
+            assert detail_payload["document_hash"] == "hash-1"
+    finally:
+        session.close()
+
+
+def test_document_ack_updates_status_and_audit_event(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 201
+
+        session.refresh(document)
+        assert document.status == DocumentStatus.ACKNOWLEDGED
+        assert document.ack_at is not None
+        assert (
+            session.query(AuditLog)
+            .filter(AuditLog.event_type == "DOCUMENT_ACKNOWLEDGED")
+            .filter(AuditLog.entity_id == str(document.id))
+            .count()
+            == 1
+        )
+    finally:
+        session.close()
+
+
+def test_void_acknowledged_document_returns_conflict(make_jwt):
+    session = SessionLocal()
+    try:
+        document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
+        token = make_jwt(
+            roles=("CLIENT_OWNER",),
+            client_id="client-1",
+            extra={"tenant_id": 1, "email": "client@example.com"},
+        )
+        admin_token = make_jwt(roles=("ADMIN", "ADMIN_FINANCE"))
+
+        with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+            response = api_client.post(f"/api/v1/client/documents/{document.id}/ack")
+            assert response.status_code == 201
+
+        with TestClient(app, headers={"Authorization": f"Bearer {admin_token}"}) as api_client:
+            response = api_client.post(f"/api/v1/admin/documents/{document.id}/void")
+            assert response.status_code == 409
+    finally:
+        session.close()

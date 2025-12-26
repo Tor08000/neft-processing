@@ -3,7 +3,7 @@
 ## Routes
 
 - `/client/documents` — document list
-- `/client/documents/{id}` — document card
+- `/client/documents/{id}` — document details
 
 ## List view
 
@@ -11,7 +11,7 @@ Filters:
 
 - period (from / to)
 - document type
-- status
+- status (`ISSUED/ACKNOWLEDGED/FINALIZED/VOID`)
 - signed / awaiting
 
 Table columns:
@@ -36,7 +36,7 @@ Restrictions:
 
 - Client cannot edit, delete, or regenerate documents.
 
-## Document card
+## Document details
 
 Displayed data:
 
