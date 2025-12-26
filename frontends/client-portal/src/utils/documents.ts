@@ -3,6 +3,7 @@ const TYPE_LABELS: Record<string, string> = {
   ACT: "Акт",
   RECONCILIATION_ACT: "Акт сверки",
   CLOSING_PACKAGE: "Закрывающий пакет (closing_package)",
+  OFFER: "Оферта",
 };
 
 const STATUS_LABELS: Record<string, string> = {

@@ -20,13 +20,18 @@ from app.models.documents import (
     DocumentStatus,
     DocumentType,
 )
+from app.models.decision_result import DecisionResult
+from app.models.risk_decision import RiskDecision
+from app.models.risk_types import RiskDecisionType, RiskSubjectType
 from app.schemas.closing_documents import (
     ClosingPackageAckResponse,
     ClientDocumentDetails,
     ClientDocumentEvent,
     ClientDocumentFile,
     ClientDocumentListResponse,
+    ClientDocumentRiskSummary,
     ClientDocumentSummary,
+    ClientDocumentAckDetails,
     DocumentAcknowledgementResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
@@ -49,6 +54,14 @@ def _ensure_tenant_context(token: dict) -> int:
     if tenant_id is None:
         raise HTTPException(status_code=403, detail="Missing tenant context")
     return int(tenant_id)
+
+
+def _risk_state(decision: RiskDecisionType) -> str:
+    if decision == RiskDecisionType.ALLOW:
+        return "ALLOW"
+    if decision == RiskDecisionType.BLOCK:
+        return "BLOCK"
+    return "REQUIRE_OVERRIDE"
 
 
 def _audit_immutability_violation(
@@ -117,7 +130,7 @@ def list_documents(
         .limit(limit)
         .all()
     )
-    document_ids = [item.id for item in items]
+    document_ids = [str(item.id) for item in items]
     pdf_hashes: dict[str, str] = {}
     if document_ids:
         pdf_files = (
@@ -127,6 +140,23 @@ def list_documents(
             .all()
         )
         pdf_hashes = {str(file.document_id): file.sha256 for file in pdf_files}
+
+    risk_by_document: dict[str, ClientDocumentRiskSummary] = {}
+    if document_ids:
+        risk_decisions = (
+            db.query(RiskDecision)
+            .filter(RiskDecision.subject_type == RiskSubjectType.DOCUMENT)
+            .filter(RiskDecision.subject_id.in_(document_ids))
+            .order_by(desc(RiskDecision.decided_at))
+            .all()
+        )
+        for decision in risk_decisions:
+            if decision.subject_id not in risk_by_document:
+                risk_by_document[decision.subject_id] = ClientDocumentRiskSummary(
+                    state=_risk_state(decision.outcome),
+                    decided_at=decision.decided_at,
+                    decision_id=decision.decision_id,
+                )
 
     return ClientDocumentListResponse(
         items=[
@@ -140,6 +170,7 @@ def list_documents(
                 number=item.number,
                 created_at=item.created_at,
                 pdf_hash=pdf_hashes.get(str(item.id)),
+                risk=risk_by_document.get(str(item.id)),
             )
             for item in items
         ],
@@ -182,6 +213,37 @@ def get_document_details(
         .all()
     )
 
+    acknowledgement = (
+        db.query(DocumentAcknowledgement)
+        .filter(DocumentAcknowledgement.client_id == client_id)
+        .filter(DocumentAcknowledgement.document_type == document.document_type.value)
+        .filter(DocumentAcknowledgement.document_id == str(document.id))
+        .one_or_none()
+    )
+
+    risk_decision = (
+        db.query(RiskDecision)
+        .filter(RiskDecision.subject_type == RiskSubjectType.DOCUMENT)
+        .filter(RiskDecision.subject_id == str(document.id))
+        .order_by(desc(RiskDecision.decided_at))
+        .first()
+    )
+    risk_summary: ClientDocumentRiskSummary | None = None
+    risk_explain: dict | None = None
+    if risk_decision:
+        risk_summary = ClientDocumentRiskSummary(
+            state=_risk_state(risk_decision.outcome),
+            decided_at=risk_decision.decided_at,
+            decision_id=risk_decision.decision_id,
+        )
+        decision_record = (
+            db.query(DecisionResult)
+            .filter(DecisionResult.decision_id == risk_decision.decision_id)
+            .one_or_none()
+        )
+        if decision_record:
+            risk_explain = decision_record.explain
+
     return ClientDocumentDetails(
         id=str(document.id),
         document_type=document.document_type.value,
@@ -218,6 +280,18 @@ def get_document_details(
             )
             for log in logs
         ],
+        ack_details=ClientDocumentAckDetails(
+            ack_by_user_id=acknowledgement.ack_by_user_id,
+            ack_by_email=acknowledgement.ack_by_email,
+            ack_ip=acknowledgement.ack_ip,
+            ack_user_agent=acknowledgement.ack_user_agent,
+            ack_method=acknowledgement.ack_method,
+            ack_at=acknowledgement.ack_at,
+        )
+        if acknowledgement
+        else None,
+        risk=risk_summary,
+        risk_explain=risk_explain,
     )
 
 
@@ -276,6 +350,7 @@ def acknowledge_document(
 ) -> DocumentAcknowledgementResponse:
     client_id = _ensure_client_context(token)
     tenant_id = _ensure_tenant_context(token)
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
 
     document = db.query(Document).filter(Document.id == document_id).one_or_none()
     if document is None:
@@ -383,6 +458,8 @@ def acknowledge_document(
         ack_by_user_id=ack_by_user_id,
         ack_by_email=ack_by_email,
         ack_method="UI",
+        ack_ip=request_ctx.ip if request_ctx else None,
+        ack_user_agent=request_ctx.user_agent if request_ctx else None,
         ack_at=ack_at,
     )
     db.add(acknowledgement)

@@ -12,10 +12,12 @@ const DOCUMENT_TYPES = [
   { value: "ACT", label: "Акт" },
   { value: "RECONCILIATION_ACT", label: "Акт сверки" },
   { value: "CLOSING_PACKAGE", label: "Закрывающий пакет (closing_package)" },
+  { value: "OFFER", label: "Оферта" },
 ];
 
 const STATUS_TYPES = [
   { value: "", label: "Все статусы" },
+  { value: "DRAFT", label: "DRAFT" },
   { value: "ISSUED", label: "ISSUED" },
   { value: "ACKNOWLEDGED", label: "ACKNOWLEDGED" },
   { value: "FINALIZED", label: "FINALIZED" },
@@ -227,6 +229,7 @@ export function ClientDocumentsPage() {
                 <th>Период</th>
                 <th>Номер</th>
                 <th>Статус</th>
+                <th>Требуется действие</th>
                 <th>Дата</th>
                 <th>Действия</th>
               </tr>
@@ -240,10 +243,18 @@ export function ClientDocumentsPage() {
                   </td>
                   <td>{doc.number ?? "—"}</td>
                   <td>
-                    <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
-                      {getDocumentStatusLabel(doc.status)}
-                    </span>
+                    <div className="stack-inline">
+                      <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
+                        {getDocumentStatusLabel(doc.status)}
+                      </span>
+                      {doc.risk?.state === "BLOCK" ? (
+                        <span className="pill pill--danger">⚠️ Risk BLOCK</span>
+                      ) : doc.risk?.state === "REQUIRE_OVERRIDE" ? (
+                        <span className="pill pill--warning">⚠️ Require override</span>
+                      ) : null}
+                    </div>
                   </td>
+                  <td>{canAcknowledge && doc.status === "ISSUED" ? "Требуется подтверждение" : "Нет"}</td>
                   <td>{formatDate(doc.created_at)}</td>
                   <td>
                     <div className="actions">
