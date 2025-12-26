@@ -8,6 +8,7 @@ export interface ClientDocumentSummary {
   number?: string | null;
   created_at: string;
   pdf_hash?: string | null;
+  risk?: ClientDocumentRiskSummary | null;
 }
 
 export interface ClientDocumentList {
@@ -36,6 +37,21 @@ export interface ClientDocumentEvent {
   prev_hash?: string | null;
 }
 
+export interface ClientDocumentRiskSummary {
+  state: string;
+  decided_at?: string | null;
+  decision_id?: string | null;
+}
+
+export interface ClientDocumentAckDetails {
+  ack_by_user_id?: string | null;
+  ack_by_email?: string | null;
+  ack_ip?: string | null;
+  ack_user_agent?: string | null;
+  ack_method?: string | null;
+  ack_at?: string | null;
+}
+
 export interface ClientDocumentDetails {
   id: string;
   document_type: string;
@@ -51,4 +67,7 @@ export interface ClientDocumentDetails {
   document_hash?: string | null;
   files: ClientDocumentFile[];
   events: ClientDocumentEvent[];
+  ack_details?: ClientDocumentAckDetails | null;
+  risk?: ClientDocumentRiskSummary | null;
+  risk_explain?: Record<string, unknown> | null;
 }

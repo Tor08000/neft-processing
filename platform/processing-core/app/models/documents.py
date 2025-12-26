@@ -29,6 +29,7 @@ class DocumentType(str, Enum):
     ACT = "ACT"
     RECONCILIATION_ACT = "RECONCILIATION_ACT"
     CLOSING_PACKAGE = "CLOSING_PACKAGE"
+    OFFER = "OFFER"
 
 
 class DocumentStatus(str, Enum):

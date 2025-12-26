@@ -31,6 +31,7 @@ class ClientDocumentSummary(BaseModel):
     number: str | None = None
     created_at: datetime
     pdf_hash: str | None = None
+    risk: "ClientDocumentRiskSummary | None" = None
 
 
 class ClientDocumentListResponse(BaseModel):
@@ -59,6 +60,21 @@ class ClientDocumentEvent(BaseModel):
     prev_hash: str | None = None
 
 
+class ClientDocumentRiskSummary(BaseModel):
+    state: str
+    decided_at: datetime | None = None
+    decision_id: str | None = None
+
+
+class ClientDocumentAckDetails(BaseModel):
+    ack_by_user_id: str | None = None
+    ack_by_email: str | None = None
+    ack_ip: str | None = None
+    ack_user_agent: str | None = None
+    ack_method: str | None = None
+    ack_at: datetime | None = None
+
+
 class ClientDocumentDetails(BaseModel):
     id: str
     document_type: str
@@ -74,6 +90,9 @@ class ClientDocumentDetails(BaseModel):
     document_hash: str | None = None
     files: list[ClientDocumentFile]
     events: list[ClientDocumentEvent]
+    ack_details: ClientDocumentAckDetails | None = None
+    risk: ClientDocumentRiskSummary | None = None
+    risk_explain: dict | None = None
 
 
 class DocumentAcknowledgementResponse(BaseModel):

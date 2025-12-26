@@ -88,6 +88,20 @@ export function ClientDocumentDetailsPage() {
     );
   }
 
+  const riskExplain = document.risk_explain ?? null;
+  const riskThresholds =
+    riskExplain && typeof riskExplain === "object"
+      ? (riskExplain as Record<string, unknown>).thresholds
+      : null;
+  const riskFactors =
+    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).factors : null;
+  const riskDecisionHash =
+    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).decision_hash : null;
+  const riskPolicy =
+    riskExplain && typeof riskExplain === "object"
+      ? ((riskExplain as Record<string, unknown>).policy ?? (riskExplain as Record<string, unknown>).policy_id)
+      : null;
+
   return (
     <div className="card">
       <div className="card__header">
@@ -122,13 +136,123 @@ export function ClientDocumentDetailsPage() {
           <div>{document.ack_at ? formatDateTime(document.ack_at) : "—"}</div>
         </div>
         <div>
+          <div className="label">Risk v4</div>
+          <div>{document.risk?.state ?? "—"}</div>
+        </div>
+        <div>
           <div className="label">Hash документа</div>
           <div className="stack-inline">
-            <span className="muted small">{document.document_hash ? `${document.document_hash.slice(0, 12)}…` : "—"}</span>
+            <span className="muted small">
+              {document.document_hash ? `${document.document_hash.slice(0, 12)}…` : "—"}
+            </span>
             <CopyButton value={document.document_hash ?? undefined} label="Скопировать" />
           </div>
         </div>
       </div>
+
+      {document.risk ? (
+        <div className="card__section">
+          <h3>Risk v4</h3>
+          <div className="meta-grid">
+            <div>
+              <div className="label">Статус</div>
+              <div>{document.risk.state}</div>
+            </div>
+            <div>
+              <div className="label">Decision ID</div>
+              <div>{document.risk.decision_id ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Дата решения</div>
+              <div>{document.risk.decided_at ? formatDateTime(document.risk.decided_at) : "—"}</div>
+            </div>
+            <div>
+              <div className="label">Decision hash</div>
+              <div className="stack-inline">
+                <span className="muted small">{riskDecisionHash ? `${riskDecisionHash.slice(0, 12)}…` : "—"}</span>
+                <CopyButton
+                  value={typeof riskDecisionHash === "string" ? riskDecisionHash : undefined}
+                  label="Скопировать"
+                />
+              </div>
+            </div>
+          </div>
+          {document.risk.state === "BLOCK" ? (
+            <span className="pill pill--danger">❌ Действие заблокировано</span>
+          ) : document.risk.state === "REQUIRE_OVERRIDE" ? (
+            <span className="pill pill--warning">⚠️ Требуется override</span>
+          ) : null}
+          {riskExplain ? (
+            <details>
+              <summary>Explain</summary>
+              <div className="meta-grid">
+                <div>
+                  <div className="label">Policy</div>
+                  <div>{typeof riskPolicy === "string" ? riskPolicy : "—"}</div>
+                </div>
+                <div>
+                  <div className="label">Thresholds</div>
+                  {riskThresholds && typeof riskThresholds === "object" ? (
+                    <ul className="bullets">
+                      {Object.entries(riskThresholds as Record<string, number>).map(([key, value]) => (
+                        <li key={key}>
+                          {key}: {value}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div>—</div>
+                  )}
+                </div>
+                <div>
+                  <div className="label">Factors</div>
+                  {Array.isArray(riskFactors) ? (
+                    <ul className="bullets">
+                      {riskFactors.map((factor) => (
+                        <li key={factor}>{factor}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div>—</div>
+                  )}
+                </div>
+              </div>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
+      {document.ack_details ? (
+        <div className="card__section">
+          <h3>Подтверждение</h3>
+          <div className="meta-grid">
+            <div>
+              <div className="label">User ID</div>
+              <div>{document.ack_details.ack_by_user_id ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Email</div>
+              <div>{document.ack_details.ack_by_email ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">IP</div>
+              <div>{document.ack_details.ack_ip ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">User Agent</div>
+              <div>{document.ack_details.ack_user_agent ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Method</div>
+              <div>{document.ack_details.ack_method ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label">Ack at</div>
+              <div>{document.ack_details.ack_at ? formatDateTime(document.ack_details.ack_at) : "—"}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card__section">
         <h3>Файлы</h3>
@@ -200,15 +324,17 @@ export function ClientDocumentDetailsPage() {
                   <span className="timeline-item__title">{event.event_type}</span>
                   <span className="muted small">{formatDateTime(event.ts)}</span>
                 </div>
-                <div className="timeline-item__body">
-                  <span className="muted small">Actor: {event.actor_type ?? "—"}</span>
-                  <span className="muted small">Action: {event.action ?? "—"}</span>
-                  <span className="muted small">Hash: {event.hash ? `${event.hash.slice(0, 8)}…` : "—"}</span>
-                </div>
+              <div className="timeline-item__body">
+                <span className="muted small">Actor: {event.actor_type ?? "—"}</span>
+                <span className="muted small">Actor ID: {event.actor_id ?? "—"}</span>
+                <span className="muted small">Action: {event.action ?? "—"}</span>
+                <span className="muted small">Hash: {event.hash ? `${event.hash.slice(0, 8)}…` : "—"}</span>
+                <span className="muted small">Prev: {event.prev_hash ? `${event.prev_hash.slice(0, 8)}…` : "—"}</span>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
+      )}
       </div>
     </div>
   );

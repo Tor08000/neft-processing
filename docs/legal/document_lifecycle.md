@@ -2,6 +2,14 @@
 
 This document describes the legally correct lifecycle for client documents in core-api.
 
+## Document types (contract)
+
+- `INVOICE`
+- `ACT`
+- `RECONCILIATION_ACT`
+- `CLOSING_PACKAGE`
+- `OFFER`
+
 ## Statuses (immutable)
 
 `DRAFT → ISSUED → ACKNOWLEDGED → FINALIZED → VOID`
@@ -27,9 +35,11 @@ This document describes the legally correct lifecycle for client documents in co
 Required public audit events:
 
 - `DOCUMENT_ISSUED`
+- `DOCUMENT_SENT`
 - `DOCUMENT_ACKNOWLEDGED`
 - `DOCUMENT_FINALIZED`
 - `DOCUMENT_VOIDED`
+- `DOCUMENT_OVERRIDE`
 - `CLOSING_PACKAGE_FINALIZED` (closing_package lifecycle)
 
-Each event must record: actor, timestamp, reason (if present), and hash snapshot.
+Each event must record: actor, timestamp, reason (if present), and hash snapshot (hash + prev_hash).
