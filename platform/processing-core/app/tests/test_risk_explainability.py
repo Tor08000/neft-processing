@@ -81,9 +81,11 @@ def test_explain_payload_contains_required_fields(session):
     assert result.outcome == DecisionOutcome.DECLINE
     assert result.explain["decision"] == "BLOCK"
     assert result.explain["score"] == 87
+    assert result.explain["thresholds"]["allow"] == 10
     assert result.explain["thresholds"]["block"] == 80
     assert result.explain["thresholds"]["review"] == 60
-    assert result.explain["policy"] == "HIGH_RISK_PAYOUT"
+    assert result.explain["policy_id"] == "HIGH_RISK_PAYOUT"
     assert "velocity spike" in result.explain["factors"]
     assert result.explain["model"]["name"] == "risk_v4"
     assert result.explain["model"]["version"] == "2025.01"
+    assert result.explain["decision_hash"]

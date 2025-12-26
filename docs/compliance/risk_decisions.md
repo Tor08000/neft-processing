@@ -25,3 +25,11 @@
 ## Audit expectations
 - Event types: `RISK_DECISION_MADE`, `RISK_DECISION_BLOCKED`, `RISK_DECISION_ESCALATED`.
 - Public reporting uses the same `risk_decision` identifiers to ensure traceability.
+
+## What happens when BLOCK
+- **Where the block is enforced:** the decision_engine returns `BLOCK`, and the calling workflow (payment, payout, document finalize) halts before executing the final action.
+- **Override:** only authorized administrators may override by re-running the action after policy/legal review; overrides are not automatic.
+- **What is logged:** a `RISK_DECISION_BLOCKED` audit event is written, including decision id, subject, score, thresholds, and policy identifiers; the explain payload is persisted in `decision_results.explain`.
+- **What the client sees:** a blocked action returns a domain error (HTTP 403 for API actions or a risk decline code for domain workflows) without internal rule details.
+- **What the administrator sees:** admin UI and audit tools show the full explain payload, reason codes, and linked audit entry.
+- **Legal statement:** risk-based blocking is an automated compliance control; decisions are immutable, auditable, and enforce regulatory and contractual obligations.

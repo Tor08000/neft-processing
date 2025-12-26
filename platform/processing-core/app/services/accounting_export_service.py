@@ -85,9 +85,10 @@ class AccountingExportService:
         )
         decision_context = DecisionContext(
             tenant_id=actor.tenant_id or 0,
-            client_id=None,
+            client_id=actor.client_id or actor.user_id or f"tenant-{actor.tenant_id}",
             actor_type="ADMIN",
             action=DecisionAction.ACCOUNTING_EXPORT,
+            amount=0,
             billing_period_id=str(period.id),
             history={},
             metadata={

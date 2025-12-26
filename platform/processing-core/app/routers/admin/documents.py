@@ -12,6 +12,7 @@ from app.models.audit_log import AuditVisibility
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.document_chain import compute_ack_hash
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
@@ -105,6 +106,25 @@ def finalize_document(
         client_id=document.client_id,
         status=document.status.value,
     )
+    decision_context = DecisionContext(
+        tenant_id=document.tenant_id,
+        client_id=document.client_id,
+        actor_type="ADMIN",
+        action=DecisionAction.DOCUMENT_FINALIZE,
+        amount=0,
+        history={},
+        metadata={
+            "document_acknowledged": document.status == DocumentStatus.ACKNOWLEDGED,
+            "actor_roles": actor.roles,
+            "subject_id": str(document.id),
+        },
+    )
+    risk_decision = DecisionEngine(db).evaluate(decision_context)
+    if risk_decision.outcome != DecisionOutcome.ALLOW:
+        raise HTTPException(
+            status_code=403,
+            detail={"reason": "risk_decline", "explain": risk_decision.explain},
+        )
     decision = PolicyEngine().check(actor=actor, action=Action.DOCUMENT_FINALIZE, resource=resource)
     if not decision.allowed:
         if decision.reason == "status_not_acknowledged":

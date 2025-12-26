@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
+import json
 
 from app.services.decision.context import DecisionContext
 
@@ -22,12 +24,15 @@ def build_explain(
     decision_payload: dict | None = None,
     top_reasons: list[dict] | None = None,
 ) -> dict:
-    return {
+    """Build the canonical explain payload for deterministic decision inspection."""
+    normalized_factors = factors or ["no_factors"]
+    explain_payload = {
         "decision": decision,
         "score": risk_score,
         "thresholds": thresholds,
         "policy": policy_label,
-        "factors": factors,
+        "policy_id": policy_label,
+        "factors": normalized_factors,
         "model": {
             "name": model_name,
             "version": model_version,
@@ -46,3 +51,24 @@ def build_explain(
             "evaluated_at": evaluated_at.isoformat(),
         },
     }
+    explain_payload["decision_hash"] = _hash_decision_payload(
+        {
+            "decision": decision,
+            "score": risk_score,
+            "thresholds": thresholds,
+            "policy": policy_label,
+            "factors": normalized_factors,
+            "model": {
+                "name": model_name,
+                "version": model_version,
+            },
+            "policy_details": policy,
+            "decision_details": decision_payload,
+        }
+    )
+    return explain_payload
+
+
+def _hash_decision_payload(payload: dict) -> str:
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()

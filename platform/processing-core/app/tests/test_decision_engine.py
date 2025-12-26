@@ -7,6 +7,8 @@ from app.models.billing_period import BillingPeriod, BillingPeriodStatus, Billin
 from app.models.payout_batch import PayoutBatch, PayoutBatchState
 from app.models.payout_export_file import PayoutExportFormat
 from app.models.risk_types import RiskDecisionType
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.decision.scoring import StubRiskScorer
 from app.services.payout_exports import PayoutExportError, create_payout_export
@@ -22,6 +24,44 @@ def clean_db():
 
 def _fixed_now() -> datetime:
     return datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _seed_global_thresholds():
+    session = get_sessionmaker()()
+    session.add_all(
+        [
+            RiskThresholdSet(
+                id="global-payment",
+                subject_type=RiskSubjectType.PAYMENT,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.PAYMENT,
+                block_threshold=80,
+                review_threshold=60,
+                allow_threshold=10,
+            ),
+            RiskThresholdSet(
+                id="global-payout",
+                subject_type=RiskSubjectType.PAYOUT,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.PAYOUT,
+                block_threshold=80,
+                review_threshold=60,
+                allow_threshold=10,
+            ),
+            RiskThresholdSet(
+                id="global-document",
+                subject_type=RiskSubjectType.DOCUMENT,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.DOCUMENT_FINALIZE,
+                block_threshold=80,
+                review_threshold=60,
+                allow_threshold=10,
+            ),
+        ]
+    )
+    session.commit()
+    session.close()
 
 
 def test_decision_engine_determinism():

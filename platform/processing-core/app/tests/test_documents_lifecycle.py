@@ -9,6 +9,8 @@ from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
+from app.models.risk_threshold_set import RiskThresholdSet
+from app.models.risk_types import RiskSubjectType, RiskThresholdAction, RiskThresholdScope
 from app.services.document_chain import compute_ack_hash
 
 
@@ -114,6 +116,18 @@ def test_document_ack_hash_reproducible(make_jwt):
 def test_document_finalize_blocks_void(make_jwt):
     session = SessionLocal()
     try:
+        session.add(
+            RiskThresholdSet(
+                id="document-global",
+                subject_type=RiskSubjectType.DOCUMENT,
+                scope=RiskThresholdScope.GLOBAL,
+                action=RiskThresholdAction.DOCUMENT_FINALIZE,
+                block_threshold=80,
+                review_threshold=60,
+                allow_threshold=10,
+            )
+        )
+        session.commit()
         document = _seed_document(session, status=DocumentStatus.ISSUED, doc_hash="hash-1")
         token = make_jwt(
             roles=("CLIENT_OWNER",),

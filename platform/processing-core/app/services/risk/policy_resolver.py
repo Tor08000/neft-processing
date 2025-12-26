@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.risk_policy import RiskPolicy
 from app.models.risk_threshold import RiskThreshold
 from app.models.risk_threshold_set import RiskThresholdSet
-from app.models.risk_types import RiskSubjectType
+from app.models.risk_types import RiskSubjectType, RiskThresholdScope
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ def resolve_policy(
     if not policies:
         return None
 
+    # Resolution order is fixed: lower priority wins, then higher specificity.
     return sorted(policies, key=lambda item: (item.priority, -_specificity(item)))[0]
 
 
@@ -58,6 +59,8 @@ def resolve_threshold_set(
     )
     if threshold_set_id is not None:
         query = query.filter(RiskThresholdSet.id == threshold_set_id)
+    else:
+        query = query.filter(RiskThresholdSet.scope == RiskThresholdScope.GLOBAL)
     return query.order_by(RiskThresholdSet.version.desc()).first()
 
 
@@ -69,6 +72,7 @@ def resolve_threshold(
     score: int,
     now: datetime | None = None,
 ) -> RiskThreshold | None:
+    """Resolve a single threshold row for the given score within a threshold set."""
     now = now or datetime.now(timezone.utc)
     return (
         db.query(RiskThreshold)
@@ -98,6 +102,7 @@ def resolve_policy_threshold(
     country: str | None,
     now: datetime | None = None,
 ) -> PolicySelection | None:
+    """Resolve the policy, threshold set, and threshold for a given decision."""
     policy = resolve_policy(
         db,
         subject_type=subject_type,
@@ -112,6 +117,8 @@ def resolve_policy_threshold(
         subject_type=subject_type,
         threshold_set_id=policy.threshold_set_id if policy else None,
     )
+    if threshold_set is None:
+        threshold_set = resolve_threshold_set(db, subject_type=subject_type, threshold_set_id=None)
     if threshold_set is None:
         return None
     threshold = resolve_threshold(
