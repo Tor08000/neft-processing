@@ -20,6 +20,7 @@ This document describes the legally correct lifecycle for client documents in co
 - **No edits after ACK/FINALIZED:** any attempted mutation must return `409` and produce an audit event.
 - **document_acknowledgement is an event:** confirmation does not modify document content.
 - **Signing is not a document mutation:** signatures are stored as separate events/records.
+- **Risk-based decisioning is applied as part of automated compliance control.**
 
 ## Events (audit)
 

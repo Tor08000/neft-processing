@@ -13,15 +13,17 @@ from app.models.audit_log import AuditLog
 from app.models.decision_result import DecisionResult as DecisionResultRecord
 from app.models.risk_decision import RiskDecision
 from app.models.risk_score import RiskLevel
-from app.models.risk_types import RiskDecisionActor, RiskDecisionType, RiskSubjectType
+from app.models.risk_types import RiskDecisionActor, RiskDecisionType, RiskOutcome, RiskSubjectType
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision.context import DecisionContext
 from app.services.decision.explain import build_explain
 from app.services.decision.result import DecisionOutcome, DecisionResult
 from app.services.decision.rules import Rule, apply_scoring_rules, default_rules
 from app.services.decision.scoring import RiskScorer, StubRiskScorer
+from app.services.decision.thresholds import evaluate_thresholds
 from app.services.decision.versions import DECISION_ENGINE_VERSION
 from app.services.risk.policy_resolver import resolve_policy_threshold
+from app.services.risk.training_snapshot import capture_training_snapshot
 
 
 _OUTCOME_SEVERITY = {
@@ -67,10 +69,13 @@ class DecisionEngine:
         reason_codes: list[str] = []
         scoring_rule_ids: list[str] = []
         risk_decision: RiskDecisionType | None = None
+        risk_outcome: RiskOutcome | None = None
         threshold_id: str | None = None
         policy_id: str | None = None
         threshold_set_id: str | None = None
+        threshold_set = None
         hard_decline = False
+        threshold_values: dict[str, int] | None = None
 
         for rule in self.rules:
             if rule.when(ctx):
@@ -131,6 +136,8 @@ class DecisionEngine:
             risk_decision = RiskDecisionType.BLOCK
             risk_level = risk_level or RiskLevel.VERY_HIGH
             threshold_set_id = threshold_set_id or "hard_rules"
+            threshold_values = {"block": 0, "review": 0, "allow": 0}
+            risk_outcome = RiskOutcome.BLOCK
             top_reasons = _top_reasons(reason_codes, matched_rules)
             decision_payload = {
                 "decision": risk_decision.value,
@@ -145,11 +152,19 @@ class DecisionEngine:
             threshold_set = policy_selection.threshold_set
             threshold = policy_selection.threshold
             policy_id = policy.id if policy else None
-            threshold_id = str(threshold.id)
+            threshold_id = str(threshold.id) if threshold is not None else None
             threshold_set_id = threshold_set.id
-            risk_decision = _decision_from_threshold(threshold)
-            risk_level = threshold.risk_level
-            outcome = _max_outcome(outcome, _outcome_from_decision(risk_decision))
+            if threshold is None and threshold_set.block_threshold is not None:
+                evaluation = evaluate_thresholds(int(risk_score), threshold_set)
+                threshold_values = evaluation.thresholds
+                risk_outcome = evaluation.outcome
+                risk_decision = evaluation.decision
+                outcome = _max_outcome(outcome, _outcome_from_risk_outcome(risk_outcome))
+                risk_level = _risk_level_from_score(int(risk_score))
+            elif threshold is not None:
+                risk_decision = _decision_from_threshold(threshold)
+                risk_level = threshold.risk_level
+                outcome = _max_outcome(outcome, _outcome_from_decision(risk_decision))
             policy_payload = {
                 "policy_id": policy_id,
                 "threshold_id": threshold_id,
@@ -169,20 +184,39 @@ class DecisionEngine:
             risk_decision = _decision_from_outcome(outcome)
             threshold_id = "legacy"
             threshold_set_id = "legacy"
+            threshold_values = {"block": self.threshold, "review": self.threshold, "allow": 0}
+            if outcome == DecisionOutcome.ALLOW:
+                risk_outcome = RiskOutcome.ALLOW
+            elif outcome == DecisionOutcome.MANUAL_REVIEW:
+                risk_outcome = RiskOutcome.REVIEW_REQUIRED
+            else:
+                risk_outcome = RiskOutcome.BLOCK
 
         if risk_level is None:
             risk_level = _risk_level_from_score(int(risk_score))
 
+        if risk_outcome is None:
+            risk_outcome = _risk_outcome_from_decision(risk_decision, outcome)
+
+        factors = _explain_factors(reason_codes, matched_rules, rule_explanations)
+        model_name = None
+        if policy_selection and policy_selection.policy:
+            model_name = policy_selection.policy.model_selector
+        model_name = model_name or ctx.metadata.get("model_name")
         explain = build_explain(
             ctx,
             matched_rules=matched_rules,
             rule_explanations=rule_explanations,
-            thresholds={"manual_review": self.threshold},
+            thresholds=threshold_values or {"block": self.threshold, "review": self.threshold, "allow": 0},
             risk_score=risk_score,
+            decision=risk_outcome.value if risk_outcome else None,
             model_version=model_version,
+            model_name=model_name,
+            policy_label=policy_id,
+            factors=factors,
             evaluated_at=evaluated_at,
             policy=policy_payload,
-            decision=decision_payload,
+            decision_payload=decision_payload,
             top_reasons=top_reasons,
         )
         if reason_codes:
@@ -230,13 +264,24 @@ class DecisionEngine:
                     decided_by=_decision_actor(ctx.actor_type),
                     audit_id=audit_record.id,
                 )
-                self.db.add(risk_decision_record)
-                self.db.flush()
-                self._audit_risk_decision(
-                    ctx,
-                    decision_id=decision_id,
-                    risk_decision=risk_decision_record,
-                )
+            self.db.add(risk_decision_record)
+            self.db.flush()
+            self._audit_risk_decision(
+                ctx,
+                decision_id=decision_id,
+                risk_decision=risk_decision_record,
+            )
+            capture_training_snapshot(
+                self.db,
+                ctx,
+                decision_id=decision_id,
+                score=int(risk_score),
+                outcome=risk_outcome or RiskOutcome.ALLOW,
+                model_version=model_version,
+                threshold_set=threshold_set if policy_selection else None,
+                policy=policy_selection.policy if policy_selection else None,
+                evaluated_at=evaluated_at,
+            )
 
         return DecisionResult(
             decision_id=decision_id,
@@ -395,10 +440,43 @@ def _outcome_from_decision(decision: RiskDecisionType) -> DecisionOutcome:
     return DecisionOutcome.ALLOW
 
 
+def _outcome_from_risk_outcome(outcome: RiskOutcome) -> DecisionOutcome:
+    if outcome == RiskOutcome.BLOCK:
+        return DecisionOutcome.DECLINE
+    if outcome == RiskOutcome.REVIEW_REQUIRED:
+        return DecisionOutcome.MANUAL_REVIEW
+    return DecisionOutcome.ALLOW
+
+
+def _risk_outcome_from_decision(
+    decision: RiskDecisionType | None, outcome: DecisionOutcome
+) -> RiskOutcome:
+    if decision == RiskDecisionType.BLOCK:
+        return RiskOutcome.BLOCK
+    if decision in {RiskDecisionType.ALLOW_WITH_REVIEW, RiskDecisionType.ESCALATE}:
+        return RiskOutcome.REVIEW_REQUIRED
+    if outcome == DecisionOutcome.MANUAL_REVIEW:
+        return RiskOutcome.REVIEW_REQUIRED
+    return RiskOutcome.ALLOW
+
+
 def _top_reasons(reason_codes: list[str], matched_rules: list[str]) -> list[dict]:
     if reason_codes:
         return [{"feature": code, "impact": None} for code in reason_codes[:3]]
     return [{"feature": rule_id, "impact": None} for rule_id in matched_rules[:3]]
+
+
+def _explain_factors(
+    reason_codes: list[str],
+    matched_rules: list[str],
+    rule_explanations: dict[str, str],
+) -> list[str]:
+    if reason_codes:
+        return reason_codes[:3]
+    if rule_explanations:
+        ordered = [rule_explanations[rule_id] for rule_id in matched_rules if rule_id in rule_explanations]
+        return ordered[:3] or matched_rules[:3]
+    return matched_rules[:3]
 
 
 def _subject_from_action(action) -> RiskSubjectType | None:

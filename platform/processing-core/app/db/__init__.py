@@ -179,6 +179,7 @@ def init_db() -> None:
     from app.models.risk_policy import RiskPolicy  # noqa: F401
     from app.models.risk_threshold import RiskThreshold  # noqa: F401
     from app.models.risk_threshold_set import RiskThresholdSet  # noqa: F401
+    from app.models.risk_training_snapshot import RiskTrainingSnapshot  # noqa: F401
     from app.models.account import Account, AccountBalance  # noqa: F401
     from app.models.ledger_entry import LedgerEntry  # noqa: F401
     from app.models.posting_batch import PostingBatch  # noqa: F401

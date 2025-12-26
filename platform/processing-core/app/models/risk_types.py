@@ -23,4 +23,32 @@ class RiskDecisionActor(str, Enum):
     ADMIN = "ADMIN"
 
 
-__all__ = ["RiskDecisionActor", "RiskDecisionType", "RiskSubjectType"]
+class RiskOutcome(str, Enum):
+    ALLOW = "ALLOW"
+    ALLOW_WITH_LOG = "ALLOW_WITH_LOG"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    BLOCK = "BLOCK"
+
+
+class RiskThresholdScope(str, Enum):
+    GLOBAL = "GLOBAL"
+    TENANT = "TENANT"
+    CLIENT = "CLIENT"
+
+
+class RiskThresholdAction(str, Enum):
+    PAYMENT = "PAYMENT"
+    INVOICE = "INVOICE"
+    PAYOUT = "PAYOUT"
+    EXPORT = "EXPORT"
+    DOCUMENT_FINALIZE = "DOCUMENT_FINALIZE"
+
+
+__all__ = [
+    "RiskDecisionActor",
+    "RiskDecisionType",
+    "RiskOutcome",
+    "RiskSubjectType",
+    "RiskThresholdAction",
+    "RiskThresholdScope",
+]

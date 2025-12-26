@@ -16,7 +16,7 @@ from app.models.risk_types import RiskSubjectType
 class PolicySelection:
     policy: RiskPolicy | None
     threshold_set: RiskThresholdSet
-    threshold: RiskThreshold
+    threshold: RiskThreshold | None
 
 
 def resolve_policy(
@@ -121,8 +121,6 @@ def resolve_policy_threshold(
         score=score,
         now=now,
     )
-    if threshold is None:
-        return None
     return PolicySelection(policy=policy, threshold_set=threshold_set, threshold=threshold)
 
 
