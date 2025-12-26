@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
+from app.services.internal_ledger import InternalLedgerService
 from app.services.billing_periods import BillingPeriodConflict
 from app.services.invoice_state_machine import InvoiceStateMachine
 
@@ -128,6 +129,7 @@ class BillingRepository:
             actor="billing_repository",
             reason="create_invoice",
         )
+        InternalLedgerService(self.db).post_invoice_issued(invoice=invoice, tenant_id=0)
 
         if auto_commit:
             self.db.commit()
@@ -242,6 +244,8 @@ class BillingRepository:
             actor=actor or "billing_repository",
             reason=reason or "status_update",
         )
+        if status == InvoiceStatus.ISSUED:
+            InternalLedgerService(self.db).post_invoice_issued(invoice=invoice, tenant_id=0)
 
         self.db.add(invoice)
         self.db.commit()

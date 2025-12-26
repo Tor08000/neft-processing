@@ -22,6 +22,7 @@ from app.models.finance import (
     SettlementSourceType,
 )
 from app.models.invoice import Invoice, InvoiceStatus
+from app.services.internal_ledger import InternalLedgerService
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
@@ -261,6 +262,11 @@ class FinanceService:
                         raise PaymentReferenceConflict(external_ref)
                     invoice = self._lock_invoice(invoice_id)
                     self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+                    InternalLedgerService(self.db).post_payment_applied(
+                        invoice=invoice,
+                        payment=existing_by_ref,
+                        tenant_id=self._resolve_tenant_id(request_ctx),
+                    )
                     self._ensure_settlement_allocation(
                         invoice=invoice,
                         source_type=SettlementSourceType.PAYMENT,
@@ -284,6 +290,11 @@ class FinanceService:
         if existing:
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+            InternalLedgerService(self.db).post_payment_applied(
+                invoice=invoice,
+                payment=existing,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
             self._ensure_settlement_allocation(
                 invoice=invoice,
                 source_type=SettlementSourceType.PAYMENT,
@@ -370,6 +381,11 @@ class FinanceService:
                 applied_at=payment.created_at,
                 request_ctx=request_ctx,
             )
+            InternalLedgerService(self.db).post_payment_applied(
+                invoice=invoice,
+                payment=payment,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
 
             self.job_service.succeed(
                 job_run,
@@ -410,6 +426,11 @@ class FinanceService:
         if existing:
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
+            InternalLedgerService(self.db).post_credit_note_applied(
+                invoice=invoice,
+                credit_note=existing,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
             self._ensure_settlement_allocation(
                 invoice=invoice,
                 source_type=SettlementSourceType.CREDIT_NOTE,
@@ -517,6 +538,11 @@ class FinanceService:
                 applied_at=credit_note.created_at,
                 request_ctx=request_ctx,
             )
+            InternalLedgerService(self.db).post_credit_note_applied(
+                invoice=invoice,
+                credit_note=credit_note,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
 
             self.job_service.succeed(
                 job_run,
@@ -558,6 +584,11 @@ class FinanceService:
                     raise RefundReferenceConflict(external_ref)
                 invoice = self._lock_invoice(invoice_id)
                 self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
+                InternalLedgerService(self.db).post_refund_applied(
+                    invoice=invoice,
+                    refund=existing_by_ref,
+                    tenant_id=self._resolve_tenant_id(request_ctx),
+                )
                 self._ensure_settlement_allocation(
                     invoice=invoice,
                     source_type=SettlementSourceType.REFUND,
@@ -643,6 +674,11 @@ class FinanceService:
                     )
                     if existing:
                         invoice = self._lock_invoice(invoice_id)
+                        InternalLedgerService(self.db).post_refund_applied(
+                            invoice=invoice,
+                            refund=existing,
+                            tenant_id=self._resolve_tenant_id(request_ctx),
+                        )
                         self._ensure_settlement_allocation(
                             invoice=invoice,
                             source_type=SettlementSourceType.REFUND,
@@ -666,6 +702,11 @@ class FinanceService:
                 currency=currency,
                 applied_at=refund.created_at,
                 request_ctx=request_ctx,
+            )
+            InternalLedgerService(self.db).post_refund_applied(
+                invoice=invoice,
+                refund=refund,
+                tenant_id=self._resolve_tenant_id(request_ctx),
             )
 
             self.job_service.succeed(
