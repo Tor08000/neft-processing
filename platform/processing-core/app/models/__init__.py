@@ -88,6 +88,9 @@ from .risk_threshold import RiskThreshold  # noqa: F401
 from .risk_threshold_set import RiskThresholdSet  # noqa: F401
 from .risk_policy import RiskPolicy  # noqa: F401
 from .risk_decision import RiskDecision  # noqa: F401
+from .risk_v5_ab_assignment import RiskV5ABAssignment  # noqa: F401
+from .risk_v5_label import RiskV5Label, RiskV5LabelRecord, RiskV5LabelSource  # noqa: F401
+from .risk_v5_shadow_decision import RiskV5ShadowDecision  # noqa: F401
 from .risk_types import RiskDecisionActor, RiskDecisionType, RiskSubjectType  # noqa: F401
 from .risk_threshold import RiskThreshold  # noqa: F401
 from .risk_policy import RiskPolicy  # noqa: F401
@@ -209,6 +212,11 @@ __all__ = [
     "RiskThresholdSet",
     "RiskPolicy",
     "RiskDecision",
+    "RiskV5ABAssignment",
+    "RiskV5Label",
+    "RiskV5LabelRecord",
+    "RiskV5LabelSource",
+    "RiskV5ShadowDecision",
     "RiskDecisionActor",
     "RiskDecisionType",
     "RiskSubjectType",
