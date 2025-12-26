@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
-from app.models.audit_log import AuditVisibility
+from app.models.audit_log import AuditLog, AuditVisibility
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import (
     ClosingPackage,
@@ -22,6 +22,9 @@ from app.models.documents import (
 )
 from app.schemas.closing_documents import (
     ClosingPackageAckResponse,
+    ClientDocumentDetails,
+    ClientDocumentEvent,
+    ClientDocumentFile,
     ClientDocumentListResponse,
     ClientDocumentSummary,
     DocumentAcknowledgementResponse,
@@ -79,6 +82,7 @@ def list_documents(
     date_to: date | None = Query(None),
     document_type: str | None = Query(None, alias="type"),
     status: str | None = Query(None),
+    acknowledged: bool | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> ClientDocumentListResponse:
@@ -101,6 +105,10 @@ def list_documents(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="invalid_document_status") from exc
         query = query.filter(Document.status == parsed_status)
+    if acknowledged is True:
+        query = query.filter(Document.ack_at.isnot(None))
+    if acknowledged is False:
+        query = query.filter(Document.ack_at.is_(None))
 
     total = query.count()
     items = (
@@ -138,6 +146,78 @@ def list_documents(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/documents/{document_id}", response_model=ClientDocumentDetails)
+def get_document_details(
+    document_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    events_limit: int = Query(50, ge=1, le=200),
+) -> ClientDocumentDetails:
+    client_id = _ensure_client_context(token)
+
+    document = db.query(Document).filter(Document.id == document_id).one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="document_not_found")
+    if document.client_id != client_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    files = (
+        db.query(DocumentFile)
+        .filter(DocumentFile.document_id == document.id)
+        .order_by(DocumentFile.created_at.desc())
+        .all()
+    )
+    pdf_file = next((file for file in files if file.file_type == DocumentFileType.PDF), None)
+    document_hash = document.document_hash or (pdf_file.sha256 if pdf_file else None)
+
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_id == str(document.id))
+        .filter(AuditLog.visibility == AuditVisibility.PUBLIC)
+        .order_by(desc(AuditLog.ts), desc(AuditLog.id))
+        .limit(events_limit)
+        .all()
+    )
+
+    return ClientDocumentDetails(
+        id=str(document.id),
+        document_type=document.document_type.value,
+        status=document.status.value,
+        period_from=document.period_from,
+        period_to=document.period_to,
+        version=document.version,
+        number=document.number,
+        created_at=document.created_at,
+        generated_at=document.generated_at,
+        sent_at=document.sent_at,
+        ack_at=document.ack_at,
+        document_hash=document_hash,
+        files=[
+            ClientDocumentFile(
+                file_type=file.file_type.value,
+                sha256=file.sha256,
+                size_bytes=file.size_bytes,
+                content_type=file.content_type,
+                created_at=file.created_at,
+            )
+            for file in files
+        ],
+        events=[
+            ClientDocumentEvent(
+                id=str(log.id),
+                ts=log.ts,
+                event_type=log.event_type or "",
+                action=log.action,
+                actor_type=log.actor_type.value if log.actor_type else None,
+                actor_id=log.actor_id,
+                hash=log.hash,
+                prev_hash=log.prev_hash,
+            )
+            for log in logs
+        ],
     )
 
 

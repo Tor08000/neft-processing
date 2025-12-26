@@ -1,7 +1,7 @@
 import { CORE_API_BASE, request } from "./http";
 import type { AuthSession } from "./types";
 import type { DocumentAcknowledgement } from "../types/invoices";
-import type { ClientDocumentList } from "../types/documents";
+import type { ClientDocumentDetails, ClientDocumentList } from "../types/documents";
 
 const withToken = (user: AuthSession | null): string | undefined => user?.token;
 
@@ -24,6 +24,7 @@ export interface DocumentFilters {
   dateTo?: string;
   documentType?: string;
   status?: string;
+  acknowledged?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -34,6 +35,7 @@ export function buildDocumentQuery(filters: DocumentFilters = {}): string {
   if (filters.dateTo) search.set("date_to", filters.dateTo);
   if (filters.documentType) search.set("type", filters.documentType);
   if (filters.status) search.set("status", filters.status);
+  if (filters.acknowledged !== undefined) search.set("acknowledged", String(filters.acknowledged));
   if (filters.limit) search.set("limit", String(filters.limit));
   if (filters.offset) search.set("offset", String(filters.offset));
   return search.toString();
@@ -43,6 +45,10 @@ export function fetchDocuments(user: AuthSession | null, filters: DocumentFilter
   const query = buildDocumentQuery(filters);
   const path = query ? `/documents?${query}` : "/documents";
   return request<ClientDocumentList>(path, { method: "GET" }, withToken(user));
+}
+
+export function fetchDocumentDetails(documentId: string, user: AuthSession | null): Promise<ClientDocumentDetails> {
+  return request<ClientDocumentDetails>(`/documents/${documentId}`, { method: "GET" }, withToken(user));
 }
 
 const parseFilename = (header: string | null): string | null => {

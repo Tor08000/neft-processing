@@ -1,7 +1,7 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
-import { CopyButton } from "../components/CopyButton";
 import type { ClientDocumentSummary } from "../types/documents";
 import { formatDate } from "../utils/format";
 import { getDocumentStatusLabel, getDocumentStatusTone, getDocumentTypeLabel } from "../utils/documents";
@@ -11,6 +11,7 @@ const DOCUMENT_TYPES = [
   { value: "INVOICE", label: "Счет" },
   { value: "ACT", label: "Акт" },
   { value: "RECONCILIATION_ACT", label: "Акт сверки" },
+  { value: "CLOSING_PACKAGE", label: "Закрывающий пакет" },
 ];
 
 const STATUS_TYPES = [
@@ -21,9 +22,15 @@ const STATUS_TYPES = [
   { value: "VOID", label: "Отозван" },
 ];
 
+const SIGNATURE_TYPES = [
+  { value: "", label: "Все" },
+  { value: "signed", label: "Подписан" },
+  { value: "pending", label: "Ожидает" },
+];
+
 const DEFAULT_LIMIT = 25;
 
-export function ClosingDocumentsPage() {
+export function ClientDocumentsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<ClientDocumentSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -32,6 +39,7 @@ export function ClosingDocumentsPage() {
     dateTo: "",
     documentType: "",
     status: "",
+    signature: "",
     limit: DEFAULT_LIMIT,
   });
   const [offset, setOffset] = useState(0);
@@ -52,6 +60,12 @@ export function ClosingDocumentsPage() {
       dateTo: debouncedFilters.dateTo || undefined,
       documentType: debouncedFilters.documentType || undefined,
       status: debouncedFilters.status || undefined,
+      acknowledged:
+        debouncedFilters.signature === "signed"
+          ? true
+          : debouncedFilters.signature === "pending"
+            ? false
+            : undefined,
       limit: debouncedFilters.limit,
       offset,
     })
@@ -119,8 +133,8 @@ export function ClosingDocumentsPage() {
     <div className="card">
       <div className="card__header">
         <div>
-          <h2>Закрывающие документы</h2>
-          <p className="muted">Пакет документов за период с хешем и версиями.</p>
+          <h2>Документы</h2>
+          <p className="muted">Сформированные документы с юридическими статусами и файлами.</p>
         </div>
       </div>
 
@@ -153,6 +167,16 @@ export function ClosingDocumentsPage() {
           <label htmlFor="status">Статус</label>
           <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
             {STATUS_TYPES.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="signature">Подписание</label>
+          <select id="signature" name="signature" value={filters.signature} onChange={handleFilterChange}>
+            {SIGNATURE_TYPES.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -199,11 +223,11 @@ export function ClosingDocumentsPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Документ</th>
+                <th>Тип</th>
                 <th>Период</th>
-                <th>Версия</th>
+                <th>Номер</th>
                 <th>Статус</th>
-                <th>SHA256</th>
+                <th>Дата</th>
                 <th>Действия</th>
               </tr>
             </thead>
@@ -214,27 +238,31 @@ export function ClosingDocumentsPage() {
                   <td>
                     {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
                   </td>
-                  <td>v{doc.version}</td>
+                  <td>{doc.number ?? "—"}</td>
                   <td>
                     <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
                       {getDocumentStatusLabel(doc.status)}
                     </span>
                   </td>
-                  <td>
-                    <div className="stack-inline">
-                      <span className="muted small">{doc.pdf_hash ? `${doc.pdf_hash.slice(0, 10)}…` : "—"}</span>
-                      <CopyButton value={doc.pdf_hash ?? undefined} label="Скопировать" />
-                    </div>
-                  </td>
+                  <td>{formatDate(doc.created_at)}</td>
                   <td>
                     <div className="actions">
-                      <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "PDF")}>
-                        PDF
-                      </button>
-                      <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "XLSX")}>
-                        XLSX
-                      </button>
-                      {canAcknowledge && doc.status !== "ACKNOWLEDGED" ? (
+                      <Link className="ghost" to={`/client/documents/${doc.id}`}>
+                        Открыть
+                      </Link>
+                      {doc.status !== "DRAFT" ? (
+                        <>
+                          <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "PDF")}>
+                            PDF
+                          </button>
+                          <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "XLSX")}>
+                            XLSX
+                          </button>
+                        </>
+                      ) : (
+                        <span className="muted small">Файлы недоступны</span>
+                      )}
+                      {canAcknowledge && doc.status === "ISSUED" ? (
                         <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
                           Подтвердить
                         </button>

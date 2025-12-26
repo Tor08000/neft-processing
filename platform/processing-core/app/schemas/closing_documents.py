@@ -40,6 +40,42 @@ class ClientDocumentListResponse(BaseModel):
     offset: int
 
 
+class ClientDocumentFile(BaseModel):
+    file_type: str
+    sha256: str
+    size_bytes: int
+    content_type: str
+    created_at: datetime
+
+
+class ClientDocumentEvent(BaseModel):
+    id: str
+    ts: datetime
+    event_type: str
+    action: str | None = None
+    actor_type: str | None = None
+    actor_id: str | None = None
+    hash: str | None = None
+    prev_hash: str | None = None
+
+
+class ClientDocumentDetails(BaseModel):
+    id: str
+    document_type: str
+    status: str
+    period_from: date
+    period_to: date
+    version: int
+    number: str | None = None
+    created_at: datetime
+    generated_at: datetime | None = None
+    sent_at: datetime | None = None
+    ack_at: datetime | None = None
+    document_hash: str | None = None
+    files: list[ClientDocumentFile]
+    events: list[ClientDocumentEvent]
+
+
 class DocumentAcknowledgementResponse(BaseModel):
     acknowledged: bool
     ack_at: datetime | None = None
