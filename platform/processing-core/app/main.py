@@ -39,6 +39,8 @@ from app.services.limits import (
 )
 from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
+from app.services.risk_v5.hook import register_shadow_hook
+from app.services.risk_v5.metrics import metrics as risk_v5_metrics
 
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
@@ -289,6 +291,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ensure_default_refs(db)
     finally:
         db.close()
+    register_shadow_hook()
     logger.info("core-api startup complete")
     yield
 
@@ -612,6 +615,41 @@ def _risk_metrics() -> list[str]:
     ]
 
 
+def _risk_v5_metrics() -> list[str]:
+    lines: list[str] = []
+    disagreement = 0.0
+    if risk_v5_metrics.total:
+        disagreement = risk_v5_metrics.disagreement_total / max(risk_v5_metrics.total, 1)
+    label_rate = 0.0
+    if risk_v5_metrics.label_total:
+        label_rate = risk_v5_metrics.label_available / max(risk_v5_metrics.label_total, 1)
+    lines.extend(
+        [
+            "# HELP core_api_risk_v5_total Total v5 shadow decisions.",
+            "# TYPE core_api_risk_v5_total counter",
+            f"core_api_risk_v5_total {risk_v5_metrics.total}",
+            "# HELP core_api_risk_v5_scored_total Total v5 shadow decisions with scores.",
+            "# TYPE core_api_risk_v5_scored_total counter",
+            f"core_api_risk_v5_scored_total {risk_v5_metrics.scored_total}",
+            "# HELP core_api_risk_v5_disagreement_rate Disagreement rate between v4 and v5.",
+            "# TYPE core_api_risk_v5_disagreement_rate gauge",
+            f"core_api_risk_v5_disagreement_rate {disagreement}",
+            "# HELP core_api_risk_v5_label_rate Share of shadow decisions with labels.",
+            "# TYPE core_api_risk_v5_label_rate gauge",
+            f"core_api_risk_v5_label_rate {label_rate}",
+        ]
+    )
+    for bucket, count in risk_v5_metrics.score_distribution.items():
+        lines.append(f'core_api_risk_v5_score_distribution_total{{bucket="{bucket}"}} {count}')
+    for outcome, count in risk_v5_metrics.predicted_outcomes.items():
+        lines.append(f'core_api_risk_v5_predicted_outcomes_total{{outcome="{outcome}"}} {count}')
+    if not risk_v5_metrics.score_distribution:
+        lines.append('core_api_risk_v5_score_distribution_total{bucket="unset"} 0')
+    if not risk_v5_metrics.predicted_outcomes:
+        lines.append('core_api_risk_v5_predicted_outcomes_total{outcome="unset"} 0')
+    return lines
+
+
 @app.get("/metrics", response_class=PlainTextResponse)
 def metrics() -> str:  # pragma: no cover - response verified via API test
     lines = [
@@ -624,6 +662,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_posting_metrics())
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
+    lines.extend(_risk_v5_metrics())
     lines.extend(_audit_metrics())
     lines.extend(_accounting_export_metrics())
     return "\n".join(lines) + "\n"

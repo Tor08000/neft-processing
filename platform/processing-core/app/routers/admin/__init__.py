@@ -19,6 +19,7 @@ from app.routers.admin import (
     finance,
     reversals,
     risk_rules,
+    risk_v5,
     settlements,
 )
 
@@ -34,6 +35,7 @@ router.include_router(accounting_exports.router)
 router.include_router(billing.router)
 router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
+router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
 router.include_router(settlements.router)
 router.include_router(refunds.router)

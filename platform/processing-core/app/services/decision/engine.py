@@ -7,6 +7,7 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
+
 from app.db.types import new_uuid_str
 from app.models.audit_log import ActorType, AuditVisibility
 from app.models.audit_log import AuditLog
