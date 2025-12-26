@@ -5,7 +5,8 @@
 
 ## Data sources
 - `risk_policy` selects the active `risk_threshold_set`.
-- `risk_threshold` defines the decision boundary for a score.
+- `risk_threshold` defines the decision boundary for a score (legacy).
+- `risk_threshold_set` also stores v4 block/review/allow thresholds by scope and action.
 - The decision_engine persists `risk_decision` rows with score, risk_level, outcome, and reasons.
 
 ## Storage & immutability
@@ -19,6 +20,7 @@
 - `outcome` (`ALLOW/ALLOW_WITH_REVIEW/BLOCK/ESCALATE`)
 - `threshold_set_id` + `policy_id`
 - `reasons` and `features_snapshot` for explainability
+- `risk_training_snapshots` provide immutable training-ready captures of context, thresholds, and outcomes.
 
 ## Audit expectations
 - Event types: `RISK_DECISION_MADE`, `RISK_DECISION_BLOCKED`, `RISK_DECISION_ESCALATED`.
