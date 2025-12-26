@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
+from app.models.audit_log import AuditLog
 from app.models.account import AccountType, AccountOwnerType
 from app.models.ledger_entry import LedgerDirection
 from app.models.posting_batch import PostingBatchType
@@ -48,7 +49,7 @@ def _client_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
         client_id="client-1",
         owner_type=AccountOwnerType.CLIENT,
-        owner_id="client-1",
+        owner_id=str(uuid4()),
         currency=currency,
         account_type=AccountType.CLIENT_MAIN,
     ).id
@@ -58,7 +59,7 @@ def _partner_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
         client_id="partner-1",
         owner_type=AccountOwnerType.PARTNER,
-        owner_id="partner-1",
+        owner_id=str(uuid4()),
         currency=currency,
         account_type=AccountType.TECHNICAL,
     ).id
@@ -107,6 +108,14 @@ def test_double_entry_invariant(posting_engine: PostingEngine, accounts_repo: Ac
             idempotency_key="op:imbalance",
             lines=imbalanced_lines,
         )
+
+    audit = (
+        posting_engine.db.query(AuditLog)
+        .order_by(AuditLog.ts.desc(), AuditLog.id.desc())
+        .first()
+    )
+    assert audit.event_type == "FINANCIAL_INVARIANT_VIOLATION"
+    assert audit.after["invariants"][0]["name"] == "ledger.double_entry"
 
 
 def test_capture_updates_balances(posting_engine: PostingEngine, accounts_repo: AccountsRepository):
@@ -158,3 +167,28 @@ def test_refund_flow(posting_engine: PostingEngine, accounts_repo: AccountsRepos
     balances = posting_engine.balance_service.snapshot_balances([debit, credit])
     assert balances[debit]["current"] == Decimal("-70.00")
     assert balances[credit]["current"] == Decimal("70.00")
+
+
+def test_currency_mismatch_blocks_posting(posting_engine: PostingEngine, accounts_repo: AccountsRepository):
+    debit = _client_account(accounts_repo, currency="RUB")
+    credit = _partner_account(accounts_repo, currency="RUB")
+    lines = [
+        PostingLine(account_id=debit, direction=LedgerDirection.DEBIT, amount=Decimal("10.00"), currency="USD"),
+        PostingLine(account_id=credit, direction=LedgerDirection.CREDIT, amount=Decimal("10.00"), currency="USD"),
+    ]
+
+    with pytest.raises(PostingInvariantError):
+        posting_engine.apply_posting(
+            operation_id=uuid4(),
+            posting_type=PostingBatchType.CAPTURE,
+            idempotency_key="op:fx",
+            lines=lines,
+        )
+
+    audit = (
+        posting_engine.db.query(AuditLog)
+        .order_by(AuditLog.ts.desc(), AuditLog.id.desc())
+        .first()
+    )
+    assert audit.event_type == "FINANCIAL_INVARIANT_VIOLATION"
+    assert audit.after["invariants"][0]["name"] == "ledger.currency_match"

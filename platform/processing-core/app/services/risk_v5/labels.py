@@ -66,7 +66,7 @@ def from_overrides(db: Session, *, decision_id: str) -> LabelCandidate | None:
     audit = (
         db.query(AuditLog)
         .filter(
-            AuditLog.entity_type.in_([\"decision\", \"risk_decision\"]),
+            AuditLog.entity_type.in_(["decision", "risk_decision"]),
             AuditLog.entity_id == decision_id,
         )
         .order_by(AuditLog.ts.desc())

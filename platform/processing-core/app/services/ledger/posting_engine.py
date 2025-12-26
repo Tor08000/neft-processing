@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Iterable, Sequence
+from typing import Sequence
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from app.models.ledger_entry import LedgerDirection, LedgerEntry
 from app.models.posting_batch import PostingBatch, PostingBatchStatus, PostingBatchType
 from app.repositories.ledger_repository import LedgerRepository
 from app.services.ledger.balance_service import BalanceService
+from app.services.finance_invariants import FinancialInvariantChecker, FinancialInvariantViolation
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class PostingResult:
     balances: dict[int, dict[str, Decimal]]
 
 
-class PostingInvariantError(Exception):
+class PostingInvariantError(FinancialInvariantViolation):
     """Raised when posting batch violates invariants."""
 
     code = "POSTING_INVARIANT_VIOLATION"
@@ -74,6 +75,27 @@ class PostingEngine:
             )
 
         posting_id = uuid4()
+        checker = FinancialInvariantChecker(self.db)
+        serialized_lines = [
+            {
+                "account_id": line.account_id,
+                "direction": line.direction,
+                "amount": Decimal(str(line.amount)),
+                "currency": line.currency,
+            }
+            for line in lines
+        ]
+        try:
+            checker.check_ledger_lines(lines=serialized_lines, posting_id=posting_id)
+        except FinancialInvariantViolation as exc:
+            raise PostingInvariantError(
+                entity_type=exc.entity_type,
+                entity_id=exc.entity_id,
+                invariant_name=exc.invariant_name,
+                expected=exc.expected,
+                actual=exc.actual,
+                ledger_transaction_id=exc.ledger_transaction_id,
+            ) from exc
         batch = PostingBatch(
             id=posting_id,
             operation_id=operation_id,
@@ -81,11 +103,6 @@ class PostingEngine:
             status=PostingBatchStatus.APPLIED,
             idempotency_key=idempotency_key,
         )
-
-        totals = self._totals_by_currency(lines)
-        for currency, delta in totals.items():
-            if delta != Decimal("0"):
-                raise PostingInvariantError(f"Double-entry invariant violated for {currency}")
 
         created_entries: list[LedgerEntry] = []
 
@@ -136,12 +153,3 @@ class PostingEngine:
             entries=created_entries,
             balances=balances,
         )
-
-    @staticmethod
-    def _totals_by_currency(lines: Iterable[PostingLine]) -> dict[str, Decimal]:
-        totals: dict[str, Decimal] = {}
-        for line in lines:
-            amount = Decimal(line.amount)
-            delta = amount if line.direction == LedgerDirection.CREDIT else -amount
-            totals[line.currency] = totals.get(line.currency, Decimal("0")) + delta
-        return totals
