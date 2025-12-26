@@ -22,6 +22,7 @@ from app.models.finance import (
     SettlementSourceType,
 )
 from app.models.invoice import Invoice, InvoiceStatus
+from app.services.internal_ledger import InternalLedgerService
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
@@ -286,26 +287,20 @@ class FinanceService:
                         raise PaymentReferenceConflict(external_ref)
                     invoice = self._lock_invoice(invoice_id)
                     self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
-                    try:
-                        self._ensure_settlement_allocation(
-                            invoice=invoice,
-                            source_type=SettlementSourceType.PAYMENT,
-                            source_id=str(existing_by_ref.id),
-                            amount=int(existing_by_ref.amount),
-                            currency=existing_by_ref.currency,
-                            applied_at=existing_by_ref.created_at,
-                            request_ctx=request_ctx,
-                        )
-                    except FinancialInvariantViolation as exc:
-                        self.db.rollback()
-                        billing_metrics.mark_payment_error()
-                        billing_metrics.mark_payment_failed()
-                        self._audit_invariant_violation(
-                            exc,
-                            request_ctx=request_ctx,
-                            extra_payload={"invoice_id": invoice.id},
-                        )
-                        raise
+                    InternalLedgerService(self.db).post_payment_applied(
+                        invoice=invoice,
+                        payment=existing_by_ref,
+                        tenant_id=self._resolve_tenant_id(request_ctx),
+                    )
+                    self._ensure_settlement_allocation(
+                        invoice=invoice,
+                        source_type=SettlementSourceType.PAYMENT,
+                        source_id=str(existing_by_ref.id),
+                        amount=int(existing_by_ref.amount),
+                        currency=existing_by_ref.currency,
+                        applied_at=existing_by_ref.created_at,
+                        request_ctx=request_ctx,
+                    )
                     return PaymentResult(payment=existing_by_ref, invoice=invoice, is_replay=True)
         except InvoiceNotFound:
             billing_metrics.mark_payment_error()
@@ -320,26 +315,20 @@ class FinanceService:
         if existing:
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
-            try:
-                self._ensure_settlement_allocation(
-                    invoice=invoice,
-                    source_type=SettlementSourceType.PAYMENT,
-                    source_id=str(existing.id),
-                    amount=int(existing.amount),
-                    currency=existing.currency,
-                    applied_at=existing.created_at,
-                    request_ctx=request_ctx,
-                )
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                billing_metrics.mark_payment_error()
-                billing_metrics.mark_payment_failed()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
+            InternalLedgerService(self.db).post_payment_applied(
+                invoice=invoice,
+                payment=existing,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.PAYMENT,
+                source_id=str(existing.id),
+                amount=int(existing.amount),
+                currency=existing.currency,
+                applied_at=existing.created_at,
+                request_ctx=request_ctx,
+            )
             return PaymentResult(payment=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -435,26 +424,20 @@ class FinanceService:
                 )
                 raise
 
-            try:
-                self._ensure_settlement_allocation(
-                    invoice=invoice,
-                    source_type=SettlementSourceType.PAYMENT,
-                    source_id=str(payment.id),
-                    amount=amount,
-                    currency=currency,
-                    applied_at=payment.created_at,
-                    request_ctx=request_ctx,
-                )
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                billing_metrics.mark_payment_error()
-                billing_metrics.mark_payment_failed()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.PAYMENT,
+                source_id=str(payment.id),
+                amount=amount,
+                currency=currency,
+                applied_at=payment.created_at,
+                request_ctx=request_ctx,
+            )
+            InternalLedgerService(self.db).post_payment_applied(
+                invoice=invoice,
+                payment=payment,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
 
             self.job_service.succeed(
                 job_run,
@@ -495,24 +478,20 @@ class FinanceService:
         if existing:
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
-            try:
-                self._ensure_settlement_allocation(
-                    invoice=invoice,
-                    source_type=SettlementSourceType.CREDIT_NOTE,
-                    source_id=str(existing.id),
-                    amount=int(existing.amount),
-                    currency=existing.currency,
-                    applied_at=existing.created_at,
-                    request_ctx=request_ctx,
-                )
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
+            InternalLedgerService(self.db).post_credit_note_applied(
+                invoice=invoice,
+                credit_note=existing,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.CREDIT_NOTE,
+                source_id=str(existing.id),
+                amount=int(existing.amount),
+                currency=existing.currency,
+                applied_at=existing.created_at,
+                request_ctx=request_ctx,
+            )
             return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -621,24 +600,20 @@ class FinanceService:
                 )
                 raise
 
-            try:
-                self._ensure_settlement_allocation(
-                    invoice=invoice,
-                    source_type=SettlementSourceType.CREDIT_NOTE,
-                    source_id=str(credit_note.id),
-                    amount=amount,
-                    currency=currency,
-                    applied_at=credit_note.created_at,
-                    request_ctx=request_ctx,
-                )
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.CREDIT_NOTE,
+                source_id=str(credit_note.id),
+                amount=amount,
+                currency=currency,
+                applied_at=credit_note.created_at,
+                request_ctx=request_ctx,
+            )
+            InternalLedgerService(self.db).post_credit_note_applied(
+                invoice=invoice,
+                credit_note=credit_note,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
 
             self.job_service.succeed(
                 job_run,
@@ -680,24 +655,20 @@ class FinanceService:
                     raise RefundReferenceConflict(external_ref)
                 invoice = self._lock_invoice(invoice_id)
                 self._enforce_policy(token=token, action=Action.CREDIT_NOTE_CREATE, invoice=invoice)
-                try:
-                    self._ensure_settlement_allocation(
-                        invoice=invoice,
-                        source_type=SettlementSourceType.REFUND,
-                        source_id=str(existing_by_ref.id),
-                        amount=int(existing_by_ref.amount),
-                        currency=existing_by_ref.currency,
-                        applied_at=existing_by_ref.created_at,
-                        request_ctx=request_ctx,
-                    )
-                except FinancialInvariantViolation as exc:
-                    self.db.rollback()
-                    self._audit_invariant_violation(
-                        exc,
-                        request_ctx=request_ctx,
-                        extra_payload={"invoice_id": invoice.id},
-                    )
-                    raise
+                InternalLedgerService(self.db).post_refund_applied(
+                    invoice=invoice,
+                    refund=existing_by_ref,
+                    tenant_id=self._resolve_tenant_id(request_ctx),
+                )
+                self._ensure_settlement_allocation(
+                    invoice=invoice,
+                    source_type=SettlementSourceType.REFUND,
+                    source_id=str(existing_by_ref.id),
+                    amount=int(existing_by_ref.amount),
+                    currency=existing_by_ref.currency,
+                    applied_at=existing_by_ref.created_at,
+                    request_ctx=request_ctx,
+                )
                 return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
@@ -788,24 +759,20 @@ class FinanceService:
                     )
                     if existing:
                         invoice = self._lock_invoice(invoice_id)
-                        try:
-                            self._ensure_settlement_allocation(
-                                invoice=invoice,
-                                source_type=SettlementSourceType.REFUND,
-                                source_id=str(existing.id),
-                                amount=int(existing.amount),
-                                currency=existing.currency,
-                                applied_at=existing.created_at,
-                                request_ctx=request_ctx,
-                            )
-                        except FinancialInvariantViolation as exc:
-                            self.db.rollback()
-                            self._audit_invariant_violation(
-                                exc,
-                                request_ctx=request_ctx,
-                                extra_payload={"invoice_id": invoice.id},
-                            )
-                            raise
+                        InternalLedgerService(self.db).post_refund_applied(
+                            invoice=invoice,
+                            refund=existing,
+                            tenant_id=self._resolve_tenant_id(request_ctx),
+                        )
+                        self._ensure_settlement_allocation(
+                            invoice=invoice,
+                            source_type=SettlementSourceType.REFUND,
+                            source_id=str(existing.id),
+                            amount=int(existing.amount),
+                            currency=existing.currency,
+                            applied_at=existing.created_at,
+                            request_ctx=request_ctx,
+                        )
                         return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
                 raise
             except (InvalidTransitionError, InvoiceInvariantError):
@@ -820,24 +787,20 @@ class FinanceService:
                 )
                 raise
 
-            try:
-                self._ensure_settlement_allocation(
-                    invoice=invoice,
-                    source_type=SettlementSourceType.REFUND,
-                    source_id=str(refund.id),
-                    amount=amount,
-                    currency=currency,
-                    applied_at=refund.created_at,
-                    request_ctx=request_ctx,
-                )
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
+            self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=SettlementSourceType.REFUND,
+                source_id=str(refund.id),
+                amount=amount,
+                currency=currency,
+                applied_at=refund.created_at,
+                request_ctx=request_ctx,
+            )
+            InternalLedgerService(self.db).post_refund_applied(
+                invoice=invoice,
+                refund=refund,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+            )
 
             self.job_service.succeed(
                 job_run,
