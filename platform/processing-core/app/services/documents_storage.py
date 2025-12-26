@@ -36,10 +36,39 @@ class DocumentsStorage:
         document_type: DocumentType,
         file_type: DocumentFileType,
     ) -> str:
-        ext = "pdf" if file_type == DocumentFileType.PDF else "xlsx"
+        ext = {
+            DocumentFileType.PDF: "pdf",
+            DocumentFileType.XLSX: "xlsx",
+            DocumentFileType.SIG: "sig",
+            DocumentFileType.P7S: "p7s",
+            DocumentFileType.CERT: "cer",
+            DocumentFileType.EDI_XML: "xml",
+        }.get(file_type, "bin")
         return (
             f"documents/{client_id}/{period_from:%Y-%m-%d}_{period_to:%Y-%m-%d}/"
             f"v{version}/{document_type.value}.{ext}"
+        )
+
+    @staticmethod
+    def build_signature_object_key(
+        *,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        version: int,
+        document_type: DocumentType,
+        provider: str,
+        file_type: DocumentFileType,
+    ) -> str:
+        ext = {
+            DocumentFileType.SIG: "sig",
+            DocumentFileType.P7S: "p7s",
+            DocumentFileType.CERT: "cer",
+            DocumentFileType.EDI_XML: "xml",
+        }.get(file_type, "bin")
+        return (
+            f"documents/{client_id}/{period_from:%Y-%m-%d}_{period_to:%Y-%m-%d}/"
+            f"v{version}/{document_type.value}/signatures/{provider}.{ext}"
         )
 
     def store_bytes(
@@ -65,4 +94,3 @@ class DocumentsStorage:
 
     def exists(self, object_key: str) -> bool:
         return self.storage.exists(object_key)
-

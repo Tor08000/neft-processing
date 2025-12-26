@@ -127,6 +127,48 @@ def test_document_finalize_requires_admin_finance():
     assert decision.allowed
 
 
+def test_document_send_for_signing_requires_admin_finance():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="ADMIN",
+        tenant_id=1,
+        client_id=None,
+        roles={"ADMIN_FINANCE"},
+        user_id="user-1",
+    )
+    resource = ResourceContext(
+        resource_type="DOCUMENT",
+        tenant_id=1,
+        client_id="client-1",
+        status="ISSUED",
+    )
+
+    decision = engine.check(actor=actor, action=Action.DOCUMENT_SEND_FOR_SIGNING, resource=resource)
+
+    assert decision.allowed
+
+
+def test_document_finalize_with_signature_requires_admin_finance():
+    engine = PolicyEngine()
+    actor = ActorContext(
+        actor_type="ADMIN",
+        tenant_id=1,
+        client_id=None,
+        roles={"ADMIN_FINANCE"},
+        user_id="user-1",
+    )
+    resource = ResourceContext(
+        resource_type="DOCUMENT",
+        tenant_id=1,
+        client_id="client-1",
+        status="ACKNOWLEDGED",
+    )
+
+    decision = engine.check(actor=actor, action=Action.DOCUMENT_FINALIZE_WITH_SIGNATURE, resource=resource)
+
+    assert decision.allowed
+
+
 def test_closing_package_finalize_denied_without_ack():
     engine = PolicyEngine()
     actor = ActorContext(

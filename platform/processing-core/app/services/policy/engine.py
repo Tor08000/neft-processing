@@ -53,6 +53,12 @@ class PolicyEngine:
             return self._document_acknowledge(actor, resource)
         if action == Action.DOCUMENT_FINALIZE:
             return self._document_finalize(actor, resource)
+        if action == Action.DOCUMENT_SEND_FOR_SIGNING:
+            return self._document_send_for_signing(actor, resource)
+        if action == Action.DOCUMENT_FINALIZE_WITH_SIGNATURE:
+            return self._document_finalize_with_signature(actor, resource)
+        if action == Action.DOCUMENT_VOID_AFTER_SIGNING:
+            return self._document_void_after_signing(actor, resource)
         if action == Action.CLOSING_PACKAGE_ACK:
             return self._closing_package_ack(actor, resource)
         if action == Action.CLOSING_PACKAGE_FINALIZE:
@@ -171,6 +177,33 @@ class PolicyEngine:
         if resource.status != "ACKNOWLEDGED":
             return PolicyDecision(False, policy="document_finalize_status", reason="status_not_acknowledged")
         return PolicyDecision(True, policy="document_finalize_allowed")
+
+    def _document_send_for_signing(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="document_send_for_signing_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="document_send_for_signing_role", reason="missing_role")
+        if resource.status != "ISSUED":
+            return PolicyDecision(False, policy="document_send_for_signing_status", reason="status_not_issued")
+        return PolicyDecision(True, policy="document_send_for_signing_allowed")
+
+    def _document_finalize_with_signature(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="document_finalize_with_signature_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="document_finalize_with_signature_role", reason="missing_role")
+        if resource.status != "ACKNOWLEDGED":
+            return PolicyDecision(False, policy="document_finalize_with_signature_status", reason="status_not_acknowledged")
+        return PolicyDecision(True, policy="document_finalize_with_signature_allowed")
+
+    def _document_void_after_signing(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="document_void_after_signing_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="document_void_after_signing_role", reason="missing_role")
+        if resource.status not in {"ISSUED", "ACKNOWLEDGED"}:
+            return PolicyDecision(False, policy="document_void_after_signing_status", reason="status_invalid")
+        return PolicyDecision(True, policy="document_void_after_signing_allowed")
 
     def _closing_package_ack(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
         if actor.actor_type == "SYSTEM":
