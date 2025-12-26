@@ -18,7 +18,7 @@ This document describes the legally correct lifecycle for client documents in co
 
 - **Single source of truth:** core-api owns the canonical document state.
 - **No edits after ACK/FINALIZED:** any attempted mutation must return `409` and produce an audit event.
-- **Acknowledgement is an event:** confirmation does not modify document content.
+- **document_acknowledgement is an event:** confirmation does not modify document content.
 - **Signing is not a document mutation:** signatures are stored as separate events/records.
 
 ## Events (audit)
@@ -29,6 +29,6 @@ Required public audit events:
 - `DOCUMENT_ACKNOWLEDGED`
 - `DOCUMENT_FINALIZED`
 - `DOCUMENT_VOIDED`
-- `CLOSING_PACKAGE_FINALIZED`
+- `CLOSING_PACKAGE_FINALIZED` (closing_package lifecycle)
 
 Each event must record: actor, timestamp, reason (if present), and hash snapshot.

@@ -3,7 +3,7 @@
 ## Routes
 
 - `/admin/documents`
-- `/admin/closing-packages`
+- `/admin/closing-packages` (closing_package)
 
 ## Documents
 
@@ -15,16 +15,16 @@ Capabilities:
 - resend
 - void with reason
 
-## Closing packages
+## closing_package
 
-A closing package is a bundle of:
+A closing_package is a bundle of:
 
 - invoice
 - act
-- reconciliation act
+- reconciliation_act
 
 UI should show:
 
 - package status
-- acknowledgements (who/when)
+- document_acknowledgements (who/when)
 - readiness to finalize

@@ -2,15 +2,15 @@ const TYPE_LABELS: Record<string, string> = {
   INVOICE: "Счет",
   ACT: "Акт",
   RECONCILIATION_ACT: "Акт сверки",
-  CLOSING_PACKAGE: "Пакет закрытия",
+  CLOSING_PACKAGE: "Закрывающий пакет (closing_package)",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Черновик",
-  ISSUED: "Опубликован",
-  ACKNOWLEDGED: "Подтвержден",
-  FINALIZED: "Зафиксирован",
-  VOID: "Отозван",
+  DRAFT: "DRAFT",
+  ISSUED: "ISSUED",
+  ACKNOWLEDGED: "ACKNOWLEDGED",
+  FINALIZED: "FINALIZED",
+  VOID: "VOID",
 };
 
 const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {

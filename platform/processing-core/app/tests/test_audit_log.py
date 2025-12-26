@@ -144,7 +144,10 @@ def test_audit_immutable_enforcement():
 
     if engine.dialect.name == "postgresql":
         with pytest.raises(Exception):
-            session.execute(text("UPDATE audit_log SET event_type = 'HACK' WHERE id = :id"), {"id": record.id})
+            session.execute(
+                text("UPDATE audit_log SET event_type = 'IMMUTABLE_TEST' WHERE id = :id"),
+                {"id": record.id},
+            )
         with pytest.raises(Exception):
             session.execute(text("DELETE FROM audit_log WHERE id = :id"), {"id": record.id})
     session.close()

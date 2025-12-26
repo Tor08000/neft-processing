@@ -20,7 +20,7 @@ When a document is acknowledged, the system derives an acknowledgement hash:
 ack_hash = sha256(document_hash + ack_timestamp + ack_actor)
 ```
 
-This hash is persisted in the audit log to prove acknowledgement without mutating document content.
+This hash is persisted in the audit log to prove document_acknowledgement without mutating document content.
 
 ## Immutability enforcement
 

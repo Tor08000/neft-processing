@@ -1,7 +1,7 @@
 # Risk Explainability (Compliance)
 
 ## Purpose
-Risk decisions are immutable records that explain why a financial or document action was allowed, escalated, or blocked. They are stored for audit trail, legal review, and compliance reporting.
+risk_decision records are immutable artifacts that explain why a financial or document action was allowed, escalated, or blocked. They are stored for audit trail, legal review, and compliance reporting.
 
 ## Required structure for BLOCK / ESCALATE
 ```json
@@ -23,6 +23,7 @@ Risk decisions are immutable records that explain why a financial or document ac
 - Table: `risk_decisions`
 - Immutable: updates/deletes are blocked at the ORM layer.
 - Linked to audit log via `audit_id`.
+- Threshold provenance stored as `risk_policy` and `risk_threshold_set` identifiers in the decision payload.
 
 ## Explainability
 `top_reasons` are captured from the scoring/rules output and stored in `risk_decisions.reasons`. The full input snapshot is persisted as `features_snapshot` for audit reconstruction.
