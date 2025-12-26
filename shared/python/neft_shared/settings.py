@@ -88,6 +88,11 @@ class Settings:
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", _DEFAULT_MINIO_PASSWORD)
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    LEGAL_GOST_VERIFY_ENABLED: bool = os.getenv("LEGAL_GOST_VERIFY_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     @property
     def redis_dsn(self) -> str:

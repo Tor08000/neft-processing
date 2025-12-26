@@ -110,6 +110,14 @@ from .documents import (  # noqa: F401
     DocumentStatus,
     DocumentType,
 )
+from .legal_integrations import (  # noqa: F401
+    Certificate,
+    DocumentEnvelope,
+    DocumentEnvelopeStatus,
+    DocumentSignature,
+    LegalProviderConfig,
+    SignatureType,
+)
 from .immutability import ImmutableRecordError  # noqa: F401
 
 __all__ = [

@@ -21,6 +21,7 @@ from app.routers.admin import (
     risk_rules,
     risk_v5,
     settlements,
+    legal_integrations,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -44,5 +45,6 @@ router.include_router(disputes.router)
 router.include_router(finance.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
+router.include_router(legal_integrations.router)
 
 __all__ = ["router"]

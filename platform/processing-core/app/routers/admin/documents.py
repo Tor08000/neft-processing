@@ -11,9 +11,12 @@ from app.db import get_db
 from app.models.audit_log import AuditVisibility
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus
+from app.models.legal_integrations import DocumentSignature
+from app.services.legal_integrations.service import LegalIntegrationsService
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.document_chain import compute_ack_hash
+from app.services.legal_integrations.errors import ProviderNotConfigured
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
 
@@ -69,7 +72,14 @@ def download_document_admin(
     if not payload:
         raise HTTPException(status_code=404, detail="document_file_not_found")
 
-    extension = "pdf" if file_type == DocumentFileType.PDF else "xlsx"
+    extension = {
+        DocumentFileType.PDF: "pdf",
+        DocumentFileType.XLSX: "xlsx",
+        DocumentFileType.SIG: "sig",
+        DocumentFileType.P7S: "p7s",
+        DocumentFileType.CERT: "cer",
+        DocumentFileType.EDI_XML: "xml",
+    }.get(file_type, "bin")
     filename = f"{document.document_type.value}_v{document.version}.{extension}"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
 
@@ -106,11 +116,18 @@ def finalize_document(
         client_id=document.client_id,
         status=document.status.value,
     )
+    legal_service = LegalIntegrationsService(db)
+    legal_config = legal_service.resolve_config(tenant_id=document.tenant_id, client_id=document.client_id)
+    decision_action = (
+        DecisionAction.DOCUMENT_FINALIZE_WITH_SIGNATURE
+        if legal_config.require_signature_for_finalize
+        else DecisionAction.DOCUMENT_FINALIZE
+    )
     decision_context = DecisionContext(
         tenant_id=document.tenant_id,
         client_id=document.client_id,
         actor_type="ADMIN",
-        action=DecisionAction.DOCUMENT_FINALIZE,
+        action=decision_action,
         amount=0,
         history={},
         metadata={
@@ -125,7 +142,12 @@ def finalize_document(
             status_code=403,
             detail={"reason": "risk_decline", "explain": risk_decision.explain},
         )
-    decision = PolicyEngine().check(actor=actor, action=Action.DOCUMENT_FINALIZE, resource=resource)
+    policy_action = (
+        Action.DOCUMENT_FINALIZE_WITH_SIGNATURE
+        if legal_config.require_signature_for_finalize
+        else Action.DOCUMENT_FINALIZE
+    )
+    decision = PolicyEngine().check(actor=actor, action=policy_action, resource=resource)
     if not decision.allowed:
         if decision.reason == "status_not_acknowledged":
             _audit_immutability_violation(
@@ -155,6 +177,23 @@ def finalize_document(
             token=token,
         )
         raise HTTPException(status_code=409, detail="document_not_acknowledged")
+
+    if legal_config.require_signature_for_finalize:
+        signature = (
+            db.query(DocumentSignature)
+            .filter(DocumentSignature.document_id == document.id)
+            .filter(DocumentSignature.verified.is_(True))
+            .one_or_none()
+        )
+        if signature is None:
+            _audit_immutability_violation(
+                db=db,
+                document=document,
+                reason="signature_missing",
+                request=request,
+                token=token,
+            )
+            raise HTTPException(status_code=409, detail="signature_missing")
 
     pdf_file = (
         db.query(DocumentFile)
@@ -254,6 +293,32 @@ def void_document(
     if document is None:
         raise HTTPException(status_code=404, detail="document_not_found")
 
+    signature_exists = (
+        db.query(DocumentSignature)
+        .filter(DocumentSignature.document_id == document.id)
+        .first()
+        is not None
+    )
+    if signature_exists:
+        actor = actor_from_token(token)
+        resource = ResourceContext(
+            resource_type="DOCUMENT",
+            tenant_id=document.tenant_id,
+            client_id=document.client_id,
+            status=document.status.value,
+        )
+        decision = PolicyEngine().check(actor=actor, action=Action.DOCUMENT_VOID_AFTER_SIGNING, resource=resource)
+        if not decision.allowed:
+            audit_access_denied(
+                db,
+                actor=actor,
+                action=Action.DOCUMENT_VOID_AFTER_SIGNING,
+                resource=resource,
+                decision=decision,
+                token=token,
+            )
+            raise HTTPException(status_code=403, detail=decision.reason or "forbidden")
+
     if document.status == DocumentStatus.VOID:
         return {"status": document.status.value}
     if document.status == DocumentStatus.FINALIZED:
@@ -299,3 +364,64 @@ def void_document(
     )
 
     return {"status": document.status.value}
+@router.post("/{document_id}/send-signing")
+def send_document_for_signing(
+    document_id: str,
+    request: Request,
+    provider: str | None = None,
+    override_risk: bool = False,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> dict:
+    service = LegalIntegrationsService(db)
+    try:
+        envelope = service.send_document_for_signing(
+            document_id=document_id,
+            provider_override=provider,
+            token=token,
+            request=request,
+            override_risk=override_risk,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "document_not_found":
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=409, detail=detail)
+    except ProviderNotConfigured:
+        raise HTTPException(status_code=409, detail="provider_not_configured")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    return {"envelope_id": envelope.envelope_id, "provider": envelope.provider, "status": envelope.status.value}
+
+
+@router.post("/{document_id}/send-edo")
+def send_document_for_edo(
+    document_id: str,
+    request: Request,
+    provider: str | None = None,
+    override_risk: bool = False,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> dict:
+    service = LegalIntegrationsService(db)
+    try:
+        envelope = service.send_document_for_signing(
+            document_id=document_id,
+            provider_override=provider,
+            token=token,
+            request=request,
+            override_risk=override_risk,
+            use_edo=True,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "document_not_found":
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=409, detail=detail)
+    except ProviderNotConfigured:
+        raise HTTPException(status_code=409, detail="provider_not_configured")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    return {"envelope_id": envelope.envelope_id, "provider": envelope.provider, "status": envelope.status.value}

@@ -43,6 +43,10 @@ class DocumentStatus(str, Enum):
 class DocumentFileType(str, Enum):
     PDF = "PDF"
     XLSX = "XLSX"
+    SIG = "SIG"
+    P7S = "P7S"
+    CERT = "CERT"
+    EDI_XML = "EDI_XML"
 
 
 class ClosingPackageStatus(str, Enum):
