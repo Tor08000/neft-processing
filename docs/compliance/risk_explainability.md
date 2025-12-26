@@ -7,21 +7,27 @@ risk_decision records are immutable artifacts that explain why a financial or do
 ```json
 {
   "decision": "BLOCK",
-  "score": 92,
+  "score": 87,
   "thresholds": {
-    "block": 80,
-    "review": 60
+    "allow": 40,
+    "review": 60,
+    "block": 80
   },
-  "policy": "HIGH_RISK_PAYOUT",
+  "policy": {
+    "id": "HIGH_RISK_PAYOUT",
+    "scope": "CLIENT"
+  },
   "factors": [
-    "client_age < 30 days",
+    "client_age < 30d",
     "amount > P95",
-    "velocity spike"
+    "velocity_spike"
   ],
   "model": {
     "name": "risk_v4",
     "version": "2025.01"
-  }
+  },
+  "snapshot_id": "snap-uuid",
+  "decision_hash": "abc123..."
 }
 ```
 

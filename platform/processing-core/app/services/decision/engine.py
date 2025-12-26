@@ -34,6 +34,8 @@ _OUTCOME_SEVERITY = {
 
 
 class DecisionEngine:
+    """Deterministic risk decision engine for v4 policies, thresholds, and audits."""
+
     def __init__(
         self,
         db: Session | None = None,
@@ -62,6 +64,15 @@ class DecisionEngine:
         _ensure_json_serializable(payload)
         context_hash = _hash_payload(payload)
 
+        subject_type = _subject_from_action(ctx.action)
+        missing_reasons: list[str] = []
+        if ctx.amount is None:
+            missing_reasons.append("missing_amount")
+        if ctx.client_id is None:
+            missing_reasons.append("missing_client_id")
+        if subject_type is None:
+            missing_reasons.append("unknown_action")
+
         matched_rules: list[str] = []
         rule_explanations: dict[str, str] = {}
         rule_outcome: DecisionOutcome | None = None
@@ -77,35 +88,47 @@ class DecisionEngine:
         hard_decline = False
         threshold_values: dict[str, int] | None = None
 
-        for rule in self.rules:
-            if rule.when(ctx):
-                matched_rules.append(rule.id)
-                rule_explanations[rule.id] = rule.explain
-                rule_outcome = _max_outcome(rule_outcome, rule.outcome)
-
         risk_score = None
         model_version = None
         outcome: DecisionOutcome
+        context_blocked = bool(missing_reasons)
 
-        if rule_outcome in {DecisionOutcome.DECLINE, DecisionOutcome.MANUAL_REVIEW}:
-            outcome = rule_outcome
-            hard_decline = rule_outcome == DecisionOutcome.DECLINE
+        if context_blocked:
+            outcome = DecisionOutcome.DECLINE
+            risk_score = 100
+            risk_level = RiskLevel.VERY_HIGH
+            risk_decision = RiskDecisionType.BLOCK
+            risk_outcome = RiskOutcome.BLOCK
+            threshold_set_id = "context_validation"
+            threshold_values = {"block": 0, "review": 0, "allow": 0}
+            reason_codes = list(missing_reasons)
+            top_reasons = [{"feature": reason, "impact": None} for reason in missing_reasons]
         else:
-            if ctx.scoring_rules:
-                risk_level, reason_codes, scoring_rule_ids = apply_scoring_rules(ctx, ctx.scoring_rules)
-                matched_rules.extend(scoring_rule_ids)
-                for idx, code in enumerate(reason_codes):
-                    rule_explanations[scoring_rule_ids[idx]] = code
-                if risk_level in {RiskLevel.HIGH, RiskLevel.VERY_HIGH}:
-                    outcome = DecisionOutcome.DECLINE
-                    hard_decline = True
-                else:
-                    outcome = DecisionOutcome.ALLOW
+            for rule in self.rules:
+                if rule.when(ctx):
+                    matched_rules.append(rule.id)
+                    rule_explanations[rule.id] = rule.explain
+                    rule_outcome = _max_outcome(rule_outcome, rule.outcome)
+
+            if rule_outcome in {DecisionOutcome.DECLINE, DecisionOutcome.MANUAL_REVIEW}:
+                outcome = rule_outcome
+                hard_decline = rule_outcome == DecisionOutcome.DECLINE
             else:
-                score = self.scorer.score(ctx)
-                risk_score = score.score
-                model_version = score.model_version
-                outcome = DecisionOutcome.MANUAL_REVIEW if risk_score > self.threshold else DecisionOutcome.ALLOW
+                if ctx.scoring_rules:
+                    risk_level, reason_codes, scoring_rule_ids = apply_scoring_rules(ctx, ctx.scoring_rules)
+                    matched_rules.extend(scoring_rule_ids)
+                    for idx, code in enumerate(reason_codes):
+                        rule_explanations[scoring_rule_ids[idx]] = code
+                    if risk_level in {RiskLevel.HIGH, RiskLevel.VERY_HIGH}:
+                        outcome = DecisionOutcome.DECLINE
+                        hard_decline = True
+                    else:
+                        outcome = DecisionOutcome.ALLOW
+                else:
+                    score = self.scorer.score(ctx)
+                    risk_score = score.score
+                    model_version = score.model_version
+                    outcome = DecisionOutcome.MANUAL_REVIEW if risk_score > self.threshold else DecisionOutcome.ALLOW
 
         if risk_level:
             risk_score = _score_from_risk_level(risk_level)
@@ -118,21 +141,28 @@ class DecisionEngine:
         decision_payload: dict | None = None
         top_reasons: list[dict] | None = None
         policy_selection = None
-        if self.db is not None and not hard_decline:
-            subject_type = _subject_from_action(ctx.action)
-            if subject_type is not None:
-                policy_selection = resolve_policy_threshold(
-                    self.db,
-                    subject_type=subject_type,
-                    score=int(risk_score),
-                    tenant_id=ctx.tenant_id,
-                    client_id=ctx.client_id,
-                    provider=ctx.metadata.get("provider"),
-                    currency=ctx.currency or ctx.metadata.get("currency"),
-                    country=ctx.metadata.get("country"),
-                    now=evaluated_at,
-                )
-        if hard_decline:
+        if self.db is not None and not hard_decline and not context_blocked and subject_type is not None:
+            policy_selection = resolve_policy_threshold(
+                self.db,
+                subject_type=subject_type,
+                score=int(risk_score),
+                tenant_id=ctx.tenant_id,
+                client_id=ctx.client_id,
+                provider=ctx.metadata.get("provider"),
+                currency=ctx.currency or ctx.metadata.get("currency"),
+                country=ctx.metadata.get("country"),
+                now=evaluated_at,
+            )
+        if context_blocked:
+            decision_payload = {
+                "decision": risk_decision.value,
+                "risk_level": risk_level.value if risk_level else None,
+                "score": int(risk_score),
+                "policy": policy_id,
+                "model": model_version,
+                "top_reasons": top_reasons,
+            }
+        elif hard_decline:
             risk_decision = RiskDecisionType.BLOCK
             risk_level = risk_level or RiskLevel.VERY_HIGH
             threshold_set_id = threshold_set_id or "hard_rules"
@@ -146,6 +176,23 @@ class DecisionEngine:
                 "policy": policy_id,
                 "model": model_version,
                 "top_reasons": top_reasons,
+            }
+        elif policy_selection is None and subject_type is not None:
+            risk_decision = RiskDecisionType.BLOCK
+            risk_level = risk_level or RiskLevel.VERY_HIGH
+            threshold_set_id = "missing_thresholds"
+            threshold_values = {"block": 0, "review": 0, "allow": 0}
+            risk_outcome = RiskOutcome.BLOCK
+            reason_codes = ["missing_threshold_set"]
+            top_reasons = [{"feature": "missing_threshold_set", "impact": None}]
+            decision_payload = {
+                "decision": risk_decision.value,
+                "risk_level": risk_level.value if risk_level else None,
+                "score": int(risk_score),
+                "policy": policy_id,
+                "model": model_version,
+                "top_reasons": top_reasons,
+                "reason": "missing_threshold_set",
             }
         elif policy_selection is not None:
             policy = policy_selection.policy

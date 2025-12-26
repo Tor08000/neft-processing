@@ -37,3 +37,6 @@ Risk evaluation is enforced on:
 - ACCOUNTING EXPORT confirm
 
 BLOCK outcomes prevent final actions; REVIEW outcomes require manual handling.
+
+## Reference status
+Risk Engine v4 is a frozen reference implementation. Any changes require a new major version.

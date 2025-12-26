@@ -173,9 +173,10 @@ def create_payout_export(
     )
     decision_context = DecisionContext(
         tenant_id=actor.tenant_id or int(batch.tenant_id),
-        client_id=None,
+        client_id=actor.client_id or actor.user_id or f"tenant-{actor.tenant_id}",
         actor_type="ADMIN",
         action=DecisionAction.PAYOUT_EXPORT,
+        amount=int(batch.total_amount or 0),
         billing_period_id=billing_period_id,
         history={},
         metadata={
