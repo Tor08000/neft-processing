@@ -13,6 +13,7 @@ from app.routers.admin import (
     documents,
     integration_monitoring,
     limits,
+    ledger,
     merchants,
     operations,
     refunds,
@@ -43,6 +44,7 @@ router.include_router(refunds.router)
 router.include_router(reversals.router)
 router.include_router(disputes.router)
 router.include_router(finance.router)
+router.include_router(ledger.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(legal_integrations.router)
