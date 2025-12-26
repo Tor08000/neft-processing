@@ -49,7 +49,7 @@ def _client_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
         client_id="client-1",
         owner_type=AccountOwnerType.CLIENT,
-        owner_id="client-1",
+        owner_id=str(uuid4()),
         currency=currency,
         account_type=AccountType.CLIENT_MAIN,
     ).id
@@ -59,7 +59,7 @@ def _partner_account(repo: AccountsRepository, currency: str = "RUB") -> int:
     return repo.get_or_create_account(
         client_id="partner-1",
         owner_type=AccountOwnerType.PARTNER,
-        owner_id="partner-1",
+        owner_id=str(uuid4()),
         currency=currency,
         account_type=AccountType.TECHNICAL,
     ).id

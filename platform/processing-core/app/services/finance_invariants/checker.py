@@ -23,55 +23,77 @@ class FinancialInvariantChecker:
         self.db = db
         self.audit_service = AuditService(db)
 
-    def _audit_and_raise(
+    def _build_error(
         self,
         *,
         entity_type: str,
         entity_id: str,
         violations: list[rules.InvariantViolation],
-        request_ctx: RequestContext | None = None,
         ledger_transaction_id: str | None = None,
-        extra_payload: dict | None = None,
-    ) -> None:
-        payload = {
-            "entity": entity_type,
-            "invariants": [asdict(violation) for violation in violations],
-            "ledger_transaction_id": ledger_transaction_id,
-        }
-        if extra_payload:
-            payload.update(extra_payload)
-
-        self.audit_service.audit(
-            event_type="FINANCIAL_INVARIANT_VIOLATION",
-            entity_type=entity_type,
-            entity_id=str(entity_id),
-            action="VALIDATE",
-            visibility=AuditVisibility.INTERNAL,
-            after=payload,
-            request_ctx=request_ctx,
-            reason=violations[0].name if violations else None,
-        )
-
+    ) -> FinancialInvariantViolation:
         primary = violations[0]
-        raise FinancialInvariantViolation(
+        return FinancialInvariantViolation(
             entity_type=entity_type,
             entity_id=str(entity_id),
             invariant_name=primary.name,
             expected=primary.expected,
             actual=primary.actual,
             ledger_transaction_id=ledger_transaction_id,
+            violations=violations,
         )
 
-    def check_invoice(self, invoice: Invoice, *, request_ctx: RequestContext | None = None) -> None:
+    def audit_violation(
+        self,
+        violation: FinancialInvariantViolation,
+        *,
+        request_ctx: RequestContext | None = None,
+        extra_payload: dict | None = None,
+    ) -> None:
+        payload = {
+            "entity": violation.entity_type,
+            "invariants": [
+                asdict(item) if not isinstance(item, dict) else item
+                for item in (violation.violations or [])
+            ]
+            or [
+                {
+                    "name": violation.invariant_name,
+                    "expected": violation.expected,
+                    "actual": violation.actual,
+                }
+            ],
+            "ledger_transaction_id": violation.ledger_transaction_id,
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+        self.audit_service.audit(
+            event_type="FINANCIAL_INVARIANT_VIOLATION",
+            entity_type=violation.entity_type,
+            entity_id=str(violation.entity_id),
+            action="VALIDATE",
+            visibility=AuditVisibility.INTERNAL,
+            after=payload,
+            request_ctx=request_ctx,
+            reason=violation.invariant_name,
+        )
+
+    def check_invoice(
+        self,
+        invoice: Invoice,
+        *,
+        request_ctx: RequestContext | None = None,
+        audit: bool = True,
+    ) -> None:
         violations = rules.validate_invoice(invoice)
         if violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=violations,
-                request_ctx=request_ctx,
-                extra_payload={"invoice_id": invoice.id},
             )
+            if audit:
+                self.audit_violation(violation, request_ctx=request_ctx, extra_payload={"invoice_id": invoice.id})
+            raise violation
 
     def check_payment_application(
         self,
@@ -80,16 +102,18 @@ class FinancialInvariantChecker:
         amount: int,
         idempotency_key: str,
         request_ctx: RequestContext | None = None,
+        audit: bool = True,
     ) -> None:
         violations = rules.validate_payment_application(invoice, amount=amount)
         if violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="payment",
                 entity_id=idempotency_key,
                 violations=violations,
-                request_ctx=request_ctx,
-                extra_payload={"invoice_id": invoice.id},
             )
+            if audit:
+                self.audit_violation(violation, request_ctx=request_ctx, extra_payload={"invoice_id": invoice.id})
+            raise violation
 
     def check_refund(
         self,
@@ -98,16 +122,22 @@ class FinancialInvariantChecker:
         amount: int,
         reference: str,
         request_ctx: RequestContext | None = None,
+        audit: bool = True,
     ) -> None:
         violations = rules.validate_refund(invoice, amount=amount)
         if violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="payment",
                 entity_id=reference,
                 violations=violations,
-                request_ctx=request_ctx,
-                extra_payload={"invoice_id": invoice.id, "refund_reference": reference},
             )
+            if audit:
+                self.audit_violation(
+                    violation,
+                    request_ctx=request_ctx,
+                    extra_payload={"invoice_id": invoice.id, "refund_reference": reference},
+                )
+            raise violation
 
     def check_settlement_allocation(
         self,
@@ -117,6 +147,7 @@ class FinancialInvariantChecker:
         settlement_period_id: str,
         override: bool,
         request_ctx: RequestContext | None = None,
+        audit: bool = True,
     ) -> None:
         period = (
             self.db.query(BillingPeriod)
@@ -124,7 +155,7 @@ class FinancialInvariantChecker:
             .one_or_none()
         )
         if not period:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=[
@@ -134,17 +165,24 @@ class FinancialInvariantChecker:
                         actual=settlement_period_id,
                     )
                 ],
-                request_ctx=request_ctx,
             )
+            if audit:
+                self.audit_violation(violation, request_ctx=request_ctx)
+            raise violation
         period_violations = rules.validate_settlement_period(status=period.status, override=override)
         if period_violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=period_violations,
-                request_ctx=request_ctx,
-                extra_payload={"settlement_period_id": settlement_period_id},
             )
+            if audit:
+                self.audit_violation(
+                    violation,
+                    request_ctx=request_ctx,
+                    extra_payload={"settlement_period_id": settlement_period_id},
+                )
+            raise violation
 
         total_allocated = (
             self.db.query(func.coalesce(func.sum(InvoiceSettlementAllocation.amount), 0))
@@ -158,16 +196,21 @@ class FinancialInvariantChecker:
             invoice_total=invoice_total,
         )
         if total_violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=total_violations,
-                request_ctx=request_ctx,
-                extra_payload={
-                    "settlement_period_id": settlement_period_id,
-                    "invoice_total": invoice_total,
-                },
             )
+            if audit:
+                self.audit_violation(
+                    violation,
+                    request_ctx=request_ctx,
+                    extra_payload={
+                        "settlement_period_id": settlement_period_id,
+                        "invoice_total": invoice_total,
+                    },
+                )
+            raise violation
 
     def check_ledger_lines(
         self,
@@ -178,13 +221,14 @@ class FinancialInvariantChecker:
     ) -> None:
         violations = rules.validate_ledger_lines(lines)
         if violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="ledger_transaction",
                 entity_id=str(posting_id),
                 violations=violations,
-                request_ctx=request_ctx,
                 ledger_transaction_id=str(posting_id),
             )
+            self.audit_violation(violation, request_ctx=request_ctx)
+            raise violation
 
         account_ids = {int(line["account_id"]) for line in lines}
         if not account_ids:
@@ -219,13 +263,14 @@ class FinancialInvariantChecker:
                 )
 
         if currency_violations:
-            self._audit_and_raise(
+            violation = self._build_error(
                 entity_type="ledger_transaction",
                 entity_id=str(posting_id),
                 violations=currency_violations,
-                request_ctx=request_ctx,
                 ledger_transaction_id=str(posting_id),
             )
+            self.audit_violation(violation, request_ctx=request_ctx)
+            raise violation
 
     @staticmethod
     def serialize_ledger_lines(lines: Iterable) -> list[dict[str, object]]:

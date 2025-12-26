@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timezone
 
 import pytest
 
+from app.config import settings
 from app.db import Base, SessionLocal, engine, reset_engine
 from app.models.audit_log import AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
@@ -42,13 +43,16 @@ def session():
 
 
 def _create_period(session, *, target_date: date, status: BillingPeriodStatus, period_type: BillingPeriodType) -> BillingPeriod:
-    start_at = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-    end_at = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+    start_at, end_at = period_bounds_for_dates(
+        date_from=target_date,
+        date_to=target_date,
+        tz=settings.NEFT_BILLING_TZ,
+    )
     period = BillingPeriod(
         period_type=period_type,
         start_at=start_at,
         end_at=end_at,
-        tz="UTC",
+        tz=settings.NEFT_BILLING_TZ,
         status=status,
     )
     session.add(period)
@@ -84,7 +88,7 @@ def test_payment_exceeds_due_blocks_and_audits(session):
     period = _create_period(
         session,
         target_date=date(2024, 2, 1),
-        status=BillingPeriodStatus.OPEN,
+        status=BillingPeriodStatus.FINALIZED,
         period_type=BillingPeriodType.ADHOC,
     )
     invoice = _create_invoice(session, period=period)
@@ -118,7 +122,7 @@ def test_refund_exceeds_paid_blocks_and_audits(session):
     period = _create_period(
         session,
         target_date=date(2024, 3, 1),
-        status=BillingPeriodStatus.OPEN,
+        status=BillingPeriodStatus.FINALIZED,
         period_type=BillingPeriodType.ADHOC,
     )
     invoice = _create_invoice(session, period=period)
@@ -150,7 +154,7 @@ def test_refund_exceeds_paid_blocks_and_audits(session):
 
 
 def test_settlement_allocation_blocked_in_locked_period(session):
-    target_date = date(2024, 4, 1)
+    target_date = datetime.now(timezone.utc).date()
     daily_period = _create_period(
         session,
         target_date=target_date,
@@ -183,17 +187,17 @@ def test_settlement_allocation_blocked_in_locked_period(session):
     start_at, end_at = period_bounds_for_dates(
         date_from=target_date,
         date_to=target_date,
-        tz="UTC",
+        tz=settings.NEFT_BILLING_TZ,
     )
-    assert daily_period.start_at == start_at
-    assert daily_period.end_at == end_at
+    assert daily_period.start_at == start_at.replace(tzinfo=None)
+    assert daily_period.end_at == end_at.replace(tzinfo=None)
 
 
 def test_invoice_negative_due_blocks_and_audits(session):
     period = _create_period(
         session,
         target_date=date(2024, 5, 1),
-        status=BillingPeriodStatus.OPEN,
+        status=BillingPeriodStatus.FINALIZED,
         period_type=BillingPeriodType.ADHOC,
     )
     invoice = _create_invoice(session, period=period, amount_due=-5)
