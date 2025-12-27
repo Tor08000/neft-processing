@@ -52,22 +52,31 @@ def _validate_internal_ledger(db: Session, ledger_transaction_id: str, request_c
             after={"violations": [vars(item) for item in violations]},
             request_ctx=request_ctx,
         )
-        raise FuelSettlementError(DeclineCode.INVARIANT_VIOLATION, "Ledger invariant violated")
+        raise FuelSettlementError(DeclineCode.INTERNAL_ERROR, "Ledger invariant violated")
 
 
 def settle_fuel_tx(
     db: Session,
     *,
     transaction_id: str,
+    external_settlement_ref: str | None = None,
     request_ctx: RequestContext | None = None,
 ) -> FuelSettlementResult:
     transaction = repository.get_fuel_transaction(db, transaction_id=transaction_id)
     if transaction is None:
         raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Fuel transaction not found")
     if transaction.status == FuelTransactionStatus.SETTLED:
-        raise FuelSettlementError(DeclineCode.TX_ALREADY_SETTLED, "Transaction already settled")
+        if external_settlement_ref and transaction.external_settlement_ref not in {None, external_settlement_ref}:
+            raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Settlement reference mismatch")
+        return FuelSettlementResult(
+            transaction_id=str(transaction.id),
+            status=transaction.status,
+            ledger_transaction_id=str(transaction.ledger_transaction_id) if transaction.ledger_transaction_id else None,
+        )
     if transaction.status == FuelTransactionStatus.REVERSED:
-        raise FuelSettlementError(DeclineCode.TX_ALREADY_REVERSED, "Transaction already reversed")
+        raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Transaction already reversed")
+    if transaction.status == FuelTransactionStatus.REVIEW_REQUIRED:
+        raise FuelSettlementError(DeclineCode.RISK_REVIEW_REQUIRED, "Transaction requires review approval")
     if transaction.status != FuelTransactionStatus.AUTHORIZED:
         raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Invalid transaction status")
 
@@ -82,10 +91,11 @@ def settle_fuel_tx(
             posted_at=transaction.occurred_at,
         )
     except Exception as exc:  # noqa: BLE001
-        raise FuelSettlementError(DeclineCode.LEDGER_POSTING_FAILED, str(exc)) from exc
+        raise FuelSettlementError(DeclineCode.INTERNAL_ERROR, str(exc)) from exc
 
     transaction.status = FuelTransactionStatus.SETTLED
     transaction.ledger_transaction_id = ledger_tx.id
+    transaction.external_settlement_ref = external_settlement_ref
     db.commit()
     db.refresh(transaction)
 
@@ -111,13 +121,22 @@ def reverse_fuel_tx(
     db: Session,
     *,
     transaction_id: str,
+    external_ref: str | None = None,
     request_ctx: RequestContext | None = None,
 ) -> FuelSettlementResult:
     transaction = repository.get_fuel_transaction(db, transaction_id=transaction_id)
     if transaction is None:
         raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Fuel transaction not found")
     if transaction.status == FuelTransactionStatus.REVERSED:
-        raise FuelSettlementError(DeclineCode.TX_ALREADY_REVERSED, "Transaction already reversed")
+        if external_ref and transaction.external_reverse_ref not in {None, external_ref}:
+            raise FuelSettlementError(DeclineCode.INVALID_REQUEST, "Reversal reference mismatch")
+        return FuelSettlementResult(
+            transaction_id=str(transaction.id),
+            status=transaction.status,
+            ledger_transaction_id=str(transaction.ledger_transaction_id) if transaction.ledger_transaction_id else None,
+        )
+    if transaction.status == FuelTransactionStatus.REVIEW_REQUIRED:
+        raise FuelSettlementError(DeclineCode.RISK_REVIEW_REQUIRED, "Transaction requires review approval")
 
     ledger_service = InternalLedgerService(db)
     try:
@@ -130,10 +149,11 @@ def reverse_fuel_tx(
             posted_at=transaction.occurred_at,
         )
     except Exception as exc:  # noqa: BLE001
-        raise FuelSettlementError(DeclineCode.LEDGER_POSTING_FAILED, str(exc)) from exc
+        raise FuelSettlementError(DeclineCode.INTERNAL_ERROR, str(exc)) from exc
 
     transaction.status = FuelTransactionStatus.REVERSED
     transaction.ledger_transaction_id = ledger_tx.id
+    transaction.external_reverse_ref = external_ref
     db.commit()
     db.refresh(transaction)
 

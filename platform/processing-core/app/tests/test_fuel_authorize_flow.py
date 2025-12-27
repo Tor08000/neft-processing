@@ -63,7 +63,7 @@ def _seed_refs(db):
     return card
 
 
-def _authorize(db, *, volume_liters: float) -> DeclineCode | None:
+def _authorize(db, *, volume_liters: float, external_ref: str | None = None) -> DeclineCode | None:
     payload = FuelAuthorizeRequest(
         card_token="card-token-1",
         network_code="net-1",
@@ -73,7 +73,7 @@ def _authorize(db, *, volume_liters: float) -> DeclineCode | None:
         volume_liters=volume_liters,
         unit_price=100,
         currency="RUB",
-        external_ref=str(uuid4()),
+        external_ref=external_ref or str(uuid4()),
         vehicle_plate="A123BC",
     )
     result = authorize_fuel_tx(db, payload=payload)
@@ -104,10 +104,31 @@ def test_authorize_decline_by_limit(session):
     session.commit()
 
     decline_code = _authorize(session, volume_liters=1.0)
-    assert decline_code == DeclineCode.LIMIT_EXCEEDED
+    assert decline_code == DeclineCode.LIMIT_EXCEEDED_AMOUNT
 
 
 def test_authorize_decline_by_risk(session):
     _seed_refs(session)
     decline_code = _authorize(session, volume_liters=100.0)
     assert decline_code == DeclineCode.RISK_BLOCK
+
+
+def test_authorize_idempotent_response(session):
+    _seed_refs(session)
+    external_ref = str(uuid4())
+    payload = FuelAuthorizeRequest(
+        card_token="card-token-1",
+        network_code="net-1",
+        station_code="ST-1",
+        occurred_at=datetime.now(timezone.utc),
+        fuel_type="DIESEL",
+        volume_liters=1.0,
+        unit_price=100,
+        currency="RUB",
+        external_ref=external_ref,
+        vehicle_plate="A123BC",
+    )
+    first = authorize_fuel_tx(session, payload=payload).response
+    second = authorize_fuel_tx(session, payload=payload).response
+    assert first.status == second.status
+    assert first.transaction_id == second.transaction_id

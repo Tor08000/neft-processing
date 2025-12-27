@@ -24,6 +24,7 @@ from app.schemas.fuel import (
     FleetManagerExplain,
     AccountantExplain,
     RiskExplain,
+    LimitExplain,
 )
 from app.services.audit_service import RequestContext
 from app.services.decision import DecisionEngine, DecisionOutcome
@@ -55,6 +56,42 @@ def _decline_response(
         manager_explain=manager_explain,
     )
     return FuelAuthorizeResponse(status="DECLINE", decline_code=decline_code, explain=explain)
+
+
+def _response_from_transaction(transaction: FuelTransaction) -> FuelAuthorizeResponse:
+    decline_code = DeclineCode(transaction.decline_code) if transaction.decline_code else None
+    explain = None
+    if decline_code:
+        meta = transaction.meta or {}
+        limit_explain = meta.get("limit_explain")
+        risk_explain = meta.get("risk_explain")
+        explain = FuelDeclineExplain(
+            decline_code=decline_code,
+            message=meta.get("message") or "Fuel transaction declined",
+            limit_explain=LimitExplain(**limit_explain) if limit_explain else None,
+            risk_explain=RiskExplain(**risk_explain) if risk_explain else None,
+        )
+    status = "ALLOW"
+    if transaction.status == FuelTransactionStatus.REVIEW_REQUIRED:
+        status = "REVIEW"
+        decline_code = DeclineCode.RISK_REVIEW_REQUIRED
+        if not explain:
+            meta = transaction.meta or {}
+            risk_explain = meta.get("risk_explain")
+            explain = FuelDeclineExplain(
+                decline_code=decline_code,
+                message=meta.get("message") or "Risk review required",
+                risk_explain=RiskExplain(**risk_explain) if risk_explain else None,
+            )
+    elif transaction.status == FuelTransactionStatus.DECLINED:
+        status = "DECLINE"
+    response = FuelAuthorizeResponse(
+        status=status,
+        transaction_id=str(transaction.id),
+        decline_code=decline_code,
+        explain=explain,
+    )
+    return response
 
 
 def _legal_graph(
@@ -186,7 +223,7 @@ def authorize_fuel_tx(
     if not card:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.INTERNAL_ERROR,
+                decline_code=DeclineCode.CARD_NOT_FOUND,
                 message="Card token not found",
             )
         )
@@ -209,7 +246,7 @@ def authorize_fuel_tx(
     if not network or network.status != FuelNetworkStatus.ACTIVE:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.NETWORK_BLOCKED,
+                decline_code=DeclineCode.NETWORK_NOT_SUPPORTED,
                 message="Fuel network not supported",
             )
         )
@@ -219,38 +256,34 @@ def authorize_fuel_tx(
     if not station:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.STATION_UNKNOWN,
+                decline_code=DeclineCode.STATION_NOT_FOUND,
                 message="Station not found",
             )
         )
     if station.status != FuelStationStatus.ACTIVE:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.STATION_BLOCKED,
+                decline_code=DeclineCode.STATION_INACTIVE,
                 message="Station is inactive",
             )
         )
 
-    existing = (
-        db.query(FuelTransaction)
-        .filter(FuelTransaction.external_ref == payload.external_ref)
-        .one_or_none()
-        if payload.external_ref
-        else None
-    )
-    if existing:
-        return AuthorizationResult(
-            response=_decline_response(
-                decline_code=DeclineCode.DUPLICATE_EXTERNAL_REF,
-                message="Duplicate external reference",
-            )
+    if payload.external_ref:
+        existing = (
+            db.query(FuelTransaction)
+            .filter(FuelTransaction.tenant_id == card.tenant_id)
+            .filter(FuelTransaction.network_id == network.id)
+            .filter(FuelTransaction.external_ref == payload.external_ref)
+            .one_or_none()
         )
+        if existing:
+            return AuthorizationResult(response=_response_from_transaction(existing), transaction=existing)
 
     vehicle, driver = _resolve_vehicle_and_driver(db=db, card=card, payload=payload)
     if payload.vehicle_plate and vehicle is None:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.CARD_NOT_ASSIGNED,
+                decline_code=DeclineCode.INVALID_REQUEST,
                 message="Vehicle not assigned",
             )
         )
@@ -301,7 +334,10 @@ def authorize_fuel_tx(
             status=FuelTransactionStatus.DECLINED,
             decline_code=limit_decision.decline_code.value if limit_decision.decline_code else None,
             external_ref=payload.external_ref,
-            meta={**base_meta, "limit_explain": limit_decision.explain.model_dump() if limit_decision.explain else None},
+            meta={
+                **base_meta,
+                "limit_explain": limit_decision.explain.model_dump() if limit_decision.explain else None,
+            },
         )
         transaction = repository.add_fuel_transaction(db, transaction)
         events.audit_event(
@@ -326,7 +362,7 @@ def authorize_fuel_tx(
             limit_id=limit_decision.explain.applied_limit_id if limit_decision.explain else None,
             request_ctx=request_ctx,
         )
-        decline_code = limit_decision.decline_code or DeclineCode.LIMIT_EXCEEDED
+        decline_code = limit_decision.decline_code or DeclineCode.LIMIT_EXCEEDED_AMOUNT
         response = _decline_response(
             decline_code=decline_code,
             message="Limit time window" if decline_code == DeclineCode.LIMIT_TIME_WINDOW else "Limit exceeded",
@@ -376,7 +412,7 @@ def authorize_fuel_tx(
         decline_code = DeclineCode.RISK_BLOCK
     if decision.outcome == DecisionOutcome.MANUAL_REVIEW:
         status = FuelTransactionStatus.REVIEW_REQUIRED
-        decline_code = DeclineCode.RISK_REVIEW
+        decline_code = DeclineCode.RISK_REVIEW_REQUIRED
     elif decision.outcome == DecisionOutcome.DECLINE:
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK

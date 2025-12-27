@@ -1,11 +1,21 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.fleet import FleetDriver, FleetVehicle
-from app.models.fuel import FuelCard, FuelCardGroup, FuelLimit, FuelNetwork, FuelStation, FuelStationNetwork
+from app.models.fuel import (
+    FuelAnalyticsEvent,
+    FuelCard,
+    FuelCardGroup,
+    FuelLimit,
+    FuelNetwork,
+    FuelStation,
+    FuelStationNetwork,
+    FuelTransaction,
+    FuelTransactionStatus,
+)
 from app.schemas.fleet import (
     CardCreate,
     CardOut,
@@ -25,9 +35,118 @@ from app.schemas.fuel import (
     FuelStationOut,
     FuelStationNetworkCreate,
     FuelStationNetworkOut,
+    DeclineCode,
 )
+from app.services.admin_auth import require_admin
+from app.services.audit_service import request_context_from_request
+from app.services.fuel import events
+from app.services.policy import actor_from_token
 
 router = APIRouter(prefix="/fuel", tags=["admin", "fuel"])
+
+_REVIEW_ROLES = {"FINANCE", "SUPERVISOR", "ADMIN_FINANCE", "ADMIN_SUPERVISOR", "SUPERADMIN"}
+
+
+def _require_review_role(token: dict) -> None:
+    actor = actor_from_token(token)
+    if not actor.roles.intersection(_REVIEW_ROLES):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+@router.get("/health", response_model=dict)
+def fuel_health(request: Request, db: Session = Depends(get_db), token: dict = Depends(require_admin)) -> dict:
+    _require_review_role(token)
+    orphan_settled = (
+        db.query(FuelTransaction)
+        .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+        .filter(FuelTransaction.ledger_transaction_id.is_(None))
+        .count()
+    )
+    missing_risk = (
+        db.query(FuelTransaction)
+        .filter(FuelTransaction.status.in_([FuelTransactionStatus.AUTHORIZED, FuelTransactionStatus.REVIEW_REQUIRED]))
+        .filter(FuelTransaction.risk_decision_id.is_(None))
+        .count()
+    )
+    active_limits = db.query(FuelLimit).filter(FuelLimit.active.is_(True)).count()
+    analytics_backlog = db.query(FuelAnalyticsEvent).count()
+
+    issues = []
+    if orphan_settled:
+        issues.append({"type": "orphan_settled", "count": orphan_settled})
+    if missing_risk:
+        issues.append({"type": "missing_risk_decision", "count": missing_risk})
+    if active_limits == 0:
+        issues.append({"type": "missing_limit_configs", "count": 0})
+    if analytics_backlog:
+        issues.append({"type": "analytics_backlog", "count": analytics_backlog})
+
+    return {
+        "status": "ok" if not issues else "degraded",
+        "issues": issues,
+        "stats": {
+            "orphan_settled": orphan_settled,
+            "missing_risk_decision": missing_risk,
+            "active_limits": active_limits,
+            "analytics_backlog": analytics_backlog,
+        },
+    }
+
+
+@router.post("/transactions/{transaction_id}/approve", response_model=dict)
+def approve_review_transaction(
+    transaction_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin),
+) -> dict:
+    _require_review_role(token)
+    tx = db.query(FuelTransaction).filter(FuelTransaction.id == transaction_id).one_or_none()
+    if not tx:
+        raise HTTPException(status_code=404, detail="transaction not found")
+    if tx.status != FuelTransactionStatus.REVIEW_REQUIRED:
+        raise HTTPException(status_code=400, detail="transaction not in review")
+    tx.status = FuelTransactionStatus.AUTHORIZED
+    tx.decline_code = None
+    db.commit()
+    db.refresh(tx)
+    ctx = request_context_from_request(request, token=token)
+    events.audit_event(
+        db,
+        event_type=events.FUEL_EVENT_REVIEW_APPROVED,
+        entity_id=str(tx.id),
+        payload={"status": tx.status.value},
+        request_ctx=ctx,
+    )
+    return {"status": "approved", "transaction_id": str(tx.id)}
+
+
+@router.post("/transactions/{transaction_id}/reject", response_model=dict)
+def reject_review_transaction(
+    transaction_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin),
+) -> dict:
+    _require_review_role(token)
+    tx = db.query(FuelTransaction).filter(FuelTransaction.id == transaction_id).one_or_none()
+    if not tx:
+        raise HTTPException(status_code=404, detail="transaction not found")
+    if tx.status != FuelTransactionStatus.REVIEW_REQUIRED:
+        raise HTTPException(status_code=400, detail="transaction not in review")
+    tx.status = FuelTransactionStatus.DECLINED
+    tx.decline_code = DeclineCode.RISK_REVIEW_REQUIRED.value
+    db.commit()
+    db.refresh(tx)
+    ctx = request_context_from_request(request, token=token)
+    events.audit_event(
+        db,
+        event_type=events.FUEL_EVENT_REVIEW_REJECTED,
+        entity_id=str(tx.id),
+        payload={"status": tx.status.value, "decline_code": tx.decline_code},
+        request_ctx=ctx,
+    )
+    return {"status": "rejected", "transaction_id": str(tx.id)}
 
 
 @router.post("/networks", response_model=FuelNetworkOut)

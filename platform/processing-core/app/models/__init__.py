@@ -139,6 +139,7 @@ from .immutability import ImmutableRecordError  # noqa: F401
 from .fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus  # noqa: F401
 from .fuel import (  # noqa: F401
     FuelAnomalyEvent,
+    FuelAnalyticsEvent,
     FuelCard,
     FuelCardGroup,
     FuelCardGroupStatus,
@@ -311,6 +312,7 @@ __all__ = [
     "FuelRiskProfile",
     "FuelRiskShadowEvent",
     "FuelAnomalyEvent",
+    "FuelAnalyticsEvent",
     "FuelMisuseSignal",
     "FuelStationOutlier",
     "FuelStation",

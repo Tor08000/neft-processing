@@ -37,11 +37,17 @@ def authorize_fuel_transaction_endpoint(
 def settle_fuel_transaction_endpoint(
     request: Request,
     transaction_id: str,
+    external_settlement_ref: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> FuelTransactionOut:
     ctx = request_context_from_request(request)
     try:
-        result = settle_fuel_tx(db, transaction_id=transaction_id, request_ctx=ctx)
+        result = settle_fuel_tx(
+            db,
+            transaction_id=transaction_id,
+            external_settlement_ref=external_settlement_ref,
+            request_ctx=ctx,
+        )
     except FuelSettlementError as exc:
         raise HTTPException(
             status_code=400,
@@ -55,11 +61,17 @@ def settle_fuel_transaction_endpoint(
 def reverse_fuel_transaction_endpoint(
     request: Request,
     transaction_id: str,
+    external_ref: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> FuelTransactionOut:
     ctx = request_context_from_request(request)
     try:
-        result = reverse_fuel_tx(db, transaction_id=transaction_id, request_ctx=ctx)
+        result = reverse_fuel_tx(
+            db,
+            transaction_id=transaction_id,
+            external_ref=external_ref,
+            request_ctx=ctx,
+        )
     except FuelSettlementError as exc:
         raise HTTPException(
             status_code=400,
