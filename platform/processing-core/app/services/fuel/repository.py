@@ -14,6 +14,7 @@ from app.models.fuel import (
     FuelRiskProfile,
     FuelRiskShadowEvent,
     FuelAnomalyEvent,
+    FuelAnalyticsEvent,
     FuelMisuseSignal,
     FuelStationNetwork,
     FuelStationOutlier,
@@ -223,6 +224,13 @@ def add_risk_shadow_event(db: Session, event: FuelRiskShadowEvent) -> FuelRiskSh
 
 
 def add_anomaly_event(db: Session, event: FuelAnomalyEvent) -> FuelAnomalyEvent:
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def add_analytics_event(db: Session, event: FuelAnalyticsEvent) -> FuelAnalyticsEvent:
     db.add(event)
     db.commit()
     db.refresh(event)

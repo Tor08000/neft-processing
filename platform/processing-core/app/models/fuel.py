@@ -164,6 +164,12 @@ class FuelTransaction(Base):
         Index("ix_fuel_transactions_vehicle_time", "vehicle_id", "occurred_at"),
         Index("ix_fuel_transactions_status_time", "status", "occurred_at"),
         Index("ix_fuel_transactions_external_ref", "external_ref"),
+        UniqueConstraint(
+            "tenant_id",
+            "network_id",
+            "external_ref",
+            name="uq_fuel_transactions_tenant_network_external_ref",
+        ),
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -187,6 +193,8 @@ class FuelTransaction(Base):
         GUID(), ForeignKey("internal_ledger_transactions.id"), nullable=True
     )
     external_ref = Column(String(128), nullable=True)
+    external_settlement_ref = Column(String(128), nullable=True)
+    external_reverse_ref = Column(String(128), nullable=True)
     meta = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -254,6 +262,17 @@ class FuelAnomalyEvent(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
     event_type = Column(String(64), nullable=False)
+    severity = Column(String(32), nullable=False)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelAnalyticsEvent(Base):
+    __tablename__ = "fuel_analytics_events"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
+    signal_type = Column(String(64), nullable=False)
     severity = Column(String(32), nullable=False)
     explain = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

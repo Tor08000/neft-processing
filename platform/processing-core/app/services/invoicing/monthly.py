@@ -12,13 +12,16 @@ from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
+from app.models.fuel import FuelTransaction, FuelTransactionStatus
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
+from app.models.legal_graph import LegalEdgeType, LegalNodeType
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.invoice_state_machine import InvoiceStateMachine
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.finance_invariants import FinancialInvariantChecker
+from app.services.legal_graph.registry import LegalGraphRegistry
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -75,6 +78,54 @@ def _build_lines(product_summaries: list[BillingSummary]) -> BillingLineData:
         line_amount=total_amount,
         tax_amount=0,
     )
+
+
+def _fuel_period_bounds(period_from: date, period_to: date) -> tuple[datetime, datetime]:
+    tz = ZoneInfo(settings.NEFT_BILLING_TZ)
+    start = datetime.combine(period_from, datetime.min.time()).replace(tzinfo=tz)
+    end = datetime.combine(period_to, datetime.max.time()).replace(tzinfo=tz)
+    return (
+        start.astimezone(timezone.utc).replace(tzinfo=None),
+        end.astimezone(timezone.utc).replace(tzinfo=None),
+    )
+
+
+def _link_fuel_transactions_to_invoice(session: Session, *, invoice: Invoice) -> None:
+    start_ts, end_ts = _fuel_period_bounds(invoice.period_from, invoice.period_to)
+    fuel_txs = (
+        session.query(FuelTransaction)
+        .filter(FuelTransaction.client_id == invoice.client_id)
+        .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+        .filter(FuelTransaction.occurred_at >= start_ts)
+        .filter(FuelTransaction.occurred_at <= end_ts)
+        .all()
+    )
+    if not fuel_txs:
+        return
+    registry = LegalGraphRegistry(session)
+    invoice_nodes: dict[int, object] = {}
+    for tx in fuel_txs:
+        invoice_node = invoice_nodes.get(tx.tenant_id)
+        if invoice_node is None:
+            invoice_node = registry.get_or_create_node(
+                tenant_id=tx.tenant_id,
+                node_type=LegalNodeType.INVOICE,
+                ref_id=str(invoice.id),
+                ref_table="invoices",
+            ).node
+            invoice_nodes[tx.tenant_id] = invoice_node
+        tx_node = registry.get_or_create_node(
+            tenant_id=tx.tenant_id,
+            node_type=LegalNodeType.FUEL_TRANSACTION,
+            ref_id=str(tx.id),
+            ref_table="fuel_transactions",
+        ).node
+        registry.link(
+            tenant_id=tx.tenant_id,
+            src_node_id=tx_node.id,
+            dst_node_id=invoice_node.id,
+            edge_type=LegalEdgeType.RELATES_TO,
+        )
 
 
 def run_invoice_monthly(
@@ -233,6 +284,7 @@ def run_invoice_monthly(
         session.commit()
         for invoice in created:
             session.refresh(invoice)
+            _link_fuel_transactions_to_invoice(session, invoice=invoice)
 
         logger.info(
             "invoice.monthly.completed",

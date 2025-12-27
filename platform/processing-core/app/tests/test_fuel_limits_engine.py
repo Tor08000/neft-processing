@@ -126,7 +126,7 @@ def test_amount_limit_by_card_declines(session):
     )
 
     assert decision.allowed is False
-    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED
+    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED_AMOUNT
 
 
 def test_volume_limit_by_vehicle_declines(session):
@@ -164,7 +164,7 @@ def test_volume_limit_by_vehicle_declines(session):
     )
 
     assert decision.allowed is False
-    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED
+    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED_VOLUME
 
 
 def test_count_limit_by_driver_declines(session):
@@ -202,7 +202,7 @@ def test_count_limit_by_driver_declines(session):
     )
 
     assert decision.allowed is False
-    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED
+    assert decision.decline_code == DeclineCode.LIMIT_EXCEEDED_COUNT
 
 
 def test_limit_priority_prefers_card_scope(session):
@@ -357,3 +357,83 @@ def test_limit_time_window_cross_midnight(session):
 
     assert decision.allowed is False
     assert decision.decline_code == DeclineCode.LIMIT_TIME_WINDOW
+
+
+def test_limit_time_window_boundary_allows(session):
+    card, station = _seed_refs(session)
+    session.add(
+        FuelLimit(
+            tenant_id=1,
+            client_id="client-1",
+            scope_type=FuelLimitScopeType.CARD,
+            scope_id=str(card.id),
+            limit_type=FuelLimitType.COUNT,
+            period=FuelLimitPeriod.DAILY,
+            value=5,
+            currency="RUB",
+            station_network_id=str(station.station_network_id),
+            time_window_start=datetime.strptime("23:00", "%H:%M").time(),
+            time_window_end=datetime.strptime("06:00", "%H:%M").time(),
+            timezone="Europe/Moscow",
+            active=True,
+        )
+    )
+    session.commit()
+
+    at_boundary = datetime(2024, 1, 1, 20, 0, tzinfo=timezone.utc)
+    decision = limits.check_limits(
+        db=session,
+        tenant_id=1,
+        client_id="client-1",
+        card_id=str(card.id),
+        card_group_id=str(card.card_group_id),
+        vehicle_id=str(card.vehicle_id),
+        driver_id=str(card.driver_id),
+        at=at_boundary,
+        amount_minor=100,
+        volume_ml=1_000,
+        currency="RUB",
+        fuel_type=FuelType.DIESEL,
+        station_id=str(station.id),
+        station_network_id=str(station.station_network_id),
+    )
+
+    assert decision.allowed is True
+
+
+def test_limit_window_missing_allows(session):
+    card, station = _seed_refs(session)
+    session.add(
+        FuelLimit(
+            tenant_id=1,
+            client_id="client-1",
+            scope_type=FuelLimitScopeType.CARD,
+            scope_id=str(card.id),
+            limit_type=FuelLimitType.COUNT,
+            period=FuelLimitPeriod.DAILY,
+            value=5,
+            currency="RUB",
+            station_id=str(station.id),
+            active=True,
+        )
+    )
+    session.commit()
+
+    decision = limits.check_limits(
+        db=session,
+        tenant_id=1,
+        client_id="client-1",
+        card_id=str(card.id),
+        card_group_id=str(card.card_group_id),
+        vehicle_id=str(card.vehicle_id),
+        driver_id=str(card.driver_id),
+        at=datetime.now(timezone.utc),
+        amount_minor=100,
+        volume_ml=1_000,
+        currency="RUB",
+        fuel_type=FuelType.DIESEL,
+        station_id=str(station.id),
+        station_network_id=str(station.station_network_id),
+    )
+
+    assert decision.allowed is True

@@ -50,7 +50,7 @@ def build_risk_context_for_fuel_tx(
     tx_count_1h = repository.list_fuel_tx_count(db, card_id=str(card.id), start_at=last_hour, end_at=occurred_at)
     tx_count_24h = repository.list_fuel_tx_count(db, card_id=str(card.id), start_at=last_day, end_at=occurred_at)
 
-    totals = (
+    totals_24h = (
         db.query(
             func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0),
             func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
@@ -69,8 +69,28 @@ def build_risk_context_for_fuel_tx(
         .filter(FuelTransaction.occurred_at <= occurred_at)
         .one()
     )
-    total_amount_24h = int(totals[0] or 0)
-    total_volume_24h = int(totals[1] or 0)
+    total_amount_24h = int(totals_24h[0] or 0)
+    total_volume_24h = int(totals_24h[1] or 0)
+
+    totals_1h = (
+        db.query(
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0),
+        )
+        .filter(FuelTransaction.card_id == card.id)
+        .filter(
+            FuelTransaction.status.in_(
+                [
+                    FuelTransactionStatus.AUTHORIZED,
+                    FuelTransactionStatus.REVIEW_REQUIRED,
+                    FuelTransactionStatus.SETTLED,
+                ]
+            )
+        )
+        .filter(FuelTransaction.occurred_at >= last_hour)
+        .filter(FuelTransaction.occurred_at <= occurred_at)
+        .one()
+    )
+    total_amount_1h = int(totals_1h[0] or 0)
 
     factors: list[str] = []
     decline_code: DeclineCode | None = None
@@ -78,10 +98,10 @@ def build_risk_context_for_fuel_tx(
         capacity_ml = int(Decimal(vehicle.tank_capacity_liters) * Decimal("1000"))
         if volume_ml > int(capacity_ml * 1.2):
             factors.append("tank_sanity_exceeded")
-            decline_code = DeclineCode.TANK_SANITY_EXCEEDED
+            decline_code = DeclineCode.RISK_BLOCK
     if tx_count_1h >= 5 or tx_count_24h >= 20:
         factors.append("velocity_spike")
-        decline_code = decline_code or DeclineCode.VELOCITY_SPIKE
+        decline_code = decline_code or DeclineCode.RISK_BLOCK
 
     metadata = {
         "card_status": card.status.value,
@@ -89,9 +109,12 @@ def build_risk_context_for_fuel_tx(
         "network_id": str(station.network_id),
         "fuel_type": fuel_type.value,
         "volume_ml": volume_ml,
+        "volume_liters": float(Decimal(volume_ml) / Decimal("1000")),
         "amount_total_minor": amount_minor,
         "tx_count_1h": int(tx_count_1h),
         "tx_count_24h": int(tx_count_24h),
+        "amount_sum_1h": total_amount_1h,
+        "amount_sum_24h": total_amount_24h,
         "total_amount_24h": total_amount_24h,
         "total_volume_24h": total_volume_24h,
         "hour_of_day": hour_of_day,
