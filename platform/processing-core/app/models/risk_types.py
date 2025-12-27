@@ -9,6 +9,7 @@ class RiskSubjectType(str, Enum):
     PAYOUT = "PAYOUT"
     DOCUMENT = "DOCUMENT"
     EXPORT = "EXPORT"
+    FUEL_TRANSACTION = "FUEL_TRANSACTION"
 
 
 class RiskDecisionType(str, Enum):

@@ -249,6 +249,120 @@ class InternalLedgerService:
 
         self._post_entries(entries)
 
+    def post_fuel_settlement(
+        self,
+        *,
+        tenant_id: int,
+        fuel_transaction_id: str,
+        client_id: str,
+        amount: int,
+        currency: str,
+        posted_at: datetime | None = None,
+    ) -> InternalLedgerTransaction:
+        transaction, is_replay = self._get_or_create_transaction(
+            tenant_id=tenant_id,
+            transaction_type=InternalLedgerTransactionType.FUEL_SETTLEMENT,
+            external_ref_type="FUEL_TRANSACTION",
+            external_ref_id=fuel_transaction_id,
+            idempotency_key=f"fuel_tx:{fuel_transaction_id}:settlement:v1",
+            posted_at=posted_at,
+            meta={"fuel_transaction_id": fuel_transaction_id},
+        )
+        if is_replay:
+            return transaction
+
+        account_ar = self._ensure_account(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            account_type=InternalLedgerAccountType.CLIENT_AR,
+            currency=currency,
+        )
+        account_payable = self._ensure_account(
+            tenant_id=tenant_id,
+            client_id=None,
+            account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+            currency=currency,
+        )
+        entries = [
+            self._build_entry(
+                tenant_id=tenant_id,
+                transaction=transaction,
+                account=account_ar,
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount,
+                currency=currency,
+                meta={"fuel_transaction_id": fuel_transaction_id},
+            ),
+            self._build_entry(
+                tenant_id=tenant_id,
+                transaction=transaction,
+                account=account_payable,
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount,
+                currency=currency,
+                meta={"fuel_transaction_id": fuel_transaction_id},
+            ),
+        ]
+        self._post_entries(entries)
+        return transaction
+
+    def post_fuel_reversal(
+        self,
+        *,
+        tenant_id: int,
+        fuel_transaction_id: str,
+        client_id: str,
+        amount: int,
+        currency: str,
+        posted_at: datetime | None = None,
+    ) -> InternalLedgerTransaction:
+        transaction, is_replay = self._get_or_create_transaction(
+            tenant_id=tenant_id,
+            transaction_type=InternalLedgerTransactionType.FUEL_REVERSAL,
+            external_ref_type="FUEL_TRANSACTION",
+            external_ref_id=fuel_transaction_id,
+            idempotency_key=f"fuel_tx:{fuel_transaction_id}:reversal:v1",
+            posted_at=posted_at,
+            meta={"fuel_transaction_id": fuel_transaction_id},
+        )
+        if is_replay:
+            return transaction
+
+        account_ar = self._ensure_account(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            account_type=InternalLedgerAccountType.CLIENT_AR,
+            currency=currency,
+        )
+        account_payable = self._ensure_account(
+            tenant_id=tenant_id,
+            client_id=None,
+            account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+            currency=currency,
+        )
+        entries = [
+            self._build_entry(
+                tenant_id=tenant_id,
+                transaction=transaction,
+                account=account_payable,
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount,
+                currency=currency,
+                meta={"fuel_transaction_id": fuel_transaction_id},
+            ),
+            self._build_entry(
+                tenant_id=tenant_id,
+                transaction=transaction,
+                account=account_ar,
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount,
+                currency=currency,
+                meta={"fuel_transaction_id": fuel_transaction_id},
+            ),
+        ]
+        self._post_entries(entries)
+        return transaction
+
     def post_payment_applied(
         self,
         *,

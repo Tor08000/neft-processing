@@ -11,6 +11,7 @@ from app.routers.admin import (
     dashboard,
     disputes,
     documents,
+    fuel,
     integration_monitoring,
     legal_graph,
     limits,
@@ -46,6 +47,7 @@ router.include_router(reversals.router)
 router.include_router(disputes.router)
 router.include_router(finance.router)
 router.include_router(ledger.router)
+router.include_router(fuel.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(legal_integrations.router)
