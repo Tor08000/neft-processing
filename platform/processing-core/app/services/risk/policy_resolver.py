@@ -131,6 +131,34 @@ def resolve_policy_threshold(
     return PolicySelection(policy=policy, threshold_set=threshold_set, threshold=threshold)
 
 
+def resolve_policy_threshold_override(
+    db: Session,
+    *,
+    policy_id: str,
+    subject_type: RiskSubjectType,
+    score: int,
+    now: datetime | None = None,
+) -> PolicySelection | None:
+    policy = db.query(RiskPolicy).filter(RiskPolicy.id == policy_id).one_or_none()
+    if policy is None:
+        return None
+    threshold_set = resolve_threshold_set(
+        db,
+        subject_type=subject_type,
+        threshold_set_id=policy.threshold_set_id,
+    )
+    if threshold_set is None:
+        return None
+    threshold = resolve_threshold(
+        db,
+        threshold_set_id=threshold_set.id,
+        subject_type=subject_type,
+        score=score,
+        now=now,
+    )
+    return PolicySelection(policy=policy, threshold_set=threshold_set, threshold=threshold)
+
+
 def _apply_match(query, column, value):
     if value is None:
         return query.filter(column.is_(None))
@@ -156,6 +184,7 @@ __all__ = [
     "PolicySelection",
     "resolve_policy",
     "resolve_policy_threshold",
+    "resolve_policy_threshold_override",
     "resolve_threshold",
     "resolve_threshold_set",
 ]

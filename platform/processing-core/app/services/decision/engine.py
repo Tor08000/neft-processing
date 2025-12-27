@@ -21,9 +21,9 @@ from app.services.decision.explain import build_explain
 from app.services.decision.result import DecisionOutcome, DecisionResult
 from app.services.decision.rules import Rule, apply_scoring_rules, default_rules
 from app.services.decision.scoring import RiskScorer, StubRiskScorer
-from app.services.decision.thresholds import evaluate_thresholds
+from app.services.decision.thresholds import ThresholdEvaluation, evaluate_thresholds
 from app.services.decision.versions import DECISION_ENGINE_VERSION
-from app.services.risk.policy_resolver import resolve_policy_threshold
+from app.services.risk.policy_resolver import resolve_policy_threshold, resolve_policy_threshold_override
 from app.services.risk.training_snapshot import capture_training_snapshot
 from app.services.legal_graph import (
     GraphContext,
@@ -152,17 +152,27 @@ class DecisionEngine:
         top_reasons: list[dict] | None = None
         policy_selection = None
         if self.db is not None and not hard_decline and not context_blocked and subject_type is not None:
-            policy_selection = resolve_policy_threshold(
-                self.db,
-                subject_type=subject_type,
-                score=int(risk_score),
-                tenant_id=ctx.tenant_id,
-                client_id=ctx.client_id,
-                provider=ctx.metadata.get("provider"),
-                currency=ctx.currency or ctx.metadata.get("currency"),
-                country=ctx.metadata.get("country"),
-                now=evaluated_at,
-            )
+            policy_override_id = ctx.metadata.get("policy_override_id")
+            if policy_override_id:
+                policy_selection = resolve_policy_threshold_override(
+                    self.db,
+                    policy_id=policy_override_id,
+                    subject_type=subject_type,
+                    score=int(risk_score),
+                    now=evaluated_at,
+                )
+            else:
+                policy_selection = resolve_policy_threshold(
+                    self.db,
+                    subject_type=subject_type,
+                    score=int(risk_score),
+                    tenant_id=ctx.tenant_id,
+                    client_id=ctx.client_id,
+                    provider=ctx.metadata.get("provider"),
+                    currency=ctx.currency or ctx.metadata.get("currency"),
+                    country=ctx.metadata.get("country"),
+                    now=evaluated_at,
+                )
         if context_blocked:
             decision_payload = {
                 "decision": risk_decision.value,
@@ -211,8 +221,12 @@ class DecisionEngine:
             policy_id = policy.id if policy else None
             threshold_id = str(threshold.id) if threshold is not None else None
             threshold_set_id = threshold_set.id
+            thresholds_override = ctx.metadata.get("thresholds_override")
             if threshold is None and threshold_set.block_threshold is not None:
-                evaluation = evaluate_thresholds(int(risk_score), threshold_set)
+                if thresholds_override:
+                    evaluation = _evaluate_threshold_override(int(risk_score), thresholds_override)
+                else:
+                    evaluation = evaluate_thresholds(int(risk_score), threshold_set)
                 threshold_values = evaluation.thresholds
                 risk_outcome = evaluation.outcome
                 risk_decision = evaluation.decision
@@ -462,6 +476,27 @@ def _map_actor_type(actor_type: str) -> ActorType:
 def _hash_payload(payload: dict) -> str:
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _evaluate_threshold_override(score: int, override: dict) -> ThresholdEvaluation:
+    thresholds = {
+        "block": int(override.get("block", 100)),
+        "review": int(override.get("review", 80)),
+        "allow": int(override.get("allow", 0)),
+    }
+    if score >= thresholds["block"]:
+        outcome = RiskOutcome.BLOCK
+        decision = RiskDecisionType.BLOCK
+    elif score >= thresholds["review"]:
+        outcome = RiskOutcome.REVIEW_REQUIRED
+        decision = RiskDecisionType.ALLOW_WITH_REVIEW
+    elif score >= thresholds["allow"]:
+        outcome = RiskOutcome.ALLOW
+        decision = RiskDecisionType.ALLOW
+    else:
+        outcome = RiskOutcome.ALLOW_WITH_LOG
+        decision = RiskDecisionType.ALLOW
+    return ThresholdEvaluation(outcome=outcome, decision=decision, thresholds=thresholds)
 
 
 def _ensure_json_serializable(payload: dict) -> None:

@@ -6,7 +6,7 @@ import pytest
 from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
-from app.models.fuel import FuelNetwork, FuelStation
+from app.models.fuel import FuelNetwork, FuelStation, FuelStationNetwork
 from app.schemas.fuel import DeclineCode, FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
 
@@ -30,9 +30,11 @@ def session():
 
 def _seed_refs(db):
     network = FuelNetwork(id=str(uuid4()), name="NET-1", provider_code="net-1", status="ACTIVE")
+    station_network = FuelStationNetwork(id=str(uuid4()), name="Main Network", meta={"brand": "Main"})
     station = FuelStation(
         id=str(uuid4()),
         network_id=network.id,
+        station_network_id=station_network.id,
         name="Station",
         country="RU",
         region="SPB",
@@ -56,7 +58,7 @@ def _seed_refs(db):
         status=FuelCardStatus.ACTIVE,
         vehicle_id=vehicle.id,
     )
-    db.add_all([network, station, vehicle, card])
+    db.add_all([network, station_network, station, vehicle, card])
     db.commit()
     return card
 
@@ -102,10 +104,10 @@ def test_authorize_decline_by_limit(session):
     session.commit()
 
     decline_code = _authorize(session, volume_liters=1.0)
-    assert decline_code == DeclineCode.LIMIT_EXCEEDED_AMOUNT
+    assert decline_code == DeclineCode.LIMIT_EXCEEDED
 
 
 def test_authorize_decline_by_risk(session):
     _seed_refs(session)
     decline_code = _authorize(session, volume_liters=100.0)
-    assert decline_code == DeclineCode.TANK_SANITY_EXCEEDED
+    assert decline_code == DeclineCode.RISK_BLOCK

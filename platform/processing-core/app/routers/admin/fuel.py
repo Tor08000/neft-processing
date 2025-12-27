@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.fleet import FleetDriver, FleetVehicle
-from app.models.fuel import FuelCard, FuelCardGroup, FuelLimit, FuelNetwork, FuelStation
+from app.models.fuel import FuelCard, FuelCardGroup, FuelLimit, FuelNetwork, FuelStation, FuelStationNetwork
 from app.schemas.fleet import (
     CardCreate,
     CardOut,
@@ -23,6 +23,8 @@ from app.schemas.fuel import (
     FuelNetworkOut,
     FuelStationCreate,
     FuelStationOut,
+    FuelStationNetworkCreate,
+    FuelStationNetworkOut,
 )
 
 router = APIRouter(prefix="/fuel", tags=["admin", "fuel"])
@@ -50,6 +52,7 @@ def list_networks(db: Session = Depends(get_db)) -> list[FuelNetworkOut]:
 def create_station(payload: FuelStationCreate, db: Session = Depends(get_db)) -> FuelStationOut:
     station = FuelStation(
         network_id=payload.network_id,
+        station_network_id=payload.station_network_id,
         station_code=payload.station_code,
         name=payload.name,
         country=payload.country,
@@ -68,6 +71,22 @@ def create_station(payload: FuelStationCreate, db: Session = Depends(get_db)) ->
 @router.get("/stations", response_model=list[FuelStationOut])
 def list_stations(db: Session = Depends(get_db)) -> list[FuelStationOut]:
     return [FuelStationOut.model_validate(item) for item in db.query(FuelStation).all()]
+
+
+@router.post("/station-networks", response_model=FuelStationNetworkOut)
+def create_station_network(
+    payload: FuelStationNetworkCreate, db: Session = Depends(get_db)
+) -> FuelStationNetworkOut:
+    station_network = FuelStationNetwork(name=payload.name, meta=payload.meta)
+    db.add(station_network)
+    db.commit()
+    db.refresh(station_network)
+    return FuelStationNetworkOut.model_validate(station_network)
+
+
+@router.get("/station-networks", response_model=list[FuelStationNetworkOut])
+def list_station_networks(db: Session = Depends(get_db)) -> list[FuelStationNetworkOut]:
+    return [FuelStationNetworkOut.model_validate(item) for item in db.query(FuelStationNetwork).all()]
 
 
 @router.post("/card-groups", response_model=FuelCardGroupOut)
@@ -164,4 +183,3 @@ def delete_limit(limit_id: str, db: Session = Depends(get_db)) -> dict:
     db.delete(limit)
     db.commit()
     return {"status": "deleted"}
-
