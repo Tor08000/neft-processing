@@ -12,7 +12,9 @@ from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
+from app.models.fuel import FuelTransaction, FuelTransactionStatus, FuelType
 from app.models.operation import Operation, OperationStatus
+from app.models.operation import ProductType
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.billing_metrics import metrics as billing_metrics
@@ -52,7 +54,7 @@ def _commission(amount: int) -> int:
     return int((Decimal(amount) * rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _aggregate_operations(session: Session, billing_date: date):
+def _aggregate_operations(session: Session, billing_date: date) -> list[dict]:
     start_ts, end_ts = _billing_window(billing_date)
 
     amount_value = func.coalesce(
@@ -70,7 +72,7 @@ def _aggregate_operations(session: Session, billing_date: date):
         else_=Operation.quantity,
     )
 
-    return (
+    rows = (
         session.query(
             Operation.client_id,
             Operation.merchant_id,
@@ -91,6 +93,70 @@ def _aggregate_operations(session: Session, billing_date: date):
         )
         .all()
     )
+    return [
+        {
+            "client_id": row.client_id,
+            "merchant_id": row.merchant_id,
+            "product_type": row.product_type,
+            "currency": row.currency,
+            "total_amount": int(row.total_amount or 0),
+            "total_quantity": row.total_quantity,
+            "operations_count": int(row.operations_count or 0),
+        }
+        for row in rows
+    ]
+
+
+def _fuel_product_type(value: FuelType | str | None) -> ProductType | None:
+    if value is None:
+        return None
+    normalized = value.value if hasattr(value, "value") else str(value)
+    if normalized == "AI-92":
+        return ProductType.AI92
+    if normalized == "AI-95":
+        return ProductType.AI95
+    if normalized == "AI-98":
+        return ProductType.AI98
+    return ProductType.__members__.get(normalized.replace("-", ""), ProductType.OTHER)
+
+
+def _aggregate_fuel_transactions(session: Session, billing_date: date) -> list[dict]:
+    start_ts, end_ts = _billing_window(billing_date)
+    rows = (
+        session.query(
+            FuelTransaction.client_id,
+            FuelTransaction.network_id.label("merchant_id"),
+            FuelTransaction.fuel_type,
+            FuelTransaction.currency,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("total_amount"),
+            func.coalesce(func.sum(FuelTransaction.volume_ml), 0).label("total_volume"),
+            func.count().label("operations_count"),
+        )
+        .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+        .filter(FuelTransaction.occurred_at >= start_ts)
+        .filter(FuelTransaction.occurred_at <= end_ts)
+        .group_by(
+            FuelTransaction.client_id,
+            FuelTransaction.network_id,
+            FuelTransaction.fuel_type,
+            FuelTransaction.currency,
+        )
+        .all()
+    )
+    aggregates: list[dict] = []
+    for row in rows:
+        aggregates.append(
+            {
+                "client_id": row.client_id,
+                "merchant_id": row.merchant_id,
+                "product_type": _fuel_product_type(row.fuel_type),
+                "currency": row.currency,
+                "total_amount": int(row.total_amount or 0),
+                "total_quantity": Decimal(row.total_volume or 0) / Decimal("1000"),
+                "operations_count": int(row.operations_count or 0),
+            }
+        )
+    return aggregates
 
 
 def _upsert_billing_summaries(
@@ -100,6 +166,7 @@ def _upsert_billing_summaries(
     billing_period_id: str,
 ) -> list[BillingSummary]:
     aggregates = _aggregate_operations(session, billing_date)
+    aggregates.extend(_aggregate_fuel_transactions(session, billing_date))
     if not aggregates:
         logger.info("billing.daily.no_operations", extra={"billing_date": str(billing_date)})
         return []
@@ -124,24 +191,24 @@ def _upsert_billing_summaries(
 
     for aggregate in aggregates:
         key = (
-            aggregate.client_id,
-            aggregate.merchant_id,
-            aggregate.product_type,
-            aggregate.currency,
+            aggregate["client_id"],
+            aggregate["merchant_id"],
+            aggregate["product_type"],
+            aggregate["currency"],
         )
 
-        total_amount = int(aggregate.total_amount or 0)
-        total_quantity = aggregate.total_quantity
-        operations_count = int(aggregate.operations_count or 0)
+        total_amount = int(aggregate["total_amount"] or 0)
+        total_quantity = aggregate["total_quantity"]
+        operations_count = int(aggregate["operations_count"] or 0)
         commission_amount = _commission(total_amount)
         payload_hash = hash_payload(
             {
                 "billing_date": billing_date,
                 "billing_period_id": billing_period_id,
-                "client_id": aggregate.client_id,
-                "merchant_id": aggregate.merchant_id,
-                "product_type": aggregate.product_type,
-                "currency": aggregate.currency,
+                "client_id": aggregate["client_id"],
+                "merchant_id": aggregate["merchant_id"],
+                "product_type": aggregate["product_type"],
+                "currency": aggregate["currency"],
                 "total_amount": total_amount,
                 "total_quantity": total_quantity,
                 "operations_count": operations_count,
@@ -165,10 +232,10 @@ def _upsert_billing_summaries(
             summary = BillingSummary(
                 billing_date=billing_date,
                 billing_period_id=billing_period_id,
-                client_id=aggregate.client_id,
-                merchant_id=aggregate.merchant_id,
-                product_type=aggregate.product_type,
-                currency=aggregate.currency,
+                client_id=aggregate["client_id"],
+                merchant_id=aggregate["merchant_id"],
+                product_type=aggregate["product_type"],
+                currency=aggregate["currency"],
                 total_amount=total_amount,
                 total_captured_amount=total_amount,
                 total_quantity=total_quantity,

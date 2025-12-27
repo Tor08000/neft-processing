@@ -136,6 +136,24 @@ from .legal_integrations import (  # noqa: F401
     SignatureType,
 )
 from .immutability import ImmutableRecordError  # noqa: F401
+from .fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus  # noqa: F401
+from .fuel import (  # noqa: F401
+    FuelCard,
+    FuelCardGroup,
+    FuelCardGroupStatus,
+    FuelCardStatus,
+    FuelLimit,
+    FuelLimitPeriod,
+    FuelLimitScopeType,
+    FuelLimitType,
+    FuelNetwork,
+    FuelNetworkStatus,
+    FuelStation,
+    FuelStationStatus,
+    FuelTransaction,
+    FuelTransactionStatus,
+    FuelType,
+)
 
 __all__ = [
     "Client",
@@ -269,4 +287,23 @@ __all__ = [
     "LegalGraphSnapshot",
     "LegalGraphSnapshotScopeType",
     "ImmutableRecordError",
+    "FuelCard",
+    "FuelCardGroup",
+    "FuelCardGroupStatus",
+    "FuelCardStatus",
+    "FleetDriver",
+    "FleetDriverStatus",
+    "FleetVehicle",
+    "FleetVehicleStatus",
+    "FuelLimit",
+    "FuelLimitPeriod",
+    "FuelLimitScopeType",
+    "FuelLimitType",
+    "FuelNetwork",
+    "FuelNetworkStatus",
+    "FuelStation",
+    "FuelStationStatus",
+    "FuelTransaction",
+    "FuelTransactionStatus",
+    "FuelType",
 ]

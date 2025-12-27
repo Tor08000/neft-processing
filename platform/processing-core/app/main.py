@@ -81,6 +81,11 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     payouts_router = None  # type: ignore
 
+try:
+    from app.api.v1.endpoints.fuel_transactions import router as fuel_transactions_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    fuel_transactions_router = None  # type: ignore
+
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
@@ -323,6 +328,8 @@ if transactions_router is not None:
 # Включаем роутер отчётов, если он доступен
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
+if fuel_transactions_router is not None:
+    app.include_router(fuel_transactions_router, prefix="")
 
 if intake_router is not None:
     app.include_router(intake_router, prefix="")
@@ -352,6 +359,8 @@ if transactions_router is not None:
     core_prefixed_router.include_router(transactions_router, prefix="")
 if reports_billing_router is not None:
     core_prefixed_router.include_router(reports_billing_router, prefix="")
+if fuel_transactions_router is not None:
+    core_prefixed_router.include_router(fuel_transactions_router, prefix="")
 if intake_router is not None:
     core_prefixed_router.include_router(intake_router, prefix="")
 if partners_router is not None:
