@@ -13,6 +13,7 @@ from app.routers.admin import (
     documents,
     fuel,
     integration_monitoring,
+    logistics,
     legal_graph,
     limits,
     ledger,
@@ -48,6 +49,7 @@ router.include_router(disputes.router)
 router.include_router(finance.router)
 router.include_router(ledger.router)
 router.include_router(fuel.router)
+router.include_router(logistics.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(legal_integrations.router)

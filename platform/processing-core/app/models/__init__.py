@@ -161,6 +161,20 @@ from .fuel import (  # noqa: F401
     FuelTransactionStatus,
     FuelType,
 )
+from .logistics import (  # noqa: F401
+    LogisticsOrder,
+    LogisticsOrderStatus,
+    LogisticsOrderType,
+    LogisticsRoute,
+    LogisticsRouteStatus,
+    LogisticsStop,
+    LogisticsStopStatus,
+    LogisticsStopType,
+    LogisticsTrackingEvent,
+    LogisticsTrackingEventType,
+    LogisticsETASnapshot,
+    LogisticsETAMethod,
+)
 
 __all__ = [
     "Client",
@@ -320,4 +334,16 @@ __all__ = [
     "FuelTransaction",
     "FuelTransactionStatus",
     "FuelType",
+    "LogisticsOrder",
+    "LogisticsOrderStatus",
+    "LogisticsOrderType",
+    "LogisticsRoute",
+    "LogisticsRouteStatus",
+    "LogisticsStop",
+    "LogisticsStopStatus",
+    "LogisticsStopType",
+    "LogisticsTrackingEvent",
+    "LogisticsTrackingEventType",
+    "LogisticsETASnapshot",
+    "LogisticsETAMethod",
 ]
