@@ -13,7 +13,7 @@ from app.models.logistics import (
 )
 from app.schemas.logistics import LogisticsTrackingEventIn
 from app.services.audit_service import RequestContext
-from app.services.logistics import deviation, eta, events, repository
+from app.services.logistics import eta, events
 from app.services.logistics.repository import count_tracking_events, get_stop
 
 
@@ -37,7 +37,6 @@ def ingest_tracking_event(
         raise LogisticsTrackingError("order_not_found")
 
     event_ts = payload.ts or _now()
-    previous_event = repository.get_last_tracking_event(db, order_id=order_id)
     event = LogisticsTrackingEvent(
         order_id=order_id,
         vehicle_id=payload.vehicle_id or order.vehicle_id,
@@ -104,49 +103,6 @@ def ingest_tracking_event(
             entity_type="logistics_stop",
             entity_id=payload.stop_id,
             payload={"order_id": order_id, "stop_id": payload.stop_id, "ts": event_ts},
-            request_ctx=request_ctx,
-        )
-
-    route = repository.get_active_route(db, order_id=order_id)
-    if route and payload.event_type == LogisticsTrackingEventType.LOCATION and payload.lat is not None and payload.lon is not None:
-        deviation.check_route_deviation(
-            db,
-            order=order,
-            route=route,
-            lat=payload.lat,
-            lon=payload.lon,
-            ts=event_ts,
-            request_ctx=request_ctx,
-        )
-        deviation.check_unexpected_stop(
-            db,
-            order=order,
-            route=route,
-            ts=event_ts,
-            speed_kmh=payload.speed_kmh,
-            stop_id=payload.stop_id,
-            previous_event=previous_event,
-            request_ctx=request_ctx,
-        )
-        deviation.check_velocity_anomaly(
-            db,
-            order=order,
-            route=route,
-            previous_event=previous_event,
-            current_ts=event_ts,
-            lat=payload.lat,
-            lon=payload.lon,
-            request_ctx=request_ctx,
-        )
-    if route and payload.event_type == LogisticsTrackingEventType.STOP_ARRIVAL and stop and payload.lat is not None and payload.lon is not None:
-        deviation.check_stop_radius(
-            db,
-            order=order,
-            route=route,
-            stop=stop,
-            lat=payload.lat,
-            lon=payload.lon,
-            ts=event_ts,
             request_ctx=request_ctx,
         )
 

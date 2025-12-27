@@ -1,23 +1,3 @@
-from app.services.logistics import (
-    deviation,
-    eta,
-    eta_accuracy,
-    events,
-    fuel_linker,
-    orders,
-    repository,
-    routes,
-    tracking,
-)
+from app.services.logistics import eta, events, orders, repository, routes, tracking
 
-__all__ = [
-    "deviation",
-    "eta",
-    "eta_accuracy",
-    "events",
-    "fuel_linker",
-    "orders",
-    "repository",
-    "routes",
-    "tracking",
-]
+__all__ = ["eta", "events", "orders", "repository", "routes", "tracking"]

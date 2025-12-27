@@ -11,8 +11,7 @@ from app.models.logistics import (
     LogisticsOrderStatus,
 )
 from app.services.audit_service import RequestContext
-from app.services.logistics import eta_accuracy, events
-from app.services.logistics.utils import ensure_aware
+from app.services.logistics import events
 from app.services.logistics.repository import get_last_tracking_event, get_latest_eta_snapshot
 
 
@@ -28,9 +27,9 @@ def _now() -> datetime:
 
 
 def _remaining_duration(order: LogisticsOrder, now: datetime) -> timedelta | None:
-    planned_start_at = ensure_aware(order.planned_start_at)
-    planned_end_at = ensure_aware(order.planned_end_at)
-    actual_start_at = ensure_aware(order.actual_start_at)
+    planned_start_at = _ensure_aware(order.planned_start_at)
+    planned_end_at = _ensure_aware(order.planned_end_at)
+    actual_start_at = _ensure_aware(order.actual_start_at)
 
     if planned_start_at and planned_end_at:
         total = planned_end_at - planned_start_at
@@ -57,10 +56,10 @@ def compute_eta_snapshot(
 
     now = _now()
     last_event = get_last_tracking_event(db, order_id=order_id)
-    planned_start_at = ensure_aware(order.planned_start_at)
-    planned_end_at = ensure_aware(order.planned_end_at)
-    actual_start_at = ensure_aware(order.actual_start_at)
-    actual_end_at = ensure_aware(order.actual_end_at)
+    planned_start_at = _ensure_aware(order.planned_start_at)
+    planned_end_at = _ensure_aware(order.planned_end_at)
+    actual_start_at = _ensure_aware(order.actual_start_at)
+    actual_end_at = _ensure_aware(order.actual_end_at)
     remaining = _remaining_duration(order, now)
 
     if order.status == LogisticsOrderStatus.COMPLETED and actual_end_at:
@@ -121,22 +120,20 @@ def compute_eta_snapshot(
         request_ctx=request_ctx,
     )
 
-    eta_accuracy.record_snapshot(
-        db,
-        order=order,
-        computed_at=now,
-        eta_end_at=eta_end_at,
-        method=method,
-        confidence=int(confidence),
-        request_ctx=request_ctx,
-    )
-
     return snapshot
 
 
 def _serialize_value(value):
     if isinstance(value, datetime):
         return value.isoformat()
+    return value
+
+
+def _ensure_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
     return value
 
 

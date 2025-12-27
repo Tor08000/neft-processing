@@ -57,33 +57,6 @@ class LogisticsETAMethod(str, Enum):
     LAST_KNOWN = "LAST_KNOWN"
 
 
-class LogisticsDeviationEventType(str, Enum):
-    OFF_ROUTE = "OFF_ROUTE"
-    BACK_ON_ROUTE = "BACK_ON_ROUTE"
-    STOP_OUT_OF_RADIUS = "STOP_OUT_OF_RADIUS"
-    UNEXPECTED_STOP = "UNEXPECTED_STOP"
-
-
-class LogisticsDeviationSeverity(str, Enum):
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
-
-
-class LogisticsFuelRouteLinkType(str, Enum):
-    AUTO_MATCH = "AUTO_MATCH"
-    MANUAL = "MANUAL"
-    PROVIDER = "PROVIDER"
-
-
-class LogisticsRiskSignalType(str, Enum):
-    FUEL_OFF_ROUTE = "FUEL_OFF_ROUTE"
-    FUEL_STOP_MISMATCH = "FUEL_STOP_MISMATCH"
-    ROUTE_DEVIATION_HIGH = "ROUTE_DEVIATION_HIGH"
-    ETA_ANOMALY = "ETA_ANOMALY"
-    VELOCITY_ANOMALY = "VELOCITY_ANOMALY"
-
-
 class LogisticsOrder(Base):
     __tablename__ = "logistics_orders"
     __table_args__ = (
@@ -191,86 +164,6 @@ class LogisticsETASnapshot(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class LogisticsRouteConstraint(Base):
-    __tablename__ = "logistics_route_constraints"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    route_id = Column(GUID(), ForeignKey("logistics_routes.id"), nullable=False, unique=True)
-    max_route_deviation_m = Column(Integer, nullable=False)
-    max_stop_radius_m = Column(Integer, nullable=False)
-    allowed_fuel_window_minutes = Column(Integer, nullable=False)
-    allowed_regions = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class LogisticsDeviationEvent(Base):
-    __tablename__ = "logistics_deviation_events"
-    __table_args__ = (Index("ix_logistics_deviation_events_order_ts", "order_id", "ts"),)
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False, index=True)
-    route_id = Column(GUID(), ForeignKey("logistics_routes.id"), nullable=False, index=True)
-    event_type = Column(ExistingEnum(LogisticsDeviationEventType, name="logistics_deviation_event_type"), nullable=False)
-    ts = Column(DateTime(timezone=True), nullable=False)
-    lat = Column(Float, nullable=True)
-    lon = Column(Float, nullable=True)
-    distance_from_route_m = Column(Integer, nullable=True)
-    stop_id = Column(GUID(), ForeignKey("logistics_stops.id"), nullable=True)
-    severity = Column(ExistingEnum(LogisticsDeviationSeverity, name="logistics_deviation_severity"), nullable=False)
-    explain = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class LogisticsETAAccuracy(Base):
-    __tablename__ = "logistics_eta_accuracy"
-    __table_args__ = (Index("ix_logistics_eta_accuracy_order_ts", "order_id", "computed_at"),)
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False, index=True)
-    computed_at = Column(DateTime(timezone=True), nullable=False)
-    eta_end_at = Column(DateTime(timezone=True), nullable=False)
-    actual_end_at = Column(DateTime(timezone=True), nullable=True)
-    error_minutes = Column(Integer, nullable=True)
-    method = Column(ExistingEnum(LogisticsETAMethod, name="logistics_eta_method"), nullable=False)
-    confidence = Column(Integer, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class FuelRouteLink(Base):
-    __tablename__ = "fuel_route_links"
-    __table_args__ = (
-        Index("ix_fuel_route_links_order", "order_id"),
-        UniqueConstraint("fuel_tx_id", name="uq_fuel_route_links_fuel_tx_id"),
-    )
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
-    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False, index=True)
-    route_id = Column(GUID(), ForeignKey("logistics_routes.id"), nullable=True, index=True)
-    stop_id = Column(GUID(), ForeignKey("logistics_stops.id"), nullable=True, index=True)
-    link_type = Column(ExistingEnum(LogisticsFuelRouteLinkType, name="logistics_fuel_link_type"), nullable=False)
-    distance_to_stop_m = Column(Integer, nullable=True)
-    time_delta_minutes = Column(Integer, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class LogisticsRiskSignal(Base):
-    __tablename__ = "logistics_risk_signals"
-    __table_args__ = (Index("ix_logistics_risk_signals_order_ts", "order_id", "ts"),)
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    client_id = Column(String(64), nullable=False, index=True)
-    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False, index=True)
-    vehicle_id = Column(GUID(), ForeignKey("fleet_vehicles.id"), nullable=True, index=True)
-    driver_id = Column(GUID(), ForeignKey("fleet_drivers.id"), nullable=True, index=True)
-    signal_type = Column(ExistingEnum(LogisticsRiskSignalType, name="logistics_risk_signal_type"), nullable=False)
-    severity = Column(Integer, nullable=False)
-    ts = Column(DateTime(timezone=True), nullable=False)
-    explain = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
 __all__ = [
     "LogisticsOrder",
     "LogisticsOrderType",
@@ -284,13 +177,4 @@ __all__ = [
     "LogisticsTrackingEventType",
     "LogisticsETASnapshot",
     "LogisticsETAMethod",
-    "LogisticsRouteConstraint",
-    "LogisticsDeviationEvent",
-    "LogisticsDeviationEventType",
-    "LogisticsDeviationSeverity",
-    "LogisticsETAAccuracy",
-    "FuelRouteLink",
-    "LogisticsFuelRouteLinkType",
-    "LogisticsRiskSignal",
-    "LogisticsRiskSignalType",
 ]

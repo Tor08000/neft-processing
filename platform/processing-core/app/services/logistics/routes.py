@@ -11,12 +11,10 @@ from app.models.logistics import (
     LogisticsRouteStatus,
     LogisticsStop,
     LogisticsStopStatus,
-    LogisticsRouteConstraint,
 )
 from app.schemas.logistics import LogisticsStopIn
 from app.services.audit_service import RequestContext
 from app.services.logistics import events
-from app.services.logistics.defaults import ROUTE_CONSTRAINT_DEFAULTS
 from app.services.logistics.repository import get_route, get_route_stops
 
 
@@ -59,16 +57,6 @@ def create_route(
     db.add(route)
     db.commit()
     db.refresh(route)
-
-    constraint = LogisticsRouteConstraint(
-        route_id=str(route.id),
-        max_route_deviation_m=ROUTE_CONSTRAINT_DEFAULTS.max_route_deviation_m,
-        max_stop_radius_m=ROUTE_CONSTRAINT_DEFAULTS.max_stop_radius_m,
-        allowed_fuel_window_minutes=ROUTE_CONSTRAINT_DEFAULTS.allowed_fuel_window_minutes,
-        allowed_regions=None,
-    )
-    db.add(constraint)
-    db.commit()
 
     events.audit_event(
         db,

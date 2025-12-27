@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.fleet import FleetDriver, FleetVehicle
 from app.models.logistics import LogisticsOrder, LogisticsOrderStatus, LogisticsOrderType
 from app.services.audit_service import RequestContext
-from app.services.logistics import eta, eta_accuracy, events
+from app.services.logistics import eta, events
 from app.services.logistics.repository import get_order
 
 
@@ -139,7 +139,6 @@ def complete_order(
         request_ctx=request_ctx,
     )
     eta.compute_eta_snapshot(db, order_id=str(order.id), reason="order_completed", request_ctx=request_ctx)
-    eta_accuracy.record_completion(db, order=order, request_ctx=request_ctx)
     return order
 
 
@@ -168,3 +167,4 @@ def cancel_order(
         request_ctx=request_ctx,
     )
     return order
+

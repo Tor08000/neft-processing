@@ -6,16 +6,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.logistics import (
-    FuelRouteLink,
-    LogisticsDeviationEvent,
-    LogisticsETAAccuracy,
     LogisticsETASnapshot,
     LogisticsOrder,
     LogisticsOrderStatus,
-    LogisticsRiskSignal,
     LogisticsRoute,
     LogisticsRouteStatus,
-    LogisticsRouteConstraint,
     LogisticsStop,
     LogisticsTrackingEvent,
 )
@@ -77,29 +72,6 @@ def get_stop(db: Session, *, stop_id: str) -> LogisticsStop | None:
     return db.query(LogisticsStop).filter(LogisticsStop.id == stop_id).one_or_none()
 
 
-def get_route_constraint(db: Session, *, route_id: str) -> LogisticsRouteConstraint | None:
-    return db.query(LogisticsRouteConstraint).filter(LogisticsRouteConstraint.route_id == route_id).one_or_none()
-
-
-def get_latest_deviation_event(db: Session, *, order_id: str) -> LogisticsDeviationEvent | None:
-    return (
-        db.query(LogisticsDeviationEvent)
-        .filter(LogisticsDeviationEvent.order_id == order_id)
-        .order_by(LogisticsDeviationEvent.ts.desc())
-        .first()
-    )
-
-
-def list_deviation_events(db: Session, *, order_id: str, limit: int = 100) -> list[LogisticsDeviationEvent]:
-    return (
-        db.query(LogisticsDeviationEvent)
-        .filter(LogisticsDeviationEvent.order_id == order_id)
-        .order_by(LogisticsDeviationEvent.ts.desc())
-        .limit(limit)
-        .all()
-    )
-
-
 def list_tracking_events(
     db: Session, *, order_id: str, limit: int = 100
 ) -> list[LogisticsTrackingEvent]:
@@ -108,32 +80,6 @@ def list_tracking_events(
         .filter(LogisticsTrackingEvent.order_id == order_id)
         .order_by(LogisticsTrackingEvent.ts.desc())
         .limit(limit)
-        .all()
-    )
-
-
-def list_recent_tracking_events(
-    db: Session, *, order_id: str, limit: int = 10
-) -> list[LogisticsTrackingEvent]:
-    return (
-        db.query(LogisticsTrackingEvent)
-        .filter(LogisticsTrackingEvent.order_id == order_id)
-        .order_by(LogisticsTrackingEvent.ts.desc())
-        .limit(limit)
-        .all()
-    )
-
-
-def list_recent_deviation_events(
-    db: Session,
-    *,
-    order_id: str,
-    since: datetime,
-) -> list[LogisticsDeviationEvent]:
-    return (
-        db.query(LogisticsDeviationEvent)
-        .filter(LogisticsDeviationEvent.order_id == order_id)
-        .filter(LogisticsDeviationEvent.ts >= since)
         .all()
     )
 
@@ -175,52 +121,6 @@ def list_eta_snapshots(
         .limit(limit)
         .all()
     )
-
-
-def list_eta_accuracy(db: Session, *, order_id: str, limit: int = 100) -> list[LogisticsETAAccuracy]:
-    return (
-        db.query(LogisticsETAAccuracy)
-        .filter(LogisticsETAAccuracy.order_id == order_id)
-        .order_by(LogisticsETAAccuracy.computed_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-
-def list_fuel_links(db: Session, *, order_id: str, limit: int = 100) -> list[FuelRouteLink]:
-    return (
-        db.query(FuelRouteLink)
-        .filter(FuelRouteLink.order_id == order_id)
-        .order_by(FuelRouteLink.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-
-def list_risk_signals(db: Session, *, order_id: str, limit: int = 100) -> list[LogisticsRiskSignal]:
-    return (
-        db.query(LogisticsRiskSignal)
-        .filter(LogisticsRiskSignal.order_id == order_id)
-        .order_by(LogisticsRiskSignal.ts.desc())
-        .limit(limit)
-        .all()
-    )
-
-
-def list_recent_risk_signals(
-    db: Session,
-    *,
-    client_id: str,
-    vehicle_id: str | None,
-    driver_id: str | None,
-    since: datetime,
-) -> list[LogisticsRiskSignal]:
-    query = db.query(LogisticsRiskSignal).filter(LogisticsRiskSignal.client_id == client_id)
-    if vehicle_id:
-        query = query.filter(LogisticsRiskSignal.vehicle_id == vehicle_id)
-    if driver_id:
-        query = query.filter(LogisticsRiskSignal.driver_id == driver_id)
-    return query.filter(LogisticsRiskSignal.ts >= since).all()
 
 
 def update_order_timestamp(db: Session, *, order: LogisticsOrder) -> None:
