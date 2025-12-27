@@ -17,6 +17,10 @@ from app.models.legal_integrations import (
 )
 from app.models.audit_log import AuditVisibility
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 from app.services.crypto_verify.base import VerificationResult
 from app.services.crypto_verify.gost_p7s import verify_p7s_signature
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
@@ -374,6 +378,32 @@ class LegalIntegrationsService:
             document.ack_at = signed_at
 
         self.db.commit()
+        try:
+            request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+            graph_context = GraphContext(tenant_id=document.tenant_id, request_ctx=request_ctx)
+            LegalGraphBuilder(self.db, context=graph_context).ensure_document_ack_graph(
+                document=document,
+                acknowledgement=acknowledgement,
+                meta={
+                    "actor_email": acknowledgement.ack_by_email,
+                    "ack_method": acknowledgement.ack_method,
+                    "ack_at": acknowledgement.ack_at,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph must not block signature flow
+            logger.warning(
+                "legal_graph_signature_ack_failed",
+                extra={"document_id": str(document.id), "error": str(exc)},
+            )
+            audit_graph_write_failure(
+                self.db,
+                failure=LegalGraphWriteFailure(
+                    entity_type="document_acknowledgement",
+                    entity_id=str(acknowledgement.id),
+                    error=str(exc),
+                ),
+                request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            )
 
     def _verify_signature(self, *, artifact, document_hash: str):
         if artifact.signature_type in {SignatureType.GOST_P7S, SignatureType.KEP}:

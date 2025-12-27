@@ -7,7 +7,7 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-
+from neft_shared.logging_setup import get_logger
 from app.db.types import new_uuid_str
 from app.models.audit_log import ActorType, AuditVisibility
 from app.models.audit_log import AuditLog
@@ -25,6 +25,15 @@ from app.services.decision.thresholds import evaluate_thresholds
 from app.services.decision.versions import DECISION_ENGINE_VERSION
 from app.services.risk.policy_resolver import resolve_policy_threshold
 from app.services.risk.training_snapshot import capture_training_snapshot
+from app.services.legal_graph import (
+    GraphContext,
+    LegalGraphBuilder,
+    LegalGraphWriteFailure,
+    audit_graph_write_failure,
+)
+
+
+logger = get_logger(__name__)
 
 
 _OUTCOME_SEVERITY = {
@@ -319,6 +328,26 @@ class DecisionEngine:
                 decision_id=decision_id,
                 risk_decision=risk_decision_record,
             )
+            try:
+                graph_context = GraphContext(
+                    tenant_id=ctx.tenant_id or 0,
+                    request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+                )
+                LegalGraphBuilder(self.db, context=graph_context).ensure_risk_decision_graph(risk_decision_record)
+            except Exception as exc:  # noqa: BLE001 - graph must not block decisions
+                logger.warning(
+                    "legal_graph_risk_decision_failed",
+                    extra={"decision_id": decision_id, "error": str(exc)},
+                )
+                audit_graph_write_failure(
+                    self.db,
+                    failure=LegalGraphWriteFailure(
+                        entity_type="risk_decision",
+                        entity_id=str(risk_decision_record.id),
+                        error=str(exc),
+                    ),
+                    request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=ctx.actor_id),
+                )
             capture_training_snapshot(
                 self.db,
                 ctx,

@@ -11,6 +11,7 @@ from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.models.audit_log import AuditVisibility
 from app.schemas.admin.billing import (
     BillingAdjustmentRequest,
     BillingAdjustmentResponse,
@@ -67,6 +68,15 @@ from app.repositories.billing_repository import BillingRepository
 from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
 from app.services.demo_seed import DemoSeeder
 from app.services.settlement_allocations import list_settlement_summary
+from app.services.legal_graph import (
+    LegalGraphRegistry,
+    LegalGraphSnapshotService,
+    check_billing_period_completeness,
+)
+from app.models.legal_graph import LegalGraphSnapshotScopeType, LegalNodeType
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["admin"])
 
@@ -117,6 +127,35 @@ def admin_lock_billing_period(
     db: Session = Depends(get_db),
 ) -> BillingPeriodRead:
     service = BillingPeriodService(db)
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    tenant_id = int(token.get("tenant_id") or 0)
+    period_preview = service.get_or_create(
+        period_type=body.period_type,
+        start_at=body.start_at,
+        end_at=body.end_at,
+        tz=body.tz,
+    )
+    completeness = check_billing_period_completeness(
+        db,
+        tenant_id=tenant_id,
+        period_id=str(period_preview.id),
+    )
+    if not completeness.ok:
+        AuditService(db).audit(
+            event_type="LEGAL_GRAPH_COMPLETENESS_FAILED",
+            entity_type="billing_period",
+            entity_id=str(period_preview.id),
+            action="LOCK_DENIED",
+            visibility=AuditVisibility.INTERNAL,
+            after={
+                "missing_nodes": completeness.missing_nodes,
+                "missing_edges": completeness.missing_edges,
+                "blocking_reasons": completeness.blocking_reasons,
+            },
+            request_ctx=request_ctx,
+        )
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="billing_period_incomplete")
     try:
         period = service.lock(
             period_type=body.period_type,
@@ -124,6 +163,19 @@ def admin_lock_billing_period(
             end_at=body.end_at,
             tz=body.tz,
             token=token,
+        )
+        LegalGraphRegistry(db, request_ctx=request_ctx).get_or_create_node(
+            tenant_id=tenant_id,
+            node_type=LegalNodeType.BILLING_PERIOD,
+            ref_id=str(period.id),
+            ref_table="billing_periods",
+        )
+        LegalGraphSnapshotService(db, request_ctx=request_ctx).create_snapshot(
+            tenant_id=tenant_id,
+            scope_type=LegalGraphSnapshotScopeType.BILLING_PERIOD,
+            scope_ref_id=str(period.id),
+            depth=3,
+            actor_ctx=request_ctx,
         )
         db.commit()
     except PolicyAccessDenied as exc:
@@ -148,7 +200,7 @@ def admin_lock_billing_period(
             "status": period.status.value if period.status else None,
             "locked_at": period.locked_at,
         },
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_ctx,
     )
     return BillingPeriodRead.model_validate(period)
 

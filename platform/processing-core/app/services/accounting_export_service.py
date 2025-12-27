@@ -18,6 +18,7 @@ from app.models.audit_log import AuditVisibility
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice
+from app.models.legal_graph import LegalEdgeType, LegalNodeType
 from app.models.risk_score import RiskScoreAction
 from app.services.accounting_export.canonical import AccountingEntry
 from app.services.accounting_export.delivery import DeliveryPayload, build_delivery_adapter
@@ -31,6 +32,15 @@ from app.services.decision import DecisionAction, DecisionContext, DecisionEngin
 from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
 from app.services.policy.resources import ResourceContext
 from app.services.s3_storage import S3Storage
+from app.services.legal_graph import (
+    GraphContext,
+    LegalGraphBuilder,
+    LegalGraphWriteFailure,
+    audit_graph_write_failure,
+)
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class AccountingExportError(RuntimeError):
@@ -231,6 +241,23 @@ class AccountingExportService:
                     "checksum_sha256": checksum,
                 },
             )
+            try:
+                graph_context = GraphContext(tenant_id=batch.tenant_id, request_ctx=request_ctx)
+                LegalGraphBuilder(self.db, context=graph_context).ensure_accounting_export_graph(batch)
+            except Exception as exc:  # noqa: BLE001 - graph should not block exports
+                logger.warning(
+                    "legal_graph_export_generated_failed",
+                    extra={"batch_id": str(batch.id), "error": str(exc)},
+                )
+                audit_graph_write_failure(
+                    self.db,
+                    failure=LegalGraphWriteFailure(
+                        entity_type="accounting_export_batch",
+                        entity_id=str(batch.id),
+                        error=str(exc),
+                    ),
+                    request_ctx=request_ctx,
+                )
 
             object_key = self._build_object_key(batch, checksum)
             storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_ACCOUNTING_EXPORTS)
@@ -406,6 +433,45 @@ class AccountingExportService:
                 "erp_processed_at": processed_at,
             },
         )
+
+        if status == "CONFIRMED":
+            try:
+                graph_context = GraphContext(tenant_id=batch.tenant_id, request_ctx=request_ctx)
+                builder = LegalGraphBuilder(self.db, context=graph_context)
+                builder.ensure_accounting_export_graph(batch)
+                if batch.billing_period_id:
+                    export_node = builder.registry.get_or_create_node(
+                        tenant_id=batch.tenant_id,
+                        node_type=LegalNodeType.ACCOUNTING_EXPORT_BATCH,
+                        ref_id=str(batch.id),
+                        ref_table="accounting_export_batches",
+                    ).node
+                    period_node = builder.registry.get_or_create_node(
+                        tenant_id=batch.tenant_id,
+                        node_type=LegalNodeType.BILLING_PERIOD,
+                        ref_id=str(batch.billing_period_id),
+                        ref_table="billing_periods",
+                    ).node
+                    builder.registry.link_edge(
+                        tenant_id=batch.tenant_id,
+                        src_node_id=export_node.id,
+                        dst_node_id=period_node.id,
+                        edge_type=LegalEdgeType.CONFIRMS,
+                    )
+            except Exception as exc:  # noqa: BLE001 - graph should not block exports
+                logger.warning(
+                    "legal_graph_export_failed",
+                    extra={"batch_id": str(batch.id), "error": str(exc)},
+                )
+                audit_graph_write_failure(
+                    self.db,
+                    failure=LegalGraphWriteFailure(
+                        entity_type="accounting_export_batch",
+                        entity_id=str(batch.id),
+                        error=str(exc),
+                    ),
+                    request_ctx=request_ctx,
+                )
 
         return batch
 
