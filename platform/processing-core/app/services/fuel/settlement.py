@@ -11,6 +11,7 @@ from app.schemas.fuel import DeclineCode
 from app.services.audit_service import AuditService, RequestContext
 from app.services.finance_invariants import rules as invariants_rules
 from app.services.fuel import events, repository
+from app.services.logistics import fuel_linker
 from app.services.internal_ledger import InternalLedgerService
 
 
@@ -110,6 +111,7 @@ def settle_fuel_tx(
         },
         request_ctx=request_ctx,
     )
+    fuel_linker.auto_link_fuel_tx(db, transaction=transaction, request_ctx=request_ctx)
     return FuelSettlementResult(
         transaction_id=str(transaction.id),
         status=transaction.status,
