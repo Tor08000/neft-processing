@@ -12,6 +12,7 @@ from app.models.fuel import FuelCard, FuelStation, FuelTransaction, FuelTransact
 from app.schemas.fuel import DeclineCode
 from app.services.decision import DecisionAction, DecisionContext
 from app.services.fuel import repository
+from app.services.logistics import repository as logistics_repository
 
 MSK_TZ = ZoneInfo("Europe/Moscow")
 
@@ -103,6 +104,13 @@ def build_risk_context_for_fuel_tx(
         factors.append("velocity_spike")
         decline_code = decline_code or DeclineCode.RISK_BLOCK
 
+    logistics_signals = _summarize_logistics_signals(
+        db,
+        client_id=client_id,
+        vehicle_id=str(vehicle.id) if vehicle else None,
+        driver_id=str(driver.id) if driver else None,
+        occurred_at=occurred_at,
+    )
     metadata = {
         "card_status": card.status.value,
         "station_id": str(station.id),
@@ -125,6 +133,12 @@ def build_risk_context_for_fuel_tx(
         "policy_override_id": policy_override_id,
         "thresholds_override": thresholds_override,
         "policy_source": policy_source,
+        "logistics_signals": logistics_signals,
+        "logistics_off_route_summary": _summarize_off_route_events(
+            db,
+            order_id=logistics_signals.get("order_id"),
+            occurred_at=occurred_at,
+        ),
     }
     decision_context = DecisionContext(
         tenant_id=tenant_id,
@@ -139,3 +153,53 @@ def build_risk_context_for_fuel_tx(
     )
 
     return RiskContextResult(decision_context=decision_context, decline_code=decline_code, factors=factors)
+
+
+def _summarize_logistics_signals(
+    db,
+    *,
+    client_id: str,
+    vehicle_id: str | None,
+    driver_id: str | None,
+    occurred_at: datetime,
+) -> dict:
+    since = occurred_at - timedelta(hours=24)
+    signals = logistics_repository.list_recent_risk_signals(
+        db,
+        client_id=client_id,
+        vehicle_id=vehicle_id,
+        driver_id=driver_id,
+        since=since,
+    )
+    summary: dict[str, dict] = {"order_id": None}
+    for signal in signals:
+        summary["order_id"] = str(signal.order_id)
+        entry = summary.setdefault(
+            signal.signal_type.value,
+            {"count": 0, "max_severity": 0, "latest_ts": None},
+        )
+        entry["count"] += 1
+        entry["max_severity"] = max(entry["max_severity"], signal.severity)
+        if entry["latest_ts"] is None or signal.ts > entry["latest_ts"]:
+            entry["latest_ts"] = signal.ts.isoformat()
+    return summary
+
+
+def _summarize_off_route_events(
+    db,
+    *,
+    order_id: str | None,
+    occurred_at: datetime,
+) -> dict | None:
+    if not order_id:
+        return None
+    since = occurred_at - timedelta(hours=24)
+    events = logistics_repository.list_recent_deviation_events(db, order_id=order_id, since=since)
+    off_route = [event for event in events if event.event_type.value == "OFF_ROUTE"]
+    if not off_route:
+        return {"count": 0, "max_severity": 0, "last_ts": None}
+    max_severity = max(
+        {"LOW": 30, "MEDIUM": 60, "HIGH": 80}.get(event.severity.value, 0) for event in off_route
+    )
+    last_ts = max(event.ts for event in off_route).isoformat()
+    return {"count": len(off_route), "max_severity": max_severity, "last_ts": last_ts}
