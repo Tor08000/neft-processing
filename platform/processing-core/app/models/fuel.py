@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     JSON,
     String,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -120,6 +121,15 @@ class FuelNetwork(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FuelStationNetwork(Base):
+    __tablename__ = "fuel_station_networks"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    name = Column(String(128), nullable=False)
+    meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class FuelStation(Base):
     __tablename__ = "fuel_stations"
     __table_args__ = (
@@ -128,6 +138,12 @@ class FuelStation(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     network_id = Column(GUID(), ForeignKey("fuel_networks.id"), nullable=False, index=True)
+    station_network_id = Column(
+        GUID(),
+        ForeignKey("fuel_station_networks.id"),
+        nullable=True,
+        index=True,
+    )
     name = Column(String(256), nullable=False)
     country = Column(String(64), nullable=True)
     region = Column(String(64), nullable=True)
@@ -187,6 +203,14 @@ class FuelLimit(Base):
     client_id = Column(String(64), nullable=False, index=True)
     scope_type = Column(ExistingEnum(FuelLimitScopeType, name="fuel_limit_scope_type"), nullable=False)
     scope_id = Column(String(64), nullable=True)
+    fuel_type_code = Column(ExistingEnum(FuelType, name="fuel_type"), nullable=True)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=True, index=True)
+    station_network_id = Column(
+        GUID(),
+        ForeignKey("fuel_station_networks.id"),
+        nullable=True,
+        index=True,
+    )
     limit_type = Column(ExistingEnum(FuelLimitType, name="fuel_limit_type"), nullable=False)
     period = Column(ExistingEnum(FuelLimitPeriod, name="fuel_limit_period"), nullable=False)
     value = Column(BigInteger, nullable=False)
@@ -196,6 +220,64 @@ class FuelLimit(Base):
     active = Column(Boolean, nullable=False, default=True, server_default="true")
     valid_from = Column(DateTime(timezone=True), nullable=True)
     valid_to = Column(DateTime(timezone=True), nullable=True)
+    time_window_start = Column(Time, nullable=True)
+    time_window_end = Column(Time, nullable=True)
+    timezone = Column(String(64), nullable=False, default="Europe/Moscow", server_default="Europe/Moscow")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelRiskProfile(Base):
+    __tablename__ = "fuel_risk_profiles"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    policy_id = Column(GUID(), ForeignKey("risk_policies.id"), nullable=False)
+    thresholds_override = Column(JSON, nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelRiskShadowEvent(Base):
+    __tablename__ = "fuel_risk_shadow_events"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
+    decision = Column(String(32), nullable=False)
+    score = Column(Integer, nullable=True)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelAnomalyEvent(Base):
+    __tablename__ = "fuel_anomaly_events"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False)
+    severity = Column(String(32), nullable=False)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelMisuseSignal(Base):
+    __tablename__ = "fuel_misuse_signals"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=False, index=True)
+    signal = Column(String(64), nullable=False)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelStationOutlier(Base):
+    __tablename__ = "fuel_station_outliers"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=False, index=True)
+    metric = Column(String(64), nullable=False)
+    value = Column(BigInteger, nullable=True)
+    baseline = Column(BigInteger, nullable=True)
+    explain = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -210,8 +292,14 @@ __all__ = [
     "FuelLimitType",
     "FuelNetwork",
     "FuelNetworkStatus",
+    "FuelStationNetwork",
     "FuelStation",
     "FuelStationStatus",
+    "FuelRiskProfile",
+    "FuelRiskShadowEvent",
+    "FuelAnomalyEvent",
+    "FuelMisuseSignal",
+    "FuelStationOutlier",
     "FuelTransaction",
     "FuelTransactionStatus",
     "FuelType",

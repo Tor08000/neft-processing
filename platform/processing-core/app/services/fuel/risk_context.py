@@ -37,6 +37,9 @@ def build_risk_context_for_fuel_tx(
     occurred_at: datetime,
     currency: str,
     subject_id: str,
+    policy_override_id: str | None,
+    thresholds_override: dict | None,
+    policy_source: str,
     db,
 ) -> RiskContextResult:
     local_ts = occurred_at.astimezone(MSK_TZ)
@@ -96,6 +99,9 @@ def build_risk_context_for_fuel_tx(
         "driver_id": str(driver.id) if driver else None,
         "factors": factors,
         "subject_id": subject_id,
+        "policy_override_id": policy_override_id,
+        "thresholds_override": thresholds_override,
+        "policy_source": policy_source,
     }
     decision_context = DecisionContext(
         tenant_id=tenant_id,

@@ -26,6 +26,7 @@ class LegalNodeType(str, Enum):
     CARD = "CARD"
     FUEL_STATION = "FUEL_STATION"
     VEHICLE = "VEHICLE"
+    FUEL_LIMIT = "FUEL_LIMIT"
 
 
 class LegalEdgeType(str, Enum):

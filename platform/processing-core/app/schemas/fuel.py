@@ -10,22 +10,26 @@ from app.models.fuel import FuelLimitPeriod, FuelLimitScopeType, FuelLimitType, 
 
 
 class DeclineCode(str, Enum):
-    CARD_NOT_FOUND = "CARD_NOT_FOUND"
+    LIMIT_EXCEEDED = "LIMIT_EXCEEDED"
+    LIMIT_TIME_WINDOW = "LIMIT_TIME_WINDOW"
     CARD_BLOCKED = "CARD_BLOCKED"
     CARD_EXPIRED = "CARD_EXPIRED"
+    RISK_BLOCK = "RISK_BLOCK"
+    RISK_REVIEW = "RISK_REVIEW"
+    STATION_UNKNOWN = "STATION_UNKNOWN"
+    STATION_BLOCKED = "STATION_BLOCKED"
+    FUEL_TYPE_NOT_ALLOWED = "FUEL_TYPE_NOT_ALLOWED"
+    NETWORK_BLOCKED = "NETWORK_BLOCKED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    CARD_NOT_FOUND = "CARD_NOT_FOUND"
     CARD_NOT_ASSIGNED = "CARD_NOT_ASSIGNED"
     CLIENT_BLOCKED = "CLIENT_BLOCKED"
     TENANT_BLOCKED = "TENANT_BLOCKED"
     STATION_NOT_FOUND = "STATION_NOT_FOUND"
     STATION_INACTIVE = "STATION_INACTIVE"
     NETWORK_NOT_SUPPORTED = "NETWORK_NOT_SUPPORTED"
-    FUEL_TYPE_NOT_ALLOWED = "FUEL_TYPE_NOT_ALLOWED"
-    LIMIT_EXCEEDED_AMOUNT = "LIMIT_EXCEEDED_AMOUNT"
-    LIMIT_EXCEEDED_VOLUME = "LIMIT_EXCEEDED_VOLUME"
-    LIMIT_EXCEEDED_COUNT = "LIMIT_EXCEEDED_COUNT"
     LIMIT_WINDOW_INVALID = "LIMIT_WINDOW_INVALID"
     LIMIT_CONFIG_MISSING = "LIMIT_CONFIG_MISSING"
-    RISK_BLOCK = "RISK_BLOCK"
     RISK_REVIEW_REQUIRED = "RISK_REVIEW_REQUIRED"
     RISK_POLICY_MISSING = "RISK_POLICY_MISSING"
     RISK_SERVICE_UNAVAILABLE = "RISK_SERVICE_UNAVAILABLE"
@@ -67,6 +71,8 @@ class FuelAuthorizeRequest(BaseModel):
 class LimitExplain(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    applied_limit_id: Optional[str] = None
+    matched_on: list[str] = Field(default_factory=list)
     scope_type: FuelLimitScopeType
     scope_id: Optional[str]
     limit_type: FuelLimitType
@@ -75,6 +81,9 @@ class LimitExplain(BaseModel):
     used: int
     attempt: int
     remaining: int
+    time_window_start: Optional[str] = None
+    time_window_end: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class RiskExplain(BaseModel):
@@ -84,9 +93,30 @@ class RiskExplain(BaseModel):
     score: Optional[int] = None
     thresholds: Optional[dict[str, Any]] = None
     policy: Optional[dict[str, Any]] = None
+    policy_source: Optional[str] = None
     factors: Optional[list[str]] = None
     decision_hash: Optional[str] = None
     payload: Optional[dict[str, Any]] = None
+
+
+class AccountantExplain(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result: str
+    decline_code: Optional[DeclineCode] = None
+    amount: Optional[int] = None
+    limit_remaining: Optional[int] = None
+    period: Optional[FuelLimitPeriod] = None
+    applied_limit: Optional[str] = None
+
+
+class FleetManagerExplain(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result: str
+    decline_code: Optional[DeclineCode] = None
+    signals: list[str] = Field(default_factory=list)
+    recommendation: Optional[str] = None
 
 
 class FuelDeclineExplain(BaseModel):
@@ -96,6 +126,8 @@ class FuelDeclineExplain(BaseModel):
     message: Optional[str] = None
     limit_explain: Optional[LimitExplain] = None
     risk_explain: Optional[RiskExplain] = None
+    accountant_explain: Optional[AccountantExplain] = None
+    manager_explain: Optional[FleetManagerExplain] = None
 
 
 class FuelAuthorizeResponse(BaseModel):
@@ -165,6 +197,7 @@ class FuelStationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     network_id: str
+    station_network_id: Optional[str] = None
     station_code: str
     name: str
     country: Optional[str] = None
@@ -180,6 +213,7 @@ class FuelStationOut(BaseModel):
 
     id: str
     network_id: str
+    station_network_id: Optional[str] = None
     station_code: Optional[str] = None
     name: str
     country: Optional[str] = None
@@ -211,8 +245,28 @@ class FuelCardGroupOut(BaseModel):
     created_at: datetime
 
 
+class FuelStationNetworkCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    meta: Optional[dict[str, Any]] = None
+
+
+class FuelStationNetworkOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    name: str
+    meta: Optional[dict[str, Any]] = None
+    created_at: datetime
+
+
 __all__ = [
     "DeclineCode",
+    "AccountantExplain",
+    "FleetManagerExplain",
+    "FuelStationNetworkCreate",
+    "FuelStationNetworkOut",
     "FuelAuthorizeRequest",
     "FuelAuthorizeResponse",
     "FuelDeclineExplain",

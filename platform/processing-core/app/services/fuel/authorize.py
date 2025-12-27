@@ -10,6 +10,7 @@ from app.models.fuel import (
     FuelCard,
     FuelCardStatus,
     FuelNetworkStatus,
+    FuelRiskShadowEvent,
     FuelStationStatus,
     FuelTransaction,
     FuelTransactionStatus,
@@ -20,11 +21,13 @@ from app.schemas.fuel import (
     FuelAuthorizeRequest,
     FuelAuthorizeResponse,
     FuelDeclineExplain,
+    FleetManagerExplain,
+    AccountantExplain,
     RiskExplain,
 )
 from app.services.audit_service import RequestContext
 from app.services.decision import DecisionEngine, DecisionOutcome
-from app.services.fuel import events, limits, repository, risk_context
+from app.services.fuel import analytics, events, limits, repository, risk_context
 from app.services.legal_graph.registry import LegalGraphRegistry
 
 
@@ -40,12 +43,16 @@ def _decline_response(
     message: str,
     limit_explain=None,
     risk_explain=None,
+    accountant_explain=None,
+    manager_explain=None,
 ) -> FuelAuthorizeResponse:
     explain = FuelDeclineExplain(
         decline_code=decline_code,
         message=message,
         limit_explain=limit_explain,
         risk_explain=risk_explain,
+        accountant_explain=accountant_explain,
+        manager_explain=manager_explain,
     )
     return FuelAuthorizeResponse(status="DECLINE", decline_code=decline_code, explain=explain)
 
@@ -59,6 +66,7 @@ def _legal_graph(
     vehicle: FleetVehicle | None,
     station_id: str,
     risk_decision_id: str | None,
+    limit_id: str | None,
     request_ctx: RequestContext | None,
 ) -> None:
     registry = LegalGraphRegistry(db, request_ctx=request_ctx)
@@ -118,6 +126,32 @@ def _legal_graph(
             dst_node_id=risk_node.id,
             edge_type=LegalEdgeType.GATED_BY_RISK,
         )
+        if limit_id:
+            limit_node = registry.get_or_create_node(
+                tenant_id=tenant_id,
+                node_type=LegalNodeType.FUEL_LIMIT,
+                ref_id=str(limit_id),
+                ref_table="fuel_limits",
+            ).node
+            registry.link(
+                tenant_id=tenant_id,
+                src_node_id=limit_node.id,
+                dst_node_id=risk_node.id,
+                edge_type=LegalEdgeType.RELATES_TO,
+            )
+    if limit_id:
+        limit_node = registry.get_or_create_node(
+            tenant_id=tenant_id,
+            node_type=LegalNodeType.FUEL_LIMIT,
+            ref_id=str(limit_id),
+            ref_table="fuel_limits",
+        ).node
+        registry.link(
+            tenant_id=tenant_id,
+            src_node_id=tx_node.id,
+            dst_node_id=limit_node.id,
+            edge_type=LegalEdgeType.RELATES_TO,
+        )
 
 
 def _resolve_vehicle_and_driver(
@@ -152,7 +186,7 @@ def authorize_fuel_tx(
     if not card:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.CARD_NOT_FOUND,
+                decline_code=DeclineCode.INTERNAL_ERROR,
                 message="Card token not found",
             )
         )
@@ -175,7 +209,7 @@ def authorize_fuel_tx(
     if not network or network.status != FuelNetworkStatus.ACTIVE:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.NETWORK_NOT_SUPPORTED,
+                decline_code=DeclineCode.NETWORK_BLOCKED,
                 message="Fuel network not supported",
             )
         )
@@ -185,14 +219,14 @@ def authorize_fuel_tx(
     if not station:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.STATION_NOT_FOUND,
+                decline_code=DeclineCode.STATION_UNKNOWN,
                 message="Station not found",
             )
         )
     if station.status != FuelStationStatus.ACTIVE:
         return AuthorizationResult(
             response=_decline_response(
-                decline_code=DeclineCode.STATION_INACTIVE,
+                decline_code=DeclineCode.STATION_BLOCKED,
                 message="Station is inactive",
             )
         )
@@ -237,8 +271,19 @@ def authorize_fuel_tx(
         amount_minor=amount_minor,
         volume_ml=volume_ml,
         currency=payload.currency,
+        fuel_type=payload.fuel_type,
+        station_id=str(station.id) if station else None,
+        station_network_id=str(station.station_network_id) if station.station_network_id else None,
     )
     if not limit_decision.allowed:
+        accountant_explain = AccountantExplain(
+            result="DECLINED",
+            decline_code=limit_decision.decline_code,
+            amount=amount_minor,
+            limit_remaining=limit_decision.explain.remaining if limit_decision.explain else None,
+            period=limit_decision.explain.period if limit_decision.explain else None,
+            applied_limit=limit_decision.explain.applied_limit_id if limit_decision.explain else None,
+        )
         transaction = FuelTransaction(
             tenant_id=card.tenant_id,
             client_id=card.client_id,
@@ -270,14 +315,29 @@ def authorize_fuel_tx(
             },
             request_ctx=request_ctx,
         )
+        _legal_graph(
+            db,
+            tenant_id=card.tenant_id,
+            transaction=transaction,
+            card=card,
+            vehicle=vehicle,
+            station_id=str(station.id),
+            risk_decision_id=None,
+            limit_id=limit_decision.explain.applied_limit_id if limit_decision.explain else None,
+            request_ctx=request_ctx,
+        )
+        decline_code = limit_decision.decline_code or DeclineCode.LIMIT_EXCEEDED
         response = _decline_response(
-            decline_code=limit_decision.decline_code or DeclineCode.LIMIT_EXCEEDED_AMOUNT,
-            message="Limit exceeded",
+            decline_code=decline_code,
+            message="Limit time window" if decline_code == DeclineCode.LIMIT_TIME_WINDOW else "Limit exceeded",
             limit_explain=limit_decision.explain,
+            accountant_explain=accountant_explain,
         )
         response.transaction_id = str(transaction.id)
         return AuthorizationResult(response=response, transaction=transaction)
 
+    risk_profile = repository.get_fuel_risk_profile(db, client_id=card.client_id)
+    policy_source = "fuel_profile" if risk_profile else "global"
     risk_result = risk_context.build_risk_context_for_fuel_tx(
         tenant_id=card.tenant_id,
         client_id=card.client_id,
@@ -291,6 +351,9 @@ def authorize_fuel_tx(
         occurred_at=occurred_at,
         currency=payload.currency,
         subject_id=payload.external_ref or str(card.id),
+        policy_override_id=str(risk_profile.policy_id) if risk_profile else None,
+        thresholds_override=risk_profile.thresholds_override if risk_profile else None,
+        policy_source=policy_source,
         db=db,
     )
     decision = DecisionEngine(db).evaluate(risk_result.decision_context)
@@ -299,6 +362,7 @@ def authorize_fuel_tx(
         score=decision.risk_score,
         thresholds=decision.explain.get("thresholds") if isinstance(decision.explain, dict) else None,
         policy=decision.explain.get("policy") if isinstance(decision.explain, dict) else None,
+        policy_source=policy_source,
         factors=decision.explain.get("factors") if isinstance(decision.explain, dict) else None,
         decision_hash=decision.explain.get("decision_hash") if isinstance(decision.explain, dict) else None,
         payload=decision.to_payload(),
@@ -309,17 +373,13 @@ def authorize_fuel_tx(
     decline_code: DeclineCode | None = None
     if decision.outcome == DecisionOutcome.ALLOW and risk_result.decline_code:
         status = FuelTransactionStatus.DECLINED
-        decline_code = risk_result.decline_code
+        decline_code = DeclineCode.RISK_BLOCK
     if decision.outcome == DecisionOutcome.MANUAL_REVIEW:
         status = FuelTransactionStatus.REVIEW_REQUIRED
-        decline_code = DeclineCode.RISK_REVIEW_REQUIRED
+        decline_code = DeclineCode.RISK_REVIEW
     elif decision.outcome == DecisionOutcome.DECLINE:
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK
-        if risk_result.decline_code == DeclineCode.VELOCITY_SPIKE:
-            decline_code = DeclineCode.VELOCITY_SPIKE
-        elif risk_result.decline_code == DeclineCode.TANK_SANITY_EXCEEDED:
-            decline_code = DeclineCode.TANK_SANITY_EXCEEDED
 
     transaction = FuelTransaction(
         tenant_id=card.tenant_id,
@@ -342,6 +402,21 @@ def authorize_fuel_tx(
         meta={**base_meta, "risk_explain": risk_explain.model_dump()},
     )
     transaction = repository.add_fuel_transaction(db, transaction)
+    repository.add_risk_shadow_event(
+        db,
+        FuelRiskShadowEvent(
+            fuel_tx_id=transaction.id,
+            decision=decision.outcome.value,
+            score=decision.risk_score,
+            explain=risk_explain.model_dump(),
+        ),
+    )
+
+    if status in {FuelTransactionStatus.AUTHORIZED, FuelTransactionStatus.REVIEW_REQUIRED}:
+        analytics_result = analytics.evaluate_transaction(
+            db=db, transaction=transaction, vehicle=vehicle, station=station
+        )
+        analytics.persist_results(db, analytics_result)
 
     event_type = events.FUEL_EVENT_AUTHORIZED
     if status == FuelTransactionStatus.REVIEW_REQUIRED:
@@ -368,6 +443,7 @@ def authorize_fuel_tx(
         vehicle=vehicle,
         station_id=str(station.id),
         risk_decision_id=risk_decision_id,
+        limit_id=limit_decision.explain.applied_limit_id if limit_decision.explain else None,
         request_ctx=request_ctx,
     )
 
@@ -377,6 +453,15 @@ def authorize_fuel_tx(
     elif status == FuelTransactionStatus.DECLINED:
         response_status = "DECLINE"
 
+    manager_explain = None
+    if status != FuelTransactionStatus.AUTHORIZED:
+        manager_explain = FleetManagerExplain(
+            result="DECLINED" if status == FuelTransactionStatus.DECLINED else "REVIEW",
+            decline_code=decline_code,
+            signals=risk_result.factors,
+            recommendation="Check driver activity" if risk_result.factors else None,
+        )
+
     response = FuelAuthorizeResponse(
         status=response_status,
         transaction_id=str(transaction.id),
@@ -385,6 +470,7 @@ def authorize_fuel_tx(
             decline_code=decline_code or DeclineCode.RISK_BLOCK,
             message="Risk decision",
             risk_explain=risk_explain,
+            manager_explain=manager_explain,
         )
         if status != FuelTransactionStatus.AUTHORIZED
         else None,

@@ -11,6 +11,12 @@ from app.models.fuel import (
     FuelCardGroup,
     FuelLimit,
     FuelNetwork,
+    FuelRiskProfile,
+    FuelRiskShadowEvent,
+    FuelAnomalyEvent,
+    FuelMisuseSignal,
+    FuelStationNetwork,
+    FuelStationOutlier,
     FuelStation,
     FuelTransaction,
     FuelTransactionStatus,
@@ -43,6 +49,10 @@ def get_station_by_code(
     )
 
 
+def get_station_network_by_id(db: Session, *, station_network_id: str) -> FuelStationNetwork | None:
+    return db.query(FuelStationNetwork).filter(FuelStationNetwork.id == station_network_id).one_or_none()
+
+
 def get_vehicle_by_plate(db: Session, *, client_id: str, plate_number: str) -> FleetVehicle | None:
     return (
         db.query(FleetVehicle)
@@ -73,6 +83,9 @@ def list_active_limits(
     scope_id: str | None,
     at: datetime,
     currency: str,
+    fuel_type_code: str | None = None,
+    station_id: str | None = None,
+    station_network_id: str | None = None,
 ) -> list[FuelLimit]:
     query = (
         db.query(FuelLimit)
@@ -85,6 +98,10 @@ def list_active_limits(
         query = query.filter(FuelLimit.scope_id.is_(None))
     else:
         query = query.filter(FuelLimit.scope_id == scope_id)
+    if fuel_type_code is not None:
+        query = query.filter(FuelLimit.fuel_type_code.in_([None, fuel_type_code]))
+    query = query.filter(FuelLimit.station_id.in_([None, station_id]))
+    query = query.filter(FuelLimit.station_network_id.in_([None, station_network_id]))
     query = query.filter(func.coalesce(FuelLimit.valid_from, at) <= at)
     query = query.filter(func.coalesce(FuelLimit.valid_to, at) >= at)
     query = query.filter(func.coalesce(FuelLimit.currency, currency) == currency)
@@ -101,6 +118,9 @@ def sum_fuel_usage(
     start_at: datetime,
     end_at: datetime,
     limit_type,
+    fuel_type_code: str | None = None,
+    station_id: str | None = None,
+    station_network_id: str | None = None,
 ) -> int:
     query = (
         db.query(func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0))
@@ -132,6 +152,15 @@ def sum_fuel_usage(
         )
     else:
         return 0
+
+    if fuel_type_code is not None:
+        query = query.filter(FuelTransaction.fuel_type == fuel_type_code)
+    if station_id is not None:
+        query = query.filter(FuelTransaction.station_id == station_id)
+    if station_network_id is not None:
+        query = query.join(FuelStation, FuelTransaction.station_id == FuelStation.id).filter(
+            FuelStation.station_network_id == station_network_id
+        )
 
     if limit_type == "COUNT":
         return int(query.with_entities(func.count(FuelTransaction.id)).scalar() or 0)
@@ -175,6 +204,102 @@ def add_fuel_transaction(db: Session, transaction: FuelTransaction) -> FuelTrans
     db.commit()
     db.refresh(transaction)
     return transaction
+
+
+def get_fuel_risk_profile(db: Session, *, client_id: str) -> FuelRiskProfile | None:
+    return (
+        db.query(FuelRiskProfile)
+        .filter(FuelRiskProfile.client_id == client_id)
+        .filter(FuelRiskProfile.enabled.is_(True))
+        .one_or_none()
+    )
+
+
+def add_risk_shadow_event(db: Session, event: FuelRiskShadowEvent) -> FuelRiskShadowEvent:
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def add_anomaly_event(db: Session, event: FuelAnomalyEvent) -> FuelAnomalyEvent:
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def add_misuse_signal(db: Session, signal: FuelMisuseSignal) -> FuelMisuseSignal:
+    db.add(signal)
+    db.commit()
+    db.refresh(signal)
+    return signal
+
+
+def add_station_outlier(db: Session, outlier: FuelStationOutlier) -> FuelStationOutlier:
+    db.add(outlier)
+    db.commit()
+    db.refresh(outlier)
+    return outlier
+
+
+def list_recent_card_driver_ids(
+    db: Session,
+    *,
+    card_id: str,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[str]:
+    rows = (
+        db.query(FuelTransaction.driver_id)
+        .filter(FuelTransaction.card_id == card_id)
+        .filter(FuelTransaction.driver_id.isnot(None))
+        .filter(FuelTransaction.occurred_at >= start_at)
+        .filter(FuelTransaction.occurred_at <= end_at)
+        .distinct()
+        .all()
+    )
+    return [str(row[0]) for row in rows if row[0]]
+
+
+def avg_card_volume_30d(db: Session, *, card_id: str, start_at: datetime, end_at: datetime) -> float:
+    avg = (
+        db.query(func.coalesce(func.avg(FuelTransaction.volume_ml), 0))
+        .filter(FuelTransaction.card_id == card_id)
+        .filter(
+            FuelTransaction.status.in_(
+                [
+                    FuelTransactionStatus.AUTHORIZED,
+                    FuelTransactionStatus.REVIEW_REQUIRED,
+                    FuelTransactionStatus.SETTLED,
+                ]
+            )
+        )
+        .filter(FuelTransaction.occurred_at >= start_at)
+        .filter(FuelTransaction.occurred_at <= end_at)
+        .scalar()
+    )
+    return float(avg or 0)
+
+
+def station_price_avg(
+    db: Session, *, station_id: str, network_id: str, start_at: datetime, end_at: datetime
+) -> tuple[float, float]:
+    station_avg = (
+        db.query(func.coalesce(func.avg(FuelTransaction.unit_price_minor), 0))
+        .filter(FuelTransaction.station_id == station_id)
+        .filter(FuelTransaction.occurred_at >= start_at)
+        .filter(FuelTransaction.occurred_at <= end_at)
+        .scalar()
+    )
+    network_avg = (
+        db.query(func.coalesce(func.avg(FuelTransaction.unit_price_minor), 0))
+        .filter(FuelTransaction.network_id == network_id)
+        .filter(FuelTransaction.occurred_at >= start_at)
+        .filter(FuelTransaction.occurred_at <= end_at)
+        .scalar()
+    )
+    return float(station_avg or 0), float(network_avg or 0)
 
 
 def list_fuel_tx_count(

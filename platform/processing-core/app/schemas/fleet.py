@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
 from app.models.fleet import FleetDriverStatus, FleetVehicleStatus
-from app.models.fuel import FuelCardStatus, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
+from app.models.fuel import FuelCardStatus, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType, FuelType
 
 
 class VehicleCreate(BaseModel):
@@ -100,6 +100,9 @@ class LimitCreate(BaseModel):
     client_id: str
     scope_type: FuelLimitScopeType
     scope_id: Optional[str] = None
+    fuel_type_code: Optional[FuelType] = None
+    station_id: Optional[str] = None
+    station_network_id: Optional[str] = None
     limit_type: FuelLimitType
     period: FuelLimitPeriod
     value: int
@@ -108,6 +111,9 @@ class LimitCreate(BaseModel):
     active: bool = True
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None
+    time_window_start: Optional[time] = None
+    time_window_end: Optional[time] = None
+    timezone: Optional[str] = None
     meta: Optional[dict] = None
 
 
@@ -119,6 +125,9 @@ class LimitOut(BaseModel):
     client_id: str
     scope_type: FuelLimitScopeType
     scope_id: Optional[str] = None
+    fuel_type_code: Optional[FuelType] = None
+    station_id: Optional[str] = None
+    station_network_id: Optional[str] = None
     limit_type: FuelLimitType
     period: FuelLimitPeriod
     value: int
@@ -127,6 +136,9 @@ class LimitOut(BaseModel):
     active: bool
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None
+    time_window_start: Optional[time] = None
+    time_window_end: Optional[time] = None
+    timezone: Optional[str] = None
     meta: Optional[dict] = None
     created_at: datetime
 
