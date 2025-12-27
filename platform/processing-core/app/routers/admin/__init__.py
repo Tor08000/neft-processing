@@ -12,6 +12,7 @@ from app.routers.admin import (
     disputes,
     documents,
     integration_monitoring,
+    legal_graph,
     limits,
     ledger,
     merchants,
@@ -48,5 +49,6 @@ router.include_router(ledger.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(legal_integrations.router)
+router.include_router(legal_graph.router)
 
 __all__ = ["router"]

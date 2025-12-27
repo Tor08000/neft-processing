@@ -38,6 +38,10 @@ from app.services.audit_service import AuditService, _sanitize_token_for_audit, 
 from app.services.document_chain import compute_ack_hash
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
+from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/client", tags=["client-documents"])
 
@@ -482,6 +486,35 @@ def acknowledge_document(
         },
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
+
+    try:
+        graph_context = GraphContext(tenant_id=tenant_id, request_ctx=request_ctx)
+        LegalGraphBuilder(db, context=graph_context).ensure_document_ack_graph(
+            document=document,
+            acknowledgement=acknowledgement,
+            meta={
+                "actor_id": ack_by_user_id,
+                "actor_email": ack_by_email,
+                "ack_method": acknowledgement.ack_method,
+                "ack_ip": acknowledgement.ack_ip,
+                "ack_user_agent": acknowledgement.ack_user_agent,
+                "ack_at": acknowledgement.ack_at,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - graph must not block acknowledgement
+        logger.warning(
+            "legal_graph_document_ack_failed",
+            extra={"document_id": str(document.id), "error": str(exc)},
+        )
+        audit_graph_write_failure(
+            db,
+            failure=LegalGraphWriteFailure(
+                entity_type="document_acknowledgement",
+                entity_id=str(acknowledgement.id),
+                error=str(exc),
+            ),
+            request_ctx=request_ctx,
+        )
 
     return DocumentAcknowledgementResponse(
         acknowledged=True,

@@ -22,6 +22,17 @@ from app.models.invoice import Invoice
 from app.services.audit_service import AuditService, RequestContext
 from app.services.documents_generator import DocumentsGenerator
 from app.services.documents_storage import DocumentsStorage
+from app.services.legal_graph import (
+    GraphContext,
+    LegalGraphBuilder,
+    LegalGraphSnapshotService,
+    LegalGraphWriteFailure,
+    audit_graph_write_failure,
+)
+from app.models.legal_graph import LegalGraphSnapshotScopeType
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,28 @@ class ClosingDocumentsService:
             sent_at=datetime.now(timezone.utc),
         )
         self.db.add(package)
+
+        try:
+            graph_context = GraphContext(tenant_id=tenant_id, request_ctx=actor)
+            graph_builder = LegalGraphBuilder(self.db, context=graph_context)
+            for doc in document_map.values():
+                graph_builder.ensure_document_graph(doc)
+            graph_builder.ensure_closing_package_graph(package, documents=document_map)
+        except Exception as exc:  # noqa: BLE001 - graph must not block package generation
+            logger.warning(
+                "legal_graph_closing_package_failed",
+                extra={"package_id": str(package.id), "error": str(exc)},
+            )
+            audit_graph_write_failure(
+                self.db,
+                failure=LegalGraphWriteFailure(
+                    entity_type="closing_package",
+                    entity_id=str(package.id),
+                    error=str(exc),
+                ),
+                request_ctx=actor,
+            )
+
         self.db.commit()
         self.db.refresh(package)
 
@@ -173,6 +206,16 @@ class ClosingDocumentsService:
             raise ValueError("documents_not_finalized")
 
         package.status = ClosingPackageStatus.FINALIZED
+        graph_context = GraphContext(tenant_id=package.tenant_id, request_ctx=actor)
+        graph_builder = LegalGraphBuilder(self.db, context=graph_context)
+        graph_builder.ensure_closing_package_graph(package, documents=documents)
+        LegalGraphSnapshotService(self.db, request_ctx=actor).create_snapshot(
+            tenant_id=package.tenant_id,
+            scope_type=LegalGraphSnapshotScopeType.CLOSING_PACKAGE,
+            scope_ref_id=str(package.id),
+            depth=4,
+            actor_ctx=actor,
+        )
         self.db.commit()
 
         AuditService(self.db).audit(
@@ -271,6 +314,24 @@ class ClosingDocumentsService:
             },
             request_ctx=actor,
         )
+
+        try:
+            graph_context = GraphContext(tenant_id=tenant_id, request_ctx=actor)
+            LegalGraphBuilder(self.db, context=graph_context).ensure_document_graph(document)
+        except Exception as exc:  # noqa: BLE001 - graph must not block document issuance
+            logger.warning(
+                "legal_graph_document_issue_failed",
+                extra={"document_id": str(document.id), "error": str(exc)},
+            )
+            audit_graph_write_failure(
+                self.db,
+                failure=LegalGraphWriteFailure(
+                    entity_type="document",
+                    entity_id=str(document.id),
+                    error=str(exc),
+                ),
+                request_ctx=actor,
+            )
 
         return document
 

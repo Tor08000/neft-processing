@@ -19,6 +19,8 @@ from app.services.document_chain import compute_ack_hash
 from app.services.legal_integrations.errors import ProviderNotConfigured
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
+from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphSnapshotService
+from app.models.legal_graph import LegalGraphSnapshotScopeType
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -239,6 +241,17 @@ def finalize_document(
         raise HTTPException(status_code=409, detail="ack_hash_mismatch")
 
     document.status = DocumentStatus.FINALIZED
+
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    graph_context = GraphContext(tenant_id=document.tenant_id, request_ctx=request_ctx)
+    LegalGraphBuilder(db, context=graph_context).ensure_document_graph(document)
+    LegalGraphSnapshotService(db, request_ctx=request_ctx).create_snapshot(
+        tenant_id=document.tenant_id,
+        scope_type=LegalGraphSnapshotScopeType.DOCUMENT,
+        scope_ref_id=str(document.id),
+        depth=3,
+        actor_ctx=request_ctx,
+    )
     db.commit()
 
     ack_by = acknowledgement.ack_by_user_id or acknowledgement.ack_by_email or ""
@@ -276,7 +289,7 @@ def finalize_document(
             "previous_document_hash": previous_document_hash,
             "ack_hash": ack_hash,
         },
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_ctx,
     )
 
     return {"status": document.status.value}

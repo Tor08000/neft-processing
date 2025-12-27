@@ -18,6 +18,7 @@ from app.services.billing_periods import BillingPeriodConflict, BillingPeriodSer
 from app.services.invoice_pdf import InvoicePdfService
 from app.services.finance_invariants import FinancialInvariantChecker
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
+from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -267,6 +268,23 @@ def generate_invoice_for_batch(
             generate_invoice_pdf.delay(invoice.id)
         except Exception:  # noqa: BLE001
             logger.warning("invoice.pdf.enqueue_failed", extra={"invoice_id": invoice.id})
+    try:
+        graph_context = GraphContext(tenant_id=batch.tenant_id or 0, request_ctx=None)
+        LegalGraphBuilder(db, context=graph_context).ensure_invoice_graph(invoice)
+    except Exception as exc:  # noqa: BLE001 - graph must not block invoice issuance
+        logger.warning(
+            "legal_graph_invoice_issue_failed",
+            extra={"invoice_id": invoice.id, "error": str(exc)},
+        )
+        audit_graph_write_failure(
+            db,
+            failure=LegalGraphWriteFailure(
+                entity_type="invoice",
+                entity_id=str(invoice.id),
+                error=str(exc),
+            ),
+            request_ctx=None,
+        )
     return InvoiceGenerationResult(invoice=invoice, created=True)
 
 

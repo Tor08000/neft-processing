@@ -22,6 +22,14 @@ from app.models.finance import (
     SettlementSourceType,
 )
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.refund_request import RefundRequest
+from app.services.legal_graph import (
+    GraphContext,
+    LegalGraphBuilder,
+    LegalGraphWriteFailure,
+    audit_graph_write_failure,
+)
+from neft_shared.logging_setup import get_logger
 from app.services.internal_ledger import InternalLedgerService
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.billing_job_runs import BillingJobRunService
@@ -35,6 +43,7 @@ from app.services.policy.resources import ResourceContext
 from app.services.settlement_allocations import resolve_settlement_period
 from app.services.finance_invariants import FinancialInvariantChecker, FinancialInvariantViolation
 
+logger = get_logger(__name__)
 
 class FinanceOperationInProgress(RuntimeError):
     """Finance operation already running for the requested invoice."""
@@ -235,6 +244,48 @@ class FinanceService:
             },
             request_ctx=request_ctx,
         )
+
+        source_obj = None
+        if source_type == SettlementSourceType.PAYMENT:
+            source_obj = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.id == source_id)
+                .one_or_none()
+            )
+        elif source_type == SettlementSourceType.CREDIT_NOTE:
+            source_obj = (
+                self.db.query(CreditNote)
+                .filter(CreditNote.id == source_id)
+                .one_or_none()
+            )
+        elif source_type == SettlementSourceType.REFUND:
+            source_obj = (
+                self.db.query(RefundRequest)
+                .filter(RefundRequest.id == source_id)
+                .one_or_none()
+            )
+
+        try:
+            graph_context = GraphContext(tenant_id=allocation.tenant_id, request_ctx=request_ctx)
+            LegalGraphBuilder(self.db, context=graph_context).ensure_settlement_allocation_graph(
+                allocation,
+                invoice=invoice,
+                source=source_obj,
+            )
+        except Exception as exc:  # noqa: BLE001 - graph should not block settlement
+            logger.warning(
+                "legal_graph_settlement_allocation_failed",
+                extra={"allocation_id": str(allocation.id), "error": str(exc)},
+            )
+            audit_graph_write_failure(
+                self.db,
+                failure=LegalGraphWriteFailure(
+                    entity_type="settlement_allocation",
+                    entity_id=str(allocation.id),
+                    error=str(exc),
+                ),
+                request_ctx=request_ctx,
+            )
 
         return allocation
 

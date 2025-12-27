@@ -119,6 +119,14 @@ from .documents import (  # noqa: F401
     DocumentStatus,
     DocumentType,
 )
+from .legal_graph import (  # noqa: F401
+    LegalEdge,
+    LegalEdgeType,
+    LegalGraphSnapshot,
+    LegalGraphSnapshotScopeType,
+    LegalNode,
+    LegalNodeType,
+)
 from .legal_integrations import (  # noqa: F401
     Certificate,
     DocumentEnvelope,
@@ -254,5 +262,11 @@ __all__ = [
     "DocumentFileType",
     "ClosingPackage",
     "ClosingPackageStatus",
+    "LegalNode",
+    "LegalNodeType",
+    "LegalEdge",
+    "LegalEdgeType",
+    "LegalGraphSnapshot",
+    "LegalGraphSnapshotScopeType",
     "ImmutableRecordError",
 ]
