@@ -16,6 +16,7 @@ from app.models.crm import (
     CRMSubscriptionStatus,
     CRMTariffStatus,
 )
+from app.schemas.admin.money_flow import SubscriptionCFOExplainResponse
 from app.schemas.crm import (
     CRMClientCreate,
     CRMClientOut,
@@ -40,6 +41,7 @@ from app.schemas.crm import (
 )
 from app.services.audit_service import request_context_from_request
 from app.services.crm import clients, contracts, events, repository, settings, subscriptions, sync, tariffs
+from app.services.crm.subscription_cfo_explain import build_subscription_cfo_explain
 from app.services.crm.subscription_explain import build_explain
 from app.services.crm.subscription_pricing_engine import price_subscription_v2
 from app.services.crm.subscription_segments import build_segments_v2, record_subscription_change
@@ -338,6 +340,23 @@ def preview_subscription_billing_endpoint(
         charges=charges_payload,
         total=explain.total,
     )
+
+
+@router.get("/subscriptions/{subscription_id}/cfo-explain", response_model=SubscriptionCFOExplainResponse)
+def subscription_cfo_explain_endpoint(
+    subscription_id: str,
+    period_id: str = Query(...),
+    db: Session = Depends(get_db),
+) -> SubscriptionCFOExplainResponse:
+    try:
+        payload = build_subscription_cfo_explain(
+            db,
+            subscription_id=subscription_id,
+            billing_period_id=period_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return SubscriptionCFOExplainResponse.model_validate(payload)
 
 
 @router.post("/subscriptions/{subscription_id}/change-tariff", response_model=CRMSubscriptionOut)
