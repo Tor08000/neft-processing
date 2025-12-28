@@ -10,6 +10,9 @@ class MoneyFlowDiff:
     missing_links: list[str]
     broken_snapshots: list[str]
     recommended_action: str
+    missing_links_count: int | None = None
+    missing_ledger_postings: int | None = None
+    mismatched_invoice_aggregation: list[str] | None = None
 
 
 def diff_snapshots(expected: dict[str, Any], actual: dict[str, Any]) -> MoneyFlowDiff:
@@ -43,6 +46,9 @@ def diff_snapshots(expected: dict[str, Any], actual: dict[str, Any]) -> MoneyFlo
         missing_links=missing_links,
         broken_snapshots=broken_snapshots,
         recommended_action=recommended_action,
+        missing_links_count=None,
+        missing_ledger_postings=None,
+        mismatched_invoice_aggregation=None,
     )
 
 

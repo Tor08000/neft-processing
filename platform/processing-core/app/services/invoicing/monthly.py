@@ -15,6 +15,7 @@ from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.fuel import FuelTransaction, FuelTransactionStatus
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.legal_graph import LegalEdgeType, LegalNodeType
+from app.models.money_flow_v3 import MoneyFlowLinkNodeType, MoneyFlowLinkType
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
@@ -22,6 +23,7 @@ from app.services.invoice_state_machine import InvoiceStateMachine
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.finance_invariants import FinancialInvariantChecker
 from app.services.legal_graph.registry import LegalGraphRegistry
+from app.services.money_flow.graph import MoneyFlowGraphBuilder, ensure_money_flow_links
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -104,6 +106,7 @@ def _link_fuel_transactions_to_invoice(session: Session, *, invoice: Invoice) ->
         return
     registry = LegalGraphRegistry(session)
     invoice_nodes: dict[int, object] = {}
+    money_flow_builders: dict[int, MoneyFlowGraphBuilder] = {}
     for tx in fuel_txs:
         invoice_node = invoice_nodes.get(tx.tenant_id)
         if invoice_node is None:
@@ -125,6 +128,25 @@ def _link_fuel_transactions_to_invoice(session: Session, *, invoice: Invoice) ->
             src_node_id=tx_node.id,
             dst_node_id=invoice_node.id,
             edge_type=LegalEdgeType.RELATES_TO,
+        )
+        builder = money_flow_builders.get(tx.tenant_id)
+        if builder is None:
+            builder = MoneyFlowGraphBuilder(tenant_id=tx.tenant_id, client_id=invoice.client_id)
+            money_flow_builders[tx.tenant_id] = builder
+        builder.add_link(
+            src_type=MoneyFlowLinkNodeType.FUEL_TX,
+            src_id=str(tx.id),
+            link_type=MoneyFlowLinkType.FEEDS,
+            dst_type=MoneyFlowLinkNodeType.INVOICE,
+            dst_id=invoice.id,
+            meta={"billing_period_id": str(invoice.billing_period_id) if invoice.billing_period_id else None},
+        )
+    for tenant_id, builder in money_flow_builders.items():
+        ensure_money_flow_links(
+            session,
+            tenant_id=tenant_id,
+            client_id=invoice.client_id,
+            links=builder.build(),
         )
 
 

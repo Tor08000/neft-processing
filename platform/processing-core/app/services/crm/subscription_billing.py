@@ -8,6 +8,7 @@ from app.models.billing_job_run import BillingJobType
 from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.models.crm import (
     CRMBillingCycle,
+    CRMFeatureFlagType,
     CRMSubscriptionPeriodSegment,
     CRMSubscriptionSegmentStatus,
     CRMSubscriptionStatus,
@@ -85,6 +86,13 @@ def run_subscription_billing(
                 tariff = repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
                 tariff_definition = _resolve_tariff_definition(tariff)
                 included = tariff_definition.get("included") if isinstance(tariff_definition, dict) else {}
+                fuel_flag = repository.get_feature_flag(
+                    db,
+                    tenant_id=subscription.tenant_id,
+                    client_id=subscription.client_id,
+                    feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+                )
+                include_fuel_metrics = bool(fuel_flag.enabled) if fuel_flag else False
 
                 usage_result = collect_usage(
                     db,
@@ -93,6 +101,7 @@ def run_subscription_billing(
                     period_start=period.start_at,
                     period_end=period.end_at,
                     included=included,
+                    include_fuel_metrics=include_fuel_metrics,
                 )
                 pricing_result = price_subscription(
                     subscription=subscription,
@@ -241,11 +250,19 @@ def run_subscription_billing_v2(
             segments = ensure_segments_v2(db, subscription=subscription, period=period)
             if not segments:
                 continue
+            fuel_flag = repository.get_feature_flag(
+                db,
+                tenant_id=subscription.tenant_id,
+                client_id=subscription.client_id,
+                feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+            )
+            include_fuel_metrics = bool(fuel_flag.enabled) if fuel_flag else False
             counters = collect_usage_by_segments(
                 db,
                 subscription=subscription,
                 billing_period_id=str(period.id),
                 segments=segments,
+                include_fuel_metrics=include_fuel_metrics,
             ).counters
             pricing_result = price_subscription_v2(
                 subscription=subscription,

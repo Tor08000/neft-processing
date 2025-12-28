@@ -58,6 +58,9 @@ class MoneyHealthResponse(BaseModel):
     missing_subscription_snapshots: int
     disconnected_graph: int
     cfo_explain_not_ready: int
+    fuel_missing_ledger_links: int
+    fuel_missing_billing_period_links: int
+    fuel_missing_invoice_links: int
     top_offenders: list[MoneyHealthOffenderSchema]
 
 
@@ -88,6 +91,14 @@ class CFOExplainSnapshotsSchema(BaseModel):
     passed: bool
 
 
+class CFOExplainFuelSchema(BaseModel):
+    tx_count: int
+    volume_ml: int
+    amount_minor: int
+    link_ids: list[str]
+    replay: dict[str, Any]
+
+
 class CFOExplainResponse(BaseModel):
     invoice_id: str
     client_id: str
@@ -97,6 +108,7 @@ class CFOExplainResponse(BaseModel):
     links: CFOExplainLinksSchema
     snapshots: CFOExplainSnapshotsSchema
     anomalies: list[str]
+    fuel: CFOExplainFuelSchema | None
 
 
 class SubscriptionCFOExplainInvoiceSchema(BaseModel):
@@ -119,6 +131,7 @@ class SubscriptionCFOExplainResponse(BaseModel):
     money_flow: dict[str, Any]
     snapshots: dict[str, Any]
     replay: dict[str, Any]
+    fuel: CFOExplainFuelSchema | None
     charge_ids: list[str]
     counter_ids: list[str]
     money_flow_event_ids: list[str]
@@ -138,6 +151,9 @@ class MoneyReplayDiffSchema(BaseModel):
     missing_links: list[str]
     broken_snapshots: list[str]
     recommended_action: str
+    missing_links_count: int | None = None
+    missing_ledger_postings: int | None = None
+    mismatched_invoice_aggregation: list[str] | None = None
 
 
 class MoneyReplayResponse(BaseModel):
@@ -146,3 +162,4 @@ class MoneyReplayResponse(BaseModel):
     recompute_hash: str | None
     diff: MoneyReplayDiffSchema | None
     links_rebuilt: int | None
+    summary: dict[str, Any] | None

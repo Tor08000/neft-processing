@@ -7,6 +7,7 @@ from app.db import Base, SessionLocal, engine
 from app.models.fleet import FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerEntryDirection
+from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType
 from app.schemas.fuel import FuelAuthorizeRequest
 from app.services.fuel.authorize import authorize_fuel_tx
 from app.services.fuel.settlement import reverse_fuel_tx, settle_fuel_tx
@@ -101,3 +102,59 @@ def test_settle_and_reverse_balanced_entries(session):
         .all()
     )
     assert len(reversal_entries) == 2
+
+
+def test_fuel_links_idempotent_on_settle_and_reverse(session):
+    _seed_refs(session)
+    payload = FuelAuthorizeRequest(
+        card_token="card-token-1",
+        network_code="net-1",
+        station_code="ST-1",
+        occurred_at=datetime.now(timezone.utc),
+        fuel_type="DIESEL",
+        volume_liters=5.0,
+        unit_price=500,
+        currency="RUB",
+        external_ref=str(uuid4()),
+        vehicle_plate="A123BC",
+    )
+    result = authorize_fuel_tx(session, payload=payload)
+    tx_id = result.response.transaction_id
+
+    settle_fuel_tx(session, transaction_id=tx_id)
+    links = (
+        session.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == tx_id)
+        .all()
+    )
+    assert len(links) == 2
+    assert any(link.link_type == MoneyFlowLinkType.POSTS for link in links)
+    assert any(link.link_type == MoneyFlowLinkType.RELATES for link in links)
+
+    settle_fuel_tx(session, transaction_id=tx_id)
+    links_after_retry = (
+        session.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == tx_id)
+        .all()
+    )
+    assert len(links_after_retry) == 2
+
+    reverse_fuel_tx(session, transaction_id=tx_id)
+    links_after_reverse = (
+        session.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == tx_id)
+        .all()
+    )
+    assert len(links_after_reverse) == 3
+
+    reverse_fuel_tx(session, transaction_id=tx_id)
+    links_after_reverse_retry = (
+        session.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == tx_id)
+        .all()
+    )
+    assert len(links_after_reverse_retry) == 3

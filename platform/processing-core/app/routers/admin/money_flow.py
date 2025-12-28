@@ -67,6 +67,9 @@ def money_health(
         missing_subscription_snapshots=report.missing_subscription_snapshots,
         disconnected_graph=report.disconnected_graph,
         cfo_explain_not_ready=report.cfo_explain_not_ready,
+        fuel_missing_ledger_links=report.fuel_missing_ledger_links,
+        fuel_missing_billing_period_links=report.fuel_missing_billing_period_links,
+        fuel_missing_invoice_links=report.fuel_missing_invoice_links,
         top_offenders=report.top_offenders,
     )
 
@@ -86,6 +89,7 @@ def cfo_explain(invoice_id: str = Query(..., description="Invoice id"), db: Sess
         links=explain.links,
         snapshots=explain.snapshots,
         anomalies=explain.anomalies,
+        fuel=explain.fuel,
     )
 
 
@@ -105,6 +109,9 @@ def replay_money_flow(payload: MoneyReplayRequest, db: Session = Depends(get_db)
             missing_links=result.diff.missing_links,
             broken_snapshots=result.diff.broken_snapshots,
             recommended_action=result.diff.recommended_action,
+            missing_links_count=result.diff.missing_links_count,
+            missing_ledger_postings=result.diff.missing_ledger_postings,
+            mismatched_invoice_aggregation=result.diff.mismatched_invoice_aggregation,
         )
     return MoneyReplayResponse(
         mode=result.mode,
@@ -112,6 +119,7 @@ def replay_money_flow(payload: MoneyReplayRequest, db: Session = Depends(get_db)
         recompute_hash=result.recompute_hash,
         diff=diff,
         links_rebuilt=result.links_rebuilt,
+        summary=result.summary,
     )
 
 
