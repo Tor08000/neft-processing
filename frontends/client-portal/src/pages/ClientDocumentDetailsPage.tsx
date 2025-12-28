@@ -89,6 +89,7 @@ export function ClientDocumentDetailsPage() {
   }
 
   const riskExplain = document.risk_explain ?? null;
+  const riskState = document.risk?.state ?? null;
   const riskThresholds = riskExplain?.thresholds ?? null;
   const riskFactors = riskExplain?.factors ?? null;
   const riskDecisionHash = riskExplain?.decision_hash ?? null;
@@ -169,9 +170,9 @@ export function ClientDocumentDetailsPage() {
               </div>
             </div>
           </div>
-          {document.risk.state === "BLOCK" ? (
+          {riskState === "BLOCK" ? (
             <span className="pill pill--danger">❌ Действие заблокировано</span>
-          ) : document.risk.state === "REQUIRE_OVERRIDE" ? (
+          ) : riskState === "REQUIRE_OVERRIDE" ? (
             <span className="pill pill--warning">⚠️ Требуется override</span>
           ) : null}
           {riskExplain ? (
