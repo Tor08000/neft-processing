@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -75,7 +75,7 @@ def update_client_endpoint(
     request: Request,
     client_id: str,
     tenant_id: int = Query(..., ge=1),
-    payload: CRMClientUpdate,
+    payload: CRMClientUpdate = Body(...),
     db: Session = Depends(get_db),
 ) -> CRMClientOut:
     client = repository.get_client(db, tenant_id=tenant_id, client_id=client_id)
@@ -301,8 +301,8 @@ def list_risk_profiles_endpoint(
 
 @router.get("/clients/{client_id}/features", response_model=list[CRMFeatureFlagOut])
 def list_feature_flags_endpoint(
-    tenant_id: int = Query(..., ge=1),
     client_id: str,
+    tenant_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
 ) -> list[CRMFeatureFlagOut]:
     items = repository.list_feature_flags(db, tenant_id=tenant_id, client_id=client_id)
