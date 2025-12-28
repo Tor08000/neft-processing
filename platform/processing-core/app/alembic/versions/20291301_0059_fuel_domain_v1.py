@@ -260,13 +260,13 @@ def upgrade() -> None:
             sa.Column("decline_code", sa.String(64), nullable=True),
             sa.Column(
                 "risk_decision_id",
-                sa.String(36),
+                postgresql.UUID(as_uuid=False),
                 sa.ForeignKey(f"{SCHEMA}.risk_decisions.id"),
                 nullable=True,
             ),
             sa.Column(
                 "ledger_transaction_id",
-                sa.String(36),
+                postgresql.UUID(as_uuid=False),
                 sa.ForeignKey(f"{SCHEMA}.internal_ledger_transactions.id"),
                 nullable=True,
             ),
