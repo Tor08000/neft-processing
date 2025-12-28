@@ -35,69 +35,9 @@ FLEET_VEHICLE_STATUS = ["ACTIVE", "INACTIVE"]
 FLEET_DRIVER_STATUS = ["ACTIVE", "INACTIVE"]
 FUEL_CARD_GROUP_STATUS = ["ACTIVE", "INACTIVE"]
 
-FUEL_CARD_STATUS_ENUM = postgresql.ENUM(
-    *FUEL_CARD_STATUS,
-    name="fuel_card_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_STATION_STATUS_ENUM = postgresql.ENUM(
-    *FUEL_STATION_STATUS,
-    name="fuel_station_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_NETWORK_STATUS_ENUM = postgresql.ENUM(
-    *FUEL_NETWORK_STATUS,
-    name="fuel_network_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_TX_STATUS_ENUM = postgresql.ENUM(
-    *FUEL_TX_STATUS,
-    name="fuel_tx_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_LIMIT_SCOPE_TYPE_ENUM = postgresql.ENUM(
-    *FUEL_LIMIT_SCOPE_TYPE,
-    name="fuel_limit_scope_type",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_LIMIT_TYPE_ENUM = postgresql.ENUM(
-    *FUEL_LIMIT_TYPE,
-    name="fuel_limit_type",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_LIMIT_PERIOD_ENUM = postgresql.ENUM(
-    *FUEL_LIMIT_PERIOD,
-    name="fuel_limit_period",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_TYPE_ENUM = postgresql.ENUM(
-    *FUEL_TYPE,
-    name="fuel_type",
-    schema=SCHEMA,
-    create_type=False,
-)
 FLEET_VEHICLE_STATUS_ENUM = postgresql.ENUM(
     *FLEET_VEHICLE_STATUS,
     name="fleet_vehicle_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FLEET_DRIVER_STATUS_ENUM = postgresql.ENUM(
-    *FLEET_DRIVER_STATUS,
-    name="fleet_driver_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-FUEL_CARD_GROUP_STATUS_ENUM = postgresql.ENUM(
-    *FUEL_CARD_GROUP_STATUS,
-    name="fuel_card_group_status",
     schema=SCHEMA,
     create_type=False,
 )
