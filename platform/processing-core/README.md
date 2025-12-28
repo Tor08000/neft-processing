@@ -50,6 +50,22 @@ docker compose exec postgres psql -U neft -d neft -c "select to_regclass('public
 ```
 Expected result: `heads` returns exactly one revision (a single Alembic head).
 
+Run migrations locally (requires a reachable Postgres and DATABASE_URL):
+
+```bash
+export DATABASE_URL="postgresql+psycopg://neft:change-me@localhost:5432/neft"
+export PYTHONPATH="platform/processing-core:shared/python"
+alembic -c platform/processing-core/app/alembic.ini upgrade head
+```
+
+Windows CMD:
+
+```cmd
+set DATABASE_URL=postgresql+psycopg://neft:change-me@localhost:5432/neft
+set PYTHONPATH=platform/processing-core;shared/python
+alembic -c platform/processing-core/app/alembic.ini upgrade head
+```
+
 Run focused tests:
 
 ```bash
