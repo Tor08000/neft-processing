@@ -189,6 +189,7 @@ from .logistics import (  # noqa: F401
     LogisticsETASnapshot,
     LogisticsETAMethod,
 )
+from .unified_explain import UnifiedExplainSnapshot  # noqa: F401
 from .crm import (  # noqa: F401
     CRMClient,
     CRMClientStatus,
@@ -388,6 +389,7 @@ __all__ = [
     "LogisticsTrackingEventType",
     "LogisticsETASnapshot",
     "LogisticsETAMethod",
+    "UnifiedExplainSnapshot",
     "CRMClient",
     "CRMClientStatus",
     "CRMContract",
