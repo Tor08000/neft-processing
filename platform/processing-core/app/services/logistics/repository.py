@@ -7,9 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.models.logistics import (
     LogisticsETASnapshot,
+    LogisticsDeviationEvent,
     LogisticsOrder,
     LogisticsOrderStatus,
+    LogisticsRiskSignal,
     LogisticsRoute,
+    LogisticsRouteConstraint,
     LogisticsRouteStatus,
     LogisticsStop,
     LogisticsTrackingEvent,
@@ -55,6 +58,14 @@ def get_active_route(db: Session, *, order_id: str) -> LogisticsRoute | None:
         .filter(LogisticsRoute.order_id == order_id)
         .filter(LogisticsRoute.status == LogisticsRouteStatus.ACTIVE)
         .order_by(LogisticsRoute.version.desc())
+        .one_or_none()
+    )
+
+
+def get_route_constraint(db: Session, *, route_id: str) -> LogisticsRouteConstraint | None:
+    return (
+        db.query(LogisticsRouteConstraint)
+        .filter(LogisticsRouteConstraint.route_id == route_id)
         .one_or_none()
     )
 
@@ -119,6 +130,38 @@ def list_eta_snapshots(
         .filter(LogisticsETASnapshot.order_id == order_id)
         .order_by(LogisticsETASnapshot.computed_at.desc())
         .limit(limit)
+        .all()
+    )
+
+
+def list_recent_risk_signals(
+    db: Session,
+    *,
+    client_id: str,
+    vehicle_id: str | None,
+    driver_id: str | None,
+    since: datetime,
+) -> list[LogisticsRiskSignal]:
+    query = db.query(LogisticsRiskSignal).filter(LogisticsRiskSignal.client_id == client_id)
+    query = query.filter(LogisticsRiskSignal.ts >= since)
+    if vehicle_id:
+        query = query.filter(LogisticsRiskSignal.vehicle_id == vehicle_id)
+    if driver_id:
+        query = query.filter(LogisticsRiskSignal.driver_id == driver_id)
+    return query.order_by(LogisticsRiskSignal.ts.desc()).all()
+
+
+def list_recent_deviation_events(
+    db: Session,
+    *,
+    order_id: str,
+    since: datetime,
+) -> list[LogisticsDeviationEvent]:
+    return (
+        db.query(LogisticsDeviationEvent)
+        .filter(LogisticsDeviationEvent.order_id == order_id)
+        .filter(LogisticsDeviationEvent.ts >= since)
+        .order_by(LogisticsDeviationEvent.ts.desc())
         .all()
     )
 

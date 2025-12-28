@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -73,6 +74,17 @@ class FuelType(str, Enum):
     AI98 = "AI-98"
     GAS = "GAS"
     OTHER = "OTHER"
+
+
+class FuelFraudSignalType(str, Enum):
+    FUEL_OFF_ROUTE_STRONG = "FUEL_OFF_ROUTE_STRONG"
+    FUEL_STOP_MISMATCH_STRONG = "FUEL_STOP_MISMATCH_STRONG"
+    MULTI_CARD_SAME_STATION_BURST = "MULTI_CARD_SAME_STATION_BURST"
+    REPEATED_NIGHT_REFUEL = "REPEATED_NIGHT_REFUEL"
+    TANK_SANITY_REPEAT = "TANK_SANITY_REPEAT"
+    STATION_OUTLIER_CLUSTER = "STATION_OUTLIER_CLUSTER"
+    DRIVER_VEHICLE_MISMATCH = "DRIVER_VEHICLE_MISMATCH"
+    ROUTE_DEVIATION_BEFORE_FUEL = "ROUTE_DEVIATION_BEFORE_FUEL"
 
 
 class FuelCard(Base):
@@ -300,6 +312,48 @@ class FuelStationOutlier(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FuelFraudSignal(Base):
+    __tablename__ = "fuel_fraud_signals"
+    __table_args__ = (
+        Index("ix_fuel_fraud_signals_client_ts", "client_id", "ts"),
+        Index("ix_fuel_fraud_signals_vehicle_ts", "vehicle_id", "ts"),
+        Index("ix_fuel_fraud_signals_station_ts", "station_id", "ts"),
+        Index("ix_fuel_fraud_signals_signal_ts", "signal_type", "ts"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    signal_type = Column(ExistingEnum(FuelFraudSignalType, name="fuel_fraud_signal_type"), nullable=False)
+    severity = Column(Integer, nullable=False)
+    ts = Column(DateTime(timezone=True), nullable=False)
+    fuel_tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=True, index=True)
+    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=True, index=True)
+    vehicle_id = Column(GUID(), ForeignKey("fleet_vehicles.id"), nullable=True, index=True)
+    driver_id = Column(GUID(), ForeignKey("fleet_drivers.id"), nullable=True, index=True)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=True, index=True)
+    network_id = Column(GUID(), ForeignKey("fuel_networks.id"), nullable=True, index=True)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class StationReputationDaily(Base):
+    __tablename__ = "station_reputation_daily"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    network_id = Column(GUID(), ForeignKey("fuel_networks.id"), nullable=False, index=True)
+    station_id = Column(GUID(), ForeignKey("fuel_stations.id"), nullable=False, index=True)
+    day = Column(Date, nullable=False, index=True)
+    tx_count = Column(Integer, nullable=False, default=0, server_default="0")
+    decline_count = Column(Integer, nullable=False, default=0, server_default="0")
+    risk_block_count = Column(Integer, nullable=False, default=0, server_default="0")
+    avg_liters = Column(Integer, nullable=True)
+    avg_amount = Column(Integer, nullable=True)
+    outlier_score = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "FuelCard",
     "FuelCardGroup",
@@ -319,6 +373,9 @@ __all__ = [
     "FuelAnomalyEvent",
     "FuelMisuseSignal",
     "FuelStationOutlier",
+    "FuelFraudSignal",
+    "FuelFraudSignalType",
+    "StationReputationDaily",
     "FuelTransaction",
     "FuelTransactionStatus",
     "FuelType",

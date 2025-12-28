@@ -76,11 +76,19 @@ class RiskExplain(BaseModel):
     decision: str
     score: Optional[int] = None
     thresholds: Optional[dict[str, Any]] = None
-    policy: Optional[dict[str, Any]] = None
+    policy: Optional[dict[str, Any] | str] = None
     policy_source: Optional[str] = None
     factors: Optional[list[str]] = None
     decision_hash: Optional[str] = None
     payload: Optional[dict[str, Any]] = None
+
+
+class FraudSignalExplain(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str
+    severity: int
+    note: Optional[str] = None
 
 
 class AccountantExplain(BaseModel):
@@ -110,6 +118,7 @@ class FuelDeclineExplain(BaseModel):
     message: Optional[str] = None
     limit_explain: Optional[LimitExplain] = None
     risk_explain: Optional[RiskExplain] = None
+    fraud_signals: Optional[list[FraudSignalExplain]] = None
     accountant_explain: Optional[AccountantExplain] = None
     manager_explain: Optional[FleetManagerExplain] = None
 

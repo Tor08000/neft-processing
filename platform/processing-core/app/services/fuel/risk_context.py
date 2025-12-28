@@ -11,7 +11,7 @@ from app.models.fleet import FleetDriver, FleetVehicle
 from app.models.fuel import FuelCard, FuelStation, FuelTransaction, FuelTransactionStatus, FuelType
 from app.schemas.fuel import DeclineCode
 from app.services.decision import DecisionAction, DecisionContext
-from app.services.fuel import repository
+from app.services.fuel import fraud, repository
 from app.services.logistics import repository as logistics_repository
 
 MSK_TZ = ZoneInfo("Europe/Moscow")
@@ -115,6 +115,30 @@ def build_risk_context_for_fuel_tx(
         window_hours=logistics_window_hours,
         severity_multiplier=severity_multiplier,
     )
+    fraud_candidates = fraud.evaluate_fraud_signals(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        card=card,
+        station=station,
+        vehicle_id=str(vehicle.id) if vehicle else None,
+        driver_id=str(driver.id) if driver else None,
+        occurred_at=occurred_at,
+        volume_ml=volume_ml,
+        amount_minor=amount_minor,
+        request_vehicle_plate=None,
+        request_driver_id=None,
+        include_current=True,
+    )
+    fraud_summary = fraud.summarize_fraud_signals(
+        db,
+        client_id=client_id,
+        vehicle_id=str(vehicle.id) if vehicle else None,
+        driver_id=str(driver.id) if driver else None,
+        station_id=str(station.id),
+        occurred_at=occurred_at,
+        pending_signals=fraud_candidates,
+    )
     metadata = {
         "card_status": card.status.value,
         "station_id": str(station.id),
@@ -144,7 +168,10 @@ def build_risk_context_for_fuel_tx(
             occurred_at=occurred_at,
             window_hours=logistics_window_hours,
         ),
+        **fraud_summary,
     }
+    if fraud_summary.get("has_strong_off_route") and fraud_summary.get("max_signal_severity_24h"):
+        metadata["risk_score"] = max(metadata.get("risk_score", 0), int(fraud_summary["max_signal_severity_24h"]))
     decision_context = DecisionContext(
         tenant_id=tenant_id,
         client_id=client_id,

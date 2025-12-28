@@ -32,6 +32,7 @@ class LegalNodeType(str, Enum):
     LOGISTICS_ORDER = "LOGISTICS_ORDER"
     LOGISTICS_ROUTE = "LOGISTICS_ROUTE"
     LOGISTICS_STOP = "LOGISTICS_STOP"
+    FRAUD_SIGNAL = "FRAUD_SIGNAL"
 
 
 class LegalEdgeType(str, Enum):
