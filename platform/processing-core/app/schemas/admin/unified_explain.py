@@ -6,6 +6,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.unified_explain import PrimaryReason
+from app.services.explain.actions import ActionItem
+from app.services.explain.escalation import EscalationInfo
+from app.services.explain.sla import SLAClock
 
 
 class UnifiedExplainView(str, Enum):
@@ -49,11 +52,16 @@ class UnifiedExplainIds(BaseModel):
 class UnifiedExplainResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    primary_reason: PrimaryReason
+    secondary_reasons: list[PrimaryReason] = Field(default_factory=list)
     subject: UnifiedExplainSubject
     result: UnifiedExplainResult
     sections: dict[str, Any]
     ids: UnifiedExplainIds
     recommendations: list[str]
+    actions: list[ActionItem] = Field(default_factory=list)
+    sla: SLAClock | None = None
+    escalation: EscalationInfo | None = None
 
 
 __all__ = [
@@ -62,4 +70,7 @@ __all__ = [
     "UnifiedExplainResult",
     "UnifiedExplainSubject",
     "UnifiedExplainView",
+    "ActionItem",
+    "EscalationInfo",
+    "SLAClock",
 ]
