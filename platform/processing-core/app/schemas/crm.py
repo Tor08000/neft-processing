@@ -172,6 +172,54 @@ class CRMSubscriptionOut(BaseModel):
     updated_at: datetime
 
 
+class CRMSubscriptionChangeTariff(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_tariff_id: str
+    effective_at: datetime
+
+
+class CRMSubscriptionPreviewSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    tariff_plan_id: str
+    segment_start: datetime
+    segment_end: datetime
+    status: str
+    reason: str | None = None
+    days_count: int
+
+
+class CRMSubscriptionPreviewUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str
+    value: int
+    limit_value: int | None = None
+    overage: int | None = None
+    segment_id: str | None = None
+
+
+class CRMSubscriptionPreviewCharge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    amount: int
+    quantity: int
+    unit_price: int
+    segment_id: str | None = None
+
+
+class CRMSubscriptionPreviewOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segments: list[CRMSubscriptionPreviewSegment]
+    usage: list[CRMSubscriptionPreviewUsage]
+    charges: list[CRMSubscriptionPreviewCharge]
+    total: int
+
+
 class CRMProfileCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -250,7 +298,12 @@ __all__ = [
     "CRMRiskProfileCreate",
     "CRMRiskProfileOut",
     "CRMSubscriptionCreate",
+    "CRMSubscriptionChangeTariff",
     "CRMSubscriptionOut",
+    "CRMSubscriptionPreviewCharge",
+    "CRMSubscriptionPreviewOut",
+    "CRMSubscriptionPreviewSegment",
+    "CRMSubscriptionPreviewUsage",
     "CRMSubscriptionStatus",
     "CRMTariffCreate",
     "CRMTariffOut",

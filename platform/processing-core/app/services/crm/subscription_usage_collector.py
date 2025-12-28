@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.crm import CRMSubscription, CRMUsageCounter, CRMUsageMetric
+from app.models.crm import CRMSubscription, CRMSubscriptionPeriodSegment, CRMUsageCounter, CRMUsageMetric
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.models.fuel import FuelCard, FuelCardStatus, FuelTransaction, FuelTransactionStatus
 from app.models.logistics import LogisticsOrder
@@ -134,4 +134,120 @@ def collect_usage(
     return UsageResult(counters=counters)
 
 
-__all__ = ["UsageResult", "collect_usage"]
+@dataclass(frozen=True)
+class UsageSegmentResult:
+    counters: list[CRMUsageCounter]
+
+
+def collect_usage_by_segments(
+    db: Session,
+    *,
+    subscription: CRMSubscription,
+    billing_period_id: str,
+    segments: list[CRMSubscriptionPeriodSegment],
+) -> UsageSegmentResult:
+    counters: list[CRMUsageCounter] = []
+    for segment in segments:
+        segment_start = segment.segment_start
+        segment_end = segment.segment_end
+        cards_count = (
+            db.query(FuelCard)
+            .filter(FuelCard.client_id == subscription.client_id)
+            .filter(FuelCard.status == FuelCardStatus.ACTIVE)
+            .filter(FuelCard.created_at <= segment_end)
+            .count()
+        )
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.CARDS_COUNT,
+                value=cards_count,
+            )
+        )
+        vehicles_count = (
+            db.query(FleetVehicle)
+            .filter(FleetVehicle.client_id == subscription.client_id)
+            .filter(FleetVehicle.status == FleetVehicleStatus.ACTIVE)
+            .filter(FleetVehicle.created_at <= segment_end)
+            .count()
+        )
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.VEHICLES_COUNT,
+                value=vehicles_count,
+            )
+        )
+        drivers_count = (
+            db.query(FleetDriver)
+            .filter(FleetDriver.client_id == subscription.client_id)
+            .filter(FleetDriver.status == FleetDriverStatus.ACTIVE)
+            .filter(FleetDriver.created_at <= segment_end)
+            .count()
+        )
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.DRIVERS_COUNT,
+                value=drivers_count,
+            )
+        )
+        fuel_counts = (
+            db.query(
+                func.count(FuelTransaction.id),
+                func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+            )
+            .filter(FuelTransaction.client_id == subscription.client_id)
+            .filter(FuelTransaction.occurred_at >= segment_start)
+            .filter(FuelTransaction.occurred_at <= segment_end)
+            .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+            .one()
+        )
+        fuel_tx_count = int(fuel_counts[0] or 0)
+        fuel_volume = int(fuel_counts[1] or 0)
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.FUEL_TX_COUNT,
+                value=fuel_tx_count,
+            )
+        )
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.FUEL_VOLUME,
+                value=fuel_volume,
+            )
+        )
+        logistics_orders = (
+            db.query(LogisticsOrder)
+            .filter(LogisticsOrder.client_id == subscription.client_id)
+            .filter(
+                (LogisticsOrder.created_at.between(segment_start, segment_end))
+                | (LogisticsOrder.actual_end_at.between(segment_start, segment_end))
+            )
+            .count()
+        )
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                segment_id=segment.id,
+                metric=CRMUsageMetric.LOGISTICS_ORDERS,
+                value=logistics_orders,
+            )
+        )
+    return UsageSegmentResult(counters=counters)
+
+
+__all__ = ["UsageResult", "UsageSegmentResult", "collect_usage", "collect_usage_by_segments"]

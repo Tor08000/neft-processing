@@ -12,6 +12,7 @@ from app.models.crm import (
     CRMSubscriptionSegmentStatus,
     CRMUsageCounter,
 )
+from app.services.crm.subscription_rules import apply_metric_rules
 
 
 @dataclass(frozen=True)
@@ -174,4 +175,221 @@ def _metric_key(metric: str) -> str | None:
     return mapping.get(metric)
 
 
-__all__ = ["PricingResult", "price_subscription"]
+@dataclass(frozen=True)
+class PricingResultV2:
+    charges: list[CRMSubscriptionCharge]
+
+
+def price_subscription_v2(
+    *,
+    subscription: CRMSubscription,
+    billing_period_id: str,
+    segments: list[CRMSubscriptionPeriodSegment],
+    counters: list[CRMUsageCounter],
+    tariff_definition: dict,
+    period_start: datetime,
+    period_end: datetime,
+) -> PricingResultV2:
+    charges: list[CRMSubscriptionCharge] = []
+    period_days = _count_days(period_start, period_end)
+    included_map = _normalize_included(tariff_definition.get("included") or [])
+    overage_prices = _normalize_overage(tariff_definition.get("overage") or [])
+    metric_rules = tariff_definition.get("metric_rules") or []
+    caps = _normalize_caps(tariff_definition.get("caps") or [])
+    base_fee_cfg = tariff_definition.get("base_fee") or {}
+    base_fee_amount = int(base_fee_cfg.get("amount_minor") or 0)
+    currency = base_fee_cfg.get("currency") or "RUB"
+
+    counters_by_segment = _group_counters_by_segment(counters)
+
+    for segment in segments:
+        if segment.status != CRMSubscriptionSegmentStatus.ACTIVE:
+            continue
+        segment_days = segment.days_count
+        segment_key = _segment_key(segment)
+        segment_counters = counters_by_segment.get(str(segment.id), [])
+        usage_by_metric = {counter.metric.value: int(counter.value) for counter in segment_counters}
+
+        rules_result = apply_metric_rules(
+            usage_by_metric=usage_by_metric,
+            overage_prices=overage_prices,
+            rules=metric_rules,
+        )
+        segment_base_fee = _prorate_amount(base_fee_amount, segment_days, period_days)
+        if segment_base_fee > 0:
+            charges.append(
+                CRMSubscriptionCharge(
+                    subscription_id=subscription.id,
+                    billing_period_id=billing_period_id,
+                    segment_id=segment.id,
+                    charge_type=CRMSubscriptionChargeType.BASE_FEE,
+                    code="BASE_FEE",
+                    charge_key=_charge_key(
+                        subscription.id,
+                        billing_period_id,
+                        segment_key,
+                        "BASE",
+                        "BASE_FEE",
+                    ),
+                    quantity=1,
+                    unit_price=segment_base_fee,
+                    amount=segment_base_fee,
+                    currency=currency,
+                    source={"tariff": segment.tariff_plan_id},
+                    explain={
+                        "segment_days": segment_days,
+                        "period_days": period_days,
+                        "base_fee_minor": base_fee_amount,
+                        "metric_rules": rules_result.applied_rules,
+                    },
+                )
+            )
+        for adjustment in rules_result.base_fee_adjustments:
+            prorated_adjustment = _prorate_amount(int(adjustment), segment_days, period_days)
+            if prorated_adjustment <= 0:
+                continue
+            charges.append(
+                CRMSubscriptionCharge(
+                    subscription_id=subscription.id,
+                    billing_period_id=billing_period_id,
+                    segment_id=segment.id,
+                    charge_type=CRMSubscriptionChargeType.BASE_FEE,
+                    code="RULE_ADJ",
+                    charge_key=_charge_key(
+                        subscription.id,
+                        billing_period_id,
+                        segment_key,
+                        "RULE_ADJ",
+                        "BASE_FEE",
+                    ),
+                    quantity=1,
+                    unit_price=prorated_adjustment,
+                    amount=prorated_adjustment,
+                    currency=currency,
+                    source={"tariff": segment.tariff_plan_id},
+                    explain={
+                        "segment_days": segment_days,
+                        "period_days": period_days,
+                        "adjustment_minor": int(adjustment),
+                        "metric_rules": rules_result.applied_rules,
+                    },
+                )
+            )
+
+        for counter in segment_counters:
+            metric_name = counter.metric.value
+            included_value = included_map.get(metric_name)
+            if included_value is None:
+                continue
+            proration_mode = included_value["proration"]
+            limit_value = _prorate_included(included_value["value"], segment_days, period_days, proration_mode)
+            counter.limit_value = limit_value
+            overage = max(int(counter.value) - limit_value, 0)
+            counter.overage = overage
+            if overage == 0:
+                continue
+            unit_price = int(rules_result.overage_prices.get(metric_name) or 0)
+            if unit_price <= 0:
+                continue
+            amount = int(overage * unit_price)
+            cap_amount = caps.get(metric_name)
+            if cap_amount is not None:
+                amount = min(amount, cap_amount)
+            charges.append(
+                CRMSubscriptionCharge(
+                    subscription_id=subscription.id,
+                    billing_period_id=billing_period_id,
+                    segment_id=segment.id,
+                    charge_type=CRMSubscriptionChargeType.OVERAGE,
+                    code=f"OVERAGE_{metric_name}",
+                    charge_key=_charge_key(
+                        subscription.id,
+                        billing_period_id,
+                        segment_key,
+                        "OVERAGE",
+                        metric_name,
+                    ),
+                    quantity=overage,
+                    unit_price=unit_price,
+                    amount=amount,
+                    currency=currency,
+                    source={"metric": metric_name, "included": limit_value, "value": int(counter.value)},
+                    explain={
+                        "segment_days": segment_days,
+                        "period_days": period_days,
+                        "included": limit_value,
+                        "usage": int(counter.value),
+                        "cap_amount_minor": cap_amount,
+                        "metric_rules": rules_result.applied_rules,
+                    },
+                )
+            )
+    return PricingResultV2(charges=charges)
+
+
+def _normalize_included(items: list[dict]) -> dict[str, dict]:
+    normalized: dict[str, dict] = {}
+    for item in items:
+        metric = item.get("metric")
+        if not metric:
+            continue
+        normalized[metric] = {"value": int(item.get("value") or 0), "proration": item.get("proration", "DAILY")}
+    return normalized
+
+
+def _normalize_overage(items: list[dict]) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    for item in items:
+        metric = item.get("metric")
+        if not metric:
+            continue
+        normalized[metric] = int(item.get("unit_price_minor") or 0)
+    return normalized
+
+
+def _normalize_caps(items: list[dict]) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    for item in items:
+        metric = item.get("metric")
+        if not metric:
+            continue
+        normalized[metric] = int(item.get("max_overage_amount_minor") or 0)
+    return normalized
+
+
+def _group_counters_by_segment(counters: list[CRMUsageCounter]) -> dict[str, list[CRMUsageCounter]]:
+    grouped: dict[str, list[CRMUsageCounter]] = {}
+    for counter in counters:
+        if not counter.segment_id:
+            continue
+        key = str(counter.segment_id)
+        grouped.setdefault(key, []).append(counter)
+    return grouped
+
+
+def _prorate_amount(amount: int, segment_days: int, period_days: int) -> int:
+    if period_days <= 0 or amount <= 0:
+        return 0
+    return int((Decimal(amount) * Decimal(segment_days) / Decimal(period_days)).quantize(Decimal("1"), rounding=ROUND_FLOOR))
+
+
+def _prorate_included(value: int, segment_days: int, period_days: int, proration: str) -> int:
+    if period_days <= 0 or value <= 0:
+        return 0
+    result = Decimal(value) * Decimal(segment_days) / Decimal(period_days)
+    if proration == "LINEAR":
+        return int(result.quantize(Decimal("1"), rounding=ROUND_FLOOR))
+    return int(result.quantize(Decimal("1"), rounding=ROUND_FLOOR))
+
+
+def _segment_key(segment: CRMSubscriptionPeriodSegment) -> str:
+    start = segment.segment_start.date().isoformat()
+    end = segment.segment_end.date().isoformat()
+    return f"{start}-{end}"
+
+
+def _charge_key(subscription_id: str, period_id: str, segment_key: str, code: str, metric: str) -> str:
+    return f"sub:{subscription_id}:period:{period_id}:seg:{segment_key}:code:{code}:{metric}"
+
+
+__all__ = ["PricingResult", "PricingResultV2", "price_subscription", "price_subscription_v2"]

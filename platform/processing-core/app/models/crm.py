@@ -77,6 +77,15 @@ class CRMSubscriptionSegmentStatus(str, Enum):
     PAUSED = "PAUSED"
 
 
+class CRMSubscriptionSegmentReason(str, Enum):
+    START = "START"
+    UPGRADE = "UPGRADE"
+    DOWNGRADE = "DOWNGRADE"
+    PAUSE = "PAUSE"
+    RESUME = "RESUME"
+    CANCEL = "CANCEL"
+
+
 class CRMProfileStatus(str, Enum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -163,18 +172,24 @@ class CRMSubscription(Base):
 
 class CRMSubscriptionCharge(Base):
     __tablename__ = "crm_subscription_charges"
-    __table_args__ = (Index("ix_crm_subscription_charges_period", "subscription_id", "billing_period_id"),)
+    __table_args__ = (
+        Index("ix_crm_subscription_charges_period", "subscription_id", "billing_period_id"),
+        UniqueConstraint("subscription_id", "billing_period_id", "charge_key", name="uq_crm_subscription_charge_key"),
+    )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     subscription_id = Column(GUID(), ForeignKey("crm_subscriptions.id"), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False)
+    segment_id = Column(GUID(), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
     charge_type = Column(ExistingEnum(CRMSubscriptionChargeType, name="crm_subscription_charge_type"), nullable=False)
     code = Column(String(64), nullable=False)
+    charge_key = Column(String(128), nullable=True)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(BigInteger, nullable=False)
     amount = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
     source = Column(JSON, nullable=True)
+    explain = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -185,6 +200,7 @@ class CRMUsageCounter(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     subscription_id = Column(GUID(), ForeignKey("crm_subscriptions.id"), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False)
+    segment_id = Column(GUID(), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
     metric = Column(ExistingEnum(CRMUsageMetric, name="crm_usage_metric"), nullable=False)
     value = Column(BigInteger, nullable=False)
     limit_value = Column(BigInteger, nullable=True)
@@ -200,6 +216,8 @@ class CRMSubscriptionPeriodSegment(Base):
             "billing_period_id",
             "segment_start",
             "segment_end",
+            "tariff_plan_id",
+            "status",
             name="uq_crm_subscription_segment_period",
         ),
     )
@@ -212,6 +230,7 @@ class CRMSubscriptionPeriodSegment(Base):
     segment_end = Column(DateTime(timezone=True), nullable=False)
     status = Column(ExistingEnum(CRMSubscriptionSegmentStatus, name="crm_subscription_segment_status"), nullable=False)
     days_count = Column(Integer, nullable=False)
+    reason = Column(ExistingEnum(CRMSubscriptionSegmentReason, name="crm_subscription_segment_reason"), nullable=True)
     meta = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -272,6 +291,7 @@ __all__ = [
     "CRMSubscriptionCharge",
     "CRMSubscriptionChargeType",
     "CRMSubscriptionPeriodSegment",
+    "CRMSubscriptionSegmentReason",
     "CRMSubscriptionSegmentStatus",
     "CRMUsageCounter",
     "CRMUsageMetric",
