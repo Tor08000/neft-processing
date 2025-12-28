@@ -28,6 +28,7 @@ from app.routers.admin import (
     settlements,
     legal_integrations,
     fraud,
+    money_flow,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -58,5 +59,6 @@ router.include_router(legal_integrations.router)
 router.include_router(legal_graph.router)
 router.include_router(crm.router)
 router.include_router(fraud.router)
+router.include_router(money_flow.router)
 
 __all__ = ["router"]
