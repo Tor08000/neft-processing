@@ -13,7 +13,9 @@ from app import models  # noqa: F401
 from app.db import Base
 from app.models.fuel import FuelCard, FuelNetwork, FuelStation
 from app.models.logistics import LogisticsRiskSignal, LogisticsRiskSignalType, LogisticsDeviationEvent, LogisticsDeviationEventType, LogisticsDeviationSeverity
+from app.schemas.logistics import LogisticsStopIn
 from app.services.fuel.risk_context import build_risk_context_for_fuel_tx
+from app.services.logistics import navigator, repository, routes
 from app.services.logistics.orders import create_order
 
 
@@ -62,6 +64,52 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
+    route = routes.create_route(
+        db,
+        order_id=str(order.id),
+        distance_km=15.0,
+        planned_duration_minutes=10,
+    )
+    routes.activate_route(db, route_id=str(route.id))
+    routes.upsert_stops(
+        db,
+        route_id=str(route.id),
+        stops=[
+            LogisticsStopIn(
+                sequence=0,
+                stop_type=models.LogisticsStopType.START,
+                name="Start",
+                lat=55.75,
+                lon=37.6,
+                status=models.LogisticsStopStatus.PENDING,
+            ),
+            LogisticsStopIn(
+                sequence=1,
+                stop_type=models.LogisticsStopType.END,
+                name="End",
+                lat=56.75,
+                lon=37.8,
+                status=models.LogisticsStopStatus.PENDING,
+            ),
+        ],
+    )
+    snapshot = repository.get_latest_route_snapshot(db, route_id=str(route.id))
+    assert snapshot is not None
+    adapter = navigator.get(snapshot.provider)
+    route_points = [navigator.GeoPoint(lat=point["lat"], lon=point["lon"]) for point in snapshot.geometry]
+    route_snapshot = navigator.RouteSnapshot(
+        provider=snapshot.provider,
+        geometry=route_points,
+        distance_km=snapshot.distance_km,
+    )
+    deviation = adapter.deviation_score(
+        route_snapshot,
+        actual_points=[
+            navigator.GeoPoint(lat=55.75, lon=37.6),
+            navigator.GeoPoint(lat=55.77, lon=37.7),
+        ],
+    )
+    navigator.create_deviation_explain(db, route_snapshot=snapshot, deviation_score=deviation)
 
     signal = LogisticsRiskSignal(
         tenant_id=1,
@@ -135,6 +183,8 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         policy_override_id=None,
         thresholds_override=None,
         policy_source="test",
+        logistics_window_hours=None,
+        severity_multiplier=None,
         db=db,
     )
     summary = result.decision_context.metadata.get("logistics_signals")
@@ -144,3 +194,5 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
     off_route_summary = result.decision_context.metadata.get("logistics_off_route_summary")
     assert off_route_summary
     assert off_route_summary["count"] >= 1
+    assert result.decision_context.metadata.get("route_deviation_score") is not None
+    assert result.decision_context.metadata.get("eta_overrun_pct") is not None

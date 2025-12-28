@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session
 from app.models.logistics import (
     LogisticsETASnapshot,
     LogisticsDeviationEvent,
+    LogisticsNavigatorExplain,
+    LogisticsNavigatorExplainType,
     LogisticsOrder,
     LogisticsOrderStatus,
     LogisticsRiskSignal,
     LogisticsRoute,
     LogisticsRouteConstraint,
     LogisticsRouteStatus,
+    LogisticsRouteSnapshot,
     LogisticsStop,
     LogisticsTrackingEvent,
 )
@@ -132,6 +135,40 @@ def list_eta_snapshots(
         .limit(limit)
         .all()
     )
+
+
+def get_latest_route_snapshot(db: Session, *, route_id: str) -> LogisticsRouteSnapshot | None:
+    return (
+        db.query(LogisticsRouteSnapshot)
+        .filter(LogisticsRouteSnapshot.route_id == route_id)
+        .order_by(LogisticsRouteSnapshot.created_at.desc())
+        .first()
+    )
+
+
+def list_route_snapshots(db: Session, *, route_id: str, limit: int = 5) -> list[LogisticsRouteSnapshot]:
+    return (
+        db.query(LogisticsRouteSnapshot)
+        .filter(LogisticsRouteSnapshot.route_id == route_id)
+        .order_by(LogisticsRouteSnapshot.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def list_navigator_explains(
+    db: Session,
+    *,
+    route_snapshot_id: str,
+    explain_type: LogisticsNavigatorExplainType | None = None,
+    limit: int = 10,
+) -> list[LogisticsNavigatorExplain]:
+    query = db.query(LogisticsNavigatorExplain).filter(
+        LogisticsNavigatorExplain.route_snapshot_id == route_snapshot_id
+    )
+    if explain_type:
+        query = query.filter(LogisticsNavigatorExplain.type == explain_type)
+    return query.order_by(LogisticsNavigatorExplain.created_at.desc()).limit(limit).all()
 
 
 def list_recent_risk_signals(

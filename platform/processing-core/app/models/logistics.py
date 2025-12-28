@@ -76,6 +76,11 @@ class LogisticsFuelRouteLinkType(str, Enum):
     PROVIDER = "PROVIDER"
 
 
+class LogisticsNavigatorExplainType(str, Enum):
+    ETA = "ETA"
+    DEVIATION = "DEVIATION"
+
+
 class LogisticsRiskSignalType(str, Enum):
     FUEL_OFF_ROUTE = "FUEL_OFF_ROUTE"
     FUEL_STOP_MISMATCH = "FUEL_STOP_MISMATCH"
@@ -123,6 +128,37 @@ class LogisticsRoute(Base):
     status = Column(ExistingEnum(LogisticsRouteStatus, name="logistics_route_status"), nullable=False)
     distance_km = Column(Float, nullable=True)
     planned_duration_minutes = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LogisticsRouteSnapshot(Base):
+    __tablename__ = "logistics_route_snapshots"
+    __table_args__ = (
+        Index("ix_logistics_route_snapshots_route", "route_id", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    order_id = Column(GUID(), ForeignKey("logistics_orders.id"), nullable=False, index=True)
+    route_id = Column(GUID(), ForeignKey("logistics_routes.id"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False)
+    geometry = Column(JSON, nullable=False)
+    distance_km = Column(Float, nullable=False)
+    eta_minutes = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LogisticsNavigatorExplain(Base):
+    __tablename__ = "logistics_navigator_explains"
+    __table_args__ = (
+        Index("ix_logistics_navigator_explains_snapshot", "route_snapshot_id", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    route_snapshot_id = Column(GUID(), ForeignKey("logistics_route_snapshots.id"), nullable=False, index=True)
+    type = Column(
+        ExistingEnum(LogisticsNavigatorExplainType, name="logistics_navigator_explain_type"), nullable=False
+    )
+    payload = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -308,6 +344,9 @@ __all__ = [
     "LogisticsETAAccuracy",
     "FuelRouteLink",
     "LogisticsFuelRouteLinkType",
+    "LogisticsNavigatorExplain",
+    "LogisticsNavigatorExplainType",
     "LogisticsRiskSignal",
     "LogisticsRiskSignalType",
+    "LogisticsRouteSnapshot",
 ]
