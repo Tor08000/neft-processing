@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -15,10 +15,13 @@ from app.models.fuel import (
     FuelRiskShadowEvent,
     FuelAnomalyEvent,
     FuelAnalyticsEvent,
+    FuelFraudSignal,
+    FuelFraudSignalType,
     FuelMisuseSignal,
     FuelStationNetwork,
     FuelStationOutlier,
     FuelStation,
+    StationReputationDaily,
     FuelTransaction,
     FuelTransactionStatus,
 )
@@ -249,6 +252,72 @@ def add_station_outlier(db: Session, outlier: FuelStationOutlier) -> FuelStation
     db.commit()
     db.refresh(outlier)
     return outlier
+
+
+def add_fraud_signal(db: Session, signal: FuelFraudSignal) -> FuelFraudSignal:
+    db.add(signal)
+    db.commit()
+    db.refresh(signal)
+    return signal
+
+
+def list_fraud_signals(
+    db: Session,
+    *,
+    client_id: str | None = None,
+    vehicle_id: str | None = None,
+    station_id: str | None = None,
+    signal_type: FuelFraudSignalType | None = None,
+    severity_min: int | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+    limit: int = 100,
+) -> list[FuelFraudSignal]:
+    query = db.query(FuelFraudSignal)
+    if client_id:
+        query = query.filter(FuelFraudSignal.client_id == client_id)
+    if vehicle_id:
+        query = query.filter(FuelFraudSignal.vehicle_id == vehicle_id)
+    if station_id:
+        query = query.filter(FuelFraudSignal.station_id == station_id)
+    if signal_type:
+        query = query.filter(FuelFraudSignal.signal_type == signal_type)
+    if severity_min is not None:
+        query = query.filter(FuelFraudSignal.severity >= severity_min)
+    if start_at:
+        query = query.filter(FuelFraudSignal.ts >= start_at)
+    if end_at:
+        query = query.filter(FuelFraudSignal.ts <= end_at)
+    return query.order_by(FuelFraudSignal.ts.desc()).limit(limit).all()
+
+
+def get_station_reputation_daily(
+    db: Session,
+    *,
+    station_id: str,
+    day: date,
+) -> StationReputationDaily | None:
+    return (
+        db.query(StationReputationDaily)
+        .filter(StationReputationDaily.station_id == station_id)
+        .filter(StationReputationDaily.day == day)
+        .one_or_none()
+    )
+
+
+def list_station_reputation_daily(
+    db: Session,
+    *,
+    day: date,
+    limit: int = 200,
+) -> list[StationReputationDaily]:
+    return (
+        db.query(StationReputationDaily)
+        .filter(StationReputationDaily.day == day)
+        .order_by(StationReputationDaily.outlier_score.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def list_recent_card_driver_ids(

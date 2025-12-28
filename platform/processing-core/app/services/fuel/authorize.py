@@ -30,7 +30,7 @@ from app.schemas.fuel import (
 from app.services.audit_service import RequestContext
 from app.services.crm import repository as crm_repository
 from app.services.decision import DecisionEngine, DecisionOutcome
-from app.services.fuel import analytics, events, limits, repository, risk_context
+from app.services.fuel import analytics, events, fraud, limits, repository, risk_context
 from app.services.legal_graph.registry import LegalGraphRegistry
 
 
@@ -46,6 +46,7 @@ def _decline_response(
     message: str,
     limit_explain=None,
     risk_explain=None,
+    fraud_signals=None,
     accountant_explain=None,
     manager_explain=None,
 ) -> FuelAuthorizeResponse:
@@ -54,6 +55,7 @@ def _decline_response(
         message=message,
         limit_explain=limit_explain,
         risk_explain=risk_explain,
+        fraud_signals=fraud_signals,
         accountant_explain=accountant_explain,
         manager_explain=manager_explain,
     )
@@ -67,11 +69,13 @@ def _response_from_transaction(transaction: FuelTransaction) -> FuelAuthorizeRes
         meta = transaction.meta or {}
         limit_explain = meta.get("limit_explain")
         risk_explain = meta.get("risk_explain")
+        fraud_signals = meta.get("fraud_signals")
         explain = FuelDeclineExplain(
             decline_code=decline_code,
             message=meta.get("message") or "Fuel transaction declined",
             limit_explain=LimitExplain(**limit_explain) if limit_explain else None,
             risk_explain=RiskExplain(**risk_explain) if risk_explain else None,
+            fraud_signals=fraud_signals,
         )
     status = "ALLOW"
     if transaction.status == FuelTransactionStatus.REVIEW_REQUIRED:
@@ -80,10 +84,12 @@ def _response_from_transaction(transaction: FuelTransaction) -> FuelAuthorizeRes
         if not explain:
             meta = transaction.meta or {}
             risk_explain = meta.get("risk_explain")
+            fraud_signals = meta.get("fraud_signals")
             explain = FuelDeclineExplain(
                 decline_code=decline_code,
                 message=meta.get("message") or "Risk review required",
                 risk_explain=RiskExplain(**risk_explain) if risk_explain else None,
+                fraud_signals=fraud_signals,
             )
     elif transaction.status == FuelTransactionStatus.DECLINED:
         status = "DECLINE"
@@ -452,6 +458,23 @@ def authorize_fuel_tx(
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK
 
+    fraud_candidates = fraud.evaluate_fraud_signals(
+        db,
+        tenant_id=card.tenant_id,
+        client_id=card.client_id,
+        card=card,
+        station=station,
+        vehicle_id=str(vehicle.id) if vehicle else None,
+        driver_id=str(driver.id) if driver else None,
+        occurred_at=occurred_at,
+        volume_ml=volume_ml,
+        amount_minor=amount_minor,
+        request_vehicle_plate=payload.vehicle_plate,
+        request_driver_id=payload.driver_id,
+        include_current=True,
+    )
+    fraud_signals_payload = fraud.fraud_signals_payload(fraud_candidates)
+
     transaction = FuelTransaction(
         tenant_id=card.tenant_id,
         client_id=card.client_id,
@@ -470,9 +493,22 @@ def authorize_fuel_tx(
         decline_code=decline_code.value if decline_code else None,
         risk_decision_id=risk_decision_id,
         external_ref=payload.external_ref,
-        meta={**base_meta, "risk_explain": risk_explain.model_dump()},
+        meta={
+            **base_meta,
+            "risk_explain": risk_explain.model_dump(),
+            "fraud_signals": fraud_signals_payload or None,
+        },
     )
     transaction = repository.add_fuel_transaction(db, transaction)
+    if fraud_candidates:
+        fraud.persist_fraud_signals(
+            db,
+            tenant_id=card.tenant_id,
+            client_id=card.client_id,
+            fuel_tx_id=str(transaction.id),
+            candidates=fraud_candidates,
+            request_ctx=request_ctx,
+        )
     repository.add_risk_shadow_event(
         db,
         FuelRiskShadowEvent(
@@ -503,6 +539,7 @@ def authorize_fuel_tx(
             "status": transaction.status.value,
             "decline_code": transaction.decline_code,
             "risk_explain": risk_explain.model_dump(),
+            "fraud_signals": fraud_signals_payload,
         },
         request_ctx=request_ctx,
     )
@@ -532,6 +569,7 @@ def authorize_fuel_tx(
             signals=risk_result.factors,
             recommendation="Check driver activity" if risk_result.factors else None,
         )
+    fraud_explain = fraud_signals_payload if decline_code in {DeclineCode.RISK_BLOCK, DeclineCode.RISK_REVIEW_REQUIRED} else None
 
     response = FuelAuthorizeResponse(
         status=response_status,
@@ -541,6 +579,7 @@ def authorize_fuel_tx(
             decline_code=decline_code or DeclineCode.RISK_BLOCK,
             message="Risk decision",
             risk_explain=risk_explain,
+            fraud_signals=fraud_explain,
             manager_explain=manager_explain,
         )
         if status != FuelTransactionStatus.AUTHORIZED

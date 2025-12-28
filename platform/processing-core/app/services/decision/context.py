@@ -14,6 +14,7 @@ class DecisionContext:
     client_id: str | None
     action: DecisionAction | Enum | str
     actor_type: Literal["CLIENT", "ADMIN", "SYSTEM"] = "SYSTEM"
+    actor_id: str | None = None
     amount: int | None = None
     currency: str | None = None
     payment_method: str | None = None
@@ -29,6 +30,7 @@ class DecisionContext:
             "tenant_id": self.tenant_id,
             "client_id": self.client_id,
             "actor_type": self.actor_type,
+            "actor_id": self.actor_id,
             "action": self.action.value if hasattr(self.action, "value") else self.action,
             "amount": self.amount,
             "currency": self.currency,
