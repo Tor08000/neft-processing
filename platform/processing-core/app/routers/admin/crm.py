@@ -51,6 +51,12 @@ from app.services.crm.subscription_usage_collector import collect_usage_by_segme
 router = APIRouter(prefix="/crm", tags=["admin", "crm"])
 
 
+def _require_control_plane_version(request: Request) -> None:
+    version = request.headers.get("X-CRM-Version")
+    if not version:
+        raise HTTPException(status_code=409, detail="crm_control_plane_frozen")
+
+
 @router.post("/clients", response_model=CRMClientOut)
 def create_client_endpoint(
     request: Request,
@@ -219,7 +225,12 @@ def apply_contract_endpoint(
 
 
 @router.post("/tariffs", response_model=CRMTariffOut)
-def create_tariff_endpoint(payload: CRMTariffCreate, db: Session = Depends(get_db)) -> CRMTariffOut:
+def create_tariff_endpoint(
+    request: Request,
+    payload: CRMTariffCreate,
+    db: Session = Depends(get_db),
+) -> CRMTariffOut:
+    _require_control_plane_version(request)
     tariff = tariffs.create_tariff(db, payload=payload)
     return CRMTariffOut.model_validate(tariff)
 
@@ -237,10 +248,12 @@ def list_tariffs_endpoint(
 
 @router.patch("/tariffs/{tariff_id}", response_model=CRMTariffOut)
 def update_tariff_endpoint(
+    request: Request,
     tariff_id: str,
     payload: CRMTariffUpdate,
     db: Session = Depends(get_db),
 ) -> CRMTariffOut:
+    _require_control_plane_version(request)
     tariff = repository.get_tariff(db, tariff_id=tariff_id)
     if not tariff:
         raise HTTPException(status_code=404, detail="tariff not found")
@@ -250,10 +263,12 @@ def update_tariff_endpoint(
 
 @router.post("/clients/{client_id}/subscriptions", response_model=CRMSubscriptionOut)
 def create_subscription_endpoint(
+    request: Request,
     client_id: str,
     payload: CRMSubscriptionCreate,
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = subscriptions.create_subscription(db, client_id=client_id, payload=payload)
     return CRMSubscriptionOut.model_validate(subscription)
 
@@ -272,9 +287,11 @@ def list_subscriptions_endpoint(
 
 @router.post("/subscriptions/{subscription_id}/suspend", response_model=CRMSubscriptionOut)
 def suspend_subscription_endpoint(
+    request: Request,
     subscription_id: str,
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
@@ -288,9 +305,11 @@ def suspend_subscription_endpoint(
 
 @router.post("/subscriptions/{subscription_id}/resume", response_model=CRMSubscriptionOut)
 def resume_subscription_endpoint(
+    request: Request,
     subscription_id: str,
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
@@ -397,6 +416,7 @@ def change_subscription_tariff_endpoint(
     payload: CRMSubscriptionChangeTariff,
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
@@ -433,6 +453,7 @@ def pause_subscription_v2_endpoint(
     effective_at: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
@@ -462,6 +483,7 @@ def cancel_subscription_v2_endpoint(
     effective_at: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    _require_control_plane_version(request)
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
@@ -536,6 +558,7 @@ def enable_feature_flag_endpoint(
     tenant_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
 ) -> CRMFeatureFlagOut:
+    _require_control_plane_version(request)
     ctx = request_context_from_request(request)
     record = settings.set_feature_flag(
         db,
@@ -564,6 +587,7 @@ def disable_feature_flag_endpoint(
     tenant_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
 ) -> CRMFeatureFlagOut:
+    _require_control_plane_version(request)
     ctx = request_context_from_request(request)
     record = settings.set_feature_flag(
         db,

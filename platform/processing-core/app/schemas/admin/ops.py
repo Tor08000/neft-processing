@@ -108,6 +108,9 @@ class OpsEscalationSLAReportReason(BaseModel):
 
     total: int
     overdue: int
+    sla_breaches: int
+    avg_time_to_ack: float | None = None
+    avg_time_to_close: float | None = None
 
 
 class OpsEscalationSLAReport(BaseModel):
@@ -117,7 +120,12 @@ class OpsEscalationSLAReport(BaseModel):
     total: int
     closed_within_sla: int
     overdue: int
+    sla_breaches: int
+    avg_time_to_ack: float | None = None
+    avg_time_to_close: float | None = None
     by_primary_reason: dict[PrimaryReason, OpsEscalationSLAReportReason]
+    by_team: dict[str, OpsEscalationSLAReportReason]
+    by_client: dict[str, OpsEscalationSLAReportReason] | None = None
 
 
 class OpsKpiReasonStats(BaseModel):

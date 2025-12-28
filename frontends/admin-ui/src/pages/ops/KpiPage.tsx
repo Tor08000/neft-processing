@@ -23,12 +23,12 @@ const ReasonTable: React.FC<{ data: OpsKpiResponse["by_reason"] }> = ({ data }) 
   const rows = Object.entries(data);
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
-      <h3 style={{ marginTop: 0 }}>By reason code</h3>
+      <h3 style={{ marginTop: 0 }}>By primary reason</h3>
       {rows.length ? (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0" }}>
-              <th style={{ padding: "8px 6px" }}>Reason code</th>
+              <th style={{ padding: "8px 6px" }}>Primary reason</th>
               <th style={{ padding: "8px 6px" }}>Open</th>
               <th style={{ padding: "8px 6px" }}>SLA violations</th>
               <th style={{ padding: "8px 6px" }}>Avg resolution (hrs)</th>

@@ -106,7 +106,7 @@ def user_token(make_jwt):
 
 @pytest.fixture
 def admin_auth_headers(admin_token: str):
-    return {"Authorization": f"Bearer {admin_token}"}
+    return {"Authorization": f"Bearer {admin_token}", "X-CRM-Version": "1"}
 
 
 @pytest.fixture

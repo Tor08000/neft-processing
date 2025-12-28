@@ -53,9 +53,11 @@ def test_sla_report_counts(db_session: Session):
         subject_type="FUEL_TX",
         subject_id="fuel-1",
         source=OpsEscalationSource.MANUAL_FROM_EXPLAIN,
+        client_id="client-1",
         sla_started_at=created_at,
         sla_expires_at=created_at + timedelta(minutes=120),
         created_at=created_at,
+        acked_at=created_at + timedelta(minutes=10),
         closed_at=created_at + timedelta(minutes=60),
         unified_explain_snapshot_hash="snap-1",
         unified_explain_snapshot={"primary_reason": "RISK"},
@@ -74,9 +76,11 @@ def test_sla_report_counts(db_session: Session):
         subject_type="ORDER",
         subject_id="order-1",
         source=OpsEscalationSource.MANUAL_FROM_EXPLAIN,
+        client_id="client-2",
         sla_started_at=created_at,
         sla_expires_at=created_at + timedelta(minutes=30),
         created_at=created_at,
+        acked_at=created_at + timedelta(minutes=25),
         unified_explain_snapshot_hash="snap-2",
         unified_explain_snapshot={"primary_reason": "LIMIT"},
         idempotency_key="idem-2",
@@ -94,6 +98,7 @@ def test_sla_report_counts(db_session: Session):
         subject_type="INVOICE",
         subject_id="inv-1",
         source=OpsEscalationSource.MANUAL_FROM_EXPLAIN,
+        client_id="client-3",
         sla_started_at=created_at,
         sla_expires_at=created_at + timedelta(minutes=90),
         created_at=created_at,
@@ -112,7 +117,13 @@ def test_sla_report_counts(db_session: Session):
     assert report["total"] == 3
     assert report["closed_within_sla"] == 1
     assert report["overdue"] == 2
+    assert report["sla_breaches"] == 2
+    assert report["avg_time_to_ack"] == pytest.approx(17.5, abs=0.1)
+    assert report["avg_time_to_close"] == pytest.approx(100.0, abs=0.1)
     assert report["by_primary_reason"][PrimaryReason.RISK]["total"] == 1
     assert report["by_primary_reason"][PrimaryReason.RISK]["overdue"] == 0
     assert report["by_primary_reason"][PrimaryReason.LIMIT]["overdue"] == 1
     assert report["by_primary_reason"][PrimaryReason.MONEY]["overdue"] == 1
+    assert report["by_team"]["COMPLIANCE"]["total"] == 1
+    assert report["by_team"]["CRM"]["overdue"] == 1
+    assert report["by_client"]["client-1"]["avg_time_to_close"] == pytest.approx(60.0, abs=0.1)
