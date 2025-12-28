@@ -8,6 +8,7 @@ from app.routers.admin import (
     closing_packages,
     client_actions,
     clearing,
+    crm,
     dashboard,
     disputes,
     documents,
@@ -54,5 +55,6 @@ router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(legal_integrations.router)
 router.include_router(legal_graph.router)
+router.include_router(crm.router)
 
 __all__ = ["router"]

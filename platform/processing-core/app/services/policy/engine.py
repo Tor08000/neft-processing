@@ -13,6 +13,7 @@ _ADMIN_FINANCE_ROLES = {"ADMIN_FINANCE", "SUPERADMIN"}
 _ADMIN_ACCOUNTING_ROLES = {"ADMIN_ACCOUNTING", "SUPERADMIN"}
 _ADMIN_EXPORT_ROLES = {"ADMIN_FINANCE", "ADMIN_ACCOUNTING", "SUPERADMIN"}
 _CLIENT_ACK_ROLES = {"CLIENT_OWNER", "CLIENT_ADMIN"}
+_ADMIN_CRM_ROLES = {"ADMIN", "FINANCE", "ADMIN_FINANCE", "SUPERADMIN"}
 
 
 class PolicyAccessDenied(PermissionError):
@@ -65,6 +66,14 @@ class PolicyEngine:
             return self._closing_package_finalize(actor, resource)
         if action == Action.BILLING_PERIOD_REOPEN:
             return PolicyDecision(False, policy="billing_period_reopen_disabled", reason="action_disabled")
+        if action in {
+            Action.CRM_CLIENT_MANAGE,
+            Action.CRM_CONTRACT_MANAGE,
+            Action.CRM_TARIFF_MANAGE,
+            Action.CRM_SUBSCRIPTION_MANAGE,
+            Action.CRM_FEATURE_TOGGLE,
+        }:
+            return self._crm_manage(actor, resource)
         return PolicyDecision(False, policy="unsupported_action", reason="unsupported_action")
 
     @staticmethod
@@ -224,6 +233,13 @@ class PolicyEngine:
         if resource.status != "ACKNOWLEDGED":
             return PolicyDecision(False, policy="closing_package_finalize_status", reason="status_not_acknowledged")
         return PolicyDecision(True, policy="closing_package_finalize_allowed")
+
+    def _crm_manage(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="crm_manage_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_CRM_ROLES):
+            return PolicyDecision(False, policy="crm_manage_role", reason="missing_role")
+        return PolicyDecision(True, policy="crm_manage_allowed")
 
 
 def audit_access_denied(
