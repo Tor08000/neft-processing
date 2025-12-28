@@ -12,6 +12,7 @@ from app.routers.admin import (
     dashboard,
     disputes,
     documents,
+    explain,
     fuel,
     integration_monitoring,
     logistics,
@@ -60,5 +61,6 @@ router.include_router(legal_graph.router)
 router.include_router(crm.router)
 router.include_router(fraud.router)
 router.include_router(money_flow.router)
+router.include_router(explain.router)
 
 __all__ = ["router"]

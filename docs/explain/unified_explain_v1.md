@@ -1,99 +1,63 @@
 # Unified Explain v1
 
-## Fleet Manager View
+## Overview
+Unified Explain provides a single admin endpoint that aggregates explainability signals across fuel, logistics, limits, risk, money, and document domains. The response is structured for fleet managers (behavior/route/risk) and accountants (limits/money/documents) using a view parameter.
 
-`unified_explain.sources.fuel.fleet_view` и `unified_explain.sources.logistics.fleet_view` возвращают удобный для менеджера маршрутный контекст.
+## Endpoint
+`GET /api/v1/admin/explain`
 
+### Query parameters
+- `fuel_tx_id`: Fuel transaction id.
+- `order_id`: Logistics order id.
+- `invoice_id`: Invoice id.
+- `view`: `FLEET | ACCOUNTANT | FULL` (default `FULL`).
+- `depth`: Graph trace depth (default `3`).
+- `snapshot`: `true | false` (default `false`).
+
+Exactly one of `fuel_tx_id`, `order_id`, or `invoice_id` must be provided.
+
+## Response shape
 ```json
 {
-  "fleet_view": {
-    "where": {
-      "stop_id": "...",
-      "distance_km": 12.4,
-      "timestamp": "2025-01-10T12:32:00Z"
-    },
-    "threshold": {
-      "max_deviation_km": 5
-    },
-    "recommendations": [
-      "Маршрут отклонён более чем на 12 км"
-    ]
-  }
-}
-```
-
-## Accountant View
-
-`unified_explain.accountant_view` даёт лимитный контекст для бухгалтерии.
-
-```json
-{
-  "accountant_view": {
-    "limit": {
-      "type": "DAILY",
-      "value": 50000,
-      "currency": "RUB"
-    },
-    "period": "2025-01-01 → 2025-01-31",
-    "reason": "Превышение лимита",
-    "recommendations": [
-      "Проверьте лимит клиента на период"
-    ]
-  }
-}
-```
-
-## CFO Money Summary
-
-`unified_explain.money_summary` агрегирует итоговые суммы по денежному потоку.
-
-```json
-{
-  "money_summary": {
-    "charged": 120000,
-    "paid": 80000,
-    "due": 40000,
-    "refunded": 0,
-    "currency": "RUB"
+  "subject": {
+    "type": "FUEL_TX",
+    "id": "...",
+    "ts": "...",
+    "client_id": "...",
+    "vehicle_id": "...",
+    "driver_id": "..."
   },
-  "money_replay": {
-    "replay_id": "...",
-    "admin_url": "/admin/money/replay/{id}"
+  "result": {
+    "status": "DECLINED",
+    "primary_reason": "LIMIT_EXCEEDED",
+    "decline_code": "LIMIT_EXCEEDED_AMOUNT"
   },
-  "invariants": {
-    "status": "OK",
-    "violations": []
-  }
+  "sections": {
+    "limits": { },
+    "risk": { },
+    "logistics": { },
+    "navigator": { },
+    "money": { },
+    "documents": { },
+    "graph": { }
+  },
+  "ids": {
+    "risk_decision_id": "...",
+    "ledger_transaction_id": "...",
+    "invoice_id": "...",
+    "document_ids": ["..."],
+    "money_flow_event_ids": ["..."],
+    "snapshot_id": "...",
+    "snapshot_hash": "..."
+  },
+  "recommendations": ["..."]
 }
 ```
 
-## CRM Context
+## Snapshot behavior
+When `snapshot=true`, the service stores a deterministic, canonical JSON snapshot and returns `snapshot_id` and `snapshot_hash`.
 
-`unified_explain.crm` и `unified_explain.crm_effect` описывают тариф, подписку и влияние CRM.
-
-```json
-{
-  "crm": {
-    "tariff": {
-      "id": "enterprise_fuel_v4",
-      "name": "Enterprise Fuel"
-    },
-    "subscription": {
-      "status": "ACTIVE",
-      "period": "2025-01"
-    },
-    "metrics_used": {
-      "fuel_tx_count": 124,
-      "drivers": 12
-    },
-    "feature_flags": [
-      "FUEL_ENABLED",
-      "LOGISTICS_ENABLED"
-    ]
-  },
-  "crm_effect": {
-    "allowed": false,
-    "reason": "Тариф не включает ночные заправки"
-  }
-}
-```
+## Views
+- `FLEET`: prioritizes logistics, navigator, risk, limits, money.
+- `ACCOUNTANT`: prioritizes money, limits, documents, risk.
+- `FULL`: returns all available sections.
