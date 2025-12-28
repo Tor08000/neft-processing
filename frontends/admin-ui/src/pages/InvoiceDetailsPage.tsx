@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { fetchInvoice, updateInvoiceStatus } from "../api/billing";
 import { Table, type Column } from "../components/Table/Table";
 import type { Invoice, InvoiceLine, InvoiceStatus } from "../types/billing";
@@ -7,6 +7,7 @@ import { formatAmount } from "../utils/format";
 
 export const InvoiceDetailsPage: React.FC = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +43,14 @@ export const InvoiceDetailsPage: React.FC = () => {
       <p>
         Client {invoice.client_id} • Period {invoice.period_from} — {invoice.period_to}
       </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button type="button" onClick={() => navigate(`/money/invoices/${invoice.id}/cfo-explain`)}>
+          CFO explain
+        </button>
+        <button type="button" onClick={() => navigate(`/money/invoices/${invoice.id}/cfo-explain?view=money`)}>
+          Money explain
+        </button>
+      </div>
       <p>
         Amount: {formatAmount(invoice.total_with_tax ?? invoice.total_amount)} • Status: {invoice.status}
       </p>
