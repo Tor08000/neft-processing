@@ -16,6 +16,12 @@ class SnapshotPayload:
     snapshot_json: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class PersistedSnapshot:
+    snapshot: UnifiedExplainSnapshot
+    created: bool
+
+
 def build_snapshot_payload(payload: dict[str, Any]) -> SnapshotPayload:
     canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     snapshot_hash = sha256(canonical_json.encode("utf-8")).hexdigest()
@@ -31,7 +37,7 @@ def persist_snapshot(
     payload: dict[str, Any],
     actor_type: str | None = None,
     actor_id: str | None = None,
-) -> UnifiedExplainSnapshot:
+) -> PersistedSnapshot:
     snapshot_payload = build_snapshot_payload(payload)
     existing = (
         db.query(UnifiedExplainSnapshot)
@@ -42,7 +48,7 @@ def persist_snapshot(
         .one_or_none()
     )
     if existing:
-        return existing
+        return PersistedSnapshot(snapshot=existing, created=False)
 
     snapshot = UnifiedExplainSnapshot(
         tenant_id=tenant_id,
@@ -55,7 +61,7 @@ def persist_snapshot(
     )
     db.add(snapshot)
     db.flush()
-    return snapshot
+    return PersistedSnapshot(snapshot=snapshot, created=True)
 
 
-__all__ = ["SnapshotPayload", "build_snapshot_payload", "persist_snapshot"]
+__all__ = ["PersistedSnapshot", "SnapshotPayload", "build_snapshot_payload", "persist_snapshot"]

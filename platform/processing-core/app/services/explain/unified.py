@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -16,8 +17,18 @@ from app.schemas.admin.unified_explain import (
 )
 from app.services.explain import formatters, sources
 from app.services.explain.errors import UnifiedExplainNotFound, UnifiedExplainValidationError
+from app.services.explain.actions import build_actions
+from app.services.explain.escalation import (
+    ESCALATION_MAP,
+    audit_primary_reason_assigned,
+    audit_primary_reason_escalated,
+    audit_sla_expired,
+    build_escalation,
+)
 from app.services.explain.priority import PRIMARY_REASON_PRIORITY
 from app.services.explain.snapshot import build_snapshot_payload, persist_snapshot
+from app.services.explain.sla import SLAClock, SLA_DEFINITIONS, build_sla
+from app.services.audit_service import AuditService
 from app.services.money_flow.states import MoneyFlowType
 
 
@@ -60,25 +71,44 @@ def build_unified_explain(
         driver_id=subject.driver_id,
     )
 
+    actions = build_actions(result.primary_reason)
+    started_at = _parse_started_at(subject.ts)
+    sla = build_sla(result.primary_reason, started_at=started_at)
+    escalation = build_escalation(result.primary_reason)
+
     response_payload = UnifiedExplainResponse(
+        primary_reason=result.primary_reason,
+        secondary_reasons=result.secondary_reasons,
         subject=subject,
         result=result,
         sections=selected_sections,
         ids=ids,
         recommendations=recommendations,
+        actions=actions,
+        sla=sla,
+        escalation=escalation,
     )
 
     if snapshot and tenant_id is not None:
         snapshot_payload = build_snapshot_payload(response_payload.model_dump(mode="json"))
-        snapshot_row = persist_snapshot(
+        persisted_snapshot = persist_snapshot(
             db,
             tenant_id=tenant_id,
             subject_type=subject.type,
             subject_id=subject.id,
             payload=snapshot_payload.snapshot_json,
         )
-        response_payload.ids.snapshot_id = str(snapshot_row.id)
+        response_payload.ids.snapshot_id = str(persisted_snapshot.snapshot.id)
         response_payload.ids.snapshot_hash = snapshot_payload.snapshot_hash
+        if persisted_snapshot.created:
+            _audit_primary_reason(
+                db,
+                tenant_id=tenant_id,
+                subject=subject,
+                primary_reason=result.primary_reason,
+                escalation_target=escalation.target if escalation else None,
+                sla=sla,
+            )
         db.commit()
 
     return response_payload
@@ -330,6 +360,59 @@ def resolve_primary_reasons(
         reason for reason in PRIMARY_REASON_PRIORITY if reason in detected_reasons and reason != primary_reason
     ]
     return primary_reason, secondary_reasons
+
+
+def _parse_started_at(timestamp: str | None) -> datetime | None:
+    if not timestamp:
+        return None
+    normalized = timestamp.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _audit_primary_reason(
+    db: Session,
+    *,
+    tenant_id: int | None,
+    subject: UnifiedExplainSubject,
+    primary_reason: PrimaryReason,
+    escalation_target: str | None,
+    sla: SLAClock | None,
+) -> None:
+    if primary_reason not in SLA_DEFINITIONS and primary_reason not in ESCALATION_MAP:
+        return
+
+    audit_service = AuditService(db)
+    entity_type = "unified_explain"
+    entity_id = subject.id
+    audit_primary_reason_assigned(
+        audit_service,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        tenant_id=tenant_id,
+        primary_reason=primary_reason,
+        target=escalation_target,
+    )
+    if escalation_target:
+        audit_primary_reason_escalated(
+            audit_service,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            tenant_id=tenant_id,
+            primary_reason=primary_reason,
+            target=escalation_target,
+        )
+    audit_sla_expired(
+        audit_service,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        tenant_id=tenant_id,
+        primary_reason=primary_reason,
+        target=escalation_target,
+        sla=sla,
+    )
 
 
 def _has_limit_reason(*, decline_code: str | None, sections: dict[str, Any]) -> bool:
