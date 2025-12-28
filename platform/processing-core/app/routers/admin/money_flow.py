@@ -4,10 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.deps.db import get_db
-from app.schemas.admin.money_flow import MoneyExplainResponse, MoneyHealthResponse
+from app.schemas.admin.money_flow import (
+    CFOExplainResponse,
+    MoneyExplainResponse,
+    MoneyHealthResponse,
+    MoneyReplayDiffSchema,
+    MoneyReplayRequest,
+    MoneyReplayResponse,
+)
+from app.services.money_flow.cfo_explain import build_cfo_explain
 from app.services.money_flow.diagnostics import build_money_health
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.explain import build_money_explain
+from app.services.money_flow.replay import run_money_flow_replay
 from app.services.money_flow.states import MoneyFlowType
 
 router = APIRouter(prefix="/money", tags=["admin-money"])
@@ -49,7 +58,55 @@ def money_health(
         stuck_authorized=report.stuck_authorized,
         stuck_pending_settlement=report.stuck_pending_settlement,
         cross_period_anomalies=report.cross_period_anomalies,
+        missing_money_flow_links=report.missing_money_flow_links,
+        missing_snapshots=report.missing_snapshots,
+        disconnected_graph=report.disconnected_graph,
+        cfo_explain_not_ready=report.cfo_explain_not_ready,
         top_offenders=report.top_offenders,
+    )
+
+
+@router.get("/cfo-explain", response_model=CFOExplainResponse)
+def cfo_explain(invoice_id: str = Query(..., description="Invoice id"), db: Session = Depends(get_db)) -> CFOExplainResponse:
+    try:
+        explain = build_cfo_explain(db, invoice_id=invoice_id)
+    except MoneyFlowNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CFOExplainResponse(
+        invoice_id=explain.invoice_id,
+        client_id=explain.client_id,
+        currency=explain.currency,
+        totals=explain.totals,
+        breakdown=explain.breakdown,
+        links=explain.links,
+        snapshots=explain.snapshots,
+        anomalies=explain.anomalies,
+    )
+
+
+@router.post("/replay", response_model=MoneyReplayResponse)
+def replay_money_flow(payload: MoneyReplayRequest, db: Session = Depends(get_db)) -> MoneyReplayResponse:
+    result = run_money_flow_replay(
+        db,
+        client_id=payload.client_id,
+        billing_period_id=payload.billing_period_id,
+        mode=payload.mode,
+        scope=payload.scope,
+    )
+    diff = None
+    if result.diff is not None:
+        diff = MoneyReplayDiffSchema(
+            mismatched_totals=result.diff.mismatched_totals,
+            missing_links=result.diff.missing_links,
+            broken_snapshots=result.diff.broken_snapshots,
+            recommended_action=result.diff.recommended_action,
+        )
+    return MoneyReplayResponse(
+        mode=result.mode,
+        scope=result.scope,
+        recompute_hash=result.recompute_hash,
+        diff=diff,
+        links_rebuilt=result.links_rebuilt,
     )
 
 
