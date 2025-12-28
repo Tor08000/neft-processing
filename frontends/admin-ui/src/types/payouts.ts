@@ -1,10 +1,24 @@
+export type PayoutState = "DRAFT" | "READY" | "SENT" | "SETTLED" | "FAILED";
+
 export interface PayoutBatchSummary {
   batch_id: string;
-  state: string;
+  state: PayoutState;
   total_amount: number;
   total_qty: number;
   operations_count: number;
   items_count: number;
+}
+
+export interface PayoutBatchListResponse {
+  items: PayoutBatchSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface MarkPayoutPayload {
+  provider: string;
+  external_ref: string;
 }
 
 export interface PayoutBatchItem {
@@ -16,6 +30,7 @@ export interface PayoutBatchItem {
   amount_net: number;
   qty: number;
   operations_count: number;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface PayoutBatchDetail {
@@ -24,7 +39,7 @@ export interface PayoutBatchDetail {
   partner_id: string;
   date_from: string;
   date_to: string;
-  state: string;
+  state: PayoutState;
   total_amount: number;
   total_qty: number;
   operations_count: number;
@@ -33,7 +48,25 @@ export interface PayoutBatchDetail {
   settled_at?: string | null;
   provider?: string | null;
   external_ref?: string | null;
+  meta?: Record<string, unknown> | null;
   items: PayoutBatchItem[];
+}
+
+export interface PayoutReconcileResult {
+  batch_id: string;
+  computed: {
+    total_amount: number;
+    operations_count: number;
+  };
+  recorded: {
+    total_amount: number;
+    operations_count: number;
+  };
+  diff: {
+    amount: number;
+    count: number;
+  };
+  status: "OK" | "MISMATCH";
 }
 
 export interface PayoutExportFile {
