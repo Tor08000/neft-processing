@@ -43,6 +43,14 @@ export interface ClientDocumentRiskSummary {
   decision_id?: string | null;
 }
 
+export interface ClientDocumentRiskExplain {
+  decision_hash?: string | null;
+  thresholds?: Record<string, number> | null;
+  factors?: string[] | null;
+  policy?: string | null;
+  policy_id?: string | null;
+}
+
 export interface ClientDocumentAckDetails {
   ack_by_user_id?: string | null;
   ack_by_email?: string | null;
@@ -69,5 +77,5 @@ export interface ClientDocumentDetails {
   events: ClientDocumentEvent[];
   ack_details?: ClientDocumentAckDetails | null;
   risk?: ClientDocumentRiskSummary | null;
-  risk_explain?: Record<string, unknown> | null;
+  risk_explain?: ClientDocumentRiskExplain | null;
 }

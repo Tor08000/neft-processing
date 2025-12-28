@@ -89,18 +89,10 @@ export function ClientDocumentDetailsPage() {
   }
 
   const riskExplain = document.risk_explain ?? null;
-  const riskThresholds =
-    riskExplain && typeof riskExplain === "object"
-      ? (riskExplain as Record<string, unknown>).thresholds
-      : null;
-  const riskFactors =
-    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).factors : null;
-  const riskDecisionHash =
-    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).decision_hash : null;
-  const riskPolicy =
-    riskExplain && typeof riskExplain === "object"
-      ? ((riskExplain as Record<string, unknown>).policy ?? (riskExplain as Record<string, unknown>).policy_id)
-      : null;
+  const riskThresholds = riskExplain?.thresholds ?? null;
+  const riskFactors = riskExplain?.factors ?? null;
+  const riskDecisionHash = riskExplain?.decision_hash ?? null;
+  const riskPolicy = riskExplain?.policy ?? riskExplain?.policy_id ?? null;
 
   return (
     <div className="card">
@@ -192,9 +184,9 @@ export function ClientDocumentDetailsPage() {
                 </div>
                 <div>
                   <div className="label">Thresholds</div>
-                  {riskThresholds && typeof riskThresholds === "object" ? (
+                  {riskThresholds ? (
                     <ul className="bullets">
-                      {Object.entries(riskThresholds as Record<string, number>).map(([key, value]) => (
+                      {Object.entries(riskThresholds).map(([key, value]) => (
                         <li key={key}>
                           {key}: {value}
                         </li>
