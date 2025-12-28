@@ -1,14 +1,14 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { getPayoutBatches } from "../../api/payouts";
+import { fetchPayoutBatches } from "../../api/payouts";
 import { PayoutStateBadge } from "../../components/PayoutStateBadge/PayoutStateBadge";
 import { Pagination } from "../../components/Pagination/Pagination";
 import { Table, type Column } from "../../components/Table/Table";
 import { CopyButton } from "../../components/CopyButton/CopyButton";
 import { Loader } from "../../components/Loader/Loader";
-import { PayoutBatch, PayoutState } from "../../types/payouts";
-import { formatDate, formatDateTime, formatRub, getIsoDate } from "../../utils/format";
+import { PayoutBatchSummary, PayoutState } from "../../types/payouts";
+import { formatRub, getIsoDate } from "../../utils/format";
 import { useToast } from "../../components/Toast/useToast";
 import { Toast } from "../../components/Toast/Toast";
 
@@ -20,7 +20,12 @@ const today = new Date();
 const sevenDaysAgo = new Date(today);
 sevenDaysAgo.setDate(today.getDate() - 6);
 
-const defaultRange = {
+type DateRange = {
+  from?: string;
+  to?: string;
+};
+
+const defaultRange: DateRange = {
   from: getIsoDate(sevenDaysAgo),
   to: getIsoDate(today),
 };
@@ -51,7 +56,7 @@ export const PayoutsList: React.FC = () => {
   const { toast, showToast } = useToast();
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
-  const [dateRange, setDateRange] = useState(defaultRange);
+  const [dateRange, setDateRange] = useState<DateRange>(defaultRange);
   const [partnerId, setPartnerId] = useState("");
   const [states, setStates] = useState<PayoutState[]>([]);
   const [debouncedFilters, setDebouncedFilters] = useState({
@@ -83,7 +88,7 @@ export const PayoutsList: React.FC = () => {
 
   const { data, isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["payouts", filters],
-    queryFn: () => getPayoutBatches(filters),
+    queryFn: () => fetchPayoutBatches(filters),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
@@ -96,53 +101,34 @@ export const PayoutsList: React.FC = () => {
     setStates((prev) => (prev.includes(state) ? prev.filter((s) => s !== state) : [...prev, state]));
   };
 
-  const columns: Column<PayoutBatch>[] = [
+  const columns: Column<PayoutBatchSummary>[] = [
     {
-      key: "id",
+      key: "batch_id",
       title: "Batch ID",
       render: (row) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span title={row.id}>{row.id.slice(0, 8)}</span>
-          <CopyButton value={row.id} label="Copy" onCopy={() => showToast("success", "Batch ID copied")} />
+          <span title={row.batch_id}>{row.batch_id.slice(0, 8)}</span>
+          <CopyButton value={row.batch_id} label="Copy" onCopy={() => showToast("success", "Batch ID copied")} />
         </div>
       ),
     },
-    { key: "partner_id", title: "Partner", render: (row) => row.partner_id },
-    { key: "period", title: "Period", render: (row) => `${formatDate(row.date_from)} – ${formatDate(row.date_to)}` },
     { key: "state", title: "State", render: (row) => <PayoutStateBadge state={row.state} /> },
     { key: "total_amount", title: "Total amount", render: (row) => formatRub(row.total_amount) },
+    { key: "total_qty", title: "Total qty", render: (row) => row.total_qty },
     { key: "operations_count", title: "Operations", render: (row) => row.operations_count },
-    { key: "sent_at", title: "Sent at", render: (row) => formatDateTime(row.sent_at) },
-    { key: "settled_at", title: "Settled at", render: (row) => formatDateTime(row.settled_at) },
-    {
-      key: "external_ref",
-      title: "External ref",
-      render: (row) =>
-        row.external_ref ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>{row.external_ref}</span>
-            <CopyButton
-              value={row.external_ref}
-              label="Copy"
-              onCopy={() => showToast("success", "External ref copied")}
-            />
-          </div>
-        ) : (
-          "-"
-        ),
-    },
+    { key: "items_count", title: "Items", render: (row) => row.items_count },
     {
       key: "actions",
       title: "Actions",
       render: (row) => (
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="ghost" onClick={() => navigate(`/finance/payouts/${row.id}`)}>
+          <button type="button" className="ghost" onClick={() => navigate(`/finance/payouts/${row.batch_id}`)}>
             View
           </button>
           <button
             type="button"
             className="ghost"
-            onClick={() => navigate(`/finance/payouts/${row.id}`)}
+            onClick={() => navigate(`/finance/payouts/${row.batch_id}`)}
             disabled={row.state !== "READY"}
           >
             Mark sent
@@ -150,7 +136,7 @@ export const PayoutsList: React.FC = () => {
           <button
             type="button"
             className="ghost"
-            onClick={() => navigate(`/finance/payouts/${row.id}`)}
+            onClick={() => navigate(`/finance/payouts/${row.batch_id}`)}
             disabled={row.state !== "SENT"}
           >
             Mark settled
@@ -247,7 +233,7 @@ export const PayoutsList: React.FC = () => {
 
       {!error && !isLoading && items.length === 0 && <div className="card">No payouts found</div>}
 
-      <Table columns={columns} data={items} onRowClick={(row) => navigate(`/finance/payouts/${row.id}`)} />
+      <Table columns={columns} data={items} onRowClick={(row) => navigate(`/finance/payouts/${row.batch_id}`)} />
 
       <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />
       <Toast toast={toast} />

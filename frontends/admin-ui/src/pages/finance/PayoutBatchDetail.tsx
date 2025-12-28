@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  getPayoutBatch,
+  fetchPayoutBatchDetails,
   markPayoutSent,
   markPayoutSettled,
   reconcilePayoutBatch,
@@ -40,7 +40,7 @@ export const PayoutBatchDetail: React.FC = () => {
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["payout-batch", batchId],
-    queryFn: () => getPayoutBatch(batchId ?? ""),
+    queryFn: () => fetchPayoutBatchDetails(batchId ?? ""),
     enabled: Boolean(batchId),
   });
 
@@ -83,7 +83,7 @@ export const PayoutBatchDetail: React.FC = () => {
     },
   });
 
-  const batch = data?.batch;
+  const batch = data ?? null;
   const items = data?.items ?? [];
 
   const summaryRows = useMemo(() => {
@@ -122,11 +122,11 @@ export const PayoutBatchDetail: React.FC = () => {
     {
       key: "azs",
       title: "AZS/Product",
-      render: (row) => [row.azs_id, row.product].filter(Boolean).join(" / ") || "-",
+      render: (row) => [row.azs_id, row.product_id].filter(Boolean).join(" / ") || "-",
     },
     { key: "qty", title: "Qty", render: (row) => formatQty(row.qty) },
     { key: "amount_gross", title: "Amount gross", render: (row) => formatRub(row.amount_gross) },
-    { key: "commission", title: "Commission", render: (row) => formatRub(row.commission) },
+    { key: "commission_amount", title: "Commission", render: (row) => formatRub(row.commission_amount) },
     { key: "amount_net", title: "Amount net", render: (row) => formatRub(row.amount_net) },
     { key: "operations_count", title: "Operations", render: (row) => row.operations_count ?? "-" },
   ];

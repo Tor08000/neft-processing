@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { hasPayoutAccess } from "../../auth/roles";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },

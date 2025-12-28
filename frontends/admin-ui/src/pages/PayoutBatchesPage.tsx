@@ -25,21 +25,23 @@ export const PayoutBatchesPage: React.FC = () => {
   const [bankFormatCode, setBankFormatCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { data: batchesData = [], isFetching, isLoading, error, refetch } = useQuery({
+  const { data: batchesData, isFetching, isLoading, error, refetch } = useQuery({
     queryKey: ["payouts", "batches"],
     queryFn: () => fetchPayoutBatches({}),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
-    placeholderData: (previousData) => previousData ?? [],
+    placeholderData: (previousData) =>
+      previousData ?? { items: [], total: 0, limit: 0, offset: 0 },
   });
 
   useEffect(() => {
-    setBatches(batchesData);
-    if (batchesData.length && !selectedBatchId) {
-      setSelectedBatchId(batchesData[0].batch_id);
+    const items = batchesData?.items ?? [];
+    setBatches(items);
+    if (items.length && !selectedBatchId) {
+      setSelectedBatchId(items[0].batch_id);
     }
-    if (batchesData.length && selectedBatchId && !batchesData.find((b) => b.batch_id === selectedBatchId)) {
-      setSelectedBatchId(batchesData[0].batch_id);
+    if (items.length && selectedBatchId && !items.find((b) => b.batch_id === selectedBatchId)) {
+      setSelectedBatchId(items[0].batch_id);
     }
   }, [batchesData, selectedBatchId]);
 
