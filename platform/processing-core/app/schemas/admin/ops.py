@@ -33,10 +33,12 @@ class OpsEscalationOut(BaseModel):
     created_at: datetime
     acked_at: datetime | None
     acked_by: str | None
-    ack_reason: str | None
+    ack_reason_code: str | None
+    ack_reason_text: str | None
     closed_at: datetime | None
     closed_by: str | None
-    close_reason: str | None
+    close_reason_code: str | None
+    close_reason_text: str | None
     created_by_actor_type: str | None
     created_by_actor_id: str | None
     created_by_actor_email: str | None
@@ -96,7 +98,8 @@ class OpsEscalationScanResponse(BaseModel):
 class OpsEscalationActionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(min_length=1)
+    reason_code: str = Field(min_length=1)
+    reason_text: str | None = None
 
 
 class OpsEscalationSLAReportReason(BaseModel):
@@ -116,6 +119,40 @@ class OpsEscalationSLAReport(BaseModel):
     by_primary_reason: dict[PrimaryReason, OpsEscalationSLAReportReason]
 
 
+class OpsKpiTotals(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    opened: int
+    acked: int
+    closed: int
+    overdue: int
+
+
+class OpsKpiSla(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    closed_within_sla: int
+    avg_time_to_ack_minutes: float | None
+    avg_time_to_close_minutes: float | None
+
+
+class OpsKpiBreakdown(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    by_primary_reason: dict[str, int]
+    by_target: dict[str, int]
+    by_close_reason_code: dict[str, int]
+    by_ack_reason_code: dict[str, int]
+
+
+class OpsKpiResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    totals: OpsKpiTotals
+    sla: OpsKpiSla
+    breakdown: OpsKpiBreakdown
+
+
 __all__ = [
     "OpsEscalationActionRequest",
     "OpsEscalationListResponse",
@@ -123,4 +160,8 @@ __all__ = [
     "OpsEscalationScanResponse",
     "OpsEscalationSLAReport",
     "OpsEscalationSLAReportReason",
+    "OpsKpiBreakdown",
+    "OpsKpiResponse",
+    "OpsKpiSla",
+    "OpsKpiTotals",
 ]

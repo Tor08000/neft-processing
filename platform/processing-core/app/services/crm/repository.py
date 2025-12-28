@@ -95,6 +95,16 @@ def update_contract(db: Session, contract: CRMContract) -> CRMContract:
     return contract
 
 
+def get_active_contract(db: Session, *, client_id: str) -> CRMContract | None:
+    return (
+        db.query(CRMContract)
+        .filter(CRMContract.client_id == client_id)
+        .filter(CRMContract.status == CRMContractStatus.ACTIVE)
+        .order_by(CRMContract.created_at.desc())
+        .first()
+    )
+
+
 def add_tariff(db: Session, tariff: CRMTariffPlan) -> CRMTariffPlan:
     db.add(tariff)
     db.commit()
@@ -397,6 +407,7 @@ __all__ = [
     "add_subscription_segment",
     "add_tariff",
     "add_usage_counter",
+    "get_active_contract",
     "get_active_subscription",
     "get_billing_period",
     "get_client",

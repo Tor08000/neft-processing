@@ -91,6 +91,7 @@ class CRMContractOut(BaseModel):
     risk_profile_id: Optional[str] = None
     limit_profile_id: Optional[str] = None
     documents_required: bool
+    crm_contract_version: int
     created_at: datetime
     meta: Optional[dict[str, Any]] = None
 

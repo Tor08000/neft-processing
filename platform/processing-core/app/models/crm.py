@@ -133,6 +133,7 @@ class CRMContract(Base):
     risk_profile_id = Column(GUID(), ForeignKey("crm_risk_profiles.id"), nullable=True)
     limit_profile_id = Column(GUID(), ForeignKey("crm_limit_profiles.id"), nullable=True)
     documents_required = Column(Boolean, nullable=False, default=False, server_default="false")
+    crm_contract_version = Column(Integer, nullable=False, default=1, server_default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     meta = Column(JSON, nullable=True)
 

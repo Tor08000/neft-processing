@@ -3,6 +3,7 @@
 from app.services.crm import (  # noqa: F401
     clients,
     contracts,
+    decision_context,
     events,
     repository,
     settings,
@@ -17,6 +18,7 @@ from app.services.crm import (  # noqa: F401
 __all__ = [
     "clients",
     "contracts",
+    "decision_context",
     "events",
     "repository",
     "settings",

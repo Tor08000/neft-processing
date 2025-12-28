@@ -31,6 +31,7 @@ from app.models.logistics import (
     LogisticsStopStatus,
     LogisticsStopType,
 )
+from app.schemas.admin.unified_explain import UnifiedExplainView
 from app.services.explain.unified import build_unified_explain
 
 
@@ -99,6 +100,7 @@ def test_fleet_views_include_recommendations(session):
         sequence=1,
         stop_type=LogisticsStopType.FUEL,
         status=LogisticsStopStatus.PENDING,
+        name="Fuel stop",
     )
     session.add(stop)
     session.flush()
@@ -142,17 +144,18 @@ def test_fleet_views_include_recommendations(session):
     payload = build_unified_explain(
         session,
         fuel_tx_id=str(fuel_tx.id),
-        route_snapshot_id=str(snapshot.id),
+        view=UnifiedExplainView.FLEET,
     )
 
-    fuel_view = payload["sources"]["fuel"]["fleet_view"]
-    assert fuel_view["where"]["stop_id"] == str(stop.id)
-    assert fuel_view["where"]["distance_km"] == pytest.approx(12.4)
-    assert fuel_view["threshold"]["max_deviation_km"] == pytest.approx(5.0)
-    assert "Заправка произведена вне маршрута" in fuel_view["recommendations"]
+    logistics_section = payload.sections["logistics"]
+    where = logistics_section["where"]
+    threshold = logistics_section["threshold"]
 
-    logistics_view = payload["sources"]["logistics"]["fleet_view"]
-    assert logistics_view["where"]["stop_id"] == str(stop.id)
-    assert logistics_view["where"]["distance_km"] == pytest.approx(12.4)
-    assert logistics_view["threshold"]["max_deviation_km"] == pytest.approx(5.0)
-    assert "Маршрут отклонён более чем на 12 км" in logistics_view["recommendations"]
+    assert where["stop"]["id"] == str(stop.id)
+    assert where["stop"]["name"] == "Fuel stop"
+    assert where["distance_km"] == pytest.approx(12.4)
+    assert where["ts"] == deviation.ts.isoformat()
+    assert threshold["max_deviation_km"] == pytest.approx(5.0)
+    assert threshold["stop_radius_m"] == 100
+    assert threshold["allowed_window_min"] == 30
+    assert "Скорректировать маршрут" in payload.recommendations

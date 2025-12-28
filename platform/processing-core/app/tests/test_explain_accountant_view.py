@@ -14,6 +14,7 @@ from app.models.fuel import (
     FuelTransactionStatus,
     FuelType,
 )
+from app.schemas.admin.unified_explain import UnifiedExplainView
 from app.services.explain.unified import build_unified_explain
 
 
@@ -57,8 +58,12 @@ def test_accountant_view_from_limit_explain(session):
         decline_code="LIMIT_EXCEEDED_AMOUNT",
         meta={
             "limit_explain": {
+                "scope_type": "CLIENT",
+                "scope_id": "client-1",
                 "period": "DAILY",
                 "limit": 50000,
+                "used": 50000,
+                "remaining": 0,
                 "time_window_start": "2025-01-01",
                 "time_window_end": "2025-01-31",
             }
@@ -67,15 +72,14 @@ def test_accountant_view_from_limit_explain(session):
     session.add(fuel_tx)
     session.commit()
 
-    payload = build_unified_explain(session, fuel_tx_id=str(fuel_tx.id))
-    accountant_view = payload["accountant_view"]
+    payload = build_unified_explain(session, fuel_tx_id=str(fuel_tx.id), view=UnifiedExplainView.ACCOUNTANT)
+    limits_section = payload.sections["limits"]
+    limit_summary = limits_section["limit"]
 
-    assert accountant_view["limit"] == {
-        "type": "DAILY",
-        "value": 50000,
-        "currency": "RUB",
-    }
-    assert accountant_view["period"] == "2025-01-01 → 2025-01-31"
-    assert accountant_view["reason"] == "Превышение лимита"
-    assert "Проверьте лимит клиента на период" in accountant_view["recommendations"]
-    assert "Транзакция превышает дневной лимит" in accountant_view["recommendations"]
+    assert limit_summary["name"] is None
+    assert limit_summary["scope"] == {"type": "CLIENT", "id": "client-1"}
+    assert limit_summary["period"] == "DAILY"
+    assert limit_summary["used"] == 50000
+    assert limit_summary["remaining"] == 0
+    assert limits_section["limit_value"] == 50000
+    assert "Запросить повышение лимита" in payload.recommendations

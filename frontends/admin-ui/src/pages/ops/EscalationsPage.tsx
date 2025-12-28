@@ -23,10 +23,12 @@ type OpsEscalation = {
   created_at: string;
   acked_at: string | null;
   acked_by: string | null;
-  ack_reason: string | null;
+  ack_reason_code: string | null;
+  ack_reason_text: string | null;
   closed_at: string | null;
   closed_by: string | null;
-  close_reason: string | null;
+  close_reason_code: string | null;
+  close_reason_text: string | null;
   unified_explain_snapshot_hash: string | null;
   unified_explain_snapshot: Record<string, unknown> | null;
 };
@@ -41,6 +43,22 @@ type EscalationResponse = {
 const TARGET_OPTIONS = ["CRM", "COMPLIANCE", "LOGISTICS", "FINANCE"] as const;
 const STATUS_OPTIONS = ["OPEN", "ACK", "CLOSED"] as const;
 const PRIMARY_REASON_OPTIONS = ["LIMIT", "RISK", "LOGISTICS", "MONEY", "POLICY", "UNKNOWN"] as const;
+const ACK_REASON_OPTIONS = [
+  { value: "ACK_IN_REVIEW", label: "In review" },
+  { value: "ACK_WAITING_CLIENT", label: "Waiting client" },
+  { value: "ACK_WAITING_INTERNAL", label: "Waiting internal" },
+  { value: "ACK_NEED_MORE_DATA", label: "Need more data" },
+  { value: "ACK_ESCALATED", label: "Escalated" },
+] as const;
+const CLOSE_REASON_OPTIONS = [
+  { value: "CLOSE_LIMIT_INCREASED", label: "Limit increased" },
+  { value: "CLOSE_OVERRIDE_APPROVED", label: "Override approved" },
+  { value: "CLOSE_ROUTE_ADJUSTED", label: "Route adjusted" },
+  { value: "CLOSE_PAYMENT_RECEIVED", label: "Payment received" },
+  { value: "CLOSE_FALSE_POSITIVE", label: "False positive" },
+  { value: "CLOSE_DUPLICATE", label: "Duplicate" },
+  { value: "CLOSE_OTHER", label: "Other" },
+] as const;
 
 const formatTimestamp = (value?: string | null) => {
   if (!value) return "—";
@@ -111,12 +129,19 @@ export const EscalationsPage: React.FC = () => {
     loadEscalations();
   }, [loadEscalations]);
 
-  const handleAction = async (id: string, action: "ack" | "close", reason: string) => {
+  const handleAction = async (
+    id: string,
+    action: "ack" | "close",
+    payload: { reasonCode: string; reasonText?: string },
+  ) => {
     if (!accessToken) return;
     try {
       await request(
         `/api/v1/admin/ops/escalations/${id}/${action}`,
-        { method: "POST", body: JSON.stringify({ reason }) },
+        {
+          method: "POST",
+          body: JSON.stringify({ reason_code: payload.reasonCode, reason_text: payload.reasonText }),
+        },
         accessToken,
       );
       showToast("success", action === "ack" ? "Escalation acked" : "Escalation closed");
@@ -133,10 +158,11 @@ export const EscalationsPage: React.FC = () => {
         open={Boolean(actionModal)}
         title={actionModal?.action === "ack" ? "ACK escalation" : "Close escalation"}
         confirmLabel={actionModal?.action === "ack" ? "ACK" : "Close"}
+        reasonOptions={actionModal?.action === "ack" ? [...ACK_REASON_OPTIONS] : [...CLOSE_REASON_OPTIONS]}
         onCancel={() => setActionModal(null)}
-        onConfirm={(reason) => {
+        onConfirm={(payload) => {
           if (!actionModal) return;
-          handleAction(actionModal.id, actionModal.action, reason);
+          handleAction(actionModal.id, actionModal.action, payload);
           setActionModal(null);
         }}
       />
@@ -299,6 +325,14 @@ export const EscalationsPage: React.FC = () => {
                   </span>
                 </div>
                 <div>
+                  <strong>ACK reason</strong>: {selectedEscalation.ack_reason_code ?? "—"}{" "}
+                  {selectedEscalation.ack_reason_text ? `· ${selectedEscalation.ack_reason_text}` : ""}
+                </div>
+                <div>
+                  <strong>Close reason</strong>: {selectedEscalation.close_reason_code ?? "—"}{" "}
+                  {selectedEscalation.close_reason_text ? `· ${selectedEscalation.close_reason_text}` : ""}
+                </div>
+                <div>
                   <strong>SLA due at</strong>: {formatTimestamp(selectedEscalation.sla_due_at)}
                 </div>
                 <div>
@@ -331,13 +365,13 @@ export const EscalationsPage: React.FC = () => {
                   {selectedEscalation.acked_at && (
                     <li>
                       ACK: {formatTimestamp(selectedEscalation.acked_at)} · {selectedEscalation.acked_by ?? "—"} ·{" "}
-                      {selectedEscalation.ack_reason ?? "—"}
+                      {selectedEscalation.ack_reason_code ?? "—"} · {selectedEscalation.ack_reason_text ?? "—"}
                     </li>
                   )}
                   {selectedEscalation.closed_at && (
                     <li>
                       Closed: {formatTimestamp(selectedEscalation.closed_at)} · {selectedEscalation.closed_by ?? "—"} ·{" "}
-                      {selectedEscalation.close_reason ?? "—"}
+                      {selectedEscalation.close_reason_code ?? "—"} · {selectedEscalation.close_reason_text ?? "—"}
                     </li>
                   )}
                 </ul>
