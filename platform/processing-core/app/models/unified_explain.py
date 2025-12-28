@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from sqlalchemy import Column, DateTime, Integer, JSON, String, UniqueConstraint, func
 
 from app.db import Base
@@ -29,4 +31,13 @@ class UnifiedExplainSnapshot(Base):
     created_by_actor_id = Column(String(64), nullable=True)
 
 
-__all__ = ["UnifiedExplainSnapshot"]
+class PrimaryReason(str, Enum):
+    LIMIT = "LIMIT"
+    RISK = "RISK"
+    LOGISTICS = "LOGISTICS"
+    MONEY = "MONEY"
+    POLICY = "POLICY"
+    UNKNOWN = "UNKNOWN"
+
+
+__all__ = ["PrimaryReason", "UnifiedExplainSnapshot"]
