@@ -88,19 +88,15 @@ export function ClientDocumentDetailsPage() {
     );
   }
 
+  const risk = document.risk ?? null;
+  const riskState = risk?.state ?? null;
+  const riskDecisionId = risk?.decision_id ?? null;
+  const riskDecidedAt = risk?.decided_at ?? null;
   const riskExplain = document.risk_explain ?? null;
-  const riskThresholds =
-    riskExplain && typeof riskExplain === "object"
-      ? (riskExplain as Record<string, unknown>).thresholds
-      : null;
-  const riskFactors =
-    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).factors : null;
-  const riskDecisionHash =
-    riskExplain && typeof riskExplain === "object" ? (riskExplain as Record<string, unknown>).decision_hash : null;
-  const riskPolicy =
-    riskExplain && typeof riskExplain === "object"
-      ? ((riskExplain as Record<string, unknown>).policy ?? (riskExplain as Record<string, unknown>).policy_id)
-      : null;
+  const riskThresholds = riskExplain?.thresholds ?? null;
+  const riskFactors = riskExplain?.factors ?? null;
+  const riskDecisionHash = riskExplain?.decision_hash ?? null;
+  const riskPolicy = riskExplain?.policy ?? riskExplain?.policy_id ?? null;
 
   return (
     <div className="card">
@@ -150,21 +146,21 @@ export function ClientDocumentDetailsPage() {
         </div>
       </div>
 
-      {document.risk ? (
+      {risk ? (
         <div className="card__section">
           <h3>Risk v4</h3>
           <div className="meta-grid">
             <div>
               <div className="label">Статус</div>
-              <div>{document.risk.state}</div>
+              <div>{riskState ?? "—"}</div>
             </div>
             <div>
               <div className="label">Decision ID</div>
-              <div>{document.risk.decision_id ?? "—"}</div>
+              <div>{riskDecisionId ?? "—"}</div>
             </div>
             <div>
               <div className="label">Дата решения</div>
-              <div>{document.risk.decided_at ? formatDateTime(document.risk.decided_at) : "—"}</div>
+              <div>{riskDecidedAt ? formatDateTime(riskDecidedAt) : "—"}</div>
             </div>
             <div>
               <div className="label">Decision hash</div>
@@ -177,9 +173,9 @@ export function ClientDocumentDetailsPage() {
               </div>
             </div>
           </div>
-          {document.risk.state === "BLOCK" ? (
+          {riskState === "BLOCK" ? (
             <span className="pill pill--danger">❌ Действие заблокировано</span>
-          ) : document.risk.state === "REQUIRE_OVERRIDE" ? (
+          ) : riskState === "REQUIRE_OVERRIDE" ? (
             <span className="pill pill--warning">⚠️ Требуется override</span>
           ) : null}
           {riskExplain ? (
@@ -192,9 +188,9 @@ export function ClientDocumentDetailsPage() {
                 </div>
                 <div>
                   <div className="label">Thresholds</div>
-                  {riskThresholds && typeof riskThresholds === "object" ? (
+                  {riskThresholds ? (
                     <ul className="bullets">
-                      {Object.entries(riskThresholds as Record<string, number>).map(([key, value]) => (
+                      {Object.entries(riskThresholds).map(([key, value]) => (
                         <li key={key}>
                           {key}: {value}
                         </li>
