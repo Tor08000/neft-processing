@@ -6,6 +6,7 @@ export type OpsEscalationRow = {
   status: string;
   priority: string;
   primary_reason: string;
+  reason_code: string;
   subject_type: string;
   subject_id: string;
   sla_due_at: string | null;
@@ -52,6 +53,7 @@ export const EscalationRow: React.FC<EscalationRowProps> = ({ item, isSelected, 
           {item.primary_reason}
         </span>
       </td>
+      <td style={{ padding: "8px 6px", fontSize: 12, color: "#475569" }}>{item.reason_code}</td>
       <td style={{ padding: "8px 6px" }}>{formatCountdown(item.sla_due_at, item.sla_overdue)}</td>
       <td style={{ padding: "8px 6px" }}>{item.status}</td>
       <td style={{ padding: "8px 6px" }}>

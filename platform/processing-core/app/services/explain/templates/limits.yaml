@@ -5,3 +5,18 @@ limit.exceeded.amount.daily:
   what_to_do:
     - "Проверьте актуальный лимит и профиль клиента"
     - "При необходимости запросите повышение лимита"
+
+LIMIT_EXCEEDED:
+  title: "Превышен лимит"
+  description: "Лимит {limit_value} на период {period} превышен"
+  recommendation: "Повысить лимит или дождаться следующего периода"
+
+LIMIT_PERIOD_MISMATCH:
+  title: "Несовпадение периода лимита"
+  description: "Операция не попадает в период лимита {period}"
+  recommendation: "Проверьте период лимита или скорректируйте запрос"
+
+SUBSCRIPTION_LIMIT:
+  title: "Лимит по подписке"
+  description: "Достигнут лимит тарифа по метрике {metric}"
+  recommendation: "Запросить повышение тарифа или дождаться следующего периода"

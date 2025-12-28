@@ -21,7 +21,13 @@ from app.models.unified_explain import PrimaryReason, UnifiedExplainSnapshot
 from app.services.audit_service import AuditService, RequestContext
 from app.services.explain.escalation import ESCALATION_MAP, audit_sla_expired
 from app.services.explain.sla import SLAClock
-from app.services.ops.reason_codes import is_valid_ack_reason, is_valid_close_reason
+from app.services.ops.reason_codes import (
+    OpsReasonCode,
+    get_primary_reason,
+    get_target_for_reason,
+    is_valid_ack_reason,
+    is_valid_close_reason,
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,7 @@ def _audit_payload(
         "status": escalation.status.value,
         "priority": escalation.priority.value,
         "primary_reason": escalation.primary_reason.value,
+        "reason_code": escalation.reason_code,
         "subject_type": escalation.subject_type,
         "subject_id": escalation.subject_id,
         "client_id": escalation.client_id,
@@ -96,6 +103,7 @@ def create_escalation_if_missing(
     created_by_actor_email: str | None = None,
     meta: dict[str, Any] | None = None,
     idempotency_key: str | None = None,
+    reason_code: OpsReasonCode | str | None = None,
     unified_explain_snapshot_hash: str,
     unified_explain_snapshot: dict[str, Any],
     audit: AuditService | None = None,
@@ -117,6 +125,13 @@ def create_escalation_if_missing(
     if not unified_explain_snapshot_hash or unified_explain_snapshot is None:
         raise ValueError("unified_explain_snapshot_required")
 
+    resolved_reason_code = _resolve_reason_code(
+        reason_code=reason_code,
+        primary_reason=primary_reason,
+        target=target,
+        unified_explain_snapshot=unified_explain_snapshot,
+    )
+
     escalation = OpsEscalation(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -124,6 +139,7 @@ def create_escalation_if_missing(
         status=OpsEscalationStatus.OPEN,
         priority=priority,
         primary_reason=primary_reason,
+        reason_code=resolved_reason_code.value,
         subject_type=subject_type,
         subject_id=subject_id,
         source=source,
@@ -248,6 +264,79 @@ def close_escalation(
             request_ctx=request_ctx,
         )
     return escalation
+
+
+def _resolve_reason_code(
+    *,
+    reason_code: OpsReasonCode | str | None,
+    primary_reason: PrimaryReason,
+    target: OpsEscalationTarget,
+    unified_explain_snapshot: dict[str, Any] | None,
+) -> OpsReasonCode:
+    resolved = _normalize_reason_code(reason_code)
+    if resolved is None:
+        resolved = _infer_reason_code(primary_reason, unified_explain_snapshot or {})
+    if get_primary_reason(resolved) != primary_reason:
+        raise ValueError("reason_code_primary_mismatch")
+    if get_target_for_reason(resolved) != target:
+        raise ValueError("reason_code_target_mismatch")
+    return resolved
+
+
+def _normalize_reason_code(reason_code: OpsReasonCode | str | None) -> OpsReasonCode | None:
+    if not reason_code:
+        return None
+    if isinstance(reason_code, OpsReasonCode):
+        return reason_code
+    normalized = str(reason_code).strip().upper()
+    if not normalized:
+        return None
+    try:
+        return OpsReasonCode(normalized)
+    except ValueError as exc:
+        raise ValueError("reason_code_invalid") from exc
+
+
+def _infer_reason_code(primary_reason: PrimaryReason, snapshot: dict[str, Any]) -> OpsReasonCode:
+    default_by_primary = {
+        PrimaryReason.LIMIT: OpsReasonCode.LIMIT_EXCEEDED,
+        PrimaryReason.RISK: OpsReasonCode.RISK_BLOCK,
+        PrimaryReason.LOGISTICS: OpsReasonCode.LOGISTICS_DEVIATION,
+        PrimaryReason.MONEY: OpsReasonCode.MONEY_INVARIANT_VIOLATION,
+        PrimaryReason.POLICY: OpsReasonCode.FEATURE_DISABLED,
+        PrimaryReason.UNKNOWN: OpsReasonCode.FEATURE_DISABLED,
+    }
+
+    result_payload = snapshot.get("result") if isinstance(snapshot, dict) else None
+    decline_code = result_payload.get("decline_code") if isinstance(result_payload, dict) else None
+    if decline_code:
+        normalized = str(decline_code).upper()
+        if normalized == OpsReasonCode.LIMIT_PERIOD_MISMATCH.value:
+            return OpsReasonCode.LIMIT_PERIOD_MISMATCH
+        if normalized.startswith("LIMIT_"):
+            return OpsReasonCode.LIMIT_EXCEEDED
+        if normalized == OpsReasonCode.RISK_REVIEW_REQUIRED.value:
+            return OpsReasonCode.RISK_REVIEW_REQUIRED
+        if normalized == OpsReasonCode.RISK_BLOCK.value:
+            return OpsReasonCode.RISK_BLOCK
+
+    sections_payload = snapshot.get("sections") if isinstance(snapshot, dict) else None
+    logistics_section = sections_payload.get("logistics") if isinstance(sections_payload, dict) else None
+    if primary_reason == PrimaryReason.LOGISTICS and isinstance(logistics_section, dict):
+        deviation_events = logistics_section.get("deviation_events", [])
+        if isinstance(deviation_events, list):
+            for event in deviation_events:
+                if str(event.get("event_type", "")).upper() in {"STOP_OUT_OF_RADIUS", "UNEXPECTED_STOP"}:
+                    return OpsReasonCode.LOGISTICS_STOP_MISUSE
+        return OpsReasonCode.LOGISTICS_DEVIATION
+
+    money_section = sections_payload.get("money") if isinstance(sections_payload, dict) else None
+    if primary_reason == PrimaryReason.MONEY and isinstance(money_section, dict):
+        invariants = money_section.get("invariants")
+        if isinstance(invariants, dict) and invariants.get("passed") is False:
+            return OpsReasonCode.MONEY_INVARIANT_VIOLATION
+
+    return default_by_primary.get(primary_reason, OpsReasonCode.FEATURE_DISABLED)
 
 
 def list_escalations(

@@ -26,13 +26,15 @@ from app.models.logistics import (
     LogisticsRiskSignal,
 )
 from app.models.money_flow import MoneyFlowEvent
-from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType
+from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyInvariantSnapshot
+from app.models.crm import CRMClient, CRMFeatureFlagType, CRMUsageMetric, CRMUsageCounter
 from app.models.risk_decision import RiskDecision
 from app.services.legal_graph import queries as legal_graph_queries
 from app.services.logistics import repository as logistics_repository
 from app.services.money_flow.explain import build_money_explain
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
+from app.services.crm import repository as crm_repository
 
 
 def get_fuel_tx(db: Session, *, fuel_tx_id: str) -> FuelTransaction | None:
@@ -331,21 +333,72 @@ def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str
         )
 
     ledger_postings = sorted(ledger_postings, key=lambda item: item["ledger_transaction_id"])
-    money_summary = None
-    if invoice:
-        money_summary = {
-            "invoice_id": str(invoice.id),
-            "period": {
-                "from": invoice.period_from.isoformat() if invoice.period_from else None,
-                "to": invoice.period_to.isoformat() if invoice.period_to else None,
-            },
-            "charged": invoice.total_with_tax,
-            "paid": invoice.amount_paid,
-            "due": invoice.amount_due,
-            "refunded": invoice.amount_refunded,
-            "currency": invoice.currency,
-        }
+    money_summary = _build_money_summary(db, invoice=invoice)
     return {"ledger_postings": ledger_postings, "money_summary": money_summary}
+
+
+def build_money_summary_for_invoice(db: Session, *, invoice_id: str) -> dict[str, Any] | None:
+    invoice = db.get(Invoice, invoice_id)
+    return _build_money_summary(db, invoice=invoice)
+
+
+def build_money_summary_for_fuel(db: Session, *, fuel_tx_id: str) -> dict[str, Any] | None:
+    invoice_id = find_invoice_id_for_fuel(db, fuel_tx_id=fuel_tx_id)
+    if not invoice_id:
+        return None
+    invoice = db.get(Invoice, invoice_id)
+    return _build_money_summary(db, invoice=invoice)
+
+
+def build_crm_section(db: Session, *, tenant_id: int | None, client_id: str | None) -> dict[str, Any] | None:
+    if not client_id:
+        return None
+    if tenant_id is None:
+        client = db.query(CRMClient).filter(CRMClient.id == client_id).one_or_none()
+        tenant_id = client.tenant_id if client else None
+    if tenant_id is None:
+        return None
+    subscription = crm_repository.get_active_subscription(db, client_id=client_id)
+    if not subscription:
+        return None
+    tariff = crm_repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    feature_flags = crm_repository.list_feature_flags(db, tenant_id=tenant_id, client_id=client_id)
+    flag_map = {flag.feature: flag.enabled for flag in feature_flags}
+    enforcement_flags = {
+        "fuel_enabled": bool(flag_map.get(CRMFeatureFlagType.FUEL_ENABLED)),
+        "logistics_enabled": bool(flag_map.get(CRMFeatureFlagType.LOGISTICS_ENABLED)),
+    }
+
+    metrics_used = {}
+    counters = (
+        db.query(CRMUsageCounter)
+        .filter(CRMUsageCounter.subscription_id == subscription.id)
+        .order_by(CRMUsageCounter.created_at.desc())
+        .all()
+    )
+    for counter in counters:
+        if counter.metric == CRMUsageMetric.FUEL_TX_COUNT and "fuel_tx" not in metrics_used:
+            metrics_used["fuel_tx"] = int(counter.value)
+        if counter.metric == CRMUsageMetric.DRIVERS_COUNT and "drivers" not in metrics_used:
+            metrics_used["drivers"] = int(counter.value)
+        if "fuel_tx" in metrics_used and "drivers" in metrics_used:
+            break
+
+    decision_basis = None
+    meta = subscription.meta or {}
+    crm_effect = meta.get("crm_effect") if isinstance(meta, dict) else None
+    if isinstance(crm_effect, dict):
+        decision_basis = crm_effect.get("reason")
+    if not decision_basis:
+        decision_basis = "Разрешено тарифом"
+
+    return {
+        "tariff": tariff.id if tariff else None,
+        "subscription_status": subscription.status.value,
+        "metrics_used": metrics_used,
+        "feature_flags": enforcement_flags,
+        "decision_basis": decision_basis,
+    }
 
 
 def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -518,6 +571,34 @@ def _build_threshold_payload(db: Session, *, link: FuelRouteLink | None) -> dict
     }
 
 
+def _build_money_summary(db: Session, *, invoice: Invoice | None) -> dict[str, Any] | None:
+    if not invoice:
+        return None
+    snapshots = (
+        db.execute(
+            select(MoneyInvariantSnapshot).where(MoneyInvariantSnapshot.flow_ref_id == str(invoice.id))
+        )
+        .scalars()
+        .all()
+    )
+    invariants = "UNKNOWN"
+    if snapshots:
+        invariants = "OK" if all(snapshot.passed for snapshot in snapshots) else "FAILED"
+
+    replay_link = None
+    if invoice.billing_period_id:
+        replay_link = f"/admin/money/replay?client_id={invoice.client_id}&period_id={invoice.billing_period_id}"
+
+    return {
+        "charged": invoice.total_with_tax,
+        "paid": invoice.amount_paid,
+        "due": invoice.amount_due,
+        "refunded": invoice.amount_refunded,
+        "invariants": invariants,
+        "replay_link": replay_link,
+    }
+
+
 def _load_document_snapshot_hashes(db: Session, document_ids: list[str]) -> dict[str, str | None]:
     if not document_ids:
         return {}
@@ -542,8 +623,11 @@ __all__ = [
     "build_logistics_section",
     "build_money_section_for_fuel",
     "build_money_section_for_invoice",
+    "build_money_summary_for_fuel",
+    "build_money_summary_for_invoice",
     "build_navigator_section",
     "build_risk_section",
+    "build_crm_section",
     "find_invoice_id_for_fuel",
     "find_invoice_id_for_order",
     "get_fuel_link",

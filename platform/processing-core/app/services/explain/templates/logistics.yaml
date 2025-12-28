@@ -5,3 +5,13 @@ logistics.off_route.confirmed:
   what_to_do:
     - "Проверьте фактический маршрут"
     - "Уточните у водителя причину отклонения"
+
+LOGISTICS_DEVIATION:
+  title: "Отклонение от маршрута"
+  description: "Отклонение {distance_km} км от маршрута возле {stop_name}"
+  recommendation: "Скорректировать маршрут или подтвердить остановку"
+
+LOGISTICS_STOP_MISUSE:
+  title: "Нецелевая остановка"
+  description: "Остановка вне допустимого радиуса {stop_radius_m} м"
+  recommendation: "Проверить маршрут и подтвердить корректность остановки"

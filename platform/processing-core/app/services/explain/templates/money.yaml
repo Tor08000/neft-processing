@@ -1,0 +1,4 @@
+MONEY_INVARIANT_VIOLATION:
+  title: "Нарушение денежного инварианта"
+  description: "Обнаружено нарушение инвариантов учёта"
+  recommendation: "Запустить replay и проверить расхождения"

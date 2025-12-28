@@ -25,6 +25,7 @@ class OpsEscalationOut(BaseModel):
     status: OpsEscalationStatus
     priority: OpsEscalationPriority
     primary_reason: PrimaryReason
+    reason_code: str
     subject_type: str
     subject_id: str
     source: OpsEscalationSource
@@ -119,38 +120,25 @@ class OpsEscalationSLAReport(BaseModel):
     by_primary_reason: dict[PrimaryReason, OpsEscalationSLAReportReason]
 
 
-class OpsKpiTotals(BaseModel):
+class OpsKpiReasonStats(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    opened: int
-    acked: int
-    closed: int
-    overdue: int
+    open: int
+    sla_violations: int | None = None
+    avg_resolution_hours: float | None = None
 
 
-class OpsKpiSla(BaseModel):
+class OpsKpiTeamStats(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    closed_within_sla: int
-    avg_time_to_ack_minutes: float | None
-    avg_time_to_close_minutes: float | None
-
-
-class OpsKpiBreakdown(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    by_primary_reason: dict[str, int]
-    by_target: dict[str, int]
-    by_close_reason_code: dict[str, int]
-    by_ack_reason_code: dict[str, int]
+    open: int
 
 
 class OpsKpiResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    totals: OpsKpiTotals
-    sla: OpsKpiSla
-    breakdown: OpsKpiBreakdown
+    by_reason: dict[str, OpsKpiReasonStats]
+    by_team: dict[str, OpsKpiTeamStats]
 
 
 __all__ = [
@@ -160,8 +148,7 @@ __all__ = [
     "OpsEscalationScanResponse",
     "OpsEscalationSLAReport",
     "OpsEscalationSLAReportReason",
-    "OpsKpiBreakdown",
+    "OpsKpiReasonStats",
     "OpsKpiResponse",
-    "OpsKpiSla",
-    "OpsKpiTotals",
+    "OpsKpiTeamStats",
 ]
