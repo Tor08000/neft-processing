@@ -41,6 +41,8 @@ def build_risk_context_for_fuel_tx(
     policy_override_id: str | None,
     thresholds_override: dict | None,
     policy_source: str,
+    logistics_window_hours: int | None,
+    severity_multiplier: float | None,
     db,
 ) -> RiskContextResult:
     local_ts = occurred_at.astimezone(MSK_TZ)
@@ -110,6 +112,8 @@ def build_risk_context_for_fuel_tx(
         vehicle_id=str(vehicle.id) if vehicle else None,
         driver_id=str(driver.id) if driver else None,
         occurred_at=occurred_at,
+        window_hours=logistics_window_hours,
+        severity_multiplier=severity_multiplier,
     )
     metadata = {
         "card_status": card.status.value,
@@ -138,6 +142,7 @@ def build_risk_context_for_fuel_tx(
             db,
             order_id=logistics_signals.get("order_id"),
             occurred_at=occurred_at,
+            window_hours=logistics_window_hours,
         ),
     }
     decision_context = DecisionContext(
@@ -162,8 +167,12 @@ def _summarize_logistics_signals(
     vehicle_id: str | None,
     driver_id: str | None,
     occurred_at: datetime,
+    window_hours: int | None,
+    severity_multiplier: float | None,
 ) -> dict:
-    since = occurred_at - timedelta(hours=24)
+    window = window_hours or 24
+    multiplier = severity_multiplier or 1.0
+    since = occurred_at - timedelta(hours=window)
     signals = logistics_repository.list_recent_risk_signals(
         db,
         client_id=client_id,
@@ -179,7 +188,8 @@ def _summarize_logistics_signals(
             {"count": 0, "max_severity": 0, "latest_ts": None},
         )
         entry["count"] += 1
-        entry["max_severity"] = max(entry["max_severity"], signal.severity)
+        adjusted_severity = float(signal.severity) * multiplier
+        entry["max_severity"] = max(entry["max_severity"], adjusted_severity)
         if entry["latest_ts"] is None or signal.ts > entry["latest_ts"]:
             entry["latest_ts"] = signal.ts.isoformat()
     return summary
@@ -190,10 +200,12 @@ def _summarize_off_route_events(
     *,
     order_id: str | None,
     occurred_at: datetime,
+    window_hours: int | None,
 ) -> dict | None:
     if not order_id:
         return None
-    since = occurred_at - timedelta(hours=24)
+    window = window_hours or 24
+    since = occurred_at - timedelta(hours=window)
     events = logistics_repository.list_recent_deviation_events(db, order_id=order_id, since=since)
     off_route = [event for event in events if event.event_type.value == "OFF_ROUTE"]
     if not off_route:

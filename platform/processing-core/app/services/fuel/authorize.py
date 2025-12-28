@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.fleet import FleetDriver, FleetVehicle
+from app.models.crm import CRMClientStatus, CRMFeatureFlagType
 from app.models.fuel import (
     FuelCard,
     FuelCardStatus,
@@ -27,6 +28,7 @@ from app.schemas.fuel import (
     LimitExplain,
 )
 from app.services.audit_service import RequestContext
+from app.services.crm import repository as crm_repository
 from app.services.decision import DecisionEngine, DecisionOutcome
 from app.services.fuel import analytics, events, limits, repository, risk_context
 from app.services.legal_graph.registry import LegalGraphRegistry
@@ -268,6 +270,28 @@ def authorize_fuel_tx(
             )
         )
 
+    crm_client = crm_repository.get_client(db, tenant_id=card.tenant_id, client_id=card.client_id)
+    if crm_client and crm_client.status in {CRMClientStatus.SUSPENDED, CRMClientStatus.CLOSED}:
+        return AuthorizationResult(
+            response=_decline_response(
+                decline_code=DeclineCode.CLIENT_BLOCKED,
+                message="Client is blocked",
+            )
+        )
+    fuel_flag = crm_repository.get_feature_flag(
+        db,
+        tenant_id=card.tenant_id,
+        client_id=card.client_id,
+        feature=CRMFeatureFlagType.FUEL_ENABLED,
+    )
+    if fuel_flag and not fuel_flag.enabled:
+        return AuthorizationResult(
+            response=_decline_response(
+                decline_code=DeclineCode.CLIENT_BLOCKED,
+                message="Fuel access disabled",
+            )
+        )
+
     if payload.external_ref:
         existing = (
             db.query(FuelTransaction)
@@ -373,6 +397,7 @@ def authorize_fuel_tx(
         return AuthorizationResult(response=response, transaction=transaction)
 
     risk_profile = repository.get_fuel_risk_profile(db, client_id=card.client_id)
+    risk_profile_params = _risk_profile_params(risk_profile)
     policy_source = "fuel_profile" if risk_profile else "global"
     risk_result = risk_context.build_risk_context_for_fuel_tx(
         tenant_id=card.tenant_id,
@@ -390,6 +415,8 @@ def authorize_fuel_tx(
         policy_override_id=str(risk_profile.policy_id) if risk_profile else None,
         thresholds_override=risk_profile.thresholds_override if risk_profile else None,
         policy_source=policy_source,
+        logistics_window_hours=risk_profile_params.get("logistics_window_hours"),
+        severity_multiplier=risk_profile_params.get("severity_multiplier"),
         db=db,
     )
     decision = DecisionEngine(db).evaluate(risk_result.decision_context)
@@ -405,15 +432,23 @@ def authorize_fuel_tx(
     )
     risk_decision_id = repository.get_risk_decision_id(db, decision_id=decision.decision_id)
 
+    risk_blocking_flag = crm_repository.get_feature_flag(
+        db,
+        tenant_id=card.tenant_id,
+        client_id=card.client_id,
+        feature=CRMFeatureFlagType.RISK_BLOCKING_ENABLED,
+    )
+    risk_blocking_enabled = risk_blocking_flag.enabled if risk_blocking_flag else True
+
     status = FuelTransactionStatus.AUTHORIZED
     decline_code: DeclineCode | None = None
-    if decision.outcome == DecisionOutcome.ALLOW and risk_result.decline_code:
+    if decision.outcome == DecisionOutcome.ALLOW and risk_result.decline_code and risk_blocking_enabled:
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK
-    if decision.outcome == DecisionOutcome.MANUAL_REVIEW:
+    if decision.outcome == DecisionOutcome.MANUAL_REVIEW and risk_blocking_enabled:
         status = FuelTransactionStatus.REVIEW_REQUIRED
         decline_code = DeclineCode.RISK_REVIEW_REQUIRED
-    elif decision.outcome == DecisionOutcome.DECLINE:
+    elif decision.outcome == DecisionOutcome.DECLINE and risk_blocking_enabled:
         status = FuelTransactionStatus.DECLINED
         decline_code = DeclineCode.RISK_BLOCK
 
@@ -512,6 +547,20 @@ def authorize_fuel_tx(
         else None,
     )
     return AuthorizationResult(response=response, transaction=transaction)
+
+
+def _risk_profile_params(risk_profile: FuelRiskProfile | None) -> dict:
+    if not risk_profile or not isinstance(risk_profile.thresholds_override, dict):
+        return {}
+    signal_inputs = risk_profile.thresholds_override.get("signal_inputs")
+    if not isinstance(signal_inputs, dict):
+        return {}
+    window_hours = signal_inputs.get("logistics_signal_window_hours")
+    severity_multiplier = signal_inputs.get("severity_multiplier")
+    return {
+        "logistics_window_hours": int(window_hours) if window_hours is not None else None,
+        "severity_multiplier": float(severity_multiplier) if severity_multiplier is not None else None,
+    }
 
 
 __all__ = ["AuthorizationResult", "authorize_fuel_tx"]

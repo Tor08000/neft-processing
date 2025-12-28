@@ -1,0 +1,164 @@
+[
+  {
+    "id": "FUEL_START",
+    "name": "Fuel Start",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 990000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 10, "vehicles": 10, "drivers": 20, "fuel_tx": 300, "logistics_orders": 0 },
+      "overage": {
+        "cards": { "unit_price_minor": 15000 },
+        "vehicles": { "unit_price_minor": 20000 },
+        "drivers": { "unit_price_minor": 5000 },
+        "fuel_tx": { "unit_price_minor": 120 },
+        "logistics_orders": { "unit_price_minor": 0 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": false,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "fuel_default_v4",
+      "limit_profile_id": "FUEL_BASIC",
+      "notes": "Fuel only starter tier"
+    }
+  },
+  {
+    "id": "FUEL_STANDARD",
+    "name": "Fuel Standard",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 2990000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 50, "vehicles": 40, "drivers": 80, "fuel_tx": 2000, "logistics_orders": 0 },
+      "overage": {
+        "cards": { "unit_price_minor": 10000 },
+        "vehicles": { "unit_price_minor": 15000 },
+        "drivers": { "unit_price_minor": 4000 },
+        "fuel_tx": { "unit_price_minor": 80 },
+        "logistics_orders": { "unit_price_minor": 0 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": false,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "fuel_high_risk_v4",
+      "limit_profile_id": "FUEL_PRO",
+      "notes": "Fuel + advanced limits"
+    }
+  },
+  {
+    "id": "FUEL_ENTERPRISE",
+    "name": "Fuel Enterprise",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 9900000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 200, "vehicles": 150, "drivers": 400, "fuel_tx": 10000, "logistics_orders": 0 },
+      "overage": {
+        "cards": { "unit_price_minor": 7000 },
+        "vehicles": { "unit_price_minor": 12000 },
+        "drivers": { "unit_price_minor": 3000 },
+        "fuel_tx": { "unit_price_minor": 50 },
+        "logistics_orders": { "unit_price_minor": 0 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": false,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "enterprise_fuel_v4",
+      "limit_profile_id": "ENTERPRISE",
+      "notes": "Compliance mode; overrides required"
+    }
+  },
+  {
+    "id": "FLEET_STANDARD",
+    "name": "Fleet Standard",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 4990000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 50, "vehicles": 50, "drivers": 100, "fuel_tx": 2500, "logistics_orders": 300 },
+      "overage": {
+        "cards": { "unit_price_minor": 10000 },
+        "vehicles": { "unit_price_minor": 15000 },
+        "drivers": { "unit_price_minor": 4000 },
+        "fuel_tx": { "unit_price_minor": 80 },
+        "logistics_orders": { "unit_price_minor": 250 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": true,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "fuel_high_risk_v4",
+      "limit_profile_id": "FUEL_PRO",
+      "notes": "Fuel + Logistics core"
+    }
+  },
+  {
+    "id": "FLEET_ENTERPRISE",
+    "name": "Fleet Enterprise",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 14900000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 250, "vehicles": 250, "drivers": 600, "fuel_tx": 15000, "logistics_orders": 2000 },
+      "overage": {
+        "cards": { "unit_price_minor": 7000 },
+        "vehicles": { "unit_price_minor": 12000 },
+        "drivers": { "unit_price_minor": 3000 },
+        "fuel_tx": { "unit_price_minor": 45 },
+        "logistics_orders": { "unit_price_minor": 150 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": true,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "enterprise_fuel_v4",
+      "limit_profile_id": "ENTERPRISE",
+      "notes": "Enterprise logistics + strict compliance"
+    }
+  },
+  {
+    "id": "PLATFORM_PARTNER",
+    "name": "Platform Partner",
+    "definition": {
+      "version": 1,
+      "base_fee": { "amount_minor": 24900000, "currency": "RUB" },
+      "billing_cycle": "MONTHLY",
+      "included": { "cards": 500, "vehicles": 500, "drivers": 1000, "fuel_tx": 30000, "logistics_orders": 5000 },
+      "overage": {
+        "cards": { "unit_price_minor": 5000 },
+        "vehicles": { "unit_price_minor": 9000 },
+        "drivers": { "unit_price_minor": 2000 },
+        "fuel_tx": { "unit_price_minor": 35 },
+        "logistics_orders": { "unit_price_minor": 120 }
+      },
+      "domains": {
+        "fuel_enabled": true,
+        "logistics_enabled": true,
+        "documents_enabled": true,
+        "accounting_export_enabled": true,
+        "risk_blocking_enabled": true
+      },
+      "risk_profile_id": "enterprise_fuel_v4",
+      "limit_profile_id": "ENTERPRISE",
+      "notes": "Partner tier; API-first; multi-client"
+    }
+  }
+]
