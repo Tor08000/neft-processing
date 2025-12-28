@@ -36,7 +36,12 @@ def upgrade():
             "crm_subscription_period_segments",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("subscription_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.crm_subscriptions.id"), nullable=False),
-            sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.billing_periods.id"), nullable=False),
+            sa.Column(
+                "billing_period_id",
+                postgresql.UUID,
+                sa.ForeignKey(f"{SCHEMA}.billing_periods.id"),
+                nullable=False,
+            ),
             sa.Column("tariff_plan_id", sa.String(64), sa.ForeignKey(f"{SCHEMA}.crm_tariff_plans.id"), nullable=False),
             sa.Column("segment_start", sa.DateTime(timezone=True), nullable=False),
             sa.Column("segment_end", sa.DateTime(timezone=True), nullable=False),
