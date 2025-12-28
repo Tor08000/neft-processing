@@ -86,8 +86,8 @@ def upgrade() -> None:
         op.create_table(
             "crm_subscription_charges",
             sa.Column("id", sa.String(36), primary_key=True),
-            sa.Column("subscription_id", sa.String(36), sa.ForeignKey(f\"{SCHEMA}.crm_subscriptions.id\"), nullable=False),
-            sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f\"{SCHEMA}.billing_periods.id\"), nullable=False),
+            sa.Column("subscription_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.crm_subscriptions.id"), nullable=False),
+            sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.billing_periods.id"), nullable=False),
             sa.Column(
                 "charge_type",
                 sa.Enum(*CRM_SUBSCRIPTION_CHARGE_TYPE, name="crm_subscription_charge_type"),
@@ -114,8 +114,8 @@ def upgrade() -> None:
         op.create_table(
             "crm_usage_counters",
             sa.Column("id", sa.String(36), primary_key=True),
-            sa.Column("subscription_id", sa.String(36), sa.ForeignKey(f\"{SCHEMA}.crm_subscriptions.id\"), nullable=False),
-            sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f\"{SCHEMA}.billing_periods.id\"), nullable=False),
+            sa.Column("subscription_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.crm_subscriptions.id"), nullable=False),
+            sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.billing_periods.id"), nullable=False),
             sa.Column(
                 "metric",
                 sa.Enum(*CRM_USAGE_METRIC, name="crm_usage_metric"),
