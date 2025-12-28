@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import SCHEMA, ensure_pg_enum, ensure_pg_enum_value, is_postgres, table_exists
 
@@ -41,7 +42,12 @@ def upgrade():
             sa.Column("segment_end", sa.DateTime(timezone=True), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum(*CRM_SUBSCRIPTION_SEGMENT_STATUS, name="crm_subscription_segment_status"),
+                postgresql.ENUM(
+                    *CRM_SUBSCRIPTION_SEGMENT_STATUS,
+                    name="crm_subscription_segment_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("days_count", sa.Integer, nullable=False),

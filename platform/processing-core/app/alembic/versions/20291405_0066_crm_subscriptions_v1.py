@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import ensure_pg_enum, ensure_pg_enum_value, table_exists
 from app.db.schema import resolve_db_schema
@@ -50,7 +51,16 @@ def upgrade() -> None:
         op.add_column("crm_subscriptions", sa.Column("tariff_plan_id", sa.String(64), nullable=True), schema=SCHEMA)
         op.add_column(
             "crm_subscriptions",
-            sa.Column("billing_cycle", sa.Enum(*CRM_BILLING_CYCLE, name="crm_billing_cycle"), nullable=True),
+            sa.Column(
+                "billing_cycle",
+                postgresql.ENUM(
+                    *CRM_BILLING_CYCLE,
+                    name="crm_billing_cycle",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=True,
+            ),
             schema=SCHEMA,
         )
         op.add_column("crm_subscriptions", sa.Column("billing_day", sa.Integer, nullable=False, server_default="1"), schema=SCHEMA)
@@ -90,7 +100,12 @@ def upgrade() -> None:
             sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.billing_periods.id"), nullable=False),
             sa.Column(
                 "charge_type",
-                sa.Enum(*CRM_SUBSCRIPTION_CHARGE_TYPE, name="crm_subscription_charge_type"),
+                postgresql.ENUM(
+                    *CRM_SUBSCRIPTION_CHARGE_TYPE,
+                    name="crm_subscription_charge_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("code", sa.String(64), nullable=False),
@@ -118,7 +133,12 @@ def upgrade() -> None:
             sa.Column("billing_period_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.billing_periods.id"), nullable=False),
             sa.Column(
                 "metric",
-                sa.Enum(*CRM_USAGE_METRIC, name="crm_usage_metric"),
+                postgresql.ENUM(
+                    *CRM_USAGE_METRIC,
+                    name="crm_usage_metric",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("value", sa.BigInteger, nullable=False),
