@@ -3,21 +3,19 @@ from datetime import datetime, timezone
 import pytest
 
 from app.db import Base, SessionLocal, engine
-from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.models.crm import (
     CRMBillingCycle,
     CRMBillingPeriod,
+    CRMClient,
+    CRMClientStatus,
     CRMFeatureFlag,
     CRMFeatureFlagType,
     CRMSubscription,
     CRMSubscriptionStatus,
-    CRMUsageCounter,
-    CRMUsageMetric,
     CRMTariffPlan,
     CRMTariffStatus,
 )
-from app.models.invoice import Invoice
-from app.services.explain.unified import build_unified_explain
+from app.services.crm.decision_context import build_decision_context
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +35,15 @@ def session():
         db.close()
 
 
-def test_crm_section_from_subscription(session):
+def test_decision_context_from_subscription(session):
+    client = CRMClient(
+        id="client-1",
+        tenant_id=1,
+        legal_name="Client",
+        country="RU",
+        timezone="Europe/Moscow",
+        status=CRMClientStatus.ACTIVE,
+    )
     tariff = CRMTariffPlan(
         id="enterprise_fuel_v4",
         name="Enterprise Fuel",
@@ -56,34 +62,8 @@ def test_crm_section_from_subscription(session):
         started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         meta={"crm_effect": {"allowed": False, "reason": "Тариф не включает ночные заправки"}},
     )
-    period = BillingPeriod(
-        period_type=BillingPeriodType.MONTHLY,
-        start_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
-        end_at=datetime(2025, 1, 31, 23, 59, tzinfo=timezone.utc),
-        tz="Europe/Moscow",
-    )
-    invoice = Invoice(
-        client_id="client-1",
-        period_from=period.start_at.date(),
-        period_to=period.end_at.date(),
-        currency="RUB",
-        billing_period_id=period.id,
-    )
-    session.add_all([tariff, subscription, period, invoice])
+    session.add_all([client, tariff, subscription])
     session.flush()
-
-    usage_fuel = CRMUsageCounter(
-        subscription_id=subscription.id,
-        billing_period_id=period.id,
-        metric=CRMUsageMetric.FUEL_TX_COUNT,
-        value=124,
-    )
-    usage_drivers = CRMUsageCounter(
-        subscription_id=subscription.id,
-        billing_period_id=period.id,
-        metric=CRMUsageMetric.DRIVERS_COUNT,
-        value=12,
-    )
     flag_fuel = CRMFeatureFlag(
         tenant_id=1,
         client_id="client-1",
@@ -96,14 +76,13 @@ def test_crm_section_from_subscription(session):
         feature=CRMFeatureFlagType.LOGISTICS_ENABLED,
         enabled=True,
     )
-    session.add_all([usage_fuel, usage_drivers, flag_fuel, flag_logistics])
+    session.add_all([flag_fuel, flag_logistics])
     session.commit()
 
-    payload = build_unified_explain(session, invoice_id=invoice.id)
-    crm_payload = payload["crm"]
+    payload = build_decision_context(session, tenant_id=1, client_id="client-1")
 
-    assert crm_payload["tariff"] == {"id": "enterprise_fuel_v4", "name": "Enterprise Fuel"}
-    assert crm_payload["subscription"] == {"status": "ACTIVE", "period": "2025-01"}
-    assert crm_payload["metrics_used"] == {"fuel_tx_count": 124, "drivers": 12}
-    assert crm_payload["feature_flags"] == ["FUEL_ENABLED", "LOGISTICS_ENABLED"]
-    assert payload["crm_effect"] == {"allowed": False, "reason": "Тариф не включает ночные заправки"}
+    assert payload["tariff"].id == "enterprise_fuel_v4"
+    assert payload["tariff"].name == "Enterprise Fuel"
+    assert {flag.feature.value for flag in payload["feature_flags"]} == {"FUEL_ENABLED", "LOGISTICS_ENABLED"}
+    assert payload["enforcement_flags"]["fuel_enabled"] is True
+    assert payload["enforcement_flags"]["logistics_enabled"] is True

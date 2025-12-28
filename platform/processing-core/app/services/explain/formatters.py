@@ -3,7 +3,13 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any, Iterable
 
+from app.models.unified_explain import PrimaryReason
 from app.schemas.admin.unified_explain import UnifiedExplainView
+from app.services.explain.recommendations import (
+    PRIMARY_REASON_RECOMMENDATIONS,
+    RECOMMENDATION_SECTION_REQUIREMENTS,
+    RECOMMENDATION_TEMPLATES,
+)
 
 
 FLEET_PRIORITY = ["logistics", "navigator", "risk", "limits", "money", "documents", "graph"]
@@ -27,35 +33,41 @@ def build_recommendations(
     primary_reason: str | None,
     risk_section: dict[str, Any] | None,
     logistics_section: dict[str, Any] | None,
+    navigator_section: dict[str, Any] | None,
     limits_section: dict[str, Any] | None,
     money_section: dict[str, Any] | None,
     documents_section: dict[str, Any] | None,
     driver_id: str | None,
 ) -> list[str]:
+    available_sections = {
+        name
+        for name, section in {
+            "risk": risk_section,
+            "logistics": logistics_section,
+            "limits": limits_section,
+            "money": money_section,
+            "documents": documents_section,
+            "navigator": navigator_section,
+        }.items()
+        if section
+    }
+
+    if not primary_reason:
+        return []
+    try:
+        reason = PrimaryReason(primary_reason)
+    except ValueError:
+        return []
+
+    codes = PRIMARY_REASON_RECOMMENDATIONS.get(reason, [])
     recommendations: list[str] = []
-    if view == UnifiedExplainView.FLEET:
-        if driver_id:
-            recommendations.append("check driver")
-        if logistics_section and logistics_section.get("deviation_events"):
-            recommendations.append("check route deviation")
-        if risk_section and risk_section.get("fraud_signals"):
-            recommendations.append("station suspicious")
-        if status in {"DECLINED", "REVIEW"} and primary_reason and primary_reason.startswith("RISK"):
-            recommendations.append("requires override")
-    elif view == UnifiedExplainView.ACCOUNTANT:
-        if limits_section:
-            recommendations.append("increase limit profile")
-        if money_section and _money_has_invariants_failed(money_section):
-            recommendations.append("billing replay compare")
-        if documents_section and _documents_need_attention(documents_section.get("documents", [])):
-            recommendations.append("apply contract")
-        if status in {"DECLINED", "REVIEW"} and primary_reason:
-            recommendations.append("check payment state")
-    else:
-        if limits_section:
-            recommendations.append("limit profile check")
-        if risk_section and risk_section.get("fraud_signals"):
-            recommendations.append("review fraud signals")
+    for code in codes:
+        required_sections = RECOMMENDATION_SECTION_REQUIREMENTS.get(code, set())
+        if required_sections and not (available_sections & required_sections):
+            continue
+        message = RECOMMENDATION_TEMPLATES.get(code)
+        if message:
+            recommendations.append(message)
     return _dedupe(recommendations)
 
 
@@ -76,21 +88,6 @@ def _dedupe(items: Iterable[str]) -> list[str]:
         seen.add(item)
         ordered.append(item)
     return ordered
-
-
-def _money_has_invariants_failed(money_section: dict[str, Any]) -> bool:
-    invariants = money_section.get("invariants")
-    if isinstance(invariants, dict) and invariants.get("passed") is False:
-        return True
-    return False
-
-
-def _documents_need_attention(documents: Iterable[dict[str, Any]]) -> bool:
-    for doc in documents:
-        status = doc.get("status")
-        if status and status not in {"FINALIZED", "ACKNOWLEDGED"}:
-            return True
-    return False
 
 
 __all__ = ["build_recommendations", "select_sections"]

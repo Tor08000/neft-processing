@@ -25,7 +25,7 @@ from app.services.explain.escalation import (
     audit_sla_expired,
     build_escalation,
 )
-from app.services.explain.priority import PRIMARY_REASON_PRIORITY
+from app.services.explain.priority import PRIMARY_REASON_PRIORITY, ensure_primary_reason_consistency
 from app.services.explain.snapshot import build_snapshot_payload, persist_snapshot
 from app.services.explain.sla import SLAClock, SLA_DEFINITIONS, build_sla
 from app.services.audit_service import AuditService
@@ -65,6 +65,7 @@ def build_unified_explain(
         primary_reason=result.primary_reason,
         risk_section=sections.get("risk"),
         logistics_section=sections.get("logistics"),
+        navigator_section=sections.get("navigator"),
         limits_section=sections.get("limits"),
         money_section=sections.get("money"),
         documents_section=sections.get("documents"),
@@ -320,7 +321,7 @@ def _apply_primary_reasons(
 ) -> None:
     detected_reasons = _collect_reasons(sections=sections, decline_code=decline_code)
     primary_reason, secondary_reasons = resolve_primary_reasons(detected_reasons)
-    result.primary_reason = primary_reason
+    result.primary_reason = ensure_primary_reason_consistency(primary_reason, sections=sections)
     result.secondary_reasons = secondary_reasons
 
 

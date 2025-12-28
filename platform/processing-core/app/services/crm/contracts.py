@@ -42,8 +42,23 @@ def set_contract_status(
     status: CRMContractStatus,
     request_ctx: RequestContext | None,
 ) -> CRMContract:
-    contract.status = status
-    contract = repository.update_contract(db, contract)
+    previous_version = contract.crm_contract_version
+    if contract.status != status:
+        contract.crm_contract_version = (contract.crm_contract_version or 0) + 1
+        contract.status = status
+        contract = repository.update_contract(db, contract)
+        events.audit_event(
+            db,
+            event_type=events.CRM_CONTRACT_VERSION_BUMPED,
+            entity_type="crm_contract",
+            entity_id=str(contract.id),
+            payload={
+                "previous_version": previous_version,
+                "new_version": contract.crm_contract_version,
+                "reason": "status_change",
+            },
+            request_ctx=request_ctx,
+        )
     if status == CRMContractStatus.ACTIVE:
         sync.apply_contract(db, contract=contract, request_ctx=request_ctx)
         events.audit_event(

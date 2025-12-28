@@ -4,34 +4,55 @@ interface ReasonModalProps {
   open: boolean;
   title: string;
   confirmLabel: string;
-  onConfirm: (reason: string) => void;
+  reasonOptions: { value: string; label?: string }[];
+  onConfirm: (payload: { reasonCode: string; reasonText?: string }) => void;
   onCancel: () => void;
 }
 
-export const ReasonModal: React.FC<ReasonModalProps> = ({ open, title, confirmLabel, onConfirm, onCancel }) => {
-  const [reason, setReason] = useState("");
+export const ReasonModal: React.FC<ReasonModalProps> = ({
+  open,
+  title,
+  confirmLabel,
+  reasonOptions,
+  onConfirm,
+  onCancel,
+}) => {
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonText, setReasonText] = useState("");
 
   useEffect(() => {
     if (open) {
-      setReason("");
+      setReasonCode(reasonOptions[0]?.value ?? "");
+      setReasonText("");
     }
-  }, [open]);
+  }, [open, reasonOptions]);
 
   if (!open) return null;
 
-  const canSubmit = reason.trim().length > 0;
+  const requiresText = reasonCode.endsWith("_OTHER");
+  const canSubmit = reasonCode && (!requiresText || reasonText.trim().length > 0);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal">
         <h3 style={{ marginTop: 0 }}>{title}</h3>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          <span>Код причины</span>
+          <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+            {reasonOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label ?? option.value}
+              </option>
+            ))}
+          </select>
+        </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span>Причина</span>
+          <span>Комментарий</span>
           <textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
+            value={reasonText}
+            onChange={(event) => setReasonText(event.target.value)}
             rows={4}
-            placeholder="Опишите причину"
+            placeholder={requiresText ? "Опишите причину" : "Комментарий (опционально)"}
             style={{ resize: "vertical" }}
           />
         </label>
@@ -41,7 +62,7 @@ export const ReasonModal: React.FC<ReasonModalProps> = ({ open, title, confirmLa
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(reason.trim())}
+            onClick={() => onConfirm({ reasonCode, reasonText: reasonText.trim() || undefined })}
             disabled={!canSubmit}
             style={{
               padding: "8px 12px",

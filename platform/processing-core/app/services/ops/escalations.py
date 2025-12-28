@@ -21,6 +21,7 @@ from app.models.unified_explain import PrimaryReason, UnifiedExplainSnapshot
 from app.services.audit_service import AuditService, RequestContext
 from app.services.explain.escalation import ESCALATION_MAP, audit_sla_expired
 from app.services.explain.sla import SLAClock
+from app.services.ops.reason_codes import is_valid_ack_reason, is_valid_close_reason
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,10 @@ def _audit_payload(
         "sla_expires_at": escalation.sla_expires_at,
         "snapshot_hash": escalation.unified_explain_snapshot_hash,
         "actor": actor,
+        "ack_reason_code": escalation.ack_reason_code,
+        "ack_reason_text": escalation.ack_reason_text,
+        "close_reason_code": escalation.close_reason_code,
+        "close_reason_text": escalation.close_reason_text,
         "reason": reason,
     }
 
@@ -158,20 +163,27 @@ def ack_escalation(
     db: Session,
     *,
     escalation: OpsEscalation,
-    reason: str,
+    reason_code: str,
+    reason_text: str | None,
     actor: str | None,
     audit: AuditService | None = None,
     request_ctx: RequestContext | None = None,
 ) -> OpsEscalation:
-    if not reason or not reason.strip():
-        raise ValueError("ack_reason_required")
+    if not reason_code or not reason_code.strip():
+        raise ValueError("ack_reason_code_required")
+    normalized_code = reason_code.strip().upper()
+    if not is_valid_ack_reason(normalized_code):
+        raise ValueError("ack_reason_code_invalid")
+    if normalized_code.endswith("_OTHER") and not (reason_text and reason_text.strip()):
+        raise ValueError("ack_reason_text_required")
     if escalation.status != OpsEscalationStatus.OPEN:
         raise ValueError("invalid_state")
     escalation.status = OpsEscalationStatus.ACK
     if escalation.acked_at is None:
         escalation.acked_at = datetime.now(timezone.utc)
     escalation.acked_by = actor
-    escalation.ack_reason = reason.strip()
+    escalation.ack_reason_code = normalized_code
+    escalation.ack_reason_text = reason_text.strip() if reason_text and reason_text.strip() else None
     db.flush()
 
     if audit and request_ctx:
@@ -182,10 +194,10 @@ def ack_escalation(
             action="ACK",
             after=_audit_payload(
                 escalation,
-                reason=escalation.ack_reason,
+                reason=escalation.ack_reason_text,
                 actor=_actor_label(request_ctx),
             ),
-            reason=escalation.ack_reason,
+            reason=escalation.ack_reason_text,
             request_ctx=request_ctx,
         )
     return escalation
@@ -195,14 +207,20 @@ def close_escalation(
     db: Session,
     *,
     escalation: OpsEscalation,
-    reason: str,
+    reason_code: str,
+    reason_text: str | None,
     actor: str | None,
     allow_from_open: bool = False,
     audit: AuditService | None = None,
     request_ctx: RequestContext | None = None,
 ) -> OpsEscalation:
-    if not reason or not reason.strip():
-        raise ValueError("close_reason_required")
+    if not reason_code or not reason_code.strip():
+        raise ValueError("close_reason_code_required")
+    normalized_code = reason_code.strip().upper()
+    if not is_valid_close_reason(normalized_code):
+        raise ValueError("close_reason_code_invalid")
+    if normalized_code.endswith("_OTHER") and not (reason_text and reason_text.strip()):
+        raise ValueError("close_reason_text_required")
     if escalation.status == OpsEscalationStatus.CLOSED:
         raise ValueError("invalid_state")
     if escalation.status == OpsEscalationStatus.OPEN and not allow_from_open:
@@ -211,7 +229,8 @@ def close_escalation(
     if escalation.closed_at is None:
         escalation.closed_at = datetime.now(timezone.utc)
     escalation.closed_by = actor
-    escalation.close_reason = reason.strip()
+    escalation.close_reason_code = normalized_code
+    escalation.close_reason_text = reason_text.strip() if reason_text and reason_text.strip() else None
     db.flush()
 
     if audit and request_ctx:
@@ -222,10 +241,10 @@ def close_escalation(
             action="CLOSE",
             after=_audit_payload(
                 escalation,
-                reason=escalation.close_reason,
+                reason=escalation.close_reason_text,
                 actor=_actor_label(request_ctx),
             ),
-            reason=escalation.close_reason,
+            reason=escalation.close_reason_text,
             request_ctx=request_ctx,
         )
     return escalation

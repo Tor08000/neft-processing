@@ -48,15 +48,29 @@ def _create_escalation(db_session: Session):
 def test_ops_workflow_transitions(db_session: Session):
     escalation = _create_escalation(db_session)
 
-    acked = ack_escalation(db_session, escalation=escalation, reason="Reviewed", actor="admin-1")
+    acked = ack_escalation(
+        db_session,
+        escalation=escalation,
+        reason_code="ACK_IN_REVIEW",
+        reason_text="Reviewed",
+        actor="admin-1",
+    )
     db_session.commit()
     assert acked.status == OpsEscalationStatus.ACK
-    assert acked.ack_reason == "Reviewed"
+    assert acked.ack_reason_code == "ACK_IN_REVIEW"
+    assert acked.ack_reason_text == "Reviewed"
 
-    closed = close_escalation(db_session, escalation=escalation, reason="Resolved", actor="admin-1")
+    closed = close_escalation(
+        db_session,
+        escalation=escalation,
+        reason_code="CLOSE_LIMIT_INCREASED",
+        reason_text="Resolved",
+        actor="admin-1",
+    )
     db_session.commit()
     assert closed.status == OpsEscalationStatus.CLOSED
-    assert closed.close_reason == "Resolved"
+    assert closed.close_reason_code == "CLOSE_LIMIT_INCREASED"
+    assert closed.close_reason_text == "Resolved"
     assert closed.closed_at is not None
 
 
@@ -64,12 +78,19 @@ def test_close_requires_admin_for_open_state(db_session: Session):
     escalation = _create_escalation(db_session)
 
     with pytest.raises(PermissionError):
-        close_escalation(db_session, escalation=escalation, reason="Force close", actor="user-1")
+        close_escalation(
+            db_session,
+            escalation=escalation,
+            reason_code="CLOSE_DUPLICATE",
+            reason_text="Force close",
+            actor="user-1",
+        )
 
     closed = close_escalation(
         db_session,
         escalation=escalation,
-        reason="Admin close",
+        reason_code="CLOSE_DUPLICATE",
+        reason_text="Admin close",
         actor="admin-1",
         allow_from_open=True,
     )

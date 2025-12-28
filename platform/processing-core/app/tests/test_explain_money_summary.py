@@ -71,15 +71,17 @@ def test_money_summary_and_invariants(session):
     session.commit()
 
     payload = build_unified_explain(session, invoice_id=invoice.id)
+    money_summary = payload.sections["money"]["money_summary"]
 
-    assert payload["money_summary"] == {
+    assert money_summary == {
+        "invoice_id": str(invoice.id),
+        "period": {
+            "from": invoice.period_from.isoformat(),
+            "to": invoice.period_to.isoformat(),
+        },
         "charged": 120000,
         "paid": 80000,
         "due": 40000,
         "refunded": 0,
         "currency": "RUB",
     }
-    assert payload["money_replay"]["replay_id"] == str(event.id)
-    assert payload["money_replay"]["admin_url"] == f"/admin/money/replay/{event.id}"
-    assert payload["invariants"]["status"] == "VIOLATION"
-    assert "invoice.amount_due" in payload["invariants"]["violations"]

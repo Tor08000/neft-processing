@@ -15,9 +15,11 @@ from app.schemas.admin.ops import (
     OpsEscalationOut,
     OpsEscalationScanResponse,
     OpsEscalationSLAReport,
+    OpsKpiResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.ops.escalations import ack_escalation, close_escalation, list_escalations, scan_explain_sla_expiry
+from app.services.ops.kpi import build_kpi_report
 from app.services.ops.sla_reports import build_sla_report
 from app.services.policy import actor_from_token
 
@@ -105,7 +107,8 @@ def admin_ack_escalation(
         updated = ack_escalation(
             db,
             escalation=escalation,
-            reason=payload.reason,
+            reason_code=payload.reason_code,
+            reason_text=payload.reason_text,
             actor=_actor_identifier(token) or actor.user_id or actor.client_id,
             audit=audit,
             request_ctx=request_ctx,
@@ -137,7 +140,8 @@ def admin_close_escalation(
         updated = close_escalation(
             db,
             escalation=escalation,
-            reason=payload.reason,
+            reason_code=payload.reason_code,
+            reason_text=payload.reason_text,
             actor=_actor_identifier(token) or actor.user_id or actor.client_id,
             allow_from_open=allow_from_open,
             audit=audit,
@@ -182,6 +186,23 @@ def admin_sla_report(
         period=period,
     )
     return OpsEscalationSLAReport.model_validate(report)
+
+
+@router.get("/kpi", response_model=OpsKpiResponse)
+def admin_ops_kpi(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> OpsKpiResponse:
+    _require_target_access(token, None)
+    report = build_kpi_report(
+        db,
+        tenant_id=_tenant_id_from_token(token),
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return OpsKpiResponse.model_validate(report)
 
 
 __all__ = ["router"]

@@ -45,15 +45,31 @@ def _create_escalation(db_session: Session):
     return result.escalation
 
 
-def test_ack_reason_required(db_session: Session):
+def test_ack_reason_code_required(db_session: Session):
     escalation = _create_escalation(db_session)
 
     with pytest.raises(ValueError):
-        ack_escalation(db_session, escalation=escalation, reason=" ", actor="admin-1")
+        ack_escalation(db_session, escalation=escalation, reason_code=" ", reason_text=None, actor="admin-1")
 
 
-def test_close_reason_required(db_session: Session):
+def test_close_reason_code_required(db_session: Session):
     escalation = _create_escalation(db_session)
 
     with pytest.raises(ValueError):
-        close_escalation(db_session, escalation=escalation, reason="", actor="admin-1", allow_from_open=True)
+        close_escalation(
+            db_session, escalation=escalation, reason_code="", reason_text=None, actor="admin-1", allow_from_open=True
+        )
+
+
+def test_close_other_requires_text(db_session: Session):
+    escalation = _create_escalation(db_session)
+
+    with pytest.raises(ValueError):
+        close_escalation(
+            db_session,
+            escalation=escalation,
+            reason_code="CLOSE_OTHER",
+            reason_text="",
+            actor="admin-1",
+            allow_from_open=True,
+        )

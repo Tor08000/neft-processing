@@ -17,6 +17,7 @@ from app.models.crm import (
     CRMTariffStatus,
 )
 from app.schemas.admin.money_flow import SubscriptionCFOExplainResponse
+from app.schemas.admin.crm import CRMDecisionContextResponse
 from app.schemas.crm import (
     CRMClientCreate,
     CRMClientOut,
@@ -40,7 +41,7 @@ from app.schemas.crm import (
     CRMTariffUpdate,
 )
 from app.services.audit_service import request_context_from_request
-from app.services.crm import clients, contracts, events, repository, settings, subscriptions, sync, tariffs
+from app.services.crm import clients, contracts, decision_context, events, repository, settings, subscriptions, sync, tariffs
 from app.services.crm.subscription_cfo_explain import build_subscription_cfo_explain
 from app.services.crm.subscription_explain import build_explain
 from app.services.crm.subscription_pricing_engine import price_subscription_v2
@@ -82,6 +83,28 @@ def get_client_endpoint(
     if not client:
         raise HTTPException(status_code=404, detail="client not found")
     return CRMClientOut.model_validate(client)
+
+
+@router.get("/clients/{client_id}/decision-context", response_model=CRMDecisionContextResponse)
+def get_decision_context_endpoint(
+    client_id: str,
+    tenant_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+) -> CRMDecisionContextResponse:
+    try:
+        payload = decision_context.build_decision_context(db, tenant_id=tenant_id, client_id=client_id)
+    except decision_context.DecisionContextNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CRMDecisionContextResponse(
+        client_id=payload["client_id"],
+        tenant_id=payload["tenant_id"],
+        active_contract=CRMContractOut.model_validate(payload["active_contract"]) if payload["active_contract"] else None,
+        tariff=CRMTariffOut.model_validate(payload["tariff"]) if payload["tariff"] else None,
+        feature_flags=[CRMFeatureFlagOut.model_validate(item) for item in payload["feature_flags"]],
+        risk_profile=CRMRiskProfileOut.model_validate(payload["risk_profile"]) if payload["risk_profile"] else None,
+        limit_profile=CRMProfileOut.model_validate(payload["limit_profile"]) if payload["limit_profile"] else None,
+        enforcement_flags=payload["enforcement_flags"],
+    )
 
 
 @router.patch("/clients/{client_id}", response_model=CRMClientOut)

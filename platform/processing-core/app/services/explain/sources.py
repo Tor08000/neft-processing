@@ -21,6 +21,8 @@ from app.models.logistics import (
     LogisticsDeviationEvent,
     LogisticsNavigatorExplainType,
     LogisticsOrder,
+    LogisticsRouteConstraint,
+    LogisticsStop,
     LogisticsRiskSignal,
 )
 from app.models.money_flow import MoneyFlowEvent
@@ -91,6 +93,25 @@ def build_limits_section(tx: FuelTransaction) -> dict[str, Any] | None:
     meta = tx.meta or {}
     limit_explain = meta.get("limit_explain")
     if isinstance(limit_explain, dict):
+        limit_name = limit_explain.get("name") or limit_explain.get("applied_limit_id")
+        limit_scope_type = limit_explain.get("scope_type")
+        limit_scope_id = limit_explain.get("scope_id")
+        limit_explain = {
+            **limit_explain,
+            "limit_value": limit_explain.get("limit"),
+            "limit": {
+                "name": limit_name,
+                "scope": {
+                    "type": limit_scope_type,
+                    "id": limit_scope_id,
+                }
+                if limit_scope_type or limit_scope_id
+                else None,
+                "period": limit_explain.get("period"),
+                "used": limit_explain.get("used"),
+                "remaining": limit_explain.get("remaining"),
+            },
+        }
         return limit_explain
     return None
 
@@ -143,6 +164,13 @@ def build_logistics_section(
         driver_id=driver_id,
         since=since,
     )
+    where = _build_where_payload(
+        db,
+        link=link,
+        deviation_events=deviation_events,
+        occurred_at=occurred_at,
+    )
+    threshold = _build_threshold_payload(db, link=link)
     section = {
         "order_id": order_id,
         "route_id": str(link.route_id) if link and link.route_id else None,
@@ -152,6 +180,8 @@ def build_logistics_section(
         "time_delta_minutes": link.time_delta_minutes if link else None,
         "deviation_events": _serialize_deviation_events(deviation_events),
         "risk_signals": _serialize_risk_signals(risk_signals),
+        "where": where,
+        "threshold": threshold,
     }
     return section
 
@@ -234,6 +264,7 @@ def build_money_section_for_fuel(db: Session, *, fuel_tx_id: str) -> dict[str, A
 
 
 def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str, Any] | None:
+    invoice = db.get(Invoice, invoice_id)
     ledger_transactions = (
         db.execute(
             select(InternalLedgerTransaction).where(
@@ -300,7 +331,21 @@ def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str
         )
 
     ledger_postings = sorted(ledger_postings, key=lambda item: item["ledger_transaction_id"])
-    return {"ledger_postings": ledger_postings}
+    money_summary = None
+    if invoice:
+        money_summary = {
+            "invoice_id": str(invoice.id),
+            "period": {
+                "from": invoice.period_from.isoformat() if invoice.period_from else None,
+                "to": invoice.period_to.isoformat() if invoice.period_to else None,
+            },
+            "charged": invoice.total_with_tax,
+            "paid": invoice.amount_paid,
+            "due": invoice.amount_due,
+            "refunded": invoice.amount_refunded,
+            "currency": invoice.currency,
+        }
+    return {"ledger_postings": ledger_postings, "money_summary": money_summary}
 
 
 def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -403,6 +448,74 @@ def _serialize_risk_signals(events: Iterable[LogisticsRiskSignal]) -> list[dict[
         for event in events
     ]
     return sorted(serialized, key=lambda item: (item["severity"], item["ts"]), reverse=True)
+
+
+def _build_where_payload(
+    db: Session,
+    *,
+    link: FuelRouteLink | None,
+    deviation_events: Iterable[LogisticsDeviationEvent],
+    occurred_at: datetime | None,
+) -> dict[str, Any]:
+    stop_id = link.stop_id if link and link.stop_id else None
+    distance_m = link.distance_to_stop_m if link else None
+    ts = None
+    latest_event = None
+    for event in deviation_events:
+        if latest_event is None or event.ts > latest_event.ts:
+            latest_event = event
+    if latest_event:
+        ts = latest_event.ts.isoformat()
+        if not stop_id and latest_event.stop_id:
+            stop_id = latest_event.stop_id
+        if distance_m is None and latest_event.distance_from_route_m is not None:
+            distance_m = latest_event.distance_from_route_m
+    if ts is None and occurred_at:
+        ts = occurred_at.isoformat()
+
+    stop_name = None
+    stop_payload = None
+    if stop_id:
+        stop = db.get(LogisticsStop, stop_id)
+        stop_name = stop.name if stop else None
+        stop_payload = {"id": str(stop_id), "name": stop_name}
+
+    distance_km = None
+    if distance_m is not None:
+        distance_km = round(distance_m / 1000.0, 3)
+
+    return {
+        "stop": stop_payload,
+        "distance_km": distance_km,
+        "ts": ts,
+    }
+
+
+def _build_threshold_payload(db: Session, *, link: FuelRouteLink | None) -> dict[str, Any]:
+    if not link or not link.route_id:
+        return {
+            "max_deviation_km": None,
+            "stop_radius_m": None,
+            "allowed_window_min": None,
+        }
+    constraint = (
+        db.query(LogisticsRouteConstraint)
+        .filter(LogisticsRouteConstraint.route_id == link.route_id)
+        .one_or_none()
+    )
+    if not constraint:
+        return {
+            "max_deviation_km": None,
+            "stop_radius_m": None,
+            "allowed_window_min": None,
+        }
+    return {
+        "max_deviation_km": round(constraint.max_route_deviation_m / 1000.0, 3)
+        if constraint.max_route_deviation_m is not None
+        else None,
+        "stop_radius_m": constraint.max_stop_radius_m,
+        "allowed_window_min": constraint.allowed_fuel_window_minutes,
+    }
 
 
 def _load_document_snapshot_hashes(db: Session, document_ids: list[str]) -> dict[str, str | None]:
