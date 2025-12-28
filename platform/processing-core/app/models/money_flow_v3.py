@@ -11,8 +11,11 @@ from app.services.money_flow.states import MoneyFlowType
 
 class MoneyFlowLinkNodeType(str, Enum):
     SUBSCRIPTION = "SUBSCRIPTION"
+    SUBSCRIPTION_SEGMENT = "SUBSCRIPTION_SEGMENT"
     SUBSCRIPTION_CHARGE = "SUBSCRIPTION_CHARGE"
+    USAGE_COUNTER = "USAGE_COUNTER"
     INVOICE = "INVOICE"
+    DOCUMENT = "DOCUMENT"
     PAYMENT = "PAYMENT"
     REFUND = "REFUND"
     FUEL_TX = "FUEL_TX"

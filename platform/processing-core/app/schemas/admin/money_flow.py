@@ -50,7 +50,12 @@ class MoneyHealthResponse(BaseModel):
     stuck_pending_settlement: int
     cross_period_anomalies: int
     missing_money_flow_links: int
+    invoices_missing_subscription_links: int
+    charges_missing_invoice_links: int
+    charge_key_duplicates: int
+    segment_gaps_or_overlaps: int
     missing_snapshots: int
+    missing_subscription_snapshots: int
     disconnected_graph: int
     cfo_explain_not_ready: int
     top_offenders: list[MoneyHealthOffenderSchema]
@@ -92,6 +97,33 @@ class CFOExplainResponse(BaseModel):
     links: CFOExplainLinksSchema
     snapshots: CFOExplainSnapshotsSchema
     anomalies: list[str]
+
+
+class SubscriptionCFOExplainInvoiceSchema(BaseModel):
+    invoice_id: str
+    status: str
+    total_with_tax: int
+    amount_paid: int
+    amount_due: int
+
+
+class SubscriptionCFOExplainResponse(BaseModel):
+    subscription_id: str
+    billing_period_id: str
+    segments: list[dict]
+    usage_counters: list[dict]
+    charges: list[dict]
+    invoice: SubscriptionCFOExplainInvoiceSchema | None
+    documents: list[str]
+    ledger: LedgerSummarySchema | None
+    money_flow: dict[str, Any]
+    snapshots: dict[str, Any]
+    replay: dict[str, Any]
+    charge_ids: list[str]
+    counter_ids: list[str]
+    money_flow_event_ids: list[str]
+    snapshot_ids: list[str]
+    link_ids: list[str]
 
 
 class MoneyReplayRequest(BaseModel):
