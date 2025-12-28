@@ -33,6 +33,14 @@ class Settings:
     RISK_RULES_SOURCE: str = os.getenv("RISK_RULES_SOURCE", "CODE").upper()
     RISK_EXPERIMENTAL_RULE_SET: str = os.getenv("RISK_EXPERIMENTAL_RULE_SET", "")
 
+    # Logistics navigator feature flags
+    LOGISTICS_NAVIGATOR_PROVIDER: str = os.getenv("LOGISTICS_NAVIGATOR_PROVIDER", "noop")
+    LOGISTICS_NAVIGATOR_ENABLED: bool = os.getenv("LOGISTICS_NAVIGATOR_ENABLED", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
     # Billing & clearing configuration
     NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))
     NEFT_BILLING_TZ: str = os.getenv("NEFT_BILLING_TZ", "UTC")

@@ -11,7 +11,7 @@ from app.models.logistics import (
     LogisticsOrderStatus,
 )
 from app.services.audit_service import RequestContext
-from app.services.logistics import events
+from app.services.logistics import events, navigator, repository
 from app.services.logistics.repository import get_last_tracking_event, get_latest_eta_snapshot
 
 
@@ -120,6 +120,8 @@ def compute_eta_snapshot(
         request_ctx=request_ctx,
     )
 
+    _capture_navigator_eta(db, order_id=order_id)
+
     return snapshot
 
 
@@ -152,3 +154,42 @@ def get_or_compute_latest_eta(
     if latest and last_event is None:
         return latest
     return compute_eta_snapshot(db, order_id=order_id, reason="on_demand", request_ctx=request_ctx)
+
+
+def _capture_navigator_eta(db: Session, *, order_id: str) -> None:
+    if not navigator.is_enabled():
+        return
+    route = repository.get_active_route(db, order_id=order_id)
+    if not route:
+        return
+    snapshot = repository.get_latest_route_snapshot(db, route_id=str(route.id))
+    if snapshot is None:
+        stops = repository.get_route_stops(db, route_id=str(route.id))
+        points = [
+            navigator.GeoPoint(lat=stop.lat, lon=stop.lon)
+            for stop in stops
+            if stop.lat is not None and stop.lon is not None
+        ]
+        snapshot = navigator.create_route_snapshot(
+            db,
+            order_id=order_id,
+            route_id=str(route.id),
+            stops=points,
+        )
+    if snapshot is None or not snapshot.geometry:
+        return
+    adapter = navigator.get(snapshot.provider)
+    geometry = [
+        navigator.GeoPoint(lat=point["lat"], lon=point["lon"])
+        for point in snapshot.geometry
+        if isinstance(point, dict) and "lat" in point and "lon" in point
+    ]
+    if len(geometry) < 2:
+        return
+    route_snapshot = navigator.RouteSnapshot(
+        provider=snapshot.provider,
+        geometry=geometry,
+        distance_km=snapshot.distance_km,
+    )
+    eta_result = adapter.estimate_eta(route_snapshot)
+    navigator.create_eta_explain(db, route_snapshot=snapshot, eta_result=eta_result)

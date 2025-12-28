@@ -14,7 +14,7 @@ from app.models.logistics import (
 )
 from app.schemas.logistics import LogisticsStopIn
 from app.services.audit_service import RequestContext
-from app.services.logistics import events
+from app.services.logistics import events, navigator
 from app.services.logistics.repository import get_route, get_route_stops
 
 
@@ -77,6 +77,8 @@ def create_route(
         route_id=str(route.id),
         request_ctx=request_ctx,
     )
+    stops = get_route_stops(db, route_id=str(route.id))
+    _snapshot_from_stops(db, order_id=order_id, route_id=str(route.id), stops=stops)
     return route
 
 
@@ -189,4 +191,17 @@ def upsert_stops(
                 request_ctx=request_ctx,
             )
 
+    _snapshot_from_stops(db, order_id=str(route.order_id), route_id=str(route.id), stops=updated)
+
     return updated
+
+
+def _snapshot_from_stops(
+    db: Session, *, order_id: str, route_id: str, stops: list[LogisticsStop]
+) -> None:
+    points = [
+        navigator.GeoPoint(lat=stop.lat, lon=stop.lon)
+        for stop in stops
+        if stop.lat is not None and stop.lon is not None
+    ]
+    navigator.create_route_snapshot(db, order_id=order_id, route_id=route_id, stops=points)

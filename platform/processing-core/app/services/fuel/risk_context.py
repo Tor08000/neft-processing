@@ -13,6 +13,7 @@ from app.schemas.fuel import DeclineCode
 from app.services.decision import DecisionAction, DecisionContext
 from app.services.fuel import fraud, repository
 from app.services.logistics import repository as logistics_repository
+from app.models.logistics import LogisticsNavigatorExplainType
 
 MSK_TZ = ZoneInfo("Europe/Moscow")
 
@@ -115,6 +116,7 @@ def build_risk_context_for_fuel_tx(
         window_hours=logistics_window_hours,
         severity_multiplier=severity_multiplier,
     )
+    navigator_signals = _navigator_signals(db, order_id=logistics_signals.get("order_id"))
     fraud_candidates = fraud.evaluate_fraud_signals(
         db,
         tenant_id=tenant_id,
@@ -168,6 +170,8 @@ def build_risk_context_for_fuel_tx(
             occurred_at=occurred_at,
             window_hours=logistics_window_hours,
         ),
+        "route_deviation_score": navigator_signals.get("route_deviation_score"),
+        "eta_overrun_pct": navigator_signals.get("eta_overrun_pct"),
         **fraud_summary,
     }
     if fraud_summary.get("has_strong_off_route") and fraud_summary.get("max_signal_severity_24h"):
@@ -242,3 +246,33 @@ def _summarize_off_route_events(
     )
     last_ts = max(event.ts for event in off_route).isoformat()
     return {"count": len(off_route), "max_severity": max_severity, "last_ts": last_ts}
+
+
+def _navigator_signals(db, *, order_id: str | None) -> dict:
+    if not order_id:
+        return {"route_deviation_score": None, "eta_overrun_pct": None}
+    route = logistics_repository.get_active_route(db, order_id=order_id)
+    if not route:
+        return {"route_deviation_score": None, "eta_overrun_pct": None}
+    snapshot = logistics_repository.get_latest_route_snapshot(db, route_id=str(route.id))
+    if not snapshot:
+        return {"route_deviation_score": None, "eta_overrun_pct": None}
+
+    explains = logistics_repository.list_navigator_explains(
+        db,
+        route_snapshot_id=str(snapshot.id),
+        explain_type=LogisticsNavigatorExplainType.DEVIATION,
+        limit=1,
+    )
+    deviation_score = explains[0].payload.get("score") if explains else None
+
+    eta_overrun_pct = None
+    if snapshot.eta_minutes is not None and route.planned_duration_minutes:
+        delta = snapshot.eta_minutes - route.planned_duration_minutes
+        if route.planned_duration_minutes > 0 and delta > 0:
+            eta_overrun_pct = round((delta / route.planned_duration_minutes) * 100, 2)
+
+    return {
+        "route_deviation_score": deviation_score,
+        "eta_overrun_pct": eta_overrun_pct,
+    }

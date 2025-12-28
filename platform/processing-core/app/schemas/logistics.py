@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.logistics import (
     LogisticsETAMethod,
+    LogisticsNavigatorExplainType,
     LogisticsOrderStatus,
     LogisticsOrderType,
     LogisticsRouteStatus,
@@ -166,4 +167,34 @@ class LogisticsETASnapshotOut(BaseModel):
     eta_confidence: int
     method: LogisticsETAMethod
     inputs: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class GeoPointOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float
+    lon: float
+
+
+class LogisticsRouteSnapshotOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    order_id: str
+    route_id: str
+    provider: str
+    geometry: list[GeoPointOut]
+    distance_km: float
+    eta_minutes: int | None = None
+    created_at: datetime
+
+
+class LogisticsNavigatorExplainOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    route_snapshot_id: str
+    type: LogisticsNavigatorExplainType
+    payload: dict[str, Any]
     created_at: datetime

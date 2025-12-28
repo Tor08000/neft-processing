@@ -13,7 +13,7 @@ from app.models.logistics import (
 )
 from app.schemas.logistics import LogisticsTrackingEventIn
 from app.services.audit_service import RequestContext
-from app.services.logistics import eta, events
+from app.services.logistics import eta, events, navigator, repository
 from app.services.logistics.repository import count_tracking_events, get_stop
 
 
@@ -112,4 +112,54 @@ def ingest_tracking_event(
     elif total_events % 10 == 0:
         eta.compute_eta_snapshot(db, order_id=order_id, reason="tracking_batch", request_ctx=request_ctx)
 
+    if payload.event_type == LogisticsTrackingEventType.LOCATION and payload.lat is not None and payload.lon is not None:
+        _capture_navigator_deviation(db, order_id=order_id)
+
     return event
+
+
+def _capture_navigator_deviation(db: Session, *, order_id: str) -> None:
+    if not navigator.is_enabled():
+        return
+    route = repository.get_active_route(db, order_id=order_id)
+    if not route:
+        return
+    snapshot = repository.get_latest_route_snapshot(db, route_id=str(route.id))
+    if snapshot is None:
+        stops = repository.get_route_stops(db, route_id=str(route.id))
+        points = [
+            navigator.GeoPoint(lat=stop.lat, lon=stop.lon)
+            for stop in stops
+            if stop.lat is not None and stop.lon is not None
+        ]
+        snapshot = navigator.create_route_snapshot(
+            db,
+            order_id=order_id,
+            route_id=str(route.id),
+            stops=points,
+        )
+    if snapshot is None or not snapshot.geometry:
+        return
+    adapter = navigator.get(snapshot.provider)
+    geometry = [
+        navigator.GeoPoint(lat=point["lat"], lon=point["lon"])
+        for point in snapshot.geometry
+        if isinstance(point, dict) and "lat" in point and "lon" in point
+    ]
+    if len(geometry) < 2:
+        return
+    route_snapshot = navigator.RouteSnapshot(
+        provider=snapshot.provider,
+        geometry=geometry,
+        distance_km=snapshot.distance_km,
+    )
+    events = repository.list_tracking_events(db, order_id=order_id, limit=20)
+    actual_points = [
+        navigator.GeoPoint(lat=event.lat, lon=event.lon)
+        for event in sorted(events, key=lambda item: item.ts)
+        if event.lat is not None and event.lon is not None
+    ]
+    if len(actual_points) < 2:
+        return
+    deviation = adapter.deviation_score(route_snapshot, actual_points)
+    navigator.create_deviation_explain(db, route_snapshot=snapshot, deviation_score=deviation)
