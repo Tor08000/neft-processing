@@ -35,6 +35,7 @@ export const Layout: React.FC = () => {
     { to: "/money/health", label: "Money · Health" },
     { to: "/money/replay", label: "Money · Replay" },
     { to: "/explain", label: "Unified Explain" },
+    { to: "/ops/escalations", label: "Ops · Escalations" },
     ...(user && hasPayoutAccess(user.roles) ? [{ to: "/finance/payouts", label: "Finance · Payouts" }] : []),
   ];
 
