@@ -55,7 +55,7 @@ def build_kpi_report(
     reason_rows = (
         db.execute(
             select(
-                OpsEscalation.reason_code,
+                OpsEscalation.primary_reason,
                 func.coalesce(
                     func.sum(case((OpsEscalation.status != OpsEscalationStatus.CLOSED, 1), else_=0)), 0
                 ).label("open_count"),
@@ -64,19 +64,19 @@ def build_kpi_report(
             )
             .select_from(OpsEscalation)
             .where(*base_filters)
-            .group_by(OpsEscalation.reason_code)
+            .group_by(OpsEscalation.primary_reason)
         )
         .all()
     )
 
     by_reason: dict[str, dict[str, float | int]] = {}
-    for reason_code, open_count, violations, avg_minutes in reason_rows:
+    for primary_reason, open_count, violations, avg_minutes in reason_rows:
         payload: dict[str, float | int] = {"open": int(open_count or 0)}
         if violations is not None:
             payload["sla_violations"] = int(violations or 0)
         if avg_minutes is not None:
             payload["avg_resolution_hours"] = round(float(avg_minutes) / 60.0, 2)
-        by_reason[str(reason_code)] = payload
+        by_reason[str(primary_reason)] = payload
 
     team_rows = (
         db.execute(

@@ -166,9 +166,29 @@ export const UnifiedExplainPage = () => {
         subscription_status?: string | null;
         metrics_used?: Record<string, number>;
         feature_flags?: Record<string, boolean>;
+        decision_flags?: string[];
+        contract?: { id: string; version: number } | null;
         decision_basis?: string | null;
       }
     | undefined;
+  const orderId =
+    payload?.subject?.type === "ORDER"
+      ? payload?.subject?.id
+      : (payload?.sections?.logistics as { order_id?: string } | undefined)?.order_id ?? null;
+  const deepLinks = [
+    {
+      label: "CRM",
+      url: payload?.subject?.client_id ? `/crm/clients/${payload.subject.client_id}` : null,
+    },
+    {
+      label: "Money",
+      url: payload?.ids?.invoice_id ? `/money/invoice-cfo-explain?invoice_id=${payload.ids.invoice_id}` : null,
+    },
+    {
+      label: "Logistics",
+      url: orderId ? `/logistics/orders/${orderId}` : null,
+    },
+  ];
 
   const resolveActionLink = (action: UnifiedExplainAction) => {
     const clientId = payload?.subject?.client_id;
@@ -470,6 +490,13 @@ export const UnifiedExplainPage = () => {
                   <div>{crmSection.subscription_status ?? "—"}</div>
                 </div>
                 <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Contract</div>
+                  <div>
+                    {crmSection.contract?.id ?? "—"}
+                    {crmSection.contract?.version ? ` · v${crmSection.contract.version}` : ""}
+                  </div>
+                </div>
+                <div>
                   <div style={{ fontSize: 12, color: "#64748b" }}>Decision basis</div>
                   <div>{crmSection.decision_basis ?? "—"}</div>
                 </div>
@@ -482,8 +509,33 @@ export const UnifiedExplainPage = () => {
                 <div style={{ fontSize: 12, color: "#64748b" }}>Feature flags</div>
                 <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.feature_flags ?? {}, null, 2)}</pre>
               </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Decision flags</div>
+                <div>{crmSection.decision_flags?.length ? crmSection.decision_flags.join(", ") : "—"}</div>
+              </div>
             </div>
           ) : null}
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Deeplinks</div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {deepLinks.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.url ?? "#"}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    color: link.url ? "#2563eb" : "#94a3b8",
+                    pointerEvents: link.url ? "auto" : "none",
+                  }}
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
 

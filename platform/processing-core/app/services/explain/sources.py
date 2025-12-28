@@ -359,44 +359,56 @@ def build_crm_section(db: Session, *, tenant_id: int | None, client_id: str | No
     if tenant_id is None:
         return None
     subscription = crm_repository.get_active_subscription(db, client_id=client_id)
-    if not subscription:
-        return None
-    tariff = crm_repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    tariff = crm_repository.get_tariff(db, tariff_id=subscription.tariff_plan_id) if subscription else None
+    contract = crm_repository.get_active_contract(db, client_id=client_id)
     feature_flags = crm_repository.list_feature_flags(db, tenant_id=tenant_id, client_id=client_id)
-    flag_map = {flag.feature: flag.enabled for flag in feature_flags}
-    enforcement_flags = {
-        "fuel_enabled": bool(flag_map.get(CRMFeatureFlagType.FUEL_ENABLED)),
-        "logistics_enabled": bool(flag_map.get(CRMFeatureFlagType.LOGISTICS_ENABLED)),
-    }
+    flag_map = {flag.feature: bool(flag.enabled) for flag in feature_flags}
+    enforcement_flags = {flag.value.lower(): flag_map.get(flag, False) for flag in CRMFeatureFlagType}
 
-    metrics_used = {}
-    counters = (
-        db.query(CRMUsageCounter)
-        .filter(CRMUsageCounter.subscription_id == subscription.id)
-        .order_by(CRMUsageCounter.created_at.desc())
-        .all()
-    )
-    for counter in counters:
-        if counter.metric == CRMUsageMetric.FUEL_TX_COUNT and "fuel_tx" not in metrics_used:
-            metrics_used["fuel_tx"] = int(counter.value)
-        if counter.metric == CRMUsageMetric.DRIVERS_COUNT and "drivers" not in metrics_used:
-            metrics_used["drivers"] = int(counter.value)
-        if "fuel_tx" in metrics_used and "drivers" in metrics_used:
-            break
+    metrics_used: dict[str, int] = {}
+    if subscription:
+        counters = (
+            db.query(CRMUsageCounter)
+            .filter(CRMUsageCounter.subscription_id == subscription.id)
+            .order_by(CRMUsageCounter.created_at.desc())
+            .all()
+        )
+        metric_map = {
+            CRMUsageMetric.CARDS_COUNT: "cards",
+            CRMUsageMetric.VEHICLES_COUNT: "vehicles",
+            CRMUsageMetric.DRIVERS_COUNT: "drivers",
+            CRMUsageMetric.FUEL_TX_COUNT: "fuel_tx",
+            CRMUsageMetric.FUEL_VOLUME: "fuel_volume",
+            CRMUsageMetric.LOGISTICS_ORDERS: "logistics_orders",
+        }
+        for counter in counters:
+            key = metric_map.get(counter.metric)
+            if not key or key in metrics_used:
+                continue
+            metrics_used[key] = int(counter.value)
+            if len(metrics_used) == len(metric_map):
+                break
 
     decision_basis = None
-    meta = subscription.meta or {}
+    meta = subscription.meta if subscription else {}
     crm_effect = meta.get("crm_effect") if isinstance(meta, dict) else None
     if isinstance(crm_effect, dict):
         decision_basis = crm_effect.get("reason")
     if not decision_basis:
-        decision_basis = "Разрешено тарифом"
+        decision_basis = "Нет активной подписки" if not subscription else "Разрешено тарифом"
 
     return {
         "tariff": tariff.id if tariff else None,
-        "subscription_status": subscription.status.value,
+        "subscription_status": subscription.status.value if subscription else None,
         "metrics_used": metrics_used,
         "feature_flags": enforcement_flags,
+        "decision_flags": [flag.value for flag, enabled in flag_map.items() if enabled],
+        "contract": {
+            "id": str(contract.id),
+            "version": contract.crm_contract_version,
+        }
+        if contract
+        else None,
         "decision_basis": decision_basis,
     }
 

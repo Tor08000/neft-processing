@@ -174,7 +174,7 @@ export const EscalationsPage: React.FC = () => {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span>Target</span>
+          <span>Team</span>
           <select value={target} onChange={(event) => setTarget(event.target.value)}>
             <option value="">All</option>
             {TARGET_OPTIONS.map((option) => (
