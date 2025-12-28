@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Iterable
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.documents import Document
+from app.models.fuel import FuelTransaction
+from app.models.internal_ledger import (
+    InternalLedgerAccount,
+    InternalLedgerEntry,
+    InternalLedgerTransaction,
+)
+from app.models.invoice import Invoice
+from app.models.legal_graph import LegalGraphSnapshot, LegalGraphSnapshotScopeType, LegalNodeType
+from app.models.logistics import (
+    FuelRouteLink,
+    LogisticsDeviationEvent,
+    LogisticsNavigatorExplainType,
+    LogisticsOrder,
+    LogisticsRiskSignal,
+)
+from app.models.money_flow import MoneyFlowEvent
+from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType
+from app.models.risk_decision import RiskDecision
+from app.services.legal_graph import queries as legal_graph_queries
+from app.services.logistics import repository as logistics_repository
+from app.services.money_flow.explain import build_money_explain
+from app.services.money_flow.errors import MoneyFlowNotFound
+from app.services.money_flow.states import MoneyFlowType
+
+
+def get_fuel_tx(db: Session, *, fuel_tx_id: str) -> FuelTransaction | None:
+    return db.get(FuelTransaction, fuel_tx_id)
+
+
+def get_order(db: Session, *, order_id: str) -> LogisticsOrder | None:
+    return db.get(LogisticsOrder, order_id)
+
+
+def get_invoice(db: Session, *, invoice_id: str) -> Invoice | None:
+    return db.get(Invoice, invoice_id)
+
+
+def get_fuel_link(db: Session, *, fuel_tx_id: str) -> FuelRouteLink | None:
+    return (
+        db.query(FuelRouteLink)
+        .filter(FuelRouteLink.fuel_tx_id == fuel_tx_id)
+        .order_by(FuelRouteLink.created_at.desc())
+        .first()
+    )
+
+
+def get_order_link(db: Session, *, order_id: str) -> FuelRouteLink | None:
+    return (
+        db.query(FuelRouteLink)
+        .filter(FuelRouteLink.order_id == order_id)
+        .order_by(FuelRouteLink.created_at.desc())
+        .first()
+    )
+
+
+def find_invoice_id_for_fuel(db: Session, *, fuel_tx_id: str) -> str | None:
+    link = (
+        db.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX)
+        .filter(MoneyFlowLink.src_id == fuel_tx_id)
+        .filter(MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.INVOICE)
+        .order_by(MoneyFlowLink.created_at.desc())
+        .first()
+    )
+    return link.dst_id if link else None
+
+
+def find_invoice_id_for_order(db: Session, *, order_id: str) -> str | None:
+    link = (
+        db.query(MoneyFlowLink)
+        .filter(MoneyFlowLink.src_type == MoneyFlowLinkNodeType.LOGISTICS_ORDER)
+        .filter(MoneyFlowLink.src_id == order_id)
+        .filter(MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.INVOICE)
+        .order_by(MoneyFlowLink.created_at.desc())
+        .first()
+    )
+    return link.dst_id if link else None
+
+
+def build_limits_section(tx: FuelTransaction) -> dict[str, Any] | None:
+    meta = tx.meta or {}
+    limit_explain = meta.get("limit_explain")
+    if isinstance(limit_explain, dict):
+        return limit_explain
+    return None
+
+
+def build_risk_section(db: Session, *, tx: FuelTransaction) -> dict[str, Any] | None:
+    meta = tx.meta or {}
+    risk_explain = meta.get("risk_explain")
+    if risk_explain is None and not tx.risk_decision_id:
+        return None
+
+    payload: dict[str, Any] = {}
+    if isinstance(risk_explain, dict):
+        payload.update(risk_explain)
+
+    if tx.risk_decision_id:
+        decision = db.get(RiskDecision, tx.risk_decision_id)
+        if decision:
+            payload.setdefault("decision", decision.outcome.value)
+            payload.setdefault("score", decision.score)
+            payload.setdefault("policy_id", decision.policy_id)
+            payload.setdefault("decision_id", decision.decision_id)
+            payload.setdefault("factors", decision.reasons)
+            payload.setdefault("decision_hash", decision.features_snapshot.get("decision_hash") if isinstance(decision.features_snapshot, dict) else None)
+    fraud_signals = meta.get("fraud_signals")
+    if isinstance(fraud_signals, list):
+        payload["fraud_signals"] = fraud_signals
+    return payload
+
+
+def build_logistics_section(
+    db: Session,
+    *,
+    order_id: str,
+    occurred_at: datetime | None,
+    client_id: str,
+    vehicle_id: str | None,
+    driver_id: str | None,
+    link: FuelRouteLink | None,
+    window_hours: int = 6,
+) -> dict[str, Any] | None:
+    if not order_id:
+        return None
+
+    since = (occurred_at or datetime.utcnow()) - timedelta(hours=window_hours)
+    deviation_events = logistics_repository.list_recent_deviation_events(db, order_id=order_id, since=since)
+    risk_signals = logistics_repository.list_recent_risk_signals(
+        db,
+        client_id=client_id,
+        vehicle_id=vehicle_id,
+        driver_id=driver_id,
+        since=since,
+    )
+    section = {
+        "order_id": order_id,
+        "route_id": str(link.route_id) if link and link.route_id else None,
+        "stop_id": str(link.stop_id) if link and link.stop_id else None,
+        "link_type": link.link_type.value if link else None,
+        "distance_to_stop_m": link.distance_to_stop_m if link else None,
+        "time_delta_minutes": link.time_delta_minutes if link else None,
+        "deviation_events": _serialize_deviation_events(deviation_events),
+        "risk_signals": _serialize_risk_signals(risk_signals),
+    }
+    return section
+
+
+def build_navigator_section(
+    db: Session,
+    *,
+    order_id: str,
+    route_id: str | None,
+) -> dict[str, Any] | None:
+    if not order_id:
+        return None
+
+    active_route_id = route_id
+    if not active_route_id:
+        route = logistics_repository.get_active_route(db, order_id=order_id)
+        active_route_id = str(route.id) if route else None
+    if not active_route_id:
+        return None
+
+    snapshot = logistics_repository.get_latest_route_snapshot(db, route_id=active_route_id)
+    if not snapshot:
+        return None
+
+    deviation_explains = logistics_repository.list_navigator_explains(
+        db,
+        route_snapshot_id=str(snapshot.id),
+        explain_type=LogisticsNavigatorExplainType.DEVIATION,
+    )
+    return {
+        "route_snapshot_id": str(snapshot.id),
+        "provider": snapshot.provider,
+        "distance_km": snapshot.distance_km,
+        "eta_minutes": snapshot.eta_minutes,
+        "created_at": snapshot.created_at.isoformat(),
+        "deviation_explains": [
+            {
+                "id": str(explain.id),
+                "payload": explain.payload,
+                "created_at": explain.created_at.isoformat(),
+            }
+            for explain in deviation_explains
+        ],
+    }
+
+
+def build_money_section_for_fuel(db: Session, *, fuel_tx_id: str) -> dict[str, Any] | None:
+    try:
+        explain = build_money_explain(db, MoneyFlowType.FUEL_TX, fuel_tx_id)
+    except MoneyFlowNotFound:
+        return None
+
+    ledger_entries = None
+    if explain.ledger:
+        ledger_entries = [
+            {
+                "account": entry.account,
+                "direction": entry.direction,
+                "amount": entry.amount,
+                "currency": entry.currency,
+            }
+            for entry in explain.ledger.entries
+        ]
+
+    return {
+        "flow_state": explain.state.value,
+        "ledger": {
+            "ledger_transaction_id": explain.ledger.ledger_transaction_id,
+            "balanced": explain.ledger.balanced,
+            "entries": ledger_entries,
+        }
+        if explain.ledger
+        else None,
+        "invariants": explain.invariants,
+        "risk": explain.risk,
+        "notes": explain.notes,
+        "event_id": str(explain.event_id),
+        "created_at": explain.created_at.isoformat(),
+    }
+
+
+def build_money_section_for_invoice(db: Session, *, invoice_id: str) -> dict[str, Any] | None:
+    ledger_transactions = (
+        db.execute(
+            select(InternalLedgerTransaction).where(
+                InternalLedgerTransaction.external_ref_id == invoice_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not ledger_transactions:
+        return None
+
+    entries = (
+        db.execute(
+            select(InternalLedgerEntry).where(
+                InternalLedgerEntry.ledger_transaction_id.in_([tx.id for tx in ledger_transactions])
+            )
+        )
+        .scalars()
+        .all()
+    )
+    account_ids = {entry.account_id for entry in entries}
+    accounts = (
+        db.execute(select(InternalLedgerAccount).where(InternalLedgerAccount.id.in_(account_ids)))
+        .scalars()
+        .all()
+    )
+    account_map = {account.id: account for account in accounts}
+    entries_by_tx: dict[str, list[InternalLedgerEntry]] = defaultdict(list)
+    for entry in entries:
+        entries_by_tx[str(entry.ledger_transaction_id)].append(entry)
+
+    ledger_postings = []
+    for tx in ledger_transactions:
+        posting_entries = []
+        debit_total = 0
+        credit_total = 0
+        currencies = set()
+        for entry in entries_by_tx.get(str(tx.id), []):
+            account = account_map.get(entry.account_id)
+            account_type = account.account_type.value if account else "UNKNOWN"
+            posting_entries.append(
+                {
+                    "account": account_type,
+                    "direction": entry.direction.value,
+                    "amount": entry.amount,
+                    "currency": entry.currency,
+                }
+            )
+            currencies.add(entry.currency)
+            if entry.direction.value == "DEBIT":
+                debit_total += entry.amount
+            else:
+                credit_total += entry.amount
+        balanced = debit_total == credit_total and len(currencies) <= 1
+        ledger_postings.append(
+            {
+                "ledger_transaction_id": str(tx.id),
+                "transaction_type": tx.transaction_type.value,
+                "posted_at": tx.posted_at.isoformat() if tx.posted_at else None,
+                "balanced": balanced,
+                "entries": posting_entries,
+            }
+        )
+
+    ledger_postings = sorted(ledger_postings, key=lambda item: item["ledger_transaction_id"])
+    return {"ledger_postings": ledger_postings}
+
+
+def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
+    if not invoice_id:
+        return None, []
+    documents = (
+        db.query(Document)
+        .filter(Document.source_entity_id == invoice_id)
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+    if not documents:
+        return None, []
+
+    document_ids = [str(doc.id) for doc in documents]
+    snapshot_map = _load_document_snapshot_hashes(db, document_ids)
+    payload = {
+        "documents": [
+            {
+                "id": str(doc.id),
+                "document_type": doc.document_type.value,
+                "status": doc.status.value,
+                "number": doc.number,
+                "period_from": doc.period_from.isoformat(),
+                "period_to": doc.period_to.isoformat(),
+                "document_hash": doc.document_hash,
+                "snapshot_hash": snapshot_map.get(str(doc.id)),
+            }
+            for doc in documents
+        ]
+    }
+    return payload, document_ids
+
+
+def build_graph_section(
+    db: Session,
+    *,
+    tenant_id: int | None,
+    node_type: LegalNodeType,
+    ref_id: str,
+    depth: int,
+) -> dict[str, Any] | None:
+    if tenant_id is None:
+        return None
+    trace = legal_graph_queries.trace(
+        db,
+        tenant_id=tenant_id,
+        node_type=node_type,
+        ref_id=ref_id,
+        depth=depth,
+    )
+    if not trace.nodes:
+        return None
+    return {
+        "nodes": trace.nodes,
+        "edges": trace.edges,
+        "layers": trace.layers,
+    }
+
+
+def load_money_flow_event_ids(db: Session, *, flow_type: MoneyFlowType, flow_ref_id: str) -> list[str]:
+    events = (
+        db.execute(
+            select(MoneyFlowEvent)
+            .where(MoneyFlowEvent.flow_type == flow_type)
+            .where(MoneyFlowEvent.flow_ref_id == flow_ref_id)
+            .order_by(MoneyFlowEvent.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [str(event.id) for event in events]
+
+
+def _serialize_deviation_events(events: Iterable[LogisticsDeviationEvent]) -> list[dict[str, Any]]:
+    serialized = [
+        {
+            "id": str(event.id),
+            "event_type": event.event_type.value,
+            "ts": event.ts.isoformat(),
+            "severity": event.severity.value,
+            "stop_id": str(event.stop_id) if event.stop_id else None,
+            "distance_from_route_m": event.distance_from_route_m,
+            "explain": event.explain,
+        }
+        for event in events
+    ]
+    return sorted(serialized, key=lambda item: item["ts"], reverse=True)
+
+
+def _serialize_risk_signals(events: Iterable[LogisticsRiskSignal]) -> list[dict[str, Any]]:
+    serialized = [
+        {
+            "id": str(event.id),
+            "signal_type": event.signal_type.value,
+            "severity": event.severity,
+            "ts": event.ts.isoformat(),
+            "explain": event.explain,
+        }
+        for event in events
+    ]
+    return sorted(serialized, key=lambda item: (item["severity"], item["ts"]), reverse=True)
+
+
+def _load_document_snapshot_hashes(db: Session, document_ids: list[str]) -> dict[str, str | None]:
+    if not document_ids:
+        return {}
+    snapshots = (
+        db.query(LegalGraphSnapshot)
+        .filter(LegalGraphSnapshot.scope_type == LegalGraphSnapshotScopeType.DOCUMENT)
+        .filter(LegalGraphSnapshot.scope_ref_id.in_(document_ids))
+        .order_by(LegalGraphSnapshot.created_at.desc())
+        .all()
+    )
+    snapshot_map: dict[str, str | None] = {doc_id: None for doc_id in document_ids}
+    for snapshot in snapshots:
+        if snapshot_map.get(snapshot.scope_ref_id) is None:
+            snapshot_map[snapshot.scope_ref_id] = snapshot.snapshot_hash
+    return snapshot_map
+
+
+__all__ = [
+    "build_documents_section",
+    "build_graph_section",
+    "build_limits_section",
+    "build_logistics_section",
+    "build_money_section_for_fuel",
+    "build_money_section_for_invoice",
+    "build_navigator_section",
+    "build_risk_section",
+    "find_invoice_id_for_fuel",
+    "find_invoice_id_for_order",
+    "get_fuel_link",
+    "get_fuel_tx",
+    "get_invoice",
+    "get_order",
+    "get_order_link",
+    "load_money_flow_event_ids",
+]
