@@ -16,6 +16,7 @@ const IntegrationMonitoringPage = React.lazy(() => import("../pages/IntegrationM
 const HealthPage = React.lazy(() => import("../pages/HealthPage"));
 const LoginPage = React.lazy(() => import("../pages/LoginPage"));
 const UnifiedExplainPage = React.lazy(() => import("../pages/UnifiedExplainPage"));
+const EscalationsPage = React.lazy(() => import("../pages/ops/EscalationsPage"));
 
 export function AppRouter() {
   const { accessToken } = useAuth();
@@ -39,6 +40,7 @@ export function AppRouter() {
             <Route path="/payouts" element={<PayoutBatchesPage />} />
             <Route path="/health" element={<HealthPage />} />
             <Route path="/explain" element={<UnifiedExplainPage />} />
+            <Route path="/ops/escalations" element={<EscalationsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         )}

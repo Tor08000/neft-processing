@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { request } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
+import { Toast } from "../components/common/Toast";
+import { useToast } from "../components/Toast/useToast";
 
 const VIEW_OPTIONS = ["FULL", "FLEET", "ACCOUNTANT"] as const;
 const SUBJECT_OPTIONS = [
@@ -9,8 +11,71 @@ const SUBJECT_OPTIONS = [
   { value: "invoice_id", label: "Invoice" },
 ] as const;
 
+type UnifiedExplainAction = {
+  code: string;
+  title: string;
+  description: string;
+  target?: string | null;
+  severity: "INFO" | "REQUIRED";
+};
+
+type UnifiedExplainPayload = {
+  primary_reason: string;
+  secondary_reasons: string[];
+  subject: {
+    type: string;
+    id: string;
+    ts?: string | null;
+    client_id?: string | null;
+  };
+  ids: {
+    risk_decision_id?: string | null;
+    ledger_transaction_id?: string | null;
+    invoice_id?: string | null;
+    snapshot_id?: string | null;
+    snapshot_hash?: string | null;
+  };
+  sections?: Record<string, unknown>;
+  actions?: UnifiedExplainAction[];
+  sla?: {
+    started_at: string;
+    expires_at: string;
+    remaining_minutes: number;
+  } | null;
+  escalation?: {
+    target: string;
+    status: string;
+  } | null;
+};
+
+const parseIsoDate = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "—";
+  const parsed = parseIsoDate(value);
+  if (!parsed) return value;
+  return parsed.toLocaleString();
+};
+
+const getSlaTone = (sla?: UnifiedExplainPayload["sla"]) => {
+  if (!sla) return "#94a3b8";
+  const started = parseIsoDate(sla.started_at);
+  const expires = parseIsoDate(sla.expires_at);
+  if (!started || !expires) return "#94a3b8";
+  const totalMinutes = Math.max(1, (expires.getTime() - started.getTime()) / 60000);
+  const ratio = Math.max(0, Math.min(1, sla.remaining_minutes / totalMinutes));
+  if (ratio >= 0.5) return "#16a34a";
+  if (ratio >= 0.2) return "#f59e0b";
+  return "#dc2626";
+};
+
 export const UnifiedExplainPage = () => {
   const { accessToken } = useAuth();
+  const { toast, showToast } = useToast();
   const [subjectType, setSubjectType] = useState<(typeof SUBJECT_OPTIONS)[number]["value"]>("fuel_tx_id");
   const [subjectId, setSubjectId] = useState("");
   const [view, setView] = useState<(typeof VIEW_OPTIONS)[number]>("FULL");
@@ -18,7 +83,9 @@ export const UnifiedExplainPage = () => {
   const [snapshot, setSnapshot] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
+  const [payload, setPayload] = useState<UnifiedExplainPayload | null>(null);
+  const [showSecondaryAll, setShowSecondaryAll] = useState(false);
+  const [confirmReplayLink, setConfirmReplayLink] = useState<string | null>(null);
 
   const canSubmit = subjectId.trim().length > 0;
 
@@ -50,16 +117,91 @@ export const UnifiedExplainPage = () => {
         {},
         accessToken,
       );
-      setPayload(data);
+      setPayload(data as UnifiedExplainPayload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось загрузить explain");
+      const message = err instanceof Error ? err.message : "Не удалось загрузить explain";
+      setError(message);
+      showToast("error", message);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const actions = payload?.actions ?? [];
+  const secondaryReasons = payload?.secondary_reasons ?? [];
+  const visibleSecondary = showSecondaryAll ? secondaryReasons : secondaryReasons.slice(0, 2);
+  const remainingSecondary = secondaryReasons.length - visibleSecondary.length;
+
+  const limitSection = payload?.sections?.limits as { limit_profiles?: unknown[]; profiles?: unknown[] } | undefined;
+  const hasLimitProfiles = Boolean(limitSection?.limit_profiles?.length || limitSection?.profiles?.length);
+
+  const getReplayScope = () => {
+    if (payload?.ids?.invoice_id) return "SUBSCRIPTIONS";
+    if (payload?.subject?.type === "FUEL_TX") return "FUEL";
+    return "ALL";
+  };
+
+  const getPeriodId = () => {
+    const moneySection = payload?.sections?.money as
+      | { period_id?: string; billing_period_id?: string; period?: { id?: string } }
+      | undefined;
+    return moneySection?.period_id || moneySection?.billing_period_id || moneySection?.period?.id || null;
+  };
+
+  const resolveActionLink = (action: UnifiedExplainAction) => {
+    const clientId = payload?.subject?.client_id;
+    const invoiceId = payload?.ids?.invoice_id;
+    const orderId = payload?.subject?.type === "ORDER" ? payload?.subject?.id : null;
+    const periodId = getPeriodId();
+
+    switch (action.code) {
+      case "INCREASE_LIMIT":
+        if (!clientId) return { url: "", missing: "client" };
+        return {
+          url: `/crm/clients/${clientId}?tab=${hasLimitProfiles ? "profiles" : "features"}`,
+          missing: null,
+        };
+      case "REQUEST_OVERRIDE":
+        return { url: invoiceId ? `/money/invoice-cfo-explain?invoice_id=${invoiceId}` : "/money/health", missing: null };
+      case "ADJUST_ROUTE":
+        if (!orderId) return { url: "", missing: "order" };
+        return { url: `/explain?order_id=${orderId}`, missing: null };
+      case "RUN_REPLAY":
+        if (!clientId) return { url: "", missing: "client" };
+        if (!periodId) return { url: "", missing: "period" };
+        return {
+          url: `/money/replay?client_id=${clientId}&period_id=${periodId}&scope=${getReplayScope()}&mode=COMPARE`,
+          missing: null,
+        };
+      default:
+        return { url: "", missing: "action" };
+    }
+  };
+
+  const handleActionClick = (action: UnifiedExplainAction) => {
+    const { url, missing } = resolveActionLink(action);
+    if (!url || missing) return;
+    if (action.code === "RUN_REPLAY") {
+      setConfirmReplayLink(url);
+      return;
+    }
+    window.location.assign(url);
+  };
+
+  const handleCopy = async () => {
+    if (!payload) return;
+    const copyText = `primary_reason: ${payload.primary_reason}\nids: ${JSON.stringify(payload.ids, null, 2)}`;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      showToast("success", "Copied to clipboard");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Не удалось скопировать");
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Toast toast={toast} />
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>Unified Explain</h1>
         <p style={{ color: "#475569" }}>
@@ -134,12 +276,166 @@ export const UnifiedExplainPage = () => {
         <div style={{ color: "#b91c1c", background: "#fee2e2", padding: 12, borderRadius: 8 }}>{error}</div>
       ) : null}
 
+      {payload ? (
+        <div style={{ display: "grid", gap: 16, background: "#fff", borderRadius: 12, padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span
+              style={{
+                background: "#0f172a",
+                color: "#f8fafc",
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontWeight: 600,
+              }}
+            >
+              {payload.primary_reason}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopy}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+            >
+              Copy reason + ids
+            </button>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Secondary reasons</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {visibleSecondary.length ? (
+                visibleSecondary.map((reason) => (
+                  <span
+                    key={reason}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: "#e2e8f0",
+                      color: "#0f172a",
+                      fontSize: 12,
+                    }}
+                  >
+                    {reason}
+                  </span>
+                ))
+              ) : (
+                <span style={{ color: "#64748b" }}>Нет дополнительных причин</span>
+              )}
+              {remainingSecondary > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowSecondaryAll((value) => !value)}
+                  style={{ padding: "4px 10px", borderRadius: 999, border: "1px dashed #94a3b8" }}
+                >
+                  {showSecondaryAll ? "Свернуть" : `+${remainingSecondary} еще`}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Escalation target</div>
+              <div style={{ fontWeight: 600 }}>{payload.escalation?.target ?? "—"}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Status</div>
+              <div>{payload.escalation?.status ?? "—"}</div>
+            </div>
+            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}>SLA countdown</div>
+              <div style={{ fontWeight: 700, color: getSlaTone(payload.sla) }}>
+                {payload.sla ? `${payload.sla.remaining_minutes} мин` : "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>started_at</div>
+              <div>{formatDateTime(payload.sla?.started_at)}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>expires_at</div>
+              <div>{formatDateTime(payload.sla?.expires_at)}</div>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Actions</div>
+            {actions.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {actions.map((action) => {
+                  const { url, missing } = resolveActionLink(action);
+                  const isDisabled = Boolean(missing);
+                  return (
+                    <button
+                      key={action.code}
+                      onClick={() => handleActionClick(action)}
+                      disabled={isDisabled}
+                      title={missing ? `missing ${missing}` : action.description}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        background: isDisabled ? "#e2e8f0" : "#fff",
+                        color: isDisabled ? "#94a3b8" : "#0f172a",
+                        cursor: isDisabled ? "not-allowed" : "pointer",
+                        minWidth: 180,
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{action.title}</div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>{action.description}</div>
+                      {url && !isDisabled ? (
+                        <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>{url}</div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ color: "#64748b" }}>Нет доступных действий</div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ background: "#0f172a", color: "#f8fafc", padding: 16, borderRadius: 12 }}>
         <div style={{ fontWeight: 600, marginBottom: 8 }}>Ответ</div>
         <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
           {payload ? JSON.stringify(payload, null, 2) : "Нет данных"}
         </pre>
       </div>
+
+      {confirmReplayLink ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 20,
+          }}
+        >
+          <div style={{ background: "#fff", padding: 24, borderRadius: 12, width: 420 }}>
+            <h3 style={{ marginTop: 0 }}>Run replay?</h3>
+            <p style={{ color: "#475569" }}>Операция запускает replay сравнения. Продолжить?</p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setConfirmReplayLink(null)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const link = confirmReplayLink;
+                  setConfirmReplayLink(null);
+                  window.location.assign(link);
+                }}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #0f172a", background: "#0f172a", color: "#fff" }}
+              >
+                Run replay
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

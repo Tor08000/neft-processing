@@ -172,6 +172,13 @@ from .fuel import (  # noqa: F401
     FuelTransactionStatus,
     FuelType,
 )
+from .ops import (  # noqa: F401
+    OpsEscalation,
+    OpsEscalationPriority,
+    OpsEscalationSource,
+    OpsEscalationStatus,
+    OpsEscalationTarget,
+)
 from .logistics import (  # noqa: F401
     LogisticsNavigatorExplain,
     LogisticsNavigatorExplainType,

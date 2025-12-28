@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 # Берём те же env, что и воркеры (у тебя уже есть в .env / docker-compose)
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
@@ -28,6 +29,12 @@ celery_client.conf.update(
     task_routes={
         "billing.generate_monthly_invoices": {"queue": "billing"},
         "billing.generate_invoice_pdf": {"queue": "pdf"},
+    },
+    beat_schedule={
+        "ops.scan_sla_expiry": {
+            "task": "ops.scan_sla_expiry",
+            "schedule": crontab(minute="*/5"),
+        },
     },
 )
 
