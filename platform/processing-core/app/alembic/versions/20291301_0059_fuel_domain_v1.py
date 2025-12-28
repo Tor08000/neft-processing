@@ -35,14 +35,6 @@ FLEET_VEHICLE_STATUS = ["ACTIVE", "INACTIVE"]
 FLEET_DRIVER_STATUS = ["ACTIVE", "INACTIVE"]
 FUEL_CARD_GROUP_STATUS = ["ACTIVE", "INACTIVE"]
 
-FLEET_VEHICLE_STATUS_ENUM = postgresql.ENUM(
-    *FLEET_VEHICLE_STATUS,
-    name="fleet_vehicle_status",
-    schema=SCHEMA,
-    create_type=False,
-)
-
-
 def upgrade() -> None:
     bind = op.get_bind()
     ensure_pg_enum(bind, "fuel_card_status", FUEL_CARD_STATUS, schema=SCHEMA)
@@ -79,7 +71,12 @@ def upgrade() -> None:
             sa.Column("tank_capacity_liters", sa.BigInteger, nullable=True),
             sa.Column(
                 "status",
-                FLEET_VEHICLE_STATUS_ENUM,
+                postgresql.ENUM(
+                    *FLEET_VEHICLE_STATUS,
+                    name="fleet_vehicle_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
@@ -100,7 +97,12 @@ def upgrade() -> None:
             sa.Column("phone", sa.String(32), nullable=True),
             sa.Column(
                 "status",
-                FLEET_DRIVER_STATUS_ENUM,
+                postgresql.ENUM(
+                    *FLEET_DRIVER_STATUS,
+                    name="fleet_driver_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
@@ -119,7 +121,12 @@ def upgrade() -> None:
             sa.Column("name", sa.String(128), nullable=False),
             sa.Column(
                 "status",
-                FUEL_CARD_GROUP_STATUS_ENUM,
+                postgresql.ENUM(
+                    *FUEL_CARD_GROUP_STATUS,
+                    name="fuel_card_group_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
@@ -136,7 +143,16 @@ def upgrade() -> None:
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("client_id", sa.String(64), nullable=False),
             sa.Column("card_token", sa.String(128), nullable=False),
-            sa.Column("status", FUEL_CARD_STATUS_ENUM, nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *FUEL_CARD_STATUS,
+                    name="fuel_card_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("card_group_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fuel_card_groups.id"), nullable=True),
             sa.Column("vehicle_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fleet_vehicles.id"), nullable=True),
             sa.Column("driver_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fleet_drivers.id"), nullable=True),
@@ -158,7 +174,16 @@ def upgrade() -> None:
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("name", sa.String(128), nullable=False),
             sa.Column("provider_code", sa.String(64), nullable=False),
-            sa.Column("status", FUEL_NETWORK_STATUS_ENUM, nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *FUEL_NETWORK_STATUS,
+                    name="fuel_network_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.PrimaryKeyConstraint("id"),
             schema=SCHEMA,
@@ -178,7 +203,16 @@ def upgrade() -> None:
             sa.Column("lon", sa.String(32), nullable=True),
             sa.Column("mcc", sa.String(8), nullable=True),
             sa.Column("station_code", sa.String(64), nullable=True),
-            sa.Column("status", FUEL_STATION_STATUS_ENUM, nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *FUEL_STATION_STATUS,
+                    name="fuel_station_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("network_id", "station_code", name="uq_fuel_station_code_network"),
@@ -199,12 +233,30 @@ def upgrade() -> None:
             sa.Column("station_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fuel_stations.id"), nullable=False),
             sa.Column("network_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fuel_networks.id"), nullable=False),
             sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
-            sa.Column("fuel_type", FUEL_TYPE_ENUM, nullable=False),
+            sa.Column(
+                "fuel_type",
+                postgresql.ENUM(
+                    *FUEL_TYPE,
+                    name="fuel_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("volume_ml", sa.BigInteger, nullable=False),
             sa.Column("unit_price_minor", sa.BigInteger, nullable=False),
             sa.Column("amount_total_minor", sa.BigInteger, nullable=False),
             sa.Column("currency", sa.String(3), nullable=False),
-            sa.Column("status", FUEL_TX_STATUS_ENUM, nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *FUEL_TX_STATUS,
+                    name="fuel_tx_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("decline_code", sa.String(64), nullable=True),
             sa.Column(
                 "risk_decision_id",
@@ -263,18 +315,33 @@ def upgrade() -> None:
             sa.Column("client_id", sa.String(64), nullable=False),
             sa.Column(
                 "scope_type",
-                FUEL_LIMIT_SCOPE_TYPE_ENUM,
+                postgresql.ENUM(
+                    *FUEL_LIMIT_SCOPE_TYPE,
+                    name="fuel_limit_scope_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("scope_id", sa.String(64), nullable=True),
             sa.Column(
                 "limit_type",
-                FUEL_LIMIT_TYPE_ENUM,
+                postgresql.ENUM(
+                    *FUEL_LIMIT_TYPE,
+                    name="fuel_limit_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column(
                 "period",
-                FUEL_LIMIT_PERIOD_ENUM,
+                postgresql.ENUM(
+                    *FUEL_LIMIT_PERIOD,
+                    name="fuel_limit_period",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("value", sa.BigInteger, nullable=False),
