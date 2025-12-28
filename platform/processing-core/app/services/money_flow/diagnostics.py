@@ -8,6 +8,7 @@ from sqlalchemy import func, select, true
 from sqlalchemy.orm import Session
 
 from app.models.crm import CRMSubscriptionCharge, CRMSubscriptionPeriodSegment
+from app.models.fuel import FuelTransaction, FuelTransactionStatus
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerTransaction
 from app.models.invoice import Invoice
 from app.models.money_flow import MoneyFlowEvent
@@ -19,6 +20,8 @@ from app.models.money_flow_v3 import (
     MoneyInvariantSnapshotPhase,
 )
 from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
+from app.config import settings
+from app.services.billing_periods import period_bounds_for_dates
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,9 @@ class MoneyHealthReport:
     missing_subscription_snapshots: int
     disconnected_graph: int
     cfo_explain_not_ready: int
+    fuel_missing_ledger_links: int
+    fuel_missing_billing_period_links: int
+    fuel_missing_invoice_links: int
     top_offenders: list[MoneyHealthOffender]
 
 
@@ -158,6 +164,14 @@ def build_money_health(db: Session, *, stale_hours: int = 24) -> MoneyHealthRepo
                 )
             )
 
+    (
+        fuel_missing_ledger_links,
+        fuel_missing_billing_period_links,
+        fuel_missing_invoice_links,
+        fuel_offenders,
+    ) = _fuel_link_health(db)
+    offenders.extend(fuel_offenders)
+
     return MoneyHealthReport(
         orphan_ledger_transactions=len(orphan_ledger_transactions),
         missing_ledger_postings=len(missing_ledger_postings),
@@ -174,6 +188,9 @@ def build_money_health(db: Session, *, stale_hours: int = 24) -> MoneyHealthRepo
         missing_subscription_snapshots=_count_missing_subscription_snapshots(db),
         disconnected_graph=_count_disconnected_graph(db),
         cfo_explain_not_ready=_count_cfo_not_ready(db),
+        fuel_missing_ledger_links=fuel_missing_ledger_links,
+        fuel_missing_billing_period_links=fuel_missing_billing_period_links,
+        fuel_missing_invoice_links=fuel_missing_invoice_links,
         top_offenders=offenders[:20],
     )
 
@@ -379,6 +396,127 @@ def _count_cfo_not_ready(db: Session) -> int:
         if invoice_id not in ledger_ready or not snapshot_ready.get(invoice_id, False):
             not_ready += 1
     return not_ready
+
+
+def _fuel_link_health(db: Session) -> tuple[int, int, int, list[MoneyHealthOffender]]:
+    fuel_transactions = (
+        db.execute(
+            select(FuelTransaction)
+            .where(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+        )
+        .scalars()
+        .all()
+    )
+    fuel_tx_ids = [str(tx.id) for tx in fuel_transactions]
+    if not fuel_tx_ids:
+        return 0, 0, 0, []
+
+    links = (
+        db.execute(
+            select(MoneyFlowLink).where(
+                MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX,
+                MoneyFlowLink.src_id.in_(fuel_tx_ids),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    ledger_links = {
+        link.src_id for link in links
+        if link.link_type == MoneyFlowLinkType.POSTS and link.dst_type == MoneyFlowLinkNodeType.LEDGER_TX
+    }
+    period_links = {
+        link.src_id for link in links
+        if link.link_type == MoneyFlowLinkType.RELATES and link.dst_type == MoneyFlowLinkNodeType.BILLING_PERIOD
+    }
+
+    missing_ledger_links = [tx for tx in fuel_transactions if str(tx.id) not in ledger_links]
+    missing_period_links = [tx for tx in fuel_transactions if str(tx.id) not in period_links]
+    offenders: list[MoneyHealthOffender] = []
+    for tx in missing_ledger_links:
+        if len(offenders) >= 20:
+            break
+        offenders.append(
+            MoneyHealthOffender(
+                flow_type="FUEL_TX",
+                flow_ref_id=str(tx.id),
+                state=tx.status.value,
+                age_hours=0,
+                reason="missing_fuel_ledger_link",
+            )
+        )
+    for tx in missing_period_links:
+        if len(offenders) >= 20:
+            break
+        offenders.append(
+            MoneyHealthOffender(
+                flow_type="FUEL_TX",
+                flow_ref_id=str(tx.id),
+                state=tx.status.value,
+                age_hours=0,
+                reason="missing_fuel_billing_period_link",
+            )
+        )
+
+    missing_invoice_links, invoice_offenders = _fuel_missing_invoice_links(db, limit=20 - len(offenders))
+    offenders.extend(invoice_offenders)
+    return len(missing_ledger_links), len(missing_period_links), missing_invoice_links, offenders
+
+
+def _fuel_missing_invoice_links(db: Session, *, limit: int) -> tuple[int, list[MoneyHealthOffender]]:
+    invoices = db.execute(select(Invoice)).scalars().all()
+    if not invoices:
+        return 0, []
+    offenders: list[MoneyHealthOffender] = []
+    missing = 0
+    for invoice in invoices:
+        start_at, end_at = period_bounds_for_dates(
+            date_from=invoice.period_from,
+            date_to=invoice.period_to,
+            tz=settings.NEFT_BILLING_TZ,
+        )
+        fuel_transactions = (
+            db.execute(
+                select(FuelTransaction)
+                .where(FuelTransaction.client_id == invoice.client_id)
+                .where(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+                .where(FuelTransaction.occurred_at >= start_at)
+                .where(FuelTransaction.occurred_at <= end_at)
+            )
+            .scalars()
+            .all()
+        )
+        if not fuel_transactions:
+            continue
+        link_src_ids = {
+            link.src_id
+            for link in db.execute(
+                select(MoneyFlowLink).where(
+                    MoneyFlowLink.src_type == MoneyFlowLinkNodeType.FUEL_TX,
+                    MoneyFlowLink.link_type == MoneyFlowLinkType.FEEDS,
+                    MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.INVOICE,
+                    MoneyFlowLink.dst_id == invoice.id,
+                )
+            )
+            .scalars()
+            .all()
+        }
+        for tx in fuel_transactions:
+            if str(tx.id) in link_src_ids:
+                continue
+            missing += 1
+            if len(offenders) >= limit:
+                continue
+            offenders.append(
+                MoneyHealthOffender(
+                    flow_type="FUEL_TX",
+                    flow_ref_id=str(tx.id),
+                    state=tx.status.value,
+                    age_hours=0,
+                    reason="missing_fuel_invoice_link",
+                )
+            )
+    return missing, offenders
 
 
 __all__ = ["MoneyHealthOffender", "MoneyHealthReport", "build_money_health"]

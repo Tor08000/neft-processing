@@ -297,11 +297,19 @@ def preview_subscription_billing_endpoint(
         raise HTTPException(status_code=404, detail="tariff not found")
     tariff_definition = tariff.definition or {}
     segments = build_segments_v2(subscription=subscription, period=period)
+    fuel_flag = repository.get_feature_flag(
+        db,
+        tenant_id=subscription.tenant_id,
+        client_id=subscription.client_id,
+        feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+    )
+    include_fuel_metrics = bool(fuel_flag.enabled) if fuel_flag else False
     counters = collect_usage_by_segments(
         db,
         subscription=subscription,
         billing_period_id=str(period.id),
         segments=segments,
+        include_fuel_metrics=include_fuel_metrics,
     ).counters
     pricing = price_subscription_v2(
         subscription=subscription,

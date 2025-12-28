@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.billing_period import BillingPeriodType
 from app.models.fuel import FuelTransactionStatus
 from app.models.internal_ledger import InternalLedgerEntry
 from app.models.ledger_entry import LedgerDirection
+from app.models.money_flow_v3 import MoneyFlowLinkNodeType, MoneyFlowLinkType
 from app.schemas.fuel import DeclineCode
 from app.services.audit_service import AuditService, RequestContext
+from app.services.billing_periods import BillingPeriodService, period_bounds_for_dates
 from app.services.finance_invariants import rules as invariants_rules
 from app.services.fuel import events, repository
 from app.services.logistics import fuel_linker
 from app.services.internal_ledger import InternalLedgerService
+from app.services.money_flow.graph import MoneyFlowGraphBuilder, ensure_money_flow_links
 
 
 @dataclass(frozen=True)
@@ -56,6 +63,50 @@ def _validate_internal_ledger(db: Session, ledger_transaction_id: str, request_c
         raise FuelSettlementError(DeclineCode.INTERNAL_ERROR, "Ledger invariant violated")
 
 
+def _resolve_billing_period_id(db: Session, *, occurred_at) -> str:
+    tz = ZoneInfo(settings.NEFT_BILLING_TZ)
+    timestamp = occurred_at
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    local_date = timestamp.astimezone(tz).date()
+    period_start, period_end = period_bounds_for_dates(date_from=local_date, date_to=local_date, tz=settings.NEFT_BILLING_TZ)
+    period = BillingPeriodService(db).get_or_create(
+        period_type=BillingPeriodType.DAILY,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    return str(period.id)
+
+
+def _write_money_flow_links(db: Session, *, transaction, ledger_transaction_id: str | None) -> None:
+    billing_period_id = _resolve_billing_period_id(db, occurred_at=transaction.occurred_at)
+    builder = MoneyFlowGraphBuilder(tenant_id=transaction.tenant_id, client_id=transaction.client_id)
+    if ledger_transaction_id:
+        builder.add_link(
+            src_type=MoneyFlowLinkNodeType.FUEL_TX,
+            src_id=str(transaction.id),
+            link_type=MoneyFlowLinkType.POSTS,
+            dst_type=MoneyFlowLinkNodeType.LEDGER_TX,
+            dst_id=str(ledger_transaction_id),
+            meta={"status": transaction.status.value},
+        )
+    builder.add_link(
+        src_type=MoneyFlowLinkNodeType.FUEL_TX,
+        src_id=str(transaction.id),
+        link_type=MoneyFlowLinkType.RELATES,
+        dst_type=MoneyFlowLinkNodeType.BILLING_PERIOD,
+        dst_id=billing_period_id,
+        meta={"occurred_at": transaction.occurred_at.isoformat()},
+    )
+    ensure_money_flow_links(
+        db,
+        tenant_id=transaction.tenant_id,
+        client_id=transaction.client_id,
+        links=builder.build(),
+    )
+
+
 def settle_fuel_tx(
     db: Session,
     *,
@@ -97,6 +148,7 @@ def settle_fuel_tx(
     transaction.status = FuelTransactionStatus.SETTLED
     transaction.ledger_transaction_id = ledger_tx.id
     transaction.external_settlement_ref = external_settlement_ref
+    _write_money_flow_links(db, transaction=transaction, ledger_transaction_id=str(ledger_tx.id))
     db.commit()
     db.refresh(transaction)
 
@@ -156,6 +208,7 @@ def reverse_fuel_tx(
     transaction.status = FuelTransactionStatus.REVERSED
     transaction.ledger_transaction_id = ledger_tx.id
     transaction.external_reverse_ref = external_ref
+    _write_money_flow_links(db, transaction=transaction, ledger_transaction_id=str(ledger_tx.id))
     db.commit()
     db.refresh(transaction)
 

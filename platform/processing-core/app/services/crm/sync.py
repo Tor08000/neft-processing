@@ -31,6 +31,7 @@ def disable_contract_features(db: Session, *, contract: CRMContract, request_ctx
         CRMFeatureFlagType.DOCUMENTS_ENABLED,
         CRMFeatureFlagType.RISK_BLOCKING_ENABLED,
         CRMFeatureFlagType.ACCOUNTING_EXPORT_ENABLED,
+        CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
     ):
         repository.set_feature_flag(
             db,
@@ -159,6 +160,7 @@ def _apply_feature_flags(db: Session, *, contract: CRMContract, request_ctx: Req
         CRMFeatureFlagType.RISK_BLOCKING_ENABLED: _flag_from_payload("risk_blocking_enabled")
         or bool(contract.risk_profile_id),
         CRMFeatureFlagType.ACCOUNTING_EXPORT_ENABLED: _flag_from_payload("accounting_export_enabled"),
+        CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED: _flag_from_payload("subscription_meter_fuel_enabled"),
     }
     if not enable_map[CRMFeatureFlagType.FUEL_ENABLED]:
         enable_map[CRMFeatureFlagType.FUEL_ENABLED] = True
@@ -195,6 +197,10 @@ def _resolve_tariff_domains(tariff) -> dict[str, bool]:
             "documents_enabled": bool(tariff.features.get("docs") or tariff.features.get("documents")),
             "accounting_export_enabled": bool(tariff.features.get("export") or tariff.features.get("accounting")),
             "risk_blocking_enabled": bool(tariff.features.get("risk")),
+            "subscription_meter_fuel_enabled": bool(
+                tariff.features.get("subscription_meter_fuel_enabled")
+                or tariff.features.get("subscription_meter_fuel")
+            ),
         }
     return {}
 

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
@@ -10,15 +11,32 @@ from app.models.documents import Document, DocumentType
 from app.models.invoice import Invoice
 from app.models.crm import (
     CRMBillingCycle,
+    CRMBillingPeriod,
+    CRMClient,
+    CRMClientStatus,
+    CRMFeatureFlag,
+    CRMFeatureFlagType,
     CRMSubscription,
     CRMSubscriptionPeriodSegment,
     CRMSubscriptionSegmentStatus,
     CRMSubscriptionStatus,
+    CRMTariffPlan,
+    CRMTariffStatus,
     CRMUsageCounter,
     CRMUsageMetric,
 )
 from app.services.crm.subscription_billing import run_subscription_billing
 from app.services.crm.subscription_pricing_engine import price_subscription
+from app.models.fuel import (
+    FuelCard,
+    FuelCardStatus,
+    FuelNetwork,
+    FuelNetworkStatus,
+    FuelStation,
+    FuelStationStatus,
+    FuelTransaction,
+    FuelTransactionStatus,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -247,6 +265,161 @@ def test_invoice_idempotent(admin_auth_headers):
         run_subscription_billing(session, billing_period_id=str(period.id))
         invoices = session.query(Invoice).filter(Invoice.client_id == "client-1").all()
         assert len(invoices) == 1
+    finally:
+        session.close()
+
+
+def test_subscription_fuel_usage_optional_feature_flag():
+    session = SessionLocal()
+    try:
+        session.add(
+            CRMClient(
+                id="client-1",
+                tenant_id=1,
+                legal_name="Client",
+                country="RU",
+                status=CRMClientStatus.ACTIVE,
+            )
+        )
+        session.add(
+            CRMTariffPlan(
+                id="FUEL_TARIFF",
+                name="Fuel Tariff",
+                status=CRMTariffStatus.ACTIVE,
+                billing_period=CRMBillingPeriod.MONTHLY,
+                base_fee_minor=0,
+                currency="RUB",
+                definition={
+                    "base_fee": {"amount_minor": 0, "currency": "RUB"},
+                    "included": {"fuel_tx": 0},
+                    "overage": {"fuel_tx": {"unit_price_minor": 100}},
+                },
+            )
+        )
+        subscription = CRMSubscription(
+            tenant_id=1,
+            client_id="client-1",
+            tariff_plan_id="FUEL_TARIFF",
+            status=CRMSubscriptionStatus.ACTIVE,
+            billing_cycle=CRMBillingCycle.MONTHLY,
+            billing_day=1,
+            started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+        session.add(subscription)
+
+        network = FuelNetwork(id=str(uuid4()), name="Net", provider_code="NET", status=FuelNetworkStatus.ACTIVE)
+        station = FuelStation(
+            network_id=network.id,
+            station_network_id=None,
+            station_code="ST-1",
+            name="Station",
+            country="RU",
+            region="RU",
+            city="SPB",
+            lat="0",
+            lon="0",
+            status=FuelStationStatus.ACTIVE,
+        )
+        card = FuelCard(
+            id=str(uuid4()),
+            tenant_id=1,
+            client_id="client-1",
+            card_token="card-1",
+            status=FuelCardStatus.ACTIVE,
+        )
+        session.add_all([network, station, card])
+        session.commit()
+
+        period_jan = BillingPeriod(
+            period_type=BillingPeriodType.MONTHLY,
+            start_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            end_at=datetime(2025, 1, 31, tzinfo=timezone.utc),
+            tz="UTC",
+        )
+        period_feb = BillingPeriod(
+            period_type=BillingPeriodType.MONTHLY,
+            start_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
+            end_at=datetime(2025, 2, 28, tzinfo=timezone.utc),
+            tz="UTC",
+        )
+        session.add_all([period_jan, period_feb])
+        session.commit()
+
+        session.add_all(
+            [
+                FuelTransaction(
+                    tenant_id=1,
+                    client_id="client-1",
+                    card_id=card.id,
+                    station_id=station.id,
+                    network_id=network.id,
+                    occurred_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
+                    fuel_type="DIESEL",
+                    volume_ml=10000,
+                    unit_price_minor=500,
+                    amount_total_minor=5000,
+                    currency="RUB",
+                    status=FuelTransactionStatus.SETTLED,
+                ),
+                FuelTransaction(
+                    tenant_id=1,
+                    client_id="client-1",
+                    card_id=card.id,
+                    station_id=station.id,
+                    network_id=network.id,
+                    occurred_at=datetime(2025, 2, 15, tzinfo=timezone.utc),
+                    fuel_type="DIESEL",
+                    volume_ml=10000,
+                    unit_price_minor=500,
+                    amount_total_minor=5000,
+                    currency="RUB",
+                    status=FuelTransactionStatus.SETTLED,
+                ),
+            ]
+        )
+        session.add(
+            CRMFeatureFlag(
+                tenant_id=1,
+                client_id="client-1",
+                feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+                enabled=False,
+            )
+        )
+        session.commit()
+
+        run_subscription_billing(session, billing_period_id=str(period_jan.id))
+        jan_counters = (
+            session.query(CRMUsageCounter)
+            .filter(CRMUsageCounter.subscription_id == subscription.id)
+            .filter(CRMUsageCounter.billing_period_id == str(period_jan.id))
+            .all()
+        )
+        assert all(counter.metric != CRMUsageMetric.FUEL_TX_COUNT for counter in jan_counters)
+
+        flag = (
+            session.query(CRMFeatureFlag)
+            .filter(CRMFeatureFlag.client_id == "client-1")
+            .filter(CRMFeatureFlag.feature == CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED)
+            .one()
+        )
+        flag.enabled = True
+        session.add(flag)
+        session.commit()
+
+        run_subscription_billing(session, billing_period_id=str(period_feb.id))
+        feb_counters = (
+            session.query(CRMUsageCounter)
+            .filter(CRMUsageCounter.subscription_id == subscription.id)
+            .filter(CRMUsageCounter.billing_period_id == str(period_feb.id))
+            .all()
+        )
+        assert any(counter.metric == CRMUsageMetric.FUEL_TX_COUNT for counter in feb_counters)
+        feb_invoice = (
+            session.query(Invoice)
+            .filter(Invoice.billing_period_id == str(period_feb.id))
+            .one()
+        )
+        assert int(feb_invoice.total_with_tax or 0) > 0
     finally:
         session.close()
 

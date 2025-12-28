@@ -3,11 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.crm import CRMSubscription, CRMFeatureFlagType
+from app.models.fuel import FuelTransaction, FuelTransactionStatus
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType, MoneyInvariantSnapshot
+from app.services.billing_periods import period_bounds_for_dates
+from app.services.crm import repository as crm_repository
+from app.services.crm.tariff_metrics import tariff_has_fuel_metrics
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.snapshots import snapshot_status
 
@@ -53,6 +59,51 @@ class CFOExplainResponse:
     links: CFOExplainLinks
     snapshots: CFOExplainSnapshotStatus
     anomalies: list[str]
+    fuel: dict[str, Any] | None
+
+
+def _should_include_fuel_metrics(db: Session, *, subscription: CRMSubscription | None) -> bool:
+    if subscription is None:
+        return False
+    tariff = crm_repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    if not tariff:
+        return False
+    if not tariff_has_fuel_metrics(tariff.definition or {}):
+        return False
+    fuel_flag = crm_repository.get_feature_flag(
+        db,
+        tenant_id=subscription.tenant_id,
+        client_id=subscription.client_id,
+        feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+    )
+    return bool(fuel_flag.enabled) if fuel_flag else False
+
+
+def _fuel_totals_for_invoice(db: Session, *, invoice: Invoice) -> dict[str, int]:
+    start_at, end_at = period_bounds_for_dates(
+        date_from=invoice.period_from,
+        date_to=invoice.period_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    totals = (
+        db.execute(
+            select(
+                func.count(FuelTransaction.id),
+                func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+                func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0),
+            )
+            .where(FuelTransaction.client_id == invoice.client_id)
+            .where(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+            .where(FuelTransaction.occurred_at >= start_at)
+            .where(FuelTransaction.occurred_at <= end_at)
+        )
+        .one()
+    )
+    return {
+        "tx_count": int(totals[0] or 0),
+        "volume_ml": int(totals[1] or 0),
+        "amount_minor": int(totals[2] or 0),
+    }
 
 
 def _classify_line(line: InvoiceLine) -> str:
@@ -126,6 +177,19 @@ def build_cfo_explain(db: Session, *, invoice_id: str) -> CFOExplainResponse:
         .all()
     )
     links_summary = _build_links(links)
+    subscription_link = next(
+        (
+            link
+            for link in links
+            if link.src_type == MoneyFlowLinkNodeType.SUBSCRIPTION
+            and link.dst_type == MoneyFlowLinkNodeType.INVOICE
+            and link.link_type == MoneyFlowLinkType.GENERATES
+        ),
+        None,
+    )
+    subscription = None
+    if subscription_link:
+        subscription = db.get(CRMSubscription, subscription_link.src_id)
 
     snapshots = (
         db.execute(select(MoneyInvariantSnapshot).where(MoneyInvariantSnapshot.flow_ref_id == invoice_id))
@@ -148,6 +212,22 @@ def build_cfo_explain(db: Session, *, invoice_id: str) -> CFOExplainResponse:
     if not snapshot_status_obj.passed:
         anomalies.append("snapshot_invariants_failed")
 
+    fuel_payload = None
+    if _should_include_fuel_metrics(db, subscription=subscription):
+        fuel_totals = _fuel_totals_for_invoice(db, invoice=invoice)
+        fuel_link_ids = [
+            str(link.id)
+            for link in links
+            if link.src_type == MoneyFlowLinkNodeType.FUEL_TX
+            and link.link_type == MoneyFlowLinkType.FEEDS
+            and link.dst_type == MoneyFlowLinkNodeType.INVOICE
+        ]
+        fuel_payload = {
+            **fuel_totals,
+            "link_ids": sorted(set(fuel_link_ids)),
+            "replay": {"status": "not_run"},
+        }
+
     return CFOExplainResponse(
         invoice_id=invoice.id,
         client_id=invoice.client_id,
@@ -161,6 +241,7 @@ def build_cfo_explain(db: Session, *, invoice_id: str) -> CFOExplainResponse:
         links=links_summary,
         snapshots=snapshot_status_obj,
         anomalies=anomalies,
+        fuel=fuel_payload,
     )
 
 

@@ -25,6 +25,7 @@ def collect_usage(
     period_start: datetime,
     period_end: datetime,
     included: dict[str, int | None] | None = None,
+    include_fuel_metrics: bool = False,
 ) -> UsageResult:
     included = included or {}
     counters: list[CRMUsageCounter] = []
@@ -80,37 +81,38 @@ def collect_usage(
         )
     )
 
-    fuel_counts = (
-        db.query(
-            func.count(FuelTransaction.id),
-            func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+    if include_fuel_metrics:
+        fuel_counts = (
+            db.query(
+                func.count(FuelTransaction.id),
+                func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+            )
+            .filter(FuelTransaction.client_id == subscription.client_id)
+            .filter(FuelTransaction.occurred_at >= period_start)
+            .filter(FuelTransaction.occurred_at <= period_end)
+            .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+            .one()
         )
-        .filter(FuelTransaction.client_id == subscription.client_id)
-        .filter(FuelTransaction.occurred_at >= period_start)
-        .filter(FuelTransaction.occurred_at <= period_end)
-        .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
-        .one()
-    )
-    fuel_tx_count = int(fuel_counts[0] or 0)
-    fuel_volume = int(fuel_counts[1] or 0)
-    counters.append(
-        CRMUsageCounter(
-            subscription_id=subscription.id,
-            billing_period_id=billing_period_id,
-            metric=CRMUsageMetric.FUEL_TX_COUNT,
-            value=fuel_tx_count,
-            limit_value=included.get("fuel_tx"),
+        fuel_tx_count = int(fuel_counts[0] or 0)
+        fuel_volume = int(fuel_counts[1] or 0)
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                metric=CRMUsageMetric.FUEL_TX_COUNT,
+                value=fuel_tx_count,
+                limit_value=included.get("fuel_tx"),
+            )
         )
-    )
-    counters.append(
-        CRMUsageCounter(
-            subscription_id=subscription.id,
-            billing_period_id=billing_period_id,
-            metric=CRMUsageMetric.FUEL_VOLUME,
-            value=fuel_volume,
-            limit_value=included.get("fuel_volume"),
+        counters.append(
+            CRMUsageCounter(
+                subscription_id=subscription.id,
+                billing_period_id=billing_period_id,
+                metric=CRMUsageMetric.FUEL_VOLUME,
+                value=fuel_volume,
+                limit_value=included.get("fuel_volume"),
+            )
         )
-    )
 
     logistics_orders = (
         db.query(LogisticsOrder)
@@ -145,6 +147,7 @@ def collect_usage_by_segments(
     subscription: CRMSubscription,
     billing_period_id: str,
     segments: list[CRMSubscriptionPeriodSegment],
+    include_fuel_metrics: bool = False,
 ) -> UsageSegmentResult:
     counters: list[CRMUsageCounter] = []
     for segment in segments:
@@ -198,37 +201,38 @@ def collect_usage_by_segments(
                 value=drivers_count,
             )
         )
-        fuel_counts = (
-            db.query(
-                func.count(FuelTransaction.id),
-                func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+        if include_fuel_metrics:
+            fuel_counts = (
+                db.query(
+                    func.count(FuelTransaction.id),
+                    func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+                )
+                .filter(FuelTransaction.client_id == subscription.client_id)
+                .filter(FuelTransaction.occurred_at >= segment_start)
+                .filter(FuelTransaction.occurred_at <= segment_end)
+                .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+                .one()
             )
-            .filter(FuelTransaction.client_id == subscription.client_id)
-            .filter(FuelTransaction.occurred_at >= segment_start)
-            .filter(FuelTransaction.occurred_at <= segment_end)
-            .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
-            .one()
-        )
-        fuel_tx_count = int(fuel_counts[0] or 0)
-        fuel_volume = int(fuel_counts[1] or 0)
-        counters.append(
-            CRMUsageCounter(
-                subscription_id=subscription.id,
-                billing_period_id=billing_period_id,
-                segment_id=segment.id,
-                metric=CRMUsageMetric.FUEL_TX_COUNT,
-                value=fuel_tx_count,
+            fuel_tx_count = int(fuel_counts[0] or 0)
+            fuel_volume = int(fuel_counts[1] or 0)
+            counters.append(
+                CRMUsageCounter(
+                    subscription_id=subscription.id,
+                    billing_period_id=billing_period_id,
+                    segment_id=segment.id,
+                    metric=CRMUsageMetric.FUEL_TX_COUNT,
+                    value=fuel_tx_count,
+                )
             )
-        )
-        counters.append(
-            CRMUsageCounter(
-                subscription_id=subscription.id,
-                billing_period_id=billing_period_id,
-                segment_id=segment.id,
-                metric=CRMUsageMetric.FUEL_VOLUME,
-                value=fuel_volume,
+            counters.append(
+                CRMUsageCounter(
+                    subscription_id=subscription.id,
+                    billing_period_id=billing_period_id,
+                    segment_id=segment.id,
+                    metric=CRMUsageMetric.FUEL_VOLUME,
+                    value=fuel_volume,
+                )
             )
-        )
         logistics_orders = (
             db.query(LogisticsOrder)
             .filter(LogisticsOrder.client_id == subscription.client_id)

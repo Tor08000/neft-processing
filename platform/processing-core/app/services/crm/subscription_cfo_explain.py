@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.crm import CRMSubscription
+from app.models.crm import CRMFeatureFlagType, CRMSubscription
 from app.models.documents import Document
+from app.models.fuel import FuelTransaction, FuelTransactionStatus
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerTransaction
 from app.models.invoice import Invoice
 from app.models.money_flow import MoneyFlowEvent
-from app.models.money_flow_v3 import MoneyFlowLink, MoneyInvariantSnapshot
+from app.models.money_flow_v3 import MoneyFlowLink, MoneyFlowLinkNodeType, MoneyFlowLinkType, MoneyInvariantSnapshot
 from app.services.crm import repository
+from app.services.crm.tariff_metrics import tariff_has_fuel_metrics
 from app.services.money_flow.snapshots import snapshot_status
 from app.services.money_flow.states import MoneyFlowType
 
@@ -32,6 +34,21 @@ def build_subscription_cfo_explain(
     subscription = db.get(CRMSubscription, subscription_id)
     if subscription is None:
         raise ValueError("subscription not found")
+
+    period = repository.get_billing_period(db, billing_period_id=billing_period_id)
+    if period is None:
+        raise ValueError("billing period not found")
+
+    tariff = repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    fuel_flag = repository.get_feature_flag(
+        db,
+        tenant_id=subscription.tenant_id,
+        client_id=subscription.client_id,
+        feature=CRMFeatureFlagType.SUBSCRIPTION_METER_FUEL_ENABLED,
+    )
+    include_fuel_metrics = bool(fuel_flag.enabled) if fuel_flag else False
+    if not tariff_has_fuel_metrics(tariff.definition if tariff else {}):
+        include_fuel_metrics = False
 
     segments = repository.list_subscription_segments(
         db,
@@ -188,6 +205,37 @@ def build_subscription_cfo_explain(
 
     snapshot_summary = snapshot_status(snapshots)
 
+    fuel_payload = None
+    if include_fuel_metrics:
+        fuel_totals = (
+            db.execute(
+                select(
+                    func.count(FuelTransaction.id),
+                    func.coalesce(func.sum(FuelTransaction.volume_ml), 0),
+                    func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0),
+                )
+                .where(FuelTransaction.client_id == subscription.client_id)
+                .where(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+                .where(FuelTransaction.occurred_at >= period.start_at)
+                .where(FuelTransaction.occurred_at <= period.end_at)
+            )
+            .one()
+        )
+        fuel_link_ids = [
+            str(link.id)
+            for link in links
+            if link.src_type == MoneyFlowLinkNodeType.FUEL_TX
+            and link.link_type == MoneyFlowLinkType.FEEDS
+            and link.dst_type == MoneyFlowLinkNodeType.INVOICE
+        ]
+        fuel_payload = {
+            "tx_count": int(fuel_totals[0] or 0),
+            "volume_ml": int(fuel_totals[1] or 0),
+            "amount_minor": int(fuel_totals[2] or 0),
+            "link_ids": sorted(set(fuel_link_ids)),
+            "replay": replay_payload,
+        }
+
     return {
         "subscription_id": subscription_id,
         "billing_period_id": billing_period_id,
@@ -200,6 +248,7 @@ def build_subscription_cfo_explain(
         "money_flow": money_flow_summary,
         "snapshots": snapshot_summary,
         "replay": replay_payload,
+        "fuel": fuel_payload,
         "charge_ids": [str(charge.id) for charge in charges],
         "counter_ids": [str(counter.id) for counter in counters],
         "money_flow_event_ids": [str(event.id) for event in money_flow_events],
