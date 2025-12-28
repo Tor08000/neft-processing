@@ -28,6 +28,12 @@ export const Layout: React.FC = () => {
     { to: "/integration", label: "Integration Monitoring" },
     { to: "/analytics/risk", label: "Risk analytics" },
     { to: "/risk/rules", label: "Risk rules" },
+    { to: "/crm/clients", label: "CRM · Clients" },
+    { to: "/crm/contracts", label: "CRM · Contracts" },
+    { to: "/crm/tariffs", label: "CRM · Tariffs" },
+    { to: "/crm/subscriptions", label: "CRM · Subscriptions" },
+    { to: "/money/health", label: "Money · Health" },
+    { to: "/money/replay", label: "Money · Replay" },
     ...(user && hasPayoutAccess(user.roles) ? [{ to: "/finance/payouts", label: "Finance · Payouts" }] : []),
   ];
 
