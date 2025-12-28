@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import ensure_pg_enum, ensure_pg_enum_value, table_exists
 from app.db.schema import resolve_db_schema
@@ -38,6 +39,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "logistics_deviation_severity", LOGISTICS_DEVIATION_SEVERITY, schema=SCHEMA)
     ensure_pg_enum(bind, "logistics_fuel_link_type", LOGISTICS_FUEL_LINK_TYPE, schema=SCHEMA)
     ensure_pg_enum(bind, "logistics_risk_signal_type", LOGISTICS_RISK_SIGNAL_TYPE, schema=SCHEMA)
+    ensure_pg_enum(bind, "logistics_eta_method", LOGISTICS_ETA_METHOD, schema=SCHEMA)
 
     ensure_pg_enum_value(bind, "legal_node_type", "LOGISTICS_DEVIATION_EVENT", schema=SCHEMA)
     ensure_pg_enum_value(bind, "legal_node_type", "LOGISTICS_RISK_SIGNAL", schema=SCHEMA)
@@ -66,7 +68,12 @@ def upgrade() -> None:
             sa.Column("route_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_routes.id"), nullable=False),
             sa.Column(
                 "event_type",
-                sa.Enum(*LOGISTICS_DEVIATION_EVENT_TYPE, name="logistics_deviation_event_type"),
+                postgresql.ENUM(
+                    *LOGISTICS_DEVIATION_EVENT_TYPE,
+                    name="logistics_deviation_event_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("ts", sa.DateTime(timezone=True), nullable=False),
@@ -76,7 +83,12 @@ def upgrade() -> None:
             sa.Column("stop_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_stops.id"), nullable=True),
             sa.Column(
                 "severity",
-                sa.Enum(*LOGISTICS_DEVIATION_SEVERITY, name="logistics_deviation_severity"),
+                postgresql.ENUM(
+                    *LOGISTICS_DEVIATION_SEVERITY,
+                    name="logistics_deviation_severity",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
                 nullable=False,
             ),
             sa.Column("explain", sa.JSON(), nullable=True),
@@ -100,7 +112,16 @@ def upgrade() -> None:
             sa.Column("eta_end_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("actual_end_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("error_minutes", sa.Integer, nullable=True),
-            sa.Column("method", sa.Enum(*LOGISTICS_ETA_METHOD, name="logistics_eta_method"), nullable=False),
+            sa.Column(
+                "method",
+                postgresql.ENUM(
+                    *LOGISTICS_ETA_METHOD,
+                    name="logistics_eta_method",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("confidence", sa.Integer, nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
             sa.PrimaryKeyConstraint("id"),
@@ -121,7 +142,16 @@ def upgrade() -> None:
             sa.Column("order_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_orders.id"), nullable=False),
             sa.Column("route_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_routes.id"), nullable=True),
             sa.Column("stop_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_stops.id"), nullable=True),
-            sa.Column("link_type", sa.Enum(*LOGISTICS_FUEL_LINK_TYPE, name="logistics_fuel_link_type"), nullable=False),
+            sa.Column(
+                "link_type",
+                postgresql.ENUM(
+                    *LOGISTICS_FUEL_LINK_TYPE,
+                    name="logistics_fuel_link_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("distance_to_stop_m", sa.Integer, nullable=True),
             sa.Column("time_delta_minutes", sa.Integer, nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -139,7 +169,16 @@ def upgrade() -> None:
             sa.Column("order_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.logistics_orders.id"), nullable=False),
             sa.Column("vehicle_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fleet_vehicles.id"), nullable=True),
             sa.Column("driver_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.fleet_drivers.id"), nullable=True),
-            sa.Column("signal_type", sa.Enum(*LOGISTICS_RISK_SIGNAL_TYPE, name="logistics_risk_signal_type"), nullable=False),
+            sa.Column(
+                "signal_type",
+                postgresql.ENUM(
+                    *LOGISTICS_RISK_SIGNAL_TYPE,
+                    name="logistics_risk_signal_type",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("severity", sa.Integer, nullable=False),
             sa.Column("ts", sa.DateTime(timezone=True), nullable=False),
             sa.Column("explain", sa.JSON(), nullable=True),
