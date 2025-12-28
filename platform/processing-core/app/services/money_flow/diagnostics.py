@@ -8,7 +8,15 @@ from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
 from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerTransaction
+from app.models.invoice import Invoice
 from app.models.money_flow import MoneyFlowEvent
+from app.models.money_flow_v3 import (
+    MoneyFlowLink,
+    MoneyFlowLinkNodeType,
+    MoneyFlowLinkType,
+    MoneyInvariantSnapshot,
+    MoneyInvariantSnapshotPhase,
+)
 from app.services.money_flow.states import MoneyFlowState
 
 
@@ -29,6 +37,10 @@ class MoneyHealthReport:
     stuck_authorized: int
     stuck_pending_settlement: int
     cross_period_anomalies: int
+    missing_money_flow_links: int
+    missing_snapshots: int
+    disconnected_graph: int
+    cfo_explain_not_ready: int
     top_offenders: list[MoneyHealthOffender]
 
 
@@ -147,8 +159,105 @@ def build_money_health(db: Session, *, stale_hours: int = 24) -> MoneyHealthRepo
         stuck_authorized=stuck_authorized,
         stuck_pending_settlement=stuck_pending_settlement,
         cross_period_anomalies=cross_period_anomalies,
+        missing_money_flow_links=_count_missing_links(db),
+        missing_snapshots=_count_missing_snapshots(db),
+        disconnected_graph=_count_disconnected_graph(db),
+        cfo_explain_not_ready=_count_cfo_not_ready(db),
         top_offenders=offenders[:20],
     )
+
+
+def _count_missing_links(db: Session) -> int:
+    invoices = db.execute(select(Invoice.id)).scalars().all()
+    if not invoices:
+        return 0
+    links = (
+        db.execute(
+            select(MoneyFlowLink).where(
+                (MoneyFlowLink.src_type == MoneyFlowLinkNodeType.INVOICE)
+                | (MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.INVOICE)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    linked_invoice_ids = {
+        link.src_id if link.src_type == MoneyFlowLinkNodeType.INVOICE else link.dst_id for link in links
+    }
+    return sum(1 for invoice_id in invoices if invoice_id not in linked_invoice_ids)
+
+
+def _count_missing_snapshots(db: Session) -> int:
+    events = db.execute(select(MoneyFlowEvent.id)).scalars().all()
+    if not events:
+        return 0
+    snapshots = (
+        db.execute(select(MoneyInvariantSnapshot).where(MoneyInvariantSnapshot.event_id.in_(events)))
+        .scalars()
+        .all()
+    )
+    phases_by_event: dict[str, set[MoneyInvariantSnapshotPhase]] = {}
+    for snapshot in snapshots:
+        phases_by_event.setdefault(str(snapshot.event_id), set()).add(snapshot.phase)
+    missing = 0
+    for event_id in events:
+        phases = phases_by_event.get(str(event_id), set())
+        if MoneyInvariantSnapshotPhase.BEFORE not in phases or MoneyInvariantSnapshotPhase.AFTER not in phases:
+            missing += 1
+    return missing
+
+
+def _count_disconnected_graph(db: Session) -> int:
+    invoices = db.execute(select(Invoice.id)).scalars().all()
+    if not invoices:
+        return 0
+    links = (
+        db.execute(
+            select(MoneyFlowLink).where(
+                (MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.INVOICE)
+                & (MoneyFlowLink.link_type == MoneyFlowLinkType.GENERATES)
+                & (MoneyFlowLink.src_type == MoneyFlowLinkNodeType.SUBSCRIPTION_CHARGE)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    connected = {link.dst_id for link in links}
+    return sum(1 for invoice_id in invoices if invoice_id not in connected)
+
+
+def _count_cfo_not_ready(db: Session) -> int:
+    invoices = db.execute(select(Invoice.id)).scalars().all()
+    if not invoices:
+        return 0
+    links = (
+        db.execute(
+            select(MoneyFlowLink).where(
+                (MoneyFlowLink.src_type == MoneyFlowLinkNodeType.INVOICE)
+                & (MoneyFlowLink.link_type == MoneyFlowLinkType.POSTS)
+                & (MoneyFlowLink.dst_type == MoneyFlowLinkNodeType.LEDGER_TX)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    ledger_ready = {link.src_id for link in links}
+    snapshots = (
+        db.execute(select(MoneyInvariantSnapshot).where(MoneyInvariantSnapshot.flow_ref_id.in_(invoices)))
+        .scalars()
+        .all()
+    )
+    snapshot_ready: dict[str, bool] = {}
+    for snapshot in snapshots:
+        if snapshot.passed is False:
+            snapshot_ready[snapshot.flow_ref_id] = False
+        else:
+            snapshot_ready.setdefault(snapshot.flow_ref_id, True)
+    not_ready = 0
+    for invoice_id in invoices:
+        if invoice_id not in ledger_ready or not snapshot_ready.get(invoice_id, False):
+            not_ready += 1
+    return not_ready
 
 
 __all__ = ["MoneyHealthOffender", "MoneyHealthReport", "build_money_health"]
