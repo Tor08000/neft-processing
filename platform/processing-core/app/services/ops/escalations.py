@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -42,8 +43,20 @@ def _build_idempotency_key(
     return sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _audit_payload(escalation: OpsEscalation) -> dict[str, Any]:
+def _actor_label(request_ctx: RequestContext | None) -> str | None:
+    if not request_ctx:
+        return None
+    return request_ctx.actor_id or request_ctx.actor_email or request_ctx.actor_type.value
+
+
+def _audit_payload(
+    escalation: OpsEscalation,
+    *,
+    reason: str | None = None,
+    actor: str | None = None,
+) -> dict[str, Any]:
     return {
+        "escalation_id": str(escalation.id),
         "target": escalation.target.value,
         "status": escalation.status.value,
         "priority": escalation.priority.value,
@@ -54,6 +67,9 @@ def _audit_payload(escalation: OpsEscalation) -> dict[str, Any]:
         "source": escalation.source.value,
         "sla_started_at": escalation.sla_started_at,
         "sla_expires_at": escalation.sla_expires_at,
+        "snapshot_hash": escalation.unified_explain_snapshot_hash,
+        "actor": actor,
+        "reason": reason,
     }
 
 
@@ -75,6 +91,8 @@ def create_escalation_if_missing(
     created_by_actor_email: str | None = None,
     meta: dict[str, Any] | None = None,
     idempotency_key: str | None = None,
+    unified_explain_snapshot_hash: str,
+    unified_explain_snapshot: dict[str, Any],
     audit: AuditService | None = None,
     request_ctx: RequestContext | None = None,
 ) -> EscalationCreateResult:
@@ -91,6 +109,9 @@ def create_escalation_if_missing(
     if existing:
         return EscalationCreateResult(escalation=existing, created=False)
 
+    if not unified_explain_snapshot_hash or unified_explain_snapshot is None:
+        raise ValueError("unified_explain_snapshot_required")
+
     escalation = OpsEscalation(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -106,6 +127,8 @@ def create_escalation_if_missing(
         created_by_actor_type=created_by_actor_type,
         created_by_actor_id=created_by_actor_id,
         created_by_actor_email=created_by_actor_email,
+        unified_explain_snapshot_hash=unified_explain_snapshot_hash,
+        unified_explain_snapshot=unified_explain_snapshot,
         meta=meta,
         idempotency_key=resolved_key,
     )
@@ -125,7 +148,7 @@ def create_escalation_if_missing(
             entity_type="ops_escalation",
             entity_id=str(escalation.id),
             action="CREATE",
-            after=_audit_payload(escalation),
+            after=_audit_payload(escalation, actor=_actor_label(request_ctx)),
             request_ctx=request_ctx,
         )
     return EscalationCreateResult(escalation=escalation, created=True)
@@ -135,13 +158,20 @@ def ack_escalation(
     db: Session,
     *,
     escalation: OpsEscalation,
+    reason: str,
+    actor: str | None,
     audit: AuditService | None = None,
     request_ctx: RequestContext | None = None,
 ) -> OpsEscalation:
-    if escalation.status != OpsEscalationStatus.CLOSED:
-        escalation.status = OpsEscalationStatus.ACK
+    if not reason or not reason.strip():
+        raise ValueError("ack_reason_required")
+    if escalation.status != OpsEscalationStatus.OPEN:
+        raise ValueError("invalid_state")
+    escalation.status = OpsEscalationStatus.ACK
     if escalation.acked_at is None:
         escalation.acked_at = datetime.now(timezone.utc)
+    escalation.acked_by = actor
+    escalation.ack_reason = reason.strip()
     db.flush()
 
     if audit and request_ctx:
@@ -150,7 +180,12 @@ def ack_escalation(
             entity_type="ops_escalation",
             entity_id=str(escalation.id),
             action="ACK",
-            after=_audit_payload(escalation),
+            after=_audit_payload(
+                escalation,
+                reason=escalation.ack_reason,
+                actor=_actor_label(request_ctx),
+            ),
+            reason=escalation.ack_reason,
             request_ctx=request_ctx,
         )
     return escalation
@@ -160,12 +195,23 @@ def close_escalation(
     db: Session,
     *,
     escalation: OpsEscalation,
+    reason: str,
+    actor: str | None,
+    allow_from_open: bool = False,
     audit: AuditService | None = None,
     request_ctx: RequestContext | None = None,
 ) -> OpsEscalation:
+    if not reason or not reason.strip():
+        raise ValueError("close_reason_required")
+    if escalation.status == OpsEscalationStatus.CLOSED:
+        raise ValueError("invalid_state")
+    if escalation.status == OpsEscalationStatus.OPEN and not allow_from_open:
+        raise PermissionError("forbidden")
     escalation.status = OpsEscalationStatus.CLOSED
     if escalation.closed_at is None:
         escalation.closed_at = datetime.now(timezone.utc)
+    escalation.closed_by = actor
+    escalation.close_reason = reason.strip()
     db.flush()
 
     if audit and request_ctx:
@@ -174,7 +220,12 @@ def close_escalation(
             entity_type="ops_escalation",
             entity_id=str(escalation.id),
             action="CLOSE",
-            after=_audit_payload(escalation),
+            after=_audit_payload(
+                escalation,
+                reason=escalation.close_reason,
+                actor=_actor_label(request_ctx),
+            ),
+            reason=escalation.close_reason,
             request_ctx=request_ctx,
         )
     return escalation
@@ -186,6 +237,8 @@ def list_escalations(
     tenant_id: int,
     target: OpsEscalationTarget | None = None,
     status: OpsEscalationStatus | None = None,
+    primary_reason: PrimaryReason | None = None,
+    overdue: bool | None = None,
     client_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -195,8 +248,26 @@ def list_escalations(
         query = query.filter(OpsEscalation.target == target)
     if status:
         query = query.filter(OpsEscalation.status == status)
+    if primary_reason:
+        query = query.filter(OpsEscalation.primary_reason == primary_reason)
     if client_id:
         query = query.filter(OpsEscalation.client_id == client_id)
+    if overdue is True:
+        now = datetime.now(timezone.utc)
+        query = query.filter(
+            OpsEscalation.sla_expires_at.isnot(None),
+            OpsEscalation.sla_expires_at <= now,
+            OpsEscalation.status != OpsEscalationStatus.CLOSED,
+        )
+    elif overdue is False:
+        now = datetime.now(timezone.utc)
+        query = query.filter(
+            or_(
+                OpsEscalation.sla_expires_at.is_(None),
+                OpsEscalation.sla_expires_at > now,
+                OpsEscalation.status == OpsEscalationStatus.CLOSED,
+            )
+        )
     total = query.count()
     items = (
         query.order_by(OpsEscalation.created_at.desc())
@@ -297,10 +368,26 @@ def scan_explain_sla_expiry(
             created_by_actor_id=None,
             created_by_actor_email=None,
             meta=meta,
+            unified_explain_snapshot_hash=snapshot.snapshot_hash,
+            unified_explain_snapshot=snapshot.snapshot_json,
             audit=audit,
             request_ctx=request_ctx,
         )
         if result.created:
+            if audit:
+                audit.audit(
+                    event_type="OPS_ESCALATION_SLA_EXPIRED",
+                    entity_type="ops_escalation",
+                    entity_id=str(result.escalation.id),
+                    action="ESCALATE",
+                    after=_audit_payload(
+                        result.escalation,
+                        reason="sla_expired",
+                        actor=_actor_label(request_ctx),
+                    ),
+                    reason="sla_expired",
+                    request_ctx=request_ctx,
+                )
             created_escalations.append(result.escalation)
     return created_escalations
 

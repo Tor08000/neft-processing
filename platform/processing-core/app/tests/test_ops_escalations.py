@@ -42,6 +42,8 @@ def test_create_escalation_idempotent(db_session: Session):
         subject_id="inv-1",
         source=OpsEscalationSource.MANUAL_FROM_EXPLAIN,
         client_id="client-1",
+        unified_explain_snapshot_hash="snap-1",
+        unified_explain_snapshot={"primary_reason": "MONEY"},
     )
     db_session.commit()
 
@@ -56,6 +58,8 @@ def test_create_escalation_idempotent(db_session: Session):
         source=OpsEscalationSource.MANUAL_FROM_EXPLAIN,
         client_id="client-1",
         idempotency_key=result.escalation.idempotency_key,
+        unified_explain_snapshot_hash="snap-1",
+        unified_explain_snapshot={"primary_reason": "MONEY"},
     )
     db_session.commit()
 
