@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import ensure_pg_enum, ensure_pg_enum_value, table_exists
 from app.db.schema import resolve_db_schema
@@ -33,6 +34,13 @@ FUEL_TYPE = ["DIESEL", "AI-92", "AI-95", "AI-98", "GAS", "OTHER"]
 FLEET_VEHICLE_STATUS = ["ACTIVE", "INACTIVE"]
 FLEET_DRIVER_STATUS = ["ACTIVE", "INACTIVE"]
 FUEL_CARD_GROUP_STATUS = ["ACTIVE", "INACTIVE"]
+
+FLEET_VEHICLE_STATUS_ENUM = postgresql.ENUM(
+    *FLEET_VEHICLE_STATUS,
+    name="fleet_vehicle_status",
+    schema=SCHEMA,
+    create_type=False,
+)
 
 
 def upgrade() -> None:
@@ -71,7 +79,7 @@ def upgrade() -> None:
             sa.Column("tank_capacity_liters", sa.BigInteger, nullable=True),
             sa.Column(
                 "status",
-                sa.Enum(*FLEET_VEHICLE_STATUS, name="fleet_vehicle_status"),
+                FLEET_VEHICLE_STATUS_ENUM,
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
