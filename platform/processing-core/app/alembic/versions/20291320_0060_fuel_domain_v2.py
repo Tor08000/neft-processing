@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import column_exists, create_index_if_not_exists, ensure_pg_enum_value, table_exists
 from app.db.schema import resolve_db_schema
@@ -61,7 +62,11 @@ def upgrade() -> None:
     if not column_exists(bind, "fuel_limits", "fuel_type_code", schema=SCHEMA):
         op.add_column(
             "fuel_limits",
-            sa.Column("fuel_type_code", sa.Enum(name="fuel_type"), nullable=True),
+            sa.Column(
+                "fuel_type_code",
+                postgresql.ENUM(name="fuel_type", schema=SCHEMA, create_type=False),
+                nullable=True,
+            ),
             schema=SCHEMA,
         )
     if not column_exists(bind, "fuel_limits", "station_id", schema=SCHEMA):

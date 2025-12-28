@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import ensure_pg_enum, table_exists
 from app.db.schema import resolve_db_schema
@@ -59,7 +60,16 @@ def upgrade() -> None:
             sa.Column("kpp", sa.String(32), nullable=True),
             sa.Column("country", sa.String(2), nullable=False),
             sa.Column("timezone", sa.String(64), nullable=False, server_default="Europe/Moscow"),
-            sa.Column("status", sa.Enum(*CRM_CLIENT_STATUS, name="crm_client_status"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_CLIENT_STATUS,
+                    name="crm_client_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("meta", sa.JSON, nullable=True),
@@ -75,7 +85,16 @@ def upgrade() -> None:
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("name", sa.String(128), nullable=False),
-            sa.Column("status", sa.Enum(*CRM_PROFILE_STATUS, name="crm_profile_status"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_PROFILE_STATUS,
+                    name="crm_profile_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("definition", sa.JSON, nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.PrimaryKeyConstraint("id"),
@@ -89,7 +108,16 @@ def upgrade() -> None:
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("name", sa.String(128), nullable=False),
-            sa.Column("status", sa.Enum(*CRM_PROFILE_STATUS, name="crm_profile_status"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_PROFILE_STATUS,
+                    name="crm_profile_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("risk_policy_id", sa.String(64), nullable=False),
             sa.Column("threshold_set_id", sa.String(64), nullable=True),
             sa.Column("shadow_enabled", sa.Boolean, nullable=False, server_default=sa.text("false")),
@@ -107,10 +135,28 @@ def upgrade() -> None:
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("client_id", sa.String(64), sa.ForeignKey(f"{SCHEMA}.crm_clients.id"), nullable=False),
             sa.Column("contract_number", sa.String(128), nullable=False),
-            sa.Column("status", sa.Enum(*CRM_CONTRACT_STATUS, name="crm_contract_status"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_CONTRACT_STATUS,
+                    name="crm_contract_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True),
             sa.Column("valid_to", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("billing_mode", sa.Enum(*CRM_BILLING_MODE, name="crm_billing_mode"), nullable=False),
+            sa.Column(
+                "billing_mode",
+                postgresql.ENUM(
+                    *CRM_BILLING_MODE,
+                    name="crm_billing_mode",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("currency", sa.String(3), nullable=False),
             sa.Column("risk_profile_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.crm_risk_profiles.id"), nullable=True),
             sa.Column("limit_profile_id", sa.String(36), sa.ForeignKey(f"{SCHEMA}.crm_limit_profiles.id"), nullable=True),
@@ -128,8 +174,26 @@ def upgrade() -> None:
             sa.Column("id", sa.String(64), primary_key=True),
             sa.Column("name", sa.String(128), nullable=False),
             sa.Column("description", sa.String(512), nullable=True),
-            sa.Column("status", sa.Enum(*CRM_TARIFF_STATUS, name="crm_tariff_status"), nullable=False),
-            sa.Column("billing_period", sa.Enum(*CRM_BILLING_PERIOD, name="crm_billing_period"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_TARIFF_STATUS,
+                    name="crm_tariff_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
+            sa.Column(
+                "billing_period",
+                postgresql.ENUM(
+                    *CRM_BILLING_PERIOD,
+                    name="crm_billing_period",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("base_fee_minor", sa.BigInteger, nullable=False, server_default="0"),
             sa.Column("currency", sa.String(3), nullable=False),
             sa.Column("features", sa.JSON, nullable=True),
@@ -146,7 +210,16 @@ def upgrade() -> None:
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("client_id", sa.String(64), sa.ForeignKey(f"{SCHEMA}.crm_clients.id"), nullable=False),
             sa.Column("tariff_id", sa.String(64), sa.ForeignKey(f"{SCHEMA}.crm_tariff_plans.id"), nullable=False),
-            sa.Column("status", sa.Enum(*CRM_SUBSCRIPTION_STATUS, name="crm_subscription_status"), nullable=False),
+            sa.Column(
+                "status",
+                postgresql.ENUM(
+                    *CRM_SUBSCRIPTION_STATUS,
+                    name="crm_subscription_status",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("renew_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
@@ -164,7 +237,16 @@ def upgrade() -> None:
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("tenant_id", sa.Integer, nullable=False),
             sa.Column("client_id", sa.String(64), sa.ForeignKey(f"{SCHEMA}.crm_clients.id"), nullable=False),
-            sa.Column("feature", sa.Enum(*CRM_FEATURE_FLAG, name="crm_feature_flag"), nullable=False),
+            sa.Column(
+                "feature",
+                postgresql.ENUM(
+                    *CRM_FEATURE_FLAG,
+                    name="crm_feature_flag",
+                    schema=SCHEMA,
+                    create_type=False,
+                ),
+                nullable=False,
+            ),
             sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("false")),
             sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             sa.Column("updated_by", sa.String(64), nullable=True),
