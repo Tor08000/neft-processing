@@ -88,8 +88,11 @@ export function ClientDocumentDetailsPage() {
     );
   }
 
+  const risk = document.risk ?? null;
+  const riskState = risk?.state ?? null;
+  const riskDecisionId = risk?.decision_id ?? null;
+  const riskDecidedAt = risk?.decided_at ?? null;
   const riskExplain = document.risk_explain ?? null;
-  const riskState = document.risk?.state ?? null;
   const riskThresholds = riskExplain?.thresholds ?? null;
   const riskFactors = riskExplain?.factors ?? null;
   const riskDecisionHash = riskExplain?.decision_hash ?? null;
@@ -143,21 +146,21 @@ export function ClientDocumentDetailsPage() {
         </div>
       </div>
 
-      {document.risk ? (
+      {risk ? (
         <div className="card__section">
           <h3>Risk v4</h3>
           <div className="meta-grid">
             <div>
               <div className="label">Статус</div>
-              <div>{document.risk.state}</div>
+              <div>{riskState ?? "—"}</div>
             </div>
             <div>
               <div className="label">Decision ID</div>
-              <div>{document.risk.decision_id ?? "—"}</div>
+              <div>{riskDecisionId ?? "—"}</div>
             </div>
             <div>
               <div className="label">Дата решения</div>
-              <div>{document.risk.decided_at ? formatDateTime(document.risk.decided_at) : "—"}</div>
+              <div>{riskDecidedAt ? formatDateTime(riskDecidedAt) : "—"}</div>
             </div>
             <div>
               <div className="label">Decision hash</div>
