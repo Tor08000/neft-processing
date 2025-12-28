@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.fuel import FuelTransactionStatus
 from app.models.legal_graph import LegalNodeType
+from app.models.unified_explain import PrimaryReason
 from app.schemas.admin.unified_explain import (
     UnifiedExplainIds,
     UnifiedExplainResponse,
@@ -15,6 +16,7 @@ from app.schemas.admin.unified_explain import (
 )
 from app.services.explain import formatters, sources
 from app.services.explain.errors import UnifiedExplainNotFound, UnifiedExplainValidationError
+from app.services.explain.priority import PRIMARY_REASON_PRIORITY
 from app.services.explain.snapshot import build_snapshot_payload, persist_snapshot
 from app.services.money_flow.states import MoneyFlowType
 
@@ -116,7 +118,6 @@ def _build_payload(
         )
         result = UnifiedExplainResult(
             status=STATUS_MAP.get(tx.status, tx.status.value),
-            primary_reason=_primary_reason_from_fuel(tx),
             decline_code=tx.decline_code,
         )
 
@@ -175,6 +176,11 @@ def _build_payload(
         if graph_section:
             sections["graph"] = graph_section
 
+        _apply_primary_reasons(
+            result,
+            sections=sections,
+            decline_code=tx.decline_code,
+        )
         return subject, result, sections, ids, tx.tenant_id
 
     if order_id:
@@ -190,7 +196,7 @@ def _build_payload(
             vehicle_id=str(order.vehicle_id) if order.vehicle_id else None,
             driver_id=str(order.driver_id) if order.driver_id else None,
         )
-        result = UnifiedExplainResult(status=order.status.value, primary_reason=None, decline_code=None)
+        result = UnifiedExplainResult(status=order.status.value, decline_code=None)
 
         link = sources.get_order_link(db, order_id=str(order.id))
         logistics_section = sources.build_logistics_section(
@@ -234,6 +240,11 @@ def _build_payload(
         if graph_section:
             sections["graph"] = graph_section
 
+        _apply_primary_reasons(
+            result,
+            sections=sections,
+            decline_code=None,
+        )
         return subject, result, sections, ids, order.tenant_id
 
     if invoice_id:
@@ -249,7 +260,7 @@ def _build_payload(
             vehicle_id=None,
             driver_id=None,
         )
-        result = UnifiedExplainResult(status=invoice.status.value, primary_reason=None, decline_code=None)
+        result = UnifiedExplainResult(status=invoice.status.value, decline_code=None)
 
         money_section = sources.build_money_section_for_invoice(db, invoice_id=str(invoice.id))
         if money_section:
@@ -261,25 +272,116 @@ def _build_payload(
             ids.document_ids = document_ids
         ids.invoice_id = str(invoice.id)
 
+        _apply_primary_reasons(
+            result,
+            sections=sections,
+            decline_code=None,
+        )
         return subject, result, sections, ids, None
 
     raise UnifiedExplainValidationError("explain_subject_missing")
 
 
-def _primary_reason_from_fuel(tx: Any) -> str | None:
-    if tx.status == FuelTransactionStatus.REVIEW_REQUIRED:
-        return "RISK_REVIEW"
-    if tx.decline_code:
-        if str(tx.decline_code).startswith("LIMIT"):
-            return "LIMIT_EXCEEDED"
-        if str(tx.decline_code).startswith("RISK"):
-            return "RISK_BLOCK"
-    meta = tx.meta or {}
-    if meta.get("limit_explain"):
-        return "LIMIT_EXCEEDED"
-    if meta.get("risk_explain"):
-        return "RISK_BLOCK"
-    return None
+def _apply_primary_reasons(
+    result: UnifiedExplainResult,
+    *,
+    sections: dict[str, Any],
+    decline_code: str | None,
+) -> None:
+    detected_reasons = _collect_reasons(sections=sections, decline_code=decline_code)
+    primary_reason, secondary_reasons = resolve_primary_reasons(detected_reasons)
+    result.primary_reason = primary_reason
+    result.secondary_reasons = secondary_reasons
 
 
-__all__ = ["build_unified_explain"]
+def _collect_reasons(
+    *,
+    sections: dict[str, Any],
+    decline_code: str | None,
+) -> set[PrimaryReason]:
+    reasons: set[PrimaryReason] = set()
+
+    if _has_limit_reason(decline_code=decline_code, sections=sections):
+        reasons.add(PrimaryReason.LIMIT)
+    if _has_risk_reason(sections=sections):
+        reasons.add(PrimaryReason.RISK)
+    if _has_logistics_reason(sections=sections):
+        reasons.add(PrimaryReason.LOGISTICS)
+    if _has_money_reason(sections=sections):
+        reasons.add(PrimaryReason.MONEY)
+    if _has_policy_reason(decline_code=decline_code, sections=sections):
+        reasons.add(PrimaryReason.POLICY)
+
+    return reasons
+
+
+def resolve_primary_reasons(
+    detected_reasons: set[PrimaryReason],
+) -> tuple[PrimaryReason, list[PrimaryReason]]:
+    primary_reason = PrimaryReason.UNKNOWN
+    for reason in PRIMARY_REASON_PRIORITY:
+        if reason in detected_reasons:
+            primary_reason = reason
+            break
+    if primary_reason == PrimaryReason.UNKNOWN:
+        return primary_reason, []
+
+    secondary_reasons = [
+        reason for reason in PRIMARY_REASON_PRIORITY if reason in detected_reasons and reason != primary_reason
+    ]
+    return primary_reason, secondary_reasons
+
+
+def _has_limit_reason(*, decline_code: str | None, sections: dict[str, Any]) -> bool:
+    if decline_code and str(decline_code).startswith("LIMIT_"):
+        return True
+    return bool(sections.get("limits"))
+
+
+def _has_risk_reason(*, sections: dict[str, Any]) -> bool:
+    risk_section = sections.get("risk")
+    if not isinstance(risk_section, dict):
+        return False
+    decision = risk_section.get("decision")
+    if not decision:
+        return False
+    decision_value = str(decision).upper()
+    return decision_value in {"BLOCK", "REVIEW", "REVIEW_REQUIRED", "ALLOW_WITH_REVIEW"}
+
+
+def _has_logistics_reason(*, sections: dict[str, Any]) -> bool:
+    logistics_section = sections.get("logistics")
+    if not isinstance(logistics_section, dict):
+        return False
+    deviation_events = logistics_section.get("deviation_events", [])
+    if isinstance(deviation_events, list) and deviation_events:
+        return True
+    risk_signals = logistics_section.get("risk_signals", [])
+    if isinstance(risk_signals, list):
+        for signal in risk_signals:
+            if str(signal.get("signal_type", "")).upper() in {"FUEL_OFF_ROUTE", "ETA_ANOMALY"}:
+                return True
+    return False
+
+
+def _has_money_reason(*, sections: dict[str, Any]) -> bool:
+    money_section = sections.get("money")
+    if not isinstance(money_section, dict):
+        return False
+    flow_state = money_section.get("flow_state")
+    if flow_state and str(flow_state).upper() in {"FAILED", "BLOCKED"}:
+        return True
+    invariants = money_section.get("invariants")
+    if isinstance(invariants, dict) and invariants.get("passed") is False:
+        return True
+    return False
+
+
+def _has_policy_reason(*, decline_code: str | None, sections: dict[str, Any]) -> bool:
+    if decline_code and str(decline_code).upper() == "ACCESS_DENIED":
+        return True
+    policy_section = sections.get("policy")
+    return bool(policy_section)
+
+
+__all__ = ["build_unified_explain", "resolve_primary_reasons"]

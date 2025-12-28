@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.unified_explain import PrimaryReason
+
 
 class UnifiedExplainView(str, Enum):
     FLEET = "FLEET"
@@ -27,7 +29,8 @@ class UnifiedExplainResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str
-    primary_reason: str | None = None
+    primary_reason: PrimaryReason = PrimaryReason.UNKNOWN
+    secondary_reasons: list[PrimaryReason] = Field(default_factory=list)
     decline_code: str | None = None
 
 
