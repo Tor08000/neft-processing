@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field, Field
 
 from app.models.ops import (
     OpsEscalationPriority,
@@ -11,6 +12,7 @@ from app.models.ops import (
     OpsEscalationTarget,
 )
 from app.models.unified_explain import PrimaryReason
+from app.services.explain.sla import SLA_DEFINITIONS
 
 
 class OpsEscalationOut(BaseModel):
@@ -30,11 +32,50 @@ class OpsEscalationOut(BaseModel):
     sla_expires_at: datetime | None
     created_at: datetime
     acked_at: datetime | None
+    acked_by: str | None
+    ack_reason: str | None
     closed_at: datetime | None
+    closed_by: str | None
+    close_reason: str | None
     created_by_actor_type: str | None
     created_by_actor_id: str | None
     created_by_actor_email: str | None
+    unified_explain_snapshot_hash: str | None
+    unified_explain_snapshot: dict[str, Any] | None
     meta: dict | None
+
+    def _ensure_timezone(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    @computed_field
+    @property
+    def sla_due_at(self) -> datetime | None:
+        if self.sla_expires_at:
+            return self._ensure_timezone(self.sla_expires_at)
+        if not self.sla_started_at:
+            return None
+        definition = SLA_DEFINITIONS.get(self.primary_reason)
+        if not definition:
+            return None
+        return self._ensure_timezone(self.sla_started_at) + timedelta(minutes=definition.timeout_minutes)
+
+    @computed_field
+    @property
+    def sla_overdue(self) -> bool:
+        if not self.sla_due_at or self.status == OpsEscalationStatus.CLOSED:
+            return False
+        now = datetime.now(timezone.utc)
+        return now > self._ensure_timezone(self.sla_due_at)
+
+    @computed_field
+    @property
+    def sla_elapsed_seconds(self) -> int | None:
+        if not self.sla_started_at:
+            return None
+        now = datetime.now(timezone.utc)
+        return int((now - self._ensure_timezone(self.sla_started_at)).total_seconds())
 
 
 class OpsEscalationListResponse(BaseModel):
@@ -52,4 +93,34 @@ class OpsEscalationScanResponse(BaseModel):
     created: int
 
 
-__all__ = ["OpsEscalationListResponse", "OpsEscalationOut", "OpsEscalationScanResponse"]
+class OpsEscalationActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+
+
+class OpsEscalationSLAReportReason(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total: int
+    overdue: int
+
+
+class OpsEscalationSLAReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: str
+    total: int
+    closed_within_sla: int
+    overdue: int
+    by_primary_reason: dict[PrimaryReason, OpsEscalationSLAReportReason]
+
+
+__all__ = [
+    "OpsEscalationActionRequest",
+    "OpsEscalationListResponse",
+    "OpsEscalationOut",
+    "OpsEscalationScanResponse",
+    "OpsEscalationSLAReport",
+    "OpsEscalationSLAReportReason",
+]
