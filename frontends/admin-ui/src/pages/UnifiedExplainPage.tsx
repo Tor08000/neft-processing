@@ -36,6 +36,7 @@ type UnifiedExplainPayload = {
     snapshot_hash?: string | null;
   };
   sections?: Record<string, unknown>;
+  recommendations?: string[];
   actions?: UnifiedExplainAction[];
   sla?: {
     started_at: string;
@@ -129,6 +130,7 @@ export const UnifiedExplainPage = () => {
 
   const actions = payload?.actions ?? [];
   const secondaryReasons = payload?.secondary_reasons ?? [];
+  const recommendations = payload?.recommendations ?? [];
   const visibleSecondary = showSecondaryAll ? secondaryReasons : secondaryReasons.slice(0, 2);
   const remainingSecondary = secondaryReasons.length - visibleSecondary.length;
 
@@ -147,6 +149,26 @@ export const UnifiedExplainPage = () => {
       | undefined;
     return moneySection?.period_id || moneySection?.billing_period_id || moneySection?.period?.id || null;
   };
+
+  const moneySummary = payload?.sections?.money as
+    | {
+        charged?: number;
+        paid?: number;
+        due?: number;
+        refunded?: number;
+        invariants?: string;
+        replay_link?: string | null;
+      }
+    | undefined;
+  const crmSection = payload?.sections?.crm as
+    | {
+        tariff?: string | null;
+        subscription_status?: string | null;
+        metrics_used?: Record<string, number>;
+        feature_flags?: Record<string, boolean>;
+        decision_basis?: string | null;
+      }
+    | undefined;
 
   const resolveActionLink = (action: UnifiedExplainAction) => {
     const clientId = payload?.subject?.client_id;
@@ -281,7 +303,7 @@ export const UnifiedExplainPage = () => {
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <span
               style={{
-                background: "#0f172a",
+                background: "#2563eb",
                 color: "#f8fafc",
                 padding: "4px 10px",
                 borderRadius: 999,
@@ -290,6 +312,7 @@ export const UnifiedExplainPage = () => {
             >
               {payload.primary_reason}
             </span>
+            <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>PRIMARY</span>
             <button
               type="button"
               onClick={handleCopy}
@@ -388,6 +411,79 @@ export const UnifiedExplainPage = () => {
               <div style={{ color: "#64748b" }}>Нет доступных действий</div>
             )}
           </div>
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Recommendations</div>
+            {recommendations.length ? (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {recommendations.map((rec) => (
+                  <li key={rec}>{rec}</li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ color: "#64748b" }}>Нет рекомендаций</div>
+            )}
+          </div>
+
+          {moneySummary ? (
+            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Money summary</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Charged</div>
+                  <div>{moneySummary.charged ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Paid</div>
+                  <div>{moneySummary.paid ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Due</div>
+                  <div>{moneySummary.due ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Refunded</div>
+                  <div>{moneySummary.refunded ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Invariants</div>
+                  <div>{moneySummary.invariants ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Replay</div>
+                  <div>{moneySummary.replay_link ?? "—"}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {crmSection ? (
+            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>CRM</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Tariff</div>
+                  <div>{crmSection.tariff ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Subscription</div>
+                  <div>{crmSection.subscription_status ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Decision basis</div>
+                  <div>{crmSection.decision_basis ?? "—"}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Metrics used</div>
+                <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.metrics_used ?? {}, null, 2)}</pre>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Feature flags</div>
+                <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.feature_flags ?? {}, null, 2)}</pre>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

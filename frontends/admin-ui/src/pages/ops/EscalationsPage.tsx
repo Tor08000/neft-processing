@@ -13,6 +13,7 @@ type OpsEscalation = {
   status: string;
   priority: string;
   primary_reason: string;
+  reason_code: string;
   subject_type: string;
   subject_id: string;
   sla_expires_at: string | null;
@@ -235,6 +236,7 @@ export const EscalationsPage: React.FC = () => {
                   <th style={{ padding: "8px 6px" }}>created_at</th>
                   <th style={{ padding: "8px 6px" }}>target</th>
                   <th style={{ padding: "8px 6px" }}>primary_reason</th>
+                  <th style={{ padding: "8px 6px" }}>reason_code</th>
                   <th style={{ padding: "8px 6px" }}>SLA</th>
                   <th style={{ padding: "8px 6px" }}>status</th>
                   <th style={{ padding: "8px 6px" }}>subject</th>
@@ -249,6 +251,7 @@ export const EscalationsPage: React.FC = () => {
                       status: item.status,
                       priority: item.priority,
                       primary_reason: item.primary_reason,
+                      reason_code: item.reason_code,
                       subject_type: item.subject_type,
                       subject_id: item.subject_id,
                       sla_due_at: item.sla_due_at,

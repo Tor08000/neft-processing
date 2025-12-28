@@ -2,52 +2,74 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { request } from "../../api/http";
 import { useAuth } from "../../auth/AuthContext";
 import { DateRangePicker } from "../../components/common/DateRangePicker";
-import { SummaryCard } from "../../components/SummaryCard/SummaryCard";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 
-const toNumber = (value: number | null | undefined) => (value === null || value === undefined ? "—" : value);
-
 type OpsKpiResponse = {
-  totals: {
-    opened: number;
-    acked: number;
-    closed: number;
-    overdue: number;
-  };
-  sla: {
-    closed_within_sla: number;
-    avg_time_to_ack_minutes: number | null;
-    avg_time_to_close_minutes: number | null;
-  };
-  breakdown: {
-    by_primary_reason: Record<string, number>;
-    by_target: Record<string, number>;
-    by_close_reason_code: Record<string, number>;
-    by_ack_reason_code: Record<string, number>;
-  };
+  by_reason: Record<
+    string,
+    {
+      open: number;
+      sla_violations?: number | null;
+      avg_resolution_hours?: number | null;
+    }
+  >;
+  by_team: Record<string, { open: number }>;
 };
 
-const BreakdownTable: React.FC<{ title: string; data: Record<string, number> }> = ({ title, data }) => {
+const ReasonTable: React.FC<{ data: OpsKpiResponse["by_reason"] }> = ({ data }) => {
   const rows = Object.entries(data);
   return (
     <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <h3 style={{ marginTop: 0 }}>By reason code</h3>
       {rows.length ? (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0" }}>
-              <th style={{ padding: "8px 6px" }}>Reason</th>
-              <th style={{ padding: "8px 6px" }}>Count</th>
+              <th style={{ padding: "8px 6px" }}>Reason code</th>
+              <th style={{ padding: "8px 6px" }}>Open</th>
+              <th style={{ padding: "8px 6px" }}>SLA violations</th>
+              <th style={{ padding: "8px 6px" }}>Avg resolution (hrs)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(([key, value]) => (
               <tr key={key}>
                 <td style={{ padding: "6px" }}>{key}</td>
-                <td style={{ padding: "6px" }}>{value}</td>
+                <td style={{ padding: "6px" }}>{value.open}</td>
+                <td style={{ padding: "6px" }}>{value.sla_violations ?? "—"}</td>
+                <td style={{ padding: "6px" }}>{value.avg_resolution_hours ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div style={{ color: "#94a3b8" }}>Нет данных</div>
+      )}
+    </div>
+  );
+};
+
+const TeamTable: React.FC<{ data: OpsKpiResponse["by_team"] }> = ({ data }) => {
+  const rows = Object.entries(data);
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
+      <h3 style={{ marginTop: 0 }}>By team</h3>
+      {rows.length ? (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0" }}>
+              <th style={{ padding: "8px 6px" }}>Team</th>
+              <th style={{ padding: "8px 6px" }}>Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([key, value]) => (
+              <tr key={key}>
+                <td style={{ padding: "6px" }}>{key}</td>
+                <td style={{ padding: "6px" }}>{value.open}</td>
               </tr>
             ))}
           </tbody>
@@ -122,34 +144,9 @@ export const KpiPage: React.FC = () => {
         <div>Loading...</div>
       ) : payload ? (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-            <SummaryCard title="Opened" value={payload.totals.opened} description="Открыто за период" />
-            <SummaryCard title="Acked" value={payload.totals.acked} description="Подтверждено" />
-            <SummaryCard title="Closed" value={payload.totals.closed} description="Закрыто" />
-            <SummaryCard title="Overdue" value={payload.totals.overdue} description="Просрочено" />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-            <SummaryCard
-              title="Closed within SLA"
-              value={payload.sla.closed_within_sla}
-              description="Закрыто в SLA"
-            />
-            <SummaryCard
-              title="Avg time to ACK (мин)"
-              value={toNumber(payload.sla.avg_time_to_ack_minutes)}
-              description="Среднее время подтверждения"
-            />
-            <SummaryCard
-              title="Avg time to close (мин)"
-              value={toNumber(payload.sla.avg_time_to_close_minutes)}
-              description="Среднее время закрытия"
-            />
-          </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
-            <BreakdownTable title="By primary reason" data={payload.breakdown.by_primary_reason} />
-            <BreakdownTable title="By target" data={payload.breakdown.by_target} />
-            <BreakdownTable title="By close reason code" data={payload.breakdown.by_close_reason_code} />
-            <BreakdownTable title="By ack reason code" data={payload.breakdown.by_ack_reason_code} />
+            <ReasonTable data={payload.by_reason} />
+            <TeamTable data={payload.by_team} />
           </div>
         </>
       ) : (

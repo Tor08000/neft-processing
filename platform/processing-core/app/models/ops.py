@@ -66,6 +66,7 @@ class OpsEscalation(Base):
         nullable=False,
         index=True,
     )
+    reason_code = Column(String(64), nullable=False, index=True)
     subject_type = Column(String(64), nullable=False, index=True)
     subject_id = Column(String(128), nullable=False, index=True)
     source = Column(

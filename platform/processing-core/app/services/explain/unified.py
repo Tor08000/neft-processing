@@ -71,6 +71,12 @@ def build_unified_explain(
         documents_section=sections.get("documents"),
         driver_id=subject.driver_id,
     )
+    _apply_human_readable_sections(
+        selected_sections,
+        view=view,
+        recommendations=recommendations,
+        decline_code=result.decline_code,
+    )
 
     actions = build_actions(result.primary_reason)
     started_at = _parse_started_at(subject.ts)
@@ -184,6 +190,9 @@ def _build_payload(
 
         money_section = sources.build_money_section_for_fuel(db, fuel_tx_id=str(tx.id))
         if money_section:
+            money_summary = sources.build_money_summary_for_fuel(db, fuel_tx_id=str(tx.id))
+            if money_summary:
+                money_section.update(money_summary)
             sections["money"] = money_section
             ids.money_flow_event_ids = sources.load_money_flow_event_ids(
                 db, flow_type=MoneyFlowType.FUEL_TX, flow_ref_id=str(tx.id)
@@ -212,6 +221,9 @@ def _build_payload(
             sections=sections,
             decline_code=tx.decline_code,
         )
+        crm_section = sources.build_crm_section(db, tenant_id=tx.tenant_id, client_id=tx.client_id)
+        if crm_section:
+            sections["crm"] = crm_section
         return subject, result, sections, ids, tx.tenant_id
 
     if order_id:
@@ -259,6 +271,9 @@ def _build_payload(
                 ids.document_ids = document_ids
             money_section = sources.build_money_section_for_invoice(db, invoice_id=invoice_id)
             if money_section:
+                money_summary = sources.build_money_summary_for_invoice(db, invoice_id=invoice_id)
+                if money_summary:
+                    money_section.update(money_summary)
                 sections["money"] = money_section
 
         graph_section = sources.build_graph_section(
@@ -276,6 +291,9 @@ def _build_payload(
             sections=sections,
             decline_code=None,
         )
+        crm_section = sources.build_crm_section(db, tenant_id=order.tenant_id, client_id=order.client_id)
+        if crm_section:
+            sections["crm"] = crm_section
         return subject, result, sections, ids, order.tenant_id
 
     if invoice_id:
@@ -295,6 +313,9 @@ def _build_payload(
 
         money_section = sources.build_money_section_for_invoice(db, invoice_id=str(invoice.id))
         if money_section:
+            money_summary = sources.build_money_summary_for_invoice(db, invoice_id=str(invoice.id))
+            if money_summary:
+                money_section.update(money_summary)
             sections["money"] = money_section
 
         documents_section, document_ids = sources.build_documents_section(db, invoice_id=str(invoice.id))
@@ -308,6 +329,9 @@ def _build_payload(
             sections=sections,
             decline_code=None,
         )
+        crm_section = sources.build_crm_section(db, tenant_id=None, client_id=invoice.client_id)
+        if crm_section:
+            sections["crm"] = crm_section
         return subject, result, sections, ids, None
 
     raise UnifiedExplainValidationError("explain_subject_missing")
@@ -323,6 +347,60 @@ def _apply_primary_reasons(
     primary_reason, secondary_reasons = resolve_primary_reasons(detected_reasons)
     result.primary_reason = ensure_primary_reason_consistency(primary_reason, sections=sections)
     result.secondary_reasons = secondary_reasons
+
+
+def _apply_human_readable_sections(
+    sections: dict[str, Any],
+    *,
+    view: UnifiedExplainView,
+    recommendations: list[str],
+    decline_code: str | None,
+) -> None:
+    if view == UnifiedExplainView.FLEET:
+        logistics = sections.get("logistics")
+        if isinstance(logistics, dict):
+            where = logistics.get("where", {})
+            threshold = logistics.get("threshold", {})
+            stop_payload = where.get("stop") if isinstance(where, dict) else None
+            stop_label = None
+            if isinstance(stop_payload, dict):
+                stop_label = stop_payload.get("name") or stop_payload.get("id")
+            distance_km = where.get("distance_km") if isinstance(where, dict) else None
+            time_delta = logistics.get("time_delta_minutes")
+            where_parts = []
+            if stop_label:
+                where_parts.append(f"остановка {stop_label}")
+            if distance_km is not None:
+                where_parts.append(f"{distance_km} км")
+            if time_delta is not None:
+                where_parts.append(f"{time_delta} мин")
+            where_text = ", ".join(where_parts) if where_parts else "—"
+
+            rule_parts = []
+            if isinstance(threshold, dict):
+                if threshold.get("max_deviation_km") is not None:
+                    rule_parts.append(f"порог {threshold['max_deviation_km']} км")
+                if threshold.get("stop_radius_m") is not None:
+                    rule_parts.append(f"радиус {threshold['stop_radius_m']} м")
+                if threshold.get("allowed_window_min") is not None:
+                    rule_parts.append(f"окно {threshold['allowed_window_min']} мин")
+            rule_text = ", ".join(rule_parts) if rule_parts else "—"
+
+            logistics["summary"] = {
+                "where": where_text,
+                "rule": rule_text,
+                "recommendation": recommendations[0] if recommendations else None,
+            }
+    if view == UnifiedExplainView.ACCOUNTANT:
+        limits = sections.get("limits")
+        if isinstance(limits, dict):
+            limit_info = limits.get("limit") if isinstance(limits.get("limit"), dict) else {}
+            limits["summary"] = {
+                "limit_value": limits.get("limit_value"),
+                "period": limit_info.get("period") if isinstance(limit_info, dict) else None,
+                "reason": "Превышен лимит" if decline_code and str(decline_code).startswith("LIMIT_") else None,
+                "recommendation": recommendations[0] if recommendations else None,
+            }
 
 
 def _collect_reasons(
