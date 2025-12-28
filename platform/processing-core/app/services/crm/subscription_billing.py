@@ -15,14 +15,18 @@ from app.models.crm import (
 from app.models.documents import Document, DocumentStatus, DocumentType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.legal_graph import LegalEdgeType, LegalNodeType
+from app.models.money_flow import MoneyFlowEvent
 from app.services.audit_service import AuditService, RequestContext
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.crm import events, repository
-from app.services.crm.subscription_pricing_engine import price_subscription
-from app.services.crm.subscription_usage_collector import collect_usage
+from app.services.crm.subscription_pricing_engine import price_subscription, price_subscription_v2
+from app.services.crm.subscription_segments import ensure_segments_v2
+from app.services.crm.subscription_usage_collector import collect_usage, collect_usage_by_segments
 from app.services.internal_ledger import InternalLedgerService
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
 from app.services.legal_graph.registry import LegalGraphRegistry
+from app.services.money_flow.events import MoneyFlowEventType
+from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
 
 
 def run_subscription_billing(
@@ -182,6 +186,88 @@ def run_subscription_billing(
     return invoices
 
 
+def run_subscription_billing_v2(
+    db: Session,
+    *,
+    billing_period_id: str,
+    request_ctx: RequestContext | None = None,
+) -> list[Invoice]:
+    period = db.query(BillingPeriod).filter(BillingPeriod.id == billing_period_id).one_or_none()
+    if not period:
+        raise ValueError("billing period not found")
+
+    subscriptions = repository.list_subscriptions(
+        db,
+        client_id=None,
+        status=[CRMSubscriptionStatus.ACTIVE, CRMSubscriptionStatus.PAUSED],
+        limit=1000,
+    )
+    invoices: list[Invoice] = []
+    for subscription in subscriptions:
+        tariff = repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+        tariff_definition = _resolve_tariff_definition(tariff)
+        if tariff_definition.get("version") != 2:
+            continue
+        if subscription.started_at > period.end_at:
+            continue
+        if subscription.ended_at and subscription.ended_at < period.start_at:
+            continue
+        with db.begin_nested():
+            segments = ensure_segments_v2(db, subscription=subscription, period=period)
+            if not segments:
+                continue
+            counters = collect_usage_by_segments(
+                db,
+                subscription=subscription,
+                billing_period_id=str(period.id),
+                segments=segments,
+            ).counters
+            pricing_result = price_subscription_v2(
+                subscription=subscription,
+                billing_period_id=str(period.id),
+                segments=segments,
+                counters=counters,
+                tariff_definition=tariff_definition,
+                period_start=period.start_at,
+                period_end=period.end_at,
+            )
+            _persist_usage_counters(
+                db,
+                subscription_id=str(subscription.id),
+                billing_period_id=str(period.id),
+                counters=counters,
+            )
+            charges = _persist_charges_v2(
+                db,
+                subscription_id=str(subscription.id),
+                billing_period_id=str(period.id),
+                charges=pricing_result.charges,
+            )
+            invoice = _create_subscription_invoice_v2(
+                db,
+                subscription_id=str(subscription.id),
+                client_id=subscription.client_id,
+                billing_period_id=str(period.id),
+                period_from=period.start_at.date(),
+                period_to=period.end_at.date(),
+                charges=charges,
+                currency=_resolve_currency(tariff_definition),
+                tenant_id=subscription.tenant_id,
+                request_ctx=request_ctx,
+            )
+            invoices.append(invoice)
+            _ensure_money_flow_event(
+                db,
+                subscription_id=str(subscription.id),
+                period_id=str(period.id),
+                invoice_id=invoice.id,
+                client_id=subscription.client_id,
+                tenant_id=subscription.tenant_id,
+            )
+        db.commit()
+    return invoices
+
+
 def _create_subscription_invoice(
     db: Session,
     *,
@@ -268,6 +354,70 @@ def _create_subscription_invoice(
             after={"reason": str(exc)},
             request_ctx=request_ctx,
         )
+    db.flush()
+    InternalLedgerService(db).post_invoice_issued(invoice=invoice, tenant_id=tenant_id)
+    return invoice
+
+
+def _create_subscription_invoice_v2(
+    db: Session,
+    *,
+    subscription_id: str,
+    client_id: str,
+    billing_period_id: str,
+    period_from,
+    period_to,
+    charges,
+    currency: str,
+    tenant_id: int,
+    request_ctx: RequestContext | None,
+) -> Invoice:
+    idempotency_key = f"subscription:{subscription_id}:period:{billing_period_id}:v2"
+    invoice = db.query(Invoice).filter(Invoice.external_number == idempotency_key).one_or_none()
+    if invoice:
+        return invoice
+    invoice = Invoice(
+        client_id=client_id,
+        period_from=period_from,
+        period_to=period_to,
+        currency=currency,
+        billing_period_id=billing_period_id,
+        status=InvoiceStatus.DRAFT,
+        external_number=idempotency_key,
+    )
+    db.add(invoice)
+    db.flush()
+    lines = []
+    for charge in charges:
+        operation_id = charge.charge_key or f"subscription:{subscription_id}:{charge.code}"
+        lines.append(
+            InvoiceLine(
+                invoice_id=invoice.id,
+                operation_id=operation_id,
+                product_id=charge.code,
+                liters=None,
+                unit_price=charge.unit_price,
+                line_amount=charge.amount,
+                tax_amount=0,
+            )
+        )
+    invoice.lines = lines
+    invoice.total_amount = sum(int(line.line_amount or 0) for line in lines)
+    invoice.tax_amount = 0
+    invoice.total_with_tax = invoice.total_amount
+    invoice.amount_due = invoice.total_amount
+    db.add(invoice)
+    try:
+        InvoiceStateMachine(invoice, db=db).transition(
+            to=InvoiceStatus.ISSUED,
+            actor="subscription_billing_v2",
+            reason="subscription_billing_v2",
+            request_ctx=request_ctx,
+        )
+    except InvalidTransitionError:
+        invoice.status = InvoiceStatus.ISSUED
+        invoice.issued_at = datetime.now(timezone.utc)
+        db.add(invoice)
     db.flush()
     InternalLedgerService(db).post_invoice_issued(invoice=invoice, tenant_id=tenant_id)
     return invoice
@@ -396,6 +546,79 @@ def _resolve_tariff_definition(tariff) -> dict:
         "limit_profile_id": None,
         "version": 1,
     }
+
+
+def _persist_usage_counters(
+    db: Session,
+    *,
+    subscription_id: str,
+    billing_period_id: str,
+    counters,
+) -> None:
+    existing = repository.list_usage_counters(
+        db,
+        subscription_id=subscription_id,
+        billing_period_id=billing_period_id,
+    )
+    existing_keys = {(str(counter.segment_id), counter.metric.value) for counter in existing}
+    for counter in counters:
+        key = (str(counter.segment_id), counter.metric.value)
+        if key in existing_keys:
+            continue
+        repository.add_usage_counter(db, counter, auto_commit=False)
+
+
+def _persist_charges_v2(
+    db: Session,
+    *,
+    subscription_id: str,
+    billing_period_id: str,
+    charges,
+) -> list:
+    persisted = []
+    for charge in charges:
+        if charge.charge_key:
+            existing = repository.get_subscription_charge_by_key(
+                db,
+                subscription_id=subscription_id,
+                billing_period_id=billing_period_id,
+                charge_key=charge.charge_key,
+            )
+            if existing:
+                persisted.append(existing)
+                continue
+        repository.add_subscription_charge(db, charge, auto_commit=False)
+        persisted.append(charge)
+    return persisted
+
+
+def _ensure_money_flow_event(
+    db: Session,
+    *,
+    subscription_id: str,
+    period_id: str,
+    invoice_id: str,
+    client_id: str,
+    tenant_id: int,
+) -> MoneyFlowEvent:
+    idempotency_key = f"money:subscription:{subscription_id}:period:{period_id}:invoice:{invoice_id}:v2"
+    existing = db.query(MoneyFlowEvent).filter(MoneyFlowEvent.idempotency_key == idempotency_key).one_or_none()
+    if existing:
+        return existing
+    event = MoneyFlowEvent(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        flow_type=MoneyFlowType.SUBSCRIPTION_CHARGE,
+        flow_ref_id=invoice_id,
+        state_from=None,
+        state_to=MoneyFlowState.SETTLED,
+        event_type=MoneyFlowEventType.SETTLE,
+        idempotency_key=idempotency_key,
+        meta={"subscription_id": subscription_id, "billing_period_id": period_id},
+    )
+    db.add(event)
+    db.flush()
+    return event
 
 
 def _normalize_domains(features: dict | None) -> dict:
@@ -545,5 +768,6 @@ def _active_days(segments: list[CRMSubscriptionPeriodSegment]) -> int:
 __all__ = [
     "resolve_subscription_billing_period",
     "run_subscription_billing",
+    "run_subscription_billing_v2",
     "run_subscription_billing_job",
 ]

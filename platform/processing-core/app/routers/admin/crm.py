@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ from app.models.crm import (
     CRMFeatureFlagType,
     CRMProfileStatus,
     CRMSubscription,
+    CRMSubscriptionSegmentReason,
     CRMSubscriptionStatus,
     CRMTariffStatus,
 )
@@ -25,13 +28,22 @@ from app.schemas.crm import (
     CRMRiskProfileCreate,
     CRMRiskProfileOut,
     CRMSubscriptionCreate,
+    CRMSubscriptionChangeTariff,
     CRMSubscriptionOut,
+    CRMSubscriptionPreviewCharge,
+    CRMSubscriptionPreviewOut,
+    CRMSubscriptionPreviewSegment,
+    CRMSubscriptionPreviewUsage,
     CRMTariffCreate,
     CRMTariffOut,
     CRMTariffUpdate,
 )
 from app.services.audit_service import request_context_from_request
 from app.services.crm import clients, contracts, events, repository, settings, subscriptions, sync, tariffs
+from app.services.crm.subscription_explain import build_explain
+from app.services.crm.subscription_pricing_engine import price_subscription_v2
+from app.services.crm.subscription_segments import build_segments_v2, record_subscription_change
+from app.services.crm.subscription_usage_collector import collect_usage_by_segments
 
 router = APIRouter(prefix="/crm", tags=["admin", "crm"])
 
@@ -257,10 +269,167 @@ def resume_subscription_endpoint(
     subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription not found")
-    updated = subscriptions.set_subscription_status(
+    updated = record_subscription_change(
         db,
         subscription=subscription,
-        status=CRMSubscriptionStatus.ACTIVE,
+        event_type=CRMSubscriptionSegmentReason.RESUME,
+        effective_at=datetime.now(timezone.utc),
+    )
+    return CRMSubscriptionOut.model_validate(updated)
+
+
+@router.post("/subscriptions/{subscription_id}/preview-billing", response_model=CRMSubscriptionPreviewOut)
+def preview_subscription_billing_endpoint(
+    subscription_id: str,
+    period_id: str = Query(..., description="Billing period id"),
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionPreviewOut:
+    subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    period = repository.get_billing_period(db, billing_period_id=period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="billing period not found")
+    tariff = repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    if not tariff:
+        raise HTTPException(status_code=404, detail="tariff not found")
+    tariff_definition = tariff.definition or {}
+    segments = build_segments_v2(subscription=subscription, period=period)
+    counters = collect_usage_by_segments(
+        db,
+        subscription=subscription,
+        billing_period_id=str(period.id),
+        segments=segments,
+    ).counters
+    pricing = price_subscription_v2(
+        subscription=subscription,
+        billing_period_id=str(period.id),
+        segments=segments,
+        counters=counters,
+        tariff_definition=tariff_definition,
+        period_start=period.start_at,
+        period_end=period.end_at,
+    )
+    segment_payload = [
+        CRMSubscriptionPreviewSegment(
+            id=str(segment.id),
+            tariff_plan_id=segment.tariff_plan_id,
+            segment_start=segment.segment_start,
+            segment_end=segment.segment_end,
+            status=segment.status.value,
+            reason=segment.reason.value if segment.reason else None,
+            days_count=segment.days_count,
+        )
+        for segment in segments
+    ]
+    explain = build_explain(
+        segments=[segment.model_dump() for segment in segment_payload],
+        counters=counters,
+        charges=pricing.charges,
+    )
+    usage_payload = [CRMSubscriptionPreviewUsage(**item) for item in explain.usage]
+    charges_payload = [
+        CRMSubscriptionPreviewCharge(**{key: value for key, value in item.items() if key != "explain"})
+        for item in explain.charges
+    ]
+    return CRMSubscriptionPreviewOut(
+        segments=segment_payload,
+        usage=usage_payload,
+        charges=charges_payload,
+        total=explain.total,
+    )
+
+
+@router.post("/subscriptions/{subscription_id}/change-tariff", response_model=CRMSubscriptionOut)
+def change_subscription_tariff_endpoint(
+    request: Request,
+    subscription_id: str,
+    payload: CRMSubscriptionChangeTariff,
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionOut:
+    subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    current_tariff = repository.get_tariff(db, tariff_id=subscription.tariff_plan_id)
+    new_tariff = repository.get_tariff(db, tariff_id=payload.new_tariff_id)
+    if not new_tariff:
+        raise HTTPException(status_code=404, detail="tariff not found")
+    reason = CRMSubscriptionSegmentReason.UPGRADE
+    if current_tariff and new_tariff.base_fee_minor < current_tariff.base_fee_minor:
+        reason = CRMSubscriptionSegmentReason.DOWNGRADE
+    ctx = request_context_from_request(request)
+    updated = record_subscription_change(
+        db,
+        subscription=subscription,
+        event_type=reason,
+        effective_at=payload.effective_at,
+        tariff_plan_id=payload.new_tariff_id,
+    )
+    events.audit_event(
+        db,
+        event_type="CRM_SUBSCRIPTION_TARIFF_CHANGED",
+        entity_type="crm_subscription",
+        entity_id=str(subscription.id),
+        payload={"new_tariff_id": payload.new_tariff_id, "effective_at": payload.effective_at.isoformat()},
+        request_ctx=ctx,
+    )
+    return CRMSubscriptionOut.model_validate(updated)
+
+
+@router.post("/subscriptions/{subscription_id}/pause", response_model=CRMSubscriptionOut)
+def pause_subscription_v2_endpoint(
+    request: Request,
+    subscription_id: str,
+    effective_at: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionOut:
+    subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    ctx = request_context_from_request(request)
+    timestamp = effective_at or datetime.now(timezone.utc)
+    updated = record_subscription_change(
+        db,
+        subscription=subscription,
+        event_type=CRMSubscriptionSegmentReason.PAUSE,
+        effective_at=timestamp,
+    )
+    events.audit_event(
+        db,
+        event_type="CRM_SUBSCRIPTION_PAUSED",
+        entity_type="crm_subscription",
+        entity_id=str(subscription.id),
+        payload={"effective_at": timestamp.isoformat()},
+        request_ctx=ctx,
+    )
+    return CRMSubscriptionOut.model_validate(updated)
+
+
+@router.post("/subscriptions/{subscription_id}/cancel", response_model=CRMSubscriptionOut)
+def cancel_subscription_v2_endpoint(
+    request: Request,
+    subscription_id: str,
+    effective_at: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> CRMSubscriptionOut:
+    subscription = db.query(CRMSubscription).filter(CRMSubscription.id == subscription_id).one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    ctx = request_context_from_request(request)
+    timestamp = effective_at or datetime.now(timezone.utc)
+    updated = record_subscription_change(
+        db,
+        subscription=subscription,
+        event_type=CRMSubscriptionSegmentReason.CANCEL,
+        effective_at=timestamp,
+    )
+    events.audit_event(
+        db,
+        event_type="CRM_SUBSCRIPTION_CANCELLED",
+        entity_type="crm_subscription",
+        entity_id=str(subscription.id),
+        payload={"effective_at": timestamp.isoformat()},
+        request_ctx=ctx,
     )
     return CRMSubscriptionOut.model_validate(updated)
 

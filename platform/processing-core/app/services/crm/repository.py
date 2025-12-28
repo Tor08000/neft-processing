@@ -4,6 +4,7 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
+from app.models.billing_period import BillingPeriod
 from app.models.crm import (
     CRMBillingMode,
     CRMClient,
@@ -118,6 +119,10 @@ def get_tariff(db: Session, *, tariff_id: str) -> CRMTariffPlan | None:
     return db.query(CRMTariffPlan).filter(CRMTariffPlan.id == tariff_id).one_or_none()
 
 
+def get_billing_period(db: Session, *, billing_period_id: str) -> BillingPeriod | None:
+    return db.query(BillingPeriod).filter(BillingPeriod.id == billing_period_id).one_or_none()
+
+
 def update_tariff(db: Session, tariff: CRMTariffPlan) -> CRMTariffPlan:
     db.add(tariff)
     db.commit()
@@ -213,6 +218,22 @@ def list_subscription_charges(
         .filter(CRMSubscriptionCharge.billing_period_id == billing_period_id)
         .order_by(CRMSubscriptionCharge.created_at.asc())
         .all()
+    )
+
+
+def get_subscription_charge_by_key(
+    db: Session,
+    *,
+    subscription_id: str,
+    billing_period_id: str,
+    charge_key: str,
+) -> CRMSubscriptionCharge | None:
+    return (
+        db.query(CRMSubscriptionCharge)
+        .filter(CRMSubscriptionCharge.subscription_id == subscription_id)
+        .filter(CRMSubscriptionCharge.billing_period_id == billing_period_id)
+        .filter(CRMSubscriptionCharge.charge_key == charge_key)
+        .one_or_none()
     )
 
 
@@ -377,6 +398,7 @@ __all__ = [
     "add_tariff",
     "add_usage_counter",
     "get_active_subscription",
+    "get_billing_period",
     "get_client",
     "get_contract",
     "get_feature_flag",
@@ -392,6 +414,7 @@ __all__ = [
     "list_subscription_charges",
     "list_subscription_segments",
     "list_usage_counters",
+    "get_subscription_charge_by_key",
     "list_tariffs",
     "set_feature_flag",
     "update_client",
