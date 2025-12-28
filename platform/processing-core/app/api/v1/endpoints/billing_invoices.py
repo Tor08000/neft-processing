@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.client import client_portal_user
 from app.db import get_db
+from app.models.audit_log import ActorType, AuditVisibility
 from app.models.finance import CreditNote
 from app.models.invoice import Invoice
 from app.schemas.billing_invoices import (
@@ -22,7 +23,9 @@ from app.schemas.billing_invoices import (
     InvoiceRefundRequest,
     InvoiceRefundResponse,
 )
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.billing_invoice_service import close_clearing_period, generate_invoice_for_batch
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.finance import (
     FinanceOperationInProgress,
@@ -33,13 +36,18 @@ from app.services.finance import (
 )
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
 from app.services.job_locks import make_stable_key
+from app.services.policy import PolicyAccessDenied
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
 
 
 @router.post("/billing/close-period", response_model=ClosePeriodResponse)
-def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get_db)) -> ClosePeriodResponse:
+def close_period_endpoint(
+    payload: ClosePeriodRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ClosePeriodResponse:
     try:
         batch = close_clearing_period(
             db,
@@ -51,6 +59,16 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
         if str(exc) == "invalid_period":
             raise HTTPException(status_code=422, detail="invalid period") from exc
         raise
+    except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_CLOSE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="CLOSE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request),
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ClosePeriodResponse(
         batch_id=batch.id,
         txn_count=batch.operations_count,
@@ -61,16 +79,46 @@ def close_period_endpoint(payload: ClosePeriodRequest, db: Session = Depends(get
 
 @router.post("/invoices/generate", response_model=InvoiceGenerateResponse)
 def generate_invoice_endpoint(
+    request: Request,
     batch_id: str = Query(...),
     db: Session = Depends(get_db),
 ) -> InvoiceGenerateResponse:
     run_pdf_sync = os.getenv("DISABLE_CELERY", "0") == "1"
     try:
-        invoice = generate_invoice_for_batch(db, batch_id=batch_id, run_pdf_sync=run_pdf_sync)
+        result = generate_invoice_for_batch(db, batch_id=batch_id, run_pdf_sync=run_pdf_sync)
     except ValueError as exc:
         if str(exc) == "batch_not_found":
             raise HTTPException(status_code=404, detail="batch not found") from exc
         raise
+    except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_INVOICE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="INVOICE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, actor_type=ActorType.SYSTEM),
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    invoice = result.invoice
+    audit_service = AuditService(db)
+    audit_ctx = request_context_from_request(request, actor_type=ActorType.SYSTEM)
+    audit_service.audit(
+        event_type="INVOICE_CREATED" if result.created else "INVOICE_GENERATED",
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="CREATE" if result.created else "IDEMPOTENT_REPLAY",
+        visibility=AuditVisibility.PUBLIC,
+        after={
+            "status": invoice.status.value,
+            "total_amount": invoice.total_amount,
+            "total_with_tax": invoice.total_with_tax,
+            "currency": invoice.currency,
+            "pdf_status": invoice.pdf_status.value if invoice.pdf_status else None,
+        },
+        request_ctx=audit_ctx,
+    )
 
     return InvoiceGenerateResponse(
         invoice_id=invoice.id,
@@ -101,6 +149,7 @@ def get_invoice_endpoint(invoice_id: str, db: Session = Depends(get_db)) -> Invo
 @router.post("/invoices/{invoice_id}/payments", response_model=InvoicePaymentResponse, status_code=201)
 def create_invoice_payment(
     invoice_id: str,
+    request: Request,
     payload: InvoicePaymentRequest,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
@@ -130,7 +179,11 @@ def create_invoice_payment(
             idempotency_key=idempotency_key,
             external_ref=payload.external_ref,
             provider=payload.provider,
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except PaymentReferenceConflict as exc:
@@ -138,9 +191,42 @@ def create_invoice_payment(
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
     except InvalidTransitionError as exc:
+        AuditService(db).audit(
+            event_type="PAYMENT_CONFLICT",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            action="PAYMENT_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    audit_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    event_type = "PAYMENT_IDEMPOTENT_REPLAY" if result.is_replay else "PAYMENT_POSTED"
+    action = "IDEMPOTENT_REPLAY" if result.is_replay else "CREATE"
+    AuditService(db).audit(
+        event_type=event_type,
+        entity_type="payment",
+        entity_id=str(result.payment.id),
+        action=action,
+        visibility=AuditVisibility.PUBLIC if event_type == "PAYMENT_POSTED" else AuditVisibility.INTERNAL,
+        after={
+            "invoice_id": result.payment.invoice_id,
+            "amount": result.payment.amount,
+            "currency": result.payment.currency,
+            "status": result.payment.status.value if result.payment.status else None,
+            "invoice_status": result.invoice.status.value if result.invoice.status else None,
+        },
+        external_refs={
+            "provider": payload.provider,
+            "external_ref": payload.external_ref,
+        }
+        if payload.external_ref or payload.provider
+        else None,
+        request_ctx=audit_ctx,
+    )
 
     return InvoicePaymentResponse(
         payment_id=str(result.payment.id),
@@ -156,6 +242,7 @@ def create_invoice_payment(
 @router.post("/invoices/{invoice_id}/refunds", response_model=InvoiceRefundResponse, status_code=201)
 def create_invoice_refund(
     invoice_id: str,
+    request: Request,
     payload: InvoiceRefundRequest,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
@@ -177,7 +264,11 @@ def create_invoice_refund(
             reason=payload.reason,
             external_ref=payload.external_ref,
             provider=payload.provider,
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except InvoiceNotFound as exc:
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except RefundReferenceConflict as exc:
@@ -185,9 +276,42 @@ def create_invoice_refund(
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
     except InvalidTransitionError as exc:
+        AuditService(db).audit(
+            event_type="REFUND_CONFLICT",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            action="REFUND_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvoiceInvariantError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    audit_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    event_type = "REFUND_IDEMPOTENT_REPLAY" if result.is_replay else "REFUND_POSTED"
+    action = "IDEMPOTENT_REPLAY" if result.is_replay else "CREATE"
+    AuditService(db).audit(
+        event_type=event_type,
+        entity_type="refund",
+        entity_id=str(result.credit_note.id),
+        action=action,
+        visibility=AuditVisibility.PUBLIC if event_type == "REFUND_POSTED" else AuditVisibility.INTERNAL,
+        after={
+            "invoice_id": result.credit_note.invoice_id,
+            "amount": result.credit_note.amount,
+            "currency": result.credit_note.currency,
+            "status": result.credit_note.status.value if result.credit_note.status else None,
+            "invoice_status": result.invoice.status.value if result.invoice.status else None,
+        },
+        external_refs={
+            "provider": payload.provider,
+            "external_ref": payload.external_ref,
+        }
+        if payload.external_ref or payload.provider
+        else None,
+        request_ctx=audit_ctx,
+    )
 
     return InvoiceRefundResponse(
         refund_id=str(result.credit_note.id),
@@ -239,6 +363,7 @@ def list_invoice_refunds(
 @router.get("/invoices/{invoice_id}/pdf")
 def download_invoice_pdf(
     invoice_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -257,6 +382,15 @@ def download_invoice_pdf(
     pdf_bytes = storage.get_bytes(invoice.pdf_object_key)
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="pdf not found")
+
+    AuditService(db).audit(
+        event_type="INVOICE_DOWNLOADED",
+        entity_type="invoice",
+        entity_id=invoice.id,
+        action="DOWNLOAD",
+        after={"pdf_object_key": invoice.pdf_object_key},
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
 
     return Response(content=pdf_bytes, media_type="application/pdf")
 

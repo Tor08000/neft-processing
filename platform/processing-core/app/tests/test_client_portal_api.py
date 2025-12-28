@@ -9,7 +9,9 @@ from app.main import app
 from app.models.account import AccountType
 from app.models.card import Card
 from app.models.client import Client
+from app.models.client_actions import DocumentAcknowledgement, InvoiceMessage, ReconciliationRequest
 from app.models.contract_limits import LimitConfig, LimitConfigScope, LimitType, LimitWindow
+from app.models.audit_log import ActorType, AuditLog, AuditVisibility
 from app.models.invoice import InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult
 from app.repositories.accounts_repository import AccountsRepository
@@ -213,7 +215,8 @@ def test_client_invoices_filtered(db_session, make_jwt):
             period_from=date(2024, 3, 1),
             period_to=date(2024, 3, 31),
             currency="RUB",
-            status=InvoiceStatus.ISSUED,
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 4, 1, tzinfo=timezone.utc),
             lines=[
                 BillingLineData(product_id="diesel", liters=Decimal("10"), unit_price=None, line_amount=1000, tax_amount=0)
             ],
@@ -232,18 +235,201 @@ def test_client_invoices_filtered(db_session, make_jwt):
 
     token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
     with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
-        listing = api_client.get("/api/v1/client/invoices")
+        listing = api_client.get(
+            "/api/v1/client/invoices",
+            params={"status": ["SENT", "PAID"], "date_from": "2024-04-01", "date_to": "2024-04-30", "limit": 50},
+        )
         assert listing.status_code == 200
         body = listing.json()
         assert body["total"] == 1
         assert body["items"][0]["id"] == invoice.id
+        assert body["items"][0]["number"]
+        assert body["items"][0]["amount_total"] == str(invoice.total_with_tax)
 
         details = api_client.get(f"/api/v1/client/invoices/{invoice.id}")
         assert details.status_code == 200
-        assert details.json()["total_with_tax"] == invoice.total_with_tax
+        assert details.json()["amount_due"] == str(invoice.amount_due)
 
         foreign = api_client.get(f"/api/v1/client/invoices/{other_invoice.id}")
-        assert foreign.status_code in (404,)
+        assert foreign.status_code == 403
+
+
+def test_client_invoice_pdf_protected(db_session, make_jwt, monkeypatch):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2024, 5, 1),
+            period_to=date(2024, 5, 31),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="diesel", liters=None, unit_price=None, line_amount=5000, tax_amount=0)],
+        )
+    )
+    invoice.pdf_object_key = f"invoices/{invoice.id}.pdf"
+    db_session.commit()
+
+    monkeypatch.setattr("app.routers.client_portal.S3Storage.get_bytes", lambda *_args, **_kwargs: b"pdf-bytes")
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(other_client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        forbidden = api_client.get(f"/api/v1/client/invoices/{invoice.id}/pdf")
+        assert forbidden.status_code == 403
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        response = api_client.get(f"/api/v1/client/invoices/{invoice.id}/pdf")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert "attachment" in response.headers.get("content-disposition", "")
+
+
+def test_client_invoice_audit_access_denied(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(other_client_id),
+            period_from=date(2024, 7, 1),
+            period_to=date(2024, 7, 31),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 8, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="diesel", liters=None, unit_price=None, line_amount=1000, tax_amount=0)],
+        )
+    )
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        response = api_client.get(f"/api/v1/client/invoices/{invoice.id}/audit")
+        assert response.status_code == 403
+    assert (
+        db_session.query(AuditLog)
+        .filter(AuditLog.event_type == "CLIENT_ACCESS_FORBIDDEN")
+        .filter(AuditLog.visibility == AuditVisibility.INTERNAL)
+        .count()
+        == 1
+    )
+
+
+def test_client_invoice_audit_returns_events(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2024, 8, 1),
+            period_to=date(2024, 8, 31),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 9, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="ai95", liters=None, unit_price=None, line_amount=2000, tax_amount=0)],
+        )
+    )
+    db_session.add(
+        AuditLog(
+            actor_type=ActorType.SYSTEM,
+            actor_id="system",
+            event_type="INVOICE_CREATED",
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="CREATE",
+            visibility=AuditVisibility.PUBLIC,
+            after={"amount": 2000, "status": "SENT", "currency": "RUB"},
+            prev_hash="genesis",
+            hash="hash-1",
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        response = api_client.get(f"/api/v1/client/invoices/{invoice.id}/audit")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["event_type"] == "INVOICE_CREATED"
+        assert payload["items"][0]["visibility"] == "PUBLIC"
+
+
+def test_client_audit_search_external_ref_scoped(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2024, 9, 1),
+            period_to=date(2024, 9, 30),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 10, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="diesel", liters=None, unit_price=None, line_amount=3000, tax_amount=0)],
+        )
+    )
+    other_invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(other_client_id),
+            period_from=date(2024, 9, 1),
+            period_to=date(2024, 9, 30),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2024, 10, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="ai95", liters=None, unit_price=None, line_amount=4000, tax_amount=0)],
+        )
+    )
+    db_session.add(
+        AuditLog(
+            actor_type=ActorType.SYSTEM,
+            actor_id="system",
+            event_type="PAYMENT_POSTED",
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="CREATE",
+            visibility=AuditVisibility.PUBLIC,
+            external_refs={"provider": "bank", "external_ref": "BANK-123"},
+            after={"amount": 1000, "status": "POSTED"},
+            prev_hash="hash-1",
+            hash="hash-2",
+        )
+    )
+    db_session.add(
+        AuditLog(
+            actor_type=ActorType.SYSTEM,
+            actor_id="system",
+            event_type="PAYMENT_POSTED",
+            entity_type="invoice",
+            entity_id=other_invoice.id,
+            action="CREATE",
+            visibility=AuditVisibility.PUBLIC,
+            external_refs={"provider": "bank", "external_ref": "BANK-123"},
+            after={"amount": 1000, "status": "POSTED"},
+            prev_hash="hash-2",
+            hash="hash-3",
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        response = api_client.get("/api/v1/client/audit/search", params={"external_ref": "BANK-123"})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["entity_id"] == invoice.id
 
 
 def test_client_operations_response_is_sanitized(db_session, make_jwt):
@@ -283,3 +469,168 @@ def test_client_operations_response_is_sanitized(db_session, make_jwt):
         assert "limit_profile_id" not in details
         assert "risk_result" not in details
         assert details["reason"] == "Операция отклонена службой безопасности"
+
+
+def test_client_reconciliation_request_idempotent_and_audited(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    token = make_jwt(roles=("CLIENT_OWNER",), client_id=str(client_id), extra={"tenant_id": 1})
+    payload = {"date_from": "2025-12-01", "date_to": "2025-12-31", "note": "Нужен акт сверки"}
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        first = api_client.post("/api/v1/client/reconciliation-requests", json=payload)
+        second = api_client.post("/api/v1/client/reconciliation-requests", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    assert db_session.query(ReconciliationRequest).count() == 1
+    assert (
+        db_session.query(AuditLog)
+        .filter(AuditLog.event_type == "RECONCILIATION_REQUEST_CREATED")
+        .filter(AuditLog.visibility == AuditVisibility.PUBLIC)
+        .count()
+        == 1
+    )
+
+
+def test_document_acknowledgement_idempotent(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2025, 1, 1),
+            period_to=date(2025, 1, 31),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            lines=[BillingLineData(product_id="diesel", liters=None, unit_price=None, line_amount=1000, tax_amount=0)],
+        )
+    )
+
+    token = make_jwt(
+        roles=("CLIENT_ADMIN",),
+        client_id=str(client_id),
+        extra={"tenant_id": 1, "email": "client@example.com"},
+    )
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        first = api_client.post(f"/api/v1/client/documents/INVOICE_PDF/{invoice.id}/ack")
+        second = api_client.post(f"/api/v1/client/documents/INVOICE_PDF/{invoice.id}/ack")
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert db_session.query(DocumentAcknowledgement).count() == 1
+    assert (
+        db_session.query(AuditLog)
+        .filter(AuditLog.event_type == "DOCUMENT_ACKNOWLEDGED")
+        .filter(AuditLog.visibility == AuditVisibility.PUBLIC)
+        .count()
+        == 1
+    )
+
+
+def test_invoice_messages_abac_and_audit(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2025, 2, 1),
+            period_to=date(2025, 2, 28),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            lines=[BillingLineData(product_id="ai95", liters=None, unit_price=None, line_amount=2000, tax_amount=0)],
+        )
+    )
+    other_invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(other_client_id),
+            period_from=date(2025, 2, 1),
+            period_to=date(2025, 2, 28),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            lines=[BillingLineData(product_id="ai95", liters=None, unit_price=None, line_amount=2000, tax_amount=0)],
+        )
+    )
+
+    token = make_jwt(roles=("CLIENT_ACCOUNTANT",), client_id=str(client_id), extra={"tenant_id": 1})
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        ok = api_client.post(f"/api/v1/client/invoices/{invoice.id}/messages", json={"message": "Уточните счет"})
+        forbidden = api_client.post(
+            f"/api/v1/client/invoices/{other_invoice.id}/messages", json={"message": "Чужой счет"}
+        )
+
+    assert ok.status_code == 201
+    assert forbidden.status_code in (403, 404)
+    assert db_session.query(InvoiceMessage).count() == 1
+    assert (
+        db_session.query(AuditLog)
+        .filter(AuditLog.event_type == "INVOICE_MESSAGE_CREATED")
+        .filter(AuditLog.visibility == AuditVisibility.PUBLIC)
+        .count()
+        == 1
+    )
+
+
+def test_client_audit_excludes_internal_events(db_session, make_jwt):
+    client_id = uuid4()
+    other_client_id = uuid4()
+    _seed_clients(db_session, client_id, other_client_id)
+
+    repo = BillingRepository(db_session)
+    invoice = repo.create_invoice(
+        BillingInvoiceData(
+            client_id=str(client_id),
+            period_from=date(2025, 3, 1),
+            period_to=date(2025, 3, 31),
+            currency="RUB",
+            status=InvoiceStatus.SENT,
+            issued_at=datetime(2025, 4, 1, tzinfo=timezone.utc),
+            lines=[BillingLineData(product_id="diesel", liters=None, unit_price=None, line_amount=1500, tax_amount=0)],
+        )
+    )
+
+    db_session.add(
+        AuditLog(
+            actor_type=ActorType.SYSTEM,
+            actor_id="system",
+            event_type="INVOICE_CREATED",
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="CREATE",
+            visibility=AuditVisibility.PUBLIC,
+            after={"amount": 1500, "status": "SENT"},
+            prev_hash="hash-10",
+            hash="hash-11",
+        )
+    )
+    db_session.add(
+        AuditLog(
+            actor_type=ActorType.SYSTEM,
+            actor_id="system",
+            event_type="ADMIN_MANUAL_FIX",
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="UPDATE",
+            visibility=AuditVisibility.INTERNAL,
+            after={"note": "internal"},
+            prev_hash="hash-11",
+            hash="hash-12",
+        )
+    )
+    db_session.commit()
+
+    token = make_jwt(roles=("CLIENT_USER",), client_id=str(client_id))
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        response = api_client.get(f"/api/v1/client/invoices/{invoice.id}/audit")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["event_type"] == "INVOICE_CREATED"

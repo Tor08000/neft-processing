@@ -12,6 +12,7 @@ from alembic import op
 from app.alembic.utils import (
     SCHEMA,
     create_index_if_not_exists,
+    create_unique_index_if_not_exists,
     drop_index_if_exists,
     index_exists,
     is_postgres,
@@ -42,11 +43,12 @@ def upgrade() -> None:
     if index_exists(bind, "uq_invoice_payments_provider_external_ref", schema=SCHEMA):
         return
 
-    op.execute(
-        f"""
-        CREATE UNIQUE INDEX {SCHEMA}.uq_invoice_payments_provider_external_ref
-        ON {SCHEMA}.invoice_payments (COALESCE(provider, ''), external_ref)
-        """
+    create_unique_index_if_not_exists(
+        bind,
+        "uq_invoice_payments_provider_external_ref",
+        "invoice_payments",
+        "(COALESCE(provider, ''), external_ref)",
+        schema=SCHEMA,
     )
 
 

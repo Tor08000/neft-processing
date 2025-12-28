@@ -1,7 +1,18 @@
 import React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
-import { hasPayoutAccess } from "../../auth/roles";
+
+const navItems = [
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/users", label: "Users" },
+  { to: "/accounts", label: "Balances" },
+  { to: "/operations", label: "Operations" },
+  { to: "/billing", label: "Billing" },
+  { to: "/payouts", label: "Payouts" },
+  { to: "/integration", label: "Integration Monitoring" },
+  { to: "/analytics/risk", label: "Risk analytics" },
+  { to: "/risk/rules", label: "Risk rules" },
+];
 
 export const Layout: React.FC = () => {
   const location = useLocation();

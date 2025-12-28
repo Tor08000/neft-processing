@@ -95,7 +95,9 @@ def test_billing_summary_upsert_idempotent(session):
     assert summary.total_amount == 1_000
     assert summary.operations_count == 1
     assert summary.status == BillingSummaryStatus.PENDING
+    assert summary.hash
     assert len(summaries_first) == len(summaries_second) == 1
+    assert summaries_first[0].hash == summaries_second[0].hash == summary.hash
 
 
 def test_billing_finalize_blocks_updates(session):

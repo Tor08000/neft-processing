@@ -39,6 +39,24 @@ The helper logs:
 > They are created by the auth service bootstrap in `platform/auth-host/app/db.py` on startup
 > and should not be used as proof that Alembic DDL succeeded.
 
+## Recovery: Alembic KeyError on old revision_id
+
+If Alembic fails with `KeyError` for an old revision ID, this is usually a leftover from renamed
+migrations. The safest recovery is to recreate the database. If you need to keep the data,
+stamp the DB to the current merge head.
+
+```sql
+select version_num from alembic_version
+```
+
+```bash
+alembic heads
+alembic stamp <merge_head>
+```
+
+> ⚠️ `stamp` is acceptable for dev environments. In production, treat this as an incident and
+> investigate how the revision disappeared before modifying `alembic_version`.
+
 ## Known root cause: wrong schema
 
 - Migrations create all tables in `DB_SCHEMA` (see the schema argument in

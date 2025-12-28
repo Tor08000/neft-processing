@@ -11,10 +11,15 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_sessionmaker
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
+from app.models.fuel import FuelTransaction, FuelTransactionStatus, FuelType
 from app.models.operation import Operation, OperationStatus
+from app.models.operation import ProductType
 from app.models.billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
+from app.services.billing_summary_hash import hash_payload
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -49,7 +54,7 @@ def _commission(amount: int) -> int:
     return int((Decimal(amount) * rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _aggregate_operations(session: Session, billing_date: date):
+def _aggregate_operations(session: Session, billing_date: date) -> list[dict]:
     start_ts, end_ts = _billing_window(billing_date)
 
     amount_value = func.coalesce(
@@ -67,7 +72,7 @@ def _aggregate_operations(session: Session, billing_date: date):
         else_=Operation.quantity,
     )
 
-    return (
+    rows = (
         session.query(
             Operation.client_id,
             Operation.merchant_id,
@@ -88,10 +93,80 @@ def _aggregate_operations(session: Session, billing_date: date):
         )
         .all()
     )
+    return [
+        {
+            "client_id": row.client_id,
+            "merchant_id": row.merchant_id,
+            "product_type": row.product_type,
+            "currency": row.currency,
+            "total_amount": int(row.total_amount or 0),
+            "total_quantity": row.total_quantity,
+            "operations_count": int(row.operations_count or 0),
+        }
+        for row in rows
+    ]
 
 
-def _upsert_billing_summaries(session: Session, billing_date: date) -> list[BillingSummary]:
+def _fuel_product_type(value: FuelType | str | None) -> ProductType | None:
+    if value is None:
+        return None
+    normalized = value.value if hasattr(value, "value") else str(value)
+    if normalized == "AI-92":
+        return ProductType.AI92
+    if normalized == "AI-95":
+        return ProductType.AI95
+    if normalized == "AI-98":
+        return ProductType.AI98
+    return ProductType.__members__.get(normalized.replace("-", ""), ProductType.OTHER)
+
+
+def _aggregate_fuel_transactions(session: Session, billing_date: date) -> list[dict]:
+    start_ts, end_ts = _billing_window(billing_date)
+    rows = (
+        session.query(
+            FuelTransaction.client_id,
+            FuelTransaction.network_id.label("merchant_id"),
+            FuelTransaction.fuel_type,
+            FuelTransaction.currency,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("total_amount"),
+            func.coalesce(func.sum(FuelTransaction.volume_ml), 0).label("total_volume"),
+            func.count().label("operations_count"),
+        )
+        .filter(FuelTransaction.status == FuelTransactionStatus.SETTLED)
+        .filter(FuelTransaction.occurred_at >= start_ts)
+        .filter(FuelTransaction.occurred_at <= end_ts)
+        .group_by(
+            FuelTransaction.client_id,
+            FuelTransaction.network_id,
+            FuelTransaction.fuel_type,
+            FuelTransaction.currency,
+        )
+        .all()
+    )
+    aggregates: list[dict] = []
+    for row in rows:
+        aggregates.append(
+            {
+                "client_id": row.client_id,
+                "merchant_id": row.merchant_id,
+                "product_type": _fuel_product_type(row.fuel_type),
+                "currency": row.currency,
+                "total_amount": int(row.total_amount or 0),
+                "total_quantity": Decimal(row.total_volume or 0) / Decimal("1000"),
+                "operations_count": int(row.operations_count or 0),
+            }
+        )
+    return aggregates
+
+
+def _upsert_billing_summaries(
+    session: Session,
+    *,
+    billing_date: date,
+    billing_period_id: str,
+) -> list[BillingSummary]:
     aggregates = _aggregate_operations(session, billing_date)
+    aggregates.extend(_aggregate_fuel_transactions(session, billing_date))
     if not aggregates:
         logger.info("billing.daily.no_operations", extra={"billing_date": str(billing_date)})
         return []
@@ -103,7 +178,12 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
             item.product_type,
             item.currency,
         ): item
-        for item in session.query(BillingSummary).filter(BillingSummary.billing_date == billing_date).all()
+        for item in (
+            session.query(BillingSummary)
+            .filter(BillingSummary.billing_date == billing_date)
+            .filter(BillingSummary.billing_period_id == billing_period_id)
+            .all()
+        )
     }
 
     updated_items: list[BillingSummary] = []
@@ -111,16 +191,30 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
 
     for aggregate in aggregates:
         key = (
-            aggregate.client_id,
-            aggregate.merchant_id,
-            aggregate.product_type,
-            aggregate.currency,
+            aggregate["client_id"],
+            aggregate["merchant_id"],
+            aggregate["product_type"],
+            aggregate["currency"],
         )
 
-        total_amount = int(aggregate.total_amount or 0)
-        total_quantity = aggregate.total_quantity
-        operations_count = int(aggregate.operations_count or 0)
+        total_amount = int(aggregate["total_amount"] or 0)
+        total_quantity = aggregate["total_quantity"]
+        operations_count = int(aggregate["operations_count"] or 0)
         commission_amount = _commission(total_amount)
+        payload_hash = hash_payload(
+            {
+                "billing_date": billing_date,
+                "billing_period_id": billing_period_id,
+                "client_id": aggregate["client_id"],
+                "merchant_id": aggregate["merchant_id"],
+                "product_type": aggregate["product_type"],
+                "currency": aggregate["currency"],
+                "total_amount": total_amount,
+                "total_quantity": total_quantity,
+                "operations_count": operations_count,
+                "commission_amount": commission_amount,
+            }
+        )
 
         summary = existing.get(key)
         if summary and summary.status == BillingSummaryStatus.FINALIZED:
@@ -133,13 +227,15 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
             summary.operations_count = operations_count
             summary.commission_amount = commission_amount
             summary.generated_at = now
+            summary.hash = payload_hash
         else:
             summary = BillingSummary(
                 billing_date=billing_date,
-                client_id=aggregate.client_id,
-                merchant_id=aggregate.merchant_id,
-                product_type=aggregate.product_type,
-                currency=aggregate.currency,
+                billing_period_id=billing_period_id,
+                client_id=aggregate["client_id"],
+                merchant_id=aggregate["merchant_id"],
+                product_type=aggregate["product_type"],
+                currency=aggregate["currency"],
                 total_amount=total_amount,
                 total_captured_amount=total_amount,
                 total_quantity=total_quantity,
@@ -147,6 +243,7 @@ def _upsert_billing_summaries(session: Session, billing_date: date) -> list[Bill
                 commission_amount=commission_amount,
                 status=BillingSummaryStatus.PENDING,
                 generated_at=now,
+                hash=payload_hash,
             )
             session.add(summary)
         updated_items.append(summary)
@@ -193,7 +290,26 @@ def run_billing_daily(
                 billing_metrics.mark_daily_run(BillingJobStatus.SUCCESS.value, duration_ms=result.duration_ms)
                 return []
 
-            summaries = _upsert_billing_summaries(session, billing_date)
+            period_service = BillingPeriodService(session)
+            period_start, period_end = period_bounds_for_dates(
+                date_from=billing_date,
+                date_to=billing_date,
+                tz=settings.NEFT_BILLING_TZ,
+            )
+            period = period_service.get_or_create(
+                period_type=BillingPeriodType.DAILY,
+                start_at=period_start,
+                end_at=period_end,
+                tz=settings.NEFT_BILLING_TZ,
+            )
+            if period.status != BillingPeriodStatus.OPEN:
+                raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
+            summaries = _upsert_billing_summaries(
+                session,
+                billing_date=billing_date,
+                billing_period_id=str(period.id),
+            )
             result = job_service.succeed(
                 job_run,
                 metrics={"processed": len(summaries), "billing_date": str(billing_date)},

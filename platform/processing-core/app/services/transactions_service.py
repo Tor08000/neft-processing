@@ -15,17 +15,20 @@ from app import services
 from app.services.commission import compute_posting_result
 from app.models.account import AccountType
 from app.services import risk_adapter
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine
 from app.services.limits_service import check_contractual_limits
 from app.services.posting_metrics import metrics as posting_metrics
 from app.models.card import Card
 from app.models.client import Client
 from app.models.merchant import Merchant
 from app.models.operation import Operation, OperationStatus, OperationType, RiskResult as RiskLevel
+from app.models.risk_score import RiskLevel as DecisionRiskLevel, RiskScoreAction
 from app.models.terminal import Terminal
 from app.schemas.operations import OperationSchema
 from app.models.ledger_entry import LedgerDirection
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
+from app.services.decision import DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
 from app.services.risk_adapter import (
     OperationContext,
@@ -132,6 +135,15 @@ def _to_risk_level(value: str | RiskLevel | RiskDecisionLevel | None) -> RiskLev
     if normalized == RiskDecisionLevel.MANUAL_REVIEW.value:
         return RiskLevel.MANUAL_REVIEW
     return RiskLevel.__members__.get(normalized, RiskLevel.MEDIUM)
+
+
+def _decision_risk_to_result(level: DecisionRiskLevel) -> RiskLevel:
+    return {
+        DecisionRiskLevel.LOW: RiskLevel.LOW,
+        DecisionRiskLevel.MEDIUM: RiskLevel.MEDIUM,
+        DecisionRiskLevel.HIGH: RiskLevel.HIGH,
+        DecisionRiskLevel.VERY_HIGH: RiskLevel.BLOCK,
+    }[level]
 
 
 def _fetch_operation_by_ext_id(db: Session, ext_operation_id: str) -> Operation | None:
@@ -289,6 +301,8 @@ def _validate_references(
     if merchant is None or merchant.status != "ACTIVE":
         raise InvalidOperationState("MERCHANT_INACTIVE")
 
+    return client, card, terminal, merchant
+
 
 def decline_operation(
     db: Session,
@@ -377,7 +391,7 @@ def authorize_operation(
         return existing
 
     try:
-        _validate_references(
+        client, card, terminal, merchant = _validate_references(
             db,
             client_id=client_id,
             card_id=card_id,
@@ -398,6 +412,50 @@ def authorize_operation(
             merchant_id=merchant_id,
             product_id=product_id,
             product_type=product_type,
+        )
+
+    decision_context = DecisionContext(
+        tenant_id=0,
+        client_id=client_id,
+        actor_type="SYSTEM",
+        action=DecisionAction.PAYMENT_AUTHORIZE,
+        amount=amount,
+        currency=currency,
+        payment_method="CARD",
+        history={},
+        metadata={
+            "client_status": client.status,
+            "card_status": card.status,
+            "merchant_status": merchant.status,
+            "terminal_status": terminal.status,
+            "actor_roles": [],
+            "subject_id": ext_operation_id,
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != DecisionOutcome.ALLOW:
+        decline_reason = "RISK_SCORE_DECLINE"
+        risk_result = RiskLevel.MEDIUM
+        if decision.outcome == DecisionOutcome.MANUAL_REVIEW:
+            decline_reason = "RISK_MANUAL_REVIEW"
+            risk_result = RiskLevel.MANUAL_REVIEW
+        elif decision.risk_level:
+            risk_result = _decision_risk_to_result(decision.risk_level)
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason=decline_reason,
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            risk_payload={"decision_engine": decision.to_payload()},
+            risk_result=risk_result,
         )
 
     limits_request = CheckAndReserveRequest(
@@ -430,6 +488,39 @@ def authorize_operation(
             product_id=product_id,
             product_type=product_type,
             limit_payload=limit_result.model_dump(),
+        )
+
+    decision_engine = DecisionEngine(db)
+    decision_ctx = DecisionContext(
+        tenant_id=0,
+        client_id=client_id,
+        amount=amount,
+        action=RiskScoreAction.PAYMENT,
+        metadata={"subject_id": ext_operation_id},
+    )
+    decision_result = decision_engine.evaluate(decision_ctx)
+    if decision_result.outcome != DecisionOutcome.ALLOW:
+        decline_reason = "RISK_SCORE_DECLINE"
+        risk_result = _decision_risk_to_result(decision_result.risk_level)
+        if decision_result.outcome == DecisionOutcome.MANUAL_REVIEW:
+            decline_reason = "RISK_MANUAL_REVIEW"
+            risk_result = RiskLevel.MANUAL_REVIEW
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason=decline_reason,
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            limit_payload=limit_result.model_dump(),
+            risk_payload={"decision_engine": decision_result.to_payload()},
+            risk_result=risk_result,
         )
 
     risk_context = OperationContext(
@@ -491,6 +582,7 @@ def authorize_operation(
         )
 
     risk_payload = risk_evaluation.to_payload()
+    risk_payload["decision_engine"] = decision_result.to_payload()
 
     contract_limits = check_contractual_limits(
         db,
@@ -671,6 +763,24 @@ def commit_operation(
     commit_amount = amount if amount is not None else operation.amount
     if commit_amount <= 0 or commit_amount > operation.amount:
         raise AmountExceeded("COMMIT_AMOUNT_INVALID")
+
+    decision_context = DecisionContext(
+        tenant_id=0,
+        client_id=operation.client_id,
+        actor_type="SYSTEM",
+        action=DecisionAction.PAYMENT_CAPTURE,
+        amount=commit_amount,
+        currency=operation.currency,
+        payment_method="CARD",
+        history={},
+        metadata={
+            "operation_id": operation.operation_id,
+            "subject_id": operation.operation_id,
+        },
+    )
+    decision = DecisionEngine(db).evaluate(decision_context)
+    if decision.outcome != DecisionOutcome.ALLOW:
+        raise InvalidOperationState(f"DECISION_{decision.outcome.value}")
 
     operation.amount_settled = commit_amount
     operation.status = OperationStatus.COMPLETED

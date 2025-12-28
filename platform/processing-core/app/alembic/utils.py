@@ -3,6 +3,7 @@ from __future__ import annotations
 """Backwards-compatible shim for Alembic helpers."""
 
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import text
 
 from app.alembic.helpers import (  # noqa: F401,F403
     MIN_VERSION_LENGTH,
@@ -10,6 +11,8 @@ from app.alembic.helpers import (  # noqa: F401,F403
     column_exists,
     constraint_exists,
     create_index_if_not_exists,
+    create_unique_expr_index_if_not_exists,
+    create_unique_index_if_not_exists,
     create_table_if_not_exists,
     drop_index_if_exists,
     drop_mutable_predicate_or_expression_indexes,
@@ -28,6 +31,39 @@ from app.alembic.helpers import (  # noqa: F401,F403
 )
 
 inspect = sa_inspect
+
+
+def create_unique_index_if_not_exists(
+    bind,
+    index_name: str,
+    table_name: str,
+    columns_sql: str,
+    schema: str,
+) -> None:
+    """Create a unique expression index if it does not exist."""
+
+    if not is_postgres(bind):
+        return
+
+    if "." in index_name:
+        index_name = index_name.rsplit(".", 1)[-1]
+
+    query = text(
+        """
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = :schema AND c.relname = :index_name AND c.relkind = 'i'
+        """
+    )
+    exists = bind.execute(query, {"schema": schema, "index_name": index_name}).first()
+    if exists is not None:
+        return
+
+    schema_name = schema or "public"
+    bind.exec_driver_sql(
+        f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {schema_name}.{table_name} {columns_sql}"
+    )
 
 
 def ensure_alembic_version_length(connection, *, min_length: int = MIN_VERSION_LENGTH) -> None:
@@ -93,6 +129,7 @@ __all__ = [
     "column_exists",
     "constraint_exists",
     "create_index_if_not_exists",
+    "create_unique_index_if_not_exists",
     "create_table_if_not_exists",
     "drop_index_if_exists",
     "drop_mutable_predicate_or_expression_indexes",

@@ -1,0 +1,23 @@
+profiles:
+  - client_id: ACME_CORP
+    erp_system: 1C
+    erp_version: "8.3"
+    export_format: CSV
+    delivery_method: SFTP
+    timezone: Europe/Moscow
+    currency: RUB
+    vat_rules: standard_ru
+    decimal_policy: minor_units
+    delimiter: ";"
+    encoding: UTF-8
+    confirm_required: true
+    delivery:
+      sftp:
+        host: sftp.acme.example
+        port: 22
+        username: acme_neft
+        auth_method: key
+        private_key_env: ACME_SFTP_PRIVATE_KEY
+        remote_path: "/inbound/neft"
+        retries: 3
+        retry_backoff_seconds: 5

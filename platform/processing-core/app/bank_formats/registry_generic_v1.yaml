@@ -1,0 +1,37 @@
+code: GENERIC_XLSX
+title: "Generic XLSX v1"
+sheet_name: "Registry"
+filename_pattern: "payout_{partner_id}_{date_from}_{date_to}_{external_ref}.xlsx"
+
+columns:
+  - key: partner_id
+    header: "Partner ID"
+    width: 20
+    type: text
+    source: batch.partner_id
+
+  - key: period
+    header: "Period"
+    width: 24
+    type: text
+    source: computed.period
+
+  - key: amount_net
+    header: "Amount net"
+    width: 16
+    type: money
+    source: item.amount_net
+    transform: [money_2dp]
+
+  - key: external_ref
+    header: "External ref"
+    width: 22
+    type: text
+    source: export.external_ref
+    transform: [default:no-ref]
+
+  - key: purpose
+    header: "Purpose"
+    width: 60
+    type: text
+    source: computed.payment_purpose

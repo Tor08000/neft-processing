@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.models.billing_job_run import BillingJobType
-from app.models.billing_period import BillingPeriodType
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.merchant import Merchant
 from app.models.terminal import Terminal
@@ -16,6 +16,7 @@ from app.models.client import Client
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.services.billing_job_runs import BillingJobRunService
+from app.services.billing_periods import BillingPeriodService
 from app.services.billing_run import BillingRunService
 from app.services.job_locks import make_stable_key
 
@@ -171,7 +172,13 @@ class DemoSeeder:
         self.db.flush()
         return operations
 
-    def _ensure_billing_summaries(self, billing_date: date, operations: Iterable[Operation]) -> list[BillingSummary]:
+    def _ensure_billing_summaries(
+        self,
+        billing_date: date,
+        operations: Iterable[Operation],
+        *,
+        billing_period_id: str,
+    ) -> list[BillingSummary]:
         summaries: list[BillingSummary] = []
         totals_by_merchant: dict[tuple[str, str], int] = {}
         counts_by_merchant: dict[tuple[str, str], int] = {}
@@ -189,10 +196,13 @@ class DemoSeeder:
                 .one_or_none()
             )
             if existing:
+                if not existing.billing_period_id:
+                    existing.billing_period_id = billing_period_id
                 summaries.append(existing)
                 continue
             summary = BillingSummary(
                 billing_date=billing_date,
+                billing_period_id=billing_period_id,
                 merchant_id=merchant_id,
                 client_id=DEMO_CLIENT_ID,
                 product_type=ProductType.AI92,
@@ -217,7 +227,16 @@ class DemoSeeder:
         self._ensure_tariff()
 
         operations = self._seed_operations(target_date)
-        self._ensure_billing_summaries(target_date, operations)
+        period_service = BillingPeriodService(self.db)
+        start_at = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        end_at = datetime.combine(target_date + timedelta(days=1), datetime.min.time()).replace(tzinfo=timezone.utc)
+        period = period_service.get_or_create(
+            period_type=BillingPeriodType.ADHOC,
+            start_at=start_at,
+            end_at=end_at,
+            tz="UTC",
+        )
+        self._ensure_billing_summaries(target_date, operations, billing_period_id=str(period.id))
         self.db.commit()
 
         scope_key = make_stable_key(
@@ -227,6 +246,7 @@ class DemoSeeder:
 
         # Trigger a billing run to ensure invoices exist for smoke flows.
         billing_service = BillingRunService(self.db)
+        seed_token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "demo_seed"}
         result = billing_service.run(
             period_type=BillingPeriodType.ADHOC,
             start_at=datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc),
@@ -234,8 +254,12 @@ class DemoSeeder:
             tz="UTC",
             client_id=None,
             idempotency_key=scope_key,
+            token=seed_token,
         )
 
+        result.billing_period.status = BillingPeriodStatus.FINALIZED
+        result.billing_period.finalized_at = datetime.now(timezone.utc)
+        self.db.add(result.billing_period)
         self.db.commit()
         return {
             "client_id": DEMO_CLIENT_ID,

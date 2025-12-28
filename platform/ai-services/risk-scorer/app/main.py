@@ -12,7 +12,9 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from neft_shared.logging_setup import get_logger, init_logging
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from .api.admin.models import router as admin_router
 from .api.v1.health import router as health_router
+from .api.v1.risk_score import router as risk_score_router
 from .api.v1.score import router as score_router
 from .settings import settings
 
@@ -49,14 +51,19 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router, prefix="/api")
     app.include_router(score_router, prefix="/api")
+    app.include_router(risk_score_router, prefix="/api")
     app.include_router(health_router, prefix=API_PREFIX_AI)
     app.include_router(score_router, prefix=API_PREFIX_AI)
+    app.include_router(risk_score_router, prefix=API_PREFIX_AI)
     app.include_router(health_router, prefix=f"{API_PREFIX_AI}/api")
     app.include_router(score_router, prefix=f"{API_PREFIX_AI}/api")
+    app.include_router(risk_score_router, prefix=f"{API_PREFIX_AI}/api")
+    app.include_router(admin_router)
 
     prefixed_router = APIRouter(prefix="/api/ai")
     prefixed_router.include_router(health_router)
     prefixed_router.include_router(score_router)
+    prefixed_router.include_router(risk_score_router)
 
     @app.get("/health")
     async def health_alias():

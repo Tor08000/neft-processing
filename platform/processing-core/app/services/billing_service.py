@@ -8,14 +8,17 @@ from typing import Dict, List
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_sessionmaker
 from app.models.client import Client
 from app.models.operation import OperationType, ProductType
 from app.models.invoice import Invoice, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.models.billing_summary import BillingSummary
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus
 from app.services.pricing_service import PriceQuote, get_effective_price
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.billing_metrics import metrics as billing_metrics
 from neft_shared.logging_setup import get_logger
 
@@ -298,6 +301,20 @@ def generate_invoices_for_period(
     """Generate invoices for all active clients with tariffs for the given period."""
 
     billing_metrics.start_run(str(period_from), str(period_to))
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=period_from,
+        date_to=period_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
     repo = BillingRepository(db)
     clients = (
         db.query(Client)
@@ -332,6 +349,7 @@ def generate_invoices_for_period(
 
             if invoice_data is None:
                 continue
+            invoice_data.billing_period_id = str(period.id)
 
             invoice = repo.create_invoice(invoice_data, auto_commit=True)
             billing_metrics.mark_generated()

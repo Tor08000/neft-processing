@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from app.models.invoice import InvoicePdfStatus, InvoiceStatus
+from app.models.invoice import InvoiceStatus
 
 
 class ClientUser(BaseModel):
@@ -132,60 +132,88 @@ class StatementResponse(BaseModel):
     debits: Decimal
 
 
-class ClientInvoiceLine(BaseModel):
-    """Simplified invoice line for client-facing APIs."""
-
-    card_id: str | None = None
-    product_id: str
-    liters: Decimal | None = None
-    amount: int = Field(alias="line_amount")
-    tax_amount: int
-
-    model_config = {"from_attributes": True, "populate_by_name": True}
-
-
 class ClientInvoiceSummary(BaseModel):
     """Invoice summary item without internal fields."""
 
     id: str
-    period_from: date
-    period_to: date
-    currency: str
-    due_date: date | None = None
-    payment_terms_days: int | None = None
-    total_amount: int
-    tax_amount: int
-    total_with_tax: int
-    amount_paid: int
-    amount_due: int
-    status: InvoiceStatus
-    created_at: datetime | None = None
+    number: str
     issued_at: datetime | None = None
-    sent_at: datetime | None = None
-    delivered_at: datetime | None = None
-    paid_at: datetime | None = None
-    cancelled_at: datetime | None = None
-    closed_at: datetime | None = None
-    refunded_at: datetime | None = None
-    pdf_url: str | None = None
-    pdf_status: InvoicePdfStatus | None = None
-    pdf_generated_at: datetime | None = None
-    credited_amount: int | None = None
-    credited_at: datetime | None = None
+    status: InvoiceStatus
+    amount_total: Decimal
+    amount_paid: Decimal
+    amount_refunded: Decimal
+    amount_due: Decimal
+    currency: str
 
-    model_config = {"from_attributes": True}
+
+class ClientInvoicePayment(BaseModel):
+    id: str
+    amount: Decimal
+    status: str
+    provider: str | None = None
+    external_ref: str | None = None
+    created_at: datetime
+
+
+class ClientInvoiceRefund(BaseModel):
+    id: str
+    amount: Decimal
+    status: str
+    provider: str | None = None
+    external_ref: str | None = None
+    created_at: datetime
+    reason: str | None = None
 
 
 class ClientInvoiceDetails(ClientInvoiceSummary):
-    """Detailed invoice representation with line items."""
+    """Detailed invoice representation with payments and refunds."""
 
-    lines: List[ClientInvoiceLine] = Field(default_factory=list)
+    pdf_available: bool = False
+    acknowledged: bool = False
+    ack_at: datetime | None = None
+    payments: List[ClientInvoicePayment] = Field(default_factory=list)
+    refunds: List[ClientInvoiceRefund] = Field(default_factory=list)
 
 
 class ClientInvoiceListResponse(BaseModel):
     """Collection of client invoices."""
 
     items: List[ClientInvoiceSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class ClientExportItem(BaseModel):
+    type: str
+    title: str
+    created_at: datetime | None = None
+    download_url: str
+
+
+class ClientExportListResponse(BaseModel):
+    items: List[ClientExportItem]
+
+
+class ClientAuditEvent(BaseModel):
+    id: str
+    ts: datetime
+    event_type: str
+    entity_type: str
+    entity_id: str
+    action: str | None = None
+    visibility: str | None = None
+    actor_type: str | None = None
+    actor_id: str | None = None
+    external_refs: dict | None = None
+    before: dict | None = None
+    after: dict | None = None
+    hash: str | None = None
+    prev_hash: str | None = None
+
+
+class ClientAuditListResponse(BaseModel):
+    items: List[ClientAuditEvent]
     total: int
     limit: int
     offset: int

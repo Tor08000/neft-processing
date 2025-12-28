@@ -12,9 +12,13 @@ from app.models.billing_period import BillingPeriod, BillingPeriodStatus, Billin
 from app.models.billing_job_run import BillingJobStatus, BillingJobType
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
+from app.models.risk_score import RiskScoreAction
 from app.services.billing_job_runs import BillingJobRunService
 from app.services.job_locks import advisory_lock, make_lock_token
 from app.services.invoice_state_machine import InvoiceStateMachine
+from app.services.decision import DecisionContext, DecisionEngine, DecisionOutcome
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -57,6 +61,7 @@ class BillingRunService:
     def __init__(self, db: Session):
         self.db = db
         self.job_service = BillingJobRunService(db)
+        self.policy_engine = PolicyEngine()
 
     def _get_or_create_billing_period(
         self,
@@ -203,6 +208,7 @@ class BillingRunService:
         tz: str,
         client_id: str | None = None,
         idempotency_key: str | None = None,
+        token: dict | None = None,
     ) -> BillingRunResult:
         try:
             period_type = BillingPeriodType(period_type)
@@ -216,17 +222,6 @@ class BillingRunService:
 
         period_from = start_at.date()
         period_to = end_at.date()
-
-        operations = self._query_billable_operations(start_at=start_at, end_at=end_at, client_id=client_id)
-        logger.info(
-            "billing.run.operations_found",
-            extra={
-                "count": len(operations),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
-                "client_filter": client_id,
-            },
-        )
 
         correlation_id = idempotency_key
         if correlation_id:
@@ -292,9 +287,43 @@ class BillingRunService:
                     end_at=end_at,
                     tz=tz,
                 )
+                actor = actor_from_token(token)
+                resource = ResourceContext(
+                    resource_type="BILLING_PERIOD",
+                    tenant_id=actor.tenant_id,
+                    client_id=None,
+                    status=billing_period.status.value if billing_period.status else None,
+                )
+                decision = self.policy_engine.check(
+                    actor=actor,
+                    action=Action.INVOICE_ISSUE,
+                    resource=resource,
+                )
+                if not decision.allowed:
+                    audit_access_denied(
+                        self.db,
+                        actor=actor,
+                        action=Action.INVOICE_ISSUE,
+                        resource=resource,
+                        decision=decision,
+                        token=token,
+                    )
+                    raise PolicyAccessDenied(decision)
                 job_run.billing_period_id = billing_period.id
                 if billing_period.status != BillingPeriodStatus.OPEN:
                     raise BillingPeriodClosedError(f"Billing period {billing_period.id} is {billing_period.status}")
+
+                decision_engine = DecisionEngine(self.db)
+                operations = self._query_billable_operations(start_at=start_at, end_at=end_at, client_id=client_id)
+                logger.info(
+                    "billing.run.operations_found",
+                    extra={
+                        "count": len(operations),
+                        "start_at": start_at.isoformat(),
+                        "end_at": end_at.isoformat(),
+                        "client_filter": client_id,
+                    },
+                )
 
                 grouped: dict[tuple[str, str], list[tuple[Operation, int]]] = {}
                 for op, amount in operations:
@@ -311,6 +340,26 @@ class BillingRunService:
                 for (client_key, currency), items in grouped.items():
                     processed_clients.add(client_key)
                     lines = self._build_lines(items)
+                    invoice_amount = sum(int(line.line_amount or 0) for line in lines)
+                    decision_ctx = DecisionContext(
+                        tenant_id=actor.tenant_id,
+                        client_id=client_key,
+                        amount=invoice_amount,
+                        action=RiskScoreAction.INVOICE,
+                        metadata={"subject_id": f"{billing_period.id}:{client_key}"},
+                    )
+                    decision_result = decision_engine.evaluate(decision_ctx)
+                    if decision_result.outcome != DecisionOutcome.ALLOW:
+                        invoices_skipped += 1
+                        logger.info(
+                            "billing.run.invoice_declined",
+                            extra={
+                                "client_id": client_key,
+                                "currency": currency,
+                                "decision": decision_result.to_payload(),
+                            },
+                        )
+                        continue
                     invoice, action = self._apply_invoice(
                         billing_period=billing_period,
                         client_id=client_key,

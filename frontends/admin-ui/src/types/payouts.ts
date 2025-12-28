@@ -1,72 +1,60 @@
-export type PayoutState = "READY" | "SENT" | "SETTLED" | "FAILED" | "DRAFT";
-
-export interface PayoutBatch {
-  id: string;
-  partner_id: string;
-  date_from: string;
-  date_to: string;
-  state: PayoutState;
+export interface PayoutBatchSummary {
+  batch_id: string;
+  state: string;
   total_amount: number;
   total_qty: number;
   operations_count: number;
-  provider?: string | null;
-  external_ref?: string | null;
-  created_at?: string | null;
-  sent_at?: string | null;
-  settled_at?: string | null;
+  items_count: number;
 }
 
 export interface PayoutBatchItem {
   id: string;
   azs_id?: string | null;
-  product?: string | null;
-  qty: number;
+  product_id?: string | null;
   amount_gross: number;
-  commission: number;
+  commission_amount: number;
   amount_net: number;
-  operations_count?: number | null;
+  qty: number;
+  operations_count: number;
 }
 
-export interface PayoutBatchDetails {
-  batch: PayoutBatch;
+export interface PayoutBatchDetail {
+  id: string;
+  tenant_id: number;
+  partner_id: string;
+  date_from: string;
+  date_to: string;
+  state: string;
+  total_amount: number;
+  total_qty: number;
+  operations_count: number;
+  created_at: string;
+  sent_at?: string | null;
+  settled_at?: string | null;
+  provider?: string | null;
+  external_ref?: string | null;
   items: PayoutBatchItem[];
 }
 
-export interface PayoutBatchesResponse {
-  items: PayoutBatch[];
-  total: number;
-  limit: number;
-  offset: number;
+export interface PayoutExportFile {
+  export_id: string;
+  batch_id: string;
+  format: string;
+  state: string;
+  provider?: string | null;
+  external_ref?: string | null;
+  bank_format_code?: string | null;
+  object_key: string;
+  bucket: string;
+  sha256?: string | null;
+  size_bytes?: number | null;
+  generated_at?: string | null;
+  uploaded_at?: string | null;
+  error_message?: string | null;
+  download_url: string;
 }
 
-export interface PayoutReconcileResult {
-  status: "OK" | "MISMATCH";
-  computed: {
-    total_amount: number;
-    operations_count: number;
-  };
-  recorded: {
-    total_amount: number;
-    operations_count: number;
-  };
-  diff: {
-    amount: number;
-    count: number;
-  };
-}
-
-export interface PayoutBatchesQuery {
-  tenant_id?: string;
-  partner_id?: string;
-  state?: PayoutState[];
-  date_from?: string;
-  date_to?: string;
-  limit?: number;
-  offset?: number;
-  sort?: string;
-}
-
-export interface MarkPayoutPayload {
-  provider: string;
-  external_ref: string;
+export interface PayoutExportFormatInfo {
+  code: string;
+  title: string;
 }

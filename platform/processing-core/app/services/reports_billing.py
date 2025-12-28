@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Iterable
-import hashlib
-import json
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.billing_summary import BillingSummary, BillingSummaryStatus
 from app.models.operation import Operation
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
+from app.services.billing_summary_hash import hash_payload
 
 
 def _capture_aggregation_query(
@@ -40,7 +42,7 @@ def _capture_aggregation_query(
     if merchant_id:
         query = query.filter(Operation.merchant_id == merchant_id)
 
-    return query.group_by("op_date", Operation.merchant_id).order_by("op_date")
+    return query.group_by("op_date", Operation.merchant_id).order_by("op_date", Operation.merchant_id)
 
 
 def build_billing_summary_for_date(
@@ -50,6 +52,21 @@ def build_billing_summary_for_date(
     date_to: date,
     merchant_id: str | None = None,
 ) -> list[BillingSummary]:
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=date_from,
+        date_to=date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
     aggregates: Iterable = _capture_aggregation_query(
         db, date_from=date_from, date_to=date_to, merchant_id=merchant_id
     ).all()
@@ -61,6 +78,7 @@ def build_billing_summary_for_date(
         db.query(BillingSummary)
         .filter(BillingSummary.date >= date_from)
         .filter(BillingSummary.date <= date_to)
+        .filter(BillingSummary.billing_period_id == period.id)
     )
 
     if merchant_id:
@@ -82,17 +100,17 @@ def build_billing_summary_for_date(
 
         payload = {
             "date": op_date.isoformat(),
+            "billing_period_id": str(period.id),
             "merchant_id": aggregate.merchant_id,
             "total_captured_amount": int(aggregate.total_amount or 0),
             "operations_count": int(aggregate.total_operations or 0),
         }
-        payload_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
-        ).hexdigest()
+        payload_hash = hash_payload(payload)
 
         if summary is None:
             summary = BillingSummary(
                 date=op_date,
+                billing_period_id=period.id,
                 merchant_id=aggregate.merchant_id,
                 total_captured_amount=payload["total_captured_amount"],
                 operations_count=payload["operations_count"],
@@ -124,6 +142,13 @@ def finalize_billing_summary(db: Session, summary_id: str) -> BillingSummary:
     summary = db.query(BillingSummary).filter(BillingSummary.id == summary_id).first()
     if summary is None:
         raise ValueError("summary not found")
+    period = (
+        db.query(BillingPeriod)
+        .filter(BillingPeriod.id == summary.billing_period_id)
+        .one_or_none()
+    )
+    if period and period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
     summary.status = BillingSummaryStatus.FINALIZED
     summary.finalized_at = datetime.utcnow()
     db.add(summary)

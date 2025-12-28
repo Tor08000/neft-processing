@@ -8,9 +8,14 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.operation import Operation, OperationStatus
 from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
+from app.services.billing_periods import BillingPeriodService, period_bounds_for_dates
 from app.services.payout_metrics import metrics as payout_metrics
+from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_from_token, audit_access_denied
+from app.services.policy.resources import ResourceContext
 
 
 class PayoutError(Exception):
@@ -28,6 +33,19 @@ class PayoutReconcileResult:
     computed_count: int
     recorded_amount: Decimal
     recorded_count: int
+
+
+@dataclass(frozen=True)
+class PayoutBatchResult:
+    batch: PayoutBatch
+    created: bool
+
+
+@dataclass(frozen=True)
+class PayoutStateResult:
+    batch: PayoutBatch
+    previous_state: PayoutBatchState
+    is_replay: bool
 
 
 def _operations_query(
@@ -53,9 +71,42 @@ def close_payout_period(
     partner_id: str,
     date_from: date,
     date_to: date,
-) -> PayoutBatch:
+    token: dict | None = None,
+) -> PayoutBatchResult:
     if date_from > date_to:
         raise ValueError("invalid_period")
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=date_from,
+        date_to=date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    actor = actor_from_token(token)
+    resource = ResourceContext(
+        resource_type="PAYOUT_BATCH",
+        tenant_id=actor.tenant_id or tenant_id,
+        client_id=None,
+        status=period.status.value if period.status else None,
+    )
+    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CREATE, resource=resource)
+    if not decision.allowed:
+        audit_access_denied(
+            db,
+            actor=actor,
+            action=Action.PAYOUT_EXPORT_CREATE,
+            resource=resource,
+            decision=decision,
+            token=token,
+        )
+        raise PolicyAccessDenied(decision)
+    if period.status not in {BillingPeriodStatus.FINALIZED, BillingPeriodStatus.LOCKED}:
+        raise PayoutError("billing_period_not_finalized")
 
     existing = (
         db.query(PayoutBatch)
@@ -66,7 +117,7 @@ def close_payout_period(
         .one_or_none()
     )
     if existing:
-        return existing
+        return PayoutBatchResult(batch=existing, created=False)
 
     amount_expr = func.coalesce(Operation.amount_settled, Operation.amount)
     total_amount, total_qty, operations_count = (
@@ -96,6 +147,7 @@ def close_payout_period(
         total_amount=total_amount_decimal,
         total_qty=total_qty_decimal,
         operations_count=operations_count_int,
+        meta={"billing_period_id": str(period.id)},
     )
     item = PayoutItem(
         amount_gross=total_amount_decimal,
@@ -127,7 +179,7 @@ def close_payout_period(
     db.commit()
     payout_metrics.mark_created(total_amount_decimal)
     db.refresh(batch)
-    return batch
+    return PayoutBatchResult(batch=batch, created=True)
 
 
 def list_payout_batches(
@@ -175,14 +227,14 @@ def mark_batch_sent(
     batch_id: str,
     provider: str,
     external_ref: str,
-) -> PayoutBatch:
+) -> PayoutStateResult:
     batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
     if not batch:
         raise PayoutError("batch_not_found")
 
     if batch.state in {PayoutBatchState.SENT, PayoutBatchState.SETTLED}:
         if batch.provider == provider and batch.external_ref == external_ref:
-            return batch
+            return PayoutStateResult(batch=batch, previous_state=batch.state, is_replay=True)
         raise PayoutConflictError("external_ref_conflict")
 
     if batch.state != PayoutBatchState.READY:
@@ -198,6 +250,7 @@ def mark_batch_sent(
     if conflict:
         raise PayoutConflictError("external_ref_conflict")
 
+    previous_state = batch.state
     batch.state = PayoutBatchState.SENT
     batch.provider = provider
     batch.external_ref = external_ref
@@ -210,7 +263,7 @@ def mark_batch_sent(
         raise PayoutConflictError("external_ref_conflict") from exc
 
     db.refresh(batch)
-    return batch
+    return PayoutStateResult(batch=batch, previous_state=previous_state, is_replay=False)
 
 
 def mark_batch_settled(
@@ -219,14 +272,34 @@ def mark_batch_settled(
     batch_id: str,
     provider: str,
     external_ref: str,
-) -> PayoutBatch:
+    token: dict | None = None,
+) -> PayoutStateResult:
     batch = db.query(PayoutBatch).filter(PayoutBatch.id == batch_id).one_or_none()
     if not batch:
         raise PayoutError("batch_not_found")
 
+    actor = actor_from_token(token)
+    resource = ResourceContext(
+        resource_type="PAYOUT_BATCH",
+        tenant_id=actor.tenant_id or int(batch.tenant_id),
+        client_id=None,
+        status=None,
+    )
+    decision = PolicyEngine().check(actor=actor, action=Action.PAYOUT_EXPORT_CONFIRM, resource=resource)
+    if not decision.allowed:
+        audit_access_denied(
+            db,
+            actor=actor,
+            action=Action.PAYOUT_EXPORT_CONFIRM,
+            resource=resource,
+            decision=decision,
+            token=token,
+        )
+        raise PolicyAccessDenied(decision)
+
     if batch.state == PayoutBatchState.SETTLED:
         if batch.provider == provider and batch.external_ref == external_ref:
-            return batch
+            return PayoutStateResult(batch=batch, previous_state=batch.state, is_replay=True)
         raise PayoutConflictError("external_ref_conflict")
 
     if batch.state != PayoutBatchState.SENT:
@@ -235,6 +308,7 @@ def mark_batch_settled(
     if batch.provider != provider or batch.external_ref != external_ref:
         raise PayoutConflictError("external_ref_conflict")
 
+    previous_state = batch.state
     batch.state = PayoutBatchState.SETTLED
     batch.settled_at = datetime.now(timezone.utc)
 
@@ -246,7 +320,7 @@ def mark_batch_settled(
 
     payout_metrics.mark_settled()
     db.refresh(batch)
-    return batch
+    return PayoutStateResult(batch=batch, previous_state=previous_state, is_replay=False)
 
 
 def reconcile_batch(db: Session, batch_id: str) -> PayoutReconcileResult:
@@ -302,6 +376,8 @@ __all__ = [
     "PayoutConflictError",
     "PayoutError",
     "PayoutReconcileResult",
+    "PayoutBatchResult",
+    "PayoutStateResult",
     "close_payout_period",
     "list_payout_batches",
     "load_payout_batch",

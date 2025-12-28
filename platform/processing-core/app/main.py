@@ -20,11 +20,14 @@ from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
 from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
+from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
 from app.services.bootstrap import ensure_default_refs
+from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
+from app.services.audit_metrics import metrics as audit_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveResult,
@@ -36,6 +39,8 @@ from app.services.limits import (
 )
 from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
+from app.services.risk_v5.hook import register_shadow_hook
+from app.services.risk_v5.metrics import metrics as risk_v5_metrics
 
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
@@ -75,6 +80,16 @@ try:
     from app.api.v1.endpoints.payouts import router as payouts_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     payouts_router = None  # type: ignore
+
+try:
+    from app.api.v1.endpoints.fuel_transactions import router as fuel_transactions_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    fuel_transactions_router = None  # type: ignore
+
+try:
+    from app.api.v1.endpoints.logistics import router as logistics_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    logistics_router = None  # type: ignore
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
@@ -286,6 +301,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ensure_default_refs(db)
     finally:
         db.close()
+    register_shadow_hook()
     logger.info("core-api startup complete")
     yield
 
@@ -317,6 +333,10 @@ if transactions_router is not None:
 # Включаем роутер отчётов, если он доступен
 if reports_billing_router is not None:
     app.include_router(reports_billing_router, prefix="")
+if fuel_transactions_router is not None:
+    app.include_router(fuel_transactions_router, prefix="")
+if logistics_router is not None:
+    app.include_router(logistics_router, prefix="")
 
 if intake_router is not None:
     app.include_router(intake_router, prefix="")
@@ -334,6 +354,7 @@ app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+app.include_router(client_documents_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -345,6 +366,10 @@ if transactions_router is not None:
     core_prefixed_router.include_router(transactions_router, prefix="")
 if reports_billing_router is not None:
     core_prefixed_router.include_router(reports_billing_router, prefix="")
+if fuel_transactions_router is not None:
+    core_prefixed_router.include_router(fuel_transactions_router, prefix="")
+if logistics_router is not None:
+    core_prefixed_router.include_router(logistics_router, prefix="")
 if intake_router is not None:
     core_prefixed_router.include_router(intake_router, prefix="")
 if partners_router is not None:
@@ -357,6 +382,7 @@ if payouts_router is not None:
 core_prefixed_router.include_router(admin_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(client_portal_router)
+core_prefixed_router.include_router(client_documents_router)
 
 
 # -----------------------------------------------------------------------------
@@ -452,12 +478,38 @@ def _billing_metrics() -> list[str]:
 
 
 def _payout_metrics() -> list[str]:
+    export_state_lines = [
+        f'core_api_payout_exports_total{{format="{export_format}",state="{state}"}} {count}'
+        for (export_format, state), count in payout_metrics.exports_total.items()
+    ]
+    if not export_state_lines:
+        export_state_lines.append('core_api_payout_exports_total{format="unset",state="unset"} 0')
+
+    export_bytes_lines = [
+        f'core_api_payout_export_bytes_total{{format="{export_format}"}} {count}'
+        for export_format, count in payout_metrics.export_bytes_total.items()
+    ]
+    if not export_bytes_lines:
+        export_bytes_lines.append('core_api_payout_export_bytes_total{format="unset"} 0')
+
+    export_download_lines = [
+        f'core_api_payout_export_download_total{{format="{export_format}"}} {count}'
+        for export_format, count in payout_metrics.export_download_total.items()
+    ]
+    if not export_download_lines:
+        export_download_lines.append('core_api_payout_export_download_total{format="unset"} 0')
+
     return [
         f"core_api_payout_batches_created_total {payout_metrics.batches_created_total}",
         f"core_api_payout_batches_errors_total {payout_metrics.batches_errors_total}",
         f"core_api_payout_batches_settled_total {payout_metrics.batches_settled_total}",
         f"core_api_payout_reconcile_mismatch_total {payout_metrics.reconcile_mismatch_total}",
         f"core_api_payout_amount_total {payout_metrics.payout_amount_total}",
+        *export_state_lines,
+        f"core_api_payout_export_errors_total {payout_metrics.export_errors_total}",
+        *export_bytes_lines,
+        *export_download_lines,
+        f"core_api_payout_export_download_errors_total {payout_metrics.export_download_errors_total}",
     ]
 
 
@@ -520,6 +572,38 @@ def _intake_metrics() -> list[str]:
     ]
 
 
+def _audit_metrics() -> list[str]:
+    event_lines = [
+        f"core_api_audit_events_total{{event_type='{event_type}'}} {count}"
+        for event_type, count in audit_metrics.events_total.items()
+    ]
+    if not event_lines:
+        event_lines.append('core_api_audit_events_total{event_type="unset"} 0')
+
+    return [
+        "# HELP core_api_audit_events_total Total audit events by type.",
+        "# TYPE core_api_audit_events_total counter",
+        *event_lines,
+        "# HELP core_api_audit_write_errors_total Audit write errors.",
+        "# TYPE core_api_audit_write_errors_total counter",
+        f"core_api_audit_write_errors_total {audit_metrics.write_errors_total}",
+        "# HELP core_api_audit_verify_broken_total Audit chain verification failures.",
+        "# TYPE core_api_audit_verify_broken_total counter",
+        f"core_api_audit_verify_broken_total {audit_metrics.verify_broken_total}",
+    ]
+
+
+def _accounting_export_metrics() -> list[str]:
+    return [
+        "# HELP core_api_accounting_export_overdue_total Accounting export batches overdue for generation.",
+        "# TYPE core_api_accounting_export_overdue_total counter",
+        f"core_api_accounting_export_overdue_total {accounting_export_metrics.overdue_batches_total}",
+        "# HELP core_api_accounting_export_unconfirmed_total Accounting export batches overdue for confirmation.",
+        "# TYPE core_api_accounting_export_unconfirmed_total counter",
+        f"core_api_accounting_export_unconfirmed_total {accounting_export_metrics.unconfirmed_batches_total}",
+    ]
+
+
 def _risk_metrics() -> list[str]:
     latency_p95 = _percentile(risk_metrics.latencies_ms, 95) or 0
     connection_lines = [
@@ -549,6 +633,41 @@ def _risk_metrics() -> list[str]:
     ]
 
 
+def _risk_v5_metrics() -> list[str]:
+    lines: list[str] = []
+    disagreement = 0.0
+    if risk_v5_metrics.total:
+        disagreement = risk_v5_metrics.disagreement_total / max(risk_v5_metrics.total, 1)
+    label_rate = 0.0
+    if risk_v5_metrics.label_total:
+        label_rate = risk_v5_metrics.label_available / max(risk_v5_metrics.label_total, 1)
+    lines.extend(
+        [
+            "# HELP core_api_risk_v5_total Total v5 shadow decisions.",
+            "# TYPE core_api_risk_v5_total counter",
+            f"core_api_risk_v5_total {risk_v5_metrics.total}",
+            "# HELP core_api_risk_v5_scored_total Total v5 shadow decisions with scores.",
+            "# TYPE core_api_risk_v5_scored_total counter",
+            f"core_api_risk_v5_scored_total {risk_v5_metrics.scored_total}",
+            "# HELP core_api_risk_v5_disagreement_rate Disagreement rate between v4 and v5.",
+            "# TYPE core_api_risk_v5_disagreement_rate gauge",
+            f"core_api_risk_v5_disagreement_rate {disagreement}",
+            "# HELP core_api_risk_v5_label_rate Share of shadow decisions with labels.",
+            "# TYPE core_api_risk_v5_label_rate gauge",
+            f"core_api_risk_v5_label_rate {label_rate}",
+        ]
+    )
+    for bucket, count in risk_v5_metrics.score_distribution.items():
+        lines.append(f'core_api_risk_v5_score_distribution_total{{bucket="{bucket}"}} {count}')
+    for outcome, count in risk_v5_metrics.predicted_outcomes.items():
+        lines.append(f'core_api_risk_v5_predicted_outcomes_total{{outcome="{outcome}"}} {count}')
+    if not risk_v5_metrics.score_distribution:
+        lines.append('core_api_risk_v5_score_distribution_total{bucket="unset"} 0')
+    if not risk_v5_metrics.predicted_outcomes:
+        lines.append('core_api_risk_v5_predicted_outcomes_total{outcome="unset"} 0')
+    return lines
+
+
 @app.get("/metrics", response_class=PlainTextResponse)
 def metrics() -> str:  # pragma: no cover - response verified via API test
     lines = [
@@ -561,6 +680,9 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_posting_metrics())
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
+    lines.extend(_risk_v5_metrics())
+    lines.extend(_audit_metrics())
+    lines.extend(_accounting_export_metrics())
     return "\n".join(lines) + "\n"
 
 

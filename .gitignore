@@ -8,6 +8,7 @@ node_modules/
 .turbo/
 .cache/
 .env
+.admin_token
 **/*.bak
 copy
 logs/

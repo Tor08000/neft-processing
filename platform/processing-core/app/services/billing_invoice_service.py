@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -7,14 +8,26 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
 from app.models.clearing_batch import ClearingBatch
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.models.operation import Operation, OperationStatus
 from app.services.billing_metrics import metrics as billing_metrics
+from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
 from app.services.invoice_pdf import InvoicePdfService
+from app.services.finance_invariants import FinancialInvariantChecker
+from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
+from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class InvoiceGenerationResult:
+    invoice: Invoice
+    created: bool
 
 
 def close_clearing_period(
@@ -30,6 +43,20 @@ def close_clearing_period(
         raise ValueError("invalid_period")
 
     billing_metrics.start_run(date_from.isoformat(), date_to.isoformat())
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=date_from,
+        date_to=date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
 
     existing = (
         db.query(ClearingBatch)
@@ -135,33 +162,71 @@ def generate_invoice_for_batch(
     *,
     batch_id: str,
     run_pdf_sync: bool,
-) -> Invoice:
+) -> InvoiceGenerationResult:
     batch = db.query(ClearingBatch).filter(ClearingBatch.id == batch_id).one_or_none()
     if not batch:
         raise ValueError("batch_not_found")
 
+    period_service = BillingPeriodService(db)
+    period_start, period_end = period_bounds_for_dates(
+        date_from=batch.date_from,
+        date_to=batch.date_to,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    period = period_service.get_or_create(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=period_start,
+        end_at=period_end,
+        tz=settings.NEFT_BILLING_TZ,
+    )
+    if period.status != BillingPeriodStatus.OPEN:
+        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
     existing = db.query(Invoice).filter(Invoice.clearing_batch_id == batch_id).one_or_none()
     if existing:
+        if not existing.billing_period_id:
+            existing.billing_period_id = period.id
         if not existing.pdf_object_key:
             existing.pdf_object_key = f"invoices/{existing.id}.pdf"
             db.add(existing)
         if run_pdf_sync and not existing.pdf_url:
             _generate_invoice_pdf_sync(db, existing)
         db.commit()
-        return existing
+        return InvoiceGenerationResult(invoice=existing, created=False)
 
     try:
         total_amount = int(batch.total_amount or 0)
         initial_status = InvoiceStatus.SENT if run_pdf_sync else InvoiceStatus.ISSUED
         issued_at = datetime.now(timezone.utc)
+        client_id = _resolve_invoice_client_id(db, batch)
+        currency = _resolve_invoice_currency(db, batch)
+        decision_context = DecisionContext(
+            tenant_id=0,
+            client_id=client_id,
+            actor_type="SYSTEM",
+            action=DecisionAction.INVOICE_ISSUE,
+            amount=total_amount,
+            currency=currency,
+            billing_period_id=str(period.id),
+            history={},
+            metadata={
+                "billing_period_status": period.status.value if period.status else None,
+                "initial_status": initial_status.value,
+                "subject_id": batch.id,
+            },
+        )
+        decision = DecisionEngine(db).evaluate(decision_context)
+        if decision.outcome != DecisionOutcome.ALLOW:
+            raise ValueError(f"DECISION_{decision.outcome.value}")
         invoice = Invoice(
             clearing_batch_id=batch.id,
-            client_id=_resolve_invoice_client_id(db, batch),
+            client_id=client_id,
             number="",
             external_number=None,
             period_from=batch.date_from,
             period_to=batch.date_to,
-            currency=_resolve_invoice_currency(db, batch),
+            currency=currency,
+            billing_period_id=period.id,
             total_amount=total_amount,
             tax_amount=0,
             total_with_tax=total_amount,
@@ -179,12 +244,13 @@ def generate_invoice_for_batch(
         invoice.number = number
         invoice.external_number = number
         invoice.pdf_object_key = f"invoices/{invoice.id}.pdf"
+        FinancialInvariantChecker(db).check_invoice(invoice)
         billing_metrics.mark_generated()
     except IntegrityError:
         db.rollback()
         existing = db.query(Invoice).filter(Invoice.clearing_batch_id == batch_id).one_or_none()
         if existing:
-            return existing
+            return InvoiceGenerationResult(invoice=existing, created=False)
         raise
     except Exception:  # noqa: BLE001
         billing_metrics.mark_error()
@@ -202,7 +268,24 @@ def generate_invoice_for_batch(
             generate_invoice_pdf.delay(invoice.id)
         except Exception:  # noqa: BLE001
             logger.warning("invoice.pdf.enqueue_failed", extra={"invoice_id": invoice.id})
-    return invoice
+    try:
+        graph_context = GraphContext(tenant_id=batch.tenant_id or 0, request_ctx=None)
+        LegalGraphBuilder(db, context=graph_context).ensure_invoice_graph(invoice)
+    except Exception as exc:  # noqa: BLE001 - graph must not block invoice issuance
+        logger.warning(
+            "legal_graph_invoice_issue_failed",
+            extra={"invoice_id": invoice.id, "error": str(exc)},
+        )
+        audit_graph_write_failure(
+            db,
+            failure=LegalGraphWriteFailure(
+                entity_type="invoice",
+                entity_id=str(invoice.id),
+                error=str(exc),
+            ),
+            request_ctx=None,
+        )
+    return InvoiceGenerationResult(invoice=invoice, created=True)
 
 
 def _generate_invoice_pdf_sync(db: Session, invoice: Invoice) -> None:
@@ -210,4 +293,4 @@ def _generate_invoice_pdf_sync(db: Session, invoice: Invoice) -> None:
     pdf_service.generate(invoice, force=False)
 
 
-__all__ = ["close_clearing_period", "generate_invoice_for_batch"]
+__all__ = ["close_clearing_period", "generate_invoice_for_batch", "InvoiceGenerationResult"]

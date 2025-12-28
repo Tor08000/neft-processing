@@ -1,0 +1,45 @@
+code: SBER_REGISTRY_V1
+title: "Sberbank payouts registry v1"
+sheet_name: "Реестр"
+filename_pattern: "payout_{partner_id}_{date_from}_{date_to}_{external_ref}.xlsx"
+
+columns:
+  - key: beneficiary_name
+    header: "Получатель"
+    width: 40
+    type: text
+    source: partner.name
+
+  - key: inn
+    header: "ИНН"
+    width: 14
+    type: text
+    source: partner.inn
+    transform: [digits_only]
+
+  - key: bik
+    header: "БИК"
+    width: 10
+    type: text
+    source: partner.bank.bik
+    transform: [digits_only]
+
+  - key: account
+    header: "Счёт"
+    width: 24
+    type: text
+    source: partner.bank.account
+    transform: [digits_only]
+
+  - key: amount
+    header: "Сумма"
+    width: 14
+    type: money
+    source: item.amount_net
+    transform: [money_2dp]
+
+  - key: purpose
+    header: "Назначение"
+    width: 60
+    type: text
+    source: computed.payment_purpose

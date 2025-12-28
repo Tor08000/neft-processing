@@ -127,12 +127,29 @@ def test_billing_run_smoke(admin_client: TestClient, session: Session):
         session.commit()
 
 
+def test_finalize_period_requires_finance_role(make_jwt):
+    start_at = datetime(2025, 12, 1, tzinfo=timezone.utc)
+    end_at = start_at + timedelta(days=1)
+    token = make_jwt(roles=("ADMIN",))
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "period_type": BillingPeriodType.ADHOC.value,
+        "start_at": start_at.isoformat(),
+        "end_at": end_at.isoformat(),
+        "tz": "UTC",
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/v1/admin/billing/periods/finalize", json=payload, headers=headers)
+        assert response.status_code == 403
+
+
 def test_billing_run_respects_existing_transaction(session: Session):
     service = BillingRunService(session)
     start_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
     end_at = start_at + timedelta(days=1)
     client_id = str(uuid4())
     operation = None
+    token = {"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester"}
 
     try:
         with session.begin():
@@ -149,6 +166,7 @@ def test_billing_run_respects_existing_transaction(session: Session):
                 end_at=end_at,
                 tz="UTC",
                 client_id=None,
+                token=token,
             )
     finally:
         if operation is not None:

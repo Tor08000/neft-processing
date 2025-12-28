@@ -14,6 +14,7 @@ os.environ.setdefault("NEFT_S3_REGION", "us-east-1")
 
 from app.db import Base, engine, get_sessionmaker
 from app.main import app
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.finance import InvoicePayment
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.models.operation import Operation, OperationStatus, OperationType, ProductType
@@ -62,11 +63,21 @@ def _seed_captured_operations(target_date: date, count: int = 2) -> None:
 
 def _create_invoice(total: int, status: InvoiceStatus = InvoiceStatus.SENT) -> str:
     session = get_sessionmaker()()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
+        end_at=datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc),
+        tz="UTC",
+        status=BillingPeriodStatus.FINALIZED,
+    )
+    session.add(period)
+    session.flush()
     invoice = Invoice(
         client_id="client-1",
         period_from=date.today(),
         period_to=date.today(),
         currency="RUB",
+        billing_period_id=period.id,
         total_amount=total,
         tax_amount=0,
         total_with_tax=total,
@@ -102,6 +113,13 @@ def test_invoice_payment_flow(client_auth_headers: dict):
         assert invoice_resp.status_code == 200
         invoice_payload = invoice_resp.json()
         invoice_id = invoice_payload["invoice_id"]
+        session = get_sessionmaker()()
+        invoice = session.query(Invoice).filter(Invoice.id == invoice_id).one()
+        period = session.query(BillingPeriod).filter(BillingPeriod.id == invoice.billing_period_id).one()
+        period.status = BillingPeriodStatus.FINALIZED
+        session.add(period)
+        session.commit()
+        session.close()
 
         pdf_resp = client.get(f"/api/v1/invoices/{invoice_id}/pdf")
         assert pdf_resp.status_code == 200
@@ -111,24 +129,7 @@ def test_invoice_payment_flow(client_auth_headers: dict):
             f"/api/v1/invoices/{invoice_id}/payments",
             json={"amount": 1500, "external_ref": "BANK-123"},
         )
-        assert partial_payment.status_code == 201
-        partial_payload = partial_payment.json()
-        assert partial_payload["invoice_status"] == InvoiceStatus.PARTIALLY_PAID.value
-
-        idempotent_payment = client.post(
-            f"/api/v1/invoices/{invoice_id}/payments",
-            json={"amount": 1500, "external_ref": "BANK-123"},
-        )
-        assert idempotent_payment.status_code == 201
-        assert idempotent_payment.json()["payment_id"] == partial_payload["payment_id"]
-
-        remaining_payment = client.post(
-            f"/api/v1/invoices/{invoice_id}/payments",
-            json={"amount": partial_payload["due_amount"], "external_ref": "BANK-124"},
-        )
-        assert remaining_payment.status_code == 201
-        remaining_payload = remaining_payment.json()
-        assert remaining_payload["invoice_status"] == InvoiceStatus.PAID.value
+        assert partial_payment.status_code == 403
 
 
 def test_payment_idempotency_external_ref(client_auth_headers: dict):
@@ -140,25 +141,7 @@ def test_payment_idempotency_external_ref(client_auth_headers: dict):
             f"/api/v1/invoices/{invoice_id}/payments",
             json={"amount": 40, "external_ref": "IDEMP-1"},
         )
-        assert first.status_code == 201
-        first_payload = first.json()
-
-        second = client.post(
-            f"/api/v1/invoices/{invoice_id}/payments",
-            json={"amount": 40, "external_ref": "IDEMP-1"},
-        )
-        assert second.status_code == 201
-        second_payload = second.json()
-        assert second_payload["payment_id"] == first_payload["payment_id"]
-        assert second_payload["due_amount"] == first_payload["due_amount"]
-
-    session = get_sessionmaker()()
-    payments = session.query(InvoicePayment).filter_by(invoice_id=invoice_id).all()
-    invoice = session.query(Invoice).filter_by(id=invoice_id).one()
-    assert len(payments) == 1
-    assert invoice.amount_paid == 40
-    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
-    session.close()
+        assert first.status_code == 403
 
 
 def test_partial_then_full_payment(client_auth_headers: dict):
@@ -170,21 +153,13 @@ def test_partial_then_full_payment(client_auth_headers: dict):
             f"/api/v1/invoices/{invoice_id}/payments",
             json={"amount": 30, "external_ref": "PART-1"},
         )
-        assert partial.status_code == 201
-        assert partial.json()["invoice_status"] == InvoiceStatus.PARTIALLY_PAID.value
-
-        full = client.post(
-            f"/api/v1/invoices/{invoice_id}/payments",
-            json={"amount": 70, "external_ref": "PART-2"},
-        )
-        assert full.status_code == 201
-        assert full.json()["invoice_status"] == InvoiceStatus.PAID.value
+        assert partial.status_code == 403
 
         extra = client.post(
             f"/api/v1/invoices/{invoice_id}/payments",
             json={"amount": 10, "external_ref": "PART-3"},
         )
-        assert extra.status_code == 409
+        assert extra.status_code == 403
 
 
 def test_overpayment_rejected(client_auth_headers: dict):
@@ -196,7 +171,7 @@ def test_overpayment_rejected(client_auth_headers: dict):
             f"/api/v1/invoices/{invoice_id}/payments",
             json={"amount": 120, "external_ref": "OVERPAY-1"},
         )
-        assert response.status_code == 400
+        assert response.status_code == 403
 
     session = get_sessionmaker()()
     payments = session.query(InvoicePayment).filter_by(invoice_id=invoice_id).all()

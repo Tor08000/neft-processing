@@ -1,45 +1,38 @@
 import { apiGet, apiPost } from "./client";
 import {
-  MarkPayoutPayload,
-  PayoutBatchDetails,
-  PayoutBatchesQuery,
-  PayoutBatchesResponse,
-  PayoutReconcileResult,
+  PayoutBatchDetail,
+  PayoutBatchSummary,
+  PayoutExportFile,
+  PayoutExportFormatInfo,
 } from "../types/payouts";
 
-export function buildPayoutBatchesQuery(filters: PayoutBatchesQuery): Record<string, string | number> {
-  const params: Record<string, string | number> = {};
-
-  if (filters.tenant_id) params.tenant_id = filters.tenant_id;
-  if (filters.partner_id) params.partner_id = filters.partner_id;
-  if (filters.date_from) params.date_from = filters.date_from;
-  if (filters.date_to) params.date_to = filters.date_to;
-  if (filters.limit !== undefined) params.limit = filters.limit;
-  if (filters.offset !== undefined) params.offset = filters.offset;
-  if (filters.sort) params.sort = filters.sort;
-  if (filters.state && filters.state.length > 0) {
-    params.state = filters.state.join(",");
-  }
-
-  return params;
+export async function fetchPayoutBatches(params: {
+  partner_id?: string;
+  state?: string;
+  date_from?: string;
+  date_to?: string;
+}): Promise<PayoutBatchSummary[]> {
+  const response = await apiGet<{ items: PayoutBatchSummary[] }>("/api/core/v1/payouts/batches", params);
+  return response.items ?? [];
 }
 
-export async function getPayoutBatches(filters: PayoutBatchesQuery): Promise<PayoutBatchesResponse> {
-  return apiGet("/api/v1/payouts/batches", buildPayoutBatchesQuery(filters));
+export async function fetchPayoutBatchDetails(batchId: string): Promise<PayoutBatchDetail> {
+  return apiGet(`/api/core/v1/payouts/batches/${batchId}`);
 }
 
-export async function getPayoutBatch(id: string): Promise<PayoutBatchDetails> {
-  return apiGet(`/api/v1/payouts/batches/${id}`);
+export async function fetchPayoutExports(batchId: string): Promise<PayoutExportFile[]> {
+  const response = await apiGet<{ items: PayoutExportFile[] }>(`/api/core/v1/payouts/batches/${batchId}/exports`);
+  return response.items ?? [];
 }
 
-export async function reconcilePayoutBatch(id: string): Promise<PayoutReconcileResult> {
-  return apiGet(`/api/v1/payouts/batches/${id}/reconcile`);
+export async function createPayoutExport(
+  batchId: string,
+  payload: { format: "CSV" | "XLSX"; provider?: string; external_ref?: string; bank_format_code?: string },
+): Promise<PayoutExportFile> {
+  return apiPost(`/api/core/v1/payouts/batches/${batchId}/export`, payload);
 }
 
-export async function markPayoutSent(id: string, payload: MarkPayoutPayload): Promise<void> {
-  return apiPost(`/api/v1/payouts/batches/${id}/mark-sent`, payload);
-}
-
-export async function markPayoutSettled(id: string, payload: MarkPayoutPayload): Promise<void> {
-  return apiPost(`/api/v1/payouts/batches/${id}/mark-settled`, payload);
+export async function fetchPayoutExportFormats(): Promise<PayoutExportFormatInfo[]> {
+  const response = await apiGet<{ items: PayoutExportFormatInfo[] }>("/api/core/v1/payouts/export-formats");
+  return response.items ?? [];
 }

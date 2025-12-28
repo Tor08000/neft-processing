@@ -61,6 +61,17 @@ class Settings:
     NEFT_S3_BUCKET_INVOICES: str = os.getenv(
         "NEFT_S3_BUCKET_INVOICES", os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
     )
+    NEFT_S3_BUCKET_PAYOUTS: str = os.getenv("NEFT_S3_BUCKET_PAYOUTS", "neft-payouts")
+    NEFT_S3_BUCKET_DOCUMENTS: str = os.getenv("NEFT_S3_BUCKET_DOCUMENTS", "neft-documents")
+    NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: str = os.getenv(
+        "NEFT_S3_BUCKET_ACCOUNTING_EXPORTS", "accounting-exports"
+    )
+    ACCOUNTING_EXPORT_SLA_GENERATE_MINUTES: int = int(os.getenv("ACCOUNTING_EXPORT_SLA_GENERATE_MINUTES", "10"))
+    ACCOUNTING_EXPORT_SLA_CONFIRM_HOURS: int = int(os.getenv("ACCOUNTING_EXPORT_SLA_CONFIRM_HOURS", "48"))
+    ACCOUNTING_EXPORT_ALERTING_ENABLED: bool = os.getenv(
+        "ACCOUNTING_EXPORT_ALERTING_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
+    ACCOUNTING_EXPORT_ALERTING_TARGETS: str = os.getenv("ACCOUNTING_EXPORT_ALERTING_TARGETS", "")
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv(
         "NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
@@ -77,6 +88,11 @@ class Settings:
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", _DEFAULT_MINIO_PASSWORD)
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    LEGAL_GOST_VERIFY_ENABLED: bool = os.getenv("LEGAL_GOST_VERIFY_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     @property
     def redis_dsn(self) -> str:

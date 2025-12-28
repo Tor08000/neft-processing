@@ -332,6 +332,40 @@ def create_index_if_not_exists(
         bind.exec_driver_sql(sql)
 
 
+def create_unique_index_if_not_exists(
+    bind: Connection,
+    index_name: str,
+    table_name: str,
+    columns: Sequence[str] | Iterable[str],
+    *,
+    schema: str = DB_SCHEMA,
+) -> None:
+    if index_exists(bind, index_name, schema=schema):
+        logger.info("Index %s.%s already exists, skipping", schema, index_name)
+        return
+
+    schema_name = schema or "public"
+    sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} ({', '.join(columns)})"
+    bind.exec_driver_sql(sql)
+
+
+def create_unique_expr_index_if_not_exists(
+    bind: Connection,
+    index_name: str,
+    table_name: str,
+    expr_sql: str,
+    *,
+    schema: str = DB_SCHEMA,
+) -> None:
+    if index_exists(bind, index_name, schema=schema):
+        logger.info("Index %s.%s already exists, skipping", schema, index_name)
+        return
+
+    schema_name = schema or "public"
+    sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} {expr_sql}"
+    bind.exec_driver_sql(sql)
+
+
 def drop_index_if_exists(bind: Connection, index_name: str, schema: str = DB_SCHEMA) -> None:
     if not index_exists(bind, index_name, schema=schema):
         return

@@ -1,6 +1,7 @@
 from sqlalchemy import text
-from .db import get_db  # если у тебя имя модуля другое — поправь импорт
-import json
+
+from app.models.audit_log import ActorType, AuditVisibility
+from app.services.audit_service import AuditService, RequestContext
 
 def resolve_price(db, azs_id: int, product_id: int):
     row = db.execute(text("""
@@ -30,8 +31,13 @@ def evaluate_rules(event: dict, rules: list[dict]) -> dict:
     return {"decision": "ALLOW"}
 
 def audit_log(db, actor: str, action: str, target: str, payload: dict):
-    db.execute(text("""
-      INSERT INTO audit_log(actor, action, target, payload, hash)
-      VALUES (:a,:b,:c, :p::jsonb, md5(:a||:b||:c||now()::text))
-    """), {"a": actor, "b": action, "c": target, "p": json.dumps(payload)})
+    AuditService(db).audit(
+        event_type=str(action),
+        entity_type="operation",
+        entity_id=str(target),
+        action=str(action),
+        visibility=AuditVisibility.INTERNAL,
+        after=payload,
+        request_ctx=RequestContext(actor_type=ActorType.SYSTEM, actor_id=str(actor)),
+    )
     db.commit()

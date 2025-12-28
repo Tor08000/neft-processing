@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -10,6 +10,8 @@ from app.models.billing_task_link import BillingTaskStatus, BillingTaskType
 from app.models.contract_limits import TariffPlan, TariffPrice
 from app.models.invoice import Invoice, InvoicePdfStatus, InvoiceStatus
 from app.schemas.billing import BillingSummaryPage
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.models.audit_log import AuditVisibility
 from app.schemas.admin.billing import (
     BillingAdjustmentRequest,
     BillingAdjustmentResponse,
@@ -37,12 +39,14 @@ from app.schemas.admin.billing import (
     BillingJobRunListResponse,
 )
 from app.schemas.reports import BillingSummaryItem
+from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.models.billing_summary import BillingSummary
 from app.models.operation import ProductType
 from app.models.billing_period import BillingPeriod, BillingPeriodType
 from app.services.reports_billing import finalize_billing_summary
 from app.services.billing_run import BillingPeriodClosedError, BillingRunInProgress, BillingRunService, BillingRunValidationError
 from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService
+from app.services.policy import PolicyAccessDenied
 from app.services.reconciliation import BillingReconciliationService
 from app.services.operations_scenarios.adjustments import AdjustmentService
 from app.models.financial_adjustment import FinancialAdjustmentKind, FinancialAdjustmentStatus, RelatedEntityType
@@ -58,12 +62,48 @@ from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
 from app.services.invoice_pdf import InvoicePdfService
 from app.services.invoice_state_machine import InvoiceInvariantError, InvoiceStateMachine, InvalidTransitionError
+from app.api.dependencies.admin import require_admin_user
 from app.services.s3_storage import S3Storage
 from app.repositories.billing_repository import BillingRepository
 from app.services.job_locks import advisory_lock, make_lock_token, make_stable_key
 from app.services.demo_seed import DemoSeeder
+from app.services.settlement_allocations import list_settlement_summary
+from app.services.legal_graph import (
+    LegalGraphRegistry,
+    LegalGraphSnapshotService,
+    check_billing_period_completeness,
+)
+from app.models.legal_graph import LegalGraphSnapshotScopeType, LegalNodeType
+from neft_shared.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["admin"])
+
+
+@router.get("/settlement-summary", response_model=SettlementSummaryResponse)
+def admin_settlement_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    client_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> SettlementSummaryResponse:
+    rows = list_settlement_summary(db, date_from=date_from, date_to=date_to, client_id=client_id)
+    items = [
+        SettlementSummaryItem(
+            settlement_period_id=row.settlement_period_id,
+            period_start=row.period_start,
+            period_end=row.period_end,
+            currency=row.currency,
+            total_payments=row.total_payments,
+            total_credits=row.total_credits,
+            total_refunds=row.total_refunds,
+            total_net=row.total_payments - row.total_credits - row.total_refunds,
+            allocations_count=row.allocations_count,
+        )
+        for row in rows
+    ]
+    return SettlementSummaryResponse(items=items, total=len(items))
 
 
 @router.get("/periods", response_model=BillingPeriodListResponse)
@@ -80,23 +120,98 @@ def admin_list_billing_periods(
 
 
 @router.post("/periods/lock", response_model=BillingPeriodRead)
-def admin_lock_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+def admin_lock_billing_period(
+    body: BillingPeriodPayload,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> BillingPeriodRead:
     service = BillingPeriodService(db)
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    tenant_id = int(token.get("tenant_id") or 0)
+    period_preview = service.get_or_create(
+        period_type=body.period_type,
+        start_at=body.start_at,
+        end_at=body.end_at,
+        tz=body.tz,
+    )
+    completeness = check_billing_period_completeness(
+        db,
+        tenant_id=tenant_id,
+        period_id=str(period_preview.id),
+    )
+    if not completeness.ok:
+        AuditService(db).audit(
+            event_type="LEGAL_GRAPH_COMPLETENESS_FAILED",
+            entity_type="billing_period",
+            entity_id=str(period_preview.id),
+            action="LOCK_DENIED",
+            visibility=AuditVisibility.INTERNAL,
+            after={
+                "missing_nodes": completeness.missing_nodes,
+                "missing_edges": completeness.missing_edges,
+                "blocking_reasons": completeness.blocking_reasons,
+            },
+            request_ctx=request_ctx,
+        )
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="billing_period_incomplete")
     try:
         period = service.lock(
             period_type=body.period_type,
             start_at=body.start_at,
             end_at=body.end_at,
             tz=body.tz,
+            token=token,
+        )
+        LegalGraphRegistry(db, request_ctx=request_ctx).get_or_create_node(
+            tenant_id=tenant_id,
+            node_type=LegalNodeType.BILLING_PERIOD,
+            ref_id=str(period.id),
+            ref_table="billing_periods",
+        )
+        LegalGraphSnapshotService(db, request_ctx=request_ctx).create_snapshot(
+            tenant_id=tenant_id,
+            scope_type=LegalGraphSnapshotScopeType.BILLING_PERIOD,
+            scope_ref_id=str(period.id),
+            depth=3,
+            actor_ctx=request_ctx,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_LOCK_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="LOCK_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).audit(
+        event_type="BILLING_PERIOD_LOCKED",
+        entity_type="billing_period",
+        entity_id=str(period.id),
+        action="LOCK",
+        after={
+            "status": period.status.value if period.status else None,
+            "locked_at": period.locked_at,
+        },
+        request_ctx=request_ctx,
+    )
     return BillingPeriodRead.model_validate(period)
 
 
 @router.post("/periods/finalize", response_model=BillingPeriodRead)
-def admin_finalize_billing_period(body: BillingPeriodPayload, db: Session = Depends(get_db)) -> BillingPeriodRead:
+def admin_finalize_billing_period(
+    body: BillingPeriodPayload,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> BillingPeriodRead:
     service = BillingPeriodService(db)
     try:
         period = service.finalize(
@@ -104,10 +219,33 @@ def admin_finalize_billing_period(body: BillingPeriodPayload, db: Session = Depe
             start_at=body.start_at,
             end_at=body.end_at,
             tz=body.tz,
+            token=token,
         )
         db.commit()
+    except PolicyAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingPeriodConflict as exc:
+        AuditService(db).audit(
+            event_type="BILLING_PERIOD_FINALIZE_CONFLICT",
+            entity_type="billing_period",
+            entity_id=None,
+            action="FINALIZE_DENIED",
+            reason=str(exc),
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).audit(
+        event_type="BILLING_PERIOD_FINALIZED",
+        entity_type="billing_period",
+        entity_id=str(period.id),
+        action="FINALIZE",
+        after={
+            "status": period.status.value if period.status else None,
+            "finalized_at": period.finalized_at,
+        },
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
     return BillingPeriodRead.model_validate(period)
 
 
@@ -193,7 +331,11 @@ def admin_seed_billing(idempotency_key: str | None = Query(None), db: Session = 
 
 
 @router.post("/run", response_model=BillingRunResponse)
-def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) -> BillingRunResponse:
+def admin_run_billing(
+    body: BillingRunRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> BillingRunResponse:
     service = BillingRunService(db)
     scope_key = make_stable_key(
         "billing_manual_run",
@@ -214,7 +356,10 @@ def admin_run_billing(body: BillingRunRequest, db: Session = Depends(get_db)) ->
             tz=body.tz,
             client_id=body.client_id,
             idempotency_key=scope_key,
+            token=token,
         )
+    except PolicyAccessDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except BillingRunValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except BillingPeriodClosedError as exc:
@@ -281,6 +426,8 @@ def admin_finalize_summary(summary_id: str, db: Session = Depends(get_db)) -> Bi
         summary = finalize_billing_summary(db, summary_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="summary not found")
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return BillingSummaryItem.model_validate(summary)
 
 
@@ -289,7 +436,10 @@ def admin_run_billing_daily(
     billing_date: date | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    summaries = run_billing_daily(billing_date, session=db)
+    try:
+        summaries = run_billing_daily(billing_date, session=db)
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     resolved_date = billing_date or (summaries[0].billing_date if summaries else None)
     return {"processed": len(summaries), "billing_date": str(resolved_date) if resolved_date else None}
 
@@ -409,12 +559,15 @@ def admin_get_invoice(invoice_id: str, db: Session = Depends(get_db)) -> Invoice
 
 @router.post("/invoices/generate", response_model=InvoiceGenerateResponse, status_code=status.HTTP_202_ACCEPTED)
 def admin_generate_invoices(body: InvoiceGenerateRequest, db: Session = Depends(get_db)) -> InvoiceGenerateResponse:
-    invoices = generate_invoices_for_period(
-        db,
-        period_from=body.period_from,
-        period_to=body.period_to,
-        status=body.status,
-    )
+    try:
+        invoices = generate_invoices_for_period(
+            db,
+            period_from=body.period_from,
+            period_to=body.period_to,
+            status=body.status,
+        )
+    except BillingPeriodConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return InvoiceGenerateResponse(created_ids=[invoice.id for invoice in invoices])
 
 

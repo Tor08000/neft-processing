@@ -16,7 +16,12 @@ PUBLIC_KEY_CACHE_TTL = 300
 EXPECTED_ISSUER = "neft-auth"
 EXPECTED_AUDIENCE = "neft-admin"
 
-ALLOWED_CLIENT_ROLES = {"CLIENT_ADMIN", "CLIENT_USER"}
+ALLOWED_CLIENT_ROLES = {
+    "CLIENT_ADMIN",
+    "CLIENT_ACCOUNTANT",
+    "CLIENT_OWNER",
+    "CLIENT_USER",
+}
 
 _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
@@ -104,4 +109,3 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
 
 def require_client_user(token: dict = Depends(verify_client_token)) -> dict:
     return token
-

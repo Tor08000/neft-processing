@@ -16,6 +16,13 @@ class BillingPeriodType(str, Enum):
 
 
 class BillingPeriodStatus(str, Enum):
+    """Billing period lifecycle.
+
+    OPEN: accruals and invoice generation allowed.
+    FINALIZED: accruals closed, settlement only.
+    LOCKED: legally closed period, read-only for audit/exports.
+    """
+
     OPEN = "OPEN"
     FINALIZED = "FINALIZED"
     LOCKED = "LOCKED"

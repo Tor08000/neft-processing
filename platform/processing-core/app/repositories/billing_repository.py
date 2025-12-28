@@ -5,9 +5,13 @@ from datetime import date, datetime
 from typing import Iterable
 from uuid import uuid4
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.invoice import Invoice, InvoiceLine, InvoicePdfStatus, InvoiceStatus
+from app.services.internal_ledger import InternalLedgerService
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.invoice_state_machine import InvoiceStateMachine
 
 
@@ -36,6 +40,7 @@ class BillingInvoiceData:
     currency: str
     lines: Iterable[BillingLineData]
     status: InvoiceStatus = InvoiceStatus.DRAFT
+    billing_period_id: str | None = None
     external_number: str | None = None
     issued_at: datetime | None = None
     sent_at: datetime | None = None
@@ -65,11 +70,23 @@ class BillingRepository:
         amount_paid = 0
         amount_due = total_with_tax - amount_paid
 
+        if data.billing_period_id:
+            period = (
+                self.db.query(BillingPeriod)
+                .filter(BillingPeriod.id == data.billing_period_id)
+                .one_or_none()
+            )
+            if not period:
+                raise ValueError("billing period not found")
+            if period.status != BillingPeriodStatus.OPEN:
+                raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
+
         invoice = Invoice(
             client_id=data.client_id,
             period_from=data.period_from,
             period_to=data.period_to,
             currency=data.currency,
+            billing_period_id=data.billing_period_id,
             status=InvoiceStatus.DRAFT,
             total_amount=total_amount,
             tax_amount=tax_amount,
@@ -112,6 +129,7 @@ class BillingRepository:
             actor="billing_repository",
             reason="create_invoice",
         )
+        InternalLedgerService(self.db).post_invoice_issued(invoice=invoice, tenant_id=0)
 
         if auto_commit:
             self.db.commit()
@@ -120,17 +138,17 @@ class BillingRepository:
             self.db.flush()
         return invoice
 
-    def find_invoices(
+    def _build_invoice_query(
         self,
         *,
         client_id: str | None = None,
         period_from: date | None = None,
         period_to: date | None = None,
-        status: InvoiceStatus | None = None,
+        status: InvoiceStatus | list[InvoiceStatus] | tuple[InvoiceStatus, ...] | None = None,
+        issued_from: datetime | None = None,
+        issued_to: datetime | None = None,
         exclude_cancelled: bool = False,
-    ) -> list[Invoice]:
-        """Search invoices by client, period and status."""
-
+    ):
         query = self.db.query(Invoice)
         if client_id:
             query = query.filter(Invoice.client_id == client_id)
@@ -138,11 +156,63 @@ class BillingRepository:
             query = query.filter(Invoice.period_from >= period_from)
         if period_to:
             query = query.filter(Invoice.period_to <= period_to)
+        if issued_from:
+            query = query.filter(func.coalesce(Invoice.issued_at, Invoice.created_at) >= issued_from)
+        if issued_to:
+            query = query.filter(func.coalesce(Invoice.issued_at, Invoice.created_at) <= issued_to)
         if status:
-            query = query.filter(Invoice.status == status)
+            if isinstance(status, (list, tuple)):
+                query = query.filter(Invoice.status.in_(status))
+            else:
+                query = query.filter(Invoice.status == status)
         if exclude_cancelled:
             query = query.filter(Invoice.status != InvoiceStatus.CANCELLED)
+        return query
+
+    def find_invoices(
+        self,
+        *,
+        client_id: str | None = None,
+        period_from: date | None = None,
+        period_to: date | None = None,
+        status: InvoiceStatus | list[InvoiceStatus] | tuple[InvoiceStatus, ...] | None = None,
+        exclude_cancelled: bool = False,
+    ) -> list[Invoice]:
+        """Search invoices by client, period and status."""
+
+        query = self._build_invoice_query(
+            client_id=client_id,
+            period_from=period_from,
+            period_to=period_to,
+            status=status,
+            exclude_cancelled=exclude_cancelled,
+        )
         return query.order_by(Invoice.created_at.desc()).all()
+
+    def list_invoices(
+        self,
+        *,
+        client_id: str | None = None,
+        issued_from: datetime | None = None,
+        issued_to: datetime | None = None,
+        status: list[InvoiceStatus] | None = None,
+        exclude_cancelled: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+        sort_desc: bool = True,
+    ) -> tuple[list[Invoice], int]:
+        query = self._build_invoice_query(
+            client_id=client_id,
+            issued_from=issued_from,
+            issued_to=issued_to,
+            status=status,
+            exclude_cancelled=exclude_cancelled,
+        )
+        total = query.count()
+        ordering = Invoice.issued_at.desc().nullslast() if sort_desc else Invoice.issued_at.asc().nullsfirst()
+        query = query.order_by(ordering, Invoice.created_at.desc())
+        items = query.offset(offset).limit(limit).all()
+        return items, total
 
     def get_invoice(self, invoice_id: str) -> Invoice | None:
         """Retrieve invoice by identifier."""
@@ -174,6 +244,8 @@ class BillingRepository:
             actor=actor or "billing_repository",
             reason=reason or "status_update",
         )
+        if status == InvoiceStatus.ISSUED:
+            InternalLedgerService(self.db).post_invoice_issued(invoice=invoice, tenant_id=0)
 
         self.db.add(invoice)
         self.db.commit()

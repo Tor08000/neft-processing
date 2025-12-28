@@ -17,14 +17,15 @@ settings = get_settings()
 
 
 class S3Storage:
-    """Thin wrapper around boto3 for invoice PDF storage."""
+    """Thin wrapper around boto3 for S3/MinIO storage."""
 
-    def __init__(self):
+    def __init__(self, *, bucket: str | None = None):
         if boto3 is None:
             raise RuntimeError("boto3 is required for S3/MinIO storage")
 
         self.bucket = (
-            settings.NEFT_S3_BUCKET_INVOICES
+            bucket
+            or settings.NEFT_S3_BUCKET_INVOICES
             or settings.NEFT_S3_BUCKET
             or settings.NEFT_INVOICE_PDF_BUCKET
         )

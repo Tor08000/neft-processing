@@ -1,6 +1,6 @@
 # Changelog
 
-# v0.1.4
+## v0.1.4
 - Added local observability stack (OTLP collector, Jaeger, Prometheus, Grafana) with provisioned dashboards.
 - Introduced environment profile scaffolding (local/dev/staging) across Python services.
 - Hardened gateway logging with JSON access logs including upstream timings.

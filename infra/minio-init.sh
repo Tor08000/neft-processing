@@ -27,6 +27,8 @@ ACCESS_KEY="${MINIO_ROOT_USER}"
 SECRET_KEY="${MINIO_ROOT_PASSWORD}"
 BUCKET_MAIN="${NEFT_S3_BUCKET:-neft}"
 BUCKET_INVOICES="${NEFT_S3_BUCKET_INVOICES:-neft-invoices}"
+BUCKET_PAYOUTS="${NEFT_S3_BUCKET_PAYOUTS:-neft-payouts}"
+BUCKET_ACCOUNTING="${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}"
 S3_ACCESS_KEY="${NEFT_S3_ACCESS_KEY}"
 S3_SECRET_KEY="${NEFT_S3_SECRET_KEY}"
 MAX_RETRIES="${MINIO_INIT_RETRIES:-60}"
@@ -76,6 +78,12 @@ mc alias set "$ALIAS_NAME" "$ENDPOINT" "$ACCESS_KEY" "$SECRET_KEY"
 ensure_bucket "$BUCKET_MAIN"
 if [ "$BUCKET_INVOICES" != "$BUCKET_MAIN" ]; then
   ensure_bucket "$BUCKET_INVOICES"
+fi
+if [ "$BUCKET_PAYOUTS" != "$BUCKET_MAIN" ] && [ "$BUCKET_PAYOUTS" != "$BUCKET_INVOICES" ]; then
+  ensure_bucket "$BUCKET_PAYOUTS"
+fi
+if [ "$BUCKET_ACCOUNTING" != "$BUCKET_MAIN" ] && [ "$BUCKET_ACCOUNTING" != "$BUCKET_INVOICES" ] && [ "$BUCKET_ACCOUNTING" != "$BUCKET_PAYOUTS" ]; then
+  ensure_bucket "$BUCKET_ACCOUNTING"
 fi
 
 log "running smoke check: listing buckets and fetching admin info"

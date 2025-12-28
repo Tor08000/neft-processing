@@ -1,0 +1,39 @@
+# NEFT Glossary (core terms)
+
+- **document** — legally relevant client artifact with lifecycle and files; used in `platform/processing-core/app/models/documents.py`, client portal UI.
+- **document_status** — lifecycle state (`DRAFT/ISSUED/ACKNOWLEDGED/FINALIZED/VOID`); used in `app/models/documents.py`, `docs/legal/document_lifecycle.md`.
+- **document_file** — stored PDF/XLSX payload linked to a document; used in `app/models/documents.py`, `app/services/documents_storage.py`.
+- **document_hash** — content hash of a document file used for immutability; used in `app/services/document_chain.py`, `docs/compliance/document_chain.md`.
+- **document_acknowledgement** — client confirmation record for a document; used in `app/models/client_actions.py`, `app/routers/client_documents.py`.
+- **document_chain** — audit hash chain linking document events; used in `docs/compliance/document_chain.md`.
+- **closing_package** — bundle of documents for a period (invoice/act/reconciliation_act); used in `app/models/documents.py`, `app/services/closing_documents.py`.
+- **closing_package_status** — lifecycle status for closing_package; used in `app/models/documents.py`, `app/routers/admin/closing_packages.py`.
+- **reconciliation** — client-facing reconciliation flow and artifacts; used in `app/models/client_actions.py`, `app/routers/client_portal.py`.
+- **reconciliation_act** — document type for reconciliation; used in `app/models/documents.py`, `app/services/closing_documents.py`.
+- **reconciliation_request** — client request to generate reconciliation artifacts; used in `app/models/client_actions.py`, `app/routers/client_portal.py`.
+- **settlement_allocation** — linking of payments/credits/refunds to settlement periods; used in `app/models/finance.py`, `app/tests/test_settlement_allocations.py`.
+- **accounting_export_batch** — export job entity for accounting outputs; used in `app/models/accounting_export_batch.py`, `app/services/accounting_export_service.py`.
+- **accounting_export** — generated export file with deterministic bytes/sha256; used in `app/services/accounting_export/serializer.py`, `app/tests/test_accounting_exports.py`.
+- **payout_batch** — grouped payouts for partners; used in `app/models/payout_batch.py`, `app/services/payouts_service.py`.
+- **payout_export** — export file created from a payout_batch; used in `app/models/payout_export_file.py`, `app/services/payout_exports.py`.
+- **billing_period** — time window for billing and exports; used in `app/models/billing_period.py`, `app/services/billing_period_service.py`.
+- **billing_summary** — aggregated operational metrics by period; used in `app/models/billing_summary.py`, `app/services/billing_summary_service.py`.
+- **invoice** — billing document with lifecycle and line items; used in `app/models/invoice.py`, `app/services/invoice_state_machine.py`.
+- **invoice_payment** — payment recorded against an invoice; used in `app/models/finance.py`, `app/services/finance.py`.
+- **credit_note** — adjustment record for invoice corrections; used in `app/models/finance.py`, `app/services/finance.py`.
+- **refund_request** — refund record tied to invoice/operations; used in `app/models/finance.py`, `app/services/finance.py`.
+- **audit_log** — immutable record of domain events; used in `app/models/audit_log.py`, `app/services/audit_service.py`.
+- **audit_event_type** — SCREAMING_SNAKE_CASE event identifier; used across routers/services and `docs/legal/document_lifecycle.md`.
+- **immutability_guard** — ORM-level protections against mutations; used in `app/models/immutability.py`.
+- **policy_engine** — RBAC/policy gate for protected actions; used in `app/services/policy/engine.py`, `app/routers/admin/*`.
+- **decision_engine** — risk decision evaluator with deterministic outputs; used in `app/services/decision/engine.py`.
+- **risk_decision** — immutable record of a decision outcome; used in `app/models/risk_decision.py`, `docs/compliance/risk_decisions.md`.
+- **risk_policy** — policy selecting a risk_threshold_set; used in `app/models/risk_policy.py`, `app/services/risk/policy_resolver.py`.
+- **risk_threshold_set** — versioned set of risk_threshold rows; used in `app/models/risk_threshold_set.py`.
+- **risk_threshold** — single score boundary and decision outcome; used in `app/models/risk_threshold.py`.
+- **risk_level** — normalized risk severity (LOW/HIGH/etc.); used in `app/models/risk_score.py`.
+- **risk_score** — numeric score from scorer model; used in `app/services/decision/engine.py`.
+- **document_ack_hash** — hash proving document_acknowledgement; used in `app/services/document_chain.py`.
+- **client_portal** — UI for client-facing actions; used in `frontends/client-portal/src`.
+- **admin_portal** — UI for admin operations; used in `frontends/admin-ui`.
+- **ledger_entry** — accounting ledger record; used in `app/models/ledger_entry.py`, `app/services/posting_engine.py`.

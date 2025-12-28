@@ -11,3 +11,28 @@ jobs:
           python-version: 3.11
       - name: Run tests
         run: echo "Add tests"
+  migration-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start postgres
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up -d postgres
+      - name: Check protected alembic revisions
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+            core-api python -m app.alembic.check_protected_revisions
+      - name: Check alembic revision uniqueness
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+            core-api python -m app.alembic.check_revision_uniqueness
+      - name: Check alembic heads
+        run: |
+          count="$(docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+            core-api alembic -c app/alembic.ini heads | wc -l | tr -d ' ')"
+          if [ "$count" -gt 1 ]; then
+            echo "Expected 1 alembic head, got $count"
+            echo "Resolve with: alembic merge <head1> <head2>"
+            exit 1
+          fi
+      - name: Alembic upgrade head
+        run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head
