@@ -30,8 +30,10 @@ describe("api client caching and auth", () => {
 
     fetchMock.mockImplementation((url, init) => {
       const target = typeof url === "string" ? url : String(url);
-      if (target.includes("/api/auth/v1/auth/login")) {
-        return Promise.resolve(buildResponse({ access_token: "new-token" }));
+      if (target.includes("/api/auth/api/v1/auth/login")) {
+        return Promise.resolve(
+          buildResponse({ access_token: "new-token", expires_in: 3600, email: "demo@example.com", roles: [] }),
+        );
       }
 
       const headers = (init?.headers ?? {}) as Record<string, string>;
@@ -50,14 +52,14 @@ describe("api client caching and auth", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/core/api/v1/admin/operations"),
+      expect.stringContaining("/api/core/v1/admin/operations"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer initial-token" }),
       }),
     );
 
     const token = await login("demo@example.com", "secret");
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    localStorage.setItem(TOKEN_STORAGE_KEY, token.accessToken);
     await queryClient.invalidateQueries({ queryKey: ["operations"] });
 
     await queryClient.fetchQuery({
@@ -66,7 +68,7 @@ describe("api client caching and auth", () => {
     });
 
     expect(fetchMock).toHaveBeenLastCalledWith(
-      expect.stringContaining("/api/core/api/v1/admin/operations"),
+      expect.stringContaining("/api/core/v1/admin/operations"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer new-token" }),
       }),

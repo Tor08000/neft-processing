@@ -108,8 +108,7 @@ describe("Admin billing UI", () => {
     );
 
     expect(await screen.findByText(/Invoice inv1/)).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("DRAFT"), { target: { value: "ISSUED" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ISSUED" } });
     await waitFor(() => expect(billingApi.updateInvoiceStatus).toHaveBeenCalled());
   });
 });
-

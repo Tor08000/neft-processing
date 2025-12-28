@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { login as apiLogin, me } from "../api/auth";
 import { ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
 import type { AuthSession, AuthUser } from "../types/auth";
+import { hasAdminRole } from "./roles";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -17,12 +18,6 @@ interface AuthContextValue {
 const STORAGE_KEY = "neft_admin_auth";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-const ADMIN_ROLES = ["ADMIN", "SUPERADMIN", "PLATFORM_ADMIN"] as const;
-
-function hasAdminRole(roles: string[]): boolean {
-  return roles.some((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
-}
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);

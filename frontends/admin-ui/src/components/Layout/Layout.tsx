@@ -18,6 +18,17 @@ export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const navItems = [
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/users", label: "Users" },
+    { to: "/accounts", label: "Balances" },
+    { to: "/operations", label: "Operations" },
+    { to: "/billing", label: "Billing" },
+    { to: "/integration", label: "Integration Monitoring" },
+    { to: "/analytics/risk", label: "Risk analytics" },
+    { to: "/risk/rules", label: "Risk rules" },
+    ...(user && hasPayoutAccess(user.roles) ? [{ to: "/finance/payouts", label: "Finance · Payouts" }] : []),
+  ];
 
   const handleLogout = () => {
     logout();

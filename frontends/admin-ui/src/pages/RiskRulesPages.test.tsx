@@ -58,7 +58,7 @@ describe("Risk rules pages", () => {
 
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
-      if (url.includes("/api/v1/admin/risk/rules/42") && (!init || init.method === "GET")) {
+      if (url.includes("/api/core/v1/admin/risk/rules/42") && (!init || init.method === "GET")) {
         return Promise.resolve(
           new Response(JSON.stringify(rule), { status: 200, headers: { "Content-Type": "application/json" } }),
         );
@@ -85,10 +85,12 @@ describe("Risk rules pages", () => {
     await userEvent.selectOptions(screen.getByLabelText(/Action/i), "HIGH");
     await userEvent.click(screen.getByText("Сохранить"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/v1/admin/risk/rules/42"),
-      expect.objectContaining({ method: "PUT" }),
-    ));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/core/v1/admin/risk/rules/42"),
+        expect.objectContaining({ method: "PUT" }),
+      ),
+    );
     expect(screen.getByDisplayValue("HIGH")).toBeInTheDocument();
   });
 });
