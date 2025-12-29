@@ -49,8 +49,37 @@ class FleetStationTrustOut(BaseModel):
     explain: dict[str, Any] | None
 
 
+class FleetInsightActionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    title: str
+    severity: str
+
+
+class FleetInsightItemOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str
+    entity_id: str
+    level: str
+    score: int
+    summary: str
+    actions: list[FleetInsightActionOut]
+
+
+class FleetInsightOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_insight: FleetInsightItemOut
+    secondary_insights: list[FleetInsightItemOut]
+
+
 __all__ = [
     "FleetDriverScoreOut",
     "FleetVehicleEfficiencyOut",
     "FleetStationTrustOut",
+    "FleetInsightActionOut",
+    "FleetInsightItemOut",
+    "FleetInsightOut",
 ]

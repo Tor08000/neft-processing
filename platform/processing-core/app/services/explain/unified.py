@@ -181,6 +181,18 @@ def _build_payload(
         if fleet_intelligence_section:
             sections["fleet_intelligence"] = fleet_intelligence_section
 
+        fleet_insight_section = sources.build_fleet_insight_section(
+            db,
+            tenant_id=tx.tenant_id,
+            client_id=tx.client_id,
+            driver_id=str(tx.driver_id) if tx.driver_id else None,
+            vehicle_id=str(tx.vehicle_id) if tx.vehicle_id else None,
+            station_id=str(tx.station_id) if tx.station_id else None,
+            window_days=7,
+        )
+        if fleet_insight_section:
+            sections["fleet_insight"] = fleet_insight_section
+
         link = sources.get_fuel_link(db, fuel_tx_id=str(tx.id))
         if link:
             sections["logistics"] = sources.build_logistics_section(
@@ -274,6 +286,18 @@ def _build_payload(
         if navigator_section:
             sections["navigator"] = navigator_section
 
+        fleet_insight_section = sources.build_fleet_insight_section(
+            db,
+            tenant_id=order.tenant_id,
+            client_id=order.client_id,
+            driver_id=str(order.driver_id) if order.driver_id else None,
+            vehicle_id=str(order.vehicle_id) if order.vehicle_id else None,
+            station_id=None,
+            window_days=7,
+        )
+        if fleet_insight_section:
+            sections["fleet_insight"] = fleet_insight_section
+
         invoice_id = sources.find_invoice_id_for_order(db, order_id=str(order.id))
         if invoice_id:
             ids.invoice_id = invoice_id
@@ -335,6 +359,18 @@ def _build_payload(
             sections["documents"] = documents_section
             ids.document_ids = document_ids
         ids.invoice_id = str(invoice.id)
+
+        fleet_insight_section = sources.build_fleet_insight_section(
+            db,
+            tenant_id=None,
+            client_id=invoice.client_id,
+            driver_id=None,
+            vehicle_id=None,
+            station_id=None,
+            window_days=7,
+        )
+        if fleet_insight_section:
+            sections["fleet_insight"] = fleet_insight_section
 
         _apply_primary_reasons(
             result,
@@ -413,6 +449,15 @@ def _apply_human_readable_sections(
                 "reason": "Превышен лимит" if decline_code and str(decline_code).startswith("LIMIT_") else None,
                 "recommendation": recommendations[0] if recommendations else None,
             }
+        fleet_insight = sections.get("fleet_insight")
+        if isinstance(fleet_insight, dict):
+            primary = fleet_insight.get("primary_insight")
+            if isinstance(primary, dict):
+                fleet_insight["primary_insight"] = {
+                    "summary": primary.get("summary"),
+                    "actions": primary.get("actions"),
+                }
+            fleet_insight.pop("secondary_insights", None)
 
 
 def _collect_reasons(
