@@ -17,6 +17,7 @@ from app.routers.admin import (
     fleet_control,
     fleet_intelligence,
     fuel,
+    what_if,
     integration_monitoring,
     logistics,
     legal_graph,
@@ -69,6 +70,7 @@ router.include_router(money_flow.router)
 router.include_router(explain.router)
 router.include_router(fleet_control.router)
 router.include_router(fleet_intelligence.router)
+router.include_router(what_if.router)
 router.include_router(ops.router)
 
 __all__ = ["router"]

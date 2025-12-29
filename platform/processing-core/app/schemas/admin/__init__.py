@@ -48,6 +48,7 @@ from .fleet_control import (
     FleetControlSuggestedActionOut,
 )
 from .decision_memory import DecisionActionStatsOut, DecisionCooldownOut, DecisionOutcomeOut
+from .what_if import WhatIfEvaluateRequest, WhatIfResponse
 
 __all__ = [
     "OperationListResponse",
@@ -101,4 +102,6 @@ __all__ = [
     "DecisionActionStatsOut",
     "DecisionCooldownOut",
     "DecisionOutcomeOut",
+    "WhatIfEvaluateRequest",
+    "WhatIfResponse",
 ]
