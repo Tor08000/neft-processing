@@ -98,7 +98,7 @@ def build_unified_explain(
         assistant=None,
     )
     if view in {UnifiedExplainView.FLEET, UnifiedExplainView.FULL}:
-        response_payload.assistant = build_fleet_assistant(response_payload)
+        response_payload.assistant = build_fleet_assistant(response_payload, db=db)
 
     if snapshot and tenant_id is not None:
         snapshot_payload = build_snapshot_payload(response_payload.model_dump(mode="json"))
