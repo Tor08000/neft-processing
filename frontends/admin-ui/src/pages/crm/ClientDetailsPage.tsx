@@ -123,6 +123,22 @@ export const ClientDetailsPage: React.FC = () => {
         latestSubscription.last_period_id ? `?period_id=${latestSubscription.last_period_id}` : ""
       }`
     : null;
+  const fleetReportLinks = client?.client_id
+    ? [
+        {
+          label: "Driver behavior (7d)",
+          href: `/api/v1/admin/fleet-intelligence/drivers?client_id=${client.client_id}&window_days=7`,
+        },
+        {
+          label: "Vehicle efficiency (7d)",
+          href: `/api/v1/admin/fleet-intelligence/vehicles?client_id=${client.client_id}&window_days=7`,
+        },
+        {
+          label: "Station trust (7d)",
+          href: `/api/v1/admin/fleet-intelligence/stations?tenant_id=${client.tenant_id ?? 0}&window_days=7`,
+        },
+      ]
+    : [];
 
   if (loading) {
     return <div>Loading...</div>;
@@ -164,6 +180,22 @@ export const ClientDetailsPage: React.FC = () => {
             <div>Timezone: {client.timezone ?? "-"}</div>
             <div>Active contract: {client.active_contract_id ?? "-"}</div>
             <div>Active subscription: {client.active_subscription_id ?? "-"}</div>
+          </div>
+          <div style={{ border: "1px solid #e2e8f0", padding: 16, borderRadius: 12 }}>
+            <h3>Fleet intelligence reports</h3>
+            {fleetReportLinks.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {fleetReportLinks.map((link) => (
+                  <li key={link.href}>
+                    <a href={link.href} target="_blank" rel="noreferrer">
+                      {link.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div>No reports available</div>
+            )}
           </div>
           <div style={{ border: "1px solid #e2e8f0", padding: 16, borderRadius: 12 }}>
             <h3>Edit client</h3>

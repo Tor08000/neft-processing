@@ -14,6 +14,7 @@ from app.services.decision import DecisionAction, DecisionContext
 from app.services.fuel import fraud, repository
 from app.services.logistics import repository as logistics_repository
 from app.models.logistics import LogisticsNavigatorExplainType
+from app.services.fleet_intelligence import repository as fi_repository
 
 MSK_TZ = ZoneInfo("Europe/Moscow")
 
@@ -141,6 +142,15 @@ def build_risk_context_for_fuel_tx(
         occurred_at=occurred_at,
         pending_signals=fraud_candidates,
     )
+    fleet_scores = fi_repository.latest_scores_for_ids(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        driver_id=str(driver.id) if driver else None,
+        vehicle_id=str(vehicle.id) if vehicle else None,
+        station_id=str(station.id),
+        window_days=7,
+    )
     metadata = {
         "card_status": card.status.value,
         "station_id": str(station.id),
@@ -173,6 +183,9 @@ def build_risk_context_for_fuel_tx(
         "route_deviation_score": navigator_signals.get("route_deviation_score"),
         "eta_overrun_pct": navigator_signals.get("eta_overrun_pct"),
         **fraud_summary,
+        "driver_score_level": fleet_scores.get("driver").level.value if fleet_scores.get("driver") else None,
+        "station_trust_level": fleet_scores.get("station").level.value if fleet_scores.get("station") else None,
+        "vehicle_efficiency_delta_pct": fleet_scores.get("vehicle").delta_pct if fleet_scores.get("vehicle") else None,
     }
     if fraud_summary.get("has_strong_off_route") and fraud_summary.get("max_signal_severity_24h"):
         metadata["risk_score"] = max(metadata.get("risk_score", 0), int(fraud_summary["max_signal_severity_24h"]))
