@@ -12,25 +12,80 @@ from reportlab.pdfgen import canvas
 
 @dataclass(frozen=True)
 class DocumentPayload:
-    pdf_bytes: bytes
+    pdf_bytes: bytes | None
     xlsx_bytes: bytes
 
 
 class DocumentsGenerator:
-    def generate_invoice(self, *, invoice_id: str, client_id: str, period_from: date, period_to: date) -> DocumentPayload:
+    def generate_invoice(
+        self,
+        *,
+        invoice_id: str,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        include_pdf: bool = True,
+    ) -> DocumentPayload:
         title = f"Invoice {invoice_id}"
-        return self._render(title=title, client_id=client_id, period_from=period_from, period_to=period_to)
+        return self._render(
+            title=title,
+            client_id=client_id,
+            period_from=period_from,
+            period_to=period_to,
+            include_pdf=include_pdf,
+        )
 
-    def generate_act(self, *, client_id: str, period_from: date, period_to: date) -> DocumentPayload:
+    def generate_act(
+        self,
+        *,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        include_pdf: bool = True,
+    ) -> DocumentPayload:
         title = "Act of services"
-        return self._render(title=title, client_id=client_id, period_from=period_from, period_to=period_to)
+        return self._render(
+            title=title,
+            client_id=client_id,
+            period_from=period_from,
+            period_to=period_to,
+            include_pdf=include_pdf,
+        )
 
-    def generate_reconciliation_act(self, *, client_id: str, period_from: date, period_to: date) -> DocumentPayload:
+    def generate_reconciliation_act(
+        self,
+        *,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        include_pdf: bool = True,
+    ) -> DocumentPayload:
         title = "Reconciliation act"
-        return self._render(title=title, client_id=client_id, period_from=period_from, period_to=period_to)
+        return self._render(
+            title=title,
+            client_id=client_id,
+            period_from=period_from,
+            period_to=period_to,
+            include_pdf=include_pdf,
+        )
 
-    def _render(self, *, title: str, client_id: str, period_from: date, period_to: date) -> DocumentPayload:
-        pdf_bytes = self._render_pdf(title=title, client_id=client_id, period_from=period_from, period_to=period_to)
+    def _render(
+        self,
+        *,
+        title: str,
+        client_id: str,
+        period_from: date,
+        period_to: date,
+        include_pdf: bool,
+    ) -> DocumentPayload:
+        pdf_bytes = None
+        if include_pdf:
+            pdf_bytes = self._render_pdf(
+                title=title,
+                client_id=client_id,
+                period_from=period_from,
+                period_to=period_to,
+            )
         xlsx_bytes = self._render_xlsx(title=title, client_id=client_id, period_from=period_from, period_to=period_to)
         return DocumentPayload(pdf_bytes=pdf_bytes, xlsx_bytes=xlsx_bytes)
 
@@ -62,4 +117,3 @@ class DocumentsGenerator:
         output = BytesIO()
         workbook.save(output)
         return output.getvalue()
-

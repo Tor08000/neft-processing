@@ -161,8 +161,11 @@ services:
       NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
       NEFT_S3_BUCKET_PAYOUTS: ${NEFT_S3_BUCKET_PAYOUTS:-neft-payouts}
       NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: ${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}
+      NEFT_S3_BUCKET_DOCUMENTS: ${NEFT_S3_BUCKET_DOCUMENTS:-neft-documents}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      DOCUMENT_SERVICE_ENABLED: ${DOCUMENT_SERVICE_ENABLED:-0}
+      DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8000}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
       NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
     depends_on:
@@ -233,6 +236,12 @@ services:
   document-service:
     build: ./platform/document-service
     container_name: neft-processing-document-1
+    environment:
+      S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
+      S3_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
+      S3_SECRET: ${NEFT_S3_SECRET_KEY:-change-me}
+      S3_REGION: ${NEFT_S3_REGION:-us-east-1}
+      S3_BUCKET_DOCS: ${NEFT_S3_BUCKET_DOCUMENTS:-neft-documents}
     expose:
       - "8000"
     healthcheck:
