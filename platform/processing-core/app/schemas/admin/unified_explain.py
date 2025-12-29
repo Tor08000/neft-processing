@@ -11,6 +11,18 @@ from app.services.explain.escalation import EscalationInfo
 from app.services.explain.sla import SLAClock
 
 
+class FleetAssistantResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_insight: str
+    action: ActionItem | None = None
+    action_effect_pct: int | None = None
+    confidence: int
+    sla: SLAClock | None = None
+    escalation: EscalationInfo | None = None
+    answers: dict[str, str]
+
+
 class UnifiedExplainView(str, Enum):
     FLEET = "FLEET"
     ACCOUNTANT = "ACCOUNTANT"
@@ -62,6 +74,7 @@ class UnifiedExplainResponse(BaseModel):
     actions: list[ActionItem] = Field(default_factory=list)
     sla: SLAClock | None = None
     escalation: EscalationInfo | None = None
+    assistant: FleetAssistantResponse | None = None
 
 
 __all__ = [
@@ -70,6 +83,7 @@ __all__ = [
     "UnifiedExplainResult",
     "UnifiedExplainSubject",
     "UnifiedExplainView",
+    "FleetAssistantResponse",
     "ActionItem",
     "EscalationInfo",
     "SLAClock",

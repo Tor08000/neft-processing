@@ -30,6 +30,7 @@ from app.services.explain.snapshot import build_snapshot_payload, persist_snapsh
 from app.services.explain.sla import SLAClock, SLA_DEFINITIONS, build_sla
 from app.services.audit_service import AuditService
 from app.services.money_flow.states import MoneyFlowType
+from app.services.fleet_assistant import build_fleet_assistant
 
 
 STATUS_MAP = {
@@ -94,7 +95,10 @@ def build_unified_explain(
         actions=actions,
         sla=sla,
         escalation=escalation,
+        assistant=None,
     )
+    if view in {UnifiedExplainView.FLEET, UnifiedExplainView.FULL}:
+        response_payload.assistant = build_fleet_assistant(response_payload)
 
     if snapshot and tenant_id is not None:
         snapshot_payload = build_snapshot_payload(response_payload.model_dump(mode="json"))
