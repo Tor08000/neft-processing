@@ -55,6 +55,8 @@ class FleetInsightActionOut(BaseModel):
     code: str
     title: str
     severity: str
+    hint: str | None = None
+    link: str | None = None
 
 
 class FleetInsightItemOut(BaseModel):
