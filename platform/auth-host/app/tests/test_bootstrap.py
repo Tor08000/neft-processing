@@ -7,10 +7,11 @@ from app import db
 from app.bootstrap import bootstrap_demo_admin, seed_demo_client_account
 from app.security import verify_password
 from app.settings import Settings
+from app.tests.migration_helpers import run_auth_migrations
 
 
 @pytest.mark.anyio
-async def test_init_db_and_bootstrap_creates_demo_user():
+async def test_migrations_and_bootstrap_creates_demo_user():
     try:
         conn = await psycopg.AsyncConnection.connect(db.DSN_ASYNC)
     except Exception as exc:  # pragma: no cover - skip when DB unavailable
@@ -22,7 +23,7 @@ async def test_init_db_and_bootstrap_creates_demo_user():
         await conn.commit()
     await conn.close()
 
-    await db.init_db()
+    run_auth_migrations(db.DSN_ASYNC)
     await seed_demo_client_account(Settings())
 
     async with db.get_conn() as (_conn, cur):
@@ -64,7 +65,7 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
         await conn.commit()
     await conn.close()
 
-    await db.init_db()
+    run_auth_migrations(db.DSN_ASYNC)
 
     initial_settings = Settings(
         bootstrap_admin_email="admin@example.com",
