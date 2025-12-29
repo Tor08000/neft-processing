@@ -8,6 +8,7 @@ from app import bootstrap, db
 from app.demo import DEMO_CLIENT_EMAIL, DEMO_CLIENT_PASSWORD
 from app.main import app
 from app.settings import Settings
+from app.tests.migration_helpers import run_auth_migrations
 
 
 @pytest.mark.anyio
@@ -19,7 +20,7 @@ async def test_demo_login_against_real_db():
     else:
         await conn.close()
 
-    await db.init_db()
+    run_auth_migrations(db.DSN_ASYNC)
     await bootstrap.seed_demo_client_account()
 
     async with db.get_conn() as (_conn, cur):
@@ -55,7 +56,7 @@ async def test_demo_admin_login_and_wrong_password():
 
     settings = Settings()
 
-    await db.init_db()
+    run_auth_migrations(db.DSN_ASYNC)
     await bootstrap.bootstrap_demo_admin(settings)
 
     transport = httpx.ASGITransport(app=app, lifespan="on")

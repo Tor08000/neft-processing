@@ -5,4 +5,6 @@ set -e
 export PYTHONPATH="/opt/python:${PYTHONPATH}"
 
 echo "[entrypoint] auth-host starting"
+echo "[entrypoint] auth-host running migrations"
+alembic -c /app/alembic.ini upgrade head
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

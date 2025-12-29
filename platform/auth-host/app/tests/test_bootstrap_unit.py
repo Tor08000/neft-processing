@@ -97,11 +97,7 @@ def _patch_db(monkeypatch: pytest.MonkeyPatch, state: _FakeState):
     def _fake_get_conn():
         return _FakeContext(state)
 
-    async def _fake_init_db():
-        return None
-
     monkeypatch.setattr("app.bootstrap.get_conn", _fake_get_conn)
-    monkeypatch.setattr("app.bootstrap.init_db", _fake_init_db)
 
 
 @pytest.mark.anyio

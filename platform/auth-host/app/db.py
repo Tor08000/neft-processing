@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import asynccontextmanager
 
 import psycopg
 from psycopg.rows import dict_row
-
-logger = logging.getLogger(__name__)
 
 # Настройки БД берем из .env (docker-compose -> env_file: .env)
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
@@ -20,68 +17,6 @@ DSN_ASYNC = (
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
     f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 )
-
-
-async def init_db() -> None:
-    """
-    Инициализация БД auth-host:
-    - создаем таблицу users, если её нет.
-    Без EXTENSION'ов и uuid-ossp, максимально просто и надежно.
-    """
-    logger.info("auth-host: init_db start")
-
-    conn: psycopg.AsyncConnection | None = None
-    try:
-        conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
-
-        async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id UUID PRIMARY KEY,
-                    email TEXT UNIQUE NOT NULL,
-                    full_name TEXT,
-                    password_hash TEXT NOT NULL,
-                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """
-            )
-
-            await cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_users_email_lower
-                    ON users (lower(email))
-                """
-            )
-
-            await cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_roles (
-                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    role TEXT NOT NULL,
-                    PRIMARY KEY (user_id, role)
-                )
-                """
-            )
-
-        await conn.commit()
-        logger.info("auth-host: init_db done")
-
-    except Exception:
-        logger.exception("auth-host: DB init FAILED")
-        if conn is not None:
-            try:
-                await conn.rollback()
-            except Exception:
-                logger.exception("auth-host: rollback failed")
-        raise
-    finally:
-        if conn is not None:
-            try:
-                await conn.close()
-            except Exception:
-                logger.exception("auth-host: close connection failed")
 
 
 @asynccontextmanager

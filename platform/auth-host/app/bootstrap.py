@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID, uuid4
 
-from app.db import get_conn, init_db
+from app.db import get_conn
 from app.security import hash_password
 from app.settings import Settings, get_settings
 
@@ -19,8 +19,6 @@ async def seed_demo_client_account(settings: Settings | None = None) -> None:
 
 
 async def _ensure_demo_accounts(settings: Settings) -> None:
-    await init_db()
-
     await bootstrap_demo_client(settings=settings)
     await bootstrap_admin_account(settings=settings)
 
