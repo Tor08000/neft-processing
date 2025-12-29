@@ -250,6 +250,22 @@ def list_action_effects(db: Session, *, applied_action_id: str) -> list[FIAction
     )
 
 
+def list_action_effects_for_action_code(
+    db: Session,
+    *,
+    action_code: FIActionCode,
+    cutoff: datetime | None = None,
+) -> list[FIActionEffect]:
+    query = (
+        db.query(FIActionEffect)
+        .join(FIAppliedAction, FIAppliedAction.id == FIActionEffect.applied_action_id)
+        .filter(FIAppliedAction.action_code == action_code)
+    )
+    if cutoff is not None:
+        query = query.filter(FIActionEffect.measured_at >= cutoff)
+    return query.order_by(FIActionEffect.measured_at.desc()).all()
+
+
 def count_insight_effects(db: Session, *, insight_id: str) -> int:
     return (
         db.query(func.count(FIActionEffect.id))
@@ -342,6 +358,7 @@ __all__ = [
     "get_latest_vehicle_score",
     "get_suggested_action",
     "list_action_effects",
+    "list_action_effects_for_action_code",
     "list_actions_in_monitoring",
     "list_applied_actions",
     "list_degrading_trends_for_day",

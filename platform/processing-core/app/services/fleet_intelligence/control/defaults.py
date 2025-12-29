@@ -27,5 +27,14 @@ class EffectThresholds:
 
 INSIGHT_THRESHOLDS = InsightThresholds()
 EFFECT_THRESHOLDS = EffectThresholds()
+CONFIDENCE_WINDOW_DAYS = 90
+CONF_HALF_LIFE_DAYS = 30
 
-__all__ = ["INSIGHT_THRESHOLDS", "EFFECT_THRESHOLDS", "InsightThresholds", "EffectThresholds"]
+__all__ = [
+    "INSIGHT_THRESHOLDS",
+    "EFFECT_THRESHOLDS",
+    "CONFIDENCE_WINDOW_DAYS",
+    "CONF_HALF_LIFE_DAYS",
+    "InsightThresholds",
+    "EffectThresholds",
+]

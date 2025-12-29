@@ -11,7 +11,10 @@ from app.models.fleet_intelligence_actions import (
     FIInsightEntityType,
     FIInsightStatus,
 )
+from app.services.fleet_intelligence.control import confidence as control_confidence
 from app.services.fleet_intelligence.control import repository
+from app.services.fleet_intelligence.control.defaults import CONFIDENCE_WINDOW_DAYS, CONF_HALF_LIFE_DAYS
+from app.services.fleet_intelligence.policies import registry as policy_registry
 
 
 ACTIVE_STATUSES = {
@@ -45,6 +48,11 @@ def build_fleet_control_section(
     suggested = repository.list_suggested_actions(db, insight_id=str(insight.id))
     action_codes = [action.action_code for action in suggested]
     improved_counts = repository.action_improvement_counts(db, action_codes=action_codes)
+    now = datetime.now(timezone.utc)
+    confidence_map = {
+        action_code: control_confidence.compute_action_confidence(db, action_code=action_code, now=now)
+        for action_code in action_codes
+    }
     last_action = repository.get_latest_applied_action(db, insight_id=str(insight.id))
     effect_label = None
     if last_action:
@@ -57,7 +65,11 @@ def build_fleet_control_section(
     return {
         "active_insight": _serialize_insight(insight),
         "suggested_actions": [
-            _serialize_suggested_action(action, improved_count=improved_counts.get(action.action_code, 0))
+            _serialize_suggested_action(
+                action,
+                improved_count=improved_counts.get(action.action_code, 0),
+                confidence=confidence_map.get(action.action_code),
+            )
             for action in suggested
         ],
         "last_action": _serialize_applied_action(last_action) if last_action else None,
@@ -71,11 +83,20 @@ def build_fleet_control_snapshot(db: Session, *, insight_id: str) -> dict[str, A
     insight = repository.get_insight(db, insight_id=insight_id)
     if not insight:
         return None
+    suggested = repository.list_suggested_actions(db, insight_id=str(insight.id))
+    now = datetime.now(timezone.utc)
+    confidence_map = {
+        action.action_code: control_confidence.compute_action_confidence(db, action_code=action.action_code, now=now)
+        for action in suggested
+    }
     section = {
         "active_insight": _serialize_insight(insight),
         "suggested_actions": [
-            _serialize_suggested_action(action)
-            for action in repository.list_suggested_actions(db, insight_id=str(insight.id))
+            _serialize_suggested_action(
+                action,
+                confidence=confidence_map.get(action.action_code),
+            )
+            for action in suggested
         ],
         "last_action": _serialize_applied_action(repository.get_latest_applied_action(db, insight_id=str(insight.id))),
     }
@@ -132,7 +153,13 @@ def _serialize_insight(insight: FIInsight) -> dict[str, Any]:
     }
 
 
-def _serialize_suggested_action(action, *, improved_count: int | None = None) -> dict[str, Any]:
+def _serialize_suggested_action(
+    action,
+    *,
+    improved_count: int | None = None,
+    confidence: float | None = None,
+) -> dict[str, Any]:
+    payload = action.payload if isinstance(action.payload, dict) else {}
     return {
         "id": str(action.id),
         "action_code": action.action_code.value,
@@ -140,6 +167,12 @@ def _serialize_suggested_action(action, *, improved_count: int | None = None) ->
         "status": action.status.value,
         "payload": action.payload,
         "confidence_improved_count": improved_count,
+        "confidence": confidence,
+        "confidence_window_days": CONFIDENCE_WINDOW_DAYS,
+        "confidence_half_life_days": CONF_HALF_LIFE_DAYS,
+        "bundle_code": payload.get("bundle_code"),
+        "step_index": payload.get("step_index"),
+        "params": payload.get("params"),
     }
 
 
@@ -187,5 +220,29 @@ def _build_insight_aging(insight: FIInsight, *, has_effects: bool) -> dict[str, 
         "reason": "insight_no_effect_14d",
     }
 
+def build_fleet_policy_bundle_section(
+    db: Session,
+    *,
+    tenant_id: int,
+    client_id: str,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+) -> dict[str, Any] | None:
+    insight = _find_active_insight(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        driver_id=driver_id,
+        vehicle_id=vehicle_id,
+        station_id=station_id,
+    )
+    if not insight:
+        return None
+    bundle = policy_registry.match_bundle_for_insight(insight)
+    if not bundle:
+        return None
+    return policy_registry.serialize_bundle(bundle)
 
-__all__ = ["build_fleet_control_section", "build_fleet_control_snapshot"]
+
+__all__ = ["build_fleet_control_section", "build_fleet_control_snapshot", "build_fleet_policy_bundle_section"]

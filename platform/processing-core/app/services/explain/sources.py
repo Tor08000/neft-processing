@@ -40,6 +40,7 @@ from app.services.fleet_intelligence import actionable as fi_actionable
 from app.services.fleet_intelligence import explain as fi_explain
 from app.services.fleet_intelligence import repository as fi_repository
 from app.services.fleet_intelligence.control import explain as fi_control_explain
+from app.services.fuel_intelligence import explain as fuel_intelligence_explain
 
 
 def get_fuel_tx(db: Session, *, fuel_tx_id: str) -> FuelTransaction | None:
@@ -467,9 +468,17 @@ def build_fleet_intelligence_section(
             "window_days": station.window_days,
             "explain": station.explain,
         }
-    fuel_recommendations = _build_fuel_recommendations(fraud_signals)
-    if fuel_recommendations:
-        payload["fuel_recommendations"] = fuel_recommendations
+    fuel_insights = fuel_intelligence_explain.build_fuel_insights(
+        db,
+        tenant_id=tenant_id,
+        driver_id=driver_id,
+        vehicle_id=vehicle_id,
+        station_id=station_id,
+        fraud_signals=fraud_signals,
+    )
+    if fuel_insights:
+        payload["fuel_insights"] = fuel_insights
+        payload["fuel_recommendations"] = fuel_insights
     return payload
 
 
@@ -492,40 +501,23 @@ def build_fleet_control_section(
     )
 
 
-def _build_fuel_recommendations(fraud_signals: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    if not fraud_signals:
-        return []
-    recommendations: dict[str, dict[str, Any]] = {}
-    for signal in fraud_signals:
-        signal_type = signal.get("type")
-        if signal_type in {"DRIVER_VEHICLE_MISMATCH"}:
-            recommendations.setdefault(
-                "DRIVER_FUEL_MISMATCH",
-                {
-                    "code": "DRIVER_FUEL_MISMATCH",
-                    "title": "Driver–fuel mismatch",
-                    "recommendation": "Проверьте соответствие водителя, карты и транзакции.",
-                },
-            )
-        if signal_type in {"ROUTE_DEVIATION_BEFORE_FUEL", "FUEL_OFF_ROUTE_STRONG", "FUEL_STOP_MISMATCH_STRONG"}:
-            recommendations.setdefault(
-                "ROUTE_FUEL_MISMATCH",
-                {
-                    "code": "ROUTE_FUEL_MISMATCH",
-                    "title": "Route–fuel mismatch",
-                    "recommendation": "Сверьте заправку с маршрутом и типом остановки.",
-                },
-            )
-        if signal_type in {"STATION_OUTLIER_CLUSTER", "MULTI_CARD_SAME_STATION_BURST"}:
-            recommendations.setdefault(
-                "STATION_FUEL_SPIKE",
-                {
-                    "code": "STATION_FUEL_SPIKE",
-                    "title": "Station fuel spike",
-                    "recommendation": "Проверьте всплеск активности на станции.",
-                },
-            )
-    return list(recommendations.values())
+def build_fleet_policy_bundle_section(
+    db: Session,
+    *,
+    tenant_id: int,
+    client_id: str,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+) -> dict[str, Any] | None:
+    return fi_control_explain.build_fleet_policy_bundle_section(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        driver_id=driver_id,
+        vehicle_id=vehicle_id,
+        station_id=station_id,
+    )
 
 
 def build_fleet_insight_section(
@@ -871,6 +863,7 @@ __all__ = [
     "build_fleet_control_section",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",
+    "build_fleet_policy_bundle_section",
     "build_fleet_trends_section",
     "find_invoice_id_for_fuel",
     "find_invoice_id_for_order",
