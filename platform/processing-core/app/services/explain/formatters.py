@@ -13,8 +13,10 @@ from app.services.explain.recommendations import (
 
 
 FLEET_PRIORITY = [
+    "executive_summary",
     "fleet_insight",
     "fleet_control",
+    "fuel_insight",
     "fleet_intelligence",
     "fleet_trends",
     "logistics",
@@ -27,6 +29,7 @@ FLEET_PRIORITY = [
     "graph",
 ]
 ACCOUNTANT_PRIORITY = [
+    "executive_summary",
     "money",
     "limits",
     "crm",
@@ -37,12 +40,15 @@ ACCOUNTANT_PRIORITY = [
     "graph",
     "fleet_insight",
     "fleet_control",
+    "fuel_insight",
     "fleet_intelligence",
     "fleet_trends",
 ]
 FULL_PRIORITY = [
+    "executive_summary",
     "fleet_insight",
     "fleet_control",
+    "fuel_insight",
     "fleet_intelligence",
     "fleet_trends",
     "limits",

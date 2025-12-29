@@ -185,6 +185,13 @@ def _build_payload(
         )
         if fleet_intelligence_section:
             sections["fleet_intelligence"] = fleet_intelligence_section
+            fuel_insight_section = sources.build_fuel_insight_section(
+                fuel_insights=fleet_intelligence_section.get("fuel_insights", [])
+                if isinstance(fleet_intelligence_section, dict)
+                else []
+            )
+            if fuel_insight_section:
+                sections["fuel_insight"] = fuel_insight_section
 
         fleet_control_section = sources.build_fleet_control_section(
             db,
@@ -285,6 +292,9 @@ def _build_payload(
         crm_section = sources.build_crm_section(db, tenant_id=tx.tenant_id, client_id=tx.client_id)
         if crm_section:
             sections["crm"] = crm_section
+        executive_summary = sources.build_executive_summary(sections=sections)
+        if executive_summary:
+            sections["executive_summary"] = executive_summary
         return subject, result, sections, ids, tx.tenant_id
 
     if order_id:
@@ -367,6 +377,9 @@ def _build_payload(
         crm_section = sources.build_crm_section(db, tenant_id=order.tenant_id, client_id=order.client_id)
         if crm_section:
             sections["crm"] = crm_section
+        executive_summary = sources.build_executive_summary(sections=sections)
+        if executive_summary:
+            sections["executive_summary"] = executive_summary
         return subject, result, sections, ids, order.tenant_id
 
     if invoice_id:
@@ -417,6 +430,9 @@ def _build_payload(
         crm_section = sources.build_crm_section(db, tenant_id=None, client_id=invoice.client_id)
         if crm_section:
             sections["crm"] = crm_section
+        executive_summary = sources.build_executive_summary(sections=sections)
+        if executive_summary:
+            sections["executive_summary"] = executive_summary
         return subject, result, sections, ids, None
 
     raise UnifiedExplainValidationError("explain_subject_missing")
