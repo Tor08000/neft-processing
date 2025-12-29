@@ -213,6 +213,12 @@ from .fleet_intelligence import (  # noqa: F401
     FITrendSnapshot,
 )
 from .fleet_decision_choice import FleetActionEffectStats  # noqa: F401
+from .decision_memory import (  # noqa: F401
+    DecisionActionStatsDaily,
+    DecisionMemoryEffectLabel,
+    DecisionMemoryEntityType,
+    DecisionOutcome,
+)
 from .fleet_intelligence_actions import (  # noqa: F401
     FIActionCode,
     FIActionEffectLabel,
@@ -412,6 +418,10 @@ __all__ = [
     "FISuggestedAction",
     "FIAppliedAction",
     "FIActionEffect",
+    "DecisionActionStatsDaily",
+    "DecisionMemoryEffectLabel",
+    "DecisionMemoryEntityType",
+    "DecisionOutcome",
     "FuelLimit",
     "FuelLimitPeriod",
     "FuelLimitScopeType",

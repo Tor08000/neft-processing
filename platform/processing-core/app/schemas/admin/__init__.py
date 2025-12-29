@@ -47,6 +47,7 @@ from .fleet_control import (
     FleetControlInsightOut,
     FleetControlSuggestedActionOut,
 )
+from .decision_memory import DecisionActionStatsOut, DecisionCooldownOut, DecisionOutcomeOut
 
 __all__ = [
     "OperationListResponse",
@@ -97,4 +98,7 @@ __all__ = [
     "FleetControlInsightDetailOut",
     "FleetControlInsightOut",
     "FleetControlSuggestedActionOut",
+    "DecisionActionStatsOut",
+    "DecisionCooldownOut",
+    "DecisionOutcomeOut",
 ]

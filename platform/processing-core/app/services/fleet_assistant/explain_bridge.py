@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.models.decision_memory import DecisionMemoryEntityType
 from app.models.fleet_intelligence_actions import FIActionCode
 from app.models.unified_explain import PrimaryReason
 from app.schemas.admin.unified_explain import (
@@ -24,6 +25,7 @@ from app.services.fleet_assistant.prompts import (
     SLA_PREFIX,
 )
 from app.services.fleet_assistant.scenarios import SCENARIOS, InsightScenario
+from app.services.decision_memory import cooldown as memory_cooldown
 from app.services.fleet_intelligence.control import defaults as control_defaults
 from app.services.fleet_intelligence.control import repository as control_repository
 
@@ -127,14 +129,30 @@ def _format_remaining_time(minutes: int) -> str:
 def _build_projection(explain: UnifiedExplainResponse, *, db: Session | None) -> FleetAssistantProjection:
     fleet_control = _get_fleet_control_section(explain)
     suggested_action = _select_confidence_action(fleet_control)
+    decision_choice = explain.sections.get("decision_choice") if isinstance(explain.sections, dict) else None
     confidence = _resolve_confidence(suggested_action)
     sample_size = _resolve_sample_size(db, suggested_action)
     trend_label = _resolve_trend_label(explain)
     entity_type = _resolve_entity_type(explain, fleet_control)
+    entity_id = _resolve_entity_id(explain, fleet_control)
     sla_remaining_minutes = explain.sla.remaining_minutes if explain.sla else None
     aging_days = _resolve_aging_days(fleet_control)
     insight_status = _resolve_insight_status(fleet_control)
     half_life_days = _resolve_half_life(suggested_action)
+    cooldown_active = False
+    cooldown_reason = None
+    if db and entity_type and entity_id:
+        action_code = _resolve_action_code(decision_choice, suggested_action)
+        memory_entity_type = _resolve_memory_entity_type(entity_type)
+        if action_code and memory_entity_type:
+            status = memory_cooldown.evaluate_cooldown(
+                db,
+                entity_type=memory_entity_type,
+                entity_id=entity_id,
+                action_code=action_code,
+            )
+            cooldown_active = status.cooldown
+            cooldown_reason = status.reason
     return build_outcome_projection(
         confidence=confidence,
         sample_size=sample_size,
@@ -144,6 +162,8 @@ def _build_projection(explain: UnifiedExplainResponse, *, db: Session | None) ->
         aging_days=aging_days,
         insight_status=insight_status,
         half_life_days=half_life_days,
+        cooldown=cooldown_active,
+        cooldown_reason=cooldown_reason,
     )
 
 
@@ -156,6 +176,9 @@ def _format_projection_text(projection: FleetAssistantProjection) -> str:
         f"Если применить действие сейчас, вероятность улучшения ~{applied.probability_improved_pct}% "
         f"за {applied.expected_time_window_days} дней."
     )
+    if applied.warnings:
+        warning_text = " ".join(applied.warnings)
+        applied_line = f"{applied_line} Предупреждение: {warning_text}"
     ignored_line = _format_ignored_line(ignored)
     return " ".join([applied_line, ignored_line]).strip()
 
@@ -249,6 +272,40 @@ def _resolve_entity_type(explain: UnifiedExplainResponse, fleet_control: dict | 
     if subject.vehicle_id:
         return "VEHICLE"
     return None
+
+
+def _resolve_entity_id(explain: UnifiedExplainResponse, fleet_control: dict | None) -> str | None:
+    if fleet_control:
+        active = fleet_control.get("active_insight")
+        if isinstance(active, dict) and active.get("entity_id"):
+            return str(active.get("entity_id"))
+    subject = explain.subject
+    if subject.driver_id:
+        return subject.driver_id
+    if subject.station_id:
+        return subject.station_id
+    if subject.vehicle_id:
+        return subject.vehicle_id
+    return None
+
+
+def _resolve_action_code(decision_choice: dict | None, suggested_action: dict | None) -> str | None:
+    if isinstance(decision_choice, dict):
+        recommended = decision_choice.get("recommended_action")
+        if isinstance(recommended, dict) and recommended.get("action_code"):
+            return str(recommended.get("action_code"))
+    if suggested_action and suggested_action.get("action_code"):
+        return str(suggested_action.get("action_code"))
+    return None
+
+
+def _resolve_memory_entity_type(entity_type: str | None) -> DecisionMemoryEntityType | None:
+    if not entity_type:
+        return None
+    try:
+        return DecisionMemoryEntityType(entity_type)
+    except ValueError:
+        return None
 
 
 def _resolve_aging_days(fleet_control: dict | None) -> int | None:

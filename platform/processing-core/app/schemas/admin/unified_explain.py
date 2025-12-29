@@ -50,6 +50,7 @@ class FleetAssistantProjectionApplied(BaseModel):
     expected_time_window_days: int
     expected_kpis: list[FleetAssistantProjectionKPI]
     basis: FleetAssistantProjectionAppliedBasis
+    warnings: list[str] = Field(default_factory=list)
 
 
 class FleetAssistantProjectionEscalationRisk(BaseModel):

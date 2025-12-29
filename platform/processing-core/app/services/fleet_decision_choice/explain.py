@@ -31,10 +31,26 @@ def build_decision_choice_output(
 
 def _build_action_payload(score: scorer.ActionScore) -> dict:
     confidence = round(score.success_rate * score.confidence_weight, 2)
+    memory_payload = None
+    if score.memory_success_rate is not None and score.memory_sample_size is not None:
+        memory_payload = {
+            "success_rate": round(score.memory_success_rate, 2),
+            "sample_size": score.memory_sample_size,
+            "window_days": score.memory_window_days,
+        }
     return {
         "action": _label_for_action(score.action_code),
+        "action_code": score.action_code,
         "confidence": confidence,
         "rank": score.rank,
+        "cooldown": {
+            "active": score.cooldown,
+            "reason": score.cooldown_reason,
+        }
+        if score.cooldown_reason or score.cooldown
+        else None,
+        "memory": memory_payload,
+        "low_confidence": score.low_confidence,
     }
 
 
@@ -51,6 +67,12 @@ def _build_reasoning(
         f"исторически улучшало ситуацию в {success_pct}% случаев. "
         f"Доверие к оценке: {confidence_pct}% на {primary.applied_count} применениях."
     )
+    if primary.memory_success_rate is not None and primary.memory_sample_size is not None:
+        memory_pct = round(primary.memory_success_rate * 100)
+        memory_window = primary.memory_window_days or window_days
+        why = f"{why} Успешность за последние {memory_window} дней: {memory_pct}% (n={primary.memory_sample_size})."
+    if primary.cooldown:
+        why = f"{why} Мы уже пробовали это недавно — эффекта не было."
     comparison = _comparison_text(primary, alternatives)
     benchmark = primary.benchmark_comparison or "Данные для сравнения недоступны."
     return {
