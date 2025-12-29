@@ -35,6 +35,7 @@ from app.services.money_flow.explain import build_money_explain
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
 from app.services.crm import repository as crm_repository
+from app.services.fleet_intelligence import actionable as fi_actionable
 from app.services.fleet_intelligence import repository as fi_repository
 
 
@@ -465,6 +466,65 @@ def build_fleet_intelligence_section(
     return payload
 
 
+def build_fleet_insight_section(
+    db: Session,
+    *,
+    tenant_id: int | None,
+    client_id: str | None,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+    window_days: int = 7,
+) -> dict[str, Any] | None:
+    driver_scores = []
+    vehicle_scores = []
+    station_scores = []
+    if driver_id or vehicle_id or station_id:
+        if tenant_id is None or client_id is None:
+            return None
+        scores = fi_repository.latest_scores_for_ids(
+            db,
+            tenant_id=tenant_id,
+            client_id=client_id,
+            driver_id=driver_id,
+            vehicle_id=vehicle_id,
+            station_id=station_id,
+            window_days=window_days,
+        )
+        driver = scores.get("driver")
+        vehicle = scores.get("vehicle")
+        station = scores.get("station")
+        if driver:
+            driver_scores.append(driver)
+        if vehicle:
+            vehicle_scores.append(vehicle)
+        if station:
+            station_scores.append(station)
+    elif client_id:
+        driver_scores = fi_repository.list_latest_driver_scores_by_client(
+            db,
+            client_id=client_id,
+            window_days=window_days,
+        )
+        vehicle_scores = fi_repository.list_latest_vehicle_scores_by_client(
+            db,
+            client_id=client_id,
+            window_days=window_days,
+        )
+        if tenant_id is not None:
+            station_scores = fi_repository.list_latest_station_scores_by_tenant(
+                db,
+                tenant_id=tenant_id,
+                window_days=window_days,
+            )
+
+    return fi_actionable.build_fleet_insight_payload(
+        driver_scores=driver_scores,
+        vehicle_scores=vehicle_scores,
+        station_scores=station_scores,
+    )
+
+
 def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
     if not invoice_id:
         return None, []
@@ -693,6 +753,7 @@ __all__ = [
     "build_risk_section",
     "build_crm_section",
     "build_fleet_intelligence_section",
+    "build_fleet_insight_section",
     "find_invoice_id_for_fuel",
     "find_invoice_id_for_order",
     "get_fuel_link",

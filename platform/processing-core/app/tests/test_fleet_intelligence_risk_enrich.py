@@ -221,3 +221,4 @@ def test_unified_explain_includes_fleet_intelligence(admin_client: Tuple[TestCli
     assert response.status_code == 200
     payload = response.json()
     assert "fleet_intelligence" in payload["sections"]
+    assert "fleet_insight" in payload["sections"]

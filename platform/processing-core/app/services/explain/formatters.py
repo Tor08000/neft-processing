@@ -12,9 +12,42 @@ from app.services.explain.recommendations import (
 )
 
 
-FLEET_PRIORITY = ["fleet_intelligence", "logistics", "navigator", "risk", "limits", "money", "crm", "documents", "graph"]
-ACCOUNTANT_PRIORITY = ["money", "limits", "crm", "documents", "risk", "logistics", "navigator", "graph", "fleet_intelligence"]
-FULL_PRIORITY = ["fleet_intelligence", "limits", "risk", "logistics", "navigator", "money", "crm", "documents", "graph"]
+FLEET_PRIORITY = [
+    "fleet_insight",
+    "fleet_intelligence",
+    "logistics",
+    "navigator",
+    "risk",
+    "limits",
+    "money",
+    "crm",
+    "documents",
+    "graph",
+]
+ACCOUNTANT_PRIORITY = [
+    "money",
+    "limits",
+    "crm",
+    "documents",
+    "risk",
+    "logistics",
+    "navigator",
+    "graph",
+    "fleet_insight",
+    "fleet_intelligence",
+]
+FULL_PRIORITY = [
+    "fleet_insight",
+    "fleet_intelligence",
+    "limits",
+    "risk",
+    "logistics",
+    "navigator",
+    "money",
+    "crm",
+    "documents",
+    "graph",
+]
 
 
 def select_sections(sections: dict[str, Any], *, view: UnifiedExplainView) -> dict[str, Any]:

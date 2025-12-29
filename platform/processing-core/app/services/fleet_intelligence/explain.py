@@ -3,6 +3,16 @@ from __future__ import annotations
 from app.models.fleet_intelligence import DriverBehaviorLevel, StationTrustLevel
 
 
+_DRIVER_FACTOR_LABELS = {
+    "off_route_fuel_count": "Отклонения от маршрута",
+    "night_fuel_tx_count": "Ночные заправки",
+    "route_deviation_count": "Отклонения от маршрута",
+    "risk_block_count": "Блокировки",
+    "review_required_count": "Требования проверки",
+    "tx_count": "Транзакции",
+}
+
+
 def build_driver_explain(
     *,
     score: int,
@@ -62,9 +72,42 @@ def build_station_explain(
     }
 
 
+def build_driver_summary(*, top_factors: list[dict]) -> str:
+    if not top_factors:
+        return "Недостаточно данных по поведению водителя."
+    parts = []
+    for factor in top_factors:
+        label = _DRIVER_FACTOR_LABELS.get(factor.get("factor"), str(factor.get("factor")))
+        value = factor.get("value")
+        if isinstance(value, (int, float)):
+            value = int(round(value))
+        parts.append(f"{label}: {value}")
+    return ", ".join(parts)
+
+
+def build_station_summary(*, level: StationTrustLevel, reasons: list[str]) -> str:
+    level_label = "watchlist" if level == StationTrustLevel.WATCHLIST else "blacklist"
+    if reasons:
+        reasons_text = ", ".join(reasons)
+        return f"Станция в {level_label}: {reasons_text}"
+    return f"Станция в {level_label}."
+
+
+def build_vehicle_summary(*, delta_pct: float | None, window_days: int | None) -> str:
+    if delta_pct is None:
+        return "Нет данных по пробегу."
+    delta_percent = int(round(delta_pct * 100))
+    sign = "+" if delta_percent >= 0 else ""
+    days_label = f"{window_days} дней" if window_days else "последний период"
+    return f"Расход {sign}{delta_percent}% к базовому за {days_label}"
+
+
 __all__ = [
     "build_driver_explain",
     "build_vehicle_explain",
     "build_vehicle_no_distance_explain",
     "build_station_explain",
+    "build_driver_summary",
+    "build_station_summary",
+    "build_vehicle_summary",
 ]

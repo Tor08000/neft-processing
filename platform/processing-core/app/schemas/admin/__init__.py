@@ -33,7 +33,12 @@ from .risk_rules import (
     RiskRuleRead,
     RiskRuleUpdate,
 )
-from .fleet_intelligence import FleetDriverScoreOut, FleetVehicleEfficiencyOut, FleetStationTrustOut
+from .fleet_intelligence import (
+    FleetDriverScoreOut,
+    FleetInsightOut,
+    FleetStationTrustOut,
+    FleetVehicleEfficiencyOut,
+)
 
 __all__ = [
     "OperationListResponse",
@@ -75,6 +80,7 @@ __all__ = [
     "RiskRuleRead",
     "RiskRuleUpdate",
     "FleetDriverScoreOut",
+    "FleetInsightOut",
     "FleetVehicleEfficiencyOut",
     "FleetStationTrustOut",
 ]

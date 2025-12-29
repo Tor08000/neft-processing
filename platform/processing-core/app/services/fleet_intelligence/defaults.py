@@ -33,6 +33,21 @@ STATION_VOLUME_DEVIATION_HIGH = 0.2
 
 VEHICLE_BASELINE_DAYS = 30
 
+FI_THRESHOLDS = {
+    "driver": {
+        "high": 70,
+        "very_high": 85,
+    },
+    "station_trust": {
+        "watchlist_max": 79,
+        "blacklist_max": 49,
+    },
+    "vehicle_efficiency_delta_pct": {
+        "warn": 10,
+        "high": 25,
+    },
+}
+
 __all__ = [
     "DRIVER_SCORE_WEIGHTS",
     "DRIVER_SCORE_THRESHOLDS",
@@ -41,4 +56,5 @@ __all__ = [
     "STATION_BURST_EVENTS_HIGH",
     "STATION_VOLUME_DEVIATION_HIGH",
     "VEHICLE_BASELINE_DAYS",
+    "FI_THRESHOLDS",
 ]

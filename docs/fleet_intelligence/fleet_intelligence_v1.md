@@ -76,6 +76,13 @@ Read-only admin endpoints:
 * `GET /admin/fleet-intelligence/vehicles?client_id=&window_days=`
 * `GET /admin/fleet-intelligence/stations?tenant_id=&window_days=`
 
+Actionable insights (v1.1, no new signals):
+
+* `GET /admin/fleet-intelligence/insights/drivers?client_id=&window_days=`
+* `GET /admin/fleet-intelligence/insights/vehicles?client_id=&window_days=`
+* `GET /admin/fleet-intelligence/insights/stations?tenant_id=&window_days=`
+* `GET /admin/fleet-intelligence/insights/subject?fuel_tx_id=`
+
 ### Unified Explain
 
 Unified Explain includes a `fleet_intelligence` section for fuel transactions:
@@ -83,6 +90,15 @@ Unified Explain includes a `fleet_intelligence` section for fuel transactions:
 * driver behavior score/level
 * station trust score/level
 * vehicle efficiency score/delta
+
+Unified Explain also includes `fleet_insight` (v1.1) when driver/vehicle/station
+ids are present (or when insights are available for the client):
+
+* `primary_insight` (exactly one)
+* `secondary_insights` (no duplicates)
+
+Thresholds are defined in `platform/processing-core/app/services/fleet_intelligence/defaults.py`
+under `FI_THRESHOLDS` and only apply to existing scores.
 
 ## Jobs
 
