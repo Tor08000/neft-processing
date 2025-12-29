@@ -11,6 +11,7 @@ from app.models.fleet_intelligence_actions import (
     FIAppliedAction,
     FIInsightEntityType,
 )
+from app.services.decision_memory import store as decision_memory_store
 from app.services.fleet_intelligence.control import defaults, repository
 
 
@@ -117,6 +118,7 @@ def _measure_single(
         summary=summary,
     )
     repository.add_action_effect(db, effect)
+    decision_memory_store.record_outcome_from_effect(db, action=action, insight=insight, effect=effect)
     return effect
 
 

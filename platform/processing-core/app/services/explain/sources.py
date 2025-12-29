@@ -15,6 +15,7 @@ from app.models.internal_ledger import (
     InternalLedgerTransaction,
 )
 from app.models.invoice import Invoice
+from app.models.decision_memory import DecisionMemoryEntityType
 from app.models.fleet_intelligence import FITrendEntityType, FITrendMetric, FITrendWindow
 from app.models.legal_graph import LegalGraphSnapshot, LegalGraphSnapshotScopeType, LegalNodeType
 from app.models.logistics import (
@@ -36,6 +37,7 @@ from app.services.money_flow.explain import build_money_explain
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
 from app.services.crm import repository as crm_repository
+from app.services.decision_memory import explain as decision_memory_explain
 from app.services.fleet_decision_choice import build_decision_choice as build_decision_choice_service
 from app.services.fleet_decision_choice import defaults as decision_choice_defaults
 from app.services.fleet_intelligence import actionable as fi_actionable
@@ -662,6 +664,8 @@ def build_decision_choice_section(
     db: Session,
     *,
     fleet_control: dict[str, Any] | None,
+    tenant_id: int | None = None,
+    client_id: str | None = None,
 ) -> dict[str, Any] | None:
     if not fleet_control:
         return None
@@ -671,6 +675,7 @@ def build_decision_choice_section(
     insight_type = active_insight.get("entity_type")
     if not insight_type:
         return None
+    entity_id = active_insight.get("entity_id")
     suggested_actions = fleet_control.get("suggested_actions")
     candidate_actions = None
     if isinstance(suggested_actions, list):
@@ -683,8 +688,44 @@ def build_decision_choice_section(
     return build_decision_choice_service(
         db,
         insight_type=insight_type,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        entity_type=insight_type,
+        entity_id=str(entity_id) if entity_id else None,
         candidate_actions=candidate_actions,
         window_days=window_days,
+    )
+
+
+def build_decision_memory_section(
+    db: Session,
+    *,
+    fleet_control: dict[str, Any] | None,
+    decision_choice: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not fleet_control:
+        return None
+    active_insight = fleet_control.get("active_insight")
+    if not isinstance(active_insight, dict):
+        return None
+    entity_type = active_insight.get("entity_type")
+    entity_id = active_insight.get("entity_id")
+    if not entity_type or not entity_id:
+        return None
+    try:
+        memory_entity_type = DecisionMemoryEntityType(str(entity_type))
+    except ValueError:
+        return None
+    action_code = None
+    if isinstance(decision_choice, dict):
+        recommended = decision_choice.get("recommended_action")
+        if isinstance(recommended, dict):
+            action_code = recommended.get("action_code")
+    return decision_memory_explain.build_decision_memory_section(
+        db,
+        entity_type=memory_entity_type,
+        entity_id=str(entity_id),
+        action_code=str(action_code) if action_code else None,
     )
 
 
@@ -1049,6 +1090,7 @@ __all__ = [
     "build_crm_section",
     "build_fleet_control_section",
     "build_decision_choice_section",
+    "build_decision_memory_section",
     "build_executive_summary",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",

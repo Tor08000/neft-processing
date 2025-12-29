@@ -210,9 +210,18 @@ def _build_payload(
             decision_choice_section = sources.build_decision_choice_section(
                 db,
                 fleet_control=fleet_control_section,
+                tenant_id=tx.tenant_id,
+                client_id=tx.client_id,
             )
             if decision_choice_section:
                 sections["decision_choice"] = decision_choice_section
+            decision_memory_section = sources.build_decision_memory_section(
+                db,
+                fleet_control=fleet_control_section,
+                decision_choice=decision_choice_section,
+            )
+            if decision_memory_section:
+                sections["decision_memory"] = decision_memory_section
 
         fleet_policy_bundle_section = sources.build_fleet_policy_bundle_section(
             db,

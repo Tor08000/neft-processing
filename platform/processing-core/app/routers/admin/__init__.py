@@ -12,6 +12,7 @@ from app.routers.admin import (
     dashboard,
     disputes,
     documents,
+    decision_memory,
     explain,
     fleet_control,
     fleet_intelligence,
@@ -59,6 +60,7 @@ router.include_router(fuel.router)
 router.include_router(logistics.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
+router.include_router(decision_memory.router)
 router.include_router(legal_integrations.router)
 router.include_router(legal_graph.router)
 router.include_router(crm.router)

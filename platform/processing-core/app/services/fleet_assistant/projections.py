@@ -50,6 +50,8 @@ def build_outcome_projection(
     sla_remaining_minutes: int | None,
     aging_days: int | None,
     insight_status: str | None,
+    cooldown: bool = False,
+    cooldown_reason: str | None = None,
     half_life_days: int | None = None,
     time_window_days: int = DEFAULT_TIME_WINDOW_DAYS,
 ) -> projection_types.FleetAssistantProjection:
@@ -61,6 +63,8 @@ def build_outcome_projection(
         entity_type=entity_type,
         half_life_days=half_life_days or control_defaults.CONF_HALF_LIFE_DAYS,
         time_window_days=time_window_days,
+        cooldown=cooldown,
+        cooldown_reason=cooldown_reason,
     )
     ignored = _build_if_ignored(
         trend_label=resolved_trend,
@@ -80,10 +84,16 @@ def _build_if_applied(
     entity_type: str | None,
     half_life_days: int,
     time_window_days: int,
+    cooldown: bool,
+    cooldown_reason: str | None,
 ) -> projection_types.FleetAssistantProjectionApplied:
     resolved_confidence = max(confidence or 0.0, 0.0)
     probability_improved_pct = round(100 * resolved_confidence)
     expected_effect_label = _label_from_confidence(resolved_confidence)
+    warnings: list[str] = []
+    if cooldown:
+        expected_effect_label = _downgrade_effect_label(expected_effect_label)
+        warnings.append(cooldown_reason or "Действие недавно пробовали без эффекта.")
     expected_kpis = _build_expected_kpis(entity_type, expected_effect_label)
     basis = projection_types.FleetAssistantProjectionAppliedBasis(
         confidence=round(resolved_confidence, 2),
@@ -97,6 +107,7 @@ def _build_if_applied(
         expected_time_window_days=time_window_days,
         expected_kpis=expected_kpis,
         basis=basis,
+        warnings=warnings,
     )
 
 
@@ -150,6 +161,14 @@ def _label_from_confidence(confidence: float) -> str:
     if confidence >= 0.35:
         return "NO_CHANGE"
     return "WORSE"
+
+
+def _downgrade_effect_label(label: str) -> str:
+    if label == "IMPROVED":
+        return "NO_CHANGE"
+    if label == "NO_CHANGE":
+        return "WORSE"
+    return label
 
 
 def _label_from_trend(trend_label: str) -> str:

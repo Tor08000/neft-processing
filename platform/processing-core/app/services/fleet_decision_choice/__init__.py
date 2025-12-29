@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.models.decision_memory import DecisionMemoryEntityType
 from app.models.fleet_decision_choice import FleetActionEffectStats
+from app.services.decision_memory import cooldown as memory_cooldown
+from app.services.decision_memory import stats as memory_stats
 from app.services.fleet_decision_choice import candidates, defaults, explain, scorer
 from app.services.fleet_decision_choice.evaluator import ActionEffectStats
 
@@ -13,6 +16,10 @@ def build_decision_choice(
     db: Session,
     *,
     insight_type: str,
+    tenant_id: int | None = None,
+    client_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
     candidate_actions: list[str] | None = None,
     window_days: int | None = None,
     peer_percentiles: dict[str, float] | None = None,
@@ -28,11 +35,36 @@ def build_decision_choice(
     )
     if not stats:
         return None
+    cooldowns = None
+    memory_map = None
+    resolved_entity_type = _resolve_entity_type(entity_type)
+    if resolved_entity_type and entity_id and tenant_id is not None:
+        cooldowns = {
+            action_code: memory_cooldown.evaluate_cooldown(
+                db,
+                entity_type=resolved_entity_type,
+                entity_id=entity_id,
+                action_code=action_code,
+                now=now,
+            )
+            for action_code in action_codes
+        }
+        memory_map = memory_stats.build_action_stats_map(
+            db,
+            tenant_id=tenant_id,
+            client_id=client_id,
+            action_codes=action_codes,
+            entity_type=resolved_entity_type,
+            window_days=window_days,
+            now=now,
+        )
     return build_decision_choice_from_stats(
         stats,
         window_days=window_days,
         peer_percentiles=peer_percentiles,
         now=now,
+        cooldowns=cooldowns,
+        memory_stats=memory_map,
     )
 
 
@@ -42,9 +74,17 @@ def build_decision_choice_from_stats(
     window_days: int,
     peer_percentiles: dict[str, float] | None = None,
     now: datetime | None = None,
+    cooldowns: dict[str, memory_cooldown.CooldownStatus] | None = None,
+    memory_stats: dict[str, memory_stats.DecisionActionStats] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
-    scored = scorer.score_actions(stats, peer_percentiles=peer_percentiles, now=now)
+    scored = scorer.score_actions(
+        stats,
+        peer_percentiles=peer_percentiles,
+        now=now,
+        cooldowns=cooldowns,
+        memory_stats=memory_stats,
+    )
     return explain.build_decision_choice_output(scored, window_days=window_days)
 
 
@@ -99,6 +139,15 @@ def _row_to_stats(row: FleetActionEffectStats) -> ActionEffectStats:
         avg_effect_delta=float(row.avg_effect_delta) if row.avg_effect_delta is not None else None,
         last_computed_at=row.last_computed_at,
     )
+
+
+def _resolve_entity_type(entity_type: str | None) -> DecisionMemoryEntityType | None:
+    if not entity_type:
+        return None
+    try:
+        return DecisionMemoryEntityType(entity_type)
+    except ValueError:
+        return None
 
 
 __all__ = ["build_decision_choice", "build_decision_choice_from_stats"]
