@@ -71,25 +71,25 @@ FUEL_PRODUCT_VALUES = ["ANY", "DIESEL", "AI92", "AI95", "AI98", "GAS", "OTHER"]
 
 
 operation_type_enum = postgresql.ENUM(
-    *OPERATION_TYPE_VALUES, name="operationtype", create_type=False
+    *OPERATION_TYPE_VALUES, name="operationtype", create_type=False, schema=SCHEMA
 )
 operation_status_enum = postgresql.ENUM(
-    *OPERATION_STATUS_VALUES, name="operationstatus", create_type=False
+    *OPERATION_STATUS_VALUES, name="operationstatus", create_type=False, schema=SCHEMA
 )
 product_type_enum = postgresql.ENUM(
-    *PRODUCT_TYPE_VALUES, name="producttype", create_type=False
+    *PRODUCT_TYPE_VALUES, name="producttype", create_type=False, schema=SCHEMA
 )
 risk_result_enum = postgresql.ENUM(
-    *RISK_RESULT_VALUES, name="riskresult", create_type=False
+    *RISK_RESULT_VALUES, name="riskresult", create_type=False, schema=SCHEMA
 )
 limit_entity_enum = postgresql.ENUM(
-    *LIMIT_ENTITY_VALUES, name="limitentitytype", create_type=False
+    *LIMIT_ENTITY_VALUES, name="limitentitytype", create_type=False, schema=SCHEMA
 )
 limit_scope_enum = postgresql.ENUM(
-    *LIMIT_SCOPE_VALUES, name="limitscope", create_type=False
+    *LIMIT_SCOPE_VALUES, name="limitscope", create_type=False, schema=SCHEMA
 )
 fuel_product_enum = postgresql.ENUM(
-    *FUEL_PRODUCT_VALUES, name="fuelproducttype", create_type=False
+    *FUEL_PRODUCT_VALUES, name="fuelproducttype", create_type=False, schema=SCHEMA
 )
 
 
