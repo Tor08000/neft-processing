@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: neft-enum-policy
+        name: neft-enum-policy
+        entry: python scripts/check_enum_policy.py
+        language: system
+        files: >-
+          ^platform/.*/alembic/versions/.*\.py$|^platform/processing-core/app/models/.*\.py$

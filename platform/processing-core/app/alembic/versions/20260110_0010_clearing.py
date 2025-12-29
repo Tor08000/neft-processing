@@ -107,6 +107,6 @@ def downgrade() -> None:
     drop_index_if_exists(bind, "ix_clearing_batch_merchant_id")
     drop_index_if_exists(bind, "ix_clearing_batch_status")
     drop_table_if_exists(bind, "clearing_batch")
-    postgresql.ENUM(name="clearing_batch_status", create_type=False).drop(
+    postgresql.ENUM(name="clearing_batch_status", create_type=False, schema=SCHEMA).drop(
         bind, checkfirst=True
     )
