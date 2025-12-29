@@ -10,7 +10,7 @@ from app.models.fleet_intelligence import (
 )
 from app.services.fleet_intelligence import explain
 from app.services.fleet_intelligence.defaults import FI_THRESHOLDS
-from app.services.fleet_intelligence.taxonomy import ActionHintCode, InsightType
+from app.services.fleet_intelligence.taxonomy import ActionHintCode, InsightType, PolicyHintCode
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,24 @@ _ACTION_LINKS = {
     ActionHintCode.RESTRICT_NIGHT_FUELING: "/crm/limit-profiles",
     ActionHintCode.EXCLUDE_STATION_FROM_ROUTES: "/logistics/route-constraints",
     ActionHintCode.CHECK_VEHICLE_FUEL_EFFICIENCY: "/fleet/vehicles",
+}
+
+_POLICY_TITLES = {
+    PolicyHintCode.DRIVER_BEHAVIOR_HIGH: "Policy: Driver behavior guard",
+    PolicyHintCode.STATION_TRUST_LOW: "Policy: Station trust control",
+}
+
+_POLICY_ACTIONS = {
+    PolicyHintCode.DRIVER_BEHAVIOR_HIGH: [
+        ActionHintCode.REVIEW_DRIVER_BEHAVIOR,
+        ActionHintCode.RESTRICT_NIGHT_FUELING,
+        ActionHintCode.REQUIRE_ROUTE_LINKED_REFUEL,
+    ],
+    PolicyHintCode.STATION_TRUST_LOW: [
+        ActionHintCode.MOVE_STATION_TO_WATCHLIST,
+        ActionHintCode.EXCLUDE_STATION_FROM_ROUTES,
+        ActionHintCode.REQUEST_COMPLIANCE_REVIEW,
+    ],
 }
 
 
@@ -92,6 +110,7 @@ def _driver_candidate(score: FIDriverScore) -> _InsightCandidate | None:
     actions = [
         _action(ActionHintCode.REVIEW_DRIVER_BEHAVIOR, severity="REQUIRED"),
     ]
+    policies = [_policy(PolicyHintCode.DRIVER_BEHAVIOR_HIGH)]
     level = "HIGH"
     if score.score >= thresholds["very_high"]:
         actions.append(_action(ActionHintCode.RESTRICT_NIGHT_FUELING, severity="REQUIRED"))
@@ -104,6 +123,7 @@ def _driver_candidate(score: FIDriverScore) -> _InsightCandidate | None:
         "score": score.score,
         "summary": explain.build_driver_summary(top_factors=_driver_top_factors(score)),
         "actions": _dedupe_actions(actions),
+        "policies": policies,
     }
     return _build_candidate(payload, magnitude=float(score.score))
 
@@ -137,6 +157,7 @@ def _station_candidate(score: FIStationTrustScore) -> _InsightCandidate | None:
         return None
     actions: list[dict] = []
     level = "HIGH"
+    policies = [_policy(PolicyHintCode.STATION_TRUST_LOW)]
     if score.level == score.level.WATCHLIST:
         actions.append(_action(ActionHintCode.MOVE_STATION_TO_WATCHLIST, severity="INFO"))
     if score.level == score.level.BLACKLIST:
@@ -152,6 +173,7 @@ def _station_candidate(score: FIStationTrustScore) -> _InsightCandidate | None:
         "score": score.trust_score,
         "summary": explain.build_station_summary(level=score.level, reasons=_station_reasons(score)),
         "actions": _dedupe_actions(actions),
+        "policies": policies,
     }
     magnitude = float(100 - score.trust_score)
     return _build_candidate(payload, magnitude=magnitude)
@@ -194,6 +216,22 @@ def _dedupe_actions(actions: Iterable[dict]) -> list[dict]:
         seen.add(code)
         ordered.append(action)
     return ordered
+
+
+def _policy(code: PolicyHintCode) -> dict:
+    actions = [_policy_action(action_code) for action_code in _POLICY_ACTIONS.get(code, [])]
+    return {
+        "code": code.value,
+        "title": _POLICY_TITLES.get(code, code.value),
+        "actions": actions,
+    }
+
+
+def _policy_action(code: ActionHintCode) -> dict:
+    return {
+        "code": code.value,
+        "title": _ACTION_TITLES.get(code, code.value),
+    }
 
 
 def _driver_top_factors(score: FIDriverScore) -> list[dict]:

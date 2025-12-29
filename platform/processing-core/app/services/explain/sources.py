@@ -427,6 +427,7 @@ def build_fleet_intelligence_section(
     vehicle_id: str | None,
     station_id: str | None,
     window_days: int = 7,
+    fraud_signals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     scores = fi_repository.latest_scores_for_ids(
         db,
@@ -466,6 +467,9 @@ def build_fleet_intelligence_section(
             "window_days": station.window_days,
             "explain": station.explain,
         }
+    fuel_recommendations = _build_fuel_recommendations(fraud_signals)
+    if fuel_recommendations:
+        payload["fuel_recommendations"] = fuel_recommendations
     return payload
 
 
@@ -486,6 +490,42 @@ def build_fleet_control_section(
         vehicle_id=vehicle_id,
         station_id=station_id,
     )
+
+
+def _build_fuel_recommendations(fraud_signals: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not fraud_signals:
+        return []
+    recommendations: dict[str, dict[str, Any]] = {}
+    for signal in fraud_signals:
+        signal_type = signal.get("type")
+        if signal_type in {"DRIVER_VEHICLE_MISMATCH"}:
+            recommendations.setdefault(
+                "DRIVER_FUEL_MISMATCH",
+                {
+                    "code": "DRIVER_FUEL_MISMATCH",
+                    "title": "Driver–fuel mismatch",
+                    "recommendation": "Проверьте соответствие водителя, карты и транзакции.",
+                },
+            )
+        if signal_type in {"ROUTE_DEVIATION_BEFORE_FUEL", "FUEL_OFF_ROUTE_STRONG", "FUEL_STOP_MISMATCH_STRONG"}:
+            recommendations.setdefault(
+                "ROUTE_FUEL_MISMATCH",
+                {
+                    "code": "ROUTE_FUEL_MISMATCH",
+                    "title": "Route–fuel mismatch",
+                    "recommendation": "Сверьте заправку с маршрутом и типом остановки.",
+                },
+            )
+        if signal_type in {"STATION_OUTLIER_CLUSTER", "MULTI_CARD_SAME_STATION_BURST"}:
+            recommendations.setdefault(
+                "STATION_FUEL_SPIKE",
+                {
+                    "code": "STATION_FUEL_SPIKE",
+                    "title": "Station fuel spike",
+                    "recommendation": "Проверьте всплеск активности на станции.",
+                },
+            )
+    return list(recommendations.values())
 
 
 def build_fleet_insight_section(

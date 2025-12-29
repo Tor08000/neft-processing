@@ -59,6 +59,21 @@ class FleetInsightActionOut(BaseModel):
     link: str | None = None
 
 
+class FleetInsightPolicyActionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    title: str
+
+
+class FleetInsightPolicyOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    title: str
+    actions: list[FleetInsightPolicyActionOut]
+
+
 class FleetInsightItemOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,6 +83,7 @@ class FleetInsightItemOut(BaseModel):
     score: int
     summary: str
     actions: list[FleetInsightActionOut]
+    policies: list[FleetInsightPolicyOut] = []
 
 
 class FleetInsightOut(BaseModel):
@@ -93,6 +109,8 @@ __all__ = [
     "FleetVehicleEfficiencyOut",
     "FleetStationTrustOut",
     "FleetInsightActionOut",
+    "FleetInsightPolicyActionOut",
+    "FleetInsightPolicyOut",
     "FleetInsightItemOut",
     "FleetInsightOut",
     "FleetTrendSnapshotOut",
