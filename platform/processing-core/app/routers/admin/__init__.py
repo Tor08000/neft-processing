@@ -13,6 +13,7 @@ from app.routers.admin import (
     disputes,
     documents,
     explain,
+    fleet_control,
     fleet_intelligence,
     fuel,
     integration_monitoring,
@@ -64,6 +65,7 @@ router.include_router(crm.router)
 router.include_router(fraud.router)
 router.include_router(money_flow.router)
 router.include_router(explain.router)
+router.include_router(fleet_control.router)
 router.include_router(fleet_intelligence.router)
 router.include_router(ops.router)
 

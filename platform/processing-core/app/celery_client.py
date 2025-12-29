@@ -47,6 +47,10 @@ celery_client.conf.update(
             "task": "fleet_intelligence.compute_trends_daily",
             "schedule": crontab(hour=3, minute=30),
         },
+        "fleet_control.nightly": {
+            "task": "fleet_control.nightly",
+            "schedule": crontab(hour=4, minute=0),
+        },
     },
 )
 

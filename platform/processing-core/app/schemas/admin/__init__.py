@@ -39,6 +39,14 @@ from .fleet_intelligence import (
     FleetStationTrustOut,
     FleetVehicleEfficiencyOut,
 )
+from .fleet_control import (
+    FleetControlActionDecisionIn,
+    FleetControlActionEffectOut,
+    FleetControlAppliedActionOut,
+    FleetControlInsightDetailOut,
+    FleetControlInsightOut,
+    FleetControlSuggestedActionOut,
+)
 
 __all__ = [
     "OperationListResponse",
@@ -83,4 +91,10 @@ __all__ = [
     "FleetInsightOut",
     "FleetVehicleEfficiencyOut",
     "FleetStationTrustOut",
+    "FleetControlActionDecisionIn",
+    "FleetControlActionEffectOut",
+    "FleetControlAppliedActionOut",
+    "FleetControlInsightDetailOut",
+    "FleetControlInsightOut",
+    "FleetControlSuggestedActionOut",
 ]
