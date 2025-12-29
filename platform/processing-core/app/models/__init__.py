@@ -212,6 +212,7 @@ from .fleet_intelligence import (  # noqa: F401
     FIStationTrustScore,
     FITrendSnapshot,
 )
+from .fleet_decision_choice import FleetActionEffectStats  # noqa: F401
 from .fleet_intelligence_actions import (  # noqa: F401
     FIActionCode,
     FIActionEffectLabel,

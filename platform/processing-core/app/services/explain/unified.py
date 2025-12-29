@@ -207,6 +207,12 @@ def _build_payload(
         )
         if fleet_control_section:
             sections["fleet_control"] = fleet_control_section
+            decision_choice_section = sources.build_decision_choice_section(
+                db,
+                fleet_control=fleet_control_section,
+            )
+            if decision_choice_section:
+                sections["decision_choice"] = decision_choice_section
 
         fleet_policy_bundle_section = sources.build_fleet_policy_bundle_section(
             db,

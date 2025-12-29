@@ -36,6 +36,8 @@ from app.services.money_flow.explain import build_money_explain
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
 from app.services.crm import repository as crm_repository
+from app.services.fleet_decision_choice import build_decision_choice as build_decision_choice_service
+from app.services.fleet_decision_choice import defaults as decision_choice_defaults
 from app.services.fleet_intelligence import actionable as fi_actionable
 from app.services.fleet_intelligence import explain as fi_explain
 from app.services.fleet_intelligence import repository as fi_repository
@@ -656,6 +658,36 @@ def build_fleet_control_section(
     )
 
 
+def build_decision_choice_section(
+    db: Session,
+    *,
+    fleet_control: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not fleet_control:
+        return None
+    active_insight = fleet_control.get("active_insight")
+    if not isinstance(active_insight, dict):
+        return None
+    insight_type = active_insight.get("entity_type")
+    if not insight_type:
+        return None
+    suggested_actions = fleet_control.get("suggested_actions")
+    candidate_actions = None
+    if isinstance(suggested_actions, list):
+        candidate_actions = [
+            item.get("action_code")
+            for item in suggested_actions
+            if isinstance(item, dict) and item.get("action_code")
+        ]
+    window_days = active_insight.get("window_days") or decision_choice_defaults.DEFAULT_WINDOW_DAYS
+    return build_decision_choice_service(
+        db,
+        insight_type=insight_type,
+        candidate_actions=candidate_actions,
+        window_days=window_days,
+    )
+
+
 def build_fleet_policy_bundle_section(
     db: Session,
     *,
@@ -1016,6 +1048,7 @@ __all__ = [
     "build_risk_section",
     "build_crm_section",
     "build_fleet_control_section",
+    "build_decision_choice_section",
     "build_executive_summary",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",

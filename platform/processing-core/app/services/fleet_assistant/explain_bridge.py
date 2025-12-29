@@ -15,6 +15,7 @@ from app.services.explain.actions import ActionItem
 from app.services.explain.escalation import EscalationInfo
 from app.services.explain.sla import SLAClock
 from app.services.fleet_assistant.benchmarks import build_benchmark_response
+from app.services.fleet_assistant.decision_choice import build_decision_choice_answers
 from app.services.fleet_assistant.projections import build_outcome_projection
 from app.services.fleet_assistant.prompts import (
     ACTION_EFFECT_PREFIX,
@@ -61,6 +62,7 @@ def build_fleet_assistant(explain: UnifiedExplainResponse, db: Session | None = 
     benchmark_answer = benchmark_result.answer if benchmark_result else None
     if not benchmark_answer:
         benchmark_answer = "Данные для сравнения недоступны."
+    decision_choice_answers = build_decision_choice_answers(explain.sections.get("decision_choice"))
 
     def build_answer(text: str) -> str:
         parts = [text, action_line, confidence_line, sla_line]
@@ -82,6 +84,7 @@ def build_fleet_assistant(explain: UnifiedExplainResponse, db: Session | None = 
             "trend": build_answer(scenario.trend),
             "what_happens": projection_text,
             "benchmark": benchmark_answer,
+            **decision_choice_answers,
         },
     )
 
