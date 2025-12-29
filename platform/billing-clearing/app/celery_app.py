@@ -12,6 +12,7 @@ from celery import Celery
 from neft_shared.logging_setup import get_logger, init_logging
 
 from .settings import settings
+from .beat import apply_schedule
 
 SERVICE_NAME = settings.service_name
 
@@ -52,3 +53,6 @@ celery_app.conf.update(
 
 # Автоматический поиск задач в пакете services.workers.app.tasks
 celery_app.autodiscover_tasks(["services.workers.app.tasks"])
+
+# Явно загружаем расписание beat при импорте celery_app
+apply_schedule(celery_app)

@@ -1,11 +1,16 @@
 # app/api/routes/health.py
 
 import os
+from datetime import datetime, timezone
 
 from anyio import to_thread
 from celery import Celery
 from celery.exceptions import TimeoutError as CeleryTimeoutError
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import bindparam, text
+from sqlalchemy.orm import Session
+
+from app.db import get_db
 
 # -----------------------------
 # Celery-клиент для core-api
@@ -113,3 +118,68 @@ async def health_enqueue(wait: bool = False):
             status_code=500,
             detail=f"Celery error: {e}",
         )
+
+
+@router.get("/scheduler")
+def scheduler_health(db: Session = Depends(get_db)) -> dict:
+    state = db.execute(
+        text(
+            """
+            SELECT schedule_task_count, schedule_loaded_at, last_heartbeat_at
+            FROM scheduler_state
+            WHERE id = :id
+            """
+        ),
+        {"id": "beat"},
+    ).mappings().first()
+
+    task_count = 0
+    schedule_loaded_at = None
+    last_heartbeat_at = None
+
+    if state:
+        task_count = state.get("schedule_task_count") or 0
+        schedule_loaded_at = state.get("schedule_loaded_at")
+        last_heartbeat_at = state.get("last_heartbeat_at")
+
+    schedule_loaded = task_count > 0
+    alive = False
+    if last_heartbeat_at:
+        now = datetime.now(timezone.utc)
+        heartbeat_value = last_heartbeat_at
+        if heartbeat_value.tzinfo is None:
+            heartbeat_value = heartbeat_value.replace(tzinfo=timezone.utc)
+        heartbeat_delta = (now - heartbeat_value).total_seconds()
+        alive = heartbeat_delta <= 120
+
+    job_names = {
+        "billing": "billing.build_daily_summaries",
+        "clearing": "clearing.build_daily_batch",
+        "billing_finalize": "clearing.finalize_billing",
+    }
+
+    stmt = text(
+        """
+        SELECT job_name, MAX(finished_at) AS last_run_at
+        FROM scheduler_job_runs
+        WHERE job_name IN :job_names
+        GROUP BY job_name
+        """
+    ).bindparams(bindparam("job_names", expanding=True))
+    results = db.execute(stmt, {"job_names": list(job_names.values())}).mappings().all()
+    last_runs = {row["job_name"]: row["last_run_at"] for row in results}
+
+    return {
+        "status": "ok" if schedule_loaded else "degraded",
+        "beat": {
+            "alive": alive,
+            "last_heartbeat_at": last_heartbeat_at,
+            "schedule_loaded_at": schedule_loaded_at,
+        },
+        "schedule": {"loaded": schedule_loaded, "task_count": task_count},
+        "jobs": {
+            "billing": {"last_run_at": last_runs.get(job_names["billing"])},
+            "clearing": {"last_run_at": last_runs.get(job_names["clearing"])},
+            "billing_finalize": {"last_run_at": last_runs.get(job_names["billing_finalize"])},
+        },
+    }
