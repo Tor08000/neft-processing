@@ -40,6 +40,11 @@ class Settings:
         "true",
         "yes",
     }
+    FLEET_BENCHMARK_USE_TENANT: bool = os.getenv("FLEET_BENCHMARK_USE_TENANT", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     # Billing & clearing configuration
     NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))
