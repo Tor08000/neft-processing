@@ -20,6 +20,7 @@ from app.models.fleet_intelligence import (
 from app.models.fleet_intelligence_actions import (
     FIActionEffect,
     FIActionEffectLabel,
+    FIActionCode,
     FIActionTargetSystem,
     FIAppliedAction,
     FAppliedActionStatus,
@@ -249,6 +250,32 @@ def list_action_effects(db: Session, *, applied_action_id: str) -> list[FIAction
     )
 
 
+def count_insight_effects(db: Session, *, insight_id: str) -> int:
+    return (
+        db.query(func.count(FIActionEffect.id))
+        .join(FIAppliedAction, FIAppliedAction.id == FIActionEffect.applied_action_id)
+        .filter(FIAppliedAction.insight_id == insight_id)
+        .scalar()
+        or 0
+    )
+
+
+def action_improvement_counts(
+    db: Session, *, action_codes: list[FIActionCode]
+) -> dict[FIActionCode, int]:
+    if not action_codes:
+        return {}
+    rows = (
+        db.query(FIAppliedAction.action_code, func.count(FIActionEffect.id))
+        .join(FIActionEffect, FIActionEffect.applied_action_id == FIAppliedAction.id)
+        .filter(FIAppliedAction.action_code.in_(action_codes))
+        .filter(FIActionEffect.effect_label == FIActionEffectLabel.IMPROVED)
+        .group_by(FIAppliedAction.action_code)
+        .all()
+    )
+    return {action_code: int(count or 0) for action_code, count in rows}
+
+
 def summarize_driver_anomalies(
     db: Session,
     *,
@@ -305,6 +332,8 @@ __all__ = [
     "add_action_effect",
     "add_applied_action",
     "add_insight",
+    "action_improvement_counts",
+    "count_insight_effects",
     "get_insight",
     "get_insight_for_day",
     "get_latest_applied_action",

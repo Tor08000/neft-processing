@@ -51,6 +51,7 @@ class FleetControlSuggestedActionOut(BaseModel):
     approved_at: datetime | None
     approved_by: str | None
     approve_reason: str | None
+    confidence_improved_count: int | None = None
 
 
 class FleetControlAppliedActionOut(BaseModel):
@@ -90,6 +91,8 @@ class FleetControlInsightDetailOut(BaseModel):
     suggested_actions: list[FleetControlSuggestedActionOut]
     applied_actions: list[FleetControlAppliedActionOut]
     effects: list[FleetControlActionEffectOut]
+    auto_resolution_hint: dict[str, Any] | None = None
+    aging: dict[str, Any] | None = None
 
 
 class FleetControlActionDecisionIn(BaseModel):

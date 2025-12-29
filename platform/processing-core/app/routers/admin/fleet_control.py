@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,7 @@ from app.schemas.admin.fleet_control import (
     FleetControlInsightOut,
     FleetControlSuggestedActionOut,
 )
-from app.models.fleet_intelligence_actions import FIInsightStatus
+from app.models.fleet_intelligence_actions import FIActionEffectLabel, FIInsightStatus
 from app.services.fleet_intelligence.control import actions as control_actions
 from app.services.fleet_intelligence.control import repository as control_repository
 
@@ -41,15 +43,33 @@ def get_insight_detail(
     if not insight:
         raise HTTPException(status_code=404, detail="insight_not_found")
     suggested = control_repository.list_suggested_actions(db, insight_id=insight_id)
+    action_codes = [action.action_code for action in suggested]
+    improved_counts = control_repository.action_improvement_counts(db, action_codes=action_codes)
     applied = control_repository.list_applied_actions(db, insight_id=insight_id)
     effects = []
+    latest_effect_label = None
     for item in applied:
-        effects.extend(control_repository.list_action_effects(db, applied_action_id=str(item.id)))
+        effect_items = control_repository.list_action_effects(db, applied_action_id=str(item.id))
+        effects.extend(effect_items)
+        if effect_items and not latest_effect_label:
+            latest_effect_label = effect_items[0].effect_label
+    auto_resolution_hint = _build_auto_resolution_hint(latest_effect_label)
+    aging = _build_insight_aging(insight, has_effects=bool(effects))
     return FleetControlInsightDetailOut(
         insight=FleetControlInsightOut.model_validate(insight),
-        suggested_actions=[FleetControlSuggestedActionOut.model_validate(item) for item in suggested],
+        suggested_actions=[
+            FleetControlSuggestedActionOut.model_validate(
+                {
+                    **FleetControlSuggestedActionOut.model_validate(item).model_dump(),
+                    "confidence_improved_count": improved_counts.get(item.action_code, 0),
+                }
+            )
+            for item in suggested
+        ],
         applied_actions=[FleetControlAppliedActionOut.model_validate(item) for item in applied],
         effects=[FleetControlActionEffectOut.model_validate(item) for item in effects],
+        auto_resolution_hint=auto_resolution_hint,
+        aging=aging,
     )
 
 
@@ -108,3 +128,31 @@ def apply_action(
 
 
 __all__ = ["router"]
+
+
+def _build_auto_resolution_hint(effect_label: FIActionEffectLabel | None) -> dict[str, str] | None:
+    if effect_label == FIActionEffectLabel.IMPROVED:
+        return {
+            "code": "SUGGEST_CLOSE_INSIGHT",
+            "message": "Эффект улучшился — можно закрыть инсайт.",
+        }
+    if effect_label == FIActionEffectLabel.NO_CHANGE:
+        return {
+            "code": "SUGGEST_AMPLIFY_ACTION",
+            "message": "Нет изменений — усилить действие или выбрать другую меру.",
+        }
+    return None
+
+
+def _build_insight_aging(insight, *, has_effects: bool) -> dict[str, str | int | bool] | None:
+    if not insight.created_at:
+        return None
+    now = datetime.now(timezone.utc)
+    created_at = insight.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    days_open = max((now - created_at).days, 0)
+    needs_escalation = not has_effects and days_open >= 14
+    if not needs_escalation:
+        return {"days_open": days_open, "needs_escalation": False}
+    return {"days_open": days_open, "needs_escalation": True, "reason": "insight_no_effect_14d"}

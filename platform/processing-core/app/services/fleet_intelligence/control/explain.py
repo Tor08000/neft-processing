@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.fleet_intelligence_actions import FIInsight, FIInsightEntityType, FIInsightStatus
+from app.models.fleet_intelligence_actions import (
+    FIActionEffectLabel,
+    FIInsight,
+    FIInsightEntityType,
+    FIInsightStatus,
+)
 from app.services.fleet_intelligence.control import repository
 
 
@@ -38,17 +43,27 @@ def build_fleet_control_section(
     if not insight:
         return None
     suggested = repository.list_suggested_actions(db, insight_id=str(insight.id))
+    action_codes = [action.action_code for action in suggested]
+    improved_counts = repository.action_improvement_counts(db, action_codes=action_codes)
     last_action = repository.get_latest_applied_action(db, insight_id=str(insight.id))
     effect_label = None
     if last_action:
         effects = repository.list_action_effects(db, applied_action_id=str(last_action.id))
         if effects:
             effect_label = effects[0].effect_label.value
+    auto_resolution_hint = _build_auto_resolution_hint(effect_label)
+    total_effects = repository.count_insight_effects(db, insight_id=str(insight.id))
+    aging = _build_insight_aging(insight, has_effects=total_effects > 0)
     return {
         "active_insight": _serialize_insight(insight),
-        "suggested_actions": [_serialize_suggested_action(action) for action in suggested],
+        "suggested_actions": [
+            _serialize_suggested_action(action, improved_count=improved_counts.get(action.action_code, 0))
+            for action in suggested
+        ],
         "last_action": _serialize_applied_action(last_action) if last_action else None,
         "effect": effect_label,
+        "auto_resolution_hint": auto_resolution_hint,
+        "aging": aging,
     }
 
 
@@ -117,13 +132,14 @@ def _serialize_insight(insight: FIInsight) -> dict[str, Any]:
     }
 
 
-def _serialize_suggested_action(action) -> dict[str, Any]:
+def _serialize_suggested_action(action, *, improved_count: int | None = None) -> dict[str, Any]:
     return {
         "id": str(action.id),
         "action_code": action.action_code.value,
         "target_system": action.target_system.value,
         "status": action.status.value,
         "payload": action.payload,
+        "confidence_improved_count": improved_count,
     }
 
 
@@ -137,6 +153,38 @@ def _serialize_applied_action(action) -> dict[str, Any] | None:
         "applied_at": action.applied_at.isoformat() if action.applied_at else None,
         "reason_code": action.reason_code,
         "reason_text": action.reason_text,
+    }
+
+
+def _build_auto_resolution_hint(effect_label: str | None) -> dict[str, Any] | None:
+    if effect_label == FIActionEffectLabel.IMPROVED.value:
+        return {
+            "code": "SUGGEST_CLOSE_INSIGHT",
+            "message": "Эффект улучшился — можно закрыть инсайт.",
+        }
+    if effect_label == FIActionEffectLabel.NO_CHANGE.value:
+        return {
+            "code": "SUGGEST_AMPLIFY_ACTION",
+            "message": "Нет изменений — усилить действие или выбрать другую меру.",
+        }
+    return None
+
+
+def _build_insight_aging(insight: FIInsight, *, has_effects: bool) -> dict[str, Any] | None:
+    if not insight.created_at:
+        return None
+    now = datetime.now(timezone.utc)
+    created_at = insight.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    days_open = max((now - created_at).days, 0)
+    needs_escalation = not has_effects and days_open >= 14
+    if not needs_escalation:
+        return {"days_open": days_open, "needs_escalation": False}
+    return {
+        "days_open": days_open,
+        "needs_escalation": True,
+        "reason": "insight_no_effect_14d",
     }
 
 

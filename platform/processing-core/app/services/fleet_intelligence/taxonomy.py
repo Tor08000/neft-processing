@@ -19,4 +19,9 @@ class ActionHintCode(str, Enum):
     REQUEST_COMPLIANCE_REVIEW = "REQUEST_COMPLIANCE_REVIEW"
 
 
-__all__ = ["InsightType", "ActionHintCode"]
+class PolicyHintCode(str, Enum):
+    DRIVER_BEHAVIOR_HIGH = "DRIVER_BEHAVIOR_HIGH"
+    STATION_TRUST_LOW = "STATION_TRUST_LOW"
+
+
+__all__ = ["InsightType", "ActionHintCode", "PolicyHintCode"]

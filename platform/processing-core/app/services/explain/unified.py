@@ -169,6 +169,10 @@ def _build_payload(
         if risk_section:
             sections["risk"] = risk_section
 
+        fraud_signals = None
+        meta = tx.meta or {}
+        if isinstance(meta, dict) and isinstance(meta.get("fraud_signals"), list):
+            fraud_signals = meta.get("fraud_signals")
         fleet_intelligence_section = sources.build_fleet_intelligence_section(
             db,
             tenant_id=tx.tenant_id,
@@ -177,6 +181,7 @@ def _build_payload(
             vehicle_id=str(tx.vehicle_id) if tx.vehicle_id else None,
             station_id=str(tx.station_id) if tx.station_id else None,
             window_days=7,
+            fraud_signals=fraud_signals,
         )
         if fleet_intelligence_section:
             sections["fleet_intelligence"] = fleet_intelligence_section
