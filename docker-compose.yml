@@ -209,34 +209,37 @@ services:
       - "8003:8000"
 
   crm-service:
-    image: alpine:3.20
+    build: ./platform/crm-service
     container_name: neft-processing-crm-1
-    command: ["/bin/sh", "-c", "sleep infinity"]
+    expose:
+      - "8000"
     healthcheck:
-      test: ["CMD", "echo", "ok"]
-      interval: 60s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q ok"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   logistics-service:
-    image: alpine:3.20
+    build: ./platform/logistics-service
     container_name: neft-processing-logistics-1
-    command: ["/bin/sh", "-c", "sleep infinity"]
+    expose:
+      - "8000"
     healthcheck:
-      test: ["CMD", "echo", "ok"]
-      interval: 60s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q ok"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   document-service:
-    image: alpine:3.20
+    build: ./platform/document-service
     container_name: neft-processing-document-1
-    command: ["/bin/sh", "-c", "sleep infinity"]
+    expose:
+      - "8000"
     healthcheck:
-      test: ["CMD", "echo", "ok"]
-      interval: 60s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q ok"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   workers:
     build:

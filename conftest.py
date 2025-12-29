@@ -11,6 +11,9 @@ SERVICE_ROOTS = {
     "ai-service": PROJECT_ROOT / "platform" / "ai-services" / "risk-scorer",
     "auth-host": PROJECT_ROOT / "platform" / "auth-host",
     "core-api": PROJECT_ROOT / "platform" / "processing-core",
+    "crm-service": PROJECT_ROOT / "platform" / "crm-service",
+    "document-service": PROJECT_ROOT / "platform" / "document-service",
+    "logistics-service": PROJECT_ROOT / "platform" / "logistics-service",
     "workers": PROJECT_ROOT / "platform" / "billing-clearing",
 }
 
