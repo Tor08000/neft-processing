@@ -29,6 +29,11 @@ try:  # pragma: no cover - optional task modules
 except Exception:
     pass
 
+try:  # pragma: no cover - optional task modules
+    import app.tasks.fleet_control  # noqa: F401
+except Exception:
+    pass
+
 
 @celery_client.task(name="workers.ping")
 def ping(x: int = 1) -> dict:

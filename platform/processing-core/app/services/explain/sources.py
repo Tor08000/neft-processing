@@ -39,6 +39,7 @@ from app.services.crm import repository as crm_repository
 from app.services.fleet_intelligence import actionable as fi_actionable
 from app.services.fleet_intelligence import explain as fi_explain
 from app.services.fleet_intelligence import repository as fi_repository
+from app.services.fleet_intelligence.control import explain as fi_control_explain
 
 
 def get_fuel_tx(db: Session, *, fuel_tx_id: str) -> FuelTransaction | None:
@@ -468,6 +469,25 @@ def build_fleet_intelligence_section(
     return payload
 
 
+def build_fleet_control_section(
+    db: Session,
+    *,
+    tenant_id: int,
+    client_id: str,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+) -> dict[str, Any] | None:
+    return fi_control_explain.build_fleet_control_section(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        driver_id=driver_id,
+        vehicle_id=vehicle_id,
+        station_id=station_id,
+    )
+
+
 def build_fleet_insight_section(
     db: Session,
     *,
@@ -808,6 +828,7 @@ __all__ = [
     "build_navigator_section",
     "build_risk_section",
     "build_crm_section",
+    "build_fleet_control_section",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",
     "build_fleet_trends_section",
