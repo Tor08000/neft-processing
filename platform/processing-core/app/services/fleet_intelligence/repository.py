@@ -285,6 +285,33 @@ def list_latest_driver_scores_by_client(
     )
 
 
+def list_latest_driver_scores_by_tenant(
+    db: Session,
+    *,
+    tenant_id: int,
+    window_days: int,
+    as_of: datetime | None = None,
+) -> list[FIDriverScore]:
+    subquery_query = db.query(
+        FIDriverScore.driver_id,
+        func.max(FIDriverScore.computed_at).label("latest_ts"),
+    ).filter(FIDriverScore.tenant_id == tenant_id).filter(FIDriverScore.window_days == window_days)
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIDriverScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIDriverScore.driver_id).subquery()
+    return (
+        db.query(FIDriverScore)
+        .filter(FIDriverScore.window_days == window_days)
+        .join(
+            subquery,
+            (FIDriverScore.driver_id == subquery.c.driver_id)
+            & (FIDriverScore.computed_at == subquery.c.latest_ts),
+        )
+        .order_by(FIDriverScore.driver_id.asc())
+        .all()
+    )
+
+
 def list_latest_vehicle_scores_by_client(
     db: Session,
     *,
@@ -296,6 +323,35 @@ def list_latest_vehicle_scores_by_client(
         FIVehicleEfficiencyScore.vehicle_id,
         func.max(FIVehicleEfficiencyScore.computed_at).label("latest_ts"),
     ).filter(FIVehicleEfficiencyScore.client_id == client_id).filter(
+        FIVehicleEfficiencyScore.window_days == window_days
+    )
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIVehicleEfficiencyScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIVehicleEfficiencyScore.vehicle_id).subquery()
+    return (
+        db.query(FIVehicleEfficiencyScore)
+        .filter(FIVehicleEfficiencyScore.window_days == window_days)
+        .join(
+            subquery,
+            (FIVehicleEfficiencyScore.vehicle_id == subquery.c.vehicle_id)
+            & (FIVehicleEfficiencyScore.computed_at == subquery.c.latest_ts),
+        )
+        .order_by(FIVehicleEfficiencyScore.vehicle_id.asc())
+        .all()
+    )
+
+
+def list_latest_vehicle_scores_by_tenant(
+    db: Session,
+    *,
+    tenant_id: int,
+    window_days: int,
+    as_of: datetime | None = None,
+) -> list[FIVehicleEfficiencyScore]:
+    subquery_query = db.query(
+        FIVehicleEfficiencyScore.vehicle_id,
+        func.max(FIVehicleEfficiencyScore.computed_at).label("latest_ts"),
+    ).filter(FIVehicleEfficiencyScore.tenant_id == tenant_id).filter(
         FIVehicleEfficiencyScore.window_days == window_days
     )
     if as_of is not None:
@@ -339,6 +395,66 @@ def list_latest_station_scores_by_tenant(
         .order_by(FIStationTrustScore.station_id.asc())
         .all()
     )
+
+
+def list_latest_station_scores_by_tenant_network(
+    db: Session,
+    *,
+    tenant_id: int,
+    window_days: int,
+    network_id: str | None,
+    as_of: datetime | None = None,
+) -> list[FIStationTrustScore]:
+    subquery_query = db.query(
+        FIStationTrustScore.station_id,
+        func.max(FIStationTrustScore.computed_at).label("latest_ts"),
+    ).filter(FIStationTrustScore.tenant_id == tenant_id).filter(FIStationTrustScore.window_days == window_days)
+    if network_id is not None:
+        subquery_query = subquery_query.filter(FIStationTrustScore.network_id == network_id)
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIStationTrustScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIStationTrustScore.station_id).subquery()
+    query = (
+        db.query(FIStationTrustScore)
+        .filter(FIStationTrustScore.window_days == window_days)
+        .join(
+            subquery,
+            (FIStationTrustScore.station_id == subquery.c.station_id)
+            & (FIStationTrustScore.computed_at == subquery.c.latest_ts),
+        )
+        .order_by(FIStationTrustScore.station_id.asc())
+    )
+    if network_id is not None:
+        query = query.filter(FIStationTrustScore.network_id == network_id)
+    return query.all()
+
+
+def list_station_risk_block_rates(
+    db: Session,
+    *,
+    tenant_id: int,
+    start_day: date,
+    end_day: date,
+    network_id: str | None = None,
+) -> dict[str, float]:
+    query = (
+        db.query(
+            FIStationDaily.station_id,
+            func.sum(FIStationDaily.risk_block_count).label("risk_block_count"),
+            func.sum(FIStationDaily.tx_count).label("tx_count"),
+        )
+        .filter(FIStationDaily.tenant_id == tenant_id)
+        .filter(FIStationDaily.day >= start_day)
+        .filter(FIStationDaily.day <= end_day)
+    )
+    if network_id is not None:
+        query = query.filter(FIStationDaily.network_id == network_id)
+    query = query.group_by(FIStationDaily.station_id)
+    rates: dict[str, float] = {}
+    for station_id, risk_block_count, tx_count in query.all():
+        if tx_count:
+            rates[str(station_id)] = float(risk_block_count or 0) / float(tx_count)
+    return rates
 
 
 def latest_scores_for_ids(
@@ -491,11 +607,15 @@ __all__ = [
     "list_vehicle_scores",
     "list_station_scores",
     "list_latest_driver_scores_by_client",
+    "list_latest_driver_scores_by_tenant",
     "list_latest_vehicle_scores_by_client",
+    "list_latest_vehicle_scores_by_tenant",
     "list_latest_station_scores_by_tenant",
+    "list_latest_station_scores_by_tenant_network",
     "latest_scores_for_ids",
     "list_vehicle_scores_window",
     "upsert_trend_snapshot",
     "list_trend_snapshots",
     "get_latest_trend_snapshot",
+    "list_station_risk_block_rates",
 ]

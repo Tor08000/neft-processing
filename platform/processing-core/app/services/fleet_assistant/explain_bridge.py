@@ -14,6 +14,7 @@ from app.schemas.admin.unified_explain import (
 from app.services.explain.actions import ActionItem
 from app.services.explain.escalation import EscalationInfo
 from app.services.explain.sla import SLAClock
+from app.services.fleet_assistant.benchmarks import build_benchmark_response
 from app.services.fleet_assistant.projections import build_outcome_projection
 from app.services.fleet_assistant.prompts import (
     ACTION_EFFECT_PREFIX,
@@ -55,6 +56,11 @@ def build_fleet_assistant(explain: UnifiedExplainResponse, db: Session | None = 
     confidence_line = f"Уверенность: {confidence}%."
     projection = _build_projection(explain, db=db)
     projection_text = _format_projection_text(projection)
+    benchmark_result = build_benchmark_response(explain, db=db)
+    benchmark = benchmark_result.benchmark if benchmark_result else None
+    benchmark_answer = benchmark_result.answer if benchmark_result else None
+    if not benchmark_answer:
+        benchmark_answer = "Данные для сравнения недоступны."
 
     def build_answer(text: str) -> str:
         parts = [text, action_line, confidence_line, sla_line]
@@ -68,12 +74,14 @@ def build_fleet_assistant(explain: UnifiedExplainResponse, db: Session | None = 
         sla=explain.sla,
         escalation=explain.escalation,
         projection=projection,
+        benchmark=benchmark,
         answers={
             "why_problem": build_answer(scenario.why_problem),
             "if_ignore": build_answer(scenario.if_ignore),
             "first_action": build_answer(scenario.first_action),
             "trend": build_answer(scenario.trend),
             "what_happens": projection_text,
+            "benchmark": benchmark_answer,
         },
     )
 

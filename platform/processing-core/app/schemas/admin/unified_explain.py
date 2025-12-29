@@ -22,6 +22,7 @@ class FleetAssistantResponse(BaseModel):
     escalation: EscalationInfo | None = None
     answers: dict[str, str]
     projection: FleetAssistantProjection | None = None
+    benchmark: FleetAssistantBenchmark | None = None
 
 
 class FleetAssistantProjectionKPI(BaseModel):
@@ -82,6 +83,55 @@ class FleetAssistantProjection(BaseModel):
 
     if_applied: FleetAssistantProjectionApplied
     if_ignored: FleetAssistantProjectionIgnored
+
+
+class FleetAssistantBenchmarkPeerGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: str
+    client_id: str | None = None
+    tenant_id: int | None = None
+    network_id: str | None = None
+
+
+class FleetAssistantBenchmarkPercentile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str
+    value: float | None = None
+    percentile: float | None = None
+    label: str | None = None
+    p50: float | None = None
+    p80: float | None = None
+    p90: float | None = None
+
+
+class FleetAssistantBenchmarkHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trend_label: str | None = None
+    delta_7d: float | None = None
+
+
+class FleetAssistantBenchmarkBasis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: str
+    window_days: int
+    n: int
+    entity_type: str | None = None
+    as_of: str | None = None
+
+
+class FleetAssistantBenchmark(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    peer_group: FleetAssistantBenchmarkPeerGroup
+    percentiles: list[FleetAssistantBenchmarkPercentile]
+    n: int
+    basis: FleetAssistantBenchmarkBasis
+    history: FleetAssistantBenchmarkHistory | None = None
 
 
 class UnifiedExplainView(str, Enum):
@@ -152,6 +202,11 @@ __all__ = [
     "FleetAssistantProjectionIgnored",
     "FleetAssistantProjectionIgnoredBasis",
     "FleetAssistantProjectionKPI",
+    "FleetAssistantBenchmark",
+    "FleetAssistantBenchmarkBasis",
+    "FleetAssistantBenchmarkHistory",
+    "FleetAssistantBenchmarkPeerGroup",
+    "FleetAssistantBenchmarkPercentile",
     "ActionItem",
     "EscalationInfo",
     "SLAClock",
