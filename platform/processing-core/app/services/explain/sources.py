@@ -35,6 +35,7 @@ from app.services.money_flow.explain import build_money_explain
 from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
 from app.services.crm import repository as crm_repository
+from app.services.fleet_intelligence import repository as fi_repository
 
 
 def get_fuel_tx(db: Session, *, fuel_tx_id: str) -> FuelTransaction | None:
@@ -413,6 +414,57 @@ def build_crm_section(db: Session, *, tenant_id: int | None, client_id: str | No
     }
 
 
+def build_fleet_intelligence_section(
+    db: Session,
+    *,
+    tenant_id: int,
+    client_id: str,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+    window_days: int = 7,
+) -> dict[str, Any] | None:
+    scores = fi_repository.latest_scores_for_ids(
+        db,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        driver_id=driver_id,
+        vehicle_id=vehicle_id,
+        station_id=station_id,
+        window_days=window_days,
+    )
+    driver = scores.get("driver")
+    vehicle = scores.get("vehicle")
+    station = scores.get("station")
+    if not any([driver, vehicle, station]):
+        return None
+    payload: dict[str, Any] = {}
+    if driver:
+        payload["driver_behavior"] = {
+            "score": driver.score,
+            "level": driver.level.value,
+            "window_days": driver.window_days,
+            "explain": driver.explain,
+        }
+    if vehicle:
+        payload["vehicle_efficiency"] = {
+            "efficiency_score": vehicle.efficiency_score,
+            "baseline_ml_per_100km": vehicle.baseline_ml_per_100km,
+            "actual_ml_per_100km": vehicle.actual_ml_per_100km,
+            "delta_pct": vehicle.delta_pct,
+            "window_days": vehicle.window_days,
+            "explain": vehicle.explain,
+        }
+    if station:
+        payload["station_trust"] = {
+            "trust_score": station.trust_score,
+            "level": station.level.value,
+            "window_days": station.window_days,
+            "explain": station.explain,
+        }
+    return payload
+
+
 def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
     if not invoice_id:
         return None, []
@@ -640,6 +692,7 @@ __all__ = [
     "build_navigator_section",
     "build_risk_section",
     "build_crm_section",
+    "build_fleet_intelligence_section",
     "find_invoice_id_for_fuel",
     "find_invoice_id_for_order",
     "get_fuel_link",

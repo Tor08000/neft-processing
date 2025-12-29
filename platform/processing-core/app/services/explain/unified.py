@@ -169,6 +169,18 @@ def _build_payload(
         if risk_section:
             sections["risk"] = risk_section
 
+        fleet_intelligence_section = sources.build_fleet_intelligence_section(
+            db,
+            tenant_id=tx.tenant_id,
+            client_id=tx.client_id,
+            driver_id=str(tx.driver_id) if tx.driver_id else None,
+            vehicle_id=str(tx.vehicle_id) if tx.vehicle_id else None,
+            station_id=str(tx.station_id) if tx.station_id else None,
+            window_days=7,
+        )
+        if fleet_intelligence_section:
+            sections["fleet_intelligence"] = fleet_intelligence_section
+
         link = sources.get_fuel_link(db, fuel_tx_id=str(tx.id))
         if link:
             sections["logistics"] = sources.build_logistics_section(

@@ -197,6 +197,16 @@ from .logistics import (  # noqa: F401
     LogisticsETAMethod,
 )
 from .unified_explain import UnifiedExplainSnapshot  # noqa: F401
+from .fleet_intelligence import (  # noqa: F401
+    DriverBehaviorLevel,
+    StationTrustLevel,
+    FIDriverDaily,
+    FIVehicleDaily,
+    FIStationDaily,
+    FIDriverScore,
+    FIVehicleEfficiencyScore,
+    FIStationTrustScore,
+)
 from .crm import (  # noqa: F401
     CRMClient,
     CRMClientStatus,
@@ -360,6 +370,14 @@ __all__ = [
     "FleetDriverStatus",
     "FleetVehicle",
     "FleetVehicleStatus",
+    "DriverBehaviorLevel",
+    "StationTrustLevel",
+    "FIDriverDaily",
+    "FIVehicleDaily",
+    "FIStationDaily",
+    "FIDriverScore",
+    "FIVehicleEfficiencyScore",
+    "FIStationTrustScore",
     "FuelLimit",
     "FuelLimitPeriod",
     "FuelLimitScopeType",
