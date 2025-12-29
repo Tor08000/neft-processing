@@ -97,6 +97,12 @@ class Settings:
     NEFT_S3_PUBLIC_URL_BASE: str | None = os.getenv("NEFT_S3_PUBLIC_URL_BASE")
     NEFT_INVOICE_PDF_TEMPLATE_VERSION: int = int(os.getenv("NEFT_INVOICE_PDF_TEMPLATE_VERSION", "1"))
     NEFT_PDF_AUTO_GENERATE: bool = os.getenv("NEFT_PDF_AUTO_GENERATE", "0").lower() in {"1", "true", "yes"}
+    DOCUMENT_SERVICE_ENABLED: bool = os.getenv("DOCUMENT_SERVICE_ENABLED", "0").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    DOCUMENT_SERVICE_URL: str = os.getenv("DOCUMENT_SERVICE_URL", "http://document-service:8000")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", _DEFAULT_MINIO_PASSWORD)

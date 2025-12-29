@@ -20,6 +20,8 @@ from app.models.documents import (
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.invoice import Invoice
 from app.services.audit_service import AuditService, RequestContext
+from app.services.document_service_client import DocumentRenderRequest, DocumentServiceClient
+from app.services.document_templates import build_document_html_template
 from app.services.documents_generator import DocumentsGenerator
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_graph import (
@@ -31,8 +33,10 @@ from app.services.legal_graph import (
 )
 from app.models.legal_graph import LegalGraphSnapshotScopeType
 from neft_shared.logging_setup import get_logger
+from neft_shared.settings import get_settings
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,7 @@ class ClosingDocumentsService:
         self.db = db
         self.generator = DocumentsGenerator()
         self.storage = DocumentsStorage()
+        self.document_service = DocumentServiceClient() if settings.DOCUMENT_SERVICE_ENABLED else None
 
     def generate_package(
         self,
@@ -283,8 +288,20 @@ class ClosingDocumentsService:
         self.db.add(document)
         self.db.flush()
 
-        payload = self._generate_payload(document_type, client_id, period_from, period_to, source_entity_id)
-        pdf_file = self._store_file(document, DocumentFileType.PDF, payload.pdf_bytes)
+        payload = self._generate_payload(
+            document_type,
+            client_id,
+            period_from,
+            period_to,
+            source_entity_id,
+            include_pdf=self.document_service is None,
+        )
+        if self.document_service:
+            pdf_file = self._store_pdf_via_service(document)
+        else:
+            if payload.pdf_bytes is None:
+                raise ValueError("pdf_payload_missing")
+            pdf_file = self._store_file(document, DocumentFileType.PDF, payload.pdf_bytes)
         xlsx_file = self._store_file(
             document,
             DocumentFileType.XLSX,
@@ -395,18 +412,68 @@ class ClosingDocumentsService:
         period_from: date,
         period_to: date,
         invoice_id: str | None,
+        *,
+        include_pdf: bool,
     ):
         if document_type == DocumentType.INVOICE:
             return self.generator.generate_invoice(
-                invoice_id=invoice_id or "", client_id=client_id, period_from=period_from, period_to=period_to
+                invoice_id=invoice_id or "",
+                client_id=client_id,
+                period_from=period_from,
+                period_to=period_to,
+                include_pdf=include_pdf,
             )
         if document_type == DocumentType.ACT:
-            return self.generator.generate_act(client_id=client_id, period_from=period_from, period_to=period_to)
+            return self.generator.generate_act(
+                client_id=client_id,
+                period_from=period_from,
+                period_to=period_to,
+                include_pdf=include_pdf,
+            )
         if document_type == DocumentType.RECONCILIATION_ACT:
             return self.generator.generate_reconciliation_act(
-                client_id=client_id, period_from=period_from, period_to=period_to
+                client_id=client_id,
+                period_from=period_from,
+                period_to=period_to,
+                include_pdf=include_pdf,
             )
         raise ValueError("unsupported_document_type")
+
+    def _store_pdf_via_service(self, document: Document) -> DocumentFile:
+        if not self.document_service:
+            raise ValueError("document_service_disabled")
+
+        template_html = build_document_html_template(document.document_type)
+        render_request = DocumentRenderRequest(
+            template_kind="HTML",
+            template_id=document.document_type.value,
+            template_html=template_html,
+            data={
+                "client_id": document.client_id,
+                "period_from": document.period_from.isoformat(),
+                "period_to": document.period_to.isoformat(),
+                "invoice_id": document.source_entity_id,
+            },
+            output_format="PDF",
+            tenant_id=document.tenant_id,
+            client_id=document.client_id,
+            idempotency_key=f"{document.id}:{document.version}",
+            meta={"source": "core-api", "doc_type": document.document_type.value},
+            doc_id=str(document.id),
+            doc_type=document.document_type.value,
+            version=document.version,
+            document_date=document.period_from.isoformat(),
+        )
+        result = self.document_service.render(render_request)
+        return DocumentFile(
+            document_id=document.id,
+            file_type=DocumentFileType.PDF,
+            bucket=result.bucket,
+            object_key=result.object_key,
+            sha256=result.sha256,
+            size_bytes=result.size_bytes,
+            content_type=result.content_type,
+        )
 
     def _store_file(
         self,
