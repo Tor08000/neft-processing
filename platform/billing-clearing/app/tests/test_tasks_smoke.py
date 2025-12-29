@@ -22,6 +22,7 @@ os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
 
 from app.celery_app import celery_app
 from app.settings import settings
+from app import job_evidence
 from app.tasks import ai, billing, clearing, limits, ping
 
 
@@ -199,6 +200,8 @@ def test_limits_tasks_eager_mode():
 def test_billing_and_clearing_tasks(monkeypatch):
     monkeypatch.setattr(billing, "_engine", _BillingEngine())
     monkeypatch.setattr(clearing, "_engine", _ClearingEngine())
+    monkeypatch.setattr(job_evidence, "record_job_start", lambda *_args, **_kwargs: "test-run")
+    monkeypatch.setattr(job_evidence, "record_job_finish", lambda *_args, **_kwargs: None)
 
     billing_summary = billing.build_daily_summaries.delay().get(timeout=1)
     assert billing_summary["rows"] == 1
