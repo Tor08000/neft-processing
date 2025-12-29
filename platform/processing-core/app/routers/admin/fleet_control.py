@@ -14,10 +14,17 @@ from app.schemas.admin.fleet_control import (
     FleetControlInsightDetailOut,
     FleetControlInsightOut,
     FleetControlSuggestedActionOut,
+    FleetPolicyPreviewAction,
+    FleetPolicyPreviewConfidence,
+    FleetPolicyPreviewIn,
+    FleetPolicyPreviewInsight,
+    FleetPolicyPreviewOut,
 )
-from app.models.fleet_intelligence_actions import FIActionEffectLabel, FIInsightStatus
+from app.models.fleet_intelligence_actions import FIInsightStatus
 from app.services.fleet_intelligence.control import actions as control_actions
+from app.services.fleet_intelligence.control import auto_resolution, confidence as control_confidence
 from app.services.fleet_intelligence.control import repository as control_repository
+from app.services.fleet_intelligence.policies import preview as policy_preview
 
 router = APIRouter(prefix="/fleet-control", tags=["admin", "fleet-control"])
 
@@ -43,6 +50,11 @@ def get_insight_detail(
     if not insight:
         raise HTTPException(status_code=404, detail="insight_not_found")
     suggested = control_repository.list_suggested_actions(db, insight_id=insight_id)
+    now = datetime.now(timezone.utc)
+    confidence_map = {
+        action.action_code: control_confidence.compute_action_confidence(db, action_code=action.action_code, now=now)
+        for action in suggested
+    }
     action_codes = [action.action_code for action in suggested]
     improved_counts = control_repository.action_improvement_counts(db, action_codes=action_codes)
     applied = control_repository.list_applied_actions(db, insight_id=insight_id)
@@ -53,8 +65,17 @@ def get_insight_detail(
         effects.extend(effect_items)
         if effect_items and not latest_effect_label:
             latest_effect_label = effect_items[0].effect_label
-    auto_resolution_hint = _build_auto_resolution_hint(latest_effect_label)
-    aging = _build_insight_aging(insight, has_effects=bool(effects))
+    last_action = applied[0] if applied else None
+    last_action_confidence = (
+        control_confidence.compute_action_confidence(db, action_code=last_action.action_code, now=now)
+        if last_action
+        else None
+    )
+    auto_resolution_hint = auto_resolution.build_auto_resolution_hint(
+        effect_label=latest_effect_label,
+        confidence=last_action_confidence,
+    )
+    aging = auto_resolution.build_insight_aging(insight, effect_label=latest_effect_label)
     return FleetControlInsightDetailOut(
         insight=FleetControlInsightOut.model_validate(insight),
         suggested_actions=[
@@ -62,6 +83,13 @@ def get_insight_detail(
                 {
                     **FleetControlSuggestedActionOut.model_validate(item).model_dump(),
                     "confidence_improved_count": improved_counts.get(item.action_code, 0),
+                    "confidence": confidence_map.get(item.action_code),
+                    "confidence_status": auto_resolution.confidence_status(
+                        confidence_map.get(item.action_code)
+                    ),
+                    "confidence_recommendation": auto_resolution.build_confidence_recommendation(
+                        confidence_map.get(item.action_code)
+                    ),
                 }
             )
             for item in suggested
@@ -127,32 +155,32 @@ def apply_action(
     return FleetControlAppliedActionOut.model_validate(applied)
 
 
+@router.post("/preview", response_model=FleetPolicyPreviewOut)
+def preview_policy_bundle(
+    payload: FleetPolicyPreviewIn,
+    db: Session = Depends(get_db),
+) -> FleetPolicyPreviewOut:
+    try:
+        preview_payload = policy_preview.build_policy_bundle_preview(
+            db,
+            bundle_code=payload.bundle_code,
+            client_id=payload.client_id,
+            status=payload.status,
+            limit=payload.limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FleetPolicyPreviewOut(
+        bundle=preview_payload["bundle"],
+        affected_insights=[
+            FleetPolicyPreviewInsight.model_validate(item) for item in preview_payload["affected_insights"]
+        ],
+        actions=[FleetPolicyPreviewAction.model_validate(item) for item in preview_payload["actions"]],
+        confidence_preview=[
+            FleetPolicyPreviewConfidence.model_validate(item)
+            for item in preview_payload["confidence_preview"]
+        ],
+    )
+
+
 __all__ = ["router"]
-
-
-def _build_auto_resolution_hint(effect_label: FIActionEffectLabel | None) -> dict[str, str] | None:
-    if effect_label == FIActionEffectLabel.IMPROVED:
-        return {
-            "code": "SUGGEST_CLOSE_INSIGHT",
-            "message": "Эффект улучшился — можно закрыть инсайт.",
-        }
-    if effect_label == FIActionEffectLabel.NO_CHANGE:
-        return {
-            "code": "SUGGEST_AMPLIFY_ACTION",
-            "message": "Нет изменений — усилить действие или выбрать другую меру.",
-        }
-    return None
-
-
-def _build_insight_aging(insight, *, has_effects: bool) -> dict[str, str | int | bool] | None:
-    if not insight.created_at:
-        return None
-    now = datetime.now(timezone.utc)
-    created_at = insight.created_at
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
-    days_open = max((now - created_at).days, 0)
-    needs_escalation = not has_effects and days_open >= 14
-    if not needs_escalation:
-        return {"days_open": days_open, "needs_escalation": False}
-    return {"days_open": days_open, "needs_escalation": True, "reason": "insight_no_effect_14d"}

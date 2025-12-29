@@ -8,6 +8,25 @@ from app.models.fleet_intelligence import FITrendLabel
 from app.services.fuel_intelligence import overlay
 
 
+FUEL_INSIGHT_OVERLAYS = {
+    "DRIVER_FUEL_MISMATCH": {
+        "what_detected": "Несоответствие между водителем, картой и заправкой.",
+        "why_suspicious": "Транзакция может быть выполнена не тем водителем или не на той карте.",
+        "what_to_check": "Сверьте водителя, карту, транспорт и детали транзакции.",
+    },
+    "ROUTE_FUEL_MISMATCH": {
+        "what_detected": "Заправка не совпадает с маршрутом или логистическим событием.",
+        "why_suspicious": "Заправка могла быть выполнена вне утверждённого маршрута.",
+        "what_to_check": "Проверьте маршрут, окно остановки и причины отклонения.",
+    },
+    "STATION_FUEL_SPIKE": {
+        "what_detected": "Резкий всплеск заправок на одной станции.",
+        "why_suspicious": "Возможна аномальная активность станции или координированные транзакции.",
+        "what_to_check": "Проверьте историю станции и совпадения по картам/водителям.",
+    },
+}
+
+
 def build_fuel_insights(
     db: Session,
     *,
@@ -61,6 +80,7 @@ def _build_fuel_recommendations(fraud_signals: list[dict[str, Any]] | None) -> l
                     "title": "Driver–fuel mismatch",
                     "recommendation": "Проверьте соответствие водителя, карты и транзакции.",
                     "severity": "INFO",
+                    **FUEL_INSIGHT_OVERLAYS["DRIVER_FUEL_MISMATCH"],
                 },
             )
         if signal_type in {"ROUTE_DEVIATION_BEFORE_FUEL", "FUEL_OFF_ROUTE_STRONG", "FUEL_STOP_MISMATCH_STRONG"}:
@@ -71,6 +91,7 @@ def _build_fuel_recommendations(fraud_signals: list[dict[str, Any]] | None) -> l
                     "title": "Route–fuel mismatch",
                     "recommendation": "Сверьте заправку с маршрутом и типом остановки.",
                     "severity": "INFO",
+                    **FUEL_INSIGHT_OVERLAYS["ROUTE_FUEL_MISMATCH"],
                 },
             )
         if signal_type in {"STATION_OUTLIER_CLUSTER", "MULTI_CARD_SAME_STATION_BURST"}:
@@ -81,6 +102,7 @@ def _build_fuel_recommendations(fraud_signals: list[dict[str, Any]] | None) -> l
                     "title": "Station fuel spike",
                     "recommendation": "Проверьте всплеск активности на станции.",
                     "severity": "INFO",
+                    **FUEL_INSIGHT_OVERLAYS["STATION_FUEL_SPIKE"],
                 },
             )
     return list(recommendations.values())

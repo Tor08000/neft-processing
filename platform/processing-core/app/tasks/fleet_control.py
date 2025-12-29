@@ -6,14 +6,20 @@ from neft_shared.logging_setup import get_logger
 
 from app.celery_client import celery_client
 from app.db import get_sessionmaker
-from app.models.fleet_intelligence_actions import FISuggestedAction, FISuggestedActionStatus
+from app.models.fleet_intelligence_actions import (
+    FIActionEffectLabel,
+    FISuggestedAction,
+    FISuggestedActionStatus,
+)
 from app.services.audit_service import AuditService, RequestContext
 from app.models.audit_log import ActorType
 from app.services.explain import snapshot as explain_snapshot
+from app.services.fleet_intelligence.control import defaults as control_defaults
 from app.services.fleet_intelligence.control import effects, explain, insights, policies, repository
 from app.services.ops import escalations as ops_escalations
 from app.models.ops import OpsEscalationPriority, OpsEscalationSource, OpsEscalationTarget
-from app.services.ops.reason_codes import OpsReasonCode
+from app.services.ops.reason_codes import OpsReasonCode, get_target_for_reason
+from app.models.unified_explain import PrimaryReason
 
 logger = get_logger(__name__)
 
@@ -32,6 +38,7 @@ def fleet_control_nightly_task(day_offset: int = 1) -> dict[str, int]:
                 suggested_count += 1
         effects_count = len(effects.measure_action_effects(session, as_of=datetime.now(timezone.utc)))
         expired_count = _scan_for_sla_expired(session)
+        no_change_escalations = _scan_for_no_change_escalations(session)
         session.commit()
         return {
             "day": int(target_day.strftime("%Y%m%d")),
@@ -39,6 +46,7 @@ def fleet_control_nightly_task(day_offset: int = 1) -> dict[str, int]:
             "suggested": suggested_count,
             "effects": effects_count,
             "sla_escalations": expired_count,
+            "no_change_escalations": no_change_escalations,
         }
     except Exception:  # noqa: BLE001
         session.rollback()
@@ -114,6 +122,49 @@ def _scan_for_sla_expired(db) -> int:
     return escalations
 
 
+def _scan_for_no_change_escalations(db) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=control_defaults.INSIGHT_ESCALATION_NO_CHANGE_DAYS)
+    insights = repository.list_active_insights_before(db, cutoff=cutoff)
+    escalations = 0
+    for insight in insights:
+        effect_label = repository.get_latest_effect_label(db, insight_id=str(insight.id))
+        if effect_label != FIActionEffectLabel.NO_CHANGE:
+            continue
+        snapshot_payload = explain.build_fleet_control_snapshot(db, insight_id=str(insight.id))
+        if not snapshot_payload:
+            continue
+        persisted = explain_snapshot.persist_snapshot(
+            db,
+            tenant_id=insight.tenant_id,
+            subject_type="fi_insight",
+            subject_id=str(insight.id),
+            payload=snapshot_payload,
+        )
+        reason_code = _map_reason_code_for_primary(insight.primary_reason)
+        ops_escalations.create_escalation_if_missing(
+            db,
+            tenant_id=insight.tenant_id,
+            target=get_target_for_reason(reason_code),
+            priority=OpsEscalationPriority.MEDIUM,
+            primary_reason=insight.primary_reason,
+            subject_type="fi_insight",
+            subject_id=str(insight.id),
+            source=OpsEscalationSource.SYSTEM,
+            client_id=insight.client_id,
+            reason_code=reason_code.value,
+            unified_explain_snapshot_hash=persisted.snapshot.snapshot_hash,
+            unified_explain_snapshot=persisted.snapshot.snapshot_json,
+            meta={
+                "insight_id": str(insight.id),
+                "effect_label": "NO_CHANGE",
+                "days_open_threshold": control_defaults.INSIGHT_ESCALATION_NO_CHANGE_DAYS,
+            },
+            idempotency_key=f"fi_insight_no_change:{insight.id}",
+        )
+        escalations += 1
+    return escalations
+
+
 def _map_target(action: FISuggestedAction) -> OpsEscalationTarget:
     if action.target_system.value == "CRM":
         return OpsEscalationTarget.CRM
@@ -130,6 +181,18 @@ def _map_reason_code(target: OpsEscalationTarget) -> OpsReasonCode:
     if target == OpsEscalationTarget.FINANCE:
         return OpsReasonCode.MONEY_INVARIANT_VIOLATION
     return OpsReasonCode.FEATURE_DISABLED
+
+
+def _map_reason_code_for_primary(primary_reason: PrimaryReason) -> OpsReasonCode:
+    default_by_primary = {
+        PrimaryReason.LIMIT: OpsReasonCode.LIMIT_EXCEEDED,
+        PrimaryReason.RISK: OpsReasonCode.RISK_BLOCK,
+        PrimaryReason.LOGISTICS: OpsReasonCode.LOGISTICS_DEVIATION,
+        PrimaryReason.MONEY: OpsReasonCode.MONEY_INVARIANT_VIOLATION,
+        PrimaryReason.POLICY: OpsReasonCode.FEATURE_DISABLED,
+        PrimaryReason.UNKNOWN: OpsReasonCode.FEATURE_DISABLED,
+    }
+    return default_by_primary.get(primary_reason, OpsReasonCode.FEATURE_DISABLED)
 
 
 __all__ = ["fleet_control_nightly_task"]

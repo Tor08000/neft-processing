@@ -52,6 +52,9 @@ class FleetControlSuggestedActionOut(BaseModel):
     approved_by: str | None
     approve_reason: str | None
     confidence_improved_count: int | None = None
+    confidence: float | None = None
+    confidence_status: str | None = None
+    confidence_recommendation: str | None = None
 
 
 class FleetControlAppliedActionOut(BaseModel):
@@ -102,6 +105,54 @@ class FleetControlActionDecisionIn(BaseModel):
     reason_text: str | None = None
 
 
+class FleetPolicyPreviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bundle_code: str
+    client_id: str | None = None
+    status: FIInsightStatus | None = None
+    limit: int = 50
+
+
+class FleetPolicyPreviewInsight(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    insight_type: FIInsightType
+    severity: FIInsightSeverity
+    entity_type: FIInsightEntityType
+    entity_id: str
+    status: FIInsightStatus
+    created_at: datetime
+
+
+class FleetPolicyPreviewAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_code: FIActionCode
+    target_system: FIActionTargetSystem
+    payload: dict[str, Any] | None = None
+    params: dict[str, Any] | None = None
+    step_index: int | None = None
+
+
+class FleetPolicyPreviewConfidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_code: FIActionCode
+    confidence: float | None = None
+    confidence_status: str | None = None
+
+
+class FleetPolicyPreviewOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bundle: dict[str, Any]
+    affected_insights: list[FleetPolicyPreviewInsight]
+    actions: list[FleetPolicyPreviewAction]
+    confidence_preview: list[FleetPolicyPreviewConfidence]
+
+
 __all__ = [
     "FleetControlInsightOut",
     "FleetControlSuggestedActionOut",
@@ -109,4 +160,9 @@ __all__ = [
     "FleetControlActionEffectOut",
     "FleetControlInsightDetailOut",
     "FleetControlActionDecisionIn",
+    "FleetPolicyPreviewIn",
+    "FleetPolicyPreviewOut",
+    "FleetPolicyPreviewAction",
+    "FleetPolicyPreviewInsight",
+    "FleetPolicyPreviewConfidence",
 ]

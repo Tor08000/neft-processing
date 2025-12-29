@@ -5,13 +5,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.fleet_intelligence_actions import (
-    FIActionEffectLabel,
-    FIInsight,
-    FIInsightEntityType,
-    FIInsightStatus,
-)
-from app.services.fleet_intelligence.control import confidence as control_confidence
+from app.models.fleet_intelligence_actions import FIInsight, FIInsightEntityType, FIInsightStatus
+from app.services.fleet_intelligence.control import auto_resolution, confidence as control_confidence
 from app.services.fleet_intelligence.control import repository
 from app.services.fleet_intelligence.control.defaults import CONFIDENCE_WINDOW_DAYS, CONF_HALF_LIFE_DAYS
 from app.services.fleet_intelligence.policies import registry as policy_registry
@@ -58,10 +53,17 @@ def build_fleet_control_section(
     if last_action:
         effects = repository.list_action_effects(db, applied_action_id=str(last_action.id))
         if effects:
-            effect_label = effects[0].effect_label.value
-    auto_resolution_hint = _build_auto_resolution_hint(effect_label)
-    total_effects = repository.count_insight_effects(db, insight_id=str(insight.id))
-    aging = _build_insight_aging(insight, has_effects=total_effects > 0)
+            effect_label = effects[0].effect_label
+    last_action_confidence = (
+        control_confidence.compute_action_confidence(db, action_code=last_action.action_code, now=now)
+        if last_action
+        else None
+    )
+    auto_resolution_hint = auto_resolution.build_auto_resolution_hint(
+        effect_label=effect_label,
+        confidence=last_action_confidence,
+    )
+    aging = auto_resolution.build_insight_aging(insight, effect_label=effect_label)
     return {
         "active_insight": _serialize_insight(insight),
         "suggested_actions": [
@@ -73,7 +75,7 @@ def build_fleet_control_section(
             for action in suggested
         ],
         "last_action": _serialize_applied_action(last_action) if last_action else None,
-        "effect": effect_label,
+        "effect": effect_label.value if effect_label else None,
         "auto_resolution_hint": auto_resolution_hint,
         "aging": aging,
     }
@@ -160,6 +162,8 @@ def _serialize_suggested_action(
     confidence: float | None = None,
 ) -> dict[str, Any]:
     payload = action.payload if isinstance(action.payload, dict) else {}
+    confidence_status = auto_resolution.confidence_status(confidence)
+    confidence_recommendation = auto_resolution.build_confidence_recommendation(confidence)
     return {
         "id": str(action.id),
         "action_code": action.action_code.value,
@@ -168,6 +172,8 @@ def _serialize_suggested_action(
         "payload": action.payload,
         "confidence_improved_count": improved_count,
         "confidence": confidence,
+        "confidence_status": confidence_status,
+        "confidence_recommendation": confidence_recommendation,
         "confidence_window_days": CONFIDENCE_WINDOW_DAYS,
         "confidence_half_life_days": CONF_HALF_LIFE_DAYS,
         "bundle_code": payload.get("bundle_code"),
@@ -188,37 +194,6 @@ def _serialize_applied_action(action) -> dict[str, Any] | None:
         "reason_text": action.reason_text,
     }
 
-
-def _build_auto_resolution_hint(effect_label: str | None) -> dict[str, Any] | None:
-    if effect_label == FIActionEffectLabel.IMPROVED.value:
-        return {
-            "code": "SUGGEST_CLOSE_INSIGHT",
-            "message": "Эффект улучшился — можно закрыть инсайт.",
-        }
-    if effect_label == FIActionEffectLabel.NO_CHANGE.value:
-        return {
-            "code": "SUGGEST_AMPLIFY_ACTION",
-            "message": "Нет изменений — усилить действие или выбрать другую меру.",
-        }
-    return None
-
-
-def _build_insight_aging(insight: FIInsight, *, has_effects: bool) -> dict[str, Any] | None:
-    if not insight.created_at:
-        return None
-    now = datetime.now(timezone.utc)
-    created_at = insight.created_at
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
-    days_open = max((now - created_at).days, 0)
-    needs_escalation = not has_effects and days_open >= 14
-    if not needs_escalation:
-        return {"days_open": days_open, "needs_escalation": False}
-    return {
-        "days_open": days_open,
-        "needs_escalation": True,
-        "reason": "insight_no_effect_14d",
-    }
 
 def build_fleet_policy_bundle_section(
     db: Session,

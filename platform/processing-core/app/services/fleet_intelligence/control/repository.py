@@ -266,6 +266,38 @@ def list_action_effects_for_action_code(
     return query.order_by(FIActionEffect.measured_at.desc()).all()
 
 
+def get_latest_effect_label(db: Session, *, insight_id: str) -> FIActionEffectLabel | None:
+    effect = (
+        db.query(FIActionEffect)
+        .join(FIAppliedAction, FIAppliedAction.id == FIActionEffect.applied_action_id)
+        .filter(FIAppliedAction.insight_id == insight_id)
+        .order_by(FIActionEffect.measured_at.desc())
+        .first()
+    )
+    return effect.effect_label if effect else None
+
+
+def list_active_insights_before(
+    db: Session,
+    *,
+    cutoff: datetime,
+    statuses: set[FIInsightStatus] | None = None,
+    client_id: str | None = None,
+    limit: int = 200,
+) -> list[FIInsight]:
+    statuses = statuses or {
+        FIInsightStatus.OPEN,
+        FIInsightStatus.ACKED,
+        FIInsightStatus.ACTION_PLANNED,
+        FIInsightStatus.ACTION_APPLIED,
+        FIInsightStatus.MONITORING,
+    }
+    query = db.query(FIInsight).filter(FIInsight.status.in_(statuses)).filter(FIInsight.created_at <= cutoff)
+    if client_id:
+        query = query.filter(FIInsight.client_id == client_id)
+    return query.order_by(FIInsight.created_at.asc()).limit(limit).all()
+
+
 def count_insight_effects(db: Session, *, insight_id: str) -> int:
     return (
         db.query(func.count(FIActionEffect.id))
@@ -353,12 +385,14 @@ __all__ = [
     "get_insight",
     "get_insight_for_day",
     "get_latest_applied_action",
+    "get_latest_effect_label",
     "get_latest_driver_score",
     "get_latest_station_score",
     "get_latest_vehicle_score",
     "get_suggested_action",
     "list_action_effects",
     "list_action_effects_for_action_code",
+    "list_active_insights_before",
     "list_actions_in_monitoring",
     "list_applied_actions",
     "list_degrading_trends_for_day",

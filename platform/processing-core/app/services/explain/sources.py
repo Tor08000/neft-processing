@@ -482,6 +482,161 @@ def build_fleet_intelligence_section(
     return payload
 
 
+def build_fuel_insight_section(*, fuel_insights: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not fuel_insights:
+        return None
+    primary = _select_primary_fuel_insight(fuel_insights)
+    details = [
+        {
+            "code": item.get("code"),
+            "title": item.get("title"),
+            "what_detected": item.get("what_detected"),
+            "why_suspicious": item.get("why_suspicious"),
+            "what_to_check": item.get("what_to_check"),
+            "severity": item.get("severity"),
+        }
+        for item in fuel_insights
+    ]
+    return {
+        "primary": primary.get("title") or primary.get("code"),
+        "details": details,
+        "recommendation": primary.get("recommendation"),
+    }
+
+
+def build_executive_summary(*, sections: dict[str, Any]) -> dict[str, Any] | None:
+    if not sections:
+        return None
+    fleet_control = sections.get("fleet_control") if isinstance(sections.get("fleet_control"), dict) else None
+    fleet_insight = sections.get("fleet_insight") if isinstance(sections.get("fleet_insight"), dict) else None
+    fleet_intelligence = (
+        sections.get("fleet_intelligence") if isinstance(sections.get("fleet_intelligence"), dict) else None
+    )
+    money_section = sections.get("money") if isinstance(sections.get("money"), dict) else None
+    fuel_insights = []
+    if isinstance(fleet_intelligence, dict):
+        fuel_insights = fleet_intelligence.get("fuel_insights") or []
+        if not isinstance(fuel_insights, list):
+            fuel_insights = []
+
+    risk_level = _resolve_risk_level(fleet_control, fleet_insight, fuel_insights, money_section)
+    open_insights = _count_open_insights(fleet_control, fleet_insight, fuel_insights)
+    return {
+        "risk_level": risk_level,
+        "cost_impact_estimate": _resolve_cost_impact(money_section),
+        "open_insights": open_insights,
+        "recommended_focus": _resolve_recommended_focus(fleet_control, fleet_insight, fuel_insights, money_section),
+    }
+
+
+def _select_primary_fuel_insight(fuel_insights: list[dict[str, Any]]) -> dict[str, Any]:
+    severity_rank = {"WARNING": 2, "INFO": 1}
+    return max(fuel_insights, key=lambda item: severity_rank.get(str(item.get("severity")), 0))
+
+
+def _resolve_risk_level(
+    fleet_control: dict[str, Any] | None,
+    fleet_insight: dict[str, Any] | None,
+    fuel_insights: list[dict[str, Any]],
+    money_section: dict[str, Any] | None,
+) -> str:
+    if fleet_control:
+        active = fleet_control.get("active_insight") if isinstance(fleet_control.get("active_insight"), dict) else None
+        severity = str(active.get("severity")) if isinstance(active, dict) else None
+        if severity in {"CRITICAL", "HIGH"}:
+            return "HIGH"
+        if severity in {"MEDIUM"}:
+            return "MEDIUM"
+    if fleet_insight:
+        primary = fleet_insight.get("primary_insight") if isinstance(fleet_insight.get("primary_insight"), dict) else None
+        level = str(primary.get("level")) if isinstance(primary, dict) else ""
+        if level == "VERY_HIGH":
+            return "HIGH"
+        if level == "HIGH":
+            return "MEDIUM"
+    if any(item.get("severity") == "WARNING" for item in fuel_insights):
+        return "MEDIUM"
+    if _money_risk_level(money_section) in {"HIGH", "MEDIUM"}:
+        return _money_risk_level(money_section)
+    return "LOW"
+
+
+def _money_risk_level(money_section: dict[str, Any] | None) -> str:
+    if not money_section:
+        return "LOW"
+    risk = money_section.get("risk")
+    if isinstance(risk, dict):
+        level = str(risk.get("level") or risk.get("severity") or "").upper()
+        if level in {"HIGH", "CRITICAL"}:
+            return "HIGH"
+        if level:
+            return "MEDIUM"
+    return "LOW"
+
+
+def _resolve_cost_impact(money_section: dict[str, Any] | None) -> str:
+    if not money_section:
+        return "Нет данных"
+    ledger = money_section.get("ledger") if isinstance(money_section.get("ledger"), dict) else None
+    entries = ledger.get("entries") if isinstance(ledger, dict) else None
+    if isinstance(entries, list) and entries:
+        amounts = [
+            (entry.get("amount"), entry.get("currency"))
+            for entry in entries
+            if entry.get("amount") is not None and entry.get("currency")
+        ]
+        if amounts:
+            amount, currency = max(amounts, key=lambda item: abs(float(item[0])))
+            return f"{amount} {currency}"
+    return "Нет данных"
+
+
+def _count_open_insights(
+    fleet_control: dict[str, Any] | None,
+    fleet_insight: dict[str, Any] | None,
+    fuel_insights: list[dict[str, Any]],
+) -> int:
+    count = len(fuel_insights)
+    if fleet_control and fleet_control.get("active_insight"):
+        count += 1
+    if fleet_insight:
+        primary = fleet_insight.get("primary_insight")
+        if primary:
+            count += 1
+        secondary = fleet_insight.get("secondary_insights")
+        if isinstance(secondary, list):
+            count += len(secondary)
+    return count
+
+
+def _resolve_recommended_focus(
+    fleet_control: dict[str, Any] | None,
+    fleet_insight: dict[str, Any] | None,
+    fuel_insights: list[dict[str, Any]],
+    money_section: dict[str, Any] | None,
+) -> str:
+    codes = [str(item.get("code")) for item in fuel_insights]
+    if any("STATION" in code for code in codes):
+        return "STATION"
+    if any("ROUTE" in code for code in codes):
+        return "ROUTE"
+    if any("DRIVER" in code for code in codes):
+        return "DRIVER"
+    if fleet_control:
+        active = fleet_control.get("active_insight") if isinstance(fleet_control.get("active_insight"), dict) else None
+        entity_type = str(active.get("entity_type")) if isinstance(active, dict) else ""
+        if entity_type:
+            return entity_type
+    if fleet_insight:
+        primary = fleet_insight.get("primary_insight") if isinstance(fleet_insight.get("primary_insight"), dict) else None
+        insight_type = str(primary.get("type")) if isinstance(primary, dict) else ""
+        if insight_type:
+            return insight_type
+    if money_section and money_section.get("risk"):
+        return "FINANCE"
+    return "GENERAL"
+
+
 def build_fleet_control_section(
     db: Session,
     *,
@@ -861,8 +1016,10 @@ __all__ = [
     "build_risk_section",
     "build_crm_section",
     "build_fleet_control_section",
+    "build_executive_summary",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",
+    "build_fuel_insight_section",
     "build_fleet_policy_bundle_section",
     "build_fleet_trends_section",
     "find_invoice_id_for_fuel",
