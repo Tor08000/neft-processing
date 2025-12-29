@@ -60,6 +60,67 @@ Levels:
 
 ## Integrations
 
+## Fleet Intelligence v2 Trends
+
+### What is computed
+
+Deterministic trend snapshots are generated once per day for existing v1 scores:
+
+* Driver behavior: latest 7d score vs latest 30d score (`fi_driver_score`)
+* Station trust: latest 30d score vs previous 30d snapshot (`fi_station_trust_score`)
+* Vehicle efficiency: latest `delta_pct` vs rolling 30d median (`fi_vehicle_efficiency_score`)
+
+Each snapshot stores current/baseline values, deltas, and a label:
+
+* `IMPROVING`
+* `STABLE`
+* `DEGRADING`
+* `UNKNOWN` (insufficient baseline/current data)
+
+Trend labels use deterministic thresholds in
+`platform/processing-core/app/services/fleet_intelligence/defaults.py`
+(`FI_TREND_THRESHOLDS`). No new formulas or signals are introduced.
+
+### What it means
+
+* Driver and vehicle trends: higher score/delta means worse.
+* Station trust trends: lower score means worse.
+
+Trends are informative only and do not block transactions.
+
+### Unified Explain
+
+Unified Explain includes a `fleet_trends` section with per-entity messages:
+
+* “Ситуация ухудшается последние {days} дней”
+* “Ситуация улучшается последние {days} дней”
+* “Ситуация стабильна”
+
+### Risk context enrichment (soft)
+
+Risk contexts include:
+
+* `fleet_trend_driver_label`
+* `fleet_trend_station_label`
+* `fleet_trend_vehicle_label`
+
+When any label is `DEGRADING`, the soft hint `fleet_trend_degrading` is added.
+
+### Admin endpoints
+
+* `GET /admin/fleet-intelligence/trends/drivers?client_id=&day=&label=`
+* `GET /admin/fleet-intelligence/trends/vehicles?client_id=&day=&label=`
+* `GET /admin/fleet-intelligence/trends/stations?tenant_id=&day=&label=`
+
+### Definition of Done
+
+✅ Daily trend snapshots computed deterministically.
+✅ Labels IMPROVING/STABLE/DEGRADING are stable.
+✅ Unified Explain shows human-readable trend messages.
+✅ Risk context enrichment adds soft hint only.
+✅ Admin endpoints expose trend lists.
+✅ Tests pass.
+
 ### Risk enrichment
 
 Risk contexts are enriched (no blocking):
@@ -104,5 +165,6 @@ under `FI_THRESHOLDS` and only apply to existing scores.
 
 * Daily aggregates (yesterday): `fleet_intelligence.compute_daily_aggregates`
 * Score computation (7d/30d): `fleet_intelligence.compute_scores`
+* Trend snapshots (daily): `fleet_intelligence.compute_trends_daily`
 
 Cron schedule is configured in `platform/processing-core/app/celery_client.py`.

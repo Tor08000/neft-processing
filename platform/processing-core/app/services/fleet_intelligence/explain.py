@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.fleet_intelligence import DriverBehaviorLevel, StationTrustLevel
+from app.models.fleet_intelligence import DriverBehaviorLevel, FITrendLabel, StationTrustLevel
 
 
 _DRIVER_FACTOR_LABELS = {
@@ -102,6 +102,39 @@ def build_vehicle_summary(*, delta_pct: float | None, window_days: int | None) -
     return f"Расход {sign}{delta_percent}% к базовому за {days_label}"
 
 
+def build_driver_trend_explain(*, top_factors: list[dict]) -> dict:
+    return {"top_factors": top_factors[:2]}
+
+
+def build_station_trend_explain(*, reasons: list[str]) -> dict:
+    return {"reasons": reasons[:2]}
+
+
+def build_vehicle_trend_explain(
+    *,
+    delta_pct: float | None,
+    baseline_ml_per_100km: float | None,
+    actual_ml_per_100km: float | None,
+) -> dict:
+    return {
+        "delta_pct": delta_pct,
+        "baseline_ml_per_100km": baseline_ml_per_100km,
+        "actual_ml_per_100km": actual_ml_per_100km,
+    }
+
+
+def build_trend_message(*, label: FITrendLabel, days: int | None) -> str:
+    templates = {
+        FITrendLabel.DEGRADING: "Ситуация ухудшается последние {days} дней",
+        FITrendLabel.IMPROVING: "Ситуация улучшается последние {days} дней",
+        FITrendLabel.STABLE: "Ситуация стабильна",
+    }
+    template = templates.get(label, "Недостаточно данных по тренду.")
+    if label in {FITrendLabel.DEGRADING, FITrendLabel.IMPROVING} and days:
+        return template.format(days=days)
+    return template
+
+
 __all__ = [
     "build_driver_explain",
     "build_vehicle_explain",
@@ -110,4 +143,8 @@ __all__ = [
     "build_driver_summary",
     "build_station_summary",
     "build_vehicle_summary",
+    "build_driver_trend_explain",
+    "build_station_trend_explain",
+    "build_vehicle_trend_explain",
+    "build_trend_message",
 ]

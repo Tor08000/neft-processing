@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    Index,
     Integer,
     JSON,
     String,
@@ -30,6 +31,31 @@ class StationTrustLevel(str, Enum):
     TRUSTED = "TRUSTED"
     WATCHLIST = "WATCHLIST"
     BLACKLIST = "BLACKLIST"
+
+
+class FITrendEntityType(str, Enum):
+    DRIVER = "DRIVER"
+    VEHICLE = "VEHICLE"
+    STATION = "STATION"
+
+
+class FITrendMetric(str, Enum):
+    DRIVER_BEHAVIOR_SCORE = "DRIVER_BEHAVIOR_SCORE"
+    STATION_TRUST_SCORE = "STATION_TRUST_SCORE"
+    VEHICLE_EFFICIENCY_DELTA_PCT = "VEHICLE_EFFICIENCY_DELTA_PCT"
+
+
+class FITrendWindow(str, Enum):
+    D7 = "D7"
+    D30 = "D30"
+    ROLLING = "ROLLING"
+
+
+class FITrendLabel(str, Enum):
+    IMPROVING = "IMPROVING"
+    STABLE = "STABLE"
+    DEGRADING = "DEGRADING"
+    UNKNOWN = "UNKNOWN"
 
 
 class FIDriverDaily(Base):
@@ -144,13 +170,53 @@ class FIStationTrustScore(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FITrendSnapshot(Base):
+    __tablename__ = "fi_trend_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "entity_type",
+            "entity_id",
+            "metric",
+            "window",
+            "computed_day",
+            name="uq_fi_trend_snapshot_tenant_entity_metric_window_day",
+        ),
+        Index("ix_fi_trend_client_entity_ts", "client_id", "entity_type", "computed_at"),
+        Index("ix_fi_trend_entity_ts", "entity_type", "entity_id", "computed_at"),
+        Index("ix_fi_trend_label", "label"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    client_id = Column(String(64), nullable=True, index=True)
+    entity_type = Column(ExistingEnum(FITrendEntityType, name="fi_trend_entity_type"), nullable=False)
+    entity_id = Column(GUID(), nullable=False, index=True)
+    metric = Column(ExistingEnum(FITrendMetric, name="fi_trend_metric"), nullable=False)
+    window = Column(ExistingEnum(FITrendWindow, name="fi_trend_window"), nullable=False)
+    baseline_value = Column(Float, nullable=True)
+    current_value = Column(Float, nullable=True)
+    delta = Column(Float, nullable=True)
+    delta_pct = Column(Float, nullable=True)
+    label = Column(ExistingEnum(FITrendLabel, name="fi_trend_label"), nullable=False)
+    computed_day = Column(Date, nullable=False, index=True)
+    computed_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    explain = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "DriverBehaviorLevel",
     "StationTrustLevel",
+    "FITrendEntityType",
+    "FITrendMetric",
+    "FITrendWindow",
+    "FITrendLabel",
     "FIDriverDaily",
     "FIVehicleDaily",
     "FIStationDaily",
     "FIDriverScore",
     "FIVehicleEfficiencyScore",
     "FIStationTrustScore",
+    "FITrendSnapshot",
 ]

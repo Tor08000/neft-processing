@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.models.fleet_intelligence import FITrendEntityType, FITrendLabel, FITrendMetric, FITrendWindow
 from app.models.logistics import LogisticsOrder, LogisticsTrackingEvent
 from app.services.fleet_intelligence import repository as fi_repository
 
@@ -21,6 +22,10 @@ class LogisticsRiskContext:
     driver_score_level: str | None
     station_trust_level: str | None
     vehicle_efficiency_delta_pct: float | None
+    fleet_trend_driver_label: str | None
+    fleet_trend_station_label: str | None
+    fleet_trend_vehicle_label: str | None
+    risk_hints: list[str]
 
 
 def build_risk_context(
@@ -39,6 +44,31 @@ def build_risk_context(
         station_id=None,
         window_days=7,
     )
+    fleet_trends = {
+        "driver": fi_repository.get_latest_trend_snapshot(
+            session,
+            tenant_id=order.tenant_id,
+            entity_type=FITrendEntityType.DRIVER,
+            entity_id=str(order.driver_id),
+            metric=FITrendMetric.DRIVER_BEHAVIOR_SCORE,
+            window=FITrendWindow.D7,
+        )
+        if order.driver_id
+        else None,
+        "vehicle": fi_repository.get_latest_trend_snapshot(
+            session,
+            tenant_id=order.tenant_id,
+            entity_type=FITrendEntityType.VEHICLE,
+            entity_id=str(order.vehicle_id),
+            metric=FITrendMetric.VEHICLE_EFFICIENCY_DELTA_PCT,
+            window=FITrendWindow.ROLLING,
+        )
+        if order.vehicle_id
+        else None,
+    }
+    risk_hints = []
+    if any(trend and trend.label == FITrendLabel.DEGRADING for trend in fleet_trends.values()):
+        risk_hints.append("fleet_trend_degrading")
     return LogisticsRiskContext(
         order_id=str(order.id),
         client_id=order.client_id,
@@ -50,6 +80,10 @@ def build_risk_context(
         driver_score_level=fleet_scores.get("driver").level.value if fleet_scores.get("driver") else None,
         station_trust_level=None,
         vehicle_efficiency_delta_pct=fleet_scores.get("vehicle").delta_pct if fleet_scores.get("vehicle") else None,
+        fleet_trend_driver_label=fleet_trends["driver"].label.value if fleet_trends.get("driver") else None,
+        fleet_trend_station_label=None,
+        fleet_trend_vehicle_label=fleet_trends["vehicle"].label.value if fleet_trends.get("vehicle") else None,
+        risk_hints=risk_hints,
     )
 
 

@@ -7,7 +7,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.models.fleet_intelligence import FIDriverDaily, FIStationDaily, FIVehicleDaily
-from app.services.fleet_intelligence import aggregates, explain, repository, scores
+from app.services.fleet_intelligence import aggregates, explain, repository, scores, trends
 from app.services.fleet_intelligence.defaults import VEHICLE_BASELINE_DAYS
 
 
@@ -33,6 +33,18 @@ def run_scores(db: Session, *, as_of: date, windows: Iterable[int] = (7, 30)) ->
         )
     db.commit()
     return created
+
+
+def compute_trends_for_client(db: Session, *, client_id: str, day: date) -> dict[str, int]:
+    result = trends.compute_trends_for_client(db, client_id=client_id, day=day)
+    db.commit()
+    return result
+
+
+def compute_trends_all(db: Session, *, day: date) -> dict[str, int]:
+    result = trends.compute_trends_all(db, day=day)
+    db.commit()
+    return result
 
 
 def _compute_driver_scores(
@@ -291,4 +303,4 @@ def _station_reasons(penalties: dict[str, float]) -> list[str]:
     return reasons
 
 
-__all__ = ["run_daily_aggregates", "run_scores"]
+__all__ = ["run_daily_aggregates", "run_scores", "compute_trends_for_client", "compute_trends_all"]

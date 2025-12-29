@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -9,10 +11,11 @@ from app.schemas.admin.fleet_intelligence import (
     FleetInsightOut,
     FleetStationTrustOut,
     FleetVehicleEfficiencyOut,
+    FleetTrendSnapshotOut,
 )
+from app.models.fleet_intelligence import FITrendEntityType, FITrendLabel, FITrendMetric
 from app.services.explain import sources as explain_sources
-from app.services.fleet_intelligence import actionable
-from app.services.fleet_intelligence import repository
+from app.services.fleet_intelligence import actionable, repository, trends
 
 router = APIRouter(prefix="/fleet-intelligence", tags=["admin", "fleet-intelligence"])
 
@@ -48,6 +51,93 @@ def list_station_scores(
 ) -> list[FleetStationTrustOut]:
     items = repository.list_latest_station_scores_by_tenant(db, tenant_id=tenant_id, window_days=window_days)
     return [FleetStationTrustOut.model_validate(item) for item in items]
+
+
+@router.get("/trends/drivers", response_model=list[FleetTrendSnapshotOut])
+def list_driver_trends(
+    *,
+    client_id: str = Query(...),
+    day: date | None = Query(None),
+    label: FITrendLabel | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[FleetTrendSnapshotOut]:
+    items = repository.list_trend_snapshots(
+        db,
+        entity_type=FITrendEntityType.DRIVER,
+        metric=FITrendMetric.DRIVER_BEHAVIOR_SCORE,
+        client_id=client_id,
+        day=day,
+        label=label,
+    )
+    return [
+        FleetTrendSnapshotOut(
+            entity_id=str(item.entity_id),
+            current_value=item.current_value,
+            baseline_value=item.baseline_value,
+            delta=item.delta,
+            label=item.label,
+            explain_summary=trends.summarize_trend_snapshot(item),
+        )
+        for item in items
+    ]
+
+
+@router.get("/trends/vehicles", response_model=list[FleetTrendSnapshotOut])
+def list_vehicle_trends(
+    *,
+    client_id: str = Query(...),
+    day: date | None = Query(None),
+    label: FITrendLabel | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[FleetTrendSnapshotOut]:
+    items = repository.list_trend_snapshots(
+        db,
+        entity_type=FITrendEntityType.VEHICLE,
+        metric=FITrendMetric.VEHICLE_EFFICIENCY_DELTA_PCT,
+        client_id=client_id,
+        day=day,
+        label=label,
+    )
+    return [
+        FleetTrendSnapshotOut(
+            entity_id=str(item.entity_id),
+            current_value=item.current_value,
+            baseline_value=item.baseline_value,
+            delta=item.delta,
+            label=item.label,
+            explain_summary=trends.summarize_trend_snapshot(item),
+        )
+        for item in items
+    ]
+
+
+@router.get("/trends/stations", response_model=list[FleetTrendSnapshotOut])
+def list_station_trends(
+    *,
+    tenant_id: int = Query(..., ge=1),
+    day: date | None = Query(None),
+    label: FITrendLabel | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[FleetTrendSnapshotOut]:
+    items = repository.list_trend_snapshots(
+        db,
+        entity_type=FITrendEntityType.STATION,
+        metric=FITrendMetric.STATION_TRUST_SCORE,
+        tenant_id=tenant_id,
+        day=day,
+        label=label,
+    )
+    return [
+        FleetTrendSnapshotOut(
+            entity_id=str(item.entity_id),
+            current_value=item.current_value,
+            baseline_value=item.baseline_value,
+            delta=item.delta,
+            label=item.label,
+            explain_summary=trends.summarize_trend_snapshot(item),
+        )
+        for item in items
+    ]
 
 
 @router.get("/insights/drivers", response_model=list[FleetInsightOut])

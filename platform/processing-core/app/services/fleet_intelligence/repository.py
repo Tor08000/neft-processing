@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from app.models.fleet_intelligence import (
     FIDriverDaily,
     FIDriverScore,
+    FITrendSnapshot,
+    FITrendEntityType,
+    FITrendLabel,
+    FITrendMetric,
+    FITrendWindow,
     FIStationDaily,
     FIStationTrustScore,
     FIVehicleDaily,
@@ -154,16 +159,18 @@ def get_latest_driver_score(
     client_id: str,
     driver_id: str,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> FIDriverScore | None:
-    return (
+    query = (
         db.query(FIDriverScore)
         .filter(FIDriverScore.tenant_id == tenant_id)
         .filter(FIDriverScore.client_id == client_id)
         .filter(FIDriverScore.driver_id == driver_id)
         .filter(FIDriverScore.window_days == window_days)
-        .order_by(FIDriverScore.computed_at.desc())
-        .first()
     )
+    if as_of is not None:
+        query = query.filter(FIDriverScore.computed_at <= as_of)
+    return query.order_by(FIDriverScore.computed_at.desc()).first()
 
 
 def get_latest_vehicle_score(
@@ -173,16 +180,18 @@ def get_latest_vehicle_score(
     client_id: str,
     vehicle_id: str,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> FIVehicleEfficiencyScore | None:
-    return (
+    query = (
         db.query(FIVehicleEfficiencyScore)
         .filter(FIVehicleEfficiencyScore.tenant_id == tenant_id)
         .filter(FIVehicleEfficiencyScore.client_id == client_id)
         .filter(FIVehicleEfficiencyScore.vehicle_id == vehicle_id)
         .filter(FIVehicleEfficiencyScore.window_days == window_days)
-        .order_by(FIVehicleEfficiencyScore.computed_at.desc())
-        .first()
     )
+    if as_of is not None:
+        query = query.filter(FIVehicleEfficiencyScore.computed_at <= as_of)
+    return query.order_by(FIVehicleEfficiencyScore.computed_at.desc()).first()
 
 
 def get_latest_station_score(
@@ -191,15 +200,17 @@ def get_latest_station_score(
     tenant_id: int,
     station_id: str,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> FIStationTrustScore | None:
-    return (
+    query = (
         db.query(FIStationTrustScore)
         .filter(FIStationTrustScore.tenant_id == tenant_id)
         .filter(FIStationTrustScore.station_id == station_id)
         .filter(FIStationTrustScore.window_days == window_days)
-        .order_by(FIStationTrustScore.computed_at.desc())
-        .first()
     )
+    if as_of is not None:
+        query = query.filter(FIStationTrustScore.computed_at <= as_of)
+    return query.order_by(FIStationTrustScore.computed_at.desc()).first()
 
 
 def list_driver_scores(
@@ -252,19 +263,18 @@ def list_latest_driver_scores_by_client(
     *,
     client_id: str,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> list[FIDriverScore]:
-    subquery = (
-        db.query(
-            FIDriverScore.driver_id,
-            func.max(FIDriverScore.computed_at).label("latest_ts"),
-        )
-        .filter(FIDriverScore.client_id == client_id)
-        .filter(FIDriverScore.window_days == window_days)
-        .group_by(FIDriverScore.driver_id)
-        .subquery()
-    )
+    subquery_query = db.query(
+        FIDriverScore.driver_id,
+        func.max(FIDriverScore.computed_at).label("latest_ts"),
+    ).filter(FIDriverScore.client_id == client_id).filter(FIDriverScore.window_days == window_days)
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIDriverScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIDriverScore.driver_id).subquery()
     return (
         db.query(FIDriverScore)
+        .filter(FIDriverScore.window_days == window_days)
         .join(
             subquery,
             (FIDriverScore.driver_id == subquery.c.driver_id)
@@ -280,19 +290,20 @@ def list_latest_vehicle_scores_by_client(
     *,
     client_id: str,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> list[FIVehicleEfficiencyScore]:
-    subquery = (
-        db.query(
-            FIVehicleEfficiencyScore.vehicle_id,
-            func.max(FIVehicleEfficiencyScore.computed_at).label("latest_ts"),
-        )
-        .filter(FIVehicleEfficiencyScore.client_id == client_id)
-        .filter(FIVehicleEfficiencyScore.window_days == window_days)
-        .group_by(FIVehicleEfficiencyScore.vehicle_id)
-        .subquery()
+    subquery_query = db.query(
+        FIVehicleEfficiencyScore.vehicle_id,
+        func.max(FIVehicleEfficiencyScore.computed_at).label("latest_ts"),
+    ).filter(FIVehicleEfficiencyScore.client_id == client_id).filter(
+        FIVehicleEfficiencyScore.window_days == window_days
     )
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIVehicleEfficiencyScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIVehicleEfficiencyScore.vehicle_id).subquery()
     return (
         db.query(FIVehicleEfficiencyScore)
+        .filter(FIVehicleEfficiencyScore.window_days == window_days)
         .join(
             subquery,
             (FIVehicleEfficiencyScore.vehicle_id == subquery.c.vehicle_id)
@@ -308,19 +319,18 @@ def list_latest_station_scores_by_tenant(
     *,
     tenant_id: int,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> list[FIStationTrustScore]:
-    subquery = (
-        db.query(
-            FIStationTrustScore.station_id,
-            func.max(FIStationTrustScore.computed_at).label("latest_ts"),
-        )
-        .filter(FIStationTrustScore.tenant_id == tenant_id)
-        .filter(FIStationTrustScore.window_days == window_days)
-        .group_by(FIStationTrustScore.station_id)
-        .subquery()
-    )
+    subquery_query = db.query(
+        FIStationTrustScore.station_id,
+        func.max(FIStationTrustScore.computed_at).label("latest_ts"),
+    ).filter(FIStationTrustScore.tenant_id == tenant_id).filter(FIStationTrustScore.window_days == window_days)
+    if as_of is not None:
+        subquery_query = subquery_query.filter(FIStationTrustScore.computed_at <= as_of)
+    subquery = subquery_query.group_by(FIStationTrustScore.station_id).subquery()
     return (
         db.query(FIStationTrustScore)
+        .filter(FIStationTrustScore.window_days == window_days)
         .join(
             subquery,
             (FIStationTrustScore.station_id == subquery.c.station_id)
@@ -340,6 +350,7 @@ def latest_scores_for_ids(
     vehicle_id: str | None,
     station_id: str | None,
     window_days: int,
+    as_of: datetime | None = None,
 ) -> dict[str, object | None]:
     return {
         "driver": get_latest_driver_score(
@@ -348,6 +359,7 @@ def latest_scores_for_ids(
             client_id=client_id,
             driver_id=driver_id,
             window_days=window_days,
+            as_of=as_of,
         )
         if driver_id
         else None,
@@ -357,6 +369,7 @@ def latest_scores_for_ids(
             client_id=client_id,
             vehicle_id=vehicle_id,
             window_days=window_days,
+            as_of=as_of,
         )
         if vehicle_id
         else None,
@@ -365,10 +378,99 @@ def latest_scores_for_ids(
             tenant_id=tenant_id,
             station_id=station_id,
             window_days=window_days,
+            as_of=as_of,
         )
         if station_id
         else None,
     }
+
+
+def list_vehicle_scores_window(
+    db: Session,
+    *,
+    client_id: str,
+    vehicle_id: str,
+    window_days: int,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[FIVehicleEfficiencyScore]:
+    return (
+        db.query(FIVehicleEfficiencyScore)
+        .filter(FIVehicleEfficiencyScore.client_id == client_id)
+        .filter(FIVehicleEfficiencyScore.vehicle_id == vehicle_id)
+        .filter(FIVehicleEfficiencyScore.window_days == window_days)
+        .filter(FIVehicleEfficiencyScore.computed_at >= start_at)
+        .filter(FIVehicleEfficiencyScore.computed_at <= end_at)
+        .order_by(FIVehicleEfficiencyScore.computed_at.desc())
+        .all()
+    )
+
+
+def upsert_trend_snapshot(db: Session, payload: dict) -> FITrendSnapshot:
+    record = (
+        db.query(FITrendSnapshot)
+        .filter(FITrendSnapshot.tenant_id == payload["tenant_id"])
+        .filter(FITrendSnapshot.entity_type == payload["entity_type"])
+        .filter(FITrendSnapshot.entity_id == payload["entity_id"])
+        .filter(FITrendSnapshot.metric == payload["metric"])
+        .filter(FITrendSnapshot.window == payload["window"])
+        .filter(FITrendSnapshot.computed_day == payload["computed_day"])
+        .one_or_none()
+    )
+    if record:
+        for key, value in payload.items():
+            setattr(record, key, value)
+        return record
+    record = FITrendSnapshot(**payload)
+    db.add(record)
+    return record
+
+
+def list_trend_snapshots(
+    db: Session,
+    *,
+    entity_type: FITrendEntityType,
+    metric: FITrendMetric,
+    client_id: str | None = None,
+    tenant_id: int | None = None,
+    day: date | None = None,
+    label: FITrendLabel | None = None,
+) -> list[FITrendSnapshot]:
+    query = (
+        db.query(FITrendSnapshot)
+        .filter(FITrendSnapshot.entity_type == entity_type)
+        .filter(FITrendSnapshot.metric == metric)
+    )
+    if client_id is not None:
+        query = query.filter(FITrendSnapshot.client_id == client_id)
+    if tenant_id is not None:
+        query = query.filter(FITrendSnapshot.tenant_id == tenant_id)
+    if day is not None:
+        query = query.filter(FITrendSnapshot.computed_day == day)
+    if label is not None:
+        query = query.filter(FITrendSnapshot.label == label)
+    return query.order_by(FITrendSnapshot.computed_at.desc()).all()
+
+
+def get_latest_trend_snapshot(
+    db: Session,
+    *,
+    tenant_id: int,
+    entity_type: FITrendEntityType,
+    entity_id: str,
+    metric: FITrendMetric,
+    window: FITrendWindow,
+) -> FITrendSnapshot | None:
+    return (
+        db.query(FITrendSnapshot)
+        .filter(FITrendSnapshot.tenant_id == tenant_id)
+        .filter(FITrendSnapshot.entity_type == entity_type)
+        .filter(FITrendSnapshot.entity_id == entity_id)
+        .filter(FITrendSnapshot.metric == metric)
+        .filter(FITrendSnapshot.window == window)
+        .order_by(FITrendSnapshot.computed_at.desc())
+        .first()
+    )
 
 
 __all__ = [
@@ -392,4 +494,8 @@ __all__ = [
     "list_latest_vehicle_scores_by_client",
     "list_latest_station_scores_by_tenant",
     "latest_scores_for_ids",
+    "list_vehicle_scores_window",
+    "upsert_trend_snapshot",
+    "list_trend_snapshots",
+    "get_latest_trend_snapshot",
 ]

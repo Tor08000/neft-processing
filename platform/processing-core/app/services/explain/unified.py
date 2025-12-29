@@ -193,6 +193,16 @@ def _build_payload(
         if fleet_insight_section:
             sections["fleet_insight"] = fleet_insight_section
 
+        fleet_trends_section = sources.build_fleet_trends_section(
+            db,
+            tenant_id=tx.tenant_id,
+            driver_id=str(tx.driver_id) if tx.driver_id else None,
+            vehicle_id=str(tx.vehicle_id) if tx.vehicle_id else None,
+            station_id=str(tx.station_id) if tx.station_id else None,
+        )
+        if fleet_trends_section:
+            sections["fleet_trends"] = fleet_trends_section
+
         link = sources.get_fuel_link(db, fuel_tx_id=str(tx.id))
         if link:
             sections["logistics"] = sources.build_logistics_section(

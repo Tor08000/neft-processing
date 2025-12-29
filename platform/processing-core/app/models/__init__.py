@@ -200,12 +200,17 @@ from .unified_explain import UnifiedExplainSnapshot  # noqa: F401
 from .fleet_intelligence import (  # noqa: F401
     DriverBehaviorLevel,
     StationTrustLevel,
+    FITrendEntityType,
+    FITrendMetric,
+    FITrendWindow,
+    FITrendLabel,
     FIDriverDaily,
     FIVehicleDaily,
     FIStationDaily,
     FIDriverScore,
     FIVehicleEfficiencyScore,
     FIStationTrustScore,
+    FITrendSnapshot,
 )
 from .crm import (  # noqa: F401
     CRMClient,

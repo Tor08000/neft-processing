@@ -9,6 +9,7 @@ from sqlalchemy import func
 
 from app.models.fleet import FleetDriver, FleetVehicle
 from app.models.fuel import FuelCard, FuelStation, FuelTransaction, FuelTransactionStatus, FuelType
+from app.models.fleet_intelligence import FITrendEntityType, FITrendLabel, FITrendMetric, FITrendWindow
 from app.schemas.fuel import DeclineCode
 from app.services.decision import DecisionAction, DecisionContext
 from app.services.fuel import fraud, repository
@@ -151,6 +152,39 @@ def build_risk_context_for_fuel_tx(
         station_id=str(station.id),
         window_days=7,
     )
+    fleet_trends = {
+        "driver": fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.DRIVER,
+            entity_id=str(driver.id),
+            metric=FITrendMetric.DRIVER_BEHAVIOR_SCORE,
+            window=FITrendWindow.D7,
+        )
+        if driver
+        else None,
+        "station": fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.STATION,
+            entity_id=str(station.id),
+            metric=FITrendMetric.STATION_TRUST_SCORE,
+            window=FITrendWindow.D30,
+        ),
+        "vehicle": fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.VEHICLE,
+            entity_id=str(vehicle.id),
+            metric=FITrendMetric.VEHICLE_EFFICIENCY_DELTA_PCT,
+            window=FITrendWindow.ROLLING,
+        )
+        if vehicle
+        else None,
+    }
+    risk_hints = []
+    if any(trend and trend.label == FITrendLabel.DEGRADING for trend in fleet_trends.values()):
+        risk_hints.append("fleet_trend_degrading")
     metadata = {
         "card_status": card.status.value,
         "station_id": str(station.id),
@@ -186,6 +220,10 @@ def build_risk_context_for_fuel_tx(
         "driver_score_level": fleet_scores.get("driver").level.value if fleet_scores.get("driver") else None,
         "station_trust_level": fleet_scores.get("station").level.value if fleet_scores.get("station") else None,
         "vehicle_efficiency_delta_pct": fleet_scores.get("vehicle").delta_pct if fleet_scores.get("vehicle") else None,
+        "fleet_trend_driver_label": fleet_trends["driver"].label.value if fleet_trends.get("driver") else None,
+        "fleet_trend_station_label": fleet_trends["station"].label.value if fleet_trends.get("station") else None,
+        "fleet_trend_vehicle_label": fleet_trends["vehicle"].label.value if fleet_trends.get("vehicle") else None,
+        "risk_hints": risk_hints,
     }
     if fraud_summary.get("has_strong_off_route") and fraud_summary.get("max_signal_severity_24h"):
         metadata["risk_score"] = max(metadata.get("risk_score", 0), int(fraud_summary["max_signal_severity_24h"]))
