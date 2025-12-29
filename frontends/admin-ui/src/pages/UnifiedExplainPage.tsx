@@ -49,6 +49,22 @@ type UnifiedExplainPayload = {
     target: string;
     status: string;
   } | null;
+  assistant?: {
+    primary_insight: string;
+    action?: UnifiedExplainAction | null;
+    action_effect_pct?: number | null;
+    confidence: number;
+    sla?: {
+      started_at: string;
+      expires_at: string;
+      remaining_minutes: number;
+    } | null;
+    escalation?: {
+      target: string;
+      status: string;
+    } | null;
+    answers: Record<string, string>;
+  } | null;
 };
 
 const parseIsoDate = (value?: string | null) => {
@@ -89,6 +105,8 @@ export const UnifiedExplainPage = () => {
   const [payload, setPayload] = useState<UnifiedExplainPayload | null>(null);
   const [showSecondaryAll, setShowSecondaryAll] = useState(false);
   const [confirmReplayLink, setConfirmReplayLink] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"explain" | "assistant">("explain");
+  const [assistantQuestion, setAssistantQuestion] = useState<string>("why_problem");
 
   const canSubmit = subjectId.trim().length > 0;
 
@@ -135,6 +153,14 @@ export const UnifiedExplainPage = () => {
   const recommendations = payload?.recommendations ?? [];
   const visibleSecondary = showSecondaryAll ? secondaryReasons : secondaryReasons.slice(0, 2);
   const remainingSecondary = secondaryReasons.length - visibleSecondary.length;
+  const assistant = payload?.assistant ?? null;
+  const assistantAction = assistant?.action ?? null;
+  const assistantQuestions = [
+    { key: "why_problem", label: "Почему сейчас это проблема?" },
+    { key: "if_ignore", label: "Что будет, если ничего не делать?" },
+    { key: "first_action", label: "Что лучше сделать первым?" },
+    { key: "trend", label: "Это ухудшается или стабильно?" },
+  ];
 
   const limitSection = payload?.sections?.limits as { limit_profiles?: unknown[]; profiles?: unknown[] } | undefined;
   const hasLimitProfiles = Boolean(limitSection?.limit_profiles?.length || limitSection?.profiles?.length);
@@ -322,231 +348,325 @@ export const UnifiedExplainPage = () => {
 
       {payload ? (
         <div style={{ display: "grid", gap: 16, background: "#fff", borderRadius: 12, padding: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("explain")}
               style={{
-                background: "#2563eb",
-                color: "#f8fafc",
-                padding: "4px 10px",
+                padding: "6px 12px",
                 borderRadius: 999,
+                border: "1px solid #cbd5e1",
+                background: activeTab === "explain" ? "#2563eb" : "#fff",
+                color: activeTab === "explain" ? "#f8fafc" : "#0f172a",
                 fontWeight: 600,
               }}
             >
-              {payload.primary_reason}
-            </span>
-            <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>PRIMARY</span>
+              Explain
+            </button>
             <button
               type="button"
-              onClick={handleCopy}
-              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+              onClick={() => setActiveTab("assistant")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #cbd5e1",
+                background: activeTab === "assistant" ? "#2563eb" : "#fff",
+                color: activeTab === "assistant" ? "#f8fafc" : "#0f172a",
+                fontWeight: 600,
+              }}
             >
-              Copy reason + ids
+              Assistant
             </button>
           </div>
 
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Secondary reasons</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {visibleSecondary.length ? (
-                visibleSecondary.map((reason) => (
-                  <span
-                    key={reason}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      background: "#e2e8f0",
-                      color: "#0f172a",
-                      fontSize: 12,
-                    }}
-                  >
-                    {reason}
-                  </span>
-                ))
-              ) : (
-                <span style={{ color: "#64748b" }}>Нет дополнительных причин</span>
-              )}
-              {remainingSecondary > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowSecondaryAll((value) => !value)}
-                  style={{ padding: "4px 10px", borderRadius: 999, border: "1px dashed #94a3b8" }}
-                >
-                  {showSecondaryAll ? "Свернуть" : `+${remainingSecondary} еще`}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Escalation target</div>
-              <div style={{ fontWeight: 600 }}>{payload.escalation?.target ?? "—"}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Status</div>
-              <div>{payload.escalation?.status ?? "—"}</div>
-            </div>
-            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
-              <div style={{ fontSize: 12, color: "#64748b" }}>SLA countdown</div>
-              <div style={{ fontWeight: 700, color: getSlaTone(payload.sla) }}>
-                {payload.sla ? `${payload.sla.remaining_minutes} мин` : "—"}
-              </div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>started_at</div>
-              <div>{formatDateTime(payload.sla?.started_at)}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>expires_at</div>
-              <div>{formatDateTime(payload.sla?.expires_at)}</div>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Actions</div>
-            {actions.length ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                {actions.map((action) => {
-                  const { url, missing } = resolveActionLink(action);
-                  const isDisabled = Boolean(missing);
-                  return (
-                    <button
-                      key={action.code}
-                      onClick={() => handleActionClick(action)}
-                      disabled={isDisabled}
-                      title={missing ? `missing ${missing}` : action.description}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #cbd5e1",
-                        background: isDisabled ? "#e2e8f0" : "#fff",
-                        color: isDisabled ? "#94a3b8" : "#0f172a",
-                        cursor: isDisabled ? "not-allowed" : "pointer",
-                        minWidth: 180,
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{action.title}</div>
-                      <div style={{ fontSize: 12, color: "#64748b" }}>{action.description}</div>
-                      {url && !isDisabled ? (
-                        <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>{url}</div>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ color: "#64748b" }}>Нет доступных действий</div>
-            )}
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Recommendations</div>
-            {recommendations.length ? (
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {recommendations.map((rec) => (
-                  <li key={rec}>{rec}</li>
-                ))}
-              </ul>
-            ) : (
-              <div style={{ color: "#64748b" }}>Нет рекомендаций</div>
-            )}
-          </div>
-
-          {moneySummary ? (
-            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Money summary</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Charged</div>
-                  <div>{moneySummary.charged ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Paid</div>
-                  <div>{moneySummary.paid ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Due</div>
-                  <div>{moneySummary.due ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Refunded</div>
-                  <div>{moneySummary.refunded ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Invariants</div>
-                  <div>{moneySummary.invariants ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Replay</div>
-                  <div>{moneySummary.replay_link ?? "—"}</div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {crmSection ? (
-            <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>CRM</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Tariff</div>
-                  <div>{crmSection.tariff ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Subscription</div>
-                  <div>{crmSection.subscription_status ?? "—"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Contract</div>
-                  <div>
-                    {crmSection.contract?.id ?? "—"}
-                    {crmSection.contract?.version ? ` · v${crmSection.contract.version}` : ""}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Decision basis</div>
-                  <div>{crmSection.decision_basis ?? "—"}</div>
-                </div>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Metrics used</div>
-                <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.metrics_used ?? {}, null, 2)}</pre>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Feature flags</div>
-                <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.feature_flags ?? {}, null, 2)}</pre>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Decision flags</div>
-                <div>{crmSection.decision_flags?.length ? crmSection.decision_flags.join(", ") : "—"}</div>
-              </div>
-            </div>
-          ) : null}
-
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Deeplinks</div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {deepLinks.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.url ?? "#"}
+          {activeTab === "explain" ? (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #cbd5e1",
-                    color: link.url ? "#2563eb" : "#94a3b8",
-                    pointerEvents: link.url ? "auto" : "none",
+                    background: "#2563eb",
+                    color: "#f8fafc",
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontWeight: 600,
                   }}
                 >
-                  {link.label}
-                </a>
-              ))}
+                  {payload.primary_reason}
+                </span>
+                <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>PRIMARY</span>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                >
+                  Copy reason + ids
+                </button>
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Secondary reasons</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {visibleSecondary.length ? (
+                    visibleSecondary.map((reason) => (
+                      <span
+                        key={reason}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#e2e8f0",
+                          color: "#0f172a",
+                          fontSize: 12,
+                        }}
+                      >
+                        {reason}
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ color: "#64748b" }}>Нет дополнительных причин</span>
+                  )}
+                  {remainingSecondary > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowSecondaryAll((value) => !value)}
+                      style={{ padding: "4px 10px", borderRadius: 999, border: "1px dashed #94a3b8" }}
+                    >
+                      {showSecondaryAll ? "Свернуть" : `+${remainingSecondary} еще`}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Escalation target</div>
+                  <div style={{ fontWeight: 600 }}>{payload.escalation?.target ?? "—"}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Status</div>
+                  <div>{payload.escalation?.status ?? "—"}</div>
+                </div>
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>SLA countdown</div>
+                  <div style={{ fontWeight: 700, color: getSlaTone(payload.sla) }}>
+                    {payload.sla ? `${payload.sla.remaining_minutes} мин` : "—"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>started_at</div>
+                  <div>{formatDateTime(payload.sla?.started_at)}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>expires_at</div>
+                  <div>{formatDateTime(payload.sla?.expires_at)}</div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Actions</div>
+                {actions.length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {actions.map((action) => {
+                      const { url, missing } = resolveActionLink(action);
+                      const isDisabled = Boolean(missing);
+                      return (
+                        <button
+                          key={action.code}
+                          onClick={() => handleActionClick(action)}
+                          disabled={isDisabled}
+                          title={missing ? `missing ${missing}` : action.description}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 10,
+                            border: "1px solid #cbd5e1",
+                            background: isDisabled ? "#e2e8f0" : "#fff",
+                            color: isDisabled ? "#94a3b8" : "#0f172a",
+                            cursor: isDisabled ? "not-allowed" : "pointer",
+                            minWidth: 180,
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>{action.title}</div>
+                          <div style={{ fontSize: 12, color: "#64748b" }}>{action.description}</div>
+                          {url && !isDisabled ? (
+                            <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>{url}</div>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ color: "#64748b" }}>Нет доступных действий</div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Recommendations</div>
+                {recommendations.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {recommendations.map((rec) => (
+                      <li key={rec}>{rec}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ color: "#64748b" }}>Нет рекомендаций</div>
+                )}
+              </div>
+
+              {moneySummary ? (
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Money summary</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Charged</div>
+                      <div>{moneySummary.charged ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Paid</div>
+                      <div>{moneySummary.paid ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Due</div>
+                      <div>{moneySummary.due ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Refunded</div>
+                      <div>{moneySummary.refunded ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Invariants</div>
+                      <div>{moneySummary.invariants ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Replay</div>
+                      <div>{moneySummary.replay_link ?? "—"}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {crmSection ? (
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>CRM</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Tariff</div>
+                      <div>{crmSection.tariff ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Subscription</div>
+                      <div>{crmSection.subscription_status ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Contract</div>
+                      <div>
+                        {crmSection.contract?.id ?? "—"}
+                        {crmSection.contract?.version ? ` · v${crmSection.contract.version}` : ""}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>Decision basis</div>
+                      <div>{crmSection.decision_basis ?? "—"}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Metrics used</div>
+                    <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.metrics_used ?? {}, null, 2)}</pre>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Feature flags</div>
+                    <pre style={{ margin: 0 }}>{JSON.stringify(crmSection.feature_flags ?? {}, null, 2)}</pre>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Decision flags</div>
+                    <div>{crmSection.decision_flags?.length ? crmSection.decision_flags.join(", ") : "—"}</div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Deeplinks</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {deepLinks.map((link) => (
+                    <a
+                      key={link.label}
+                      href={link.url ?? "#"}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                        color: link.url ? "#2563eb" : "#94a3b8",
+                        pointerEvents: link.url ? "auto" : "none",
+                      }}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ background: "#0f172a", color: "#f8fafc", padding: 16, borderRadius: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Ответ</div>
+                <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                  {payload ? JSON.stringify(payload, null, 2) : "Нет данных"}
+                </pre>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700 }}>Primary insight</span>
+                <span style={{ color: "#475569" }}>{assistant?.primary_insight ?? "Нет данных"}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Confidence</div>
+                  <div style={{ fontWeight: 700 }}>{assistant ? `${assistant.confidence}%` : "—"}</div>
+                </div>
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>SLA</div>
+                  <div style={{ fontWeight: 700, color: getSlaTone(assistant?.sla) }}>
+                    {assistant?.sla ? `${assistant.sla.remaining_minutes} мин` : "—"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Escalation</div>
+                  <div>{assistant?.escalation?.target ?? "—"}</div>
+                </div>
+                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Action</div>
+                  <div style={{ fontWeight: 700 }}>{assistantAction?.title ?? "—"}</div>
+                  {assistantAction ? (
+                    <button
+                      type="button"
+                      onClick={() => handleActionClick(assistantAction as UnifiedExplainAction)}
+                      disabled={Boolean(resolveActionLink(assistantAction as UnifiedExplainAction).missing)}
+                      style={{ marginTop: 6, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                    >
+                      Перейти к действию
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Готовые вопросы</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {assistantQuestions.map((question) => (
+                    <button
+                      key={question.key}
+                      type="button"
+                      onClick={() => setAssistantQuestion(question.key)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        border: "1px solid #cbd5e1",
+                        background: assistantQuestion === question.key ? "#2563eb" : "#fff",
+                        color: assistantQuestion === question.key ? "#f8fafc" : "#0f172a",
+                      }}
+                    >
+                      {question.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10, minHeight: 120 }}>
+                {assistant?.answers?.[assistantQuestion] ?? "Ответ будет доступен после загрузки snapshot."}
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
-
-      <div style={{ background: "#0f172a", color: "#f8fafc", padding: 16, borderRadius: 12 }}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Ответ</div>
-        <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-          {payload ? JSON.stringify(payload, null, 2) : "Нет данных"}
-        </pre>
-      </div>
 
       {confirmReplayLink ? (
         <div
