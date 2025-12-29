@@ -10,6 +10,7 @@ from app.models.fleet_intelligence_actions import (
     FISuggestedAction,
     FISuggestedActionStatus,
 )
+from app.services.fleet_intelligence.policies import registry as policy_registry
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,9 @@ INSIGHT_ACTION_MAP: dict[str, list[SuggestedActionTemplate]] = {
 def suggest_actions_for_insight(insight: FIInsight) -> list[FISuggestedAction]:
     if insight.severity not in {FIInsightSeverity.HIGH, FIInsightSeverity.CRITICAL}:
         return []
+    bundle = policy_registry.match_bundle_for_insight(insight)
+    if bundle:
+        return _actions_from_bundle(insight, bundle=bundle)
     templates = INSIGHT_ACTION_MAP.get(insight.insight_type.value, [])
     return [
         FISuggestedAction(
@@ -68,6 +72,27 @@ def suggest_actions_for_insight(insight: FIInsight) -> list[FISuggestedAction]:
         )
         for template in templates
     ]
+
+
+def _actions_from_bundle(insight: FIInsight, *, bundle) -> list[FISuggestedAction]:
+    actions: list[FISuggestedAction] = []
+    for index, step in enumerate(bundle.steps):
+        payload = {
+            **step.action_payload,
+            "bundle_code": bundle.bundle_code,
+            "step_index": index,
+            "params": step.params,
+        }
+        actions.append(
+            FISuggestedAction(
+                insight_id=insight.id,
+                action_code=step.action_code,
+                target_system=step.target_system,
+                payload=payload,
+                status=FISuggestedActionStatus.PROPOSED,
+            )
+        )
+    return actions
 
 
 __all__ = ["suggest_actions_for_insight", "INSIGHT_ACTION_MAP", "SuggestedActionTemplate"]
