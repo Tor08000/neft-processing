@@ -119,6 +119,16 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
 
+### Contract testing
+
+* Политика контрактов и версионирования: `docs/ops/contract_testing.md`.
+* Реестр событий: `docs/contracts/events/`.
+* Запуск контрактных тестов:
+
+```bash
+pytest -m contracts
+```
+
 Полный smoke для биллинга/финансов (Windows CMD): `scripts\smoke_billing_v14.cmd` (логин → /auth/me → billing periods → billing run ADHOC → clearing → invoices/PDF → finance best-effort). Расширенный вариант с дополнительными шагами: `scripts\smoke_billing_finance.cmd`.
 
 Docker smoke профайл (Linux/macOS): `docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up --build --abort-on-container-exit smoke-tests`.

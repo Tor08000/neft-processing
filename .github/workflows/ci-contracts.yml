@@ -1,0 +1,20 @@
+name: CI Contracts
+on: [push, pull_request]
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r platform/processing-core/requirements.txt
+      - name: Run contract tests
+        env:
+          DATABASE_URL: postgresql+psycopg://neft:neft@localhost:5432/neft
+        run: pytest -m contracts

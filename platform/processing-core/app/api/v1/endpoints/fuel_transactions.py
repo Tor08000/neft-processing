@@ -22,7 +22,7 @@ router = APIRouter(
 )
 
 
-@router.post("/authorize", response_model=FuelAuthorizationResponse)
+@router.post("/authorize", response_model=FuelAuthorizeResponse)
 def authorize_fuel_transaction_endpoint(
     request: Request,
     payload: FuelAuthorizeRequest,
