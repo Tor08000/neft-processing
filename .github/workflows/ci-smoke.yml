@@ -1,0 +1,73 @@
+name: CI Smoke
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  db-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: neft
+          POSTGRES_PASSWORD: neft
+          POSTGRES_DB: neft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U neft -d neft"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql+psycopg://neft:neft@localhost:5432/neft
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Alembic upgrade head (first run)
+        working-directory: platform/processing-core
+        run: alembic -c app/alembic.ini upgrade head
+      - name: Alembic upgrade head (idempotency)
+        working-directory: platform/processing-core
+        run: alembic -c app/alembic.ini upgrade head
+
+  smoke-scenarios:
+    runs-on: ubuntu-latest
+    needs: db-smoke
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: neft
+          POSTGRES_PASSWORD: neft
+          POSTGRES_DB: neft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U neft -d neft"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql+psycopg://neft:neft@localhost:5432/neft
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Alembic upgrade head
+        working-directory: platform/processing-core
+        run: alembic -c app/alembic.ini upgrade head
+      - name: Run smoke tests
+        working-directory: platform/processing-core
+        run: pytest -m smoke -q --maxfail=1
