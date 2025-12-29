@@ -48,6 +48,12 @@ FI_THRESHOLDS = {
     },
 }
 
+FI_TREND_THRESHOLDS = {
+    "driver_score": {"stable": 3, "degrading": 8},
+    "station_trust": {"stable": 3, "degrading": 8},
+    "vehicle_eff_delta_pct": {"stable": 2.0, "degrading": 5.0},
+}
+
 __all__ = [
     "DRIVER_SCORE_WEIGHTS",
     "DRIVER_SCORE_THRESHOLDS",
@@ -57,4 +63,5 @@ __all__ = [
     "STATION_VOLUME_DEVIATION_HIGH",
     "VEHICLE_BASELINE_DAYS",
     "FI_THRESHOLDS",
+    "FI_TREND_THRESHOLDS",
 ]

@@ -1,0 +1,6 @@
+trend.degrading:
+  title: "Ситуация ухудшается последние {days} дней"
+trend.improving:
+  title: "Ситуация улучшается последние {days} дней"
+trend.stable:
+  title: "Ситуация стабильна"

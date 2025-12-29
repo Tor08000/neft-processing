@@ -15,6 +15,7 @@ from app.models.internal_ledger import (
     InternalLedgerTransaction,
 )
 from app.models.invoice import Invoice
+from app.models.fleet_intelligence import FITrendEntityType, FITrendMetric, FITrendWindow
 from app.models.legal_graph import LegalGraphSnapshot, LegalGraphSnapshotScopeType, LegalNodeType
 from app.models.logistics import (
     FuelRouteLink,
@@ -36,6 +37,7 @@ from app.services.money_flow.errors import MoneyFlowNotFound
 from app.services.money_flow.states import MoneyFlowType
 from app.services.crm import repository as crm_repository
 from app.services.fleet_intelligence import actionable as fi_actionable
+from app.services.fleet_intelligence import explain as fi_explain
 from app.services.fleet_intelligence import repository as fi_repository
 
 
@@ -525,6 +527,60 @@ def build_fleet_insight_section(
     )
 
 
+def build_fleet_trends_section(
+    db: Session,
+    *,
+    tenant_id: int,
+    driver_id: str | None,
+    vehicle_id: str | None,
+    station_id: str | None,
+) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {}
+    if driver_id:
+        driver_trend = fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.DRIVER,
+            entity_id=driver_id,
+            metric=FITrendMetric.DRIVER_BEHAVIOR_SCORE,
+            window=FITrendWindow.D7,
+        )
+        if driver_trend:
+            payload["driver"] = _serialize_trend(driver_trend, days=7)
+    if station_id:
+        station_trend = fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.STATION,
+            entity_id=station_id,
+            metric=FITrendMetric.STATION_TRUST_SCORE,
+            window=FITrendWindow.D30,
+        )
+        if station_trend:
+            payload["station"] = _serialize_trend(station_trend, days=30)
+    if vehicle_id:
+        vehicle_trend = fi_repository.get_latest_trend_snapshot(
+            db,
+            tenant_id=tenant_id,
+            entity_type=FITrendEntityType.VEHICLE,
+            entity_id=vehicle_id,
+            metric=FITrendMetric.VEHICLE_EFFICIENCY_DELTA_PCT,
+            window=FITrendWindow.ROLLING,
+        )
+        if vehicle_trend:
+            payload["vehicle"] = _serialize_trend(vehicle_trend, days=30)
+    return payload or None
+
+
+def _serialize_trend(trend, *, days: int) -> dict[str, Any]:
+    message = fi_explain.build_trend_message(label=trend.label, days=days)
+    return {
+        "label": trend.label.value,
+        "delta": trend.delta,
+        "message": message,
+    }
+
+
 def build_documents_section(db: Session, *, invoice_id: str) -> tuple[dict[str, Any] | None, list[str]]:
     if not invoice_id:
         return None, []
@@ -754,6 +810,7 @@ __all__ = [
     "build_crm_section",
     "build_fleet_intelligence_section",
     "build_fleet_insight_section",
+    "build_fleet_trends_section",
     "find_invoice_id_for_fuel",
     "find_invoice_id_for_order",
     "get_fuel_link",

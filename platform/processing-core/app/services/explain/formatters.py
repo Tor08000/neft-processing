@@ -15,6 +15,7 @@ from app.services.explain.recommendations import (
 FLEET_PRIORITY = [
     "fleet_insight",
     "fleet_intelligence",
+    "fleet_trends",
     "logistics",
     "navigator",
     "risk",
@@ -35,10 +36,12 @@ ACCOUNTANT_PRIORITY = [
     "graph",
     "fleet_insight",
     "fleet_intelligence",
+    "fleet_trends",
 ]
 FULL_PRIORITY = [
     "fleet_insight",
     "fleet_intelligence",
+    "fleet_trends",
     "limits",
     "risk",
     "logistics",

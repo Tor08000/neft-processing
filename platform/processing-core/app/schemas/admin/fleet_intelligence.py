@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.fleet_intelligence import DriverBehaviorLevel, StationTrustLevel
+from app.models.fleet_intelligence import DriverBehaviorLevel, FITrendLabel, StationTrustLevel
 
 
 class FleetDriverScoreOut(BaseModel):
@@ -77,6 +77,17 @@ class FleetInsightOut(BaseModel):
     secondary_insights: list[FleetInsightItemOut]
 
 
+class FleetTrendSnapshotOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    current_value: float | None
+    baseline_value: float | None
+    delta: float | None
+    label: FITrendLabel
+    explain_summary: str | None = None
+
+
 __all__ = [
     "FleetDriverScoreOut",
     "FleetVehicleEfficiencyOut",
@@ -84,4 +95,5 @@ __all__ = [
     "FleetInsightActionOut",
     "FleetInsightItemOut",
     "FleetInsightOut",
+    "FleetTrendSnapshotOut",
 ]
