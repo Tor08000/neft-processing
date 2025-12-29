@@ -17,6 +17,8 @@ type UnifiedExplainAction = {
   description: string;
   target?: string | null;
   severity: "INFO" | "REQUIRED";
+  hint?: string | null;
+  link?: string | null;
 };
 
 type UnifiedExplainPayload = {

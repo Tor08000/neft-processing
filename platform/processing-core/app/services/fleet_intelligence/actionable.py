@@ -40,6 +40,18 @@ _ACTION_TITLES = {
     ActionHintCode.REQUEST_COMPLIANCE_REVIEW: "Запросить проверку комплаенса",
 }
 
+_ACTION_HINTS = {
+    ActionHintCode.RESTRICT_NIGHT_FUELING: "CRM → Limit Profile",
+    ActionHintCode.EXCLUDE_STATION_FROM_ROUTES: "Logistics → Route Constraints",
+    ActionHintCode.CHECK_VEHICLE_FUEL_EFFICIENCY: "Fleet → Vehicle view",
+}
+
+_ACTION_LINKS = {
+    ActionHintCode.RESTRICT_NIGHT_FUELING: "/crm/limit-profiles",
+    ActionHintCode.EXCLUDE_STATION_FROM_ROUTES: "/logistics/route-constraints",
+    ActionHintCode.CHECK_VEHICLE_FUEL_EFFICIENCY: "/fleet/vehicles",
+}
+
 
 def build_fleet_insight_payload(
     *,
@@ -167,6 +179,8 @@ def _action(code: ActionHintCode, *, severity: str) -> dict:
         "code": code.value,
         "title": _ACTION_TITLES[code],
         "severity": severity,
+        "hint": _ACTION_HINTS.get(code),
+        "link": _ACTION_LINKS.get(code),
     }
 
 
