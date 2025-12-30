@@ -32,6 +32,8 @@ export function Layout() {
           <NavLink to="/stations">АЗС</NavLink>
           <NavLink to="/prices">Цены</NavLink>
           <NavLink to="/transactions">Операции</NavLink>
+          <NavLink to="/orders">Заказы</NavLink>
+          <NavLink to="/refunds">Возвраты</NavLink>
           <NavLink to="/payouts">Выплаты</NavLink>
           <NavLink to="/documents">Документы</NavLink>
           <NavLink to="/services">Сервисы</NavLink>
