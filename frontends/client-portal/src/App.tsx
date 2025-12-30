@@ -24,6 +24,7 @@ import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ClientControlsPage } from "./pages/ClientControlsPage";
 import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
 import { MarketplaceServicePage } from "./pages/MarketplaceServicePage";
 import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
@@ -82,6 +83,7 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings/management" element={<ClientControlsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
