@@ -22,10 +22,11 @@
 - [ ] tests run from repo root without PYTHONPATH
 
 Commands:
+- `python -m pip install -U pip setuptools wheel`
 - `pip install -e platform/integration-hub`
 - `pip install -e platform/logistics-service`
 - `pytest platform/integration-hub -q`
 - `pytest platform/logistics-service -q`
 
 Build tools:
-- `pip install --upgrade setuptools wheel`
+- `python -m pip install -U pip setuptools wheel`
