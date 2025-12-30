@@ -107,6 +107,36 @@ class BiTopReasonOut(BaseModel):
     count: int
 
 
+class BiPriceVersionMetricOut(BaseModel):
+    price_version_id: str
+    published_at: datetime | None
+    orders_count: int
+    revenue_total: int
+    avg_order_value: int
+    refunds_count: int
+
+
+class BiOfferMetricOut(BaseModel):
+    offer_id: str
+    orders_count: int
+    conversion_rate: float | None
+    avg_price: int
+    revenue_total: int
+
+
+class BiPriceInsightOut(BaseModel):
+    type: str
+    severity: str
+    message: str
+    price_version_id: str | None = None
+
+
+class BiPriceVersionSeriesPointOut(BaseModel):
+    date: date
+    orders_count: int
+    revenue_total: int
+
+
 __all__ = [
     "BiDailyMetricOut",
     "BiDeclineEventOut",
@@ -114,5 +144,9 @@ __all__ = [
     "BiExportOut",
     "BiOrderEventOut",
     "BiPayoutEventOut",
+    "BiOfferMetricOut",
+    "BiPriceInsightOut",
+    "BiPriceVersionMetricOut",
+    "BiPriceVersionSeriesPointOut",
     "BiTopReasonOut",
 ]

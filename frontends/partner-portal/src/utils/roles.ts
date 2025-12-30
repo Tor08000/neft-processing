@@ -7,6 +7,11 @@ const pricesReadRoles: PartnerRole[] = [
   "PARTNER_ACCOUNTANT",
   "PARTNER_SERVICE_MANAGER",
 ];
+const priceAnalyticsRoles: PartnerRole[] = [
+  "PARTNER_OWNER",
+  "PARTNER_ACCOUNTANT",
+  "PARTNER_SERVICE_MANAGER",
+];
 const servicesReadRoles: PartnerRole[] = [
   "PARTNER_OWNER",
   "PARTNER_OPERATOR",
@@ -37,6 +42,9 @@ export const canManagePayouts = (roles: string[] | undefined): boolean =>
 
 export const canReadPrices = (roles: string[] | undefined): boolean =>
   Boolean(roles?.some((role) => pricesReadRoles.includes(role as PartnerRole)));
+
+export const canReadPriceAnalytics = (roles: string[] | undefined): boolean =>
+  Boolean(roles?.some((role) => priceAnalyticsRoles.includes(role as PartnerRole)));
 
 export const canCreateDraftPrices = (roles: string[] | undefined): boolean =>
   Boolean(

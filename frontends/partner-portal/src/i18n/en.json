@@ -141,6 +141,10 @@
       "draftCreated": "Draft created",
       "importCompleted": "Import completed. Errors: {errors}"
     },
+    "tabs": {
+      "versions": "Versions",
+      "analytics": "Analytics"
+    },
     "insights": {
       "title": "Quick insights",
       "activeVersion": "Active version",
@@ -182,6 +186,77 @@
         "publish": "Publish",
         "rollback": "Rollback",
         "diff": "Diff"
+      }
+    }
+  },
+  "priceAnalyticsPage": {
+    "title": "Price analytics",
+    "subtitle": "Observe how price changes affect orders and revenue.",
+    "loading": "Loading analytics...",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "version": "Price version",
+      "selectVersion": "Select version"
+    },
+    "errors": {
+      "loadFailed": "Unable to load analytics data",
+      "loadTitle": "Analytics error (status {status})"
+    },
+    "forbidden": {
+      "noAccess": "You do not have access to price analytics."
+    },
+    "empty": {
+      "title": "Not enough data yet",
+      "subtitle": "Analytics will appear after price versions are published and orders arrive."
+    },
+    "blocks": {
+      "versions": {
+        "title": "Version comparison",
+        "subtitle": "Compare published versions by orders and revenue.",
+        "compareLeft": "Version A",
+        "compareRight": "Version B",
+        "compareTitle": "Difference between versions",
+        "compareOrders": "Orders: {value}",
+        "compareRevenue": "Revenue: {value}",
+        "table": {
+          "version": "Version",
+          "publishedAt": "Published",
+          "orders": "Orders",
+          "revenue": "Revenue",
+          "avgOrder": "Avg order value",
+          "refunds": "Refunds"
+        }
+      },
+      "timeline": {
+        "title": "Timeline",
+        "subtitle": "Daily dynamics for the selected price version.",
+        "orders": "Orders",
+        "revenue": "Revenue",
+        "empty": "No daily data for the selected version.",
+        "chartLabel": "Orders and revenue over time",
+        "lastPoint": "Latest point:"
+      },
+      "offers": {
+        "title": "Offers",
+        "subtitle": "Performance by offer within the selected period.",
+        "sortLabel": "Sort by",
+        "sortOrders": "Orders",
+        "sortRevenue": "Revenue",
+        "table": {
+          "offer": "Offer",
+          "price": "Avg price",
+          "orders": "Orders",
+          "conversion": "Conversion",
+          "revenue": "Revenue"
+        }
+      },
+      "insights": {
+        "title": "Insights",
+        "subtitle": "Read-only hints derived from data.",
+        "period": "Period: {from} — {to}",
+        "viewVersion": "View version",
+        "empty": "No insights for the selected period."
       }
     }
   },

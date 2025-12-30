@@ -141,6 +141,10 @@
       "draftCreated": "Черновик создан",
       "importCompleted": "Импорт завершён. Ошибок: {errors}"
     },
+    "tabs": {
+      "versions": "Версии",
+      "analytics": "Аналитика"
+    },
     "insights": {
       "title": "Quick insights",
       "activeVersion": "Активная версия",
@@ -182,6 +186,77 @@
         "publish": "Опубликовать",
         "rollback": "Rollback",
         "diff": "Diff"
+      }
+    }
+  },
+  "priceAnalyticsPage": {
+    "title": "Аналитика цен",
+    "subtitle": "Наблюдение за влиянием изменений прайса на заказы и выручку.",
+    "loading": "Загружаем аналитику...",
+    "filters": {
+      "from": "С",
+      "to": "По",
+      "version": "Версия прайса",
+      "selectVersion": "Выберите версию"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить аналитику",
+      "loadTitle": "Ошибка аналитики (статус {status})"
+    },
+    "forbidden": {
+      "noAccess": "У вас нет доступа к аналитике цен."
+    },
+    "empty": {
+      "title": "Пока недостаточно данных для аналитики.",
+      "subtitle": "Аналитика появится после публикации прайсов и первых заказов."
+    },
+    "blocks": {
+      "versions": {
+        "title": "Сравнение версий",
+        "subtitle": "Сравните версии по заказам и выручке.",
+        "compareLeft": "Версия A",
+        "compareRight": "Версия B",
+        "compareTitle": "Разница между версиями",
+        "compareOrders": "Заказы: {value}",
+        "compareRevenue": "Выручка: {value}",
+        "table": {
+          "version": "Версия",
+          "publishedAt": "Дата публикации",
+          "orders": "Заказы",
+          "revenue": "Выручка",
+          "avgOrder": "Средний чек",
+          "refunds": "Возвраты"
+        }
+      },
+      "timeline": {
+        "title": "История по времени",
+        "subtitle": "Дневная динамика выбранной версии.",
+        "orders": "Заказы",
+        "revenue": "Выручка",
+        "empty": "Нет дневных данных по выбранной версии.",
+        "chartLabel": "Заказы и выручка во времени",
+        "lastPoint": "Последняя точка:"
+      },
+      "offers": {
+        "title": "Офферы",
+        "subtitle": "Эффективность офферов за период.",
+        "sortLabel": "Сортировка",
+        "sortOrders": "По заказам",
+        "sortRevenue": "По выручке",
+        "table": {
+          "offer": "Оффер",
+          "price": "Средняя цена",
+          "orders": "Заказы",
+          "conversion": "Конверсия",
+          "revenue": "Выручка"
+        }
+      },
+      "insights": {
+        "title": "Инсайты",
+        "subtitle": "Текстовые подсказки на основе данных.",
+        "period": "Период: {from} — {to}",
+        "viewVersion": "Посмотреть версию",
+        "empty": "Нет инсайтов за выбранный период."
       }
     }
   },

@@ -10,7 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.bi import BiDailyMetric, BiScopeType
-from app.models.bi import BiDeclineEvent, BiOrderEvent, BiPayoutEvent
+from app.models.bi import BiDeclineEvent, BiOfferMetric, BiOrderEvent, BiPayoutEvent, BiPriceVersionMetric
 from app.models.crm import CRMClient
 from app.models.operation import Operation, OperationStatus
 from app.models.payout_batch import PayoutBatch, PayoutItem
@@ -38,6 +38,16 @@ def _truncate_payload(payload: dict[str, Any], *, limit: int = 2000) -> dict[str
     if len(raw) <= limit:
         return payload
     return {"_truncated": True}
+
+
+def _extract_price_version_id(payload: dict[str, Any] | None) -> str | None:
+    if not payload:
+        return None
+    for key in ("price_version_id", "price_version", "priceVersionId"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return None
 
 
 def ingest_order_events(db: Session, *, limit: int = 5000) -> IngestResult:
@@ -446,9 +456,294 @@ def aggregate_daily(db: Session, *, date_from: date, date_to: date) -> int:
     return updated
 
 
+def aggregate_price_version_metrics(db: Session, *, date_from: date, date_to: date) -> int:
+    start_dt = datetime.combine(date_from, time.min).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(date_to, time.max).replace(tzinfo=timezone.utc)
+
+    aggregates: dict[tuple[int, str, str, date], dict[str, int]] = defaultdict(
+        lambda: {
+            "orders_count": 0,
+            "completed_orders_count": 0,
+            "revenue_total": 0,
+            "refunds_count": 0,
+        }
+    )
+
+    rows = (
+        db.query(
+            BiOrderEvent.occurred_at.label("occurred_at"),
+            BiOrderEvent.tenant_id.label("tenant_id"),
+            BiOrderEvent.partner_id.label("partner_id"),
+            BiOrderEvent.status_after.label("status_after"),
+            BiOrderEvent.event_type.label("event_type"),
+            BiOrderEvent.amount.label("amount"),
+            BiOrderEvent.payload.label("payload"),
+        )
+        .filter(BiOrderEvent.occurred_at >= start_dt)
+        .filter(BiOrderEvent.occurred_at <= end_dt)
+        .all()
+    )
+
+    for row in rows:
+        if not row.partner_id:
+            continue
+        price_version_id = _extract_price_version_id(row.payload)
+        if not price_version_id:
+            continue
+        day = row.occurred_at.date()
+        tenant_id = int(row.tenant_id or 0)
+        key = (tenant_id, str(row.partner_id), price_version_id, day)
+        bucket = aggregates[key]
+        bucket["orders_count"] += 1
+        if row.status_after in COMPLETED_STATUSES:
+            bucket["completed_orders_count"] += 1
+            bucket["revenue_total"] += int(row.amount or 0)
+        if row.event_type in REFUND_TYPES:
+            bucket["refunds_count"] += 1
+
+    rows_to_upsert: list[dict[str, Any]] = []
+    for (tenant_id, partner_id, price_version_id, day), data in aggregates.items():
+        completed = data["completed_orders_count"]
+        avg_order_value = int(data["revenue_total"] / completed) if completed else 0
+        rows_to_upsert.append(
+            {
+                "tenant_id": tenant_id,
+                "partner_id": partner_id,
+                "price_version_id": price_version_id,
+                "date": day,
+                "orders_count": data["orders_count"],
+                "completed_orders_count": completed,
+                "revenue_total": data["revenue_total"],
+                "avg_order_value": avg_order_value,
+                "refunds_count": data["refunds_count"],
+            }
+        )
+
+    try:
+        updated = repository.upsert_price_version_metrics(db, rows_to_upsert)
+        bi_metrics.mark_aggregate("success")
+    except Exception:
+        bi_metrics.mark_aggregate("failed")
+        raise
+    return updated
+
+
+def aggregate_offer_metrics(db: Session, *, date_from: date, date_to: date) -> int:
+    start_dt = datetime.combine(date_from, time.min).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(date_to, time.max).replace(tzinfo=timezone.utc)
+
+    aggregates: dict[tuple[int, str, str, date], dict[str, int]] = defaultdict(
+        lambda: {
+            "orders_count": 0,
+            "revenue_total": 0,
+        }
+    )
+
+    rows = (
+        db.query(
+            BiOrderEvent.occurred_at.label("occurred_at"),
+            BiOrderEvent.tenant_id.label("tenant_id"),
+            BiOrderEvent.partner_id.label("partner_id"),
+            BiOrderEvent.offer_id.label("offer_id"),
+            BiOrderEvent.status_after.label("status_after"),
+            BiOrderEvent.amount.label("amount"),
+        )
+        .filter(BiOrderEvent.occurred_at >= start_dt)
+        .filter(BiOrderEvent.occurred_at <= end_dt)
+        .all()
+    )
+
+    for row in rows:
+        if not row.partner_id or not row.offer_id:
+            continue
+        day = row.occurred_at.date()
+        tenant_id = int(row.tenant_id or 0)
+        key = (tenant_id, str(row.partner_id), str(row.offer_id), day)
+        bucket = aggregates[key]
+        bucket["orders_count"] += 1
+        if row.status_after in COMPLETED_STATUSES:
+            bucket["revenue_total"] += int(row.amount or 0)
+
+    rows_to_upsert: list[dict[str, Any]] = []
+    for (tenant_id, partner_id, offer_id, day), data in aggregates.items():
+        orders_count = data["orders_count"]
+        avg_price = int(data["revenue_total"] / orders_count) if orders_count else 0
+        rows_to_upsert.append(
+            {
+                "tenant_id": tenant_id,
+                "partner_id": partner_id,
+                "offer_id": offer_id,
+                "date": day,
+                "views_count": None,
+                "orders_count": orders_count,
+                "conversion_rate": None,
+                "avg_price": avg_price,
+                "revenue_total": data["revenue_total"],
+            }
+        )
+
+    try:
+        updated = repository.upsert_offer_metrics(db, rows_to_upsert)
+        bi_metrics.mark_aggregate("success")
+    except Exception:
+        bi_metrics.mark_aggregate("failed")
+        raise
+    return updated
+
+
+def list_price_version_metrics(
+    db: Session,
+    *,
+    tenant_id: int,
+    partner_id: str,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    rows = (
+        db.query(
+            BiPriceVersionMetric.price_version_id.label("price_version_id"),
+            func.min(BiPriceVersionMetric.date).label("published_date"),
+            func.coalesce(func.sum(BiPriceVersionMetric.orders_count), 0).label("orders_count"),
+            func.coalesce(func.sum(BiPriceVersionMetric.completed_orders_count), 0).label("completed_orders_count"),
+            func.coalesce(func.sum(BiPriceVersionMetric.revenue_total), 0).label("revenue_total"),
+            func.coalesce(func.sum(BiPriceVersionMetric.refunds_count), 0).label("refunds_count"),
+        )
+        .filter(BiPriceVersionMetric.tenant_id == tenant_id)
+        .filter(BiPriceVersionMetric.partner_id == partner_id)
+        .filter(BiPriceVersionMetric.date >= date_from)
+        .filter(BiPriceVersionMetric.date <= date_to)
+        .group_by(BiPriceVersionMetric.price_version_id)
+        .order_by(func.min(BiPriceVersionMetric.date).desc())
+        .all()
+    )
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        completed = int(row.completed_orders_count or 0)
+        revenue_total = int(row.revenue_total or 0)
+        avg_order_value = int(revenue_total / completed) if completed else 0
+        results.append(
+            {
+                "price_version_id": row.price_version_id,
+                "published_at": datetime.combine(row.published_date, time.min, tzinfo=timezone.utc)
+                if row.published_date
+                else None,
+                "orders_count": int(row.orders_count or 0),
+                "revenue_total": revenue_total,
+                "avg_order_value": avg_order_value,
+                "refunds_count": int(row.refunds_count or 0),
+            }
+        )
+    return results
+
+
+def list_offer_metrics(
+    db: Session,
+    *,
+    tenant_id: int,
+    partner_id: str,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    rows = (
+        db.query(
+            BiOfferMetric.offer_id.label("offer_id"),
+            func.coalesce(func.sum(BiOfferMetric.orders_count), 0).label("orders_count"),
+            func.coalesce(func.sum(BiOfferMetric.views_count), 0).label("views_count"),
+            func.coalesce(func.sum(BiOfferMetric.revenue_total), 0).label("revenue_total"),
+        )
+        .filter(BiOfferMetric.tenant_id == tenant_id)
+        .filter(BiOfferMetric.partner_id == partner_id)
+        .filter(BiOfferMetric.date >= date_from)
+        .filter(BiOfferMetric.date <= date_to)
+        .group_by(BiOfferMetric.offer_id)
+        .all()
+    )
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        orders_count = int(row.orders_count or 0)
+        views_count = int(row.views_count or 0)
+        revenue_total = int(row.revenue_total or 0)
+        avg_price = int(revenue_total / orders_count) if orders_count else 0
+        conversion_rate = None
+        if views_count > 0:
+            conversion_rate = orders_count / views_count
+        results.append(
+            {
+                "offer_id": row.offer_id,
+                "orders_count": orders_count,
+                "conversion_rate": conversion_rate,
+                "avg_price": avg_price,
+                "revenue_total": revenue_total,
+            }
+        )
+    return results
+
+
+def list_price_version_series(
+    db: Session,
+    *,
+    tenant_id: int,
+    partner_id: str,
+    price_version_id: str,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "date": metric.date,
+            "orders_count": int(metric.orders_count or 0),
+            "revenue_total": int(metric.revenue_total or 0),
+        }
+        for metric in (
+            db.query(BiPriceVersionMetric)
+            .filter(BiPriceVersionMetric.tenant_id == tenant_id)
+            .filter(BiPriceVersionMetric.partner_id == partner_id)
+            .filter(BiPriceVersionMetric.price_version_id == price_version_id)
+            .filter(BiPriceVersionMetric.date >= date_from)
+            .filter(BiPriceVersionMetric.date <= date_to)
+            .order_by(BiPriceVersionMetric.date.asc())
+            .all()
+        )
+    ]
+
+
+def build_price_insights(
+    metrics: list[dict[str, Any]],
+    *,
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    if len(metrics) < 2:
+        return []
+    latest, previous = metrics[0], metrics[1]
+    prev_orders = previous.get("orders_count", 0) or 0
+    curr_orders = latest.get("orders_count", 0) or 0
+    if prev_orders <= 0:
+        return []
+    delta_pct = round(((curr_orders - prev_orders) / prev_orders) * 100)
+    if delta_pct >= 0:
+        return []
+    period_days = (date_to - date_from).days + 1
+    message = (
+        f"После публикации версии {latest['price_version_id']} количество заказов "
+        f"снизилось на {abs(delta_pct)}% за {period_days} дней."
+    )
+    return [
+        {
+            "type": "PRICE_INCREASE_EFFECT",
+            "severity": "INFO",
+            "message": message,
+            "price_version_id": latest["price_version_id"],
+        }
+    ]
+
 def backfill(db: Session, *, date_from: date, date_to: date) -> dict[str, Any]:
     ingest_events(db)
     updated = aggregate_daily(db, date_from=date_from, date_to=date_to)
+    updated += aggregate_price_version_metrics(db, date_from=date_from, date_to=date_to)
+    updated += aggregate_offer_metrics(db, date_from=date_from, date_to=date_to)
     return {"aggregated": updated}
 
 
@@ -476,10 +771,16 @@ def list_daily_metrics(
 __all__ = [
     "IngestResult",
     "aggregate_daily",
+    "aggregate_offer_metrics",
+    "aggregate_price_version_metrics",
     "backfill",
+    "build_price_insights",
     "ingest_events",
     "ingest_decline_events",
     "ingest_order_events",
     "ingest_payout_events",
     "list_daily_metrics",
+    "list_offer_metrics",
+    "list_price_version_metrics",
+    "list_price_version_series",
 ]

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { BadgeDollarSign } from "../components/icons";
 import { fetchStations } from "../api/partner";
 import { createPriceVersion, fetchPriceVersions, importPriceVersion } from "../api/prices";
@@ -193,6 +193,14 @@ export function PricesPage() {
           <button type="button" className="primary" onClick={handleCreateDraft} disabled={!canCreateDraft}>
             {t("actions.createDraft")}
           </button>
+        </div>
+        <div className="tabs">
+          <NavLink to="/prices" end className={({ isActive }) => `tab ${isActive ? "tab--active" : ""}`}>
+            {t("pricesPage.tabs.versions")}
+          </NavLink>
+          <NavLink to="/prices/analytics" className={({ isActive }) => `tab ${isActive ? "tab--active" : ""}`}>
+            {t("pricesPage.tabs.analytics")}
+          </NavLink>
         </div>
         <div className="form-grid">
           <label className="form-field">
