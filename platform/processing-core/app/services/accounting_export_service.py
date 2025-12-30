@@ -14,6 +14,7 @@ from app.models.accounting_export_batch import (
     AccountingExportState,
     AccountingExportType,
 )
+from app.models.erp_exports import ErpExportProfile, ErpMappingStatus, ErpSystemType
 from app.models.audit_log import AuditVisibility
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
@@ -24,6 +25,7 @@ from app.services.accounting_export.canonical import AccountingEntry
 from app.services.accounting_export.delivery import DeliveryPayload, build_delivery_adapter
 from app.services.accounting_export.formats.csv_1c import serialize_charges_csv, serialize_settlement_csv
 from app.services.accounting_export.formats.json_sap import serialize_sap_json
+from app.services.accounting_export.erp_mapping_service import ErpMappingNotFound, ErpMappingService
 from app.services.accounting_export.mappers import map_charges_entries, map_settlement_entries
 from app.services.accounting_export.onboarding_profiles import get_onboarding_profile
 from app.services.accounting_export.serializer import serialize_metadata_json
@@ -80,6 +82,8 @@ class AccountingExportService:
         period_id: str,
         export_type: AccountingExportType,
         export_format: AccountingExportFormat,
+        profile_id: str | None = None,
+        system_type: ErpSystemType | None = None,
         request_ctx: RequestContext | None,
         version: int = 1,
         force: bool = False,
@@ -128,11 +132,15 @@ class AccountingExportService:
             raise PolicyAccessDenied(policy_decision)
         self._require_period_finalized(period, request_ctx=request_ctx)
 
+        profile = self._load_profile(profile_id) if profile_id else None
+        export_format = self._resolve_export_format(export_format, profile=profile)
         idempotency_key = self._build_idempotency_key(
             period_id=period_id,
             export_type=export_type,
             export_format=export_format,
             version=version,
+            profile_id=str(profile.id) if profile else None,
+            mapping_version=profile.mapping.version if profile and profile.mapping else None,
         )
         existing = (
             self.db.query(AccountingExportBatch)
@@ -152,6 +160,10 @@ class AccountingExportService:
             format=export_format,
             state=AccountingExportState.CREATED,
             idempotency_key=idempotency_key,
+            erp_profile_id=str(profile.id) if profile else None,
+            erp_system_type=profile.system_type if profile else system_type,
+            erp_mapping_id=str(profile.mapping.id) if profile and profile.mapping else None,
+            erp_mapping_version=profile.mapping.version if profile and profile.mapping else None,
         )
         self.db.add(batch)
         self.db.flush()
@@ -604,8 +616,9 @@ class AccountingExportService:
     def _build_payload(self, batch: AccountingExportBatch, *, generated_at: datetime) -> AccountingExportPayload:
         if batch.export_type == AccountingExportType.CHARGES:
             entries = self._load_charge_entries(batch)
+            include_mapping, entries = self._apply_erp_mapping(batch, entries)
             if batch.format == AccountingExportFormat.CSV:
-                payload = serialize_charges_csv(entries)
+                payload = serialize_charges_csv(entries, include_mapping=include_mapping)
             elif batch.format == AccountingExportFormat.JSON:
                 payload, _ = serialize_sap_json(
                     batch_id=str(batch.id),
@@ -620,8 +633,9 @@ class AccountingExportService:
 
         if batch.export_type == AccountingExportType.SETTLEMENT:
             entries = self._load_settlement_entries(batch)
+            include_mapping, entries = self._apply_erp_mapping(batch, entries)
             if batch.format == AccountingExportFormat.CSV:
-                payload = serialize_settlement_csv(entries)
+                payload = serialize_settlement_csv(entries, include_mapping=include_mapping)
             elif batch.format == AccountingExportFormat.JSON:
                 payload, _ = serialize_sap_json(
                     batch_id=str(batch.id),
@@ -757,6 +771,14 @@ class AccountingExportService:
             },
             "minor_units": 2,
         }
+        if batch.erp_profile_id:
+            payload["erp_profile_id"] = str(batch.erp_profile_id)
+        if batch.erp_system_type:
+            payload["erp_system_type"] = batch.erp_system_type.value
+        if batch.erp_mapping_id:
+            payload["erp_mapping_id"] = str(batch.erp_mapping_id)
+        if batch.erp_mapping_version:
+            payload["erp_mapping_version"] = batch.erp_mapping_version
         metadata_checksum = hashlib.sha256(serialize_metadata_json(payload)).hexdigest()
         payload["sha256_metadata"] = metadata_checksum
         metadata_payload = serialize_metadata_json(payload)
@@ -769,8 +791,15 @@ class AccountingExportService:
         export_type: AccountingExportType,
         export_format: AccountingExportFormat,
         version: int,
+        profile_id: str | None,
+        mapping_version: int | None,
     ) -> str:
-        return f"{period_id}:{export_type.value}:{export_format.value}:v{version}"
+        suffix = f":v{version}"
+        if profile_id:
+            suffix = f":profile={profile_id}:v{version}"
+            if mapping_version is not None:
+                suffix = f":profile={profile_id}:mapv={mapping_version}:v{version}"
+        return f"{period_id}:{export_type.value}:{export_format.value}{suffix}"
 
     @staticmethod
     def _extract_version(idempotency_key: str) -> int:
@@ -809,10 +838,60 @@ class AccountingExportService:
                 "records_count": batch.records_count,
                 "object_key": batch.object_key,
                 "bucket": batch.bucket,
+                "erp_profile_id": str(batch.erp_profile_id) if batch.erp_profile_id else None,
+                "erp_system_type": batch.erp_system_type.value if batch.erp_system_type else None,
+                "erp_mapping_id": str(batch.erp_mapping_id) if batch.erp_mapping_id else None,
+                "erp_mapping_version": batch.erp_mapping_version,
                 **(extra or {}),
             },
             request_ctx=request_ctx,
         )
+
+    def _load_profile(self, profile_id: str) -> ErpExportProfile:
+        profile = (
+            self.db.query(ErpExportProfile)
+            .filter(ErpExportProfile.id == profile_id, ErpExportProfile.enabled.is_(True))
+            .one_or_none()
+        )
+        if not profile:
+            raise AccountingExportNotFound("erp_profile_not_found")
+        profile.mapping = None
+        if profile.mapping_id:
+            mapping = ErpMappingService(self.db).load_mapping(str(profile.mapping_id))
+            if mapping.status != ErpMappingStatus.ACTIVE:
+                raise AccountingExportError("erp_mapping_inactive")
+            profile.mapping = mapping
+        return profile
+
+    @staticmethod
+    def _resolve_export_format(
+        export_format: AccountingExportFormat,
+        *,
+        profile: ErpExportProfile | None,
+    ) -> AccountingExportFormat:
+        if not profile:
+            return export_format
+        if profile.format.value != export_format.value:
+            raise AccountingExportError("erp_profile_format_mismatch")
+        if export_format not in {AccountingExportFormat.CSV, AccountingExportFormat.JSON}:
+            raise AccountingExportError("erp_profile_format_not_supported")
+        return export_format
+
+    def _apply_erp_mapping(
+        self,
+        batch: AccountingExportBatch,
+        entries: list[AccountingEntry],
+    ) -> tuple[bool, list[AccountingEntry]]:
+        if not batch.erp_mapping_id:
+            return False, entries
+        mapping_service = ErpMappingService(self.db)
+        try:
+            rules = mapping_service.load_rules(str(batch.erp_mapping_id))
+        except ErpMappingNotFound:
+            raise AccountingExportError("erp_mapping_not_found") from None
+        if not rules:
+            return False, entries
+        return True, mapping_service.apply_mapping(entries, rules)
 
 
 __all__ = [

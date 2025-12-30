@@ -8,6 +8,7 @@ from sqlalchemy.orm import foreign, relationship
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
+from app.models.erp_exports import ErpSystemType
 
 
 class AccountingExportType(str, Enum):
@@ -60,6 +61,10 @@ class AccountingExportBatch(Base):
     erp_status = Column(String(16), nullable=True)
     erp_message = Column(Text, nullable=True)
     erp_processed_at = Column(DateTime(timezone=True), nullable=True)
+    erp_profile_id = Column(GUID(), nullable=True)
+    erp_system_type = Column(ExistingEnum(ErpSystemType, name="erp_system_type"), nullable=True)
+    erp_mapping_id = Column(GUID(), nullable=True)
+    erp_mapping_version = Column(Integer, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     billing_period = relationship(
