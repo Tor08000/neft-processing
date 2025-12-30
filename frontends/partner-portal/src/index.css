@@ -672,3 +672,64 @@ button.primary {
 .link-button:hover {
   text-decoration: underline;
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 50;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  width: min(680px, 95vw);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  display: grid;
+  gap: 1rem;
+}
+
+.modal--wide {
+  width: min(960px, 95vw);
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 0.5rem;
+  background: #e2e8f0;
+  padding: 0.3rem;
+  border-radius: 999px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab--active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.9rem;
+}
