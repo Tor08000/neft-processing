@@ -10,13 +10,14 @@ jobs:
         with:
           python-version: 3.11
       - name: Install build tools
-        run: python -m pip install --upgrade pip setuptools wheel
+        run: python -m pip install -U pip setuptools wheel
       - name: Install service packages
         run: |
-          pip install -e platform/integration-hub
           pip install -e platform/logistics-service
       - name: Run service tests
         run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install -e platform/integration-hub
           pytest platform/integration-hub -q
           pytest platform/logistics-service -q
   migration-smoke:

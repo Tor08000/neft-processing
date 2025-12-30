@@ -10,17 +10,28 @@ from sqlalchemy.orm import Session
 
 from neft_integration_hub.celery_app import celery_app
 from neft_integration_hub.db import get_db, init_db
-from neft_integration_hub.models import EdoDocument, WebhookEndpoint
+from neft_integration_hub.metrics import (
+    WEBHOOK_ALERTS_ACTIVE_TOTAL,
+    WEBHOOK_DELIVERY_SUCCESS_RATIO,
+    WEBHOOK_PAUSED_ENDPOINTS_TOTAL,
+    WEBHOOK_REPLAY_SCHEDULED_TOTAL,
+)
+from neft_integration_hub.models import EdoDocument, WebhookAlert, WebhookAlertType, WebhookEndpoint
 from neft_integration_hub.schemas import (
     DispatchRequest,
     DispatchResponse,
     EdoDocumentResponse,
+    WebhookAlertResponse,
     WebhookDeliveryResponse,
     WebhookEndpointCreate,
     WebhookEndpointResponse,
     WebhookEndpointSecretResponse,
     WebhookOwner,
+    WebhookPauseRequest,
+    WebhookReplayRequest,
+    WebhookReplayResponse,
     WebhookRotateSecretResponse,
+    WebhookSlaResponse,
     WebhookSubscriptionCreate,
     WebhookSubscriptionResponse,
     WebhookTestResponse,
@@ -28,12 +39,17 @@ from neft_integration_hub.schemas import (
 from neft_integration_hub.services.edo_service import dispatch_request
 from neft_integration_hub.services.webhooks import (
     build_event_envelope,
+    compute_sla,
     create_endpoint,
     create_subscription,
+    evaluate_alerts,
     enqueue_delivery,
     list_deliveries,
     list_endpoints,
+    pause_endpoint,
+    resume_endpoint,
     rotate_secret,
+    schedule_replay,
 )
 from neft_integration_hub.settings import get_settings
 
@@ -155,6 +171,9 @@ def create_webhook_endpoint(payload: WebhookEndpointCreate, db: Session = Depend
         url=endpoint.url,
         status=endpoint.status,
         signing_algo=endpoint.signing_algo,
+        delivery_paused=endpoint.delivery_paused,
+        paused_at=endpoint.paused_at,
+        paused_reason=endpoint.paused_reason,
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
         secret=secret,
@@ -176,6 +195,9 @@ def get_webhook_endpoints(
             url=endpoint.url,
             status=endpoint.status,
             signing_algo=endpoint.signing_algo,
+            delivery_paused=endpoint.delivery_paused,
+            paused_at=endpoint.paused_at,
+            paused_reason=endpoint.paused_reason,
             created_at=endpoint.created_at,
             updated_at=endpoint.updated_at,
         )
@@ -245,6 +267,8 @@ def get_webhook_deliveries(
             last_http_status=delivery.last_http_status,
             last_error=delivery.last_error,
             next_retry_at=delivery.next_retry_at,
+            occurred_at=delivery.occurred_at,
+            latency_ms=delivery.latency_ms,
         )
         for delivery in deliveries
     ]
@@ -257,6 +281,133 @@ def rotate_webhook_secret(endpoint_id: str, db: Session = Depends(get_db)) -> We
         raise HTTPException(status_code=404, detail="endpoint_not_found")
     secret = rotate_secret(db, endpoint)
     return WebhookRotateSecretResponse(endpoint_id=endpoint.id, secret=secret)
+
+
+@app.post("/v1/webhooks/endpoints/{endpoint_id}/pause", response_model=WebhookEndpointResponse)
+def pause_webhook_endpoint(
+    endpoint_id: str,
+    payload: WebhookPauseRequest,
+    db: Session = Depends(get_db),
+) -> WebhookEndpointResponse:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    endpoint = pause_endpoint(db, endpoint, payload.reason)
+    WEBHOOK_PAUSED_ENDPOINTS_TOTAL.labels(endpoint_id=endpoint.id, partner_id=endpoint.owner_id).set(1)
+    return WebhookEndpointResponse(
+        id=endpoint.id,
+        owner_type=endpoint.owner_type,
+        owner_id=endpoint.owner_id,
+        url=endpoint.url,
+        status=endpoint.status,
+        signing_algo=endpoint.signing_algo,
+        delivery_paused=endpoint.delivery_paused,
+        paused_at=endpoint.paused_at,
+        paused_reason=endpoint.paused_reason,
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+@app.post("/v1/webhooks/endpoints/{endpoint_id}/resume", response_model=WebhookEndpointResponse)
+def resume_webhook_endpoint(endpoint_id: str, db: Session = Depends(get_db)) -> WebhookEndpointResponse:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    endpoint = resume_endpoint(db, endpoint)
+    WEBHOOK_PAUSED_ENDPOINTS_TOTAL.labels(endpoint_id=endpoint.id, partner_id=endpoint.owner_id).set(0)
+    return WebhookEndpointResponse(
+        id=endpoint.id,
+        owner_type=endpoint.owner_type,
+        owner_id=endpoint.owner_id,
+        url=endpoint.url,
+        status=endpoint.status,
+        signing_algo=endpoint.signing_algo,
+        delivery_paused=endpoint.delivery_paused,
+        paused_at=endpoint.paused_at,
+        paused_reason=endpoint.paused_reason,
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+@app.post("/v1/webhooks/endpoints/{endpoint_id}/replay", response_model=WebhookReplayResponse)
+def replay_webhook_deliveries(
+    endpoint_id: str,
+    payload: WebhookReplayRequest,
+    db: Session = Depends(get_db),
+) -> WebhookReplayResponse:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    replay, scheduled = schedule_replay(
+        db,
+        endpoint=endpoint,
+        from_at=payload.from_at,
+        to_at=payload.to_at,
+        event_types=payload.event_types,
+        only_failed=payload.only_failed,
+        created_by=endpoint.owner_id,
+    )
+    WEBHOOK_REPLAY_SCHEDULED_TOTAL.labels(endpoint_id=endpoint.id, partner_id=endpoint.owner_id).inc(scheduled)
+    return WebhookReplayResponse(replay_id=replay.id, scheduled_deliveries=scheduled)
+
+
+@app.get("/v1/webhooks/endpoints/{endpoint_id}/sla", response_model=WebhookSlaResponse)
+def get_webhook_sla(endpoint_id: str, window: str = "15m", db: Session = Depends(get_db)) -> WebhookSlaResponse:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    try:
+        success_ratio, avg_latency_ms, sla_breaches, _total = compute_sla(db, endpoint=endpoint, window=window)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid_window")
+    WEBHOOK_DELIVERY_SUCCESS_RATIO.labels(
+        endpoint_id=endpoint.id, partner_id=endpoint.owner_id, window=window
+    ).set(success_ratio)
+    alerts = evaluate_alerts(db, endpoint=endpoint)
+    _sync_alert_metrics(endpoint.id, endpoint.owner_id, alerts)
+    return WebhookSlaResponse(
+        window=window,
+        success_ratio=round(success_ratio, 2),
+        avg_latency_ms=avg_latency_ms,
+        sla_breaches=sla_breaches,
+    )
+
+
+@app.get("/v1/webhooks/endpoints/{endpoint_id}/alerts", response_model=list[WebhookAlertResponse])
+def get_webhook_alerts(endpoint_id: str, db: Session = Depends(get_db)) -> list[WebhookAlertResponse]:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    alerts = (
+        db.query(WebhookAlert)
+        .filter(WebhookAlert.endpoint_id == endpoint.id)
+        .filter(WebhookAlert.resolved_at.is_(None))
+        .order_by(WebhookAlert.created_at.desc())
+        .all()
+    )
+    _sync_alert_metrics(endpoint.id, endpoint.owner_id, alerts)
+    return [
+        WebhookAlertResponse(
+            id=alert.id,
+            type=alert.type,
+            window=alert.window,
+            created_at=alert.created_at,
+        )
+        for alert in alerts
+    ]
+
+
+def _sync_alert_metrics(endpoint_id: str, partner_id: str, alerts: list[WebhookAlert]) -> None:
+    active_keys = {(alert.type, alert.window) for alert in alerts}
+    for alert_type in WebhookAlertType:
+        WEBHOOK_ALERTS_ACTIVE_TOTAL.labels(
+            endpoint_id=endpoint_id,
+            partner_id=partner_id,
+            type=alert_type.value,
+            window="30m",
+        ).set(1 if (alert_type.value, "30m") in active_keys else 0)
 
 
 def _count_in_status(db: Session, status: str) -> int:

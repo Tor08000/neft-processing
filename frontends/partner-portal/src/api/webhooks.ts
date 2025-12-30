@@ -2,10 +2,14 @@ import { request, requestWithMeta, type ApiResponse } from "./http";
 import type {
   WebhookDelivery,
   WebhookDeliveryDetail,
+  WebhookAlert,
   WebhookEndpoint,
   WebhookEndpointCreatePayload,
   WebhookEndpointCreateResponse,
   WebhookEndpointSecretResponse,
+  WebhookReplayPayload,
+  WebhookReplayResult,
+  WebhookSlaStatus,
   WebhookSubscription,
   WebhookTestResult,
 } from "../types/webhooks";
@@ -190,4 +194,45 @@ export async function retryWebhookDelivery(
     { method: "POST" },
     token,
   );
+}
+
+export async function pauseWebhookEndpoint(
+  token: string,
+  endpointId: string,
+  reason?: string,
+): Promise<WebhookEndpoint> {
+  return request<WebhookEndpoint>(
+    `/v1/webhooks/endpoints/${endpointId}/pause`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+    token,
+  );
+}
+
+export async function resumeWebhookEndpoint(token: string, endpointId: string): Promise<WebhookEndpoint> {
+  return request<WebhookEndpoint>(`/v1/webhooks/endpoints/${endpointId}/resume`, { method: "POST" }, token);
+}
+
+export async function replayWebhookDeliveries(
+  token: string,
+  endpointId: string,
+  payload: WebhookReplayPayload,
+): Promise<ApiResponse<WebhookReplayResult>> {
+  return requestWithMeta<WebhookReplayResult>(
+    `/v1/webhooks/endpoints/${endpointId}/replay`,
+    { method: "POST", body: JSON.stringify(payload) },
+    token,
+  );
+}
+
+export async function fetchWebhookSla(
+  token: string,
+  endpointId: string,
+  window = "15m",
+): Promise<WebhookSlaStatus> {
+  return request<WebhookSlaStatus>(`/v1/webhooks/endpoints/${endpointId}/sla${buildQuery({ window })}`, {}, token);
+}
+
+export async function fetchWebhookAlerts(token: string, endpointId: string): Promise<WebhookAlert[]> {
+  const data = await request<ListResponse<WebhookAlert>>(`/v1/webhooks/endpoints/${endpointId}/alerts`, {}, token);
+  return normalizeList(data);
 }

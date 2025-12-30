@@ -73,6 +73,9 @@ class WebhookEndpointResponse(BaseModel):
     url: str
     status: str
     signing_algo: str
+    delivery_paused: bool = False
+    paused_at: datetime | None = None
+    paused_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -108,6 +111,8 @@ class WebhookDeliveryResponse(BaseModel):
     last_http_status: int | None = None
     last_error: str | None = None
     next_retry_at: datetime | None = None
+    occurred_at: datetime | None = None
+    latency_ms: int | None = None
 
 
 class WebhookTestResponse(BaseModel):
@@ -121,6 +126,40 @@ class WebhookRotateSecretResponse(BaseModel):
     secret: str
 
 
+class WebhookPauseRequest(BaseModel):
+    reason: str | None = None
+
+
+class WebhookReplayRequest(BaseModel):
+    from_at: datetime = Field(alias="from")
+    to_at: datetime = Field(alias="to")
+    event_types: list[str] | None = None
+    only_failed: bool = False
+
+    class Config:
+        allow_population_by_field_name = True
+
+
+class WebhookReplayResponse(BaseModel):
+    replay_id: str
+    scheduled_deliveries: int
+
+
+class WebhookSlaResponse(BaseModel):
+    window: str
+    success_ratio: float
+    avg_latency_ms: int | None = None
+    sla_breaches: int
+
+
+class WebhookAlertResponse(BaseModel):
+    id: str
+    type: str
+    window: str
+    created_at: datetime
+
+
+
 __all__ = [
     "ArtifactRef",
     "CounterpartyRef",
@@ -132,8 +171,13 @@ __all__ = [
     "WebhookEndpointResponse",
     "WebhookEndpointSecretResponse",
     "WebhookEventEnvelope",
+    "WebhookAlertResponse",
     "WebhookOwner",
+    "WebhookPauseRequest",
+    "WebhookReplayRequest",
+    "WebhookReplayResponse",
     "WebhookRotateSecretResponse",
+    "WebhookSlaResponse",
     "WebhookSubscriptionCreate",
     "WebhookSubscriptionResponse",
     "WebhookTestResponse",
