@@ -46,6 +46,36 @@ def aggregate_daily_task(date_from: date, date_to: date) -> dict[str, int]:
         session.close()
 
 
+@celery_client.task(name="bi.aggregate_price_versions")
+def aggregate_price_versions_task(date_from: date, date_to: date) -> dict[str, int]:
+    session = get_sessionmaker()()
+    try:
+        updated = bi_service.aggregate_price_version_metrics(session, date_from=date_from, date_to=date_to)
+        session.commit()
+        return {"updated": updated}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("bi.aggregate_price_versions_failed")
+        raise
+    finally:
+        session.close()
+
+
+@celery_client.task(name="bi.aggregate_offers")
+def aggregate_offers_task(date_from: date, date_to: date) -> dict[str, int]:
+    session = get_sessionmaker()()
+    try:
+        updated = bi_service.aggregate_offer_metrics(session, date_from=date_from, date_to=date_to)
+        session.commit()
+        return {"updated": updated}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("bi.aggregate_offers_failed")
+        raise
+    finally:
+        session.close()
+
+
 @celery_client.task(name="bi.backfill")
 def backfill_task(date_from: date, date_to: date) -> dict[str, int]:
     session = get_sessionmaker()()
@@ -78,6 +108,8 @@ def generate_export_task(export_id: str) -> dict[str, str]:
 
 __all__ = [
     "aggregate_daily_task",
+    "aggregate_offers_task",
+    "aggregate_price_versions_task",
     "backfill_task",
     "generate_export_task",
     "ingest_events_task",

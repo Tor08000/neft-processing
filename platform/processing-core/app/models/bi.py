@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from uuid import uuid4
-
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -10,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -141,6 +140,47 @@ class BiDailyMetric(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class BiPriceVersionMetric(Base):
+    __tablename__ = "bi_price_version_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "partner_id",
+            "price_version_id",
+            "date",
+            name="uq_bi_price_version_metric",
+        ),
+        {"schema": "bi"},
+    )
+
+    tenant_id = Column(Integer, nullable=False, index=True)
+    partner_id = Column(String(64), primary_key=True)
+    price_version_id = Column(String(64), primary_key=True)
+    date = Column(Date, primary_key=True)
+    orders_count = Column(BigInteger, nullable=False, default=0)
+    completed_orders_count = Column(BigInteger, nullable=False, default=0)
+    revenue_total = Column(BigInteger, nullable=False, default=0)
+    avg_order_value = Column(BigInteger, nullable=False, default=0)
+    refunds_count = Column(BigInteger, nullable=False, default=0)
+
+
+class BiOfferMetric(Base):
+    __tablename__ = "bi_offer_metrics"
+    __table_args__ = (
+        UniqueConstraint("partner_id", "offer_id", "date", name="uq_bi_offer_metric"),
+        {"schema": "bi"},
+    )
+
+    tenant_id = Column(Integer, nullable=False, index=True)
+    partner_id = Column(String(64), primary_key=True)
+    offer_id = Column(String(64), primary_key=True)
+    date = Column(Date, primary_key=True)
+    views_count = Column(BigInteger, nullable=True)
+    orders_count = Column(BigInteger, nullable=False, default=0)
+    conversion_rate = Column(Numeric(10, 4), nullable=True)
+    avg_price = Column(BigInteger, nullable=False, default=0)
+    revenue_total = Column(BigInteger, nullable=False, default=0)
+
+
 class BiExportBatch(Base):
     __tablename__ = "bi_export_batches"
     __table_args__ = {"schema": "bi"}
@@ -176,7 +216,9 @@ __all__ = [
     "BiExportFormat",
     "BiExportKind",
     "BiExportStatus",
+    "BiOfferMetric",
     "BiOrderEvent",
     "BiPayoutEvent",
+    "BiPriceVersionMetric",
     "BiScopeType",
 ]

@@ -22,6 +22,7 @@ import { RefundDetailsPage } from "./pages/RefundDetailsPage";
 import { ServicesCatalogPage } from "./pages/ServicesCatalogPage";
 import { ServiceDetailsPage } from "./pages/ServiceDetailsPage";
 import { PricesPage } from "./pages/PricesPage";
+import { PriceAnalyticsPage } from "./pages/PriceAnalyticsPage";
 import { PriceVersionDetailsPage } from "./pages/PriceVersionDetailsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -43,6 +44,7 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
             <Route path="/prices" element={<PricesPage />} />
+            <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
             <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
             <Route path="/payouts" element={<PayoutsPage />} />
             <Route path="/payouts/:id" element={<SettlementDetailsPage />} />

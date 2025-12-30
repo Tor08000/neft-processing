@@ -7,7 +7,15 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.bi import BiCursor, BiDailyMetric, BiDeclineEvent, BiOrderEvent, BiPayoutEvent
+from app.models.bi import (
+    BiCursor,
+    BiDailyMetric,
+    BiDeclineEvent,
+    BiOfferMetric,
+    BiOrderEvent,
+    BiPayoutEvent,
+    BiPriceVersionMetric,
+)
 
 
 def _is_postgres(db: Session) -> bool:
@@ -114,6 +122,52 @@ def upsert_daily_metrics(db: Session, rows: Iterable[dict]) -> int:
     return len(rows_list)
 
 
+def upsert_price_version_metrics(db: Session, rows: Iterable[dict]) -> int:
+    rows_list = list(rows)
+    if not rows_list:
+        return 0
+    if _is_postgres(db):
+        stmt = pg_insert(BiPriceVersionMetric).values(rows_list)
+        update_cols = {
+            col.name: getattr(stmt.excluded, col.name)
+            for col in BiPriceVersionMetric.__table__.columns
+            if col.name not in {"partner_id", "price_version_id", "date"}
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["partner_id", "price_version_id", "date"],
+            set_=update_cols,
+        )
+        db.execute(stmt)
+    else:
+        for row in rows_list:
+            db.merge(BiPriceVersionMetric(**row))
+    db.commit()
+    return len(rows_list)
+
+
+def upsert_offer_metrics(db: Session, rows: Iterable[dict]) -> int:
+    rows_list = list(rows)
+    if not rows_list:
+        return 0
+    if _is_postgres(db):
+        stmt = pg_insert(BiOfferMetric).values(rows_list)
+        update_cols = {
+            col.name: getattr(stmt.excluded, col.name)
+            for col in BiOfferMetric.__table__.columns
+            if col.name not in {"partner_id", "offer_id", "date"}
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["partner_id", "offer_id", "date"],
+            set_=update_cols,
+        )
+        db.execute(stmt)
+    else:
+        for row in rows_list:
+            db.merge(BiOfferMetric(**row))
+    db.commit()
+    return len(rows_list)
+
+
 def get_latest_event_time(db: Session, model, *, default: datetime | None = None) -> datetime | None:
     value = db.query(func.max(model.occurred_at)).scalar()
     return value or default
@@ -122,10 +176,11 @@ def get_latest_event_time(db: Session, model, *, default: datetime | None = None
 __all__ = [
     "get_cursor",
     "get_latest_event_time",
+    "upsert_offer_metrics",
+    "upsert_price_version_metrics",
     "upsert_cursor",
     "upsert_daily_metrics",
     "upsert_decline_events",
     "upsert_order_events",
     "upsert_payout_events",
 ]
-

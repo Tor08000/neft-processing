@@ -3,6 +3,10 @@ import type {
   DiffResult,
   PriceAuditResponse,
   PriceImportResult,
+  PriceAnalyticsInsight,
+  PriceAnalyticsOffer,
+  PriceAnalyticsSeriesPoint,
+  PriceAnalyticsVersion,
   PriceItemsResponse,
   PriceVersion,
   PriceVersionsResponse,
@@ -25,6 +29,19 @@ export interface CreatePriceVersionRequest {
 export interface ImportPriceVersionRequest {
   format: "CSV" | "JSON";
   content_base64: string;
+}
+
+export interface PriceAnalyticsFilters {
+  from: string;
+  to: string;
+}
+
+export interface PriceAnalyticsOffersFilters extends PriceAnalyticsFilters {
+  price_version_id?: string;
+}
+
+export interface PriceAnalyticsSeriesFilters extends PriceAnalyticsFilters {
+  price_version_id: string;
 }
 
 const toQuery = (filters: PriceVersionsFilters): string => {
@@ -79,3 +96,26 @@ export const fetchPriceVersionDiff = (token: string, versionId: string, toVersio
 
 export const fetchPriceVersionAudit = (token: string, versionId: string) =>
   request<PriceAuditResponse>(`/partner/prices/versions/${versionId}/audit`, {}, token);
+
+const toAnalyticsQuery = (filters: Record<string, string | undefined>): string => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) {
+      params.set(key, value);
+    }
+  });
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+export const fetchPriceAnalyticsVersions = (token: string, filters: PriceAnalyticsFilters) =>
+  request<PriceAnalyticsVersion[]>(`/partner/prices/analytics/versions${toAnalyticsQuery(filters)}`, {}, token);
+
+export const fetchPriceAnalyticsVersionSeries = (token: string, filters: PriceAnalyticsSeriesFilters) =>
+  request<PriceAnalyticsSeriesPoint[]>(`/partner/prices/analytics/versions/series${toAnalyticsQuery(filters)}`, {}, token);
+
+export const fetchPriceAnalyticsOffers = (token: string, filters: PriceAnalyticsOffersFilters) =>
+  request<PriceAnalyticsOffer[]>(`/partner/prices/analytics/offers${toAnalyticsQuery(filters)}`, {}, token);
+
+export const fetchPriceAnalyticsInsights = (token: string, filters: PriceAnalyticsFilters) =>
+  request<PriceAnalyticsInsight[]>(`/partner/prices/analytics/insights${toAnalyticsQuery(filters)}`, {}, token);

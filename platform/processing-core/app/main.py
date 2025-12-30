@@ -102,6 +102,11 @@ try:
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     bi_router = None  # type: ignore
 
+try:
+    from app.api.v1.endpoints.pricing_intelligence import router as pricing_intelligence_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    pricing_intelligence_router = None  # type: ignore
+
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
@@ -352,6 +357,8 @@ if edo_events_router is not None:
     app.include_router(edo_events_router, prefix="")
 if bi_router is not None:
     app.include_router(bi_router, prefix="")
+if pricing_intelligence_router is not None:
+    app.include_router(pricing_intelligence_router, prefix="")
 
 if intake_router is not None:
     app.include_router(intake_router, prefix="")
@@ -389,6 +396,8 @@ if edo_events_router is not None:
     core_prefixed_router.include_router(edo_events_router, prefix="")
 if bi_router is not None:
     core_prefixed_router.include_router(bi_router, prefix="")
+if pricing_intelligence_router is not None:
+    core_prefixed_router.include_router(pricing_intelligence_router, prefix="")
 if intake_router is not None:
     core_prefixed_router.include_router(intake_router, prefix="")
 if partners_router is not None:

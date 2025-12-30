@@ -86,3 +86,33 @@ export interface PriceImportResult {
   errors_found: number;
   sample_errors?: PriceItemError[] | null;
 }
+
+export interface PriceAnalyticsVersion {
+  price_version_id: string;
+  published_at: string | null;
+  orders_count: number;
+  revenue_total: number;
+  avg_order_value: number;
+  refunds_count: number;
+}
+
+export interface PriceAnalyticsOffer {
+  offer_id: string;
+  orders_count: number;
+  conversion_rate: number | null;
+  avg_price: number;
+  revenue_total: number;
+}
+
+export interface PriceAnalyticsInsight {
+  type: string;
+  severity: "INFO" | "WARN" | "ERROR" | string;
+  message: string;
+  price_version_id?: string | null;
+}
+
+export interface PriceAnalyticsSeriesPoint {
+  date: string;
+  orders_count: number;
+  revenue_total: number;
+}
