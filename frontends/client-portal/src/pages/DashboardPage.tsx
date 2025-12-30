@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchSpendDashboard } from "../api/spend";
 import { fetchOperations } from "../api/operations";
+import { fetchDocuments } from "../api/documents";
+import { fetchExports } from "../api/exports";
 import { useAuth } from "../auth/AuthContext";
 import type { OperationSummary } from "../types/operations";
 import type { SpendDashboardSummary } from "../types/spend";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { formatMoney } from "../utils/format";
+import { canAccessFinance, canAccessOps } from "../utils/roles";
 
 const TOP_LIMIT = 5;
 
@@ -25,6 +29,8 @@ export function DashboardPage() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<SpendDashboardSummary | null>(null);
   const [operations, setOperations] = useState<OperationSummary[]>([]);
+  const [docsAttention, setDocsAttention] = useState(0);
+  const [exportsAttention, setExportsAttention] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,39 +38,60 @@ export function DashboardPage() {
     if (!user) return;
     setIsLoading(true);
     setError(null);
-    fetchSpendDashboard(user)
-      .then((data) => setSummary(data.summary))
+    Promise.all([
+      fetchSpendDashboard(user),
+      fetchOperations(user, { limit: 100, offset: 0 }),
+      fetchDocuments(user, { limit: 50, offset: 0 }),
+      fetchExports(user),
+    ])
+      .then(([dashboard, ops, docs, exportsList]) => {
+        setSummary(dashboard.summary);
+        setOperations(ops.items);
+        setDocsAttention(
+          docs.items.filter(
+            (doc) =>
+              doc.signature_status !== "signed" ||
+              doc.edo_status === "failed" ||
+              doc.edo_status === "rejected",
+          ).length,
+        );
+        setExportsAttention(
+          exportsList.items.filter(
+            (item) =>
+              item.reconciliation_status === "mismatch" ||
+              item.reconciliation_verdict === "MISMATCH" ||
+              item.status === "FAILED",
+          ).length,
+        );
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    fetchOperations(user, { limit: 100, offset: 0 })
-      .then((resp) => setOperations(resp.items))
-      .catch((err: Error) => setError(err.message));
-  }, [user]);
-
   const topCategories = useMemo(() => summarizeTop(operations, "product_type"), [operations]);
   const topMerchants = useMemo(() => summarizeTop(operations, "merchant_id"), [operations]);
+  const topCards = useMemo(() => summarizeTop(operations, "card_id"), [operations]);
   const declinedShare = useMemo(() => {
     if (operations.length === 0) return 0;
     const declined = operations.filter((op) => op.status === "DECLINED").length;
     return Math.round((declined / operations.length) * 100);
   }, [operations]);
+  const declinedCount = useMemo(() => operations.filter((op) => op.status === "DECLINED").length, [operations]);
+  const topDeclineReason = useMemo(() => {
+    const declined = operations.filter((op) => op.status === "DECLINED" && op.primary_reason);
+    if (!declined.length) return "—";
+    const counts = summarizeTop(declined, "primary_reason");
+    return counts[0]?.[0] ?? "—";
+  }, [operations]);
+  const highRiskCount = useMemo(
+    () => operations.filter((op) => ["HIGH", "CRITICAL"].includes(op.risk_level ?? "")).length,
+    [operations],
+  );
 
   const trendMax = Math.max(...(summary?.spending_trend ?? [0]));
 
   if (!user) {
     return null;
-  }
-
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
   }
 
   return (
@@ -75,36 +102,53 @@ export function DashboardPage() {
             <h2>Обзор расходов</h2>
             <p className="muted">Spend dashboard с ключевыми метриками по операциям.</p>
           </div>
-          <Link className="ghost" to="/spend/transactions">
-            Перейти к операциям
-          </Link>
+          {canAccessOps(user) ? (
+            <Link className="ghost" to="/operations">
+              Перейти к операциям
+            </Link>
+          ) : null}
         </div>
-        {isLoading ? (
-          <div className="skeleton-stack">
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-          </div>
-        ) : (
+        {isLoading ? <AppLoadingState /> : null}
+        {error ? <AppErrorState message={error} /> : null}
+        {!isLoading && !error && summary ? (
           <div className="stats-grid">
             <div className="stat">
-              <div className="stat__label">Сумма расходов ({summary?.period ?? "период"})</div>
-              <div className="stat__value">{formatMoney(summary?.total_amount ?? 0)}</div>
+              <div className="stat__label">Total spend (MTD)</div>
+              <div className="stat__value">{formatMoney(summary.total_amount)}</div>
             </div>
             <div className="stat">
-              <div className="stat__label">Кол-во операций</div>
-              <div className="stat__value">{summary?.total_operations ?? operations.length}</div>
+              <div className="stat__label">Total spend (selected period)</div>
+              <div className="stat__value">{formatMoney(summary.total_amount)}</div>
             </div>
             <div className="stat">
-              <div className="stat__label">Активные лимиты</div>
-              <div className="stat__value">{summary?.active_limits ?? "—"}</div>
+              <div className="stat__label">Δ к прошлому периоду</div>
+              <div className="stat__value">{summary.active_limits ? `${summary.active_limits}%` : "—"}</div>
             </div>
             <div className="stat">
-              <div className="stat__label">Доля отказов</div>
+              <div className="stat__label">Declines</div>
+              <div className="stat__value">
+                {declinedCount} · {topDeclineReason}
+              </div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">High-risk operations</div>
+              <div className="stat__value">{highRiskCount}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">Documents requiring action</div>
+              <div className="stat__value">{docsAttention}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">Exports requiring attention</div>
+              <div className="stat__value">{exportsAttention}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">Declined share</div>
               <div className="stat__value">{declinedShare}%</div>
             </div>
           </div>
-        )}
+        ) : null}
+        {!isLoading && !error && !summary ? <AppEmptyState description="Нет данных для обзора." /> : null}
       </section>
 
       <section className="grid two">
@@ -151,6 +195,24 @@ export function DashboardPage() {
 
       <section className="grid two">
         <div className="card">
+          <h3>Top cards / vehicles</h3>
+          {topCards.length ? (
+            <ul className="bars">
+              {topCards.map(([label, count]) => (
+                <li key={label}>
+                  <span className="muted small">{label}</span>
+                  <div className="bar">
+                    <span className="bar__fill" style={{ width: `${(count / operations.length) * 100}%` }} />
+                  </div>
+                  <span className="small">{count}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Нет данных по картам.</p>
+          )}
+        </div>
+        <div className="card">
           <h3>Top categories</h3>
           {topCategories.length ? (
             <ul className="bars">
@@ -168,17 +230,32 @@ export function DashboardPage() {
             <p className="muted">Нет данных по категориям.</p>
           )}
         </div>
-        <div className="card">
-          <h3>Explain readiness</h3>
-          <p className="muted">
-            Для каждой операции доступно Explain с причиной, действиями и SLA. Откройте любую операцию, чтобы
-            увидеть детализацию.
-          </p>
-          <div className="actions">
-            <Link className="ghost" to="/explain">
-              Перейти к explain
+      </section>
+
+      <section className="card">
+        <h3>Explain readiness</h3>
+        <p className="muted">
+          Для каждой операции доступно Explain с причиной, действиями и SLA. Откройте любую операцию, чтобы
+          увидеть детализацию.
+        </p>
+        <div className="actions">
+          <Link className="ghost" to="/explain">
+            Перейти к explain
+          </Link>
+          {canAccessFinance(user) ? (
+            <Link className="ghost" to="/exports">
+              Проверить выгрузки
             </Link>
-          </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>Доступно вам</h3>
+        <div className="actions">
+          {canAccessOps(user) ? <span className="pill pill--success">Operations</span> : null}
+          {canAccessFinance(user) ? <span className="pill pill--success">Finance/Docs/Exports</span> : null}
+          <span className="pill pill--neutral">Read-only</span>
         </div>
       </section>
     </div>

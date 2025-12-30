@@ -3,9 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocumentDetails } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
+import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import type { ClientDocumentDetails } from "../types/documents";
 import { formatDate, formatDateTime } from "../utils/format";
 import { getDocumentStatusLabel, getDocumentStatusTone, getDocumentTypeLabel } from "../utils/documents";
+import { canAccessFinance } from "../utils/roles";
 
 const LEGAL_TEXT =
   "Документ сформирован из данных системы и не изменяется после подтверждения. " +
@@ -17,6 +19,7 @@ export function ClientDocumentDetailsPage() {
   const [document, setDocument] = useState<ClientDocumentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState("files");
 
   useEffect(() => {
     if (!id) return;
@@ -28,10 +31,7 @@ export function ClientDocumentDetailsPage() {
       .finally(() => setIsLoading(false));
   }, [id, user]);
 
-  const canAcknowledge = useMemo(() => {
-    const roles = user?.roles ?? [];
-    return roles.some((role) => ["CLIENT_OWNER", "CLIENT_ADMIN"].includes(role));
-  }, [user?.roles]);
+  const canAcknowledge = useMemo(() => canAccessFinance(user), [user]);
 
   const handleDownload = async (fileType: "PDF" | "XLSX") => {
     if (!document) return;
@@ -61,31 +61,19 @@ export function ClientDocumentDetailsPage() {
   };
 
   if (!id) {
-    return (
-      <div className="card error" role="alert">
-        Документ не найден.
-      </div>
-    );
+    return <AppEmptyState title="Документ не найден" description="Проверьте URL и идентификатор документа." />;
+  }
+
+  if (!user) {
+    return <AppForbiddenState message="Требуется авторизация." />;
   }
 
   if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
+    return <AppErrorState message={error} />;
   }
 
   if (isLoading || !document) {
-    return (
-      <div className="card">
-        <div className="skeleton-stack">
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-        </div>
-      </div>
-    );
+    return <AppLoadingState label="Загружаем документ..." />;
   }
 
   const risk = document.risk ?? null;
@@ -114,10 +102,18 @@ export function ClientDocumentDetailsPage() {
 
       <div className="meta-grid">
         <div>
-          <div className="label">Статус</div>
+          <div className="label">Lifecycle</div>
           <span className={`pill pill--${getDocumentStatusTone(document.status)}`}>
             {getDocumentStatusLabel(document.status)}
           </span>
+        </div>
+        <div>
+          <div className="label">Signature status</div>
+          <div>{document.signatures?.[0]?.status ?? "—"}</div>
+        </div>
+        <div>
+          <div className="label">EDO status</div>
+          <div>{document.edo_events?.[0]?.status ?? "—"}</div>
         </div>
         <div>
           <div className="label">Номер</div>
@@ -130,10 +126,6 @@ export function ClientDocumentDetailsPage() {
         <div>
           <div className="label">Дата подтверждения</div>
           <div>{document.ack_at ? formatDateTime(document.ack_at) : "—"}</div>
-        </div>
-        <div>
-          <div className="label">Risk v4</div>
-          <div>{document.risk?.state ?? "—"}</div>
         </div>
         <div>
           <div className="label">Hash документа</div>
@@ -251,112 +243,130 @@ export function ClientDocumentDetailsPage() {
       ) : null}
 
       <div className="card__section">
-        <h3>Файлы</h3>
-        {document.files.length === 0 ? (
-          <div className="muted">Файлы пока не опубликованы.</div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Тип</th>
-                <th>Размер</th>
-                <th>SHA256</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {document.files.map((file) => (
-                <tr key={`${file.file_type}-${file.sha256}`}>
-                  <td>{file.file_type}</td>
-                  <td>{Math.round(file.size_bytes / 1024)} КБ</td>
-                  <td>
-                    <div className="stack-inline">
-                      <span className="muted small">{file.sha256.slice(0, 12)}…</span>
-                      <CopyButton value={file.sha256} label="Скопировать" />
-                    </div>
-                  </td>
-                  <td>
-                    <div className="actions">
-                      {file.file_type === "PDF" ? (
-                        <button type="button" className="ghost" onClick={() => handleDownload("PDF")}>
-                          Скачать PDF
-                        </button>
-                      ) : null}
-                      {file.file_type === "XLSX" ? (
-                        <button type="button" className="ghost" onClick={() => handleDownload("XLSX")}>
-                          Скачать XLSX
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
+        <div className="tabs">
+          {["files", "signatures", "edo", "audit"].map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={tab === item ? "primary" : "secondary"}
+              onClick={() => setTab(item)}
+            >
+              {item === "files"
+                ? "Files"
+                : item === "signatures"
+                  ? "Signatures"
+                  : item === "edo"
+                    ? "EDO events"
+                    : "Audit"}
+            </button>
+          ))}
+        </div>
+        {tab === "files" ? (
+          document.files.length === 0 ? (
+            <div className="muted">Файлы пока не опубликованы.</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Размер</th>
+                  <th>SHA256</th>
+                  <th>Действия</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="card__section">
-        <h3>Подпись</h3>
-        {document.signatures && document.signatures.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Статус</th>
-                <th>Провайдер</th>
-                <th>Дата</th>
-                <th>Hash</th>
-              </tr>
-            </thead>
-            <tbody>
-              {document.signatures.map((signature) => (
-                <tr key={signature.id}>
-                  <td>{signature.status}</td>
-                  <td>{signature.provider ?? "—"}</td>
-                  <td>{signature.signed_at ? formatDateTime(signature.signed_at) : "—"}</td>
-                  <td>
-                    <div className="stack-inline">
-                      <span className="muted small">
-                        {signature.file_hash ? `${signature.file_hash.slice(0, 12)}…` : "—"}
-                      </span>
-                      <CopyButton value={signature.file_hash ?? undefined} label="Скопировать" />
-                    </div>
-                  </td>
+              </thead>
+              <tbody>
+                {document.files.map((file) => (
+                  <tr key={`${file.file_type}-${file.sha256}`}>
+                    <td>{file.file_type}</td>
+                    <td>{Math.round(file.size_bytes / 1024)} КБ</td>
+                    <td>
+                      <div className="stack-inline">
+                        <span className="muted small">{file.sha256.slice(0, 12)}…</span>
+                        <CopyButton value={file.sha256} label="Скопировать" />
+                      </div>
+                    </td>
+                    <td>
+                      <div className="actions">
+                        {file.file_type === "PDF" ? (
+                          <button type="button" className="ghost" onClick={() => handleDownload("PDF")}>
+                            Скачать PDF
+                          </button>
+                        ) : null}
+                        {file.file_type === "XLSX" ? (
+                          <button type="button" className="ghost" onClick={() => handleDownload("XLSX")}>
+                            Скачать XLSX
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : null}
+        {tab === "signatures" ? (
+          document.signatures && document.signatures.length > 0 ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Статус</th>
+                  <th>Провайдер</th>
+                  <th>Дата</th>
+                  <th>Hash</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="muted">Данных по подписи пока нет.</div>
-        )}
-      </div>
-
-      <div className="card__section">
-        <h3>ЭДО</h3>
-        {document.edo_events && document.edo_events.length > 0 ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Статус</th>
-                <th>Провайдер</th>
-                <th>Дата</th>
-                <th>Комментарий</th>
-              </tr>
-            </thead>
-            <tbody>
-              {document.edo_events.map((event) => (
-                <tr key={event.id}>
-                  <td>{event.status}</td>
-                  <td>{event.provider ?? "—"}</td>
-                  <td>{event.created_at ? formatDateTime(event.created_at) : "—"}</td>
-                  <td>{event.message ?? "—"}</td>
+              </thead>
+              <tbody>
+                {document.signatures.map((signature) => (
+                  <tr key={signature.id}>
+                    <td>{signature.status}</td>
+                    <td>{signature.provider ?? "—"}</td>
+                    <td>{signature.signed_at ? formatDateTime(signature.signed_at) : "—"}</td>
+                    <td>
+                      <div className="stack-inline">
+                        <span className="muted small">
+                          {signature.file_hash ? `${signature.file_hash.slice(0, 12)}…` : "—"}
+                        </span>
+                        <CopyButton value={signature.file_hash ?? undefined} label="Скопировать" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="muted">Данных по подписи пока нет.</div>
+          )
+        ) : null}
+        {tab === "edo" ? (
+          document.edo_events && document.edo_events.length > 0 ? (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Статус</th>
+                  <th>Провайдер</th>
+                  <th>Дата</th>
+                  <th>Комментарий</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="muted">События ЭДО отсутствуют.</div>
-        )}
+              </thead>
+              <tbody>
+                {document.edo_events.map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.status}</td>
+                    <td>{event.provider ?? "—"}</td>
+                    <td>{event.created_at ? formatDateTime(event.created_at) : "—"}</td>
+                    <td>{event.message ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="muted">События ЭДО отсутствуют.</div>
+          )
+        ) : null}
+        {tab === "audit" ? (
+          <div className="muted">Audit summary доступен в журнале событий ниже.</div>
+        ) : null}
       </div>
 
       <div className="card__section">
@@ -364,8 +374,18 @@ export function ClientDocumentDetailsPage() {
         <div className="actions">
           {document.status === "ISSUED" && canAcknowledge ? (
             <button type="button" className="ghost" onClick={handleAck}>
-              Подтвердить корректность
+              Request sign
             </button>
+          ) : null}
+          {canAcknowledge ? (
+            <>
+              <button type="button" className="ghost" disabled>
+                Dispatch to EDO
+              </button>
+              <button type="button" className="ghost" disabled>
+                Resend to EDO
+              </button>
+            </>
           ) : null}
           <Link className="ghost" to="/actions">
             Перейти к действиям
@@ -386,17 +406,17 @@ export function ClientDocumentDetailsPage() {
                   <span className="timeline-item__title">{event.event_type}</span>
                   <span className="muted small">{formatDateTime(event.ts)}</span>
                 </div>
-              <div className="timeline-item__body">
-                <span className="muted small">Actor: {event.actor_type ?? "—"}</span>
-                <span className="muted small">Actor ID: {event.actor_id ?? "—"}</span>
-                <span className="muted small">Action: {event.action ?? "—"}</span>
-                <span className="muted small">Hash: {event.hash ? `${event.hash.slice(0, 8)}…` : "—"}</span>
-                <span className="muted small">Prev: {event.prev_hash ? `${event.prev_hash.slice(0, 8)}…` : "—"}</span>
+                <div className="timeline-item__body">
+                  <span className="muted small">Actor: {event.actor_type ?? "—"}</span>
+                  <span className="muted small">Actor ID: {event.actor_id ?? "—"}</span>
+                  <span className="muted small">Action: {event.action ?? "—"}</span>
+                  <span className="muted small">Hash: {event.hash ? `${event.hash.slice(0, 8)}…` : "—"}</span>
+                  <span className="muted small">Prev: {event.prev_hash ? `${event.prev_hash.slice(0, 8)}…` : "—"}</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

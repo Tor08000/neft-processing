@@ -1,15 +1,23 @@
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchExports } from "../api/exports";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
+import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import type { AccountingExportItem } from "../types/exports";
 import { formatDate, formatDateTime } from "../utils/format";
+import { canAccessFinance } from "../utils/roles";
 
 export function FinanceExportsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<AccountingExportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    type: "",
+    status: "",
+    reconciliation: "",
+  });
 
   useEffect(() => {
     setIsLoading(true);
@@ -20,12 +28,30 @@ export function FinanceExportsPage() {
       .finally(() => setIsLoading(false));
   }, [user]);
 
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const matchesType = filters.type ? item.type === filters.type : true;
+        const matchesStatus = filters.status ? item.status === filters.status : true;
+        const matchesRecon = filters.reconciliation
+          ? item.reconciliation_status === filters.reconciliation || item.reconciliation_verdict === filters.reconciliation
+          : true;
+        return matchesType && matchesStatus && matchesRecon;
+      }),
+    [filters, items],
+  );
+
+  const handleFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  if (!user) {
+    return <AppForbiddenState message="Требуется авторизация." />;
+  }
+
+  if (!canAccessFinance(user)) {
+    return <AppForbiddenState message="Недостаточно прав для экспорта и сверок." />;
   }
 
   return (
@@ -36,19 +62,39 @@ export function FinanceExportsPage() {
           <p className="muted">Готовые файлы для скачивания и архив документов.</p>
         </div>
       </div>
+      <div className="filters">
+        <div className="filter">
+          <label htmlFor="type">Type</label>
+          <select id="type" name="type" value={filters.type} onChange={handleFilterChange}>
+            <option value="">Все</option>
+            <option value="CHARGES">CHARGES</option>
+            <option value="SETTLEMENT">SETTLEMENT</option>
+          </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="status">Status</label>
+          <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
+            <option value="">Все</option>
+            <option value="GENERATED">GENERATED</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="reconciliation">Reconciliation</label>
+          <select id="reconciliation" name="reconciliation" value={filters.reconciliation} onChange={handleFilterChange}>
+            <option value="">Все</option>
+            <option value="matched">matched</option>
+            <option value="mismatch">mismatch</option>
+          </select>
+        </div>
+      </div>
 
-      {isLoading ? (
-        <div className="skeleton-stack">
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-        </div>
-      ) : items.length === 0 ? (
-        <div className="empty-state">
-          <p className="muted">Отчеты пока не готовы.</p>
-          <p className="muted small">Скоро здесь появятся выгрузки по счетам и отчетность.</p>
-        </div>
-      ) : (
+      {isLoading ? <AppLoadingState /> : null}
+      {error ? <AppErrorState message={error} /> : null}
+      {!isLoading && !error && filteredItems.length === 0 ? (
+        <AppEmptyState title="Отчеты пока не готовы" description="Скоро здесь появятся выгрузки." />
+      ) : null}
+      {!isLoading && !error && filteredItems.length > 0 ? (
         <table className="table">
           <thead>
             <tr>
@@ -63,7 +109,7 @@ export function FinanceExportsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <tr key={`${item.id ?? item.type}-${item.download_url ?? item.created_at}`}>
                 <td>{item.type ?? item.title ?? "—"}</td>
                 <td>
@@ -77,24 +123,34 @@ export function FinanceExportsPage() {
                 <td>{item.mapping_version ?? "—"}</td>
                 <td>{item.status ?? "GENERATED"}</td>
                 <td>{item.erp_status ?? "—"}</td>
-                <td>{item.reconciliation_status ?? "—"}</td>
+                <td>{item.reconciliation_status ?? item.reconciliation_verdict ?? "—"}</td>
                 <td>
-                  {item.download_url ? (
-                    <div className="stack-inline">
-                      <a className="ghost" href={item.download_url}>
-                        Скачать
-                      </a>
-                      <CopyButton value={item.download_url} label="Скопировать ссылку" />
-                    </div>
-                  ) : (
-                    <span className="muted small">Нет файла</span>
-                  )}
+                  <div className="actions">
+                    {item.download_url ? (
+                      <div className="stack-inline">
+                        <a className="ghost" href={item.download_url}>
+                          Скачать
+                        </a>
+                        <CopyButton value={item.download_url} label="Скопировать ссылку" />
+                      </div>
+                    ) : (
+                      <span className="muted small">Нет файла</span>
+                    )}
+                    {item.id ? (
+                      <Link className="ghost" to={`/exports/${item.id}`}>
+                        Детали
+                      </Link>
+                    ) : null}
+                    <button type="button" className="ghost" disabled>
+                      Confirm received
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      )}
+      ) : null}
     </div>
   );
 }

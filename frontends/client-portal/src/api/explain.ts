@@ -1,6 +1,6 @@
 import { request } from "./http";
 import type { AuthSession } from "./types";
-import type { UnifiedExplainResponse } from "../types/explain";
+import type { ExplainInsightsResponse, UnifiedExplainResponse } from "../types/explain";
 
 const withToken = (user: AuthSession | null): string | undefined => user?.token;
 
@@ -20,4 +20,12 @@ export function fetchUnifiedExplain(user: AuthSession | null, params: ExplainPar
   if (params.view) search.set("view", params.view);
   if (params.depth) search.set("depth", params.depth.toString());
   return request<UnifiedExplainResponse>(`/explain?${search.toString()}`, { method: "GET" }, withToken(user));
+}
+
+export function fetchExplainInsights(
+  user: AuthSession | null,
+  params: { from: string; to: string },
+): Promise<ExplainInsightsResponse> {
+  const search = new URLSearchParams({ from: params.from, to: params.to });
+  return request<ExplainInsightsResponse>(`/explain/insights?${search.toString()}`, { method: "GET" }, withToken(user));
 }

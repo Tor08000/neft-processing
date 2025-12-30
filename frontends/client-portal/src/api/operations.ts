@@ -11,6 +11,8 @@ interface OperationFilters {
   to?: string;
   merchantId?: string;
   productType?: string;
+  vehicleId?: string;
+  driverId?: string;
   minAmount?: string;
   maxAmount?: string;
   limit?: number;
@@ -25,6 +27,8 @@ export function fetchOperations(user: AuthSession | null, filters: OperationFilt
   if (filters.to) search.set("to", filters.to);
   if (filters.merchantId) search.set("merchant_id", filters.merchantId);
   if (filters.productType) search.set("product_type", filters.productType);
+  if (filters.vehicleId) search.set("vehicle_id", filters.vehicleId);
+  if (filters.driverId) search.set("driver_id", filters.driverId);
   if (filters.minAmount) search.set("min_amount", filters.minAmount);
   if (filters.maxAmount) search.set("max_amount", filters.maxAmount);
   if (filters.limit) search.set("limit", filters.limit.toString());

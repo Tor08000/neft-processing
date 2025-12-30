@@ -1,8 +1,14 @@
-import { useMemo, useState } from "react";
-import { acknowledgeDocument } from "../api/documents";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { acknowledgeDocument, fetchDocuments } from "../api/documents";
+import { fetchExports } from "../api/exports";
 import { acknowledgeReconciliationRequest } from "../api/reconciliation";
 import { createInvoiceMessage } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
+import { AppErrorState, AppLoadingState } from "../components/states";
+import type { ClientDocumentSummary } from "../types/documents";
+import type { AccountingExportItem } from "../types/exports";
+import { canAccessFinance } from "../utils/roles";
 
 const DOCUMENT_TYPES = [
   { value: "INVOICE_PDF", label: "Invoice PDF" },
@@ -18,46 +24,63 @@ export function ActionsPage() {
   const [supportMessage, setSupportMessage] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<ClientDocumentSummary[]>([]);
+  const [exports, setExports] = useState<AccountingExportItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const canAct = useMemo(() => {
-    const roles = user?.roles ?? [];
-    return roles.some((role) => ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_ADMIN"].includes(role));
-  }, [user?.roles]);
+    return canAccessFinance(user);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    setIsLoading(true);
+    Promise.all([fetchDocuments(user, { limit: 50, offset: 0 }), fetchExports(user)])
+      .then(([docs, exportsResp]) => {
+        setDocuments(docs.items);
+        setExports(exportsResp.items);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false));
+  }, [user]);
 
   const handleAcknowledgeDocument = async () => {
     if (!user) return;
     setError(null);
-    setStatus(null);
+    setStatus("queued");
     try {
       await acknowledgeDocument(documentType, documentId, user);
-      setStatus("Документ подтвержден. correlation_id доступен в audit.");
+      setStatus("success: Документ подтвержден. correlation_id доступен в audit.");
     } catch (err) {
       setError((err as Error).message);
+      setStatus("failed");
     }
   };
 
   const handleConfirmExport = async () => {
     if (!user) return;
     setError(null);
-    setStatus(null);
+    setStatus("queued");
     try {
       await acknowledgeReconciliationRequest(reconciliationId, user);
-      setStatus("Экспорт подтвержден как полученный.");
+      setStatus("success: Экспорт подтвержден как полученный.");
     } catch (err) {
       setError((err as Error).message);
+      setStatus("failed");
     }
   };
 
   const handleSupportRequest = async () => {
     if (!user) return;
     setError(null);
-    setStatus(null);
+    setStatus("queued");
     try {
       const resp = await createInvoiceMessage(invoiceId, supportMessage, user);
-      setStatus(`Запрос отправлен. correlation_id: ${resp.message_id}`);
+      setStatus(`success: Запрос отправлен. correlation_id: ${resp.message_id}`);
       setSupportMessage("");
     } catch (err) {
       setError((err as Error).message);
+      setStatus("failed");
     }
   };
 
@@ -74,12 +97,33 @@ export function ActionsPage() {
             <p className="muted">Безопасные клиентские действия с проверкой ролей и audit.</p>
           </div>
         </div>
-        {error ? (
-          <div className="card error" role="alert">
-            {error}
-          </div>
-        ) : null}
+        {isLoading ? <AppLoadingState /> : null}
+        {error ? <AppErrorState message={error} /> : null}
         {status ? <div className="card success">{status}</div> : null}
+      </section>
+
+      <section className="card">
+        <h3>Inbox</h3>
+        <p className="muted">Все элементы, требующие действий, в одном списке.</p>
+        <ul className="bullets">
+          {documents
+            .filter((doc) => doc.signature_status !== "signed" || doc.edo_status === "failed")
+            .map((doc) => (
+              <li key={doc.id}>
+                Документ {doc.document_type} требует действий ·{" "}
+                <Link to={`/client/documents/${doc.id}`}>Открыть</Link>
+              </li>
+            ))}
+          {exports
+            .filter((item) => item.reconciliation_status === "mismatch" || item.status === "FAILED")
+            .map((item) => (
+              <li key={item.id ?? item.type ?? ""}>
+                Экспорт {item.type ?? item.title ?? "—"} требует внимания ·{" "}
+                {item.id ? <Link to={`/exports/${item.id}`}>Открыть</Link> : "—"}
+              </li>
+            ))}
+          {documents.length === 0 && exports.length === 0 ? <li>Ничего не требует действий.</li> : null}
+        </ul>
       </section>
 
       <section className="card">

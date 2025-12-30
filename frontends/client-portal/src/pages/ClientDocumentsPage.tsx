@@ -2,8 +2,9 @@ import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { ClientDocumentSummary } from "../types/documents";
-import { formatDate } from "../utils/format";
+import { formatDate, formatMoney } from "../utils/format";
 import {
   getDocumentStatusLabel,
   getDocumentStatusTone,
@@ -11,6 +12,7 @@ import {
   getEdoTone,
   getSignatureTone,
 } from "../utils/documents";
+import { canAccessFinance } from "../utils/roles";
 
 const DOCUMENT_TYPES = [
   { value: "", label: "Все типы" },
@@ -36,6 +38,14 @@ const SIGNATURE_TYPES = [
   { value: "pending", label: "Ожидает" },
 ];
 
+const EDO_TYPES = [
+  { value: "", label: "Все" },
+  { value: "sent", label: "Отправлен" },
+  { value: "delivered", label: "Доставлен" },
+  { value: "failed", label: "Ошибка" },
+  { value: "rejected", label: "Отклонен" },
+];
+
 const DEFAULT_LIMIT = 25;
 
 export function ClientDocumentsPage() {
@@ -48,6 +58,8 @@ export function ClientDocumentsPage() {
     documentType: "",
     status: "",
     signature: "",
+    edoStatus: "",
+    requiresAction: "",
     limit: DEFAULT_LIMIT,
   });
   const [offset, setOffset] = useState(0);
@@ -78,7 +90,22 @@ export function ClientDocumentsPage() {
       offset,
     })
       .then((resp) => {
-        setItems(resp.items);
+        const filtered =
+          debouncedFilters.edoStatus || debouncedFilters.requiresAction
+            ? resp.items.filter((item) => {
+                const matchesEdo = debouncedFilters.edoStatus
+                  ? item.edo_status === debouncedFilters.edoStatus
+                  : true;
+                const requiresAction =
+                  debouncedFilters.requiresAction === "yes"
+                    ? item.signature_status !== "signed" ||
+                      item.edo_status === "failed" ||
+                      item.edo_status === "rejected"
+                    : true;
+                return matchesEdo && requiresAction;
+              })
+            : resp.items;
+        setItems(filtered);
         setTotal(resp.total);
       })
       .catch((err: Error) => setError(err.message))
@@ -115,10 +142,7 @@ export function ClientDocumentsPage() {
     }
   };
 
-  const canAcknowledge = useMemo(() => {
-    const roles = user?.roles ?? [];
-    return roles.some((role) => ["CLIENT_OWNER", "CLIENT_ADMIN"].includes(role));
-  }, [user?.roles]);
+  const canAcknowledge = useMemo(() => canAccessFinance(user), [user]);
 
   const totalRange = useMemo(() => {
     if (total === 0) {
@@ -128,14 +152,6 @@ export function ClientDocumentsPage() {
     const to = Math.min(offset + filters.limit, total);
     return `${from}-${to}`;
   }, [filters.limit, offset, total]);
-
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
-  }
 
   return (
     <div className="card">
@@ -192,6 +208,28 @@ export function ClientDocumentsPage() {
           </select>
         </div>
         <div className="filter">
+          <label htmlFor="edoStatus">EDO status</label>
+          <select id="edoStatus" name="edoStatus" value={filters.edoStatus} onChange={handleFilterChange}>
+            {EDO_TYPES.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="requiresAction">Requires action</label>
+          <select
+            id="requiresAction"
+            name="requiresAction"
+            value={filters.requiresAction}
+            onChange={handleFilterChange}
+          >
+            <option value="">Все</option>
+            <option value="yes">Требует действий</option>
+          </select>
+        </div>
+        <div className="filter">
           <label htmlFor="limit">Лимит</label>
           <select id="limit" value={filters.limit} onChange={handleLimitChange}>
             {[25, 50].map((value) => (
@@ -203,103 +241,98 @@ export function ClientDocumentsPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="skeleton-stack">
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-        </div>
-      ) : items.length === 0 ? (
-        <div className="empty-state">
-          <p className="muted">Документы не найдены.</p>
-          <p className="muted small">Проверьте период или тип документа.</p>
-          <div className="actions">
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => setFilters((prev) => ({ ...prev, documentType: "", status: "" }))}
-            >
-              Сбросить фильтры
-            </button>
-            <button type="button" className="ghost" onClick={() => setOffset(0)}>
-              Обновить
-            </button>
-          </div>
-        </div>
-      ) : (
+      {isLoading ? <AppLoadingState /> : null}
+      {error ? <AppErrorState message={error} /> : null}
+      {!isLoading && !error && items.length === 0 ? (
+        <AppEmptyState title="Документы не найдены" description="Проверьте период или тип документа." />
+      ) : null}
+      {!isLoading && !error && items.length > 0 ? (
         <>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Тип</th>
-                <th>Период</th>
-                <th>Номер</th>
-                <th>Статус</th>
-                <th>Подпись</th>
-                <th>ЭДО</th>
-                <th>Требуется действие</th>
-                <th>Дата</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((doc) => (
-                <tr key={doc.id}>
-                  <td>{getDocumentTypeLabel(doc.document_type)}</td>
-                  <td>
-                    {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
-                  </td>
-                  <td>{doc.number ?? "—"}</td>
-                  <td>
-                    <div className="stack-inline">
-                      <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
-                        {getDocumentStatusLabel(doc.status)}
-                      </span>
-                      {doc.risk?.state === "BLOCK" ? (
-                        <span className="pill pill--danger">⚠️ Risk BLOCK</span>
-                      ) : doc.risk?.state === "REQUIRE_OVERRIDE" ? (
-                        <span className="pill pill--warning">⚠️ Require override</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
-                      {doc.signature_status ?? "—"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>{doc.edo_status ?? "—"}</span>
-                  </td>
-                  <td>{canAcknowledge && doc.status === "ISSUED" ? "Требуется подтверждение" : "Нет"}</td>
-                  <td>{formatDate(doc.created_at)}</td>
-                  <td>
-                    <div className="actions">
-                      <Link className="ghost" to={`/client/documents/${doc.id}`}>
-                        Открыть
-                      </Link>
-                      {doc.status !== "DRAFT" ? (
-                        <>
-                          <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "PDF")}>
-                            PDF
+          {Object.entries(
+            items.reduce<Record<string, ClientDocumentSummary[]>>((acc, doc) => {
+              const key = doc.period_from ? doc.period_from.slice(0, 7) : "Без периода";
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(doc);
+              return acc;
+            }, {}),
+          ).map(([period, docs]) => (
+            <section className="card__section" key={period}>
+              <h3>{period}</h3>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Тип</th>
+                    <th>Период</th>
+                    <th>Номер</th>
+                    <th>Сумма</th>
+                    <th>Lifecycle</th>
+                    <th>Sign</th>
+                    <th>EDO</th>
+                    <th>Updated</th>
+                    <th>Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map((doc) => (
+                    <tr key={doc.id}>
+                      <td>{getDocumentTypeLabel(doc.document_type)}</td>
+                      <td>
+                        {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
+                      </td>
+                      <td>{doc.number ?? "—"}</td>
+                      <td>{doc.amount ? formatMoney(doc.amount) : "—"}</td>
+                      <td>
+                        <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
+                          {getDocumentStatusLabel(doc.status)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
+                          {doc.signature_status ?? "—"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>{doc.edo_status ?? "—"}</span>
+                      </td>
+                      <td>{formatDate(doc.updated_at ?? doc.created_at)}</td>
+                      <td>
+                        <div className="actions">
+                          <Link className="ghost" to={`/client/documents/${doc.id}`}>
+                            Открыть
+                          </Link>
+                          {doc.status !== "DRAFT" ? (
+                            <>
+                              <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "PDF")}>
+                                PDF
+                              </button>
+                              <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "XLSX")}>
+                                XLSX
+                              </button>
+                            </>
+                          ) : (
+                            <span className="muted small">Файлы недоступны</span>
+                          )}
+                          {canAcknowledge && doc.status === "ISSUED" ? (
+                            <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
+                              Request sign
+                            </button>
+                          ) : null}
+                          {canAcknowledge ? (
+                            <button type="button" className="ghost" disabled>
+                              Resend EDO
+                            </button>
+                          ) : null}
+                          <button type="button" className="ghost" disabled>
+                            View status timeline
                           </button>
-                          <button type="button" className="ghost" onClick={() => handleDownload(doc.id, "XLSX")}>
-                            XLSX
-                          </button>
-                        </>
-                      ) : (
-                        <span className="muted small">Файлы недоступны</span>
-                      )}
-                      {canAcknowledge && doc.status === "ISSUED" ? (
-                        <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
-                          Подтвердить
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
 
           <div className="table-footer">
             <div className="muted">
@@ -325,7 +358,7 @@ export function ClientDocumentsPage() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

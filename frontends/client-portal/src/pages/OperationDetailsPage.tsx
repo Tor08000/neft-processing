@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchOperationDetails } from "../api/operations";
 import { useAuth } from "../auth/AuthContext";
+import { CopyButton } from "../components/CopyButton";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { OperationDetails } from "../types/operations";
 import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
 
@@ -21,23 +23,15 @@ export function OperationDetailsPage() {
   }, [id, user]);
 
   if (loading) {
-    return <div className="card">Загружаем операцию...</div>;
+    return <AppLoadingState label="Загружаем операцию..." />;
   }
 
   if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
+    return <AppErrorState message={error} />;
   }
 
   if (!operation) {
-    return (
-      <div className="card error" role="alert">
-        Операция не найдена
-      </div>
-    );
+    return <AppEmptyState title="Операция не найдена" description="Проверьте идентификатор." />;
   }
 
   return (
@@ -50,6 +44,9 @@ export function OperationDetailsPage() {
         <div className="actions">
           <Link to={`/explain/${operation.id}`} className="ghost">
             Explain
+          </Link>
+          <Link to="/documents" className="ghost">
+            Related documents
           </Link>
           <button type="button" className="secondary" disabled>
             Скачать чек (если доступен)
@@ -88,6 +85,9 @@ export function OperationDetailsPage() {
             <span className={`pill pill--${operation.status === "APPROVED" ? "success" : "warning"}`}>
               {operation.status}
             </span>
+            {operation.primary_reason ? (
+              <span className="pill pill--neutral">{operation.primary_reason}</span>
+            ) : null}
           </dd>
         </div>
         {operation.reason && (
@@ -96,6 +96,28 @@ export function OperationDetailsPage() {
             <dd>{operation.reason}</dd>
           </div>
         )}
+        <div>
+          <dt className="label">Primary reason</dt>
+          <dd>{operation.primary_reason ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="label">Risk level</dt>
+          <dd>{operation.risk_level ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="label">Correlation ID</dt>
+          <dd className="stack-inline">
+            <span className="muted small">{operation.correlation_id ?? "—"}</span>
+            <CopyButton value={operation.correlation_id ?? undefined} label="Скопировать" />
+          </dd>
+        </div>
+        <div>
+          <dt className="label">Request ID</dt>
+          <dd className="stack-inline">
+            <span className="muted small">{operation.request_id ?? "—"}</span>
+            <CopyButton value={operation.request_id ?? undefined} label="Скопировать" />
+          </dd>
+        </div>
         <div>
           <dt className="label">Документ/инвойс</dt>
           <dd className="muted">Если документ доступен, он появится в разделе Documents.</dd>
