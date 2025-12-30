@@ -5,6 +5,7 @@ import {
   Fuel,
   LayoutDashboard,
   LinkIcon,
+  MessageCircle,
   Package,
   Settings,
   ShieldCheck,
@@ -82,6 +83,10 @@ export function Layout() {
           <NavLink to="/integrations">
             <LinkIcon size={18} />
             {t("nav.integrations")}
+          </NavLink>
+          <NavLink to="/support/requests">
+            <MessageCircle size={18} />
+            {t("nav.supportRequests")}
           </NavLink>
           <NavLink to="/settings">
             <Settings size={18} />

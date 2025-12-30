@@ -15,6 +15,7 @@
     "exports": "Exports / 1C",
     "marketplace": "Marketplace",
     "actions": "Actions Center",
+    "supportRequests": "Requests",
     "settings": "Settings"
   },
   "common": {

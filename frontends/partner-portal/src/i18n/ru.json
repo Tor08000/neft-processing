@@ -16,6 +16,7 @@
     "documents": "Документы",
     "services": "Сервисы",
     "integrations": "Интеграции",
+    "supportRequests": "Запросы",
     "settings": "Настройки"
   },
   "common": {
@@ -26,7 +27,9 @@
     "open": "Открыть",
     "back": "Назад",
     "next": "Вперёд",
-    "all": "Все"
+    "all": "Все",
+    "from": "Период с",
+    "to": "Период по"
   },
   "actions": {
     "logout": "Выйти",
@@ -64,6 +67,29 @@
     "retry": "Повторить",
     "errorCode": "Код ошибки: {code}",
     "correlationId": "Correlation ID: {id}"
+  },
+  "supportRequests": {
+    "title": "Запросы",
+    "subtitle": "Обращения партнёра по заказам, выплатам и интеграциям.",
+    "emptyTitle": "Обращений пока нет",
+    "emptyDescription": "Создайте запрос, если возникла проблема с заказом или интеграцией.",
+    "fields": {
+      "title": "Тема",
+      "description": "Описание"
+    },
+    "actions": {
+      "submit": "Отправить запрос"
+    },
+    "modal": {
+      "title": "Создать обращение",
+      "subtitle": "Мы получили ваш запрос и свяжемся после проверки.",
+      "createdTitle": "Обращение создано",
+      "requestId": "Номер обращения: {id}",
+      "openRequest": "Открыть обращение"
+    },
+    "errors": {
+      "createFailed": "Не удалось создать обращение"
+    }
   },
   "emptyStates": {
     "prices": {

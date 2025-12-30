@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SUPPORT_REQUEST_STATUS_CHANGED",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "trace_id",
+    "schema_version",
+    "event_type",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": "string"},
+    "trace_id": {"type": "string"},
+    "schema_version": {"type": "string", "pattern": "^1\\.0$"},
+    "event_type": {"const": "SUPPORT_REQUEST_STATUS_CHANGED"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["support_request_id", "status_from", "status_to"],
+      "properties": {
+        "support_request_id": {"type": "string", "format": "uuid"},
+        "status_from": {
+          "type": "string",
+          "enum": ["OPEN", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"]
+        },
+        "status_to": {
+          "type": "string",
+          "enum": ["OPEN", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"]
+        }
+      }
+    }
+  }
+}

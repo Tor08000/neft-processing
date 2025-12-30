@@ -8,6 +8,7 @@ import {
 } from "../api/partner";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { formatCurrency, formatDate, formatNumber } from "../utils/format";
 import { canManagePayouts } from "../utils/roles";
 
@@ -19,6 +20,7 @@ export function SettlementDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -117,9 +119,14 @@ export function SettlementDetailsPage() {
       <section className="card">
         <div className="section-title">
           <h2>Settlement {settlement.id}</h2>
-          <Link className="ghost" to="/payouts">
-            Назад
-          </Link>
+          <div className="actions">
+            <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+              Создать обращение
+            </button>
+            <Link className="ghost" to="/payouts">
+              Назад
+            </Link>
+          </div>
         </div>
         <div className="meta-grid">
           <div>
@@ -279,6 +286,14 @@ export function SettlementDetailsPage() {
           <p className="muted">Документы не прикреплены.</p>
         )}
       </section>
+
+      <SupportRequestModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+        subjectType="PAYOUT"
+        subjectId={settlement.id}
+        defaultTitle={`Проблема с выплатой ${settlement.id}`}
+      />
     </div>
   );
 }

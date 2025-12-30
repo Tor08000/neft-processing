@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { fetchDocumentDetail, type PartnerDocumentDetail } from "../api/partner";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { formatCurrency, formatDateTime } from "../utils/format";
 
 export function DocumentDetailsPage() {
@@ -11,6 +12,7 @@ export function DocumentDetailsPage() {
   const [document, setDocument] = useState<PartnerDocumentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -75,9 +77,14 @@ export function DocumentDetailsPage() {
       <section className="card">
         <div className="section-title">
           <h2>{document.type}</h2>
-          <Link className="ghost" to="/documents">
-            Назад
-          </Link>
+          <div className="actions">
+            <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+              Создать обращение
+            </button>
+            <Link className="ghost" to="/documents">
+              Назад
+            </Link>
+          </div>
         </div>
         <div className="meta-grid">
           <div>
@@ -170,6 +177,14 @@ export function DocumentDetailsPage() {
           <p className="muted">История ЭДО пока недоступна.</p>
         )}
       </section>
+
+      <SupportRequestModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+        subjectType="DOCUMENT"
+        subjectId={document.id}
+        defaultTitle={`Проблема с документом ${document.id}`}
+      />
     </div>
   );
 }

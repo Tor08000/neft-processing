@@ -16,6 +16,7 @@
     "documents": "Documents",
     "services": "Services",
     "integrations": "Integrations",
+    "supportRequests": "Requests",
     "settings": "Settings"
   },
   "common": {
@@ -26,7 +27,9 @@
     "open": "Open",
     "back": "Back",
     "next": "Next",
-    "all": "All"
+    "all": "All",
+    "from": "From",
+    "to": "To"
   },
   "actions": {
     "logout": "Sign out",
@@ -64,6 +67,29 @@
     "retry": "Retry",
     "errorCode": "Error code: {code}",
     "correlationId": "Correlation ID: {id}"
+  },
+  "supportRequests": {
+    "title": "Requests",
+    "subtitle": "All partner requests linked to orders, payouts, and integrations.",
+    "emptyTitle": "No requests yet",
+    "emptyDescription": "Create a request if you need support with orders or integrations.",
+    "fields": {
+      "title": "Title",
+      "description": "Description"
+    },
+    "actions": {
+      "submit": "Submit request"
+    },
+    "modal": {
+      "title": "Create request",
+      "subtitle": "We have received your request and will respond after verification.",
+      "createdTitle": "Request created",
+      "requestId": "Request ID: {id}",
+      "openRequest": "Open request"
+    },
+    "errors": {
+      "createFailed": "Failed to create request"
+    }
   },
   "emptyStates": {
     "prices": {

@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import { CopyButton } from "../components/CopyButton";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { defaultWebhookEvents } from "../constants/webhookEvents";
 import {
   createWebhookEndpoint,
@@ -107,6 +108,7 @@ export function IntegrationsPage() {
   const [deliveryDetail, setDeliveryDetail] = useState<WebhookDeliveryDetail | null>(null);
   const [deliveryDetailLoading, setDeliveryDetailLoading] = useState(false);
   const [deliveryDetailError, setDeliveryDetailError] = useState<ApiErrorState | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isDeliveryDetailOpen, setIsDeliveryDetailOpen] = useState(false);
 
   const [eventTypes, setEventTypes] = useState<string[]>(defaultWebhookEvents);
@@ -989,6 +991,9 @@ export function IntegrationsPage() {
                     {t("integrationsPage.deliveries.actions.retry")}
                   </button>
                 ) : null}
+                <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+                  {t("supportRequests.modal.title")}
+                </button>
               </div>
             ) : (
               <LoadingState label={t("integrationsPage.loading.deliveryDetailPending")} />
@@ -996,6 +1001,14 @@ export function IntegrationsPage() {
           </div>
         </div>
       ) : null}
+      <SupportRequestModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+        subjectType="INTEGRATION"
+        subjectId={deliveryDetail?.id ?? null}
+        correlationId={deliveryDetail?.correlation_id ?? undefined}
+        defaultTitle={deliveryDetail ? `Webhook delivery ${deliveryDetail.id}` : "Webhook delivery"}
+      />
     </div>
   );
 }

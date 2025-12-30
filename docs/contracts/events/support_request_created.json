@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SUPPORT_REQUEST_CREATED",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "trace_id",
+    "schema_version",
+    "event_type",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": "string"},
+    "trace_id": {"type": "string"},
+    "schema_version": {"type": "string", "pattern": "^1\\.0$"},
+    "event_type": {"const": "SUPPORT_REQUEST_CREATED"},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["support_request_id", "scope_type", "subject_type", "status"],
+      "properties": {
+        "support_request_id": {"type": "string", "format": "uuid"},
+        "scope_type": {"type": "string", "enum": ["CLIENT", "PARTNER"]},
+        "subject_type": {
+          "type": "string",
+          "enum": ["ORDER", "DOCUMENT", "PAYOUT", "SETTLEMENT", "INTEGRATION", "OTHER"]
+        },
+        "subject_id": {"type": ["string", "null"], "format": "uuid"},
+        "status": {"type": "string", "enum": ["OPEN"]}
+      }
+    }
+  }
+}
