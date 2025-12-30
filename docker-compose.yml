@@ -166,6 +166,8 @@ services:
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
       DOCUMENT_SERVICE_ENABLED: ${DOCUMENT_SERVICE_ENABLED:-0}
       DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8000}
+      LOGISTICS_SERVICE_ENABLED: ${LOGISTICS_SERVICE_ENABLED:-0}
+      LOGISTICS_SERVICE_URL: ${LOGISTICS_SERVICE_URL:-http://logistics-service:8000}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
       NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
     depends_on:
@@ -225,6 +227,10 @@ services:
   logistics-service:
     build: ./platform/logistics-service
     container_name: neft-processing-logistics-1
+    environment:
+      SERVICE_NAME: logistics-service
+      SERVICE_VERSION: v0
+      LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-mock}
     expose:
       - "8000"
     healthcheck:
