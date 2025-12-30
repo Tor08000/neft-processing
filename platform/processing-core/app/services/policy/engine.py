@@ -54,6 +54,8 @@ class PolicyEngine:
             return self._document_acknowledge(actor, resource)
         if action == Action.DOCUMENT_FINALIZE:
             return self._document_finalize(actor, resource)
+        if action == Action.DOCUMENT_SIGN_REQUEST:
+            return self._document_sign_request(actor, resource)
         if action == Action.DOCUMENT_SEND_FOR_SIGNING:
             return self._document_send_for_signing(actor, resource)
         if action == Action.DOCUMENT_FINALIZE_WITH_SIGNATURE:
@@ -195,6 +197,15 @@ class PolicyEngine:
         if resource.status != "ISSUED":
             return PolicyDecision(False, policy="document_send_for_signing_status", reason="status_not_issued")
         return PolicyDecision(True, policy="document_send_for_signing_allowed")
+
+    def _document_sign_request(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
+        if denial := self._require_admin(actor, policy="document_sign_request_admin_only"):
+            return denial
+        if not self._has_role(actor, _ADMIN_FINANCE_ROLES):
+            return PolicyDecision(False, policy="document_sign_request_role", reason="missing_role")
+        if resource.status != "ISSUED":
+            return PolicyDecision(False, policy="document_sign_request_status", reason="status_not_issued")
+        return PolicyDecision(True, policy="document_sign_request_allowed")
 
     def _document_finalize_with_signature(self, actor: ActorContext, resource: ResourceContext) -> PolicyDecision:
         if denial := self._require_admin(actor, policy="document_finalize_with_signature_admin_only"):

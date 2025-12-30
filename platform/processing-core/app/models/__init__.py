@@ -140,6 +140,7 @@ from .legal_integrations import (  # noqa: F401
     DocumentEnvelope,
     DocumentEnvelopeStatus,
     DocumentSignature,
+    DocumentSignatureStatus,
     LegalProviderConfig,
     SignatureType,
 )
