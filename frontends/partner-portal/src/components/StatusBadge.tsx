@@ -7,6 +7,7 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   active: "success",
   online: "success",
   settled: "success",
+  delivered: "success",
   sent: "pending",
   queued: "pending",
   draft: "pending",
@@ -14,7 +15,9 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   declined: "error",
   inactive: "error",
   offline: "error",
+  disabled: "error",
   failed: "error",
+  dead: "error",
 };
 
 export function StatusBadge({ status, tone }: StatusBadgeProps) {
