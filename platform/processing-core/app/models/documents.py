@@ -51,6 +51,22 @@ class DocumentFileType(str, Enum):
     EDI_XML = "EDI_XML"
 
 
+class EdoProvider(str, Enum):
+    DIADOK = "DIADOK"
+    SBIS = "SBIS"
+
+
+class EdoDocumentStatus(str, Enum):
+    QUEUED = "QUEUED"
+    UPLOADING = "UPLOADING"
+    SENT = "SENT"
+    DELIVERED = "DELIVERED"
+    SIGNED_BY_US = "SIGNED_BY_US"
+    SIGNED_BY_COUNTERPARTY = "SIGNED_BY_COUNTERPARTY"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
+
+
 class ClosingPackageStatus(str, Enum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
@@ -158,4 +174,26 @@ class ClosingPackage(Base):
     generated_at = Column(DateTime(timezone=True), nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     ack_at = Column(DateTime(timezone=True), nullable=True)
+    meta = Column(JSON, nullable=True)
+
+
+class DocumentEdoStatus(Base):
+    __tablename__ = "document_edo_status"
+    __table_args__ = (
+        UniqueConstraint("document_id", "provider", name="uq_document_edo_status_document_provider"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
+    document_id = Column(GUID(), ForeignKey("documents.id"), nullable=False, index=True)
+    signature_id = Column(GUID(), nullable=True)
+    provider = Column(ExistingEnum(EdoProvider, name="edo_provider"), nullable=False, index=True)
+    status = Column(ExistingEnum(EdoDocumentStatus, name="edo_document_status"), nullable=False, index=True)
+
+    provider_message_id = Column(String(128), nullable=True)
+    provider_document_id = Column(String(128), nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    last_status_at = Column(DateTime(timezone=True), nullable=True)
     meta = Column(JSON, nullable=True)
