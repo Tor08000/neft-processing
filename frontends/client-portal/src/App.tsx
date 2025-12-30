@@ -15,12 +15,15 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
 import { ClientInvoiceDetailsPage } from "./pages/ClientInvoiceDetailsPage";
 import { FinanceExportsPage } from "./pages/FinanceExportsPage";
+import { FinanceExportDetailsPage } from "./pages/FinanceExportDetailsPage";
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
 import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
 import { ClientDocumentDetailsPage } from "./pages/ClientDocumentDetailsPage";
 import { ExplainPage } from "./pages/ExplainPage";
+import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
+import { SettingsPage } from "./pages/SettingsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -45,10 +48,12 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/spend/transactions" element={<OperationsPage />} />
             <Route path="/explain" element={<ExplainPage />} />
+            <Route path="/explain/insights" element={<ExplainInsightsPage />} />
             <Route path="/explain/:id" element={<ExplainPage />} />
             <Route path="/documents" element={<ClientDocumentsPage />} />
             <Route path="/documents/:id" element={<ClientDocumentDetailsPage />} />
             <Route path="/exports" element={<FinanceExportsPage />} />
+            <Route path="/exports/:id" element={<FinanceExportDetailsPage />} />
             <Route path="/actions" element={<ActionsPage />} />
             <Route path="/cards" element={<ClientCardsPage />} />
             <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
@@ -64,6 +69,7 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/balances" element={<BalancesPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />

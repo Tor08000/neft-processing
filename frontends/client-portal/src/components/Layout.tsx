@@ -1,8 +1,30 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { CLIENT_BASE_PATH } from "../api/base";
+import { hasAnyRole } from "../utils/roles";
+import { AppErrorState } from "./states";
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const apiBase = CLIENT_BASE_PATH ? null : "Отсутствует базовый путь клиента";
+  const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
+  const configError = isApiBaseMissing ? "App misconfigured: API base URL missing" : apiBase;
+
+  if (configError) {
+    return (
+      <div className="app-shell">
+        <header className="topbar">
+          <div className="topbar__meta">
+            <span className="logo">NEFT</span>
+            <div className="topbar__title">Client Portal</div>
+          </div>
+        </header>
+        <main className="main-area">
+          <AppErrorState message={configError} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -27,20 +49,16 @@ export function Layout() {
       <div className="sidebar-layout">
         <nav className="sidebar">
           <NavLink to="/dashboard">Dashboard</NavLink>
-          <NavLink to="/spend/transactions">Transactions / Spend</NavLink>
-          <NavLink to="/explain">Explain</NavLink>
+          {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user) && (
+            <NavLink to="/operations">Operations</NavLink>
+          )}
+          <NavLink to="/explain/insights">Explain Insights</NavLink>
           <NavLink to="/documents">Documents</NavLink>
-          <NavLink to="/exports">Exports / 1C</NavLink>
-          <NavLink to="/actions">Actions</NavLink>
-          <NavLink to="/cards">Карты</NavLink>
-          <div className="nav-section">Финансы</div>
-          <NavLink to="/finance/invoices">Счета</NavLink>
-          <NavLink to="/client/documents">Документы</NavLink>
-          <NavLink to="/finance/reconciliation">Акт сверки</NavLink>
-          <NavLink to="/finance/exports">Отчеты</NavLink>
-          <NavLink to="/operations">Операции</NavLink>
-          <NavLink to="/balances">Балансы</NavLink>
-          <NavLink to="/profile">Профиль</NavLink>
+          {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user) && (
+            <NavLink to="/exports">Exports / 1C</NavLink>
+          )}
+          <NavLink to="/actions">Actions Center</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
         </nav>
 
         <main className="main-area">

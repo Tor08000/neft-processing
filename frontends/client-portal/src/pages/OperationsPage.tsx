@@ -1,11 +1,13 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { fetchOperations } from "../api/operations";
 import { fetchCards } from "../api/cards";
 import { useAuth } from "../auth/AuthContext";
+import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import type { OperationSummary } from "../types/operations";
 import type { ClientCard } from "../types/cards";
 import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
+import { canAccessOps } from "../utils/roles";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Все" },
@@ -14,8 +16,31 @@ const STATUS_OPTIONS = [
   { value: "SETTLED", label: "Settled" },
 ];
 
+const PERIOD_PRESETS = [
+  { value: "today", label: "Сегодня" },
+  { value: "7d", label: "7 дней" },
+  { value: "30d", label: "30 дней" },
+  { value: "custom", label: "Выбрать" },
+];
+
+const FILTERS_STORAGE = "client-ops-filters";
+
+const buildDateRange = (preset: string) => {
+  const to = new Date();
+  const from = new Date();
+  if (preset === "today") {
+    from.setHours(0, 0, 0, 0);
+  } else if (preset === "7d") {
+    from.setDate(to.getDate() - 7);
+  } else if (preset === "30d") {
+    from.setDate(to.getDate() - 30);
+  }
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+};
+
 export function OperationsPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const [operations, setOperations] = useState<OperationSummary[]>([]);
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,18 +48,44 @@ export function OperationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({
+    preset: "30d",
     status: "",
     cardId: "",
     from: "",
     to: "",
     merchantId: "",
     productType: "",
+    driverId: "",
+    vehicleId: "",
     minAmount: "",
     maxAmount: "",
   });
   const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
+  const [savedFilters, setSavedFilters] = useState<Record<string, typeof filters>>({});
 
   useEffect(() => {
+    const stored = localStorage.getItem(FILTERS_STORAGE);
+    if (stored) {
+      try {
+        setSavedFilters(JSON.parse(stored));
+      } catch {
+        setSavedFilters({});
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const from = params.get("from") ?? "";
+    const to = params.get("to") ?? "";
+    const status = params.get("status") ?? "";
+    if (from || to || status) {
+      setFilters((prev) => ({ ...prev, from, to, status, preset: "custom" }));
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!user) return;
     setIsCardsLoading(true);
     fetchCards(user)
       .then((resp) => setCards(resp.items))
@@ -43,6 +94,7 @@ export function OperationsPage() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     setIsLoading(true);
     fetchOperations(user, {
       status: filters.status || undefined,
@@ -51,6 +103,8 @@ export function OperationsPage() {
       to: filters.to || undefined,
       merchantId: filters.merchantId || undefined,
       productType: filters.productType || undefined,
+      driverId: filters.driverId || undefined,
+      vehicleId: filters.vehicleId || undefined,
       minAmount: filters.minAmount || undefined,
       maxAmount: filters.maxAmount || undefined,
       limit: pagination.limit,
@@ -76,15 +130,40 @@ export function OperationsPage() {
   const handleFilterChange = (evt: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = evt.target;
     setPagination((prev) => ({ ...prev, offset: 0 }));
-    setFilters((prev) => ({ ...prev, [name]: value }));
+    setFilters((prev) => ({ ...prev, [name]: value, preset: name === "preset" ? value : prev.preset }));
   };
 
-  if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
+  const handlePresetChange = (preset: string) => {
+    if (preset === "custom") {
+      setFilters((prev) => ({ ...prev, preset }));
+      return;
+    }
+    const range = buildDateRange(preset);
+    setFilters((prev) => ({ ...prev, ...range, preset }));
+  };
+
+  const handleSaveFilters = () => {
+    const name = window.prompt("Название фильтра");
+    if (!name) return;
+    const next = { ...savedFilters, [name]: filters };
+    setSavedFilters(next);
+    localStorage.setItem(FILTERS_STORAGE, JSON.stringify(next));
+  };
+
+  const handleApplySaved = (name: string) => {
+    const saved = savedFilters[name];
+    if (saved) {
+      setFilters(saved);
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+    }
+  };
+
+  if (!user) {
+    return <AppForbiddenState message="Нет доступа к операциям." />;
+  }
+
+  if (!canAccessOps(user)) {
+    return <AppForbiddenState message="Недостаточно прав для просмотра операций." />;
   }
 
   return (
@@ -97,6 +176,21 @@ export function OperationsPage() {
       </div>
 
       <div className="filters">
+        <div className="filter">
+          <label htmlFor="preset">Период</label>
+          <select
+            id="preset"
+            name="preset"
+            value={filters.preset}
+            onChange={(event) => handlePresetChange(event.target.value)}
+          >
+            {PERIOD_PRESETS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="filter">
           <label htmlFor="from">Период с</label>
           <input id="from" name="from" type="date" value={filters.from} onChange={handleFilterChange} />
@@ -130,6 +224,28 @@ export function OperationsPage() {
             type="text"
             placeholder="ID мерчанта"
             value={filters.merchantId}
+            onChange={handleFilterChange}
+          />
+        </div>
+        <div className="filter">
+          <label htmlFor="vehicleId">ТС/Vehicle</label>
+          <input
+            id="vehicleId"
+            name="vehicleId"
+            type="text"
+            placeholder="ID транспорта"
+            value={filters.vehicleId}
+            onChange={handleFilterChange}
+          />
+        </div>
+        <div className="filter">
+          <label htmlFor="driverId">Driver</label>
+          <input
+            id="driverId"
+            name="driverId"
+            type="text"
+            placeholder="ID водителя"
+            value={filters.driverId}
             onChange={handleFilterChange}
           />
         </div>
@@ -176,13 +292,30 @@ export function OperationsPage() {
             onChange={handleFilterChange}
           />
         </div>
+        <div className="filter">
+          <label htmlFor="savedFilters">Saved filters</label>
+          <select id="savedFilters" onChange={(event) => handleApplySaved(event.target.value)} value="">
+            <option value="">—</option>
+            {Object.keys(savedFilters).map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filter">
+          <button type="button" className="secondary" onClick={handleSaveFilters}>
+            Сохранить фильтр
+          </button>
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="muted">Загружаем операции...</div>
-      ) : operations.length === 0 ? (
-        <p className="muted">Операций пока нет.</p>
-      ) : (
+      {isLoading ? <AppLoadingState /> : null}
+      {error ? <AppErrorState message={error} /> : null}
+      {!isLoading && !error && operations.length === 0 ? (
+        <AppEmptyState title="Операций пока нет" description="Проверьте фильтры или период." />
+      ) : null}
+      {!isLoading && !error && operations.length > 0 ? (
         <>
           <table className="table">
             <thead>
@@ -195,6 +328,7 @@ export function OperationsPage() {
                 <th>Сумма</th>
                 <th>Статус</th>
                 <th>Причина</th>
+                <th>Risk</th>
                 <th></th>
               </tr>
             </thead>
@@ -213,7 +347,14 @@ export function OperationsPage() {
                     </span>
                     {op.status === "DECLINED" && op.reason && <div className="muted small">{op.reason}</div>}
                   </td>
-                  <td>{op.primary_reason ?? op.reason ?? "—"}</td>
+                  <td>
+                    {op.primary_reason ? (
+                      <span className="pill pill--neutral">{op.primary_reason}</span>
+                    ) : (
+                      op.reason ?? "—"
+                    )}
+                  </td>
+                  <td>{op.risk_level ? <span className="pill pill--warning">{op.risk_level}</span> : "—"}</td>
                   <td>
                     <div className="actions">
                       <Link to={`/operations/${op.id}`} className="ghost">
@@ -222,6 +363,18 @@ export function OperationsPage() {
                       <Link to={`/explain/${op.id}`} className="ghost">
                         Explain
                       </Link>
+                      {op.document_ids?.length ? (
+                        <Link to={`/documents/${op.document_ids[0]}`} className="ghost">
+                          Open linked docs
+                        </Link>
+                      ) : (
+                        <button type="button" className="ghost" disabled>
+                          Open linked docs
+                        </button>
+                      )}
+                      <button type="button" className="ghost" disabled>
+                        Open money flow summary
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -255,7 +408,7 @@ export function OperationsPage() {
             </button>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

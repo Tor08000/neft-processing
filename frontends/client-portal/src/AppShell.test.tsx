@@ -34,8 +34,20 @@ describe("Client portal shell", () => {
     );
 
     expect(await screen.findByText(/Client Portal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Карты/)).toBeInTheDocument();
+    expect(screen.getByText(/Dashboard/)).toBeInTheDocument();
+    expect(screen.getByText(/Documents/)).toBeInTheDocument();
+    expect(screen.getByText(/Settings/)).toBeInTheDocument();
     expect(screen.queryByText(/Пользователи/i)).not.toBeInTheDocument();
+  });
+
+  it("blocks operations for read-only users", async () => {
+    render(
+      <MemoryRouter initialEntries={["/operations"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Недостаточно прав/)).toBeInTheDocument();
   });
 
   it("loads cards and allows blocking", async () => {

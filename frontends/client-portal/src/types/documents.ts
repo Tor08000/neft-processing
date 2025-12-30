@@ -5,8 +5,10 @@ export interface ClientDocumentSummary {
   period_from: string;
   period_to: string;
   version: number;
+  amount?: number | null;
   number?: string | null;
   created_at: string;
+  updated_at?: string | null;
   pdf_hash?: string | null;
   risk?: ClientDocumentRiskSummary | null;
   signature_status?: string | null;

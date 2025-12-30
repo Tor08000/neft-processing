@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchUnifiedExplain } from "../api/explain";
 import { useAuth } from "../auth/AuthContext";
+import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { UnifiedExplainResponse } from "../types/explain";
 import { formatDateTime } from "../utils/format";
 
@@ -49,9 +50,9 @@ export function ExplainPage() {
       <div className="card__header">
         <div>
           <h2>Explain</h2>
-          <p className="muted">Unified Explain v1.1 для операций и событий.</p>
+          <p className="muted">Explain центр: причина → действия → SLA.</p>
         </div>
-        <Link className="ghost" to="/spend/transactions">
+        <Link className="ghost" to="/operations">
           Назад к операциям
         </Link>
       </div>
@@ -80,41 +81,42 @@ export function ExplainPage() {
         </div>
       </div>
 
-      {isLoading ? <div className="muted">Загружаем explain...</div> : null}
+      {isLoading ? <AppLoadingState label="Загружаем explain..." /> : null}
 
-      {error ? (
-        <div className="card error" role="alert">
-          {error}
-        </div>
+      {error ? <AppErrorState message={error} /> : null}
+
+      {!isLoading && !error && !payload ? (
+        <AppEmptyState title="Нет данных" description="Введите ID операции для объяснения." />
       ) : null}
 
       {payload ? (
         <div className="stack">
           <section className="card__section">
-            <h3>Почему так</h3>
+            <h3>Primary reason</h3>
             <div className="explain-primary">
               <span className="pill pill--warning">{payload.primary_reason}</span>
-              <p className="muted">
-                Primary reason определён правилами core и объясняет основное отклонение/событие.
-              </p>
+              <div className="muted">Confidence: {payload.confidence ?? "—"}</div>
             </div>
           </section>
 
           <section className="card__section">
-            <h3>Детали</h3>
+            <h3>Secondary reasons</h3>
             {payload.secondary_reasons.length ? (
-              <ul className="bullets">
-                {payload.secondary_reasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
+              <details>
+                <summary>Показать детали</summary>
+                <ul className="bullets">
+                  {payload.secondary_reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </details>
             ) : (
               <p className="muted">Secondary reasons не зафиксированы.</p>
             )}
           </section>
 
           <section className="card__section">
-            <h3>Что делать</h3>
+            <h3>Actions</h3>
             {payload.actions.length ? (
               <div className="action-list">
                 {payload.actions.map((action) => (
@@ -130,7 +132,7 @@ export function ExplainPage() {
                       <div className="muted small">Escalation target: {action.target}</div>
                     ) : null}
                     <button type="button" className="ghost" disabled>
-                      Request action (read-only)
+                      Запросить действие (read-only)
                     </button>
                   </div>
                 ))}
@@ -175,6 +177,28 @@ export function ExplainPage() {
             {payload.escalation ? (
               <div className="muted small">Escalation target: {payload.escalation.target}</div>
             ) : null}
+          </section>
+
+          <section className="card__section">
+            <h3>Timeline</h3>
+            {payload.timeline && payload.timeline.length ? (
+              <div className="timeline-list">
+                {payload.timeline.map((event) => (
+                  <div className="timeline-item" key={event.id}>
+                    <div className="timeline-item__meta">
+                      <span className="timeline-item__title">{event.stage}</span>
+                      <span className="muted small">{formatDateTime(event.at)}</span>
+                    </div>
+                    <div className="timeline-item__body">
+                      <span className="muted small">{event.label}</span>
+                      {event.details ? <span className="muted small">{event.details}</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">Timeline недоступен.</p>
+            )}
           </section>
         </div>
       ) : null}
