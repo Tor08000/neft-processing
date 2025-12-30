@@ -7,9 +7,10 @@ import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { AppErrorState, AppForbiddenState } from "../components/states";
 import type { MarketplaceOrderSummary } from "../types/marketplace";
-import { formatDate, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime, formatMoney } from "../utils/format";
 import { getMarketplaceDocumentStatusLabel, getOrderStatusLabel } from "../utils/status";
 import { useI18n } from "../i18n";
+import { isPwaMode } from "../pwa/mode";
 
 interface OrdersErrorState {
   message: string;
@@ -38,9 +39,13 @@ const statusClass = (status?: string | null) => {
   return "badge pending";
 };
 
+const LAST_UPDATED_KEY = "pwa:lastUpdated:orders";
+
 export function MarketplaceOrdersPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => localStorage.getItem(LAST_UPDATED_KEY));
+  const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   const [orders, setOrders] = useState<MarketplaceOrderSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<OrdersErrorState | null>(null);
@@ -52,7 +57,7 @@ export function MarketplaceOrdersPage() {
     partner: "",
     service: "",
   });
-  const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
+  const [pagination, setPagination] = useState({ limit: isPwaMode ? 20 : 10, offset: 0 });
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
@@ -61,6 +66,16 @@ export function MarketplaceOrdersPage() {
       setFilters((prev) => ({ ...prev, ...range }));
     }
   }, [filters.preset]);
+
+  useEffect(() => {
+    const handleStatus = () => setIsOffline(!navigator.onLine);
+    window.addEventListener("online", handleStatus);
+    window.addEventListener("offline", handleStatus);
+    return () => {
+      window.removeEventListener("online", handleStatus);
+      window.removeEventListener("offline", handleStatus);
+    };
+  }, []);
 
   const loadOrders = () => {
     if (!user) return;
@@ -78,6 +93,9 @@ export function MarketplaceOrdersPage() {
       .then((resp) => {
         setOrders(resp.items ?? []);
         setTotal(resp.total ?? 0);
+        const timestamp = new Date().toISOString();
+        localStorage.setItem(LAST_UPDATED_KEY, timestamp);
+        setLastUpdated(timestamp);
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError) {
@@ -133,6 +151,9 @@ export function MarketplaceOrdersPage() {
           <div>
             <h2>{t("marketplaceOrders.title")}</h2>
             <p className="muted">{t("marketplaceOrders.subtitle")}</p>
+            {isOffline && lastUpdated ? (
+              <p className="muted small">{t("pwa.offlineStatus", { timestamp: formatDateTime(lastUpdated) })}</p>
+            ) : null}
           </div>
         </div>
 
@@ -189,7 +210,7 @@ export function MarketplaceOrdersPage() {
           icon={<Package />}
           title={t("emptyStates.marketplaceOrders.title")}
           description={t("emptyStates.marketplaceOrders.description")}
-          primaryAction={{ label: t("actions.goToCatalog"), to: "/marketplace" }}
+          primaryAction={isPwaMode ? undefined : { label: t("actions.goToCatalog"), to: "/marketplace" }}
         />
       ) : null}
 
