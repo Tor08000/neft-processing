@@ -11,6 +11,7 @@
     "dashboard": "Dashboard",
     "operations": "Operations",
     "explainInsights": "Explain Insights",
+    "orders": "Orders",
     "documents": "Documents",
     "exports": "Exports / 1C",
     "marketplace": "Marketplace",
@@ -57,6 +58,14 @@
     "retry": "Retry",
     "errorCode": "Error code: {code}",
     "correlationId": "Correlation ID: {id}"
+  },
+  "pwa": {
+    "notifications": {
+      "title": "Status notifications",
+      "description": "Enable push to receive updates about orders and documents.",
+      "enable": "Enable notifications"
+    },
+    "offlineStatus": "Offline. Last updated {timestamp}."
   },
   "emptyStates": {
     "marketplaceCatalog": {

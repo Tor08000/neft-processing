@@ -4,9 +4,12 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
+import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
 
 const base = import.meta.env.BASE_URL || "/client/";
+
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

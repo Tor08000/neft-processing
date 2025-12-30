@@ -15,8 +15,14 @@ import { CLIENT_BASE_PATH } from "../api/base";
 import { hasAnyRole } from "../utils/roles";
 import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
+import { isPwaMode } from "../pwa/mode";
+import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
 
-export function Layout() {
+interface LayoutProps {
+  pwaMode?: boolean;
+}
+
+export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const apiBase = CLIENT_BASE_PATH ? null : t("app.configMissing");
@@ -63,53 +69,69 @@ export function Layout() {
 
       <div className="sidebar-layout">
         <nav className="sidebar">
-          <NavLink to="/dashboard">
-            <LayoutDashboard size={18} />
-            {t("nav.dashboard")}
-          </NavLink>
-          {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user) && (
-            <NavLink to="/operations">
-              <Workflow size={18} />
-              {t("nav.operations")}
-            </NavLink>
+          {pwaMode ? (
+            <>
+              <NavLink to="/marketplace/orders">
+                <ShoppingCart size={18} />
+                {t("nav.orders")}
+              </NavLink>
+              <NavLink to="/documents">
+                <FileText size={18} />
+                {t("nav.documents")}
+              </NavLink>
+            </>
+          ) : (
+            <>
+              <NavLink to="/dashboard">
+                <LayoutDashboard size={18} />
+                {t("nav.dashboard")}
+              </NavLink>
+              {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user) && (
+                <NavLink to="/operations">
+                  <Workflow size={18} />
+                  {t("nav.operations")}
+                </NavLink>
+              )}
+              <NavLink to="/explain/insights">
+                <LineChart size={18} />
+                {t("nav.explainInsights")}
+              </NavLink>
+              <NavLink to="/documents">
+                <FileText size={18} />
+                {t("nav.documents")}
+              </NavLink>
+              {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user) && (
+                <NavLink to="/exports">
+                  <FileSpreadsheet size={18} />
+                  {t("nav.exports")}
+                </NavLink>
+              )}
+              <NavLink to="/marketplace">
+                <ShoppingCart size={18} />
+                {t("nav.marketplace")}
+              </NavLink>
+              <NavLink to="/actions">
+                <ClipboardCheck size={18} />
+                {t("nav.actions")}
+              </NavLink>
+              <NavLink to="/support/requests">
+                <MessageCircle size={18} />
+                {t("nav.supportRequests")}
+              </NavLink>
+              <NavLink to="/settings">
+                <Settings size={18} />
+                {t("nav.settings")}
+              </NavLink>
+              <NavLink to="/settings/management">
+                <Settings size={18} />
+                {t("nav.management")}
+              </NavLink>
+            </>
           )}
-          <NavLink to="/explain/insights">
-            <LineChart size={18} />
-            {t("nav.explainInsights")}
-          </NavLink>
-          <NavLink to="/documents">
-            <FileText size={18} />
-            {t("nav.documents")}
-          </NavLink>
-          {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user) && (
-            <NavLink to="/exports">
-              <FileSpreadsheet size={18} />
-              {t("nav.exports")}
-            </NavLink>
-          )}
-          <NavLink to="/marketplace">
-            <ShoppingCart size={18} />
-            {t("nav.marketplace")}
-          </NavLink>
-          <NavLink to="/actions">
-            <ClipboardCheck size={18} />
-            {t("nav.actions")}
-          </NavLink>
-          <NavLink to="/support/requests">
-            <MessageCircle size={18} />
-            {t("nav.supportRequests")}
-          </NavLink>
-          <NavLink to="/settings">
-            <Settings size={18} />
-            {t("nav.settings")}
-          </NavLink>
-          <NavLink to="/settings/management">
-            <Settings size={18} />
-            {t("nav.management")}
-          </NavLink>
         </nav>
 
         <main className="main-area">
+          {pwaMode ? <PwaNotificationsPrompt /> : null}
           <Outlet />
         </main>
       </div>

@@ -11,6 +11,7 @@
     "dashboard": "Дашборд",
     "operations": "Операции",
     "explainInsights": "Explain Insights",
+    "orders": "Заказы",
     "documents": "Документы",
     "exports": "Экспорты / 1C",
     "marketplace": "Marketplace",
@@ -57,6 +58,14 @@
     "retry": "Повторить",
     "errorCode": "Код ошибки: {code}",
     "correlationId": "Correlation ID: {id}"
+  },
+  "pwa": {
+    "notifications": {
+      "title": "Уведомления о статусах",
+      "description": "Включите push-уведомления о заказах и документах.",
+      "enable": "Включить уведомления"
+    },
+    "offlineStatus": "Нет сети. Последнее обновление: {timestamp}."
   },
   "emptyStates": {
     "marketplaceCatalog": {

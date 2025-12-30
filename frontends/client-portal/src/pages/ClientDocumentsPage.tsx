@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { AppErrorState, AppLoadingState } from "../components/states";
 import type { ClientDocumentSummary } from "../types/documents";
-import { formatDate, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime, formatMoney } from "../utils/format";
 import {
   getDocumentStatusLabel,
   getDocumentStatusTone,
@@ -18,12 +18,16 @@ import {
 } from "../utils/documents";
 import { canAccessFinance } from "../utils/roles";
 import { useI18n } from "../i18n";
+import { isPwaMode } from "../pwa/mode";
 
-const DEFAULT_LIMIT = 25;
+const DEFAULT_LIMIT = isPwaMode ? 20 : 25;
+const LAST_UPDATED_KEY = "pwa:lastUpdated:documents";
 
 export function ClientDocumentsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => localStorage.getItem(LAST_UPDATED_KEY));
+  const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   const [items, setItems] = useState<ClientDocumentSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({
@@ -45,6 +49,16 @@ export function ClientDocumentsPage() {
     const timer = window.setTimeout(() => setDebouncedFilters(filters), 450);
     return () => window.clearTimeout(timer);
   }, [filters]);
+
+  useEffect(() => {
+    const handleStatus = () => setIsOffline(!navigator.onLine);
+    window.addEventListener("online", handleStatus);
+    window.addEventListener("offline", handleStatus);
+    return () => {
+      window.removeEventListener("online", handleStatus);
+      window.removeEventListener("offline", handleStatus);
+    };
+  }, []);
 
   useEffect(() => {
     setIsLoading(true);
@@ -81,6 +95,9 @@ export function ClientDocumentsPage() {
             : resp.items;
         setItems(filtered);
         setTotal(resp.total);
+        const timestamp = new Date().toISOString();
+        localStorage.setItem(LAST_UPDATED_KEY, timestamp);
+        setLastUpdated(timestamp);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
@@ -177,6 +194,9 @@ export function ClientDocumentsPage() {
         <div>
           <h2>{t("documentsPage.title")}</h2>
           <p className="muted">{t("documentsPage.subtitle")}</p>
+          {isOffline && lastUpdated ? (
+            <p className="muted small">{t("pwa.offlineStatus", { timestamp: formatDateTime(lastUpdated) })}</p>
+          ) : null}
         </div>
       </div>
 
@@ -336,19 +356,21 @@ export function ClientDocumentsPage() {
                           ) : (
                             <span className="muted small">{t("documentsPage.actions.filesUnavailable")}</span>
                           )}
-                          {canAcknowledge && doc.status === "ISSUED" ? (
+                          {!isPwaMode && canAcknowledge && doc.status === "ISSUED" ? (
                             <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
                               {t("documentsPage.actions.requestSign")}
                             </button>
                           ) : null}
-                          {canAcknowledge ? (
+                          {!isPwaMode && canAcknowledge ? (
                             <button type="button" className="ghost" disabled>
                               {t("documentsPage.actions.resendEdo")}
                             </button>
                           ) : null}
-                          <button type="button" className="ghost" disabled>
-                            {t("documentsPage.actions.viewTimeline")}
-                          </button>
+                          {!isPwaMode ? (
+                            <button type="button" className="ghost" disabled>
+                              {t("documentsPage.actions.viewTimeline")}
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

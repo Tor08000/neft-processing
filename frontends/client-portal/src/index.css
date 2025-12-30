@@ -233,6 +233,13 @@ button.primary {
   gap: 1rem;
 }
 
+.pwa-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .pill-list {
   display: flex;
   flex-wrap: wrap;
