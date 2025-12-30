@@ -181,7 +181,7 @@ describe("Marketplace pages", () => {
     );
 
     await waitFor(() => expect(screen.getByText(/Server error/i)).toBeInTheDocument());
-    expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
+    expect(screen.getByText(/Код ошибки: 500/i)).toBeInTheDocument();
     expect(screen.getByText(/Correlation ID: corr-123/i)).toBeInTheDocument();
   });
 });

@@ -1,55 +1,29 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { FileText } from "../components/icons";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
-import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { AppErrorState, AppLoadingState } from "../components/states";
 import type { ClientDocumentSummary } from "../types/documents";
 import { formatDate, formatMoney } from "../utils/format";
 import {
   getDocumentStatusLabel,
   getDocumentStatusTone,
   getDocumentTypeLabel,
+  getEdoStatusLabel,
   getEdoTone,
+  getSignatureStatusLabel,
   getSignatureTone,
 } from "../utils/documents";
 import { canAccessFinance } from "../utils/roles";
-
-const DOCUMENT_TYPES = [
-  { value: "", label: "Все типы" },
-  { value: "INVOICE", label: "Счет" },
-  { value: "ACT", label: "Акт" },
-  { value: "RECONCILIATION_ACT", label: "Акт сверки" },
-  { value: "CLOSING_PACKAGE", label: "Закрывающий пакет (closing_package)" },
-  { value: "OFFER", label: "Оферта" },
-];
-
-const STATUS_TYPES = [
-  { value: "", label: "Все статусы" },
-  { value: "DRAFT", label: "DRAFT" },
-  { value: "ISSUED", label: "ISSUED" },
-  { value: "ACKNOWLEDGED", label: "ACKNOWLEDGED" },
-  { value: "FINALIZED", label: "FINALIZED" },
-  { value: "VOID", label: "VOID" },
-];
-
-const SIGNATURE_TYPES = [
-  { value: "", label: "Все" },
-  { value: "signed", label: "Подписан" },
-  { value: "pending", label: "Ожидает" },
-];
-
-const EDO_TYPES = [
-  { value: "", label: "Все" },
-  { value: "sent", label: "Отправлен" },
-  { value: "delivered", label: "Доставлен" },
-  { value: "failed", label: "Ошибка" },
-  { value: "rejected", label: "Отклонен" },
-];
+import { useI18n } from "../i18n";
 
 const DEFAULT_LIMIT = 25;
 
 export function ClientDocumentsPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [items, setItems] = useState<ClientDocumentSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({
@@ -153,18 +127,62 @@ export function ClientDocumentsPage() {
     return `${from}-${to}`;
   }, [filters.limit, offset, total]);
 
+  const documentTypes = useMemo(
+    () => [
+      { value: "", label: t("documentsPage.filters.all") },
+      { value: "INVOICE", label: getDocumentTypeLabel("INVOICE") },
+      { value: "ACT", label: getDocumentTypeLabel("ACT") },
+      { value: "RECONCILIATION_ACT", label: getDocumentTypeLabel("RECONCILIATION_ACT") },
+      { value: "CLOSING_PACKAGE", label: getDocumentTypeLabel("CLOSING_PACKAGE") },
+      { value: "OFFER", label: getDocumentTypeLabel("OFFER") },
+    ],
+    [t],
+  );
+
+  const statusTypes = useMemo(
+    () => [
+      { value: "", label: t("documentsPage.filters.all") },
+      { value: "DRAFT", label: getDocumentStatusLabel("DRAFT") },
+      { value: "ISSUED", label: getDocumentStatusLabel("ISSUED") },
+      { value: "ACKNOWLEDGED", label: getDocumentStatusLabel("ACKNOWLEDGED") },
+      { value: "FINALIZED", label: getDocumentStatusLabel("FINALIZED") },
+      { value: "VOID", label: getDocumentStatusLabel("VOID") },
+    ],
+    [t],
+  );
+
+  const signatureTypes = useMemo(
+    () => [
+      { value: "", label: t("documentsPage.filters.all") },
+      { value: "signed", label: t("statuses.signature.SIGNED") },
+      { value: "pending", label: t("statuses.signature.REQUESTED") },
+    ],
+    [t],
+  );
+
+  const edoTypes = useMemo(
+    () => [
+      { value: "", label: t("documentsPage.filters.all") },
+      { value: "sent", label: t("statuses.edo.SENT") },
+      { value: "delivered", label: t("statuses.edo.DELIVERED") },
+      { value: "failed", label: t("statuses.edo.FAILED") },
+      { value: "rejected", label: t("statuses.edo.REJECTED") },
+    ],
+    [t],
+  );
+
   return (
     <div className="card">
       <div className="card__header">
         <div>
-          <h2>Документы</h2>
-          <p className="muted">Сформированные документы с юридическими статусами и файлами.</p>
+          <h2>{t("documentsPage.title")}</h2>
+          <p className="muted">{t("documentsPage.subtitle")}</p>
         </div>
       </div>
 
       <div className="filters">
         <div className="filter">
-          <label htmlFor="dateFrom">Период с</label>
+          <label htmlFor="dateFrom">{t("documentsPage.filters.dateFrom")}</label>
           <input
             id="dateFrom"
             name="dateFrom"
@@ -174,13 +192,13 @@ export function ClientDocumentsPage() {
           />
         </div>
         <div className="filter">
-          <label htmlFor="dateTo">Период по</label>
+          <label htmlFor="dateTo">{t("documentsPage.filters.dateTo")}</label>
           <input id="dateTo" name="dateTo" type="date" value={filters.dateTo} onChange={handleFilterChange} />
         </div>
         <div className="filter">
-          <label htmlFor="documentType">Тип</label>
+          <label htmlFor="documentType">{t("documentsPage.filters.documentType")}</label>
           <select id="documentType" name="documentType" value={filters.documentType} onChange={handleFilterChange}>
-            {DOCUMENT_TYPES.map((opt) => (
+            {documentTypes.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -188,9 +206,9 @@ export function ClientDocumentsPage() {
           </select>
         </div>
         <div className="filter">
-          <label htmlFor="status">Статус</label>
+          <label htmlFor="status">{t("documentsPage.filters.status")}</label>
           <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
-            {STATUS_TYPES.map((opt) => (
+            {statusTypes.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -198,9 +216,9 @@ export function ClientDocumentsPage() {
           </select>
         </div>
         <div className="filter">
-          <label htmlFor="signature">Подписание</label>
+          <label htmlFor="signature">{t("documentsPage.filters.signature")}</label>
           <select id="signature" name="signature" value={filters.signature} onChange={handleFilterChange}>
-            {SIGNATURE_TYPES.map((opt) => (
+            {signatureTypes.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -208,9 +226,9 @@ export function ClientDocumentsPage() {
           </select>
         </div>
         <div className="filter">
-          <label htmlFor="edoStatus">EDO status</label>
+          <label htmlFor="edoStatus">{t("documentsPage.filters.edoStatus")}</label>
           <select id="edoStatus" name="edoStatus" value={filters.edoStatus} onChange={handleFilterChange}>
-            {EDO_TYPES.map((opt) => (
+            {edoTypes.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -218,19 +236,19 @@ export function ClientDocumentsPage() {
           </select>
         </div>
         <div className="filter">
-          <label htmlFor="requiresAction">Requires action</label>
+          <label htmlFor="requiresAction">{t("documentsPage.filters.requiresAction")}</label>
           <select
             id="requiresAction"
             name="requiresAction"
             value={filters.requiresAction}
             onChange={handleFilterChange}
           >
-            <option value="">Все</option>
-            <option value="yes">Требует действий</option>
+            <option value="">{t("documentsPage.filters.all")}</option>
+            <option value="yes">{t("documentsPage.filters.requiresAction")}</option>
           </select>
         </div>
         <div className="filter">
-          <label htmlFor="limit">Лимит</label>
+          <label htmlFor="limit">{t("documentsPage.filters.limit")}</label>
           <select id="limit" value={filters.limit} onChange={handleLimitChange}>
             {[25, 50].map((value) => (
               <option key={value} value={value}>
@@ -244,13 +262,17 @@ export function ClientDocumentsPage() {
       {isLoading ? <AppLoadingState /> : null}
       {error ? <AppErrorState message={error} /> : null}
       {!isLoading && !error && items.length === 0 ? (
-        <AppEmptyState title="Документы не найдены" description="Проверьте период или тип документа." />
+        <EmptyState
+          icon={<FileText />}
+          title={t("emptyStates.documents.title")}
+          description={t("emptyStates.documents.description")}
+        />
       ) : null}
       {!isLoading && !error && items.length > 0 ? (
         <>
           {Object.entries(
             items.reduce<Record<string, ClientDocumentSummary[]>>((acc, doc) => {
-              const key = doc.period_from ? doc.period_from.slice(0, 7) : "Без периода";
+              const key = doc.period_from ? doc.period_from.slice(0, 7) : t("documentsPage.periodFallback");
               if (!acc[key]) acc[key] = [];
               acc[key].push(doc);
               return acc;
@@ -261,15 +283,15 @@ export function ClientDocumentsPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Тип</th>
-                    <th>Период</th>
-                    <th>Номер</th>
-                    <th>Сумма</th>
-                    <th>Lifecycle</th>
-                    <th>Sign</th>
-                    <th>EDO</th>
-                    <th>Updated</th>
-                    <th>Действия</th>
+                    <th>{t("documentsPage.table.type")}</th>
+                    <th>{t("documentsPage.table.period")}</th>
+                    <th>{t("documentsPage.table.number")}</th>
+                    <th>{t("documentsPage.table.amount")}</th>
+                    <th>{t("documentsPage.table.lifecycle")}</th>
+                    <th>{t("documentsPage.table.sign")}</th>
+                    <th>{t("documentsPage.table.edo")}</th>
+                    <th>{t("documentsPage.table.updated")}</th>
+                    <th>{t("documentsPage.table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,8 +301,8 @@ export function ClientDocumentsPage() {
                       <td>
                         {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
                       </td>
-                      <td>{doc.number ?? "—"}</td>
-                      <td>{doc.amount ? formatMoney(doc.amount) : "—"}</td>
+                      <td>{doc.number ?? t("common.notAvailable")}</td>
+                      <td>{doc.amount ? formatMoney(doc.amount) : t("common.notAvailable")}</td>
                       <td>
                         <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
                           {getDocumentStatusLabel(doc.status)}
@@ -288,17 +310,19 @@ export function ClientDocumentsPage() {
                       </td>
                       <td>
                         <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
-                          {doc.signature_status ?? "—"}
+                          {getSignatureStatusLabel(doc.signature_status)}
                         </span>
                       </td>
                       <td>
-                        <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>{doc.edo_status ?? "—"}</span>
+                        <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>
+                          {getEdoStatusLabel(doc.edo_status)}
+                        </span>
                       </td>
                       <td>{formatDate(doc.updated_at ?? doc.created_at)}</td>
                       <td>
                         <div className="actions">
                           <Link className="ghost" to={`/client/documents/${doc.id}`}>
-                            Открыть
+                            {t("common.open")}
                           </Link>
                           {doc.status !== "DRAFT" ? (
                             <>
@@ -310,20 +334,20 @@ export function ClientDocumentsPage() {
                               </button>
                             </>
                           ) : (
-                            <span className="muted small">Файлы недоступны</span>
+                            <span className="muted small">{t("documentsPage.actions.filesUnavailable")}</span>
                           )}
                           {canAcknowledge && doc.status === "ISSUED" ? (
                             <button type="button" className="ghost" onClick={() => handleAck(doc.id)}>
-                              Request sign
+                              {t("documentsPage.actions.requestSign")}
                             </button>
                           ) : null}
                           {canAcknowledge ? (
                             <button type="button" className="ghost" disabled>
-                              Resend EDO
+                              {t("documentsPage.actions.resendEdo")}
                             </button>
                           ) : null}
                           <button type="button" className="ghost" disabled>
-                            View status timeline
+                            {t("documentsPage.actions.viewTimeline")}
                           </button>
                         </div>
                       </td>
@@ -336,7 +360,7 @@ export function ClientDocumentsPage() {
 
           <div className="table-footer">
             <div className="muted">
-              Показаны {totalRange} из {total}
+              {t("documentsPage.footer.shown", { range: totalRange, total })}
             </div>
             <div className="actions">
               <button
@@ -345,7 +369,7 @@ export function ClientDocumentsPage() {
                 disabled={offset === 0}
                 onClick={() => setOffset((prev) => Math.max(prev - filters.limit, 0))}
               >
-                Назад
+                {t("common.back")}
               </button>
               <button
                 type="button"
@@ -353,7 +377,7 @@ export function ClientDocumentsPage() {
                 disabled={offset + filters.limit >= total}
                 onClick={() => setOffset((prev) => prev + filters.limit)}
               >
-                Далее
+                {t("common.next")}
               </button>
             </div>
           </div>

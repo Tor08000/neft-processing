@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Package } from "../components/icons";
 import { ApiError } from "../api/http";
 import { fetchOrders, type OrderFilters, confirmOrder } from "../api/orders";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import type { MarketplaceOrder } from "../types/marketplace";
 import { formatCurrency, formatDateTime, formatNumber } from "../utils/format";
 import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
+import { useI18n } from "../i18n";
 
 const STORAGE_KEY = "partner-orders-filters";
 const PAGE_SIZE = 20;
@@ -53,6 +56,7 @@ const shortId = (value: string) => (value.length > 10 ? `${value.slice(0, 6)}…
 
 export function OrdersPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,10 +109,10 @@ export function OrdersPage() {
         console.error(err);
         if (!active) return;
         if (err instanceof ApiError) {
-          setError(`HTTP ${err.status}: ${err.message}`);
+          setError(t("ordersPage.errors.apiError", { status: err.status, message: err.message }));
           setCorrelationId(err.correlationId);
         } else {
-          setError("Не удалось загрузить заказы");
+          setError(t("ordersPage.errors.loadFailed"));
         }
       })
       .finally(() => {
@@ -172,13 +176,18 @@ export function OrdersPage() {
     setActionMessage(null);
     try {
       const result = await confirmOrder(user.token, orderId);
-      setActionMessage(`Заказ подтверждён. Correlation ID: ${result.correlationId ?? "—"}`);
+      setActionMessage(
+        t("ordersPage.notifications.confirmed", { id: result.correlationId ?? t("common.notAvailable") }),
+      );
       const updated = await fetchOrders(user.token, { ...filters, offset: String((page - 1) * PAGE_SIZE), limit: String(PAGE_SIZE) });
       setOrders(updated.items ?? []);
       setTotal(updated.total ?? 0);
     } catch (err) {
       console.error(err);
-      const message = err instanceof ApiError ? `HTTP ${err.status}: ${err.message}` : "Не удалось подтвердить заказ";
+      const message =
+        err instanceof ApiError
+          ? t("ordersPage.errors.apiError", { status: err.status, message: err.message })
+          : t("ordersPage.errors.confirmFailed");
       setActionError(message);
       if (err instanceof ApiError) {
         setCorrelationId(err.correlationId);
@@ -194,23 +203,23 @@ export function OrdersPage() {
     <div className="stack">
       <section className="card">
         <div className="section-title">
-          <h2>Заказы</h2>
+          <h2>{t("ordersPage.title")}</h2>
           <button type="button" className="secondary" onClick={handleSaveFilters}>
-            Сохранить фильтры
+            {t("ordersPage.actions.saveFilters")}
           </button>
         </div>
         <div className="filters">
           <label className="filter">
-            Период
+            {t("ordersPage.filters.period")}
             <select value={periodPreset} onChange={(event) => handlePresetChange(event.target.value as PeriodPreset)}>
-              <option value="today">Сегодня</option>
-              <option value="7d">7 дней</option>
-              <option value="30d">30 дней</option>
-              <option value="custom">Произвольно</option>
+              <option value="today">{t("ordersPage.filters.presets.today")}</option>
+              <option value="7d">{t("ordersPage.filters.presets.7d")}</option>
+              <option value="30d">{t("ordersPage.filters.presets.30d")}</option>
+              <option value="custom">{t("ordersPage.filters.presets.custom")}</option>
             </select>
           </label>
           <label className="filter">
-            С
+            {t("ordersPage.filters.from")}
             <input
               type="date"
               value={filters.from ?? ""}
@@ -218,7 +227,7 @@ export function OrdersPage() {
             />
           </label>
           <label className="filter">
-            По
+            {t("ordersPage.filters.to")}
             <input
               type="date"
               value={filters.to ?? ""}
@@ -226,38 +235,38 @@ export function OrdersPage() {
             />
           </label>
           <label className="filter">
-            Статус
+            {t("ordersPage.filters.status")}
             <select value={filters.status ?? ""} onChange={(event) => handleFilterChange("status", event.target.value)}>
               {statusOptions.map((status) => (
                 <option key={status || "all"} value={status}>
-                  {status || "Все"}
+                  {status || t("common.all")}
                 </option>
               ))}
             </select>
           </label>
           <label className="filter">
-            Поиск
+            {t("ordersPage.filters.search")}
             <input
               type="search"
-              placeholder="order_id, клиент, сервис"
+              placeholder={t("ordersPage.filters.searchPlaceholder")}
               value={filters.q ?? ""}
               onChange={(event) => handleFilterChange("q", event.target.value)}
             />
           </label>
           <label className="filter">
-            Станция
+            {t("ordersPage.filters.station")}
             <input
               type="text"
-              placeholder="station_id"
+              placeholder={t("ordersPage.filters.stationPlaceholder")}
               value={filters.station_id ?? ""}
               onChange={(event) => handleFilterChange("station_id", event.target.value)}
             />
           </label>
           <label className="filter">
-            Сервис
+            {t("ordersPage.filters.service")}
             <input
               type="text"
-              placeholder="service_id"
+              placeholder={t("ordersPage.filters.servicePlaceholder")}
               value={filters.service_id ?? ""}
               onChange={(event) => handleFilterChange("service_id", event.target.value)}
             />
@@ -266,19 +275,19 @@ export function OrdersPage() {
 
         <div className="stats-grid">
           <div className="stat">
-            <div className="stat__label">Заказы сегодня</div>
+            <div className="stat__label">{t("ordersPage.kpis.today")}</div>
             <div className="stat__value">{formatNumber(kpis.ordersToday)}</div>
           </div>
           <div className="stat">
-            <div className="stat__label">На подтверждении</div>
+            <div className="stat__label">{t("ordersPage.kpis.pending")}</div>
             <div className="stat__value">{formatNumber(kpis.pendingConfirmation)}</div>
           </div>
           <div className="stat">
-            <div className="stat__label">Документы ожидают</div>
+            <div className="stat__label">{t("ordersPage.kpis.documents")}</div>
             <div className="stat__value">{formatNumber(kpis.docsPending)}</div>
           </div>
           <div className="stat">
-            <div className="stat__label">Всего в выборке</div>
+            <div className="stat__label">{t("ordersPage.kpis.total")}</div>
             <div className="stat__value">{formatNumber(total)}</div>
           </div>
         </div>
@@ -294,25 +303,29 @@ export function OrdersPage() {
             correlationId={correlationId}
             action={
               <button type="button" className="secondary" onClick={() => setPage(1)}>
-                Повторить
+                {t("errors.retry")}
               </button>
             }
           />
         ) : orders.length === 0 ? (
-          <EmptyState title="Нет заказов за период" description="Попробуйте изменить фильтры." />
+          <EmptyState
+            icon={<Package />}
+            title={t("emptyStates.orders.title")}
+            description={t("emptyStates.orders.description")}
+          />
         ) : (
           <>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Создан</th>
-                  <th>Order ID</th>
-                  <th>Клиент</th>
-                  <th>Позиций</th>
-                  <th>Сумма</th>
-                  <th>Оплата</th>
-                  <th>Статус</th>
-                  <th>Документы</th>
+                  <th>{t("ordersPage.table.createdAt")}</th>
+                  <th>{t("ordersPage.table.orderId")}</th>
+                  <th>{t("ordersPage.table.client")}</th>
+                  <th>{t("ordersPage.table.items")}</th>
+                  <th>{t("ordersPage.table.amount")}</th>
+                  <th>{t("ordersPage.table.payment")}</th>
+                  <th>{t("ordersPage.table.status")}</th>
+                  <th>{t("ordersPage.table.documents")}</th>
                   <th />
                 </tr>
               </thead>
@@ -321,26 +334,26 @@ export function OrdersPage() {
                   <tr key={order.id}>
                     <td>{formatDateTime(order.createdAt)}</td>
                     <td>{shortId(order.id)}</td>
-                    <td>{order.clientName ?? order.clientId ?? "—"}</td>
+                    <td>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</td>
                     <td>{formatNumber(order.itemsCount ?? order.items?.length ?? null)}</td>
                     <td>{formatCurrency(order.totalAmount ?? null)}</td>
                     <td>
-                      <StatusBadge status={order.paymentStatus ?? "—"} />
+                      <StatusBadge status={order.paymentStatus ?? t("common.notAvailable")} />
                     </td>
                     <td>
                       <StatusBadge status={order.status} />
                     </td>
                     <td>
-                      <StatusBadge status={order.documentsStatus ?? order.documents?.[0]?.status ?? "—"} />
+                      <StatusBadge status={order.documentsStatus ?? order.documents?.[0]?.status ?? t("common.notAvailable")} />
                     </td>
                     <td>
                       <div className="stack-inline">
                         <Link className="link-button" to={`/orders/${order.id}`}>
-                          Открыть
+                          {t("common.open")}
                         </Link>
                         {canManageLifecycle && ["CREATED", "PAID", "AUTHORIZED"].includes(order.status) ? (
                           <button type="button" className="ghost" onClick={() => handleQuickConfirm(order.id)}>
-                            Быстро подтвердить
+                            {t("ordersPage.actions.quickConfirm")}
                           </button>
                         ) : null}
                       </div>
@@ -351,11 +364,11 @@ export function OrdersPage() {
             </table>
             <div className="pagination">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                Назад
+                {t("common.back")}
               </button>
-              <div className="muted">Страница {page} из {totalPages}</div>
+              <div className="muted">{t("ordersPage.pagination", { current: page, total: totalPages })}</div>
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))} disabled={page >= totalPages}>
-                Вперёд
+                {t("common.next")}
               </button>
             </div>
           </>

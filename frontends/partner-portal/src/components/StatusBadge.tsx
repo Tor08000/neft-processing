@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n";
+
 interface StatusBadgeProps {
   status: string | null | undefined;
   tone?: "success" | "pending" | "error" | "neutral";
@@ -36,8 +38,32 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   dead: "error",
 };
 
+const statusLabelMap: Record<string, string> = {
+  CREATED: "statuses.orders.CREATED",
+  PAID: "statuses.orders.PAID",
+  CONFIRMED: "statuses.orders.CONFIRMED",
+  IN_PROGRESS: "statuses.orders.IN_PROGRESS",
+  COMPLETED: "statuses.orders.COMPLETED",
+  CANCELLED: "statuses.orders.CANCELLED",
+  REFUNDED: "statuses.orders.REFUNDED",
+  DRAFT: "statuses.documents.DRAFT",
+  ISSUED: "statuses.documents.ISSUED",
+  SIGNED: "statuses.documents.SIGNED",
+  EDO_SENT: "statuses.documents.EDO_SENT",
+  EDO_DELIVERED: "statuses.documents.EDO_DELIVERED",
+  EDO_FAILED: "statuses.documents.EDO_FAILED",
+  ACTIVE: "statuses.webhooks.ACTIVE",
+  DISABLED: "statuses.webhooks.DISABLED",
+  DELIVERED: "statuses.webhooks.DELIVERED",
+  FAILED: "statuses.webhooks.FAILED",
+  DEAD: "statuses.webhooks.DEAD",
+};
+
 export function StatusBadge({ status, tone }: StatusBadgeProps) {
-  const normalized = status ?? "—";
+  const { t } = useI18n();
+  const normalized = status ?? t("common.notAvailable");
+  const key = status ? statusLabelMap[String(status).toUpperCase()] : null;
+  const label = key ? t(key) : normalized;
   const resolvedTone = tone ?? toneMap[String(status).toLowerCase()] ?? "neutral";
-  return <span className={`badge ${resolvedTone}`}>{normalized}</span>;
+  return <span className={`badge ${resolvedTone}`}>{label}</span>;
 }

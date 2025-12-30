@@ -1,0 +1,610 @@
+{
+  "app": {
+    "title": "Partner Portal",
+    "partnerLabel": "Partner {id}",
+    "partnerFallback": "Partner workspace",
+    "signedInAs": "Signed in as"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "stations": "Stations",
+    "prices": "Prices",
+    "transactions": "Transactions",
+    "orders": "Orders",
+    "refunds": "Refunds",
+    "payouts": "Payouts",
+    "documents": "Documents",
+    "services": "Services",
+    "integrations": "Integrations",
+    "settings": "Settings"
+  },
+  "common": {
+    "notAvailable": "—",
+    "loading": "Loading data...",
+    "status": "Status",
+    "actions": "Actions",
+    "open": "Open",
+    "back": "Back",
+    "next": "Next",
+    "all": "All"
+  },
+  "actions": {
+    "logout": "Sign out",
+    "create": "Create",
+    "publish": "Publish",
+    "confirm": "Confirm",
+    "send": "Send",
+    "retry": "Retry",
+    "createDraft": "Create draft",
+    "createEndpoint": "Create endpoint",
+    "addService": "Add service",
+    "upload": "Upload",
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "delete": "Delete",
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "apply": "Apply",
+    "download": "Download",
+    "add": "Add",
+    "edit": "Edit",
+    "toggle": "Toggle",
+    "confirmDelivery": "Retry delivery"
+  },
+  "states": {
+    "loadingTitle": "Loading",
+    "emptyTitle": "No data yet",
+    "emptyDescription": "Records will appear after data is loaded.",
+    "forbiddenTitle": "Access restricted",
+    "forbiddenDescription": "Your role does not have access to this section."
+  },
+  "errors": {
+    "actionFailedTitle": "Action failed",
+    "retry": "Retry",
+    "errorCode": "Error code: {code}",
+    "correlationId": "Correlation ID: {id}"
+  },
+  "emptyStates": {
+    "prices": {
+      "title": "Price lists are not created",
+      "description": "Create a draft and upload CSV to publish prices."
+    },
+    "integrations": {
+      "title": "Integrations are not configured",
+      "description": "Create a webhook to receive NEFT events in your system."
+    },
+    "servicesCatalog": {
+      "title": "Catalog is empty",
+      "description": "Add services or products so clients can place orders."
+    },
+    "orders": {
+      "title": "No orders yet",
+      "description": "Orders will appear after services are published and clients place them."
+    }
+  },
+  "statuses": {
+    "orders": {
+      "CREATED": "Created",
+      "PAID": "Paid",
+      "CONFIRMED": "Confirmed by partner",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled",
+      "REFUNDED": "Refunded"
+    },
+    "documents": {
+      "DRAFT": "Draft",
+      "ISSUED": "Issued",
+      "SIGNED": "Signed",
+      "EDO_SENT": "Sent to EDO",
+      "EDO_DELIVERED": "Delivered",
+      "EDO_FAILED": "EDO error"
+    },
+    "webhooks": {
+      "ACTIVE": "Active",
+      "DISABLED": "Disabled",
+      "DELIVERED": "Delivered",
+      "FAILED": "Error",
+      "DEAD": "Stopped"
+    }
+  },
+  "pricesPage": {
+    "title": "Prices",
+    "subtitle": "Manage partner price list versions.",
+    "loading": "Loading price versions...",
+    "filters": {
+      "station": "Station",
+      "allStations": "All stations",
+      "status": "Status",
+      "from": "From",
+      "to": "To"
+    },
+    "statuses": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "errors": {
+      "loadFailed": "Unable to load price versions",
+      "loadTitle": "Load error (status {status})",
+      "createDraftFailed": "Unable to create draft",
+      "importFailed": "Unable to import file",
+      "apiError": "Error: {message} (status {status})"
+    },
+    "confirmations": {
+      "createDraft": "Create a price draft?",
+      "importDraft": "Import file into draft?"
+    },
+    "notifications": {
+      "draftCreated": "Draft created",
+      "importCompleted": "Import completed. Errors: {errors}"
+    },
+    "insights": {
+      "title": "Quick insights",
+      "activeVersion": "Active version",
+      "lastPublished": "Last published",
+      "drafts": "Drafts awaiting review"
+    },
+    "upload": {
+      "title": "Import into draft",
+      "selectDraft": "Select draft",
+      "notSelected": "Not selected",
+      "format": "Format",
+      "file": "File",
+      "formats": {
+        "csv": "CSV",
+        "json": "JSON"
+      },
+      "preview": "Preview: {text}",
+      "loading": "Importing...",
+      "submit": "Upload to draft",
+      "csvErrors": "Errors found: {count}",
+      "csvRows": "Rows: {count}",
+      "jsonRows": "JSON records: {count}",
+      "jsonError": "Invalid JSON format"
+    },
+    "versions": {
+      "title": "Price list versions",
+      "table": {
+        "version": "Version",
+        "scope": "Scope",
+        "createdAt": "Created",
+        "items": "Items",
+        "errors": "Errors",
+        "active": "Active"
+      },
+      "scopeAll": "All stations",
+      "scopeCount": "{count} stations",
+      "active": "Active",
+      "actions": {
+        "publish": "Publish",
+        "rollback": "Rollback",
+        "diff": "Diff"
+      }
+    }
+  },
+  "integrationsPage": {
+    "title": "Integrations · Webhooks",
+    "subtitle": "Integration Hub v1 · Self-service",
+    "errors": {
+      "loadEndpoints": "Unable to load endpoints",
+      "loadEventsFallback": "Unable to load event types, using defaults",
+      "loadSubscriptions": "Unable to load subscriptions",
+      "loadDeliveries": "Unable to load deliveries",
+      "invalidUrl": "URL must start with http:// or https://",
+      "createEndpointFailed": "Unable to create endpoint",
+      "updateEndpointFailed": "Unable to update endpoint status",
+      "rotateSecretFailed": "Unable to rotate secret",
+      "sendTestFailed": "Unable to send test webhook",
+      "invalidFilters": "Invalid JSON in filters",
+      "updateSubscriptionFailed": "Unable to update subscription",
+      "deleteSubscriptionFailed": "Unable to delete subscription",
+      "loadDeliveryDetailFailed": "Unable to load delivery detail",
+      "retryDeliveryFailed": "Unable to retry delivery",
+      "retryDeadFailed": "Unable to retry dead deliveries"
+    },
+    "confirmations": {
+      "disableEndpoint": "Disable endpoint? Deliveries will be stopped.",
+      "enableEndpoint": "Enable endpoint?",
+      "rotateSecret": "Rotate secret? The old secret will stop working. Make sure you update it in your system.",
+      "deleteSubscription": "Delete subscription?",
+      "retryDelivery": "Retry delivery?",
+      "retryDeadDeliveries": "Retry all dead deliveries? This will resend all events."
+    },
+    "loading": {
+      "endpoints": "Loading endpoints...",
+      "subscriptions": "Loading subscriptions...",
+      "deliveries": "Loading deliveries...",
+      "deliveryDetail": "Loading details...",
+      "deliveryDetailPending": "Preparing details..."
+    },
+    "table": {
+      "url": "URL",
+      "algorithm": "Algorithm",
+      "createdAt": "Created"
+    },
+    "actions": {
+      "disable": "Disable",
+      "enable": "Enable",
+      "rotateSecret": "Rotate secret",
+      "testPing": "Test ping",
+      "deliveries": "Deliveries"
+    },
+    "subscriptions": {
+      "title": "Subscriptions",
+      "subtitle": "Choose events for the selected endpoint.",
+      "selectedEndpoint": "Endpoint: {url}",
+      "emptyTitle": "Select an endpoint first",
+      "emptyDescription": "Choose an endpoint from the list above.",
+      "catalogTitle": "Event catalog",
+      "catalogNote": "Filters are passed to Integration Hub without frontend processing.",
+      "filtersPlaceholder": "{\"station_id\":\"...\"}",
+      "ownerOnly": "Subscription changes are available only for PARTNER_OWNER.",
+      "table": {
+        "eventType": "Event type",
+        "enabled": "Enabled",
+        "filters": "Filters (JSON)",
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "deliveries": {
+      "title": "Deliveries",
+      "subtitle": "Delivery history and DLQ.",
+      "tabs": {
+        "history": "History"
+      },
+      "emptyTitle": "No endpoint selected",
+      "emptyDescription": "Select an endpoint to view deliveries.",
+      "filters": {
+        "endpoint": "Endpoint",
+        "status": "Status",
+        "eventType": "Event type",
+        "eventTypePlaceholder": "payout.*",
+        "eventId": "Event ID",
+        "eventIdPlaceholder": "event-123",
+        "from": "From",
+        "to": "To"
+      },
+      "noDeliveriesTitle": "No deliveries",
+      "noDeliveriesDescription": "Events will appear here once they arrive.",
+      "dlqTitle": "Dead Letter Queue",
+      "dlqNote": "Retrying will resend all events.",
+      "retryAll": "Retry selected (all)",
+      "table": {
+        "occurredAt": "Occurred at",
+        "eventType": "Event type",
+        "attempt": "Attempt",
+        "http": "HTTP",
+        "latency": "Latency, ms"
+      },
+      "actions": {
+        "detail": "Detail",
+        "retry": "Retry delivery"
+      }
+    },
+    "modals": {
+      "create": {
+        "title": "Create endpoint",
+        "url": "URL",
+        "urlPlaceholder": "https://partner.example/webhooks",
+        "signingAlgo": "Signing algo",
+        "enabled": "Endpoint enabled"
+      },
+      "created": {
+        "title": "Endpoint created",
+        "endpointId": "Endpoint ID",
+        "secret": "Secret (one-time view)",
+        "copySecret": "Copy secret",
+        "snippet": "Setup snippet",
+        "copySnippet": "Copy setup snippet"
+      },
+      "rotated": {
+        "title": "Secret rotated",
+        "endpointId": "Endpoint ID",
+        "notice": "The old secret is no longer valid. Use the new secret below.",
+        "newSecret": "New secret",
+        "copySecret": "Copy secret"
+      },
+      "testPing": {
+        "title": "Test ping",
+        "deliveryId": "Delivery ID",
+        "httpStatus": "HTTP status",
+        "latency": "Latency"
+      },
+      "deliveryDetail": {
+        "title": "Delivery detail",
+        "endpointUrl": "Endpoint URL",
+        "eventType": "Event type",
+        "correlationId": "Correlation ID",
+        "envelope": "Envelope",
+        "headers": "Headers",
+        "attempts": "Attempts",
+        "table": {
+          "http": "HTTP",
+          "error": "Error",
+          "latency": "Latency",
+          "nextRetry": "Next retry",
+          "correlationId": "Correlation ID"
+      }
+    }
+  },
+  "ordersPage": {
+    "title": "Orders",
+    "filters": {
+      "period": "Period",
+      "presets": {
+        "today": "Today",
+        "7d": "7 days",
+        "30d": "30 days",
+        "custom": "Custom"
+      },
+      "from": "From",
+      "to": "To",
+      "status": "Status",
+      "search": "Search",
+      "searchPlaceholder": "order_id, client, service",
+      "station": "Station",
+      "stationPlaceholder": "station_id",
+      "service": "Service",
+      "servicePlaceholder": "service_id"
+    },
+    "actions": {
+      "saveFilters": "Save filters",
+      "quickConfirm": "Quick confirm"
+    },
+    "errors": {
+      "loadFailed": "Unable to load orders",
+      "confirmFailed": "Unable to confirm order",
+      "apiError": "HTTP {status}: {message}"
+    },
+    "notifications": {
+      "confirmed": "Order confirmed. Correlation ID: {id}"
+    },
+    "kpis": {
+      "today": "Orders today",
+      "pending": "Pending confirmation",
+      "documents": "Documents pending",
+      "total": "Total in selection"
+    },
+    "table": {
+      "createdAt": "Created",
+      "orderId": "Order ID",
+      "client": "Client",
+      "items": "Items",
+      "amount": "Amount",
+      "payment": "Payment",
+      "status": "Status",
+      "documents": "Documents"
+    },
+    "pagination": "Page {current} of {total}"
+  },
+  "servicesCatalogPage": {
+    "title": "Services and products catalog",
+    "subtitle": "Marketplace partner catalog",
+    "empty": {
+      "filteredTitle": "No results for current filters",
+      "filteredDescription": "Adjust the filters or reset the search."
+    },
+    "filters": {
+      "search": "Search",
+      "searchPlaceholder": "Title, description",
+      "kind": "Type",
+      "kindOptions": {
+        "service": "Service",
+        "product": "Product"
+      },
+      "status": "Status",
+      "statusOptions": {
+        "draft": "Draft",
+        "active": "Active",
+        "disabled": "Disabled",
+        "archived": "Archived"
+      },
+      "category": "Category",
+      "categoryPlaceholder": "e.g., car wash"
+    },
+    "table": {
+      "title": "Title",
+      "kind": "Type",
+      "category": "Category",
+      "status": "Status",
+      "activeOffers": "Active offers",
+      "updatedAt": "Updated"
+    },
+    "actions": {
+      "disable": "Disable",
+      "activate": "Activate",
+      "resetFilters": "Reset filters"
+    },
+    "pagination": "Page {current} of {total}",
+    "errors": {
+      "loadFailed": "Unable to load catalog",
+      "requiredFields": "Fill in required fields",
+      "saveFailed": "Unable to save item",
+      "updateStatusFailed": "Unable to update status"
+    },
+    "notifications": {
+      "saved": "Changes saved",
+      "created": "Catalog item created",
+      "disabled": "Catalog item disabled",
+      "activated": "Catalog item activated"
+    },
+    "import": {
+      "title": "Catalog import",
+      "subtitle": "CSV import with preview",
+      "unavailableTitle": "Import unavailable",
+      "unavailableDescription": "Available only for PARTNER_OWNER or PARTNER_SERVICE_MANAGER.",
+      "csvFile": "CSV file",
+      "mode": "Mode",
+      "modes": {
+        "create": "create-only",
+        "upsert": "upsert"
+      },
+      "preview": "Preview",
+      "csvError": "CSV error:",
+      "previewSummary": "Preview summary",
+      "rowsParsed": "Rows parsed: {count}",
+      "willCreate": "Will create: {count}",
+      "willUpdate": "Will update: {count}",
+      "errorsCount": "Errors count: {count}",
+      "errorsTitle": "Import errors",
+      "table": {
+        "row": "Row",
+        "description": "Description"
+      },
+      "sampleTitle": "Sample rows (first 20)",
+      "apply": "Apply import",
+      "resultTitle": "Import result",
+      "resultCreated": "Created: {count}",
+      "resultUpdated": "Updated: {count}",
+      "resultSkipped": "Skipped: {count}",
+      "refreshList": "Refresh list",
+      "csvFormat": "CSV format",
+      "requiredFields": "Required fields: kind, title, category, uom",
+      "sampleRow": "SERVICE,Service,Car wash,service,Full wash,ACTIVE",
+      "errors": {
+        "selectCsv": "Select a CSV file",
+        "row": "Row {row}: {message}",
+        "previewFailed": "Unable to preview import",
+        "applyFailed": "Unable to apply import"
+      }
+    },
+    "modal": {
+      "editTitle": "Edit item",
+      "createTitle": "Create item",
+      "fields": {
+        "title": "Title *",
+        "kind": "Type",
+        "category": "Category",
+        "uom": "Unit of measure *",
+        "uomPlaceholder": "pcs / service / hour",
+        "description": "Description",
+        "status": "Status"
+      },
+      "actions": {
+        "saveActivate": "Save & Activate"
+      }
+    }
+  },
+  "priceVersionPage": {
+    "loading": "Loading price version...",
+    "forbidden": "Your role cannot access this price version.",
+    "errors": {
+      "loadFailed": "Unable to load price version",
+      "loadTitle": "Load error (status {status})",
+      "validationFailed": "Unable to start validation",
+      "publishFailed": "Unable to publish version",
+      "rollbackFailed": "Unable to rollback version",
+      "importFailed": "Unable to import file",
+      "apiError": "Error: {message} (status {status})"
+    },
+    "confirmations": {
+      "validate": "Run version validation?",
+      "publishTitle": "Publish price list?",
+      "publishDescription": "New prices will apply to all new operations. Existing orders will not change.",
+      "rollbackTitle": "Return to the previous version?",
+      "rollbackDescription": "A new active version will be created based on the selected one.",
+      "import": "Import file into version?"
+    },
+    "notifications": {
+      "validationOk": "Validation passed",
+      "validationWithErrors": "Validation completed with errors",
+      "published": "Version published",
+      "rollbackCreated": "Rollback created",
+      "importCompleted": "Import completed. Errors: {errors}"
+    },
+    "upload": {
+      "csvErrors": "Errors found: {count}",
+      "csvRows": "Rows: {count}",
+      "jsonRows": "JSON records: {count}",
+      "jsonError": "Invalid JSON format"
+    },
+    "empty": {
+      "notFoundTitle": "Version not found",
+      "notFoundDescription": "Check the version ID and try again."
+    },
+    "header": {
+      "title": "Version {id}",
+      "subtitle": "Price version status and management."
+    },
+    "actions": {
+      "validate": "Validate",
+      "rollback": "Rollback"
+    },
+    "overview": {
+      "scope": "Scope",
+      "scopeAll": "All stations",
+      "scopeCount": "{count} stations",
+      "items": "Items",
+      "errors": "Errors",
+      "createdAt": "Created",
+      "createdBy": "Created by",
+      "publishedAt": "Published"
+    },
+    "import": {
+      "csvFormat": "CSV format",
+      "requiredFields": "Required fields: station_code (or station_id), product_code, price, currency, valid_from.",
+      "format": "Format",
+      "file": "File",
+      "preview": "Preview: {text}",
+      "commit": "Commit import to version"
+    },
+    "preview": {
+      "search": "Search",
+      "searchPlaceholder": "station/product",
+      "errorsOnly": "Errors only",
+      "emptyTitle": "No items",
+      "emptyDescription": "Items will appear after import.",
+      "table": {
+        "station": "Station",
+        "product": "Product",
+        "price": "Price",
+        "currency": "Currency",
+        "validFrom": "Valid from",
+        "errors": "Errors"
+      }
+    },
+    "pagination": {
+      "page": "Page {current}{total}",
+      "total": " of {total}"
+    },
+    "validate": {
+      "run": "Run validation",
+      "yes": "Yes",
+      "no": "No",
+      "errors": "Errors",
+      "warnings": "Warnings",
+      "emptyTitle": "Validation has not been run",
+      "emptyDescription": "Run validation to see the report.",
+      "sampleErrors": "Sample errors",
+      "recommendedActions": "Recommended actions"
+    },
+    "diff": {
+      "compareTo": "Compare to version",
+      "selectVersion": "Select version",
+      "added": "Added",
+      "removed": "Removed",
+      "changed": "Changed",
+      "table": {
+        "station": "Station",
+        "product": "Product",
+        "before": "Before",
+        "after": "After"
+      },
+      "emptyTitle": "No changes",
+      "emptyDescription": "Choose another version to compare.",
+      "selectTitle": "Select a version",
+      "selectDescription": "Select a version to calculate diff."
+    },
+    "audit": {
+      "emptyTitle": "No events",
+      "emptyDescription": "Audit will appear after actions on the version.",
+      "actor": "Actor: {actor}"
+    }
+  }
+}
+  }
+}

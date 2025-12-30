@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../i18n";
 
 interface StateProps {
   title: string;
@@ -18,24 +19,31 @@ function StateContainer({ title, description, action, fullHeight = false }: Stat
 }
 
 export function LoadingState({ label = "Загружаем данные..." }: { label?: string }) {
-  return <StateContainer title={label} fullHeight />;
+  return <LoadingStateContent label={label} />;
 }
 
 export function EmptyState({
-  title = "Пока нет данных",
-  description = "Как только появятся записи, они отобразятся здесь.",
+  title,
+  description,
   action,
 }: {
   title?: string;
   description?: string;
   action?: ReactNode;
 }) {
-  return <StateContainer title={title} description={description} action={action} />;
+  const { t } = useI18n();
+  return (
+    <StateContainer
+      title={title ?? t("states.emptyTitle")}
+      description={description ?? t("states.emptyDescription")}
+      action={action}
+    />
+  );
 }
 
 export function ErrorState({
-  title = "Не удалось загрузить данные",
-  description = "Попробуйте обновить страницу или повторить запрос позже.",
+  title,
+  description,
   correlationId,
   action,
 }: {
@@ -44,18 +52,42 @@ export function ErrorState({
   correlationId?: string | null;
   action?: ReactNode;
 }) {
-  const details = correlationId ? `${description} Correlation ID: ${correlationId}` : description;
-  return <StateContainer title={title} description={details} action={action} />;
+  const { t } = useI18n();
+  const metaParts = [];
+  if (correlationId) {
+    metaParts.push(t("errors.correlationId", { id: correlationId }));
+  }
+  const details = metaParts.length ? `${description ?? ""} ${metaParts.join(" · ")}`.trim() : description;
+  return (
+    <StateContainer
+      title={title ?? t("errors.actionFailedTitle")}
+      description={details ?? t("common.loading")}
+      action={action}
+    />
+  );
 }
 
 export function ForbiddenState({
-  title = "Доступ ограничен",
-  description = "У вашей роли нет доступа к этому разделу.",
+  title,
+  description,
   action,
 }: {
   title?: string;
   description?: string;
   action?: ReactNode;
 }) {
-  return <StateContainer title={title} description={description} action={action} fullHeight />;
+  const { t } = useI18n();
+  return (
+    <StateContainer
+      title={title ?? t("states.forbiddenTitle")}
+      description={description ?? t("states.forbiddenDescription")}
+      action={action}
+      fullHeight
+    />
+  );
+}
+
+function LoadingStateContent({ label }: { label?: string }) {
+  const { t } = useI18n();
+  return <StateContainer title={label ?? t("common.loading")} fullHeight />;
 }

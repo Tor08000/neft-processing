@@ -139,7 +139,7 @@ describe("Integrations page", () => {
     );
 
     expect(await screen.findByText(/Integrations/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Rotate secret/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Обновить секрет/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Retry/i)).not.toBeInTheDocument();
   });
 
@@ -154,7 +154,7 @@ describe("Integrations page", () => {
     const button = await screen.findByRole("button", { name: /Создать endpoint/i });
     await user.click(button);
 
-    expect(await screen.findByText(/Create endpoint/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Создать endpoint/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/URL/i)).toBeInTheDocument();
   });
 

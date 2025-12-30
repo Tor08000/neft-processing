@@ -1,0 +1,610 @@
+{
+  "app": {
+    "title": "Partner Portal",
+    "partnerLabel": "Партнёр {id}",
+    "partnerFallback": "Кабинет партнёра",
+    "signedInAs": "Вы вошли как"
+  },
+  "nav": {
+    "dashboard": "Дашборд",
+    "stations": "АЗС",
+    "prices": "Цены",
+    "transactions": "Операции",
+    "orders": "Заказы",
+    "refunds": "Возвраты",
+    "payouts": "Выплаты",
+    "documents": "Документы",
+    "services": "Сервисы",
+    "integrations": "Интеграции",
+    "settings": "Настройки"
+  },
+  "common": {
+    "notAvailable": "—",
+    "loading": "Загружаем данные...",
+    "status": "Статус",
+    "actions": "Действия",
+    "open": "Открыть",
+    "back": "Назад",
+    "next": "Вперёд",
+    "all": "Все"
+  },
+  "actions": {
+    "logout": "Выйти",
+    "create": "Создать",
+    "publish": "Опубликовать",
+    "confirm": "Подтвердить",
+    "send": "Отправить",
+    "retry": "Повторить",
+    "createDraft": "Создать черновик",
+    "createEndpoint": "Создать endpoint",
+    "addService": "Добавить услугу",
+    "upload": "Загрузить",
+    "refresh": "Обновить",
+    "copy": "Скопировать",
+    "delete": "Удалить",
+    "close": "Закрыть",
+    "cancel": "Отменить",
+    "save": "Сохранить",
+    "apply": "Применить",
+    "download": "Скачать",
+    "add": "Добавить",
+    "edit": "Редактировать",
+    "toggle": "Переключить",
+    "confirmDelivery": "Повторить доставку"
+  },
+  "states": {
+    "loadingTitle": "Загрузка",
+    "emptyTitle": "Данных пока нет",
+    "emptyDescription": "Записи появятся после загрузки данных.",
+    "forbiddenTitle": "Доступ ограничен",
+    "forbiddenDescription": "У вашей роли нет доступа к этому разделу."
+  },
+  "errors": {
+    "actionFailedTitle": "Не удалось выполнить действие",
+    "retry": "Повторить",
+    "errorCode": "Код ошибки: {code}",
+    "correlationId": "Correlation ID: {id}"
+  },
+  "emptyStates": {
+    "prices": {
+      "title": "Прайс-листы не созданы",
+      "description": "Создайте черновик и загрузите CSV, чтобы опубликовать цены."
+    },
+    "integrations": {
+      "title": "Интеграции не настроены",
+      "description": "Создайте webhook, чтобы получать события NEFT в вашу систему."
+    },
+    "servicesCatalog": {
+      "title": "Каталог пуст",
+      "description": "Добавьте услуги или товары, чтобы клиенты могли оформлять заказы."
+    },
+    "orders": {
+      "title": "Заказов пока нет",
+      "description": "Заказы появятся после публикации услуг и оформления клиентами."
+    }
+  },
+  "statuses": {
+    "orders": {
+      "CREATED": "Создан",
+      "PAID": "Оплачен",
+      "CONFIRMED": "Подтверждён партнёром",
+      "IN_PROGRESS": "В работе",
+      "COMPLETED": "Завершён",
+      "CANCELLED": "Отменён",
+      "REFUNDED": "Возвращён"
+    },
+    "documents": {
+      "DRAFT": "Черновик",
+      "ISSUED": "Сформирован",
+      "SIGNED": "Подписан",
+      "EDO_SENT": "Отправлен в ЭДО",
+      "EDO_DELIVERED": "Доставлен",
+      "EDO_FAILED": "Ошибка ЭДО"
+    },
+    "webhooks": {
+      "ACTIVE": "Активен",
+      "DISABLED": "Отключён",
+      "DELIVERED": "Доставлено",
+      "FAILED": "Ошибка",
+      "DEAD": "Остановлено"
+    }
+  },
+  "pricesPage": {
+    "title": "Цены",
+    "subtitle": "Управление версиями прайс-листов партнёра.",
+    "loading": "Загружаем версии цен...",
+    "filters": {
+      "station": "Станция",
+      "allStations": "Все станции",
+      "status": "Статус",
+      "from": "Дата от",
+      "to": "Дата до"
+    },
+    "statuses": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить версии цен",
+      "loadTitle": "Ошибка загрузки (status {status})",
+      "createDraftFailed": "Не удалось создать черновик",
+      "importFailed": "Не удалось импортировать файл",
+      "apiError": "Ошибка: {message} (status {status})"
+    },
+    "confirmations": {
+      "createDraft": "Создать черновик версии цен?",
+      "importDraft": "Импортировать файл в черновик?"
+    },
+    "notifications": {
+      "draftCreated": "Черновик создан",
+      "importCompleted": "Импорт завершён. Ошибок: {errors}"
+    },
+    "insights": {
+      "title": "Quick insights",
+      "activeVersion": "Активная версия",
+      "lastPublished": "Последняя публикация",
+      "drafts": "Черновики к проверке"
+    },
+    "upload": {
+      "title": "Импорт в черновик",
+      "selectDraft": "Выберите черновик",
+      "notSelected": "Не выбран",
+      "format": "Формат",
+      "file": "Файл",
+      "formats": {
+        "csv": "CSV",
+        "json": "JSON"
+      },
+      "preview": "Preview: {text}",
+      "loading": "Импортируем...",
+      "submit": "Загрузить в черновик",
+      "csvErrors": "Найдено ошибок: {count}",
+      "csvRows": "Строк: {count}",
+      "jsonRows": "JSON записей: {count}",
+      "jsonError": "Ошибка JSON формата"
+    },
+    "versions": {
+      "title": "Версии прайс-листов",
+      "table": {
+        "version": "Версия",
+        "scope": "Scope",
+        "createdAt": "Создана",
+        "items": "Items",
+        "errors": "Errors",
+        "active": "Active"
+      },
+      "scopeAll": "Все станции",
+      "scopeCount": "{count} станций",
+      "active": "Активная",
+      "actions": {
+        "publish": "Опубликовать",
+        "rollback": "Rollback",
+        "diff": "Diff"
+      }
+    }
+  },
+  "integrationsPage": {
+    "title": "Integrations · Webhooks",
+    "subtitle": "Integration Hub v1 · Self-service",
+    "errors": {
+      "loadEndpoints": "Не удалось загрузить endpoints",
+      "loadEventsFallback": "Не удалось загрузить список событий, используем список по умолчанию",
+      "loadSubscriptions": "Не удалось загрузить подписки",
+      "loadDeliveries": "Не удалось загрузить доставки",
+      "invalidUrl": "URL должен начинаться с http:// или https://",
+      "createEndpointFailed": "Не удалось создать endpoint",
+      "updateEndpointFailed": "Не удалось обновить статус endpoint",
+      "rotateSecretFailed": "Не удалось ротировать секрет",
+      "sendTestFailed": "Не удалось отправить тестовый webhook",
+      "invalidFilters": "Некорректный JSON в фильтрах",
+      "updateSubscriptionFailed": "Не удалось обновить подписку",
+      "deleteSubscriptionFailed": "Не удалось удалить подписку",
+      "loadDeliveryDetailFailed": "Не удалось загрузить детали доставки",
+      "retryDeliveryFailed": "Не удалось повторить доставку",
+      "retryDeadFailed": "Не удалось выполнить повторную доставку"
+    },
+    "confirmations": {
+      "disableEndpoint": "Отключить endpoint? Доставки будут остановлены.",
+      "enableEndpoint": "Включить endpoint?",
+      "rotateSecret": "Обновить секрет? Старый секрет перестанет работать. Убедитесь, что вы обновили его в своей системе.",
+      "deleteSubscription": "Удалить подписку?",
+      "retryDelivery": "Повторить доставку?",
+      "retryDeadDeliveries": "Повторить все dead deliveries? Это приведёт к повторной доставке."
+    },
+    "loading": {
+      "endpoints": "Загружаем endpoints...",
+      "subscriptions": "Загружаем подписки...",
+      "deliveries": "Загружаем доставки...",
+      "deliveryDetail": "Загружаем детали...",
+      "deliveryDetailPending": "Готовим детали..."
+    },
+    "table": {
+      "url": "URL",
+      "algorithm": "Алгоритм",
+      "createdAt": "Создан"
+    },
+    "actions": {
+      "disable": "Отключить",
+      "enable": "Включить",
+      "rotateSecret": "Обновить секрет",
+      "testPing": "Test ping",
+      "deliveries": "Доставки"
+    },
+    "subscriptions": {
+      "title": "Subscriptions",
+      "subtitle": "Выберите события для выбранного endpoint.",
+      "selectedEndpoint": "Endpoint: {url}",
+      "emptyTitle": "Сначала выберите endpoint",
+      "emptyDescription": "Выберите endpoint в списке выше.",
+      "catalogTitle": "Каталог событий",
+      "catalogNote": "Фильтры передаются в Integration Hub без обработки на фронте.",
+      "filtersPlaceholder": "{\"station_id\":\"...\"}",
+      "ownerOnly": "Изменение подписок доступно только роли PARTNER_OWNER.",
+      "table": {
+        "eventType": "Event type",
+        "enabled": "Enabled",
+        "filters": "Filters (JSON)",
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "deliveries": {
+      "title": "Deliveries",
+      "subtitle": "История доставок и DLQ.",
+      "tabs": {
+        "history": "История"
+      },
+      "emptyTitle": "Нет выбранного endpoint",
+      "emptyDescription": "Выберите endpoint для просмотра доставок.",
+      "filters": {
+        "endpoint": "Endpoint",
+        "status": "Status",
+        "eventType": "Event type",
+        "eventTypePlaceholder": "payout.*",
+        "eventId": "Event ID",
+        "eventIdPlaceholder": "event-123",
+        "from": "From",
+        "to": "To"
+      },
+      "noDeliveriesTitle": "Нет доставок",
+      "noDeliveriesDescription": "Когда появятся события, они будут здесь.",
+      "dlqTitle": "Dead Letter Queue",
+      "dlqNote": "Повторная доставка приведёт к повторной отправке всех событий.",
+      "retryAll": "Retry selected (all)",
+      "table": {
+        "occurredAt": "Occurred at",
+        "eventType": "Event type",
+        "attempt": "Attempt",
+        "http": "HTTP",
+        "latency": "Latency, ms"
+      },
+      "actions": {
+        "detail": "Detail",
+        "retry": "Повторить доставку"
+      }
+    },
+    "modals": {
+      "create": {
+        "title": "Create endpoint",
+        "url": "URL",
+        "urlPlaceholder": "https://partner.example/webhooks",
+        "signingAlgo": "Signing algo",
+        "enabled": "Endpoint enabled"
+      },
+      "created": {
+        "title": "Endpoint created",
+        "endpointId": "Endpoint ID",
+        "secret": "Secret (one-time view)",
+        "copySecret": "Copy secret",
+        "snippet": "Setup snippet",
+        "copySnippet": "Copy setup snippet"
+      },
+      "rotated": {
+        "title": "Secret rotated",
+        "endpointId": "Endpoint ID",
+        "notice": "Старый секрет больше не действует. Используйте новый секрет ниже.",
+        "newSecret": "New secret",
+        "copySecret": "Copy secret"
+      },
+      "testPing": {
+        "title": "Test ping",
+        "deliveryId": "Delivery ID",
+        "httpStatus": "HTTP status",
+        "latency": "Latency"
+      },
+      "deliveryDetail": {
+        "title": "Delivery detail",
+        "endpointUrl": "Endpoint URL",
+        "eventType": "Event type",
+        "correlationId": "Correlation ID",
+        "envelope": "Envelope",
+        "headers": "Headers",
+        "attempts": "Attempts",
+        "table": {
+          "http": "HTTP",
+          "error": "Error",
+          "latency": "Latency",
+          "nextRetry": "Next retry",
+          "correlationId": "Correlation ID"
+      }
+    }
+  },
+  "ordersPage": {
+    "title": "Заказы",
+    "filters": {
+      "period": "Период",
+      "presets": {
+        "today": "Сегодня",
+        "7d": "7 дней",
+        "30d": "30 дней",
+        "custom": "Произвольно"
+      },
+      "from": "С",
+      "to": "По",
+      "status": "Статус",
+      "search": "Поиск",
+      "searchPlaceholder": "order_id, клиент, сервис",
+      "station": "Станция",
+      "stationPlaceholder": "station_id",
+      "service": "Сервис",
+      "servicePlaceholder": "service_id"
+    },
+    "actions": {
+      "saveFilters": "Сохранить фильтры",
+      "quickConfirm": "Быстро подтвердить"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить заказы",
+      "confirmFailed": "Не удалось подтвердить заказ",
+      "apiError": "HTTP {status}: {message}"
+    },
+    "notifications": {
+      "confirmed": "Заказ подтверждён. Correlation ID: {id}"
+    },
+    "kpis": {
+      "today": "Заказы сегодня",
+      "pending": "На подтверждении",
+      "documents": "Документы ожидают",
+      "total": "Всего в выборке"
+    },
+    "table": {
+      "createdAt": "Создан",
+      "orderId": "Order ID",
+      "client": "Клиент",
+      "items": "Позиций",
+      "amount": "Сумма",
+      "payment": "Оплата",
+      "status": "Статус",
+      "documents": "Документы"
+    },
+    "pagination": "Страница {current} из {total}"
+  },
+  "servicesCatalogPage": {
+    "title": "Каталог услуг и товаров",
+    "subtitle": "Marketplace partner catalog",
+    "empty": {
+      "filteredTitle": "Нет результатов фильтра",
+      "filteredDescription": "Измените фильтры или сбросьте настройки поиска."
+    },
+    "filters": {
+      "search": "Поиск",
+      "searchPlaceholder": "Название, описание",
+      "kind": "Тип",
+      "kindOptions": {
+        "service": "Service",
+        "product": "Product"
+      },
+      "status": "Статус",
+      "statusOptions": {
+        "draft": "Draft",
+        "active": "Active",
+        "disabled": "Disabled",
+        "archived": "Archived"
+      },
+      "category": "Категория",
+      "categoryPlaceholder": "Например, автомойка"
+    },
+    "table": {
+      "title": "Название",
+      "kind": "Тип",
+      "category": "Категория",
+      "status": "Статус",
+      "activeOffers": "Активные офферы",
+      "updatedAt": "Обновлено"
+    },
+    "actions": {
+      "disable": "Disable",
+      "activate": "Activate",
+      "resetFilters": "Сбросить фильтры"
+    },
+    "pagination": "Страница {current} из {total}",
+    "errors": {
+      "loadFailed": "Не удалось загрузить каталог",
+      "requiredFields": "Заполните обязательные поля",
+      "saveFailed": "Не удалось сохранить элемент",
+      "updateStatusFailed": "Не удалось изменить статус"
+    },
+    "notifications": {
+      "saved": "Изменения сохранены",
+      "created": "Элемент каталога создан",
+      "disabled": "Элемент каталога отключён",
+      "activated": "Элемент каталога активирован"
+    },
+    "import": {
+      "title": "Импорт каталога",
+      "subtitle": "CSV import with preview",
+      "unavailableTitle": "Импорт недоступен",
+      "unavailableDescription": "Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER.",
+      "csvFile": "CSV файл",
+      "mode": "Режим",
+      "modes": {
+        "create": "create-only",
+        "upsert": "upsert"
+      },
+      "preview": "Preview",
+      "csvError": "Ошибка CSV:",
+      "previewSummary": "Preview summary",
+      "rowsParsed": "Rows parsed: {count}",
+      "willCreate": "Will create: {count}",
+      "willUpdate": "Will update: {count}",
+      "errorsCount": "Errors count: {count}",
+      "errorsTitle": "Ошибки импорта",
+      "table": {
+        "row": "Строка",
+        "description": "Описание"
+      },
+      "sampleTitle": "Пример строк (первые 20)",
+      "apply": "Apply import",
+      "resultTitle": "Результат импорта",
+      "resultCreated": "Created: {count}",
+      "resultUpdated": "Updated: {count}",
+      "resultSkipped": "Skipped: {count}",
+      "refreshList": "Обновить список",
+      "csvFormat": "Формат CSV",
+      "requiredFields": "Обязательные поля: kind, title, category, uom",
+      "sampleRow": "SERVICE,Услуга,Автомойка,услуга,Комплексная мойка,ACTIVE",
+      "errors": {
+        "selectCsv": "Выберите CSV файл",
+        "row": "Строка {row}: {message}",
+        "previewFailed": "Не удалось выполнить preview",
+        "applyFailed": "Не удалось применить импорт"
+      }
+    },
+    "modal": {
+      "editTitle": "Редактировать элемент",
+      "createTitle": "Создать элемент",
+      "fields": {
+        "title": "Название *",
+        "kind": "Тип",
+        "category": "Категория",
+        "uom": "Ед. измерения *",
+        "uomPlaceholder": "шт / услуга / час",
+        "description": "Описание",
+        "status": "Статус"
+      },
+      "actions": {
+        "saveActivate": "Save & Activate"
+      }
+    }
+  },
+  "priceVersionPage": {
+    "loading": "Загружаем версию цен...",
+    "forbidden": "Роль не позволяет просматривать версию цен.",
+    "errors": {
+      "loadFailed": "Не удалось загрузить версию",
+      "loadTitle": "Ошибка загрузки (status {status})",
+      "validationFailed": "Не удалось запустить валидацию",
+      "publishFailed": "Не удалось опубликовать версию",
+      "rollbackFailed": "Не удалось выполнить rollback",
+      "importFailed": "Не удалось импортировать файл",
+      "apiError": "Ошибка: {message} (status {status})"
+    },
+    "confirmations": {
+      "validate": "Запустить валидацию версии?",
+      "publishTitle": "Опубликовать прайс-лист?",
+      "publishDescription": "Новые цены будут применяться ко всем новым операциям. Ранее созданные заказы не изменятся.",
+      "rollbackTitle": "Вернуться к предыдущей версии?",
+      "rollbackDescription": "Будет создана новая активная версия на основе выбранной.",
+      "import": "Импортировать файл в версию?"
+    },
+    "notifications": {
+      "validationOk": "Валидация пройдена",
+      "validationWithErrors": "Валидация завершена с ошибками",
+      "published": "Версия опубликована",
+      "rollbackCreated": "Rollback создан",
+      "importCompleted": "Импорт завершён. Ошибок: {errors}"
+    },
+    "upload": {
+      "csvErrors": "Найдено ошибок: {count}",
+      "csvRows": "Строк: {count}",
+      "jsonRows": "JSON записей: {count}",
+      "jsonError": "Ошибка JSON формата"
+    },
+    "empty": {
+      "notFoundTitle": "Версия не найдена",
+      "notFoundDescription": "Проверьте идентификатор версии и повторите запрос."
+    },
+    "header": {
+      "title": "Версия {id}",
+      "subtitle": "Статус и управление версией прайса."
+    },
+    "actions": {
+      "validate": "Валидировать",
+      "rollback": "Rollback"
+    },
+    "overview": {
+      "scope": "Scope",
+      "scopeAll": "Все станции",
+      "scopeCount": "{count} станций",
+      "items": "Items",
+      "errors": "Errors",
+      "createdAt": "Создано",
+      "createdBy": "Создатель",
+      "publishedAt": "Опубликовано"
+    },
+    "import": {
+      "csvFormat": "Формат CSV",
+      "requiredFields": "Обязательные поля: station_code (или station_id), product_code, price, currency, valid_from.",
+      "format": "Формат",
+      "file": "Файл",
+      "preview": "Preview: {text}",
+      "commit": "Commit import to version"
+    },
+    "preview": {
+      "search": "Поиск",
+      "searchPlaceholder": "station/product",
+      "errorsOnly": "Errors only",
+      "emptyTitle": "Нет элементов",
+      "emptyDescription": "Элементы появятся после импорта.",
+      "table": {
+        "station": "Station",
+        "product": "Product",
+        "price": "Price",
+        "currency": "Currency",
+        "validFrom": "Valid from",
+        "errors": "Errors"
+      }
+    },
+    "pagination": {
+      "page": "Страница {current}{total}",
+      "total": " из {total}"
+    },
+    "validate": {
+      "run": "Run validation",
+      "yes": "Да",
+      "no": "Нет",
+      "errors": "Errors",
+      "warnings": "Warnings",
+      "emptyTitle": "Валидация не запускалась",
+      "emptyDescription": "Запустите валидацию для получения отчёта.",
+      "sampleErrors": "Sample errors",
+      "recommendedActions": "Recommended actions"
+    },
+    "diff": {
+      "compareTo": "Compare to version",
+      "selectVersion": "Выберите версию",
+      "added": "Добавлено",
+      "removed": "Удалено",
+      "changed": "Изменено",
+      "table": {
+        "station": "Station",
+        "product": "Product",
+        "before": "Before",
+        "after": "After"
+      },
+      "emptyTitle": "Нет изменений",
+      "emptyDescription": "Выберите другую версию для сравнения.",
+      "selectTitle": "Выберите версию",
+      "selectDescription": "Выберите версию для расчёта diff."
+    },
+    "audit": {
+      "emptyTitle": "Нет событий",
+      "emptyDescription": "Аудит появится после действий с версией.",
+      "actor": "Actor: {actor}"
+    }
+  }
+}
+  }
+}
