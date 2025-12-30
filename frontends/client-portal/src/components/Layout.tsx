@@ -57,6 +57,7 @@ export function Layout() {
           {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user) && (
             <NavLink to="/exports">Exports / 1C</NavLink>
           )}
+          <NavLink to="/marketplace">Marketplace</NavLink>
           <NavLink to="/actions">Actions Center</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
