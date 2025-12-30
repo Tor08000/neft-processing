@@ -40,7 +40,11 @@ def _sample_value(schema: dict) -> object:
     if schema_type == "array":
         return []
     if schema_type == "object":
-        return {}
+        required = schema.get("required", [])
+        properties = schema.get("properties", {})
+        if not required:
+            return {}
+        return {field: _sample_value(properties.get(field, {})) for field in required}
     return "sample"
 
 
@@ -54,7 +58,7 @@ def _sample_payload(schema: dict) -> dict:
 
 
 def _sample_event(event_type: str, schema: dict) -> dict:
-    return {
+    event = {
         "event_id": "00000000-0000-0000-0000-000000000000",
         "occurred_at": "2025-01-01T00:00:00Z",
         "correlation_id": "corr-1",
@@ -63,12 +67,18 @@ def _sample_event(event_type: str, schema: dict) -> dict:
         "event_type": event_type,
         "payload": _sample_payload(schema),
     }
+    required = schema.get("required", [])
+    properties = schema.get("properties", {})
+    for field in required:
+        if field not in event:
+            event[field] = _sample_value(properties.get(field, {}))
+    return event
 
 
 def test_event_schema_registry_validates_samples():
     assert SCHEMA_DIR.exists(), "Event schema registry missing"
 
-    for schema_path in sorted(SCHEMA_DIR.glob("*.json")):
+    for schema_path in sorted(SCHEMA_DIR.rglob("*.json")):
         schema = _load_schema(schema_path)
         event_type = schema.get("title")
         assert event_type, f"Schema {schema_path.name} missing title"

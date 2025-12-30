@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MARKETPLACE_ORDER_DOCUMENT_EDO_DISPATCHED",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "trace_id",
+    "schema_version",
+    "event_type",
+    "actor",
+    "owner",
+    "entity",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": "string"},
+    "trace_id": {"type": "string"},
+    "schema_version": {"type": "string", "pattern": "^1\.0$"},
+    "event_type": {"const": "MARKETPLACE_ORDER_DOCUMENT_EDO_DISPATCHED"},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["SYSTEM", "USER", "PARTNER"]},
+        "id": {"type": "string"},
+        "role": {"type": "string"}
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_id", "partner_id", "tenant_id"],
+      "properties": {
+        "client_id": {"type": "string"},
+        "partner_id": {"type": "string"},
+        "tenant_id": {"type": "integer"}
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["ORDER", "REFUND", "DOCUMENT", "PAYOUT"]},
+        "id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
