@@ -9,6 +9,11 @@ export interface CsvParseResult {
   errors: CsvParseError[];
 }
 
+export interface CsvParseOptions {
+  requiredHeaders?: string[];
+  requireAnyOf?: string[];
+}
+
 const parseCsvLine = (line: string): string[] => {
   const result: string[] = [];
   let current = "";
@@ -37,7 +42,25 @@ const parseCsvLine = (line: string): string[] => {
   return result;
 };
 
-export const parseCsv = (text: string): CsvParseResult => {
+const validateHeaders = (headers: string[], options?: CsvParseOptions): CsvParseError[] => {
+  const errors: CsvParseError[] = [];
+  const requiredHeaders = options?.requiredHeaders ?? [];
+  const requireAnyOf = options?.requireAnyOf ?? [];
+
+  if (requireAnyOf.length && !requireAnyOf.some((header) => headers.includes(header))) {
+    errors.push({ row: 0, message: `Добавьте колонку ${requireAnyOf.join(" или ")}` });
+  }
+
+  requiredHeaders.forEach((field) => {
+    if (!headers.includes(field)) {
+      errors.push({ row: 0, message: `Добавьте колонку ${field}` });
+    }
+  });
+
+  return errors;
+};
+
+const parseCsvInternal = (text: string, options?: CsvParseOptions): CsvParseResult => {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -67,16 +90,16 @@ export const parseCsv = (text: string): CsvParseResult => {
     rows.push(row);
   }
 
-  const required = ["product_code", "price", "currency", "valid_from"];
-  const hasStation = headers.includes("station_code") || headers.includes("station_id");
-  if (!hasStation) {
-    errors.push({ row: 0, message: "Добавьте колонку station_code или station_id" });
-  }
-  required.forEach((field) => {
-    if (!headers.includes(field)) {
-      errors.push({ row: 0, message: `Добавьте колонку ${field}` });
-    }
+  return { headers, rows, errors: [...errors, ...validateHeaders(headers, options)] };
+};
+
+export const parseCsv = (text: string): CsvParseResult =>
+  parseCsvInternal(text, {
+    requiredHeaders: ["product_code", "price", "currency", "valid_from"],
+    requireAnyOf: ["station_code", "station_id"],
   });
 
-  return { headers, rows, errors };
-};
+export const parseCatalogCsv = (text: string): CsvParseResult =>
+  parseCsvInternal(text, {
+    requiredHeaders: ["title", "kind", "base_uom"],
+  });
