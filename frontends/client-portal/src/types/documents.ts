@@ -9,6 +9,8 @@ export interface ClientDocumentSummary {
   created_at: string;
   pdf_hash?: string | null;
   risk?: ClientDocumentRiskSummary | null;
+  signature_status?: string | null;
+  edo_status?: string | null;
 }
 
 export interface ClientDocumentList {
@@ -78,4 +80,23 @@ export interface ClientDocumentDetails {
   ack_details?: ClientDocumentAckDetails | null;
   risk?: ClientDocumentRiskSummary | null;
   risk_explain?: ClientDocumentRiskExplain | null;
+  signatures?: ClientDocumentSignature[] | null;
+  edo_events?: ClientDocumentEdoEvent[] | null;
+}
+
+export interface ClientDocumentSignature {
+  id: string;
+  status: string;
+  provider?: string | null;
+  signed_at?: string | null;
+  created_at?: string | null;
+  file_hash?: string | null;
+}
+
+export interface ClientDocumentEdoEvent {
+  id: string;
+  status: string;
+  provider?: string | null;
+  created_at?: string | null;
+  message?: string | null;
 }

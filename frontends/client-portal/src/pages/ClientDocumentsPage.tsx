@@ -4,7 +4,13 @@ import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from
 import { useAuth } from "../auth/AuthContext";
 import type { ClientDocumentSummary } from "../types/documents";
 import { formatDate } from "../utils/format";
-import { getDocumentStatusLabel, getDocumentStatusTone, getDocumentTypeLabel } from "../utils/documents";
+import {
+  getDocumentStatusLabel,
+  getDocumentStatusTone,
+  getDocumentTypeLabel,
+  getEdoTone,
+  getSignatureTone,
+} from "../utils/documents";
 
 const DOCUMENT_TYPES = [
   { value: "", label: "Все типы" },
@@ -229,6 +235,8 @@ export function ClientDocumentsPage() {
                 <th>Период</th>
                 <th>Номер</th>
                 <th>Статус</th>
+                <th>Подпись</th>
+                <th>ЭДО</th>
                 <th>Требуется действие</th>
                 <th>Дата</th>
                 <th>Действия</th>
@@ -253,6 +261,14 @@ export function ClientDocumentsPage() {
                         <span className="pill pill--warning">⚠️ Require override</span>
                       ) : null}
                     </div>
+                  </td>
+                  <td>
+                    <span className={`pill pill--${getSignatureTone(doc.signature_status)}`}>
+                      {doc.signature_status ?? "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`pill pill--${getEdoTone(doc.edo_status)}`}>{doc.edo_status ?? "—"}</span>
                   </td>
                   <td>{canAcknowledge && doc.status === "ISSUED" ? "Требуется подтверждение" : "Нет"}</td>
                   <td>{formatDate(doc.created_at)}</td>

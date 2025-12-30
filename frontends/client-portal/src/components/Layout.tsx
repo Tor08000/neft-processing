@@ -26,9 +26,12 @@ export function Layout() {
 
       <div className="sidebar-layout">
         <nav className="sidebar">
-          <NavLink to="/" end>
-            Дашборд
-          </NavLink>
+          <NavLink to="/dashboard">Dashboard</NavLink>
+          <NavLink to="/spend/transactions">Transactions / Spend</NavLink>
+          <NavLink to="/explain">Explain</NavLink>
+          <NavLink to="/documents">Documents</NavLink>
+          <NavLink to="/exports">Exports / 1C</NavLink>
+          <NavLink to="/actions">Actions</NavLink>
           <NavLink to="/cards">Карты</NavLink>
           <div className="nav-section">Финансы</div>
           <NavLink to="/finance/invoices">Счета</NavLink>

@@ -297,6 +297,69 @@ export function ClientDocumentDetailsPage() {
       </div>
 
       <div className="card__section">
+        <h3>Подпись</h3>
+        {document.signatures && document.signatures.length > 0 ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Статус</th>
+                <th>Провайдер</th>
+                <th>Дата</th>
+                <th>Hash</th>
+              </tr>
+            </thead>
+            <tbody>
+              {document.signatures.map((signature) => (
+                <tr key={signature.id}>
+                  <td>{signature.status}</td>
+                  <td>{signature.provider ?? "—"}</td>
+                  <td>{signature.signed_at ? formatDateTime(signature.signed_at) : "—"}</td>
+                  <td>
+                    <div className="stack-inline">
+                      <span className="muted small">
+                        {signature.file_hash ? `${signature.file_hash.slice(0, 12)}…` : "—"}
+                      </span>
+                      <CopyButton value={signature.file_hash ?? undefined} label="Скопировать" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="muted">Данных по подписи пока нет.</div>
+        )}
+      </div>
+
+      <div className="card__section">
+        <h3>ЭДО</h3>
+        {document.edo_events && document.edo_events.length > 0 ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Статус</th>
+                <th>Провайдер</th>
+                <th>Дата</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody>
+              {document.edo_events.map((event) => (
+                <tr key={event.id}>
+                  <td>{event.status}</td>
+                  <td>{event.provider ?? "—"}</td>
+                  <td>{event.created_at ? formatDateTime(event.created_at) : "—"}</td>
+                  <td>{event.message ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="muted">События ЭДО отсутствуют.</div>
+        )}
+      </div>
+
+      <div className="card__section">
         <h3>Действия</h3>
         <div className="actions">
           {document.status === "ISSUED" && canAcknowledge ? (
@@ -304,6 +367,9 @@ export function ClientDocumentDetailsPage() {
               Подтвердить корректность
             </button>
           ) : null}
+          <Link className="ghost" to="/actions">
+            Перейти к действиям
+          </Link>
         </div>
         <p className="muted small">{LEGAL_TEXT}</p>
       </div>

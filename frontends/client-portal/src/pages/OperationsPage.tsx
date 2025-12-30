@@ -11,6 +11,7 @@ const STATUS_OPTIONS = [
   { value: "", label: "Все" },
   { value: "APPROVED", label: "Approved" },
   { value: "DECLINED", label: "Declined" },
+  { value: "SETTLED", label: "Settled" },
 ];
 
 export function OperationsPage() {
@@ -26,6 +27,10 @@ export function OperationsPage() {
     cardId: "",
     from: "",
     to: "",
+    merchantId: "",
+    productType: "",
+    minAmount: "",
+    maxAmount: "",
   });
   const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
 
@@ -44,6 +49,10 @@ export function OperationsPage() {
       cardId: filters.cardId || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
+      merchantId: filters.merchantId || undefined,
+      productType: filters.productType || undefined,
+      minAmount: filters.minAmount || undefined,
+      maxAmount: filters.maxAmount || undefined,
       limit: pagination.limit,
       offset: pagination.offset,
     })
@@ -114,6 +123,28 @@ export function OperationsPage() {
           </select>
         </div>
         <div className="filter">
+          <label htmlFor="merchantId">Станция/мерчант</label>
+          <input
+            id="merchantId"
+            name="merchantId"
+            type="text"
+            placeholder="ID мерчанта"
+            value={filters.merchantId}
+            onChange={handleFilterChange}
+          />
+        </div>
+        <div className="filter">
+          <label htmlFor="productType">Продукт</label>
+          <input
+            id="productType"
+            name="productType"
+            type="text"
+            placeholder="Тип топлива"
+            value={filters.productType}
+            onChange={handleFilterChange}
+          />
+        </div>
+        <div className="filter">
           <label htmlFor="status">Статус</label>
           <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
             {STATUS_OPTIONS.map((opt) => (
@@ -122,6 +153,28 @@ export function OperationsPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="minAmount">Сумма от</label>
+          <input
+            id="minAmount"
+            name="minAmount"
+            type="number"
+            min="0"
+            value={filters.minAmount}
+            onChange={handleFilterChange}
+          />
+        </div>
+        <div className="filter">
+          <label htmlFor="maxAmount">Сумма до</label>
+          <input
+            id="maxAmount"
+            name="maxAmount"
+            type="number"
+            min="0"
+            value={filters.maxAmount}
+            onChange={handleFilterChange}
+          />
         </div>
       </div>
 
@@ -141,6 +194,7 @@ export function OperationsPage() {
                 <th>Литры</th>
                 <th>Сумма</th>
                 <th>Статус</th>
+                <th>Причина</th>
                 <th></th>
               </tr>
             </thead>
@@ -159,10 +213,16 @@ export function OperationsPage() {
                     </span>
                     {op.status === "DECLINED" && op.reason && <div className="muted small">{op.reason}</div>}
                   </td>
+                  <td>{op.primary_reason ?? op.reason ?? "—"}</td>
                   <td>
-                    <Link to={`/operations/${op.id}`} className="ghost">
-                      Подробнее
-                    </Link>
+                    <div className="actions">
+                      <Link to={`/operations/${op.id}`} className="ghost">
+                        Подробнее
+                      </Link>
+                      <Link to={`/explain/${op.id}`} className="ghost">
+                        Explain
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
