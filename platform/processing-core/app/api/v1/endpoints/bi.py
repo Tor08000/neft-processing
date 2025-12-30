@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,7 @@ from app.schemas.bi import (
 )
 from app.services.bi import exports as bi_exports
 from app.services.bi import service as bi_service
+from app.services.audit_service import AuditService, request_context_from_request
 from app.services.s3_storage import S3Storage
 from app.tasks.bi_analytics import generate_export_task
 
@@ -190,6 +192,7 @@ def top_reasons(
 @router.post("/exports", response_model=BiExportOut)
 def create_export(
     payload: BiExportCreateRequest,
+    request: Request,
     token: dict = Depends(bi_user_dep),
     db: Session = Depends(get_db),
 ) -> BiExportOut:
@@ -199,16 +202,44 @@ def create_export(
     if payload.scope_type == BiScopeType.PARTNER and payload.scope_id:
         _enforce_scope(token, client_id=None, partner_id=payload.scope_id)
 
-    export = bi_exports.create_export_batch(
-        db,
-        tenant_id=tenant_id,
-        kind=payload.kind,
-        scope_type=payload.scope_type,
-        scope_id=payload.scope_id,
-        date_from=payload.date_from,
-        date_to=payload.date_to,
-        export_format=payload.format,
-    )
+    created_by = token.get("user_id") or token.get("sub") or token.get("client_id")
+    try:
+        export = bi_exports.create_export_batch(
+            db,
+            tenant_id=tenant_id,
+            kind=payload.kind,
+            scope_type=payload.scope_type,
+            scope_id=payload.scope_id,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            export_format=payload.format,
+            created_by=created_by,
+        )
+    except bi_exports.BiExportError as exc:
+        if str(exc) == "export_in_progress":
+            raise HTTPException(status_code=409, detail="export_in_progress") from exc
+        if str(exc) == "unsupported_export_format":
+            raise HTTPException(status_code=400, detail="unsupported_export_format") from exc
+        raise HTTPException(status_code=400, detail="invalid_export_request") from exc
+
+    try:
+        AuditService(db).audit(
+            event_type="BI_EXPORT_CREATED",
+            entity_type="bi_export",
+            entity_id=export.id,
+            action="create",
+            request_ctx=request_context_from_request(request, token=token),
+            after={
+                "dataset": export.kind.value,
+                "format": export.format.value,
+                "date_from": export.date_from,
+                "date_to": export.date_to,
+                "scope_type": export.scope_type.value if export.scope_type else None,
+                "scope_id": export.scope_id,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     if os.getenv("DISABLE_CELERY", "0") == "1":
         export = bi_exports.generate_export(db, export.id)
@@ -249,6 +280,29 @@ def download_export(
     if url is None:
         raise HTTPException(status_code=500, detail="presign_failed")
     return {"url": url, "sha256": export.sha256, "status": export.status.value}
+
+
+@router.get("/exports/{export_id}/manifest")
+def download_manifest(
+    export_id: str,
+    token: dict = Depends(bi_user_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    export = bi_exports.load_export(db, export_id)
+    if not export:
+        raise HTTPException(status_code=404, detail="export_not_found")
+    if export.tenant_id != int(token.get("tenant_id")):
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not export.manifest_key or not export.bucket:
+        raise HTTPException(status_code=404, detail="manifest_not_ready")
+    storage = S3Storage(bucket=export.bucket)
+    url = storage.presign(export.manifest_key)
+    if url is not None:
+        return {"url": url, "status": export.status.value}
+    payload = storage.get_bytes(export.manifest_key)
+    if payload is None:
+        raise HTTPException(status_code=500, detail="manifest_unavailable")
+    return {"manifest": json.loads(payload.decode("utf-8")), "status": export.status.value}
 
 
 @router.post("/exports/{export_id}/confirm", response_model=BiExportOut)

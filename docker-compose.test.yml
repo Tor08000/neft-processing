@@ -3,6 +3,8 @@ services:
     profiles: ["test"]
   redis:
     profiles: ["test"]
+  clickhouse:
+    profiles: ["test"]
   minio:
     profiles: ["test"]
   minio-init:

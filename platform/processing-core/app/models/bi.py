@@ -32,6 +32,7 @@ class BiScopeType(str, Enum):
 
 class BiExportKind(str, Enum):
     ORDERS = "ORDERS"
+    ORDER_EVENTS = "ORDER_EVENTS"
     PAYOUTS = "PAYOUTS"
     DECLINES = "DECLINES"
     DAILY_METRICS = "DAILY_METRICS"
@@ -39,6 +40,8 @@ class BiExportKind(str, Enum):
 
 class BiExportFormat(str, Enum):
     CSV = "CSV"
+    JSONL = "JSONL"
+    PARQUET = "PARQUET"
 
 
 class BiExportStatus(str, Enum):
@@ -55,6 +58,16 @@ class BiCursor(Base):
 
     name = Column(String(64), primary_key=True)
     last_event_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BiClickhouseCursor(Base):
+    __tablename__ = "bi_clickhouse_cursors"
+    __table_args__ = {"schema": "bi"}
+
+    dataset = Column(String(64), primary_key=True)
+    last_id = Column(String(128), nullable=True)
+    last_occurred_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
@@ -198,10 +211,12 @@ class BiExportBatch(Base):
     format = Column(SAEnum(BiExportFormat, name="bi_export_format", schema="bi"), nullable=False)
     status = Column(SAEnum(BiExportStatus, name="bi_export_status", schema="bi"), nullable=False)
     object_key = Column(String(512), nullable=True)
+    manifest_key = Column(String(512), nullable=True)
     bucket = Column(String(128), nullable=True)
     sha256 = Column(String(64), nullable=True)
     row_count = Column(BigInteger, nullable=True)
     error_message = Column(Text, nullable=True)
+    created_by = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     delivered_at = Column(DateTime(timezone=True), nullable=True)
@@ -209,6 +224,7 @@ class BiExportBatch(Base):
 
 
 __all__ = [
+    "BiClickhouseCursor",
     "BiCursor",
     "BiDailyMetric",
     "BiDeclineEvent",

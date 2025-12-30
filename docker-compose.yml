@@ -30,6 +30,17 @@ services:
     ports:
       - "6379:6379"
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.6
+    container_name: neft-processing-clickhouse-1
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+
   minio:
     image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     container_name: neft-processing-minio-1
@@ -164,6 +175,9 @@ services:
       NEFT_S3_BUCKET_DOCUMENTS: ${NEFT_S3_BUCKET_DOCUMENTS:-neft-documents}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
       DOCUMENT_SERVICE_ENABLED: ${DOCUMENT_SERVICE_ENABLED:-0}
       DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8000}
       LOGISTICS_SERVICE_ENABLED: ${LOGISTICS_SERVICE_ENABLED:-0}
@@ -279,6 +293,9 @@ services:
       NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: ${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
     depends_on:
       core-api:
         condition: service_healthy
@@ -319,6 +336,9 @@ services:
       NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: ${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}
       NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
       NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
     depends_on:
       core-api:
         condition: service_healthy
@@ -473,4 +493,5 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  clickhouse-data:
   auth-keys:
