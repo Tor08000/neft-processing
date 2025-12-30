@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -34,6 +35,51 @@ class DocumentRenderResult:
     size_bytes: int
     content_type: str
     version: int
+
+
+@dataclass(frozen=True)
+class DocumentStorageRef:
+    bucket: str
+    object_key: str
+    sha256: str | None = None
+    size_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class DocumentSignRequest:
+    document_id: str
+    provider: str
+    input: DocumentStorageRef
+    output_bucket: str
+    output_prefix: str
+    idempotency_key: str
+    meta: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class DocumentSignResult:
+    status: str
+    provider_request_id: str | None
+    signed: DocumentStorageRef
+    signature: DocumentStorageRef
+    certificate: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class DocumentVerifyRequest:
+    provider: str
+    input: DocumentStorageRef
+    signature: DocumentStorageRef
+    signed: DocumentStorageRef | None = None
+    meta: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class DocumentVerifyResult:
+    status: str
+    verified: bool
+    error_code: str | None = None
+    certificate: dict[str, Any] | None = None
 
 
 class DocumentServiceClient:
@@ -81,5 +127,106 @@ class DocumentServiceClient:
 
         raise RuntimeError("document_service_unreachable") from last_error
 
+    def sign(self, request: DocumentSignRequest) -> DocumentSignResult:
+        payload = {
+            "document_id": request.document_id,
+            "provider": request.provider,
+            "input": {
+                "bucket": request.input.bucket,
+                "object_key": request.input.object_key,
+                "sha256": request.input.sha256,
+            },
+            "output": {"bucket": request.output_bucket, "prefix": request.output_prefix},
+            "idempotency_key": request.idempotency_key,
+            "meta": request.meta,
+        }
 
-__all__ = ["DocumentServiceClient", "DocumentRenderRequest", "DocumentRenderResult"]
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(f"{self.base_url}/v1/sign", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return DocumentSignResult(
+                    status=data["status"],
+                    provider_request_id=data.get("provider_request_id"),
+                    signed=DocumentStorageRef(
+                        bucket=data["signed"]["bucket"],
+                        object_key=data["signed"]["object_key"],
+                        sha256=data["signed"]["sha256"],
+                        size_bytes=int(data["signed"]["size_bytes"]),
+                    ),
+                    signature=DocumentStorageRef(
+                        bucket=data["signature"]["bucket"],
+                        object_key=data["signature"]["object_key"],
+                        sha256=data["signature"]["sha256"],
+                        size_bytes=int(data["signature"]["size_bytes"]),
+                    ),
+                    certificate=data.get("certificate"),
+                )
+            except httpx.RequestError as exc:
+                last_error = exc
+                continue
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError("document_service_sign_failed") from exc
+
+        raise RuntimeError("document_service_unreachable") from last_error
+
+    def verify(self, request: DocumentVerifyRequest) -> DocumentVerifyResult:
+        payload = {
+            "provider": request.provider,
+            "input": {
+                "bucket": request.input.bucket,
+                "object_key": request.input.object_key,
+                "sha256": request.input.sha256,
+            },
+            "signature": {
+                "bucket": request.signature.bucket,
+                "object_key": request.signature.object_key,
+                "sha256": request.signature.sha256,
+            },
+            "signed": (
+                {
+                    "bucket": request.signed.bucket,
+                    "object_key": request.signed.object_key,
+                    "sha256": request.signed.sha256,
+                }
+                if request.signed
+                else None
+            ),
+            "meta": request.meta,
+        }
+
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(f"{self.base_url}/v1/verify", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return DocumentVerifyResult(
+                    status=data["status"],
+                    verified=bool(data["verified"]),
+                    error_code=data.get("error_code"),
+                    certificate=data.get("certificate"),
+                )
+            except httpx.RequestError as exc:
+                last_error = exc
+                continue
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError("document_service_verify_failed") from exc
+
+        raise RuntimeError("document_service_unreachable") from last_error
+
+
+__all__ = [
+    "DocumentServiceClient",
+    "DocumentRenderRequest",
+    "DocumentRenderResult",
+    "DocumentStorageRef",
+    "DocumentSignRequest",
+    "DocumentSignResult",
+    "DocumentVerifyRequest",
+    "DocumentVerifyResult",
+]

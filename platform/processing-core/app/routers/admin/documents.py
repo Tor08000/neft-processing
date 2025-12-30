@@ -11,7 +11,14 @@ from app.db import get_db
 from app.models.audit_log import AuditVisibility
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus
-from app.models.legal_integrations import DocumentSignature
+from app.models.legal_integrations import DocumentSignature, DocumentSignatureStatus
+from app.schemas.admin.document_signing import (
+    DocumentSignRequest,
+    DocumentSignResponse,
+    DocumentSignatureListResponse,
+    DocumentSignatureOut,
+    DocumentSignatureVerifyResponse,
+)
 from app.services.legal_integrations.service import LegalIntegrationsService
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.decision import DecisionAction, DecisionContext, DecisionEngine, DecisionOutcome
@@ -19,6 +26,7 @@ from app.services.document_chain import compute_ack_hash
 from app.services.legal_integrations.errors import ProviderNotConfigured
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
+from app.services.document_signing import DocumentSigningService
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphSnapshotService
 from app.models.legal_graph import LegalGraphSnapshotScopeType
 
@@ -33,8 +41,8 @@ def _audit_immutability_violation(
     request: Request,
     token: dict,
     extra: dict | None = None,
-) -> None:
-    payload = {"reason": reason, "status": document.status.value, "document_type": document.document_type.value}
+    ) -> None:
+        payload = {"reason": reason, "status": document.status.value, "document_type": document.document_type.value}
     if extra:
         payload.update(extra)
     AuditService(db).audit(
@@ -45,6 +53,29 @@ def _audit_immutability_violation(
         visibility=AuditVisibility.PUBLIC,
         after=payload,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
+
+
+def _signature_to_schema(signature: DocumentSignature) -> DocumentSignatureOut:
+    return DocumentSignatureOut(
+        id=str(signature.id),
+        document_id=str(signature.document_id),
+        version=signature.version,
+        provider=signature.provider,
+        request_id=signature.request_id,
+        status=signature.status.value if signature.status else "UNKNOWN",
+        input_object_key=signature.input_object_key,
+        input_sha256=signature.input_sha256,
+        signed_object_key=signature.signed_object_key,
+        signed_sha256=signature.signed_sha256,
+        signature_object_key=signature.signature_object_key,
+        signature_sha256=signature.signature_sha256,
+        attempt=signature.attempt,
+        error_code=signature.error_code,
+        error_message=signature.error_message,
+        started_at=signature.started_at,
+        finished_at=signature.finished_at,
+        meta=signature.meta,
     )
 
 
@@ -96,6 +127,78 @@ def download_document_admin(
     )
 
     return Response(content=payload, media_type=file_record.content_type, headers=headers)
+
+
+@router.post("/{document_id}/sign/request", response_model=DocumentSignResponse)
+def request_document_signing(
+    document_id: str,
+    payload: DocumentSignRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> DocumentSignResponse:
+    service = DocumentSigningService(db)
+    try:
+        result = service.request_sign(
+            document_id=document_id,
+            provider=payload.provider,
+            meta=payload.meta,
+            idempotency_key=payload.idempotency_key,
+            request=request,
+            token=token,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="sign_failed") from exc
+
+    return DocumentSignResponse(signature=_signature_to_schema(result.signature))
+
+
+@router.get("/{document_id}/signatures", response_model=DocumentSignatureListResponse)
+def list_document_signatures(
+    document_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> DocumentSignatureListResponse:
+    _ = token
+    signatures = (
+        db.query(DocumentSignature)
+        .filter(DocumentSignature.document_id == document_id)
+        .order_by(DocumentSignature.version.desc(), DocumentSignature.attempt.desc())
+        .all()
+    )
+    return DocumentSignatureListResponse(items=[_signature_to_schema(signature) for signature in signatures])
+
+
+@router.post("/{document_id}/signatures/{signature_id}/verify", response_model=DocumentSignatureVerifyResponse)
+def verify_document_signature(
+    document_id: str,
+    signature_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> DocumentSignatureVerifyResponse:
+    service = DocumentSigningService(db)
+    try:
+        result = service.verify_signature(
+            document_id=document_id,
+            signature_id=signature_id,
+            request=request,
+            token=token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="verify_failed") from exc
+
+    return DocumentSignatureVerifyResponse(
+        signature=_signature_to_schema(result.signature),
+        verified=result.verified,
+        status=result.status,
+    )
 
 
 @router.post("/{document_id}/finalize")
@@ -184,7 +287,10 @@ def finalize_document(
         signature = (
             db.query(DocumentSignature)
             .filter(DocumentSignature.document_id == document.id)
-            .filter(DocumentSignature.verified.is_(True))
+            .filter(
+                (DocumentSignature.verified.is_(True))
+                | (DocumentSignature.status == DocumentSignatureStatus.VERIFIED)
+            )
             .one_or_none()
         )
         if signature is None:

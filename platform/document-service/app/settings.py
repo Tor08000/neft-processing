@@ -17,6 +17,11 @@ class Settings:
         "S3_BUCKET_DOCS",
         os.getenv("NEFT_S3_BUCKET_DOCUMENTS", os.getenv("NEFT_S3_BUCKET", "neft-documents")),
     )
+    provider_x_base_url: str = os.getenv("PROVIDER_X_BASE_URL", "")
+    provider_x_api_key: str = os.getenv("PROVIDER_X_API_KEY", "dev-key")
+    provider_x_api_secret: str = os.getenv("PROVIDER_X_API_SECRET", "dev-secret")
+    provider_x_timeout_seconds: float = float(os.getenv("PROVIDER_X_TIMEOUT_SECONDS", "15"))
+    provider_x_mode: str = os.getenv("PROVIDER_X_MODE", "mock")
 
 
 def get_settings() -> Settings:

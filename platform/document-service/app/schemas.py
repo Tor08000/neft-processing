@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -39,3 +39,58 @@ class PresignRequest(BaseModel):
 
 class PresignResponse(BaseModel):
     url: str
+
+
+class StorageObjectRef(BaseModel):
+    bucket: str
+    object_key: str
+    sha256: str | None = None
+
+
+class SignOutput(BaseModel):
+    bucket: str
+    prefix: str
+
+
+class SignRequest(BaseModel):
+    document_id: str
+    provider: str = Field(..., examples=["provider_x"])
+    input: StorageObjectRef
+    output: SignOutput
+    idempotency_key: str
+    meta: dict[str, Any] | None = None
+
+
+class SignedArtifact(BaseModel):
+    bucket: str
+    object_key: str
+    sha256: str
+    size_bytes: int
+
+
+class CertificateInfo(BaseModel):
+    subject: str | None = None
+    valid_to: datetime | None = None
+
+
+class SignResponse(BaseModel):
+    status: str
+    provider_request_id: str | None = None
+    signed: SignedArtifact
+    signature: SignedArtifact
+    certificate: CertificateInfo | None = None
+
+
+class VerifyRequest(BaseModel):
+    provider: str
+    input: StorageObjectRef
+    signature: StorageObjectRef
+    signed: StorageObjectRef | None = None
+    meta: dict[str, Any] | None = None
+
+
+class VerifyResponse(BaseModel):
+    status: str
+    verified: bool
+    error_code: str | None = None
+    certificate: CertificateInfo | None = None

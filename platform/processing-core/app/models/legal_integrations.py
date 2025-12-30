@@ -27,6 +27,15 @@ class SignatureType(str, Enum):
     EDI_SIGN = "EDI_SIGN"
 
 
+class DocumentSignatureStatus(str, Enum):
+    REQUESTED = "REQUESTED"
+    SIGNING = "SIGNING"
+    SIGNED = "SIGNED"
+    FAILED = "FAILED"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+
+
 class DocumentEnvelope(Base):
     __tablename__ = "document_envelopes"
     __table_args__ = (
@@ -50,6 +59,25 @@ class DocumentSignature(Base):
     id = Column(GUID(), primary_key=True, default=lambda: str(uuid4()))
     document_id = Column(GUID(), ForeignKey("documents.id"), nullable=False, index=True)
     provider = Column(String(64), nullable=False, index=True)
+    version = Column(Integer, nullable=False, server_default="1")
+    request_id = Column(String(128), nullable=True)
+    status = Column(
+        ExistingEnum(DocumentSignatureStatus, name="document_signature_status"),
+        nullable=False,
+        server_default=DocumentSignatureStatus.SIGNED.value,
+    )
+    input_object_key = Column(Text, nullable=True)
+    input_sha256 = Column(String(64), nullable=True)
+    signed_object_key = Column(Text, nullable=True)
+    signed_sha256 = Column(String(64), nullable=True)
+    signature_object_key = Column(Text, nullable=True)
+    signature_sha256 = Column(String(64), nullable=True)
+    attempt = Column(Integer, nullable=False, server_default="1")
+    error_code = Column(String(128), nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    meta = Column(JSON, nullable=True)
     signature_type = Column(ExistingEnum(SignatureType, name="signature_type"), nullable=False)
     file_id = Column(GUID(), ForeignKey("document_files.id"), nullable=True)
     signature_hash_sha256 = Column(String(64), nullable=False)
@@ -95,6 +123,7 @@ __all__ = [
     "DocumentEnvelope",
     "DocumentEnvelopeStatus",
     "DocumentSignature",
+    "DocumentSignatureStatus",
     "LegalProviderConfig",
     "SignatureType",
 ]

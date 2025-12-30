@@ -10,7 +10,17 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 from app.renderer import HtmlRenderer
-from app.schemas import PresignRequest, PresignResponse, RenderRequest, RenderResponse
+from app.schemas import (
+    PresignRequest,
+    PresignResponse,
+    RenderRequest,
+    RenderResponse,
+    SignRequest,
+    SignResponse,
+    VerifyRequest,
+    VerifyResponse,
+)
+from app.sign.registry import ProviderRegistry, get_registry
 from app.settings import get_settings
 from app.storage import S3Storage
 
@@ -43,6 +53,26 @@ DOCUMENT_SERVICE_S3_UPLOAD_ERRORS_TOTAL = Counter(
     f"{METRIC_PREFIX}_s3_upload_errors_total",
     "S3 upload failures",
 )
+DOCUMENT_SERVICE_SIGN_TOTAL = Counter(
+    f"{METRIC_PREFIX}_sign_total",
+    "Total sign attempts",
+    ["status"],
+)
+DOCUMENT_SERVICE_SIGN_DURATION_SECONDS = Histogram(
+    f"{METRIC_PREFIX}_sign_duration_seconds",
+    "Duration of sign requests in seconds",
+    buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30),
+)
+DOCUMENT_SERVICE_SIGN_ERRORS_TOTAL = Counter(
+    f"{METRIC_PREFIX}_sign_errors_total",
+    "Signing failures by error code",
+    ["code"],
+)
+DOCUMENT_SERVICE_VERIFY_TOTAL = Counter(
+    f"{METRIC_PREFIX}_verify_total",
+    "Total verify attempts",
+    ["status"],
+)
 
 DOCUMENT_SERVICE_UP.set(1)
 
@@ -53,6 +83,10 @@ def get_storage() -> S3Storage:
 
 def get_renderer() -> HtmlRenderer:
     return HtmlRenderer()
+
+
+def get_sign_registry() -> ProviderRegistry:
+    return get_registry()
 
 
 @app.middleware("http")
@@ -200,6 +234,172 @@ def presign_download(payload: PresignRequest) -> PresignResponse:
     return PresignResponse(url=url)
 
 
+@app.post("/v1/sign", response_model=SignResponse)
+def sign_document(
+    payload: SignRequest,
+    request: Request,
+    registry: ProviderRegistry = Depends(get_sign_registry),
+) -> SignResponse:
+    start = time.monotonic()
+    request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID")
+
+    input_storage = S3Storage(bucket=payload.input.bucket)
+    input_bytes = input_storage.get_bytes(payload.input.object_key)
+    if input_bytes is None:
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="not_found").inc()
+        raise HTTPException(status_code=404, detail="input_not_found")
+
+    input_sha256 = hashlib.sha256(input_bytes).hexdigest()
+    if payload.input.sha256 and payload.input.sha256 != input_sha256:
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="hash_mismatch").inc()
+        raise HTTPException(status_code=409, detail="input_hash_mismatch")
+
+    signed_key, signature_key = _build_signed_keys(payload.output.prefix, payload.input.object_key)
+    output_storage = S3Storage(bucket=payload.output.bucket)
+
+    cached_signed = output_storage.head_object(signed_key)
+    cached_sig = output_storage.head_object(signature_key)
+    if cached_signed and cached_sig:
+        signed_sha = cached_signed.sha256 or hashlib.sha256(output_storage.get_bytes(signed_key) or b"").hexdigest()
+        sig_sha = cached_sig.sha256 or hashlib.sha256(output_storage.get_bytes(signature_key) or b"").hexdigest()
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="cached").inc()
+        DOCUMENT_SERVICE_SIGN_DURATION_SECONDS.observe(time.monotonic() - start)
+        return SignResponse(
+            status="SIGNED",
+            provider_request_id=None,
+            signed={
+                "bucket": cached_signed.bucket,
+                "object_key": cached_signed.object_key,
+                "sha256": signed_sha,
+                "size_bytes": cached_signed.size_bytes,
+            },
+            signature={
+                "bucket": cached_sig.bucket,
+                "object_key": cached_sig.object_key,
+                "sha256": sig_sha,
+                "size_bytes": cached_sig.size_bytes,
+            },
+            certificate=None,
+        )
+
+    try:
+        provider = registry.get(payload.provider)
+        result = provider.sign(input_bytes, payload.meta)
+        signed_sha256 = hashlib.sha256(result.signed_bytes).hexdigest()
+        signature_sha256 = hashlib.sha256(result.signature_bytes).hexdigest()
+        output_storage.ensure_bucket()
+        output_storage.put_bytes(
+            signed_key,
+            result.signed_bytes,
+            content_type="application/pdf",
+            metadata={"sha256": signed_sha256},
+        )
+        output_storage.put_bytes(
+            signature_key,
+            result.signature_bytes,
+            content_type="application/pkcs7-signature",
+            metadata={"sha256": signature_sha256},
+        )
+    except KeyError as exc:
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="invalid_provider").inc()
+        raise HTTPException(status_code=422, detail="unknown_provider") from exc
+    except Exception as exc:  # noqa: BLE001
+        DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="fail").inc()
+        DOCUMENT_SERVICE_SIGN_ERRORS_TOTAL.labels(code=exc.__class__.__name__).inc()
+        logger.exception(
+            "document_service.sign_failed",
+            extra={"request_id": request_id, "doc_id": payload.document_id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail="sign_failed") from exc
+
+    DOCUMENT_SERVICE_SIGN_TOTAL.labels(status="success").inc()
+    DOCUMENT_SERVICE_SIGN_DURATION_SECONDS.observe(time.monotonic() - start)
+    logger.info(
+        "document_service.signed",
+        extra={
+            "request_id": request_id,
+            "doc_id": payload.document_id,
+            "provider": payload.provider,
+            "signed_key": signed_key,
+        },
+    )
+
+    return SignResponse(
+        status="SIGNED",
+        provider_request_id=result.provider_request_id,
+        signed={
+            "bucket": output_storage.bucket,
+            "object_key": signed_key,
+            "sha256": signed_sha256,
+            "size_bytes": len(result.signed_bytes),
+        },
+        signature={
+            "bucket": output_storage.bucket,
+            "object_key": signature_key,
+            "sha256": signature_sha256,
+            "size_bytes": len(result.signature_bytes),
+        },
+        certificate=(
+            {
+                "subject": result.certificate.subject,
+                "valid_to": result.certificate.valid_to,
+            }
+            if result.certificate
+            else None
+        ),
+    )
+
+
+@app.post("/v1/verify", response_model=VerifyResponse)
+def verify_document(
+    payload: VerifyRequest,
+    request: Request,
+    registry: ProviderRegistry = Depends(get_sign_registry),
+) -> VerifyResponse:
+    request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID")
+
+    input_storage = S3Storage(bucket=payload.input.bucket)
+    input_bytes = input_storage.get_bytes(payload.input.object_key)
+    if input_bytes is None:
+        DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="not_found").inc()
+        raise HTTPException(status_code=404, detail="input_not_found")
+
+    signature_storage = S3Storage(bucket=payload.signature.bucket)
+    signature_bytes = signature_storage.get_bytes(payload.signature.object_key)
+    if signature_bytes is None:
+        DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="not_found").inc()
+        raise HTTPException(status_code=404, detail="signature_not_found")
+
+    try:
+        provider = registry.get(payload.provider)
+        result = provider.verify(input_bytes, signature_bytes, payload.meta)
+    except KeyError as exc:
+        DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="invalid_provider").inc()
+        raise HTTPException(status_code=422, detail="unknown_provider") from exc
+    except Exception as exc:  # noqa: BLE001
+        DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="fail").inc()
+        logger.exception(
+            "document_service.verify_failed",
+            extra={"request_id": request_id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail="verify_failed") from exc
+
+    DOCUMENT_SERVICE_VERIFY_TOTAL.labels(status="success" if result.verified else "rejected").inc()
+    return VerifyResponse(
+        status="VERIFIED" if result.verified else "REJECTED",
+        verified=result.verified,
+        error_code=result.error_code,
+        certificate=(
+            {
+                "subject": result.certificate.subject,
+                "valid_to": result.certificate.valid_to,
+            }
+            if result.certificate
+            else None
+        ),
+    )
+
+
 def _build_object_key(
     *,
     tenant_id: int,
@@ -212,3 +412,12 @@ def _build_object_key(
         f"documents/tenant-{tenant_id}/{doc_type}/{document_date:%Y}/{document_date:%m}/"
         f"{doc_id}/v{version}.pdf"
     )
+
+
+def _build_signed_keys(prefix: str, input_key: str) -> tuple[str, str]:
+    trimmed_prefix = prefix.rstrip("/")
+    filename = input_key.rsplit("/", 1)[-1]
+    base = filename.rsplit(".", 1)[0]
+    signed_key = f"{trimmed_prefix}/{base}.signed.pdf"
+    signature_key = f"{trimmed_prefix}/{base}.sig.p7s"
+    return signed_key, signature_key
