@@ -1,4 +1,4 @@
-import { request, requestFormData } from "./http";
+import { request, requestFormData, requestWithMeta } from "./http";
 import type { PaginatedResponse } from "./partner";
 import type { CatalogImportPreview, CatalogImportSummary, CatalogItem, CatalogItemInput } from "../types/marketplace";
 
@@ -28,25 +28,33 @@ export const fetchCatalogItems = (token: string, filters: CatalogFilters = {}) =
 export const fetchCatalogItem = (token: string, id: string) => request<CatalogItem>(`/partner/catalog/${id}`, {}, token);
 
 export const createCatalogItem = (token: string, payload: CatalogItemInput) =>
-  request<CatalogItem>("/partner/catalog", { method: "POST", body: JSON.stringify(payload) }, token);
+  requestWithMeta<CatalogItem>("/partner/catalog", { method: "POST", body: JSON.stringify(payload) }, token);
 
 export const updateCatalogItem = (token: string, id: string, payload: CatalogItemInput) =>
-  request<CatalogItem>(`/partner/catalog/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
+  requestWithMeta<CatalogItem>(`/partner/catalog/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
 
 export const activateCatalogItem = (token: string, id: string) =>
-  request(`/partner/catalog/${id}/activate`, { method: "POST" }, token);
+  requestWithMeta<Record<string, never>>(`/partner/catalog/${id}/activate`, { method: "POST" }, token);
 
 export const disableCatalogItem = (token: string, id: string) =>
-  request(`/partner/catalog/${id}/disable`, { method: "POST" }, token);
+  requestWithMeta<Record<string, never>>(`/partner/catalog/${id}/disable`, { method: "POST" }, token);
 
-export const previewCatalogImport = (token: string, file: File) => {
+export const previewCatalogImport = (token: string, file: File, importMode: "create" | "upsert" = "create") => {
   const data = new FormData();
   data.append("file", file);
-  return requestFormData<CatalogImportPreview>("/partner/catalog/import?mode=preview", data, token);
+  return requestFormData<CatalogImportPreview>(
+    `/partner/catalog/import?mode=preview&import_mode=${importMode}`,
+    data,
+    token,
+  );
 };
 
-export const applyCatalogImport = (token: string, file: File) => {
+export const applyCatalogImport = (token: string, file: File, importMode: "create" | "upsert" = "create") => {
   const data = new FormData();
   data.append("file", file);
-  return requestFormData<CatalogImportSummary>("/partner/catalog/import?mode=apply", data, token);
+  return requestFormData<CatalogImportSummary>(
+    `/partner/catalog/import?mode=apply&import_mode=${importMode}`,
+    data,
+    token,
+  );
 };

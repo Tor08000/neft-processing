@@ -27,6 +27,7 @@ export interface CatalogItemInput {
   category?: string | null;
   images?: CatalogItemImage[] | null;
   baseUom: string;
+  status?: CatalogItemStatus;
 }
 
 export type OfferLocationScope = "all" | "selected";
@@ -160,11 +161,22 @@ export interface CatalogImportPreview {
   headers: string[];
   rows: Record<string, string>[];
   errors: CsvImportRowError[];
+  summary?: {
+    rowsParsed?: number;
+    willCreate?: number;
+    willUpdate?: number;
+    errorsCount?: number;
+  } | null;
+  correlationId?: string | null;
 }
 
 export interface CatalogImportSummary {
-  created: number;
-  updated: number;
-  failed: number;
+  created?: number;
+  updated?: number;
+  failed?: number;
+  createdCount?: number;
+  updatedCount?: number;
+  skippedCount?: number;
   errors?: CsvImportRowError[] | null;
+  correlationId?: string | null;
 }

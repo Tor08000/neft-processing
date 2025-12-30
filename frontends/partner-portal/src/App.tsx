@@ -15,7 +15,8 @@ import { SettlementDetailsPage } from "./pages/SettlementDetailsPage";
 import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DocumentDetailsPage } from "./pages/DocumentDetailsPage";
-import { ServicesPage } from "./pages/ServicesPage";
+import { ServicesCatalogPage } from "./pages/ServicesCatalogPage";
+import { ServiceDetailsPage } from "./pages/ServiceDetailsPage";
 import { PricesPage } from "./pages/PricesPage";
 import { PriceVersionDetailsPage } from "./pages/PriceVersionDetailsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
@@ -44,7 +45,8 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/documents/:id" element={<DocumentDetailsPage />} />
-            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/services" element={<ServicesCatalogPage />} />
+            <Route path="/services/:id" element={<ServiceDetailsPage />} />
             <Route path="/integrations" element={<IntegrationsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

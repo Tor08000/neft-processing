@@ -13,10 +13,11 @@ const session: AuthSession = {
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
 
-const emptyResponse = new Response(JSON.stringify({ items: [] }), { status: 200 });
-
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(emptyResponse)) as unknown as typeof fetch);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }))) as unknown as typeof fetch,
+  );
 });
 
 afterEach(() => {
@@ -44,6 +45,6 @@ describe("Partner portal shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Выплаты/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Выплаты/ })).toBeInTheDocument();
   });
 });
