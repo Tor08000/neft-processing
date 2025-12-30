@@ -16,6 +16,9 @@ import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DocumentDetailsPage } from "./pages/DocumentDetailsPage";
 import { ServicesPage } from "./pages/ServicesPage";
+import { PricesPage } from "./pages/PricesPage";
+import { PriceVersionDetailsPage } from "./pages/PriceVersionDetailsPage";
+import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 interface AppProps {
@@ -34,12 +37,15 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/stations/:id" element={<StationDetailsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
+            <Route path="/prices" element={<PricesPage />} />
+            <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
             <Route path="/payouts" element={<PayoutsPage />} />
             <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
             <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/documents/:id" element={<DocumentDetailsPage />} />
             <Route path="/services" element={<ServicesPage />} />
+            <Route path="/integrations" element={<IntegrationsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

@@ -14,6 +14,57 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
+  if (url.includes("/partner/prices/versions/") && url.includes("/items")) {
+    return new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 });
+  }
+  if (url.includes("/partner/prices/versions/") && url.includes("/audit")) {
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  }
+  if (url.includes("/partner/prices/versions/") && url.includes("/diff")) {
+    return new Response(
+      JSON.stringify({
+        added_count: 0,
+        removed_count: 0,
+        changed_count: 0,
+        sample_changed: [],
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/partner/prices/versions/") && !url.endsWith("/versions")) {
+    return new Response(
+      JSON.stringify({
+        id: "version-1",
+        partner_id: "partner-1",
+        station_scope: "all",
+        status: "DRAFT",
+        created_at: new Date().toISOString(),
+        active: false,
+        item_count: 0,
+        error_count: 0,
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/partner/prices/versions")) {
+    return new Response(
+      JSON.stringify({
+        items: [
+          {
+            id: "version-1",
+            partner_id: "partner-1",
+            station_scope: "all",
+            status: "DRAFT",
+            created_at: new Date().toISOString(),
+            active: false,
+            item_count: 0,
+            error_count: 0,
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  }
   if (url.includes("/partner/stations/") && !url.endsWith("/stations")) {
     return new Response(
       JSON.stringify({
@@ -127,6 +178,26 @@ describe("Partner pages", () => {
     );
 
     expect(await screen.findByText(/Операции партнёра/)).toBeInTheDocument();
+  });
+
+  it("renders prices page", async () => {
+    render(
+      <MemoryRouter initialEntries={["/prices"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Цены/)).toBeInTheDocument();
+  });
+
+  it("renders price version details page", async () => {
+    render(
+      <MemoryRouter initialEntries={["/prices/version-1"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Версия/)).toBeInTheDocument();
   });
 
   it("renders transaction details page", async () => {

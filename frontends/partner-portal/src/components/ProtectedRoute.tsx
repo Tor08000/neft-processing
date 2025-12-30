@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ForbiddenPage } from "../pages/ForbiddenPage";
+import { LoadingState } from "./states";
 
 export function ProtectedRoute() {
   const { user, isLoading, hasPartnerRole, logout } = useAuth();
@@ -8,7 +9,7 @@ export function ProtectedRoute() {
   const returnUrl = `${location.pathname}${location.search}`;
 
   if (isLoading) {
-    return <div className="centered">Загружаем сессию...</div>;
+    return <LoadingState label="Загружаем сессию..." />;
   }
 
   if (!user) {
