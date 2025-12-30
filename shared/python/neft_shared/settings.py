@@ -118,6 +118,9 @@ class Settings:
         "true",
         "yes",
     }
+    BI_CLICKHOUSE_ENABLED: bool = os.getenv("BI_CLICKHOUSE_ENABLED", "0").lower() in {"1", "true", "yes"}
+    CLICKHOUSE_URL: str = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123")
+    CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "default")
 
     @property
     def redis_dsn(self) -> str:

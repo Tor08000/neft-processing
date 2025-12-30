@@ -49,6 +49,7 @@ from .erp_exports import (  # noqa: F401
     ErpSystemType,
 )
 from .bi import (  # noqa: F401
+    BiClickhouseCursor,
     BiCursor,
     BiDailyMetric,
     BiDeclineEvent,
@@ -349,6 +350,8 @@ __all__ = [
     "AccountingExportFormat",
     "AccountingExportState",
     "AccountingExportType",
+    "BiClickhouseCursor",
+    "BiClickhouseCursor",
     "BiCursor",
     "BiDailyMetric",
     "BiDeclineEvent",

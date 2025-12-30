@@ -92,10 +92,12 @@ class BiExportOut(BaseModel):
     format: BiExportFormat
     status: BiExportStatus
     object_key: str | None
+    manifest_key: str | None = None
     bucket: str | None
     sha256: str | None
     row_count: int | None
     error_message: str | None
+    created_by: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
     delivered_at: datetime | None = None

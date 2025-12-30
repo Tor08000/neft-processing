@@ -565,6 +565,27 @@ def _bi_metrics() -> list[str]:
     if not aggregate_lines:
         aggregate_lines.append('core_api_bi_aggregate_total{status="unset"} 0')
 
+    export_lines = [
+        f'core_api_bi_exports_total{{dataset="{dataset}",format="{export_format}",status="{status}"}} {count}'
+        for (dataset, export_format, status), count in bi_metrics.exports_total.items()
+    ]
+    if not export_lines:
+        export_lines.append('core_api_bi_exports_total{dataset="unset",format="unset",status="unset"} 0')
+
+    clickhouse_lines = [
+        f'core_api_bi_clickhouse_sync_total{{dataset="{dataset}",status="{status}"}} {count}'
+        for (dataset, status), count in bi_metrics.clickhouse_sync_total.items()
+    ]
+    if not clickhouse_lines:
+        clickhouse_lines.append('core_api_bi_clickhouse_sync_total{dataset="unset",status="unset"} 0')
+
+    clickhouse_lag_lines = [
+        f'core_api_bi_clickhouse_lag_seconds{{dataset="{dataset}"}} {lag}'
+        for dataset, lag in bi_metrics.clickhouse_lag_seconds.items()
+    ]
+    if not clickhouse_lag_lines:
+        clickhouse_lag_lines.append('core_api_bi_clickhouse_lag_seconds{dataset="unset"} 0')
+
     return [
         "# HELP core_api_bi_ingest_events_total BI ingest runs by status.",
         "# TYPE core_api_bi_ingest_events_total counter",
@@ -575,12 +596,18 @@ def _bi_metrics() -> list[str]:
         "# HELP core_api_bi_aggregate_total BI aggregation runs by status.",
         "# TYPE core_api_bi_aggregate_total counter",
         *aggregate_lines,
-        "# HELP core_api_bi_exports_generated_total BI exports generated.",
-        "# TYPE core_api_bi_exports_generated_total counter",
-        f"core_api_bi_exports_generated_total {bi_metrics.exports_generated_total}",
-        "# HELP core_api_bi_exports_failed_total BI exports failed.",
-        "# TYPE core_api_bi_exports_failed_total counter",
-        f"core_api_bi_exports_failed_total {bi_metrics.exports_failed_total}",
+        "# HELP core_api_bi_exports_total BI exports by dataset/format/status.",
+        "# TYPE core_api_bi_exports_total counter",
+        *export_lines,
+        "# HELP core_api_bi_export_generate_duration_seconds BI export generation duration seconds.",
+        "# TYPE core_api_bi_export_generate_duration_seconds gauge",
+        f"core_api_bi_export_generate_duration_seconds {bi_metrics.export_generate_duration_seconds}",
+        "# HELP core_api_bi_clickhouse_sync_total BI ClickHouse sync by dataset/status.",
+        "# TYPE core_api_bi_clickhouse_sync_total counter",
+        *clickhouse_lines,
+        "# HELP core_api_bi_clickhouse_lag_seconds BI ClickHouse lag seconds.",
+        "# TYPE core_api_bi_clickhouse_lag_seconds gauge",
+        *clickhouse_lag_lines,
     ]
 
 
