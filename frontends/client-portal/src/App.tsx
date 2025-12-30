@@ -24,6 +24,10 @@ import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
 import { useAuth } from "./auth/AuthContext";
 import { SettingsPage } from "./pages/SettingsPage";
+import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
+import { MarketplaceServicePage } from "./pages/MarketplaceServicePage";
+import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
+import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -68,6 +72,10 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/operations/:id" element={<OperationDetailsPage />} />
             <Route path="/balances" element={<BalancesPage />} />
+            <Route path="/marketplace" element={<MarketplaceCatalogPage />} />
+            <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
+            <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
+            <Route path="/marketplace/:serviceId" element={<MarketplaceServicePage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
