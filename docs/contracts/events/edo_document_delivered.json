@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EDO_DOCUMENT_DELIVERED",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "occurred_at",
+    "correlation_id",
+    "trace_id",
+    "schema_version",
+    "event_type",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.0$"
+    },
+    "event_type": {
+      "const": "EDO_DOCUMENT_DELIVERED"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "signature_id",
+        "provider",
+        "status",
+        "provider_message_id"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "signature_id": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["DIADOK", "SBIS"]
+        },
+        "status": {
+          "const": "DELIVERED"
+        },
+        "provider_message_id": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}
