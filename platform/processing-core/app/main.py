@@ -27,6 +27,7 @@ from app.services.accounting_export.metrics import metrics as accounting_export_
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
+from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
@@ -95,6 +96,11 @@ try:
     from app.api.v1.endpoints.edo_events import router as edo_events_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     edo_events_router = None  # type: ignore
+
+try:
+    from app.api.v1.endpoints.bi import router as bi_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    bi_router = None  # type: ignore
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
@@ -344,6 +350,8 @@ if logistics_router is not None:
     app.include_router(logistics_router, prefix="")
 if edo_events_router is not None:
     app.include_router(edo_events_router, prefix="")
+if bi_router is not None:
+    app.include_router(bi_router, prefix="")
 
 if intake_router is not None:
     app.include_router(intake_router, prefix="")
@@ -379,6 +387,8 @@ if logistics_router is not None:
     core_prefixed_router.include_router(logistics_router, prefix="")
 if edo_events_router is not None:
     core_prefixed_router.include_router(edo_events_router, prefix="")
+if bi_router is not None:
+    core_prefixed_router.include_router(bi_router, prefix="")
 if intake_router is not None:
     core_prefixed_router.include_router(intake_router, prefix="")
 if partners_router is not None:
@@ -519,6 +529,40 @@ def _payout_metrics() -> list[str]:
         *export_bytes_lines,
         *export_download_lines,
         f"core_api_payout_export_download_errors_total {payout_metrics.export_download_errors_total}",
+    ]
+
+
+def _bi_metrics() -> list[str]:
+    ingest_lines = [
+        f'core_api_bi_ingest_events_total{{status="{status}"}} {count}'
+        for status, count in bi_metrics.ingest_events_total.items()
+    ]
+    if not ingest_lines:
+        ingest_lines.append('core_api_bi_ingest_events_total{status="unset"} 0')
+
+    aggregate_lines = [
+        f'core_api_bi_aggregate_total{{status="{status}"}} {count}'
+        for status, count in bi_metrics.aggregate_total.items()
+    ]
+    if not aggregate_lines:
+        aggregate_lines.append('core_api_bi_aggregate_total{status="unset"} 0')
+
+    return [
+        "# HELP core_api_bi_ingest_events_total BI ingest runs by status.",
+        "# TYPE core_api_bi_ingest_events_total counter",
+        *ingest_lines,
+        "# HELP core_api_bi_ingest_lag_seconds BI ingest lag seconds.",
+        "# TYPE core_api_bi_ingest_lag_seconds gauge",
+        f"core_api_bi_ingest_lag_seconds {bi_metrics.ingest_lag_seconds}",
+        "# HELP core_api_bi_aggregate_total BI aggregation runs by status.",
+        "# TYPE core_api_bi_aggregate_total counter",
+        *aggregate_lines,
+        "# HELP core_api_bi_exports_generated_total BI exports generated.",
+        "# TYPE core_api_bi_exports_generated_total counter",
+        f"core_api_bi_exports_generated_total {bi_metrics.exports_generated_total}",
+        "# HELP core_api_bi_exports_failed_total BI exports failed.",
+        "# TYPE core_api_bi_exports_failed_total counter",
+        f"core_api_bi_exports_failed_total {bi_metrics.exports_failed_total}",
     ]
 
 
@@ -692,6 +736,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_risk_v5_metrics())
     lines.extend(_audit_metrics())
     lines.extend(_accounting_export_metrics())
+    lines.extend(_bi_metrics())
     return "\n".join(lines) + "\n"
 
 
