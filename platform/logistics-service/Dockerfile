@@ -15,4 +15,4 @@ COPY platform/logistics-service /app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "neft_logistics_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
