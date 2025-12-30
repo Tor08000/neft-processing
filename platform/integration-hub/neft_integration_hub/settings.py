@@ -40,6 +40,8 @@ class Settings:
     webhook_secret_key: str = os.getenv("INTEGRATION_HUB_WEBHOOK_SECRET_KEY", "change-me")
     webhook_max_attempts: int = int(os.getenv("WEBHOOK_MAX_ATTEMPTS", "10"))
     webhook_request_timeout_seconds: int = int(os.getenv("WEBHOOK_REQUEST_TIMEOUT_SECONDS", "10"))
+    webhook_sla_seconds: int = int(os.getenv("WEBHOOK_SLA_SECONDS", "300"))
+    webhook_alert_failure_threshold: int = int(os.getenv("WEBHOOK_ALERT_FAILURE_THRESHOLD", "10"))
 
 
 _settings: Settings | None = None

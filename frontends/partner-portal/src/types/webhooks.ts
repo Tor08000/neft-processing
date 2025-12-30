@@ -7,6 +7,9 @@ export interface WebhookEndpoint {
   url: string;
   status: WebhookEndpointStatus;
   signing_algo?: string | null;
+  delivery_paused?: boolean;
+  paused_at?: string | null;
+  paused_reason?: string | null;
   created_at: string;
 }
 
@@ -40,7 +43,7 @@ export interface WebhookSubscription {
   filters?: Record<string, unknown> | null;
 }
 
-export type WebhookDeliveryStatus = "DELIVERED" | "FAILED" | "DEAD" | "PENDING";
+export type WebhookDeliveryStatus = "DELIVERED" | "FAILED" | "DEAD" | "PENDING" | "PAUSED";
 
 export interface WebhookDelivery {
   id: string;
@@ -52,6 +55,32 @@ export interface WebhookDelivery {
   latency_ms?: number | null;
   occurred_at: string;
   event_id?: string | null;
+}
+
+export interface WebhookSlaStatus {
+  window: string;
+  success_ratio: number;
+  avg_latency_ms?: number | null;
+  sla_breaches: number;
+}
+
+export interface WebhookAlert {
+  id: string;
+  type: "DELIVERY_FAILURE" | "SLA_BREACH" | "PAUSED_TOO_LONG";
+  window: string;
+  created_at: string;
+}
+
+export interface WebhookReplayPayload {
+  from: string;
+  to: string;
+  event_types?: string[];
+  only_failed?: boolean;
+}
+
+export interface WebhookReplayResult {
+  replay_id: string;
+  scheduled_deliveries: number;
 }
 
 export interface WebhookDeliveryAttempt {

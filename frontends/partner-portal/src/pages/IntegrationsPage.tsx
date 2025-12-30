@@ -11,11 +11,16 @@ import {
   createWebhookEndpoint,
   createWebhookSubscription,
   deleteWebhookSubscription,
+  fetchWebhookAlerts,
   fetchWebhookEventTypes,
   fetchWebhookDeliveries,
   fetchWebhookDeliveryDetail,
   fetchWebhookEndpoints,
+  fetchWebhookSla,
   fetchWebhookSubscriptions,
+  pauseWebhookEndpoint,
+  replayWebhookDeliveries,
+  resumeWebhookEndpoint,
   retryWebhookDelivery,
   rotateWebhookSecret,
   sendWebhookTest,
@@ -24,9 +29,11 @@ import {
 } from "../api/webhooks";
 import { ApiError } from "../api/http";
 import type {
+  WebhookAlert,
   WebhookDelivery,
   WebhookDeliveryDetail,
   WebhookEndpoint,
+  WebhookSlaStatus,
   WebhookSubscription,
   WebhookTestResult,
 } from "../types/webhooks";
@@ -111,6 +118,13 @@ export function IntegrationsPage() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isDeliveryDetailOpen, setIsDeliveryDetailOpen] = useState(false);
 
+  const [slaStatus, setSlaStatus] = useState<WebhookSlaStatus | null>(null);
+  const [slaLoading, setSlaLoading] = useState(false);
+  const [slaError, setSlaError] = useState<ApiErrorState | null>(null);
+  const [alerts, setAlerts] = useState<WebhookAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState<ApiErrorState | null>(null);
+
   const [eventTypes, setEventTypes] = useState<string[]>(defaultWebhookEvents);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -139,6 +153,19 @@ export function IntegrationsPage() {
   } | null>(null);
 
   const [subscriptionFiltersDraft, setSubscriptionFiltersDraft] = useState<Record<string, string>>({});
+  const [isReplayOpen, setIsReplayOpen] = useState(false);
+  const [replayForm, setReplayForm] = useState({
+    from: "",
+    to: "",
+    eventTypes: "",
+    onlyFailed: true,
+  });
+  const [replayResult, setReplayResult] = useState<{
+    replayId: string;
+    scheduled: number;
+    correlationId: string | null;
+  } | null>(null);
+  const [replayError, setReplayError] = useState<ApiErrorState | null>(null);
 
   const selectedEndpoint = useMemo(
     () => endpoints.find((endpoint) => endpoint.id === selectedEndpointId) ?? null,
@@ -214,6 +241,26 @@ export function IntegrationsPage() {
       .catch((err) => setDeliveryError(normalizeError(err, t("integrationsPage.errors.loadDeliveries"))))
       .finally(() => setDeliveryLoading(false));
   }, [deliveryFilters, deliveryTab, selectedEndpointId, user]);
+
+  useEffect(() => {
+    if (!selectedEndpointId || !user) return;
+    setSlaLoading(true);
+    setSlaError(null);
+    fetchWebhookSla(user.token, selectedEndpointId)
+      .then((data) => setSlaStatus(data))
+      .catch((err) => setSlaError(normalizeError(err, t("integrationsPage.errors.loadSla"))))
+      .finally(() => setSlaLoading(false));
+  }, [selectedEndpointId, user]);
+
+  useEffect(() => {
+    if (!selectedEndpointId || !user) return;
+    setAlertsLoading(true);
+    setAlertsError(null);
+    fetchWebhookAlerts(user.token, selectedEndpointId)
+      .then((data) => setAlerts(data))
+      .catch((err) => setAlertsError(normalizeError(err, t("integrationsPage.errors.loadAlerts"))))
+      .finally(() => setAlertsLoading(false));
+  }, [selectedEndpointId, user]);
 
   const handleCreateEndpoint = async () => {
     if (!user) return;
@@ -382,6 +429,69 @@ export function IntegrationsPage() {
     }
   };
 
+  const handlePauseEndpoint = async (endpoint: WebhookEndpoint) => {
+    if (!user) return;
+    const confirmation = window.confirm(t("integrationsPage.confirmations.pauseEndpoint"));
+    if (!confirmation) return;
+    try {
+      const updated = await pauseWebhookEndpoint(user.token, endpoint.id, "partner_requested");
+      setEndpoints((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setEndpointError(normalizeError(err, t("integrationsPage.errors.pauseEndpointFailed")));
+    }
+  };
+
+  const handleResumeEndpoint = async (endpoint: WebhookEndpoint) => {
+    if (!user) return;
+    const confirmation = window.confirm(t("integrationsPage.confirmations.resumeEndpoint"));
+    if (!confirmation) return;
+    try {
+      const updated = await resumeWebhookEndpoint(user.token, endpoint.id);
+      setEndpoints((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setEndpointError(normalizeError(err, t("integrationsPage.errors.resumeEndpointFailed")));
+    }
+  };
+
+  const handleReplay = async () => {
+    if (!user || !selectedEndpoint) return;
+    setReplayError(null);
+    const eventTypes = replayForm.eventTypes
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const fromIso = replayForm.from ? new Date(replayForm.from).toISOString() : "";
+    const toIso = replayForm.to ? new Date(replayForm.to).toISOString() : "";
+    try {
+      const response = await replayWebhookDeliveries(user.token, selectedEndpoint.id, {
+        from: fromIso,
+        to: toIso,
+        event_types: eventTypes.length > 0 ? eventTypes : undefined,
+        only_failed: replayForm.onlyFailed,
+      });
+      setReplayResult({
+        replayId: response.data.replay_id,
+        scheduled: response.data.scheduled_deliveries,
+        correlationId: response.correlationId,
+      });
+    } catch (err) {
+      setReplayError(normalizeError(err, t("integrationsPage.errors.replayFailed")));
+    }
+  };
+
+  const renderAlertMessage = (alert: WebhookAlert) => {
+    switch (alert.type) {
+      case "SLA_BREACH":
+        return t("integrationsPage.alerts.slaBreach");
+      case "DELIVERY_FAILURE":
+        return t("integrationsPage.alerts.deliveryFailure");
+      case "PAUSED_TOO_LONG":
+        return t("integrationsPage.alerts.pausedTooLong");
+      default:
+        return alert.type;
+    }
+  };
+
   const snippet = useMemo(() => {
     if (!createdEndpointInfo?.secret) return "";
     return [
@@ -464,6 +574,15 @@ export function IntegrationsPage() {
                           <button type="button" className="ghost" onClick={() => handleToggleEndpoint(endpoint)}>
                             {endpoint.status === "ACTIVE" ? t("integrationsPage.actions.disable") : t("integrationsPage.actions.enable")}
                           </button>
+                          {endpoint.delivery_paused ? (
+                            <button type="button" className="ghost" onClick={() => handleResumeEndpoint(endpoint)}>
+                              {t("integrationsPage.actions.resume")}
+                            </button>
+                          ) : (
+                            <button type="button" className="ghost" onClick={() => handlePauseEndpoint(endpoint)}>
+                              {t("integrationsPage.actions.pause")}
+                            </button>
+                          )}
                           <button type="button" className="ghost" onClick={() => handleRotateSecret(endpoint)}>
                             {t("integrationsPage.actions.rotateSecret")}
                           </button>
@@ -481,6 +600,99 @@ export function IntegrationsPage() {
               ))}
             </tbody>
           </table>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="section-title">
+          <div>
+            <h2>{t("integrationsPage.deliveryHealth.title")}</h2>
+            <p className="muted">{t("integrationsPage.deliveryHealth.subtitle")}</p>
+          </div>
+          {selectedEndpoint && isOwner ? (
+            <div className="stack-inline">
+              {selectedEndpoint.delivery_paused ? (
+                <button type="button" className="ghost" onClick={() => handleResumeEndpoint(selectedEndpoint)}>
+                  {t("integrationsPage.actions.resume")}
+                </button>
+              ) : (
+                <button type="button" className="ghost" onClick={() => handlePauseEndpoint(selectedEndpoint)}>
+                  {t("integrationsPage.actions.pause")}
+                </button>
+              )}
+              <button type="button" className="ghost" onClick={() => setIsReplayOpen(true)}>
+                {t("integrationsPage.actions.replay")}
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {!selectedEndpoint ? (
+          <EmptyState
+            icon={<LinkIcon />}
+            title={t("integrationsPage.deliveryHealth.emptyTitle")}
+            description={t("integrationsPage.deliveryHealth.emptyDescription")}
+          />
+        ) : slaLoading ? (
+          <LoadingState label={t("integrationsPage.loading.sla")} />
+        ) : slaError ? (
+          <ErrorState description={formatErrorDescription(slaError)} correlationId={slaError.correlationId} />
+        ) : slaStatus ? (
+          <div className="stack">
+            <div className="stack-inline">
+              <div className="label">{t("integrationsPage.deliveryHealth.slaStatus")}</div>
+              <StatusBadge status={slaStatus.success_ratio >= 0.8 ? "DELIVERED" : "FAILED"} />
+              {selectedEndpoint.delivery_paused ? <StatusBadge status="PAUSED" /> : null}
+            </div>
+            <div className="stats-grid">
+              <div className="notice">
+                <div className="label">{t("integrationsPage.deliveryHealth.successRatio")}</div>
+                <div>{Math.round(slaStatus.success_ratio * 100)}%</div>
+              </div>
+              <div className="notice">
+                <div className="label">{t("integrationsPage.deliveryHealth.latency")}</div>
+                <div>
+                  {slaStatus.avg_latency_ms ?? t("common.notAvailable")}
+                  {slaStatus.avg_latency_ms ? " ms" : ""}
+                </div>
+              </div>
+              <div className="notice">
+                <div className="label">{t("integrationsPage.deliveryHealth.breaches")}</div>
+                <div>{slaStatus.sla_breaches}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!isOwner ? <div className="notice small">{t("integrationsPage.ownerOnly")}</div> : null}
+      </section>
+
+      <section className="card">
+        <div className="section-title">
+          <div>
+            <h2>{t("integrationsPage.alerts.title")}</h2>
+            <p className="muted">{t("integrationsPage.alerts.subtitle")}</p>
+          </div>
+        </div>
+        {!selectedEndpoint ? (
+          <EmptyState
+            icon={<LinkIcon />}
+            title={t("integrationsPage.alerts.emptyTitle")}
+            description={t("integrationsPage.alerts.emptyDescription")}
+          />
+        ) : alertsLoading ? (
+          <LoadingState label={t("integrationsPage.loading.alerts")} />
+        ) : alertsError ? (
+          <ErrorState description={formatErrorDescription(alertsError)} correlationId={alertsError.correlationId} />
+        ) : alerts.length === 0 ? (
+          <div className="notice">{t("integrationsPage.alerts.noAlerts")}</div>
+        ) : (
+          <ul className="stack">
+            {alerts.map((alert) => (
+              <li key={alert.id} className="notice">
+                <strong>{renderAlertMessage(alert)}</strong>
+                <div className="muted small">{formatDateTime(alert.created_at)}</div>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
@@ -637,6 +849,7 @@ export function IntegrationsPage() {
                     <option value="DELIVERED">{t("statuses.webhooks.DELIVERED")}</option>
                     <option value="FAILED">{t("statuses.webhooks.FAILED")}</option>
                     <option value="DEAD">{t("statuses.webhooks.DEAD")}</option>
+                    <option value="PAUSED">{t("statuses.webhooks.PAUSED")}</option>
                   </select>
                 </label>
               ) : null}
@@ -835,6 +1048,73 @@ export function IntegrationsPage() {
               {createdEndpointInfo.correlationId ? (
                 <div className="muted small">{t("errors.correlationId", { id: createdEndpointInfo.correlationId })}</div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isReplayOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="card__header">
+              <h3>{t("integrationsPage.modals.replay.title")}</h3>
+              <button type="button" className="ghost" onClick={() => setIsReplayOpen(false)}>
+                {t("actions.close")}
+              </button>
+            </div>
+            <div className="form-grid">
+              <label className="form-field">
+                {t("integrationsPage.modals.replay.from")}
+                <input
+                  type="datetime-local"
+                  value={replayForm.from}
+                  onChange={(event) => setReplayForm((prev) => ({ ...prev, from: event.target.value }))}
+                />
+              </label>
+              <label className="form-field">
+                {t("integrationsPage.modals.replay.to")}
+                <input
+                  type="datetime-local"
+                  value={replayForm.to}
+                  onChange={(event) => setReplayForm((prev) => ({ ...prev, to: event.target.value }))}
+                />
+              </label>
+              <label className="form-field">
+                {t("integrationsPage.modals.replay.eventTypes")}
+                <input
+                  type="text"
+                  placeholder={t("integrationsPage.modals.replay.eventTypesPlaceholder")}
+                  value={replayForm.eventTypes}
+                  onChange={(event) => setReplayForm((prev) => ({ ...prev, eventTypes: event.target.value }))}
+                />
+              </label>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={replayForm.onlyFailed}
+                  onChange={(event) => setReplayForm((prev) => ({ ...prev, onlyFailed: event.target.checked }))}
+                />
+                {t("integrationsPage.modals.replay.onlyFailed")}
+              </label>
+            </div>
+            {replayError ? (
+              <div className="notice error">{formatErrorDescription(replayError)}</div>
+            ) : null}
+            {replayResult ? (
+              <div className="notice">
+                {t("integrationsPage.modals.replay.result", {
+                  count: replayResult.scheduled,
+                  replayId: replayResult.replayId,
+                })}
+              </div>
+            ) : null}
+            <div className="form-actions">
+              <button type="button" className="primary" onClick={handleReplay}>
+                {t("integrationsPage.actions.replay")}
+              </button>
+              <button type="button" className="ghost" onClick={() => setIsReplayOpen(false)}>
+                {t("actions.cancel")}
+              </button>
             </div>
           </div>
         </div>

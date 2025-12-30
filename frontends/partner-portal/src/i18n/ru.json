@@ -130,6 +130,7 @@
     "webhooks": {
       "ACTIVE": "Активен",
       "DISABLED": "Отключён",
+      "PAUSED": "Пауза",
       "DELIVERED": "Доставлено",
       "FAILED": "Ошибка",
       "DEAD": "Остановлено"
@@ -294,9 +295,13 @@
       "loadEventsFallback": "Не удалось загрузить список событий, используем список по умолчанию",
       "loadSubscriptions": "Не удалось загрузить подписки",
       "loadDeliveries": "Не удалось загрузить доставки",
+      "loadSla": "Не удалось загрузить SLA доставки",
+      "loadAlerts": "Не удалось загрузить алерты",
       "invalidUrl": "URL должен начинаться с http:// или https://",
       "createEndpointFailed": "Не удалось создать endpoint",
       "updateEndpointFailed": "Не удалось обновить статус endpoint",
+      "pauseEndpointFailed": "Не удалось поставить endpoint на паузу",
+      "resumeEndpointFailed": "Не удалось возобновить доставку",
       "rotateSecretFailed": "Не удалось ротировать секрет",
       "sendTestFailed": "Не удалось отправить тестовый webhook",
       "invalidFilters": "Некорректный JSON в фильтрах",
@@ -304,11 +309,14 @@
       "deleteSubscriptionFailed": "Не удалось удалить подписку",
       "loadDeliveryDetailFailed": "Не удалось загрузить детали доставки",
       "retryDeliveryFailed": "Не удалось повторить доставку",
-      "retryDeadFailed": "Не удалось выполнить повторную доставку"
+      "retryDeadFailed": "Не удалось выполнить повторную доставку",
+      "replayFailed": "Не удалось запланировать replay"
     },
     "confirmations": {
       "disableEndpoint": "Отключить endpoint? Доставки будут остановлены.",
       "enableEndpoint": "Включить endpoint?",
+      "pauseEndpoint": "Поставить доставку на паузу?",
+      "resumeEndpoint": "Возобновить доставку?",
       "rotateSecret": "Обновить секрет? Старый секрет перестанет работать. Убедитесь, что вы обновили его в своей системе.",
       "deleteSubscription": "Удалить подписку?",
       "retryDelivery": "Повторить доставку?",
@@ -318,6 +326,8 @@
       "endpoints": "Загружаем endpoints...",
       "subscriptions": "Загружаем подписки...",
       "deliveries": "Загружаем доставки...",
+      "sla": "Загружаем SLA...",
+      "alerts": "Загружаем алерты...",
       "deliveryDetail": "Загружаем детали...",
       "deliveryDetailPending": "Готовим детали..."
     },
@@ -329,9 +339,33 @@
     "actions": {
       "disable": "Отключить",
       "enable": "Включить",
+      "pause": "Пауза",
+      "resume": "Возобновить",
+      "replay": "Повторить события",
       "rotateSecret": "Обновить секрет",
       "testPing": "Test ping",
       "deliveries": "Доставки"
+    },
+    "ownerOnly": "Доступно только для PARTNER_OWNER.",
+    "deliveryHealth": {
+      "title": "Delivery Health",
+      "subtitle": "Сводка SLA и состояния доставки.",
+      "emptyTitle": "Выберите endpoint",
+      "emptyDescription": "Выберите endpoint, чтобы увидеть SLA.",
+      "slaStatus": "SLA статус",
+      "successRatio": "Успешность",
+      "latency": "Средняя задержка",
+      "breaches": "Нарушения SLA"
+    },
+    "alerts": {
+      "title": "Alerts",
+      "subtitle": "Активные алерты для выбранного endpoint.",
+      "emptyTitle": "Выберите endpoint",
+      "emptyDescription": "Выберите endpoint, чтобы увидеть алерты.",
+      "noAlerts": "Активных алертов нет",
+      "slaBreach": "Доставка деградирует более 30 минут",
+      "deliveryFailure": "Количество неуспешных доставок превышает порог",
+      "pausedTooLong": "Доставка на паузе более 1 часа"
     },
     "subscriptions": {
       "title": "Subscriptions",
@@ -414,6 +448,15 @@
         "deliveryId": "Delivery ID",
         "httpStatus": "HTTP status",
         "latency": "Latency"
+      },
+      "replay": {
+        "title": "Replay событий",
+        "from": "С (UTC)",
+        "to": "По (UTC)",
+        "eventTypes": "Типы событий",
+        "eventTypesPlaceholder": "marketplace_order_completed, marketplace_payout_batch_settled",
+        "onlyFailed": "Только неуспешные доставки",
+        "result": "Replay запланирован: {count}. Replay ID: {replayId}"
       },
       "deliveryDetail": {
         "title": "Delivery detail",

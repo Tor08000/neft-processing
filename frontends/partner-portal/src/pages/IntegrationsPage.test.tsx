@@ -24,22 +24,6 @@ const operatorSession: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
-  if (url.includes("/v1/webhooks/endpoints")) {
-    return new Response(
-      JSON.stringify({
-        items: [
-          {
-            id: "endpoint-1",
-            url: "https://hooks.demo/partner",
-            status: "ACTIVE",
-            signing_algo: "HMAC_SHA256",
-            created_at: new Date().toISOString(),
-          },
-        ],
-      }),
-      { status: 200 },
-    );
-  }
   if (url.includes("/v1/webhooks/event-types")) {
     return new Response(JSON.stringify({ items: ["payout.*"] }), { status: 200 });
   }
@@ -84,6 +68,48 @@ const mockFetch = (url: string) => {
           },
         ],
         correlation_id: "corr-delivery",
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/v1/webhooks/endpoints/") && url.includes("/sla")) {
+    return new Response(
+      JSON.stringify({
+        window: "15m",
+        success_ratio: 0.92,
+        avg_latency_ms: 820,
+        sla_breaches: 3,
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/v1/webhooks/endpoints/") && url.includes("/alerts")) {
+    return new Response(
+      JSON.stringify({
+        items: [
+          {
+            id: "alert-1",
+            type: "SLA_BREACH",
+            window: "30m",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/v1/webhooks/endpoints")) {
+    return new Response(
+      JSON.stringify({
+        items: [
+          {
+            id: "endpoint-1",
+            url: "https://hooks.demo/partner",
+            status: "ACTIVE",
+            signing_algo: "HMAC_SHA256",
+            created_at: new Date().toISOString(),
+          },
+        ],
       }),
       { status: 200 },
     );
@@ -140,7 +166,36 @@ describe("Integrations page", () => {
 
     expect(await screen.findByText(/Integrations/i)).toBeInTheDocument();
     expect(screen.queryByText(/Обновить секрет/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Повторить события/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Пауза/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Retry/i)).not.toBeInTheDocument();
+  });
+
+  it("renders delivery health controls for owner", async () => {
+    render(
+      <MemoryRouter initialEntries={["/integrations"]}>
+        <App initialSession={ownerSession} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Delivery Health/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Alerts/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Повторить события/i })).toBeInTheDocument();
+  });
+
+  it("opens replay modal", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/integrations"]}>
+        <App initialSession={ownerSession} />
+      </MemoryRouter>,
+    );
+
+    const replayButton = await screen.findByRole("button", { name: /Повторить события/i });
+    await user.click(replayButton);
+
+    expect(await screen.findByText(/Replay событий/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/С \(UTC\)/i)).toBeInTheDocument();
   });
 
   it("opens create endpoint modal", async () => {

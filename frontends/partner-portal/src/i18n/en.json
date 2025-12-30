@@ -130,6 +130,7 @@
     "webhooks": {
       "ACTIVE": "Active",
       "DISABLED": "Disabled",
+      "PAUSED": "Paused",
       "DELIVERED": "Delivered",
       "FAILED": "Error",
       "DEAD": "Stopped"
@@ -294,9 +295,13 @@
       "loadEventsFallback": "Unable to load event types, using defaults",
       "loadSubscriptions": "Unable to load subscriptions",
       "loadDeliveries": "Unable to load deliveries",
+      "loadSla": "Unable to load delivery SLA",
+      "loadAlerts": "Unable to load alerts",
       "invalidUrl": "URL must start with http:// or https://",
       "createEndpointFailed": "Unable to create endpoint",
       "updateEndpointFailed": "Unable to update endpoint status",
+      "pauseEndpointFailed": "Unable to pause endpoint",
+      "resumeEndpointFailed": "Unable to resume endpoint",
       "rotateSecretFailed": "Unable to rotate secret",
       "sendTestFailed": "Unable to send test webhook",
       "invalidFilters": "Invalid JSON in filters",
@@ -304,11 +309,14 @@
       "deleteSubscriptionFailed": "Unable to delete subscription",
       "loadDeliveryDetailFailed": "Unable to load delivery detail",
       "retryDeliveryFailed": "Unable to retry delivery",
-      "retryDeadFailed": "Unable to retry dead deliveries"
+      "retryDeadFailed": "Unable to retry dead deliveries",
+      "replayFailed": "Unable to replay events"
     },
     "confirmations": {
       "disableEndpoint": "Disable endpoint? Deliveries will be stopped.",
       "enableEndpoint": "Enable endpoint?",
+      "pauseEndpoint": "Pause delivery for this endpoint?",
+      "resumeEndpoint": "Resume delivery for this endpoint?",
       "rotateSecret": "Rotate secret? The old secret will stop working. Make sure you update it in your system.",
       "deleteSubscription": "Delete subscription?",
       "retryDelivery": "Retry delivery?",
@@ -318,6 +326,8 @@
       "endpoints": "Loading endpoints...",
       "subscriptions": "Loading subscriptions...",
       "deliveries": "Loading deliveries...",
+      "sla": "Loading SLA...",
+      "alerts": "Loading alerts...",
       "deliveryDetail": "Loading details...",
       "deliveryDetailPending": "Preparing details..."
     },
@@ -329,9 +339,33 @@
     "actions": {
       "disable": "Disable",
       "enable": "Enable",
+      "pause": "Pause",
+      "resume": "Resume",
+      "replay": "Replay events",
       "rotateSecret": "Rotate secret",
       "testPing": "Test ping",
       "deliveries": "Deliveries"
+    },
+    "ownerOnly": "Available only for PARTNER_OWNER.",
+    "deliveryHealth": {
+      "title": "Delivery health",
+      "subtitle": "SLA and delivery status overview.",
+      "emptyTitle": "Select an endpoint",
+      "emptyDescription": "Choose an endpoint to view delivery health.",
+      "slaStatus": "SLA status",
+      "successRatio": "Success ratio",
+      "latency": "Average latency",
+      "breaches": "SLA breaches"
+    },
+    "alerts": {
+      "title": "Alerts",
+      "subtitle": "Active delivery alerts for the selected endpoint.",
+      "emptyTitle": "Select an endpoint",
+      "emptyDescription": "Choose an endpoint to view alerts.",
+      "noAlerts": "No active alerts",
+      "slaBreach": "Delivery success ratio below SLA for 30 minutes",
+      "deliveryFailure": "Delivery failures exceed threshold",
+      "pausedTooLong": "Delivery paused for over 1 hour"
     },
     "subscriptions": {
       "title": "Subscriptions",
@@ -414,6 +448,15 @@
         "deliveryId": "Delivery ID",
         "httpStatus": "HTTP status",
         "latency": "Latency"
+      },
+      "replay": {
+        "title": "Replay events",
+        "from": "From (UTC)",
+        "to": "To (UTC)",
+        "eventTypes": "Event types",
+        "eventTypesPlaceholder": "marketplace_order_completed, marketplace_payout_batch_settled",
+        "onlyFailed": "Only failed deliveries",
+        "result": "Replay scheduled: {count}. Replay ID: {replayId}"
       },
       "deliveryDetail": {
         "title": "Delivery detail",

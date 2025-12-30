@@ -35,6 +35,7 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   inactive: "error",
   offline: "error",
   disabled: "error",
+  paused: "pending",
   dead: "error",
 };
 
@@ -54,6 +55,7 @@ const statusLabelMap: Record<string, string> = {
   EDO_FAILED: "statuses.documents.EDO_FAILED",
   ACTIVE: "statuses.webhooks.ACTIVE",
   DISABLED: "statuses.webhooks.DISABLED",
+  PAUSED: "statuses.webhooks.PAUSED",
   DELIVERED: "statuses.webhooks.DELIVERED",
   FAILED: "statuses.webhooks.FAILED",
   DEAD: "statuses.webhooks.DEAD",
