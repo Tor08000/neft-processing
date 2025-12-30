@@ -11,6 +11,7 @@ from app.models.accounting_export_batch import (
     AccountingExportState,
     AccountingExportType,
 )
+from app.models.erp_exports import ErpSystemType
 
 
 class AccountingExportCreateRequest(BaseModel):
@@ -19,6 +20,8 @@ class AccountingExportCreateRequest(BaseModel):
     format: AccountingExportFormat
     version: int = Field(1, ge=1)
     force: bool = False
+    profile_id: str | None = None
+    system_type: ErpSystemType | None = None
 
 
 class AccountingExportBatchRead(BaseModel):
@@ -45,6 +48,10 @@ class AccountingExportBatchRead(BaseModel):
     erp_status: str | None = None
     erp_message: str | None = None
     erp_processed_at: datetime | None = None
+    erp_profile_id: str | None = None
+    erp_system_type: ErpSystemType | None = None
+    erp_mapping_id: str | None = None
+    erp_mapping_version: int | None = None
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

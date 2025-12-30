@@ -39,6 +39,8 @@ def create_export(
             period_id=body.period_id,
             export_type=body.export_type,
             export_format=body.format,
+            profile_id=body.profile_id,
+            system_type=body.system_type,
             version=body.version,
             force=body.force,
             request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
