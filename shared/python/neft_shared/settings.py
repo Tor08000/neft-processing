@@ -40,6 +40,12 @@ class Settings:
         "true",
         "yes",
     }
+    LOGISTICS_SERVICE_ENABLED: bool = os.getenv("LOGISTICS_SERVICE_ENABLED", "0").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    LOGISTICS_SERVICE_URL: str = os.getenv("LOGISTICS_SERVICE_URL", "http://logistics-service:8000")
     FLEET_BENCHMARK_USE_TENANT: bool = os.getenv("FLEET_BENCHMARK_USE_TENANT", "false").lower() in {
         "1",
         "true",

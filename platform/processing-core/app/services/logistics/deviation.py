@@ -27,7 +27,9 @@ from app.services.logistics.defaults import (
     VELOCITY_DEFAULTS,
 )
 from app.services.logistics.metrics import metrics as logistics_metrics
+from app.services.logistics.service_client import LogisticsServiceClient
 from app.services.logistics.utils import ensure_aware
+from neft_shared.settings import get_settings
 
 @dataclass(frozen=True)
 class DeviationResult:
@@ -120,6 +122,78 @@ def check_route_deviation(
     ts: datetime | None = None,
     request_ctx: RequestContext | None = None,
 ) -> DeviationResult:
+    settings = get_settings()
+    if settings.LOGISTICS_SERVICE_ENABLED:
+        client = LogisticsServiceClient()
+        try:
+            payload = {
+                "route_id": str(route.id),
+                "planned_polyline": _route_polyline(db, route),
+                "actual_point": {"lat": lat, "lon": lon},
+                "threshold_meters": _route_threshold_m(db, route),
+            }
+            result = client.compute_deviation(payload)
+            event = None
+            risk_signal = None
+            if result.is_violation:
+                event = _create_deviation_event(
+                    db,
+                    order=order,
+                    route=route,
+                    event_type=LogisticsDeviationEventType.OFF_ROUTE,
+                    ts=ensure_aware(ts or _now()),
+                    lat=lat,
+                    lon=lon,
+                    distance_from_route_m=result.deviation_meters,
+                    severity=LogisticsDeviationSeverity.MEDIUM,
+                    explain=result.explain or {"primary_reason": "ROUTE_DEVIATION"},
+                    request_ctx=request_ctx,
+                )
+                risk_signal = _emit_risk_signal(
+                    db,
+                    order=order,
+                    signal_type=LogisticsRiskSignalType.ROUTE_DEVIATION_HIGH,
+                    severity=RISK_SIGNAL_DEFAULTS.off_route_severity,
+                    ts=ensure_aware(ts or _now()),
+                    explain=result.explain or {"primary_reason": "ROUTE_DEVIATION"},
+                    request_ctx=request_ctx,
+                )
+                logistics_metrics.inc("logistics_off_route_total")
+            return DeviationResult(event=event, risk_signal=risk_signal)
+        except RuntimeError:
+            return _fallback_route_deviation(
+                db,
+                order=order,
+                route=route,
+                lat=lat,
+                lon=lon,
+                ts=ts,
+                request_ctx=request_ctx,
+                service_error="LOGISTICS_UNAVAILABLE",
+            )
+
+    return _fallback_route_deviation(
+        db,
+        order=order,
+        route=route,
+        lat=lat,
+        lon=lon,
+        ts=ts,
+        request_ctx=request_ctx,
+    )
+
+
+def _fallback_route_deviation(
+    db: Session,
+    *,
+    order: LogisticsOrder,
+    route: LogisticsRoute,
+    lat: float,
+    lon: float,
+    ts: datetime | None,
+    request_ctx: RequestContext | None,
+    service_error: str | None = None,
+) -> DeviationResult:
     constraint = repository.get_route_constraint(db, route_id=str(route.id))
     max_deviation = (
         constraint.max_route_deviation_m if constraint else ROUTE_CONSTRAINT_DEFAULTS.max_route_deviation_m
@@ -173,6 +247,7 @@ def check_route_deviation(
                     time_delta_minutes=duration_minutes,
                     constraints=_constraint_payload(constraint),
                     recommendation="Check driver activity or routing accuracy",
+                    service_error=service_error,
                 ),
                 request_ctx=request_ctx,
             )
@@ -189,6 +264,7 @@ def check_route_deviation(
                     time_delta_minutes=duration_minutes,
                     constraints=_constraint_payload(constraint),
                     recommendation="Check driver activity or routing accuracy",
+                    service_error=service_error,
                 ),
                 request_ctx=request_ctx,
             )
@@ -224,6 +300,7 @@ def check_route_deviation(
                         time_delta_minutes=duration_minutes,
                         constraints=_constraint_payload(constraint),
                         recommendation="Review route deviation duration and driver activity",
+                        service_error=service_error,
                     ),
                     request_ctx=request_ctx,
                 )
@@ -267,6 +344,7 @@ def check_route_deviation(
                 time_delta_minutes=None,
                 constraints=_constraint_payload(constraint),
                 recommendation="Route deviation resolved",
+                service_error=service_error,
             ),
             request_ctx=request_ctx,
         )
@@ -366,6 +444,22 @@ def check_stop_radius(
         request_ctx=request_ctx,
     )
     return DeviationResult(event=event, risk_signal=risk_signal)
+
+
+def _route_polyline(db: Session, route: LogisticsRoute) -> list[list[float]]:
+    stops = repository.get_route_stops(db, route_id=str(route.id))
+    return [
+        [stop.lat, stop.lon]
+        for stop in stops
+        if stop.lat is not None and stop.lon is not None
+    ]
+
+
+def _route_threshold_m(db: Session, route: LogisticsRoute) -> int:
+    constraint = repository.get_route_constraint(db, route_id=str(route.id))
+    if constraint:
+        return int(constraint.max_route_deviation_m)
+    return int(ROUTE_CONSTRAINT_DEFAULTS.max_route_deviation_m)
 
 
 def check_unexpected_stop(
@@ -551,8 +645,9 @@ def _build_explain(
     time_delta_minutes: int | None,
     constraints: dict,
     recommendation: str,
+    service_error: str | None = None,
 ) -> dict:
-    return {
+    payload = {
         "signal_type": signal_type,
         "route_id": route_id,
         "distance_to_nearest_stop_m": distance_to_nearest_stop_m,
@@ -560,6 +655,9 @@ def _build_explain(
         "constraints": constraints,
         "recommendation": recommendation,
     }
+    if service_error:
+        payload["service_error"] = service_error
+    return payload
 
 
 def _create_deviation_event(

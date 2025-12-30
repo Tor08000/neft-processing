@@ -13,6 +13,8 @@ from app.models.logistics import (
 from app.services.audit_service import RequestContext
 from app.services.logistics import events, navigator, repository
 from app.services.logistics.repository import get_last_tracking_event, get_latest_eta_snapshot
+from app.services.logistics.service_client import LogisticsServiceClient
+from neft_shared.settings import get_settings
 
 
 _CONFIDENCE = {
@@ -54,6 +56,21 @@ def compute_eta_snapshot(
     if not order:
         return None
 
+    service_error = None
+    settings = get_settings()
+    if settings.LOGISTICS_SERVICE_ENABLED and order.status != LogisticsOrderStatus.COMPLETED:
+        try:
+            snapshot = _compute_eta_snapshot_service(
+                db,
+                order=order,
+                reason=reason,
+                request_ctx=request_ctx,
+            )
+            if snapshot:
+                return snapshot
+        except RuntimeError:
+            service_error = "LOGISTICS_UNAVAILABLE"
+
     now = _now()
     last_event = get_last_tracking_event(db, order_id=order_id)
     planned_start_at = _ensure_aware(order.planned_start_at)
@@ -92,6 +109,8 @@ def compute_eta_snapshot(
         "last_event_ts": last_event.ts if last_event else None,
         "last_speed_kmh": last_event.speed_kmh if last_event else None,
     }
+    if service_error:
+        inputs["service_error"] = service_error
     serialized_inputs = {key: _serialize_value(value) for key, value in inputs.items()}
 
     snapshot = LogisticsETASnapshot(
@@ -123,6 +142,101 @@ def compute_eta_snapshot(
     _capture_navigator_eta(db, order_id=order_id)
 
     return snapshot
+
+
+def _compute_eta_snapshot_service(
+    db: Session,
+    *,
+    order: LogisticsOrder,
+    reason: str,
+    request_ctx: RequestContext | None,
+) -> LogisticsETASnapshot | None:
+    route = repository.get_active_route(db, order_id=str(order.id))
+    payload = _build_eta_payload(db, order=order, route_id=str(route.id) if route else None)
+    if payload is None:
+        return None
+    client = LogisticsServiceClient()
+    result = client.compute_eta(payload)
+    now = _now()
+    eta_end_at = now + timedelta(minutes=result.eta_minutes)
+    method = (
+        LogisticsETAMethod.SIMPLE_SPEED
+        if order.status == LogisticsOrderStatus.IN_PROGRESS
+        else LogisticsETAMethod.PLANNED
+    )
+    inputs = {
+        "reason": reason,
+        "status": order.status.value,
+        "provider": result.provider,
+        "service_eta_minutes": result.eta_minutes,
+        "service_confidence": result.confidence,
+        "service_explain": result.explain,
+    }
+    snapshot = LogisticsETASnapshot(
+        order_id=str(order.id),
+        computed_at=now,
+        eta_end_at=eta_end_at,
+        eta_confidence=int(round(result.confidence * 100)),
+        method=method,
+        inputs=inputs,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+
+    events.audit_event(
+        db,
+        event_type=events.LOGISTICS_ETA_COMPUTED,
+        entity_type="logistics_eta_snapshot",
+        entity_id=str(snapshot.id),
+        payload={
+            "order_id": str(order.id),
+            "eta_end_at": eta_end_at,
+            "method": method.value,
+            "confidence": snapshot.eta_confidence,
+            "provider": result.provider,
+        },
+        request_ctx=request_ctx,
+    )
+
+    _capture_navigator_eta(db, order_id=str(order.id))
+    return snapshot
+
+
+def _build_eta_payload(
+    db: Session,
+    *,
+    order: LogisticsOrder,
+    route_id: str | None,
+) -> dict | None:
+    points = []
+    events = repository.list_tracking_events(db, order_id=str(order.id), limit=10)
+    for event in sorted(events, key=lambda item: item.ts):
+        if event.lat is None or event.lon is None:
+            continue
+        points.append({"lat": event.lat, "lon": event.lon, "ts": event.ts.isoformat()})
+    if len(points) < 2 and route_id:
+        stops = repository.get_route_stops(db, route_id=route_id)
+        for idx, stop in enumerate(stops):
+            if stop.lat is None or stop.lon is None:
+                continue
+            points.append(
+                {
+                    "lat": stop.lat,
+                    "lon": stop.lon,
+                    "ts": (_now() + timedelta(minutes=idx)).isoformat(),
+                }
+            )
+    if len(points) < 2:
+        return None
+    vehicle_type = (order.meta or {}).get("vehicle_type", "truck")
+    fuel_type = (order.meta or {}).get("fuel_type", "diesel")
+    return {
+        "route_id": route_id or str(order.id),
+        "points": points,
+        "vehicle": {"type": vehicle_type, "fuel_type": fuel_type},
+        "context": {},
+    }
 
 
 def _serialize_value(value):
