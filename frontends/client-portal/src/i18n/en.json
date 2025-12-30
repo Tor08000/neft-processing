@@ -16,7 +16,8 @@
     "marketplace": "Marketplace",
     "actions": "Actions Center",
     "supportRequests": "Requests",
-    "settings": "Settings"
+    "settings": "Settings",
+    "management": "Settings / Management"
   },
   "common": {
     "notAvailable": "—",

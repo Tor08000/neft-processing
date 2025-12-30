@@ -103,6 +103,10 @@ export function Layout() {
             <Settings size={18} />
             {t("nav.settings")}
           </NavLink>
+          <NavLink to="/settings/management">
+            <Settings size={18} />
+            {t("nav.management")}
+          </NavLink>
         </nav>
 
         <main className="main-area">

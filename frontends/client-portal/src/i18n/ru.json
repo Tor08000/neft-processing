@@ -16,7 +16,8 @@
     "marketplace": "Marketplace",
     "actions": "Центр действий",
     "supportRequests": "Запросы",
-    "settings": "Настройки"
+    "settings": "Настройки",
+    "management": "Настройки / Управление"
   },
   "common": {
     "notAvailable": "—",
