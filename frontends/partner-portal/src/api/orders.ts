@@ -1,6 +1,13 @@
 import { request, requestWithMeta } from "./http";
 import type { PaginatedResponse } from "./partner";
-import type { MarketplaceOrder, MarketplaceOrderActionResult } from "../types/marketplace";
+import type {
+  MarketplaceDocumentDetails,
+  MarketplaceEdoEvent,
+  MarketplaceOrder,
+  MarketplaceOrderActionResult,
+  MarketplaceOrderEvent,
+  MarketplaceSettlementLink,
+} from "../types/marketplace";
 
 export interface OrderFilters {
   status?: string;
@@ -9,6 +16,8 @@ export interface OrderFilters {
   q?: string;
   limit?: string;
   offset?: string;
+  station_id?: string;
+  service_id?: string;
 }
 
 const toQuery = (filters: OrderFilters): string => {
@@ -26,6 +35,43 @@ export const fetchOrders = (token: string, filters: OrderFilters = {}) =>
   request<PaginatedResponse<MarketplaceOrder>>(`/partner/orders${toQuery(filters)}`, {}, token);
 
 export const fetchOrder = (token: string, id: string) => request<MarketplaceOrder>(`/partner/orders/${id}`, {}, token);
+
+export const fetchOrderEvents = (token: string, id: string) =>
+  request<MarketplaceOrderEvent[]>(`/partner/orders/${id}/events`, {}, token);
+
+export const fetchOrderDocuments = (token: string, id: string) =>
+  request<MarketplaceDocumentDetails[]>(`/partner/orders/${id}/documents`, {}, token);
+
+export const fetchDocumentDetails = (token: string, id: string) =>
+  request<MarketplaceDocumentDetails>(`/partner/documents/${id}`, {}, token);
+
+export const requestDocumentSignature = async (token: string, id: string) => {
+  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
+    `/partner/documents/${id}/sign/request`,
+    { method: "POST" },
+    token,
+  );
+  return { ...data, correlationId };
+};
+
+export const dispatchDocumentEdo = async (token: string, id: string) => {
+  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
+    `/partner/documents/${id}/edo/dispatch`,
+    { method: "POST" },
+    token,
+  );
+  return { ...data, correlationId };
+};
+
+export const fetchDocumentEdoEvents = (token: string, id: string) =>
+  request<MarketplaceEdoEvent[]>(`/partner/documents/${id}/edo/events`, {}, token);
+
+export const fetchOrderSettlement = (token: string, orderId: string) =>
+  request<PaginatedResponse<MarketplaceSettlementLink>>(
+    `/partner/settlements?source=MARKETPLACE&order_id=${encodeURIComponent(orderId)}`,
+    {},
+    token,
+  );
 
 export const confirmOrder = async (token: string, id: string) => {
   const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(

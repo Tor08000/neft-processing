@@ -6,6 +6,11 @@ export interface RefundFilters {
   status?: string;
   from?: string;
   to?: string;
+  order_id?: string;
+  amount_min?: string;
+  amount_max?: string;
+  limit?: string;
+  offset?: string;
 }
 
 const toQuery = (filters: RefundFilters): string => {
@@ -24,19 +29,23 @@ export const fetchRefunds = (token: string, filters: RefundFilters = {}) =>
 
 export const fetchRefund = (token: string, id: string) => request<RefundRequest>(`/partner/refunds/${id}`, {}, token);
 
-export const approveRefund = async (token: string, id: string) => {
+export const approveRefund = async (
+  token: string,
+  id: string,
+  payload: { amount?: number; note?: string } = {},
+) => {
   const { data, correlationId } = await requestWithMeta<RefundActionResult>(
     `/partner/refunds/${id}/approve`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(payload) },
     token,
   );
   return { ...data, correlationId };
 };
 
-export const denyRefund = async (token: string, id: string) => {
+export const denyRefund = async (token: string, id: string, reason: string) => {
   const { data, correlationId } = await requestWithMeta<RefundActionResult>(
     `/partner/refunds/${id}/deny`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ reason }) },
     token,
   );
   return { ...data, correlationId };
