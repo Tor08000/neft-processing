@@ -5,6 +5,7 @@ import {
   FileText,
   LayoutDashboard,
   LineChart,
+  MessageCircle,
   Settings,
   ShoppingCart,
   Workflow,
@@ -93,6 +94,10 @@ export function Layout() {
           <NavLink to="/actions">
             <ClipboardCheck size={18} />
             {t("nav.actions")}
+          </NavLink>
+          <NavLink to="/support/requests">
+            <MessageCircle size={18} />
+            {t("nav.supportRequests")}
           </NavLink>
           <NavLink to="/settings">
             <Settings size={18} />

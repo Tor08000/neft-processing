@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { fetchOperationDetails } from "../api/operations";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { OperationDetails } from "../types/operations";
 import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
@@ -13,6 +14,7 @@ export function OperationDetailsPage() {
   const [operation, setOperation] = useState<OperationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -48,6 +50,9 @@ export function OperationDetailsPage() {
           <Link to="/documents" className="ghost">
             Related documents
           </Link>
+          <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+            Сообщить о проблеме
+          </button>
           <button type="button" className="secondary" disabled>
             Скачать чек (если доступен)
           </button>
@@ -127,6 +132,16 @@ export function OperationDetailsPage() {
           <dd className="muted">Нет данных</dd>
         </div>
       </dl>
+      {operation ? (
+        <SupportRequestModal
+          isOpen={isSupportOpen}
+          onClose={() => setIsSupportOpen(false)}
+          subjectType="ORDER"
+          subjectId={operation.id}
+          correlationId={operation.correlation_id ?? undefined}
+          defaultTitle={`Проблема с заказом ${operation.id}`}
+        />
+      ) : null}
     </div>
   );
 }

@@ -28,6 +28,8 @@ import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
 import { MarketplaceServicePage } from "./pages/MarketplaceServicePage";
 import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
 import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
+import { SupportRequestsPage } from "./pages/SupportRequestsPage";
+import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -76,6 +78,8 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
             <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
             <Route path="/marketplace/:serviceId" element={<MarketplaceServicePage />} />
+            <Route path="/support/requests" element={<SupportRequestsPage />} />
+            <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

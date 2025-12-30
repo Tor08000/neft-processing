@@ -14,6 +14,7 @@ import {
 import { fetchRefunds } from "../api/refunds";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import type { MarketplaceDocumentDetails, MarketplaceOrder, MarketplaceOrderEvent, MarketplaceSettlementLink, RefundRequest } from "../types/marketplace";
 import { formatCurrency, formatDateTime } from "../utils/format";
@@ -77,6 +78,7 @@ export function OrderDetailsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionCorrelationId, setActionCorrelationId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   const canRead = canReadOrders(user?.roles);
   const canManage = canManageOrderLifecycle(user?.roles);
@@ -258,10 +260,17 @@ export function OrderDetailsPage() {
     <div className="stack">
       <section className="card">
         <div className="section-title">
-          <h2>Заказ {order.id}</h2>
-          <Link to="/orders" className="ghost">
-            Назад к списку
-          </Link>
+          <div>
+            <h2>Заказ {order.id}</h2>
+          </div>
+          <div className="actions">
+            <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+              Создать обращение
+            </button>
+            <Link to="/orders" className="ghost">
+              Назад к списку
+            </Link>
+          </div>
         </div>
         <div className="meta-grid">
           <div>
@@ -411,6 +420,15 @@ export function OrderDetailsPage() {
           onRetry={loadEvents}
         />
       </section>
+
+      <SupportRequestModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+        subjectType="ORDER"
+        subjectId={order.id}
+        correlationId={order.correlationId ?? undefined}
+        defaultTitle={`Проблема с заказом ${order.id}`}
+      />
 
       <section className="card">
         <div className="section-title">

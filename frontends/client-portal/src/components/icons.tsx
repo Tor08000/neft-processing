@@ -95,3 +95,9 @@ export const Settings = (props: IconProps) => (
     <path d="M19 12a7 7 0 0 0-.1-1l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1l-.4-2.7h-4l-.4 2.7a7 7 0 0 0-1.7 1l-2.5-1-2 3.5 2.1 1.6a7 7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7 7 0 0 0 1.7-1l2.5 1 2-3.5-2.1-1.6c.1-.3.1-.7.1-1z" />
   </Icon>
 );
+
+export const MessageCircle = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M21 11a8 8 0 0 1-8 8H7l-4 3 1.2-4.5A8 8 0 1 1 21 11z" />
+  </Icon>
+);

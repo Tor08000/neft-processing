@@ -109,6 +109,13 @@ from .money_flow_v3 import (  # noqa: F401
 from .audit_log import ActorType, AuditLog, AuditVisibility  # noqa: F401
 from .decision_result import DecisionResult  # noqa: F401
 from .refund_request import RefundRequest, RefundRequestStatus, SettlementPolicy  # noqa: F401
+from .support_request import (  # noqa: F401
+    SupportRequest,
+    SupportRequestPriority,
+    SupportRequestScopeType,
+    SupportRequestStatus,
+    SupportRequestSubjectType,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -378,6 +385,11 @@ __all__ = [
     "RefundRequest",
     "RefundRequestStatus",
     "SettlementPolicy",
+    "SupportRequest",
+    "SupportRequestPriority",
+    "SupportRequestScopeType",
+    "SupportRequestStatus",
+    "SupportRequestSubjectType",
     "Reversal",
     "ReversalStatus",
     "Dispute",

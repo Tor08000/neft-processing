@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocumentDetails } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
 import { CopyButton } from "../components/CopyButton";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
 import type { ClientDocumentDetails } from "../types/documents";
 import { formatDate, formatDateTime } from "../utils/format";
@@ -20,6 +21,7 @@ export function ClientDocumentDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("files");
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -95,9 +97,14 @@ export function ClientDocumentDetailsPage() {
             {formatDate(document.period_from)} — {formatDate(document.period_to)} · v{document.version}
           </p>
         </div>
-        <Link className="ghost" to="/client/documents">
-          Назад к списку
-        </Link>
+        <div className="actions">
+          <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+            Сообщить о проблеме
+          </button>
+          <Link className="ghost" to="/client/documents">
+            Назад к списку
+          </Link>
+        </div>
       </div>
 
       <div className="meta-grid">
@@ -209,6 +216,13 @@ export function ClientDocumentDetailsPage() {
           ) : null}
         </div>
       ) : null}
+      <SupportRequestModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+        subjectType="DOCUMENT"
+        subjectId={document.id}
+        defaultTitle={`Проблема с документом ${document.number ?? document.id}`}
+      />
 
       {document.ack_details ? (
         <div className="card__section">

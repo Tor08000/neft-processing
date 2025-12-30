@@ -7,6 +7,7 @@ import {
 } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
+import { SupportRequestModal } from "../components/SupportRequestModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
 import type { MarketplaceOrderDetails, MarketplaceOrderDocument, MarketplaceOrderEvent } from "../types/marketplace";
 import { formatDate, formatDateTime, formatMoney } from "../utils/format";
@@ -37,6 +38,7 @@ export function MarketplaceOrderDetailsPage() {
   const [orderError, setOrderError] = useState<OrderErrorState | null>(null);
   const [eventsError, setEventsError] = useState<OrderErrorState | null>(null);
   const [documentsError, setDocumentsError] = useState<OrderErrorState | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   const loadOrder = () => {
     if (!user || !orderId) return;
@@ -108,9 +110,14 @@ export function MarketplaceOrderDetailsPage() {
             <h2>Детали заказа</h2>
             <p className="muted">Статусы, события и документы по заказу.</p>
           </div>
-          <Link to="/marketplace/orders" className="link-button">
-            Назад к заказам
-          </Link>
+          <div className="actions">
+            <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
+              Сообщить о проблеме
+            </button>
+            <Link to="/marketplace/orders" className="link-button">
+              Назад к заказам
+            </Link>
+          </div>
         </div>
 
         {isLoading ? (
@@ -253,6 +260,15 @@ export function MarketplaceOrderDetailsPage() {
           </table>
         ) : null}
       </div>
+      {order ? (
+        <SupportRequestModal
+          isOpen={isSupportOpen}
+          onClose={() => setIsSupportOpen(false)}
+          subjectType="ORDER"
+          subjectId={order.id}
+          defaultTitle={`Проблема с заказом ${order.id}`}
+        />
+      ) : null}
     </div>
   );
 }
