@@ -101,5 +101,6 @@ export const parseCsv = (text: string): CsvParseResult =>
 
 export const parseCatalogCsv = (text: string): CsvParseResult =>
   parseCsvInternal(text, {
-    requiredHeaders: ["title", "kind", "base_uom"],
+    requiredHeaders: ["title", "kind", "category"],
+    requireAnyOf: ["uom", "base_uom"],
   });

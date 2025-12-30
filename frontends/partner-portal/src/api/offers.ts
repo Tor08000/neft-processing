@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { request, requestWithMeta } from "./http";
 import type { PaginatedResponse } from "./partner";
 import type { Offer, OfferInput } from "../types/marketplace";
 
@@ -23,13 +23,13 @@ export const fetchOffers = (token: string, filters: OfferFilters = {}) =>
   request<PaginatedResponse<Offer>>(`/partner/offers${toQuery(filters)}`, {}, token);
 
 export const createOffer = (token: string, payload: OfferInput) =>
-  request<Offer>("/partner/offers", { method: "POST", body: JSON.stringify(payload) }, token);
+  requestWithMeta<Offer>("/partner/offers", { method: "POST", body: JSON.stringify(payload) }, token);
 
 export const updateOffer = (token: string, id: string, payload: OfferInput) =>
-  request<Offer>(`/partner/offers/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
+  requestWithMeta<Offer>(`/partner/offers/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
 
 export const activateOffer = (token: string, id: string) =>
-  request(`/partner/offers/${id}/activate`, { method: "POST" }, token);
+  requestWithMeta<Record<string, never>>(`/partner/offers/${id}/activate`, { method: "POST" }, token);
 
 export const disableOffer = (token: string, id: string) =>
-  request(`/partner/offers/${id}/disable`, { method: "POST" }, token);
+  requestWithMeta<Record<string, never>>(`/partner/offers/${id}/disable`, { method: "POST" }, token);

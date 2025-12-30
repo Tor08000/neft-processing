@@ -137,6 +137,71 @@ const mockFetch = (url: string) => {
   if (url.includes("/partner/profile")) {
     return new Response(JSON.stringify({ id: "partner-1", name: "Партнёр" }), { status: 200 });
   }
+  if (url.includes("/partner/catalog/") && !url.endsWith("/catalog")) {
+    return new Response(
+      JSON.stringify({
+        id: "catalog-1",
+        kind: "SERVICE",
+        title: "Мойка",
+        description: "Полный комплекс",
+        category: "Автомойка",
+        baseUom: "услуга",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        activeOffersCount: 1,
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/partner/catalog")) {
+    return new Response(
+      JSON.stringify({
+        items: [
+          {
+            id: "catalog-1",
+            kind: "SERVICE",
+            title: "Мойка",
+            description: "Полный комплекс",
+            category: "Автомойка",
+            baseUom: "услуга",
+            status: "ACTIVE",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            activeOffersCount: 1,
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/partner/offers")) {
+    return new Response(
+      JSON.stringify({
+        items: [
+          {
+            id: "offer-1",
+            catalogItemId: "catalog-1",
+            locationScope: "all",
+            price: 500,
+            currency: "RUB",
+            vatRate: 20,
+            availability: "always",
+            active: true,
+            validFrom: new Date().toISOString(),
+            validTo: new Date().toISOString(),
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      }),
+      { status: 200 },
+    );
+  }
   return new Response(JSON.stringify({ items: [] }), { status: 200 });
 };
 
@@ -217,7 +282,7 @@ describe("Partner pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Документы/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Документы/ })).toBeInTheDocument();
   });
 
   it("renders document detail page", async () => {
@@ -230,14 +295,24 @@ describe("Partner pages", () => {
     expect(await screen.findByText(/Акт/)).toBeInTheDocument();
   });
 
-  it("renders services page", async () => {
+  it("renders services catalog page", async () => {
     render(
       <MemoryRouter initialEntries={["/services"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Каталог сервисов/)).toBeInTheDocument();
+    expect(await screen.findByText(/Каталог услуг и товаров/)).toBeInTheDocument();
+  });
+
+  it("renders service details page", async () => {
+    render(
+      <MemoryRouter initialEntries={["/services/catalog-1"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Мойка/)).toBeInTheDocument();
   });
 
   it("renders settings page", async () => {
@@ -247,6 +322,6 @@ describe("Partner pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Настройки/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Настройки/ })).toBeInTheDocument();
   });
 });
