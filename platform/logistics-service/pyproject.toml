@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neft-logistics-service"
+version = "0.1.0"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "prometheus-client==0.20.0",
+    "jsonschema==4.23.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["neft_logistics_service*"]
