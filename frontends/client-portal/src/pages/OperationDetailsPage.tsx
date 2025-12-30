@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { fetchOperationDetails } from "../api/operations";
 import { useAuth } from "../auth/AuthContext";
 import type { OperationDetails } from "../types/operations";
@@ -47,9 +47,14 @@ export function OperationDetailsPage() {
           <h2>Операция {operation.id}</h2>
           <p className="muted">Полная информация по транзакции</p>
         </div>
-        <button type="button" className="secondary" disabled>
-          Экспорт в PDF/Excel (скоро)
-        </button>
+        <div className="actions">
+          <Link to={`/explain/${operation.id}`} className="ghost">
+            Explain
+          </Link>
+          <button type="button" className="secondary" disabled>
+            Скачать чек (если доступен)
+          </button>
+        </div>
       </div>
 
       <dl className="meta-grid">
@@ -91,6 +96,14 @@ export function OperationDetailsPage() {
             <dd>{operation.reason}</dd>
           </div>
         )}
+        <div>
+          <dt className="label">Документ/инвойс</dt>
+          <dd className="muted">Если документ доступен, он появится в разделе Documents.</dd>
+        </div>
+        <div>
+          <dt className="label">Связанный рейс</dt>
+          <dd className="muted">Нет данных</dd>
+        </div>
       </dl>
     </div>
   );

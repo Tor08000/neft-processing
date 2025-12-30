@@ -168,11 +168,15 @@ a {
   align-items: flex-end;
 }
 
-input, select, button {
+input, select, button, textarea {
   padding: 0.6rem 0.75rem;
   border-radius: 0.5rem;
   border: 1px solid #d1d5db;
   font-size: 1rem;
+}
+
+textarea {
+  resize: vertical;
 }
 
 button.primary {
@@ -636,6 +640,11 @@ button.primary {
   background: #fff1f2;
 }
 
+.success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .link-button {
   border: none;
   background: none;
@@ -647,4 +656,73 @@ button.primary {
 
 .link-button:hover {
   text-decoration: underline;
+}
+
+.chart {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chart-bar {
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.chart-bar__fill {
+  display: block;
+  height: 100%;
+  background: #2563eb;
+  border-radius: 999px;
+}
+
+.bars {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bar {
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+  margin-top: 0.35rem;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 999px;
+}
+
+.action-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.action-card {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.explain-primary {
+  display: grid;
+  gap: 0.5rem;
 }

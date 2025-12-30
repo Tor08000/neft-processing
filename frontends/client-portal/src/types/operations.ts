@@ -10,6 +10,7 @@ export interface OperationSummary {
   reason?: string | null;
   product_type?: string | null;
   quantity?: number | string | null;
+  primary_reason?: string | null;
 }
 
 export interface OperationDetails extends OperationSummary {

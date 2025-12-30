@@ -70,3 +70,10 @@ export async function downloadReconciliationResult(id: string, user: AuthSession
   link.click();
   window.URL.revokeObjectURL(url);
 }
+
+export function acknowledgeReconciliationRequest(
+  id: string,
+  user: AuthSession | null,
+): Promise<ReconciliationRequest> {
+  return request<ReconciliationRequest>(`/reconciliation-requests/${id}/ack`, { method: "POST" }, withToken(user));
+}
