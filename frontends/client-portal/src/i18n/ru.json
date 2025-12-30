@@ -1,0 +1,260 @@
+{
+  "app": {
+    "title": "Client Portal",
+    "clientLabel": "Клиент {id}",
+    "clientFallback": "Клиентский кабинет",
+    "signedInAs": "Вы вошли как",
+    "configMissing": "Отсутствует базовый путь клиента",
+    "configError": "Конфигурация приложения: отсутствует API base URL"
+  },
+  "nav": {
+    "dashboard": "Дашборд",
+    "operations": "Операции",
+    "explainInsights": "Explain Insights",
+    "documents": "Документы",
+    "exports": "Экспорты / 1C",
+    "marketplace": "Marketplace",
+    "actions": "Центр действий",
+    "settings": "Настройки"
+  },
+  "common": {
+    "notAvailable": "—",
+    "loading": "Загружаем данные...",
+    "period": "Период",
+    "from": "Период с",
+    "to": "Период по",
+    "status": "Статус",
+    "partner": "Партнёр",
+    "service": "Услуга",
+    "date": "Дата",
+    "amount": "Сумма",
+    "documents": "Документы",
+    "details": "Детали",
+    "open": "Открыть",
+    "back": "Назад",
+    "next": "Вперёд"
+  },
+  "actions": {
+    "logout": "Выйти",
+    "refresh": "Обновить",
+    "comeBackLater": "Вернуться позже",
+    "goToCatalog": "Перейти в каталог услуг",
+    "download": "Скачать",
+    "copyLink": "Скопировать ссылку",
+    "confirmReceived": "Подтвердить получение",
+    "resetFilters": "Сбросить фильтры"
+  },
+  "states": {
+    "loadingTitle": "Загрузка",
+    "emptyTitle": "Данных пока нет",
+    "forbiddenTitle": "Доступ запрещён",
+    "forbiddenDescription": "Недостаточно прав для просмотра"
+  },
+  "errors": {
+    "actionFailedTitle": "Не удалось выполнить действие",
+    "retry": "Повторить",
+    "errorCode": "Код ошибки: {code}",
+    "correlationId": "Correlation ID: {id}"
+  },
+  "emptyStates": {
+    "marketplaceCatalog": {
+      "title": "Услуги пока недоступны",
+      "description": "Партнёры ещё не опубликовали услуги для вашего региона."
+    },
+    "marketplaceOrders": {
+      "title": "Заказов пока нет",
+      "description": "После оформления услуг здесь появятся статусы и документы."
+    },
+    "documents": {
+      "title": "Документы не сформированы",
+      "description": "Документы появятся после завершения операций или заказов."
+    },
+    "exports": {
+      "title": "Экспортов пока нет",
+      "description": "Экспорты создаются после расчётного периода."
+    }
+  },
+  "marketplaceCatalog": {
+    "title": "Marketplace",
+    "subtitle": "Выбирайте услуги партнёров и оформляйте заказы онлайн.",
+    "errors": {
+      "loadFailed": "Не удалось загрузить услуги"
+    },
+    "forbidden": {
+      "clientOnly": "Доступ к маркетплейсу доступен только клиентам.",
+      "catalogDenied": "Доступ к каталогу услуг запрещён."
+    },
+    "filters": {
+      "category": "Категория",
+      "partner": "Партнёр",
+      "location": "Станция / Локация",
+      "priceFrom": "Цена от",
+      "priceTo": "Цена до",
+      "availability": "Доступность"
+    },
+    "card": {
+      "categoryFallback": "Категория не указана",
+      "descriptionFallback": "Описание услуги не предоставлено.",
+      "partner": "Партнёр: {name}",
+      "priceFrom": "Цена от: {price}",
+      "availability": "Доступность: {availability}"
+    }
+  },
+  "marketplaceOrders": {
+    "title": "Мои заказы",
+    "subtitle": "История заказов и статусов по маркетплейсу.",
+    "errors": {
+      "loadFailed": "Не удалось загрузить заказы"
+    },
+    "forbidden": {
+      "noAccess": "Нет доступа к заказам.",
+      "denied": "Просмотр заказов запрещён."
+    },
+    "filters": {
+      "periodPreset": "Период",
+      "periodFrom": "Период с",
+      "periodTo": "Период по",
+      "status": "Статус",
+      "partner": "Партнёр",
+      "service": "Услуга"
+    },
+    "table": {
+      "orderId": "Order ID",
+      "service": "Услуга",
+      "partner": "Партнёр",
+      "date": "Дата",
+      "amount": "Сумма",
+      "status": "Статус",
+      "documents": "Документы"
+    },
+    "pagination": {
+      "page": "Страница {current} из {total}"
+    }
+  },
+  "documentsPage": {
+    "title": "Документы",
+    "subtitle": "Сформированные документы с юридическими статусами и файлами.",
+    "types": {
+      "INVOICE": "Счет",
+      "ACT": "Акт",
+      "RECONCILIATION_ACT": "Акт сверки",
+      "CLOSING_PACKAGE": "Закрывающий пакет (closing_package)",
+      "OFFER": "Оферта"
+    },
+    "filters": {
+      "dateFrom": "Период с",
+      "dateTo": "Период по",
+      "documentType": "Тип",
+      "status": "Статус",
+      "signature": "Подписание",
+      "edoStatus": "Статус ЭДО",
+      "requiresAction": "Требует действий",
+      "limit": "Лимит",
+      "all": "Все"
+    },
+    "table": {
+      "type": "Тип",
+      "period": "Период",
+      "number": "Номер",
+      "amount": "Сумма",
+      "lifecycle": "Lifecycle",
+      "sign": "Подписание",
+      "edo": "ЭДО",
+      "updated": "Обновлено",
+      "actions": "Действия"
+    },
+    "actions": {
+      "filesUnavailable": "Файлы недоступны",
+      "requestSign": "Запросить подпись",
+      "resendEdo": "Отправить в ЭДО повторно",
+      "viewTimeline": "Показать историю статусов"
+    },
+    "footer": {
+      "shown": "Показаны {range} из {total}"
+    },
+    "periodFallback": "Без периода"
+  },
+  "exportsPage": {
+    "title": "Отчеты и выгрузки",
+    "subtitle": "Готовые файлы для скачивания и архив документов.",
+    "forbidden": {
+      "authRequired": "Требуется авторизация.",
+      "noAccess": "Недостаточно прав для экспорта и сверок."
+    },
+    "filters": {
+      "type": "Тип",
+      "status": "Статус",
+      "reconciliation": "Сверка",
+      "all": "Все"
+    },
+    "types": {
+      "charges": "CHARGES",
+      "settlement": "SETTLEMENT"
+    },
+    "statuses": {
+      "generated": "GENERATED",
+      "failed": "FAILED"
+    },
+    "reconciliation": {
+      "matched": "matched",
+      "mismatch": "mismatch"
+    },
+    "table": {
+      "type": "Тип",
+      "period": "Период",
+      "checksum": "Checksum",
+      "mapping": "Mapping",
+      "status": "Статус",
+      "erpStatus": "ERP статус",
+      "reconciliation": "Сверка",
+      "actions": "Действия"
+    },
+    "noFile": "Нет файла"
+  },
+  "filters": {
+    "periodPresets": {
+      "7d": "7 дней",
+      "30d": "30 дней",
+      "90d": "90 дней",
+      "custom": "Выбрать"
+    }
+  },
+  "statuses": {
+    "orders": {
+      "CREATED": "Создан",
+      "PAID": "Оплачен",
+      "CONFIRMED": "Подтверждён партнёром",
+      "IN_PROGRESS": "В работе",
+      "COMPLETED": "Завершён",
+      "CANCELLED": "Отменён",
+      "REFUNDED": "Возвращён"
+    },
+    "documents": {
+      "DRAFT": "Черновик",
+      "ISSUED": "Сформирован",
+      "SIGNED": "Подписан",
+      "EDO_SENT": "Отправлен в ЭДО",
+      "EDO_DELIVERED": "Доставлен",
+      "EDO_FAILED": "Ошибка ЭДО",
+      "ACKNOWLEDGED": "Подтверждён",
+      "FINALIZED": "Завершён",
+      "VOID": "Аннулирован"
+    },
+    "signature": {
+      "SIGNED": "Подписан",
+      "VERIFIED": "Подписан",
+      "REQUESTED": "Ожидает",
+      "SIGNING": "В процессе",
+      "FAILED": "Ошибка",
+      "REJECTED": "Отклонён"
+    },
+    "edo": {
+      "SENT": "Отправлен в ЭДО",
+      "DELIVERED": "Доставлен",
+      "SIGNED": "Подписан",
+      "SIGNED_BY_COUNTERPARTY": "Подписан",
+      "REJECTED": "Ошибка ЭДО",
+      "FAILED": "Ошибка ЭДО"
+    }
+  }
+}

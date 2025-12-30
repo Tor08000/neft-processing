@@ -1,24 +1,21 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Package } from "../components/icons";
 import { fetchMarketplaceOrders } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { AppErrorState, AppForbiddenState } from "../components/states";
 import type { MarketplaceOrderSummary } from "../types/marketplace";
 import { formatDate, formatMoney } from "../utils/format";
+import { getMarketplaceDocumentStatusLabel, getOrderStatusLabel } from "../utils/status";
+import { useI18n } from "../i18n";
 
 interface OrdersErrorState {
   message: string;
   status?: number;
   correlationId?: string | null;
 }
-
-const PERIOD_PRESETS = [
-  { value: "7d", label: "7 дней" },
-  { value: "30d", label: "30 дней" },
-  { value: "90d", label: "90 дней" },
-  { value: "custom", label: "Выбрать" },
-];
 
 const buildDateRange = (preset: string) => {
   const to = new Date();
@@ -43,6 +40,7 @@ const statusClass = (status?: string | null) => {
 
 export function MarketplaceOrdersPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [orders, setOrders] = useState<MarketplaceOrderSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<OrdersErrorState | null>(null);
@@ -86,7 +84,7 @@ export function MarketplaceOrdersPage() {
           setError({ message: err.message, status: err.status, correlationId: err.correlationId });
           return;
         }
-        setError({ message: err instanceof Error ? err.message : "Не удалось загрузить заказы" });
+        setError({ message: err instanceof Error ? err.message : t("marketplaceOrders.errors.loadFailed") });
       })
       .finally(() => setIsLoading(false));
   };
@@ -110,12 +108,22 @@ export function MarketplaceOrdersPage() {
     [pagination.limit, total],
   );
 
+  const periodPresets = useMemo(
+    () => [
+      { value: "7d", label: t("filters.periodPresets.7d") },
+      { value: "30d", label: t("filters.periodPresets.30d") },
+      { value: "90d", label: t("filters.periodPresets.90d") },
+      { value: "custom", label: t("filters.periodPresets.custom") },
+    ],
+    [t],
+  );
+
   if (!user) {
-    return <AppForbiddenState message="Нет доступа к заказам." />;
+    return <AppForbiddenState message={t("marketplaceOrders.forbidden.noAccess")} />;
   }
 
   if (error?.status === 403) {
-    return <AppForbiddenState message="Просмотр заказов запрещён." />;
+    return <AppForbiddenState message={t("marketplaceOrders.forbidden.denied")} />;
   }
 
   return (
@@ -123,16 +131,16 @@ export function MarketplaceOrdersPage() {
       <div className="card">
         <div className="card__header">
           <div>
-            <h2>Мои заказы</h2>
-            <p className="muted">История заказов и статусов по маркетплейсу.</p>
+            <h2>{t("marketplaceOrders.title")}</h2>
+            <p className="muted">{t("marketplaceOrders.subtitle")}</p>
           </div>
         </div>
 
         <div className="filters">
           <div className="filter">
-            <label htmlFor="preset">Период</label>
+            <label htmlFor="preset">{t("marketplaceOrders.filters.periodPreset")}</label>
             <select id="preset" name="preset" value={filters.preset} onChange={handleFilterChange}>
-              {PERIOD_PRESETS.map((opt) => (
+              {periodPresets.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -140,23 +148,23 @@ export function MarketplaceOrdersPage() {
             </select>
           </div>
           <div className="filter">
-            <label htmlFor="from">Период с</label>
+            <label htmlFor="from">{t("marketplaceOrders.filters.periodFrom")}</label>
             <input id="from" name="from" type="date" value={filters.from} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="to">Период по</label>
+            <label htmlFor="to">{t("marketplaceOrders.filters.periodTo")}</label>
             <input id="to" name="to" type="date" value={filters.to} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="status">Статус</label>
+            <label htmlFor="status">{t("marketplaceOrders.filters.status")}</label>
             <input id="status" name="status" value={filters.status} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="partner">Партнёр</label>
+            <label htmlFor="partner">{t("marketplaceOrders.filters.partner")}</label>
             <input id="partner" name="partner" value={filters.partner} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="service">Услуга</label>
+            <label htmlFor="service">{t("marketplaceOrders.filters.service")}</label>
             <input id="service" name="service" value={filters.service} onChange={handleFilterChange} />
           </div>
         </div>
@@ -177,7 +185,12 @@ export function MarketplaceOrdersPage() {
       ) : null}
 
       {!isLoading && !error && orders.length === 0 ? (
-        <AppEmptyState title="Заказы не найдены" description="Попробуйте изменить фильтры." />
+        <EmptyState
+          icon={<Package />}
+          title={t("emptyStates.marketplaceOrders.title")}
+          description={t("emptyStates.marketplaceOrders.description")}
+          primaryAction={{ label: t("actions.goToCatalog"), to: "/marketplace" }}
+        />
       ) : null}
 
       {!isLoading && !error && orders.length > 0 ? (
@@ -185,13 +198,13 @@ export function MarketplaceOrdersPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Order ID</th>
-                <th>Услуга</th>
-                <th>Партнёр</th>
-                <th>Дата</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Документы</th>
+                <th>{t("marketplaceOrders.table.orderId")}</th>
+                <th>{t("marketplaceOrders.table.service")}</th>
+                <th>{t("marketplaceOrders.table.partner")}</th>
+                <th>{t("marketplaceOrders.table.date")}</th>
+                <th>{t("marketplaceOrders.table.amount")}</th>
+                <th>{t("marketplaceOrders.table.status")}</th>
+                <th>{t("marketplaceOrders.table.documents")}</th>
                 <th />
               </tr>
             </thead>
@@ -199,23 +212,23 @@ export function MarketplaceOrdersPage() {
               {orders.map((order) => (
                 <tr key={order.id}>
                   <td className="mono">{order.id.slice(0, 8)}</td>
-                  <td>{order.service_title ?? "—"}</td>
-                  <td>{order.partner_name ?? "—"}</td>
-                  <td>{order.created_at ? formatDate(order.created_at) : "—"}</td>
+                  <td>{order.service_title ?? t("common.notAvailable")}</td>
+                  <td>{order.partner_name ?? t("common.notAvailable")}</td>
+                  <td>{order.created_at ? formatDate(order.created_at) : t("common.notAvailable")}</td>
                   <td>
                     {order.total_amount !== undefined && order.total_amount !== null
                       ? formatMoney(order.total_amount, order.currency ?? "RUB")
-                      : "—"}
+                      : t("common.notAvailable")}
                   </td>
                   <td>
-                    <span className={statusClass(order.status)}>{order.status ?? "—"}</span>
+                    <span className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</span>
                   </td>
                   <td>
-                    <span className="badge pending">{order.documents_status ?? "—"}</span>
+                    <span className="badge pending">{getMarketplaceDocumentStatusLabel(order.documents_status)}</span>
                   </td>
                   <td>
                     <Link to={`/marketplace/orders/${order.id}`} className="link-button">
-                      Открыть
+                      {t("common.open")}
                     </Link>
                   </td>
                 </tr>
@@ -232,10 +245,10 @@ export function MarketplaceOrdersPage() {
               }
               disabled={pagination.offset === 0}
             >
-              Назад
+              {t("common.back")}
             </button>
             <div className="muted">
-              Страница {pageNumber} из {totalPages}
+              {t("marketplaceOrders.pagination.page", { current: pageNumber, total: totalPages })}
             </div>
             <button
               type="button"
@@ -245,7 +258,7 @@ export function MarketplaceOrdersPage() {
               }
               disabled={pageNumber >= totalPages}
             >
-              Вперёд
+              {t("common.next")}
             </button>
           </div>
         </div>

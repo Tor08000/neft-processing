@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LinkIcon } from "../components/icons";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import { CopyButton } from "../components/CopyButton";
 import { defaultWebhookEvents } from "../constants/webhookEvents";
@@ -27,6 +29,7 @@ import type {
   WebhookSubscription,
   WebhookTestResult,
 } from "../types/webhooks";
+import { translate, useI18n } from "../i18n";
 
 type ApiErrorState = {
   message: string;
@@ -44,13 +47,13 @@ const normalizeError = (err: unknown, fallback: string): ApiErrorState => {
 const formatErrorDescription = (error: ApiErrorState): string => {
   const parts = [error.message];
   if (error.status) {
-    parts.push(`HTTP ${error.status}`);
+    parts.push(translate("errors.errorCode", { code: error.status }));
   }
   return parts.join(" · ");
 };
 
 const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return "—";
+  if (!value) return translate("common.notAvailable");
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
 };
@@ -75,6 +78,7 @@ const parseFilters = (raw: string): Record<string, unknown> | null => {
 
 export function IntegrationsPage() {
   const { user, hasPartnerRole } = useAuth();
+  const { t } = useI18n();
   const isOwner = Boolean(user?.roles.includes("PARTNER_OWNER"));
   const deliveriesRef = useRef<HTMLDivElement | null>(null);
 
@@ -156,7 +160,7 @@ export function IntegrationsPage() {
           setSelectedEndpointId(data[0].id);
         }
       })
-      .catch((err) => setEndpointError(normalizeError(err, "Не удалось загрузить endpoints")))
+      .catch((err) => setEndpointError(normalizeError(err, t("integrationsPage.errors.loadEndpoints"))))
       .finally(() => setEndpointLoading(false));
   }, [user, selectedEndpointId]);
 
@@ -169,7 +173,7 @@ export function IntegrationsPage() {
         }
       })
       .catch((err) => {
-        console.warn("Не удалось загрузить список событий, используем список по умолчанию", err);
+        console.warn(t("integrationsPage.errors.loadEventsFallback"), err);
       });
   }, [user]);
 
@@ -186,7 +190,7 @@ export function IntegrationsPage() {
         });
         setSubscriptionFiltersDraft((prev) => ({ ...prev, ...drafts }));
       })
-      .catch((err) => setSubscriptionError(normalizeError(err, "Не удалось загрузить подписки")))
+      .catch((err) => setSubscriptionError(normalizeError(err, t("integrationsPage.errors.loadSubscriptions"))))
       .finally(() => setSubscriptionLoading(false));
   }, [selectedEndpointId, user]);
 
@@ -205,7 +209,7 @@ export function IntegrationsPage() {
       eventId: deliveryFilters.eventId || undefined,
     })
       .then((data) => setDeliveries(data))
-      .catch((err) => setDeliveryError(normalizeError(err, "Не удалось загрузить доставки")))
+      .catch((err) => setDeliveryError(normalizeError(err, t("integrationsPage.errors.loadDeliveries"))))
       .finally(() => setDeliveryLoading(false));
   }, [deliveryFilters, deliveryTab, selectedEndpointId, user]);
 
@@ -213,7 +217,7 @@ export function IntegrationsPage() {
     if (!user) return;
     setCreateError(null);
     if (!/^https?:\/\//.test(createForm.url)) {
-      setCreateError({ message: "URL должен начинаться с http:// или https://" });
+      setCreateError({ message: t("integrationsPage.errors.invalidUrl") });
       return;
     }
     try {
@@ -233,7 +237,7 @@ export function IntegrationsPage() {
         setSelectedEndpointId(refreshed[0].id);
       }
     } catch (err) {
-      setCreateError(normalizeError(err, "Не удалось создать endpoint"));
+      setCreateError(normalizeError(err, t("integrationsPage.errors.createEndpointFailed")));
     }
   };
 
@@ -242,8 +246,8 @@ export function IntegrationsPage() {
     const nextStatus = endpoint.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
     const confirmation = window.confirm(
       nextStatus === "DISABLED"
-        ? "Отключить endpoint? Доставки будут остановлены."
-        : "Включить endpoint?",
+        ? t("integrationsPage.confirmations.disableEndpoint")
+        : t("integrationsPage.confirmations.enableEndpoint"),
     );
     if (!confirmation) return;
     try {
@@ -252,13 +256,13 @@ export function IntegrationsPage() {
         prev.map((item) => (item.id === endpoint.id ? { ...item, status: nextStatus } : item)),
       );
     } catch (err) {
-      setEndpointError(normalizeError(err, "Не удалось обновить статус endpoint"));
+      setEndpointError(normalizeError(err, t("integrationsPage.errors.updateEndpointFailed")));
     }
   };
 
   const handleRotateSecret = async (endpoint: WebhookEndpoint) => {
     if (!user) return;
-    const confirmation = window.confirm("Секрет будет заменён. Старый секрет перестанет работать. Продолжить?");
+    const confirmation = window.confirm(t("integrationsPage.confirmations.rotateSecret"));
     if (!confirmation) return;
     try {
       const response = await rotateWebhookSecret(user.token, endpoint.id);
@@ -268,7 +272,7 @@ export function IntegrationsPage() {
         correlationId: response.correlationId,
       });
     } catch (err) {
-      setEndpointError(normalizeError(err, "Не удалось ротировать секрет"));
+      setEndpointError(normalizeError(err, t("integrationsPage.errors.rotateSecretFailed")));
     }
   };
 
@@ -278,7 +282,7 @@ export function IntegrationsPage() {
       const response = await sendWebhookTest(user.token, endpoint.id, "test.ping");
       setTestPingResult({ endpointId: endpoint.id, result: response.data, correlationId: response.correlationId });
     } catch (err) {
-      setEndpointError(normalizeError(err, "Не удалось отправить тестовый webhook"));
+      setEndpointError(normalizeError(err, t("integrationsPage.errors.sendTestFailed")));
     }
   };
 
@@ -298,26 +302,26 @@ export function IntegrationsPage() {
         const rawFilters = subscriptionFiltersDraft[eventType] ?? "";
         const filters = parseFilters(rawFilters);
         if (rawFilters.trim() && !filters) {
-          setSubscriptionError({ message: "Некорректный JSON в фильтрах" });
+          setSubscriptionError({ message: t("integrationsPage.errors.invalidFilters") });
           return;
         }
         const created = await createWebhookSubscription(user.token, selectedEndpointId, eventType, enabled, filters);
         setSubscriptions((prev) => [...prev, created]);
       }
     } catch (err) {
-      setSubscriptionError(normalizeError(err, "Не удалось обновить подписку"));
+      setSubscriptionError(normalizeError(err, t("integrationsPage.errors.updateSubscriptionFailed")));
     }
   };
 
   const handleDeleteSubscription = async (subscription: WebhookSubscription) => {
     if (!user) return;
-    const confirmation = window.confirm("Удалить подписку?");
+    const confirmation = window.confirm(t("integrationsPage.confirmations.deleteSubscription"));
     if (!confirmation) return;
     try {
       await deleteWebhookSubscription(user.token, subscription.id);
       setSubscriptions((prev) => prev.filter((item) => item.id !== subscription.id));
     } catch (err) {
-      setSubscriptionError(normalizeError(err, "Не удалось удалить подписку"));
+      setSubscriptionError(normalizeError(err, t("integrationsPage.errors.deleteSubscriptionFailed")));
     }
   };
 
@@ -331,7 +335,7 @@ export function IntegrationsPage() {
       const detail = await fetchWebhookDeliveryDetail(user.token, delivery.id);
       setDeliveryDetail(detail);
     } catch (err) {
-      setDeliveryDetailError(normalizeError(err, "Не удалось загрузить детали доставки"));
+      setDeliveryDetailError(normalizeError(err, t("integrationsPage.errors.loadDeliveryDetailFailed")));
     } finally {
       setDeliveryDetailLoading(false);
     }
@@ -339,7 +343,7 @@ export function IntegrationsPage() {
 
   const handleRetryDelivery = async (delivery: WebhookDelivery) => {
     if (!user) return;
-    const confirmation = window.confirm("Повторить доставку?");
+    const confirmation = window.confirm(t("integrationsPage.confirmations.retryDelivery"));
     if (!confirmation) return;
     try {
       await retryWebhookDelivery(user.token, delivery.id);
@@ -354,13 +358,13 @@ export function IntegrationsPage() {
       });
       setDeliveries(refreshed);
     } catch (err) {
-      setDeliveryError(normalizeError(err, "Не удалось повторить доставку"));
+      setDeliveryError(normalizeError(err, t("integrationsPage.errors.retryDeliveryFailed")));
     }
   };
 
   const handleBulkRetry = async () => {
     if (!user) return;
-    const confirmation = window.confirm("Повторить все dead deliveries? Это приведёт к повторной доставке.");
+    const confirmation = window.confirm(t("integrationsPage.confirmations.retryDeadDeliveries"));
     if (!confirmation) return;
     const deadItems = deliveries.filter((item) => item.status === "DEAD");
     try {
@@ -372,7 +376,7 @@ export function IntegrationsPage() {
       });
       setDeliveries(refreshed);
     } catch (err) {
-      setDeliveryError(normalizeError(err, "Не удалось выполнить повторную доставку"));
+      setDeliveryError(normalizeError(err, t("integrationsPage.errors.retryDeadFailed")));
     }
   };
 
@@ -398,17 +402,17 @@ export function IntegrationsPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>Integrations · Webhooks</h2>
-            <p className="muted">Integration Hub v1 · Self-service</p>
+            <h2>{t("integrationsPage.title")}</h2>
+            <p className="muted">{t("integrationsPage.subtitle")}</p>
           </div>
           {isOwner ? (
             <button type="button" className="primary" onClick={() => setIsCreateOpen(true)}>
-              Создать endpoint
+              {t("actions.createEndpoint")}
             </button>
           ) : null}
         </div>
         {endpointLoading ? (
-          <LoadingState label="Загружаем endpoints..." />
+          <LoadingState label={t("integrationsPage.loading.endpoints")} />
         ) : endpointError ? (
           <ErrorState
             description={formatErrorDescription(endpointError)}
@@ -416,25 +420,27 @@ export function IntegrationsPage() {
           />
         ) : endpoints.length === 0 ? (
           <EmptyState
-            title="Webhook endpoints ещё не созданы"
-            description="Создайте первый endpoint, чтобы начать получать события."
-            action={
-              isOwner ? (
-                <button type="button" className="primary" onClick={() => setIsCreateOpen(true)}>
-                  Создать endpoint
-                </button>
-              ) : null
+            icon={<LinkIcon />}
+            title={t("emptyStates.integrations.title")}
+            description={t("emptyStates.integrations.description")}
+            primaryAction={
+              isOwner
+                ? {
+                    label: t("actions.createEndpoint"),
+                    onClick: () => setIsCreateOpen(true),
+                  }
+                : undefined
             }
           />
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>URL</th>
-                <th>Статус</th>
-                <th>Алгоритм</th>
-                <th>Создан</th>
-                <th>Действия</th>
+                <th>{t("integrationsPage.table.url")}</th>
+                <th>{t("common.status")}</th>
+                <th>{t("integrationsPage.table.algorithm")}</th>
+                <th>{t("integrationsPage.table.createdAt")}</th>
+                <th>{t("common.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -449,23 +455,23 @@ export function IntegrationsPage() {
                   <td>
                     <div className="stack-inline">
                       <button type="button" className="ghost" onClick={() => handleSelectEndpoint(endpoint.id)}>
-                        Открыть
+                        {t("common.open")}
                       </button>
                       {isOwner ? (
                         <>
                           <button type="button" className="ghost" onClick={() => handleToggleEndpoint(endpoint)}>
-                            {endpoint.status === "ACTIVE" ? "Disable" : "Enable"}
+                            {endpoint.status === "ACTIVE" ? t("integrationsPage.actions.disable") : t("integrationsPage.actions.enable")}
                           </button>
                           <button type="button" className="ghost" onClick={() => handleRotateSecret(endpoint)}>
-                            Rotate secret
+                            {t("integrationsPage.actions.rotateSecret")}
                           </button>
                           <button type="button" className="ghost" onClick={() => handleTestPing(endpoint)}>
-                            Test ping
+                            {t("integrationsPage.actions.testPing")}
                           </button>
                         </>
                       ) : null}
                       <button type="button" className="ghost" onClick={() => handleSelectEndpoint(endpoint.id)}>
-                        Deliveries
+                        {t("integrationsPage.actions.deliveries")}
                       </button>
                     </div>
                   </td>
@@ -479,17 +485,21 @@ export function IntegrationsPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>Subscriptions</h2>
-            <p className="muted">Выберите события для выбранного endpoint.</p>
+            <h2>{t("integrationsPage.subscriptions.title")}</h2>
+            <p className="muted">{t("integrationsPage.subscriptions.subtitle")}</p>
           </div>
           {selectedEndpoint ? (
-            <div className="muted small">Endpoint: {selectedEndpoint.url}</div>
+            <div className="muted small">{t("integrationsPage.subscriptions.selectedEndpoint", { url: selectedEndpoint.url })}</div>
           ) : null}
         </div>
         {!selectedEndpoint ? (
-          <EmptyState title="Сначала выберите endpoint" description="Выберите endpoint в списке выше." />
+          <EmptyState
+            icon={<LinkIcon />}
+            title={t("integrationsPage.subscriptions.emptyTitle")}
+            description={t("integrationsPage.subscriptions.emptyDescription")}
+          />
         ) : subscriptionLoading ? (
-          <LoadingState label="Загружаем подписки..." />
+          <LoadingState label={t("integrationsPage.loading.subscriptions")} />
         ) : subscriptionError ? (
           <ErrorState
             description={formatErrorDescription(subscriptionError)}
@@ -498,15 +508,15 @@ export function IntegrationsPage() {
         ) : (
           <div className="stack">
             <div className="notice">
-              <strong>Каталог событий</strong>
-              <span className="muted small">Фильтры передаются в Integration Hub без обработки на фронте.</span>
+              <strong>{t("integrationsPage.subscriptions.catalogTitle")}</strong>
+              <span className="muted small">{t("integrationsPage.subscriptions.catalogNote")}</span>
             </div>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Event type</th>
-                  <th>Enabled</th>
-                  <th>Filters (JSON)</th>
+                  <th>{t("integrationsPage.subscriptions.table.eventType")}</th>
+                  <th>{t("integrationsPage.subscriptions.table.enabled")}</th>
+                  <th>{t("integrationsPage.subscriptions.table.filters")}</th>
                   <th />
                 </tr>
               </thead>
@@ -523,16 +533,16 @@ export function IntegrationsPage() {
                             type="checkbox"
                             checked={enabled}
                             disabled={!isOwner}
-                            onChange={(event) => handleToggleSubscription(eventType, event.target.checked)}
+                          onChange={(event) => handleToggleSubscription(eventType, event.target.checked)}
                           />
-                          {enabled ? "On" : "Off"}
+                          {enabled ? t("integrationsPage.subscriptions.table.on") : t("integrationsPage.subscriptions.table.off")}
                         </label>
                       </td>
                       <td>
                         <textarea
                           className="textarea"
                           rows={3}
-                          placeholder='{"station_id":"..."}'
+                          placeholder={t("integrationsPage.subscriptions.filtersPlaceholder")}
                           disabled={!isOwner}
                           value={subscriptionFiltersDraft[eventType] ?? ""}
                           onChange={(event) =>
@@ -544,12 +554,12 @@ export function IntegrationsPage() {
                         <div className="stack-inline">
                           {subscription && isOwner ? (
                             <button type="button" className="ghost" onClick={() => handleDeleteSubscription(subscription)}>
-                              Delete
+                              {t("actions.delete")}
                             </button>
                           ) : null}
                           {!subscription && isOwner ? (
                             <button type="button" className="ghost" onClick={() => handleToggleSubscription(eventType, true)}>
-                              Create
+                              {t("actions.create")}
                             </button>
                           ) : null}
                         </div>
@@ -561,7 +571,7 @@ export function IntegrationsPage() {
             </table>
             {!isOwner ? (
               <div className="notice small">
-                Изменение подписок доступно только роли PARTNER_OWNER.
+                {t("integrationsPage.subscriptions.ownerOnly")}
               </div>
             ) : null}
           </div>
@@ -571,8 +581,8 @@ export function IntegrationsPage() {
       <section className="card" ref={deliveriesRef}>
         <div className="section-title">
           <div>
-            <h2>Deliveries</h2>
-            <p className="muted">История доставок и DLQ.</p>
+            <h2>{t("integrationsPage.deliveries.title")}</h2>
+            <p className="muted">{t("integrationsPage.deliveries.subtitle")}</p>
           </div>
           <div className="tabs">
             <button
@@ -580,7 +590,7 @@ export function IntegrationsPage() {
               className={`tab ${deliveryTab === "history" ? "tab--active" : ""}`}
               onClick={() => setDeliveryTab("history")}
             >
-              История
+              {t("integrationsPage.deliveries.tabs.history")}
             </button>
             <button
               type="button"
@@ -593,12 +603,16 @@ export function IntegrationsPage() {
         </div>
 
         {!selectedEndpoint ? (
-          <EmptyState title="Нет выбранного endpoint" description="Выберите endpoint для просмотра доставок." />
+          <EmptyState
+            icon={<LinkIcon />}
+            title={t("integrationsPage.deliveries.emptyTitle")}
+            description={t("integrationsPage.deliveries.emptyDescription")}
+          />
         ) : (
           <>
             <div className="filters">
               <label className="filter">
-                Endpoint
+                {t("integrationsPage.deliveries.filters.endpoint")}
                 <select
                   value={selectedEndpointId ?? ""}
                   onChange={(event) => setSelectedEndpointId(event.target.value)}
@@ -612,38 +626,38 @@ export function IntegrationsPage() {
               </label>
               {deliveryTab === "history" ? (
                 <label className="filter">
-                  Status
+                  {t("integrationsPage.deliveries.filters.status")}
                   <select
                     value={deliveryFilters.status}
                     onChange={(event) => setDeliveryFilters((prev) => ({ ...prev, status: event.target.value }))}
                   >
-                    <option value="">Все</option>
-                    <option value="DELIVERED">DELIVERED</option>
-                    <option value="FAILED">FAILED</option>
-                    <option value="DEAD">DEAD</option>
+                    <option value="">{t("common.all")}</option>
+                    <option value="DELIVERED">{t("statuses.webhooks.DELIVERED")}</option>
+                    <option value="FAILED">{t("statuses.webhooks.FAILED")}</option>
+                    <option value="DEAD">{t("statuses.webhooks.DEAD")}</option>
                   </select>
                 </label>
               ) : null}
               <label className="filter">
-                Event type
+                {t("integrationsPage.deliveries.filters.eventType")}
                 <input
                   type="text"
                   value={deliveryFilters.eventType}
                   onChange={(event) => setDeliveryFilters((prev) => ({ ...prev, eventType: event.target.value }))}
-                  placeholder="payout.*"
+                  placeholder={t("integrationsPage.deliveries.filters.eventTypePlaceholder")}
                 />
               </label>
               <label className="filter">
-                Event ID
+                {t("integrationsPage.deliveries.filters.eventId")}
                 <input
                   type="text"
                   value={deliveryFilters.eventId}
                   onChange={(event) => setDeliveryFilters((prev) => ({ ...prev, eventId: event.target.value }))}
-                  placeholder="event-123"
+                  placeholder={t("integrationsPage.deliveries.filters.eventIdPlaceholder")}
                 />
               </label>
               <label className="filter">
-                From
+                {t("integrationsPage.deliveries.filters.from")}
                 <input
                   type="date"
                   value={deliveryFilters.from}
@@ -651,7 +665,7 @@ export function IntegrationsPage() {
                 />
               </label>
               <label className="filter">
-                To
+                {t("integrationsPage.deliveries.filters.to")}
                 <input
                   type="date"
                   value={deliveryFilters.to}
@@ -661,25 +675,29 @@ export function IntegrationsPage() {
             </div>
 
             {deliveryLoading ? (
-              <LoadingState label="Загружаем доставки..." />
+              <LoadingState label={t("integrationsPage.loading.deliveries")} />
             ) : deliveryError ? (
               <ErrorState
                 description={formatErrorDescription(deliveryError)}
                 correlationId={deliveryError.correlationId}
               />
             ) : deliveries.length === 0 ? (
-              <EmptyState title="Нет доставок" description="Когда появятся события, они будут здесь." />
+              <EmptyState
+                icon={<LinkIcon />}
+                title={t("integrationsPage.deliveries.noDeliveriesTitle")}
+                description={t("integrationsPage.deliveries.noDeliveriesDescription")}
+              />
             ) : (
               <div className="stack">
                 {deliveryTab === "dlq" && isOwner ? (
                   <div className="notice">
-                    <strong>Dead Letter Queue</strong>
+                    <strong>{t("integrationsPage.deliveries.dlqTitle")}</strong>
                     <span className="muted small">
-                      Повторная доставка приведёт к повторной отправке всех событий.
+                      {t("integrationsPage.deliveries.dlqNote")}
                     </span>
                     <div>
                       <button type="button" className="ghost" onClick={handleBulkRetry}>
-                        Retry selected (all)
+                        {t("integrationsPage.deliveries.retryAll")}
                       </button>
                     </div>
                   </div>
@@ -687,12 +705,12 @@ export function IntegrationsPage() {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Occurred at</th>
-                      <th>Event type</th>
-                      <th>Status</th>
-                      <th>Attempt</th>
-                      <th>HTTP</th>
-                      <th>Latency, ms</th>
+                      <th>{t("integrationsPage.deliveries.table.occurredAt")}</th>
+                      <th>{t("integrationsPage.deliveries.table.eventType")}</th>
+                      <th>{t("common.status")}</th>
+                      <th>{t("integrationsPage.deliveries.table.attempt")}</th>
+                      <th>{t("integrationsPage.deliveries.table.http")}</th>
+                      <th>{t("integrationsPage.deliveries.table.latency")}</th>
                       <th />
                     </tr>
                   </thead>
@@ -704,17 +722,17 @@ export function IntegrationsPage() {
                         <td>
                           <StatusBadge status={delivery.status} />
                         </td>
-                        <td>{delivery.attempt ?? "—"}</td>
-                        <td>{delivery.last_http_status ?? "—"}</td>
-                        <td>{delivery.latency_ms ?? "—"}</td>
+                        <td>{delivery.attempt ?? t("common.notAvailable")}</td>
+                        <td>{delivery.last_http_status ?? t("common.notAvailable")}</td>
+                        <td>{delivery.latency_ms ?? t("common.notAvailable")}</td>
                         <td>
                           <div className="stack-inline">
                             <button type="button" className="ghost" onClick={() => handleOpenDeliveryDetail(delivery)}>
-                              Detail
+                              {t("integrationsPage.deliveries.actions.detail")}
                             </button>
                             {isOwner && ["FAILED", "DEAD"].includes(delivery.status) ? (
                               <button type="button" className="ghost" onClick={() => handleRetryDelivery(delivery)}>
-                                Retry
+                                {t("actions.retry")}
                               </button>
                             ) : null}
                           </div>
@@ -733,23 +751,23 @@ export function IntegrationsPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="card__header">
-              <h3>Create endpoint</h3>
+              <h3>{t("integrationsPage.modals.create.title")}</h3>
               <button type="button" className="ghost" onClick={() => setIsCreateOpen(false)}>
-                Close
+                {t("actions.close")}
               </button>
             </div>
             <div className="form-grid">
               <label className="form-field">
-                URL
+                {t("integrationsPage.modals.create.url")}
                 <input
                   type="url"
-                  placeholder="https://partner.example/webhooks"
+                  placeholder={t("integrationsPage.modals.create.urlPlaceholder")}
                   value={createForm.url}
                   onChange={(event) => setCreateForm((prev) => ({ ...prev, url: event.target.value }))}
                 />
               </label>
               <label className="form-field">
-                Signing algo
+                {t("integrationsPage.modals.create.signingAlgo")}
                 <select
                   value={createForm.signingAlgo}
                   onChange={(event) => setCreateForm((prev) => ({ ...prev, signingAlgo: event.target.value }))}
@@ -763,23 +781,23 @@ export function IntegrationsPage() {
                   checked={createForm.enabled}
                   onChange={(event) => setCreateForm((prev) => ({ ...prev, enabled: event.target.checked }))}
                 />
-                Endpoint enabled
+                {t("integrationsPage.modals.create.enabled")}
               </label>
             </div>
             {createError ? (
               <div className="notice error">
                 {formatErrorDescription(createError)}
                 {createError.correlationId ? (
-                  <div className="muted small">Correlation ID: {createError.correlationId}</div>
+                  <div className="muted small">{t("errors.correlationId", { id: createError.correlationId })}</div>
                 ) : null}
               </div>
             ) : null}
             <div className="form-actions">
               <button type="button" className="primary" onClick={handleCreateEndpoint}>
-                Создать
+                {t("actions.create")}
               </button>
               <button type="button" className="ghost" onClick={() => setIsCreateOpen(false)}>
-                Отмена
+                {t("actions.cancel")}
               </button>
             </div>
           </div>
@@ -790,30 +808,30 @@ export function IntegrationsPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="card__header">
-              <h3>Endpoint created</h3>
+              <h3>{t("integrationsPage.modals.created.title")}</h3>
               <button type="button" className="ghost" onClick={() => setCreatedEndpointInfo(null)}>
-                Close
+                {t("actions.close")}
               </button>
             </div>
             <div className="stack">
               <div className="notice">
-                <div className="label">Endpoint ID</div>
+                <div className="label">{t("integrationsPage.modals.created.endpointId")}</div>
                 <div>{createdEndpointInfo.endpointId}</div>
               </div>
               <div className="notice">
-                <div className="label">Secret (one-time view)</div>
+                <div className="label">{t("integrationsPage.modals.created.secret")}</div>
                 <div className="stack-inline">
                   <span className="mono">{createdEndpointInfo.secret}</span>
-                  <CopyButton value={createdEndpointInfo.secret} label="Copy secret" />
+                  <CopyButton value={createdEndpointInfo.secret} label={t("integrationsPage.modals.created.copySecret")} />
                 </div>
               </div>
               <div>
-                <div className="label">Setup snippet</div>
+                <div className="label">{t("integrationsPage.modals.created.snippet")}</div>
                 <pre className="code-block">{snippet}</pre>
-                <CopyButton value={snippet} label="Copy setup snippet" />
+                <CopyButton value={snippet} label={t("integrationsPage.modals.created.copySnippet")} />
               </div>
               {createdEndpointInfo.correlationId ? (
-                <div className="muted small">Correlation ID: {createdEndpointInfo.correlationId}</div>
+                <div className="muted small">{t("errors.correlationId", { id: createdEndpointInfo.correlationId })}</div>
               ) : null}
             </div>
           </div>
@@ -824,28 +842,28 @@ export function IntegrationsPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="card__header">
-              <h3>Secret rotated</h3>
+              <h3>{t("integrationsPage.modals.rotated.title")}</h3>
               <button type="button" className="ghost" onClick={() => setRotatedSecretInfo(null)}>
-                Close
+                {t("actions.close")}
               </button>
             </div>
             <div className="stack">
               <div className="notice">
-                <div className="label">Endpoint ID</div>
+                <div className="label">{t("integrationsPage.modals.rotated.endpointId")}</div>
                 <div>{rotatedSecretInfo.endpointId}</div>
               </div>
               <div className="notice error">
-                Старый секрет больше не действует. Используйте новый секрет ниже.
+                {t("integrationsPage.modals.rotated.notice")}
               </div>
               <div className="notice">
-                <div className="label">New secret</div>
+                <div className="label">{t("integrationsPage.modals.rotated.newSecret")}</div>
                 <div className="stack-inline">
                   <span className="mono">{rotatedSecretInfo.secret}</span>
-                  <CopyButton value={rotatedSecretInfo.secret} label="Copy secret" />
+                  <CopyButton value={rotatedSecretInfo.secret} label={t("integrationsPage.modals.rotated.copySecret")} />
                 </div>
               </div>
               {rotatedSecretInfo.correlationId ? (
-                <div className="muted small">Correlation ID: {rotatedSecretInfo.correlationId}</div>
+                <div className="muted small">{t("errors.correlationId", { id: rotatedSecretInfo.correlationId })}</div>
               ) : null}
             </div>
           </div>
@@ -856,29 +874,29 @@ export function IntegrationsPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="card__header">
-              <h3>Test ping</h3>
+              <h3>{t("integrationsPage.modals.testPing.title")}</h3>
               <button type="button" className="ghost" onClick={() => setTestPingResult(null)}>
-                Close
+                {t("actions.close")}
               </button>
             </div>
             <div className="stack">
               <div className="notice">
-                <div className="label">Delivery ID</div>
+                <div className="label">{t("integrationsPage.modals.testPing.deliveryId")}</div>
                 <div>{testPingResult.result.delivery_id}</div>
               </div>
               <div className="notice">
-                <div className="label">HTTP status</div>
-                <div>{testPingResult.result.http_status ?? "—"}</div>
+                <div className="label">{t("integrationsPage.modals.testPing.httpStatus")}</div>
+                <div>{testPingResult.result.http_status ?? t("common.notAvailable")}</div>
               </div>
               <div className="notice">
-                <div className="label">Latency</div>
-                <div>{testPingResult.result.latency_ms ?? "—"} ms</div>
+                <div className="label">{t("integrationsPage.modals.testPing.latency")}</div>
+                <div>{testPingResult.result.latency_ms ?? t("common.notAvailable")} ms</div>
               </div>
               {testPingResult.result.error ? (
                 <div className="notice error">{testPingResult.result.error}</div>
               ) : null}
               {testPingResult.correlationId ? (
-                <div className="muted small">Correlation ID: {testPingResult.correlationId}</div>
+                <div className="muted small">{t("errors.correlationId", { id: testPingResult.correlationId })}</div>
               ) : null}
             </div>
           </div>
@@ -889,7 +907,7 @@ export function IntegrationsPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal modal--wide">
             <div className="card__header">
-              <h3>Delivery detail</h3>
+              <h3>{t("integrationsPage.modals.deliveryDetail.title")}</h3>
               <button
                 type="button"
                 className="ghost"
@@ -899,11 +917,11 @@ export function IntegrationsPage() {
                   setDeliveryDetailError(null);
                 }}
               >
-                Close
+                {t("actions.close")}
               </button>
             </div>
             {deliveryDetailLoading ? (
-              <LoadingState label="Загружаем детали..." />
+              <LoadingState label={t("integrationsPage.loading.deliveryDetail")} />
             ) : deliveryDetailError ? (
               <ErrorState
                 description={formatErrorDescription(deliveryDetailError)}
@@ -913,54 +931,54 @@ export function IntegrationsPage() {
               <div className="stack">
                 <div className="meta-grid">
                   <div>
-                    <div className="label">Endpoint URL</div>
-                    <div>{deliveryDetail.endpoint_url ?? "—"}</div>
+                    <div className="label">{t("integrationsPage.modals.deliveryDetail.endpointUrl")}</div>
+                    <div>{deliveryDetail.endpoint_url ?? t("common.notAvailable")}</div>
                   </div>
                   <div>
-                    <div className="label">Event type</div>
+                    <div className="label">{t("integrationsPage.modals.deliveryDetail.eventType")}</div>
                     <div>{deliveryDetail.event_type}</div>
                   </div>
                   <div>
-                    <div className="label">Status</div>
+                    <div className="label">{t("common.status")}</div>
                     <StatusBadge status={deliveryDetail.status} />
                   </div>
                   <div>
-                    <div className="label">Correlation ID</div>
-                    <div>{deliveryDetail.correlation_id ?? "—"}</div>
+                    <div className="label">{t("integrationsPage.modals.deliveryDetail.correlationId")}</div>
+                    <div>{deliveryDetail.correlation_id ?? t("common.notAvailable")}</div>
                   </div>
                 </div>
                 <div className="grid two">
                   <div>
-                    <div className="label">Envelope</div>
+                    <div className="label">{t("integrationsPage.modals.deliveryDetail.envelope")}</div>
                     <pre className="code-block">{JSON.stringify(deliveryDetail.envelope ?? {}, null, 2)}</pre>
                   </div>
                   <div>
-                    <div className="label">Headers</div>
+                    <div className="label">{t("integrationsPage.modals.deliveryDetail.headers")}</div>
                     <pre className="code-block">{JSON.stringify(deliveryDetail.headers ?? {}, null, 2)}</pre>
                   </div>
                 </div>
                 <div>
-                  <div className="label">Attempts</div>
+                  <div className="label">{t("integrationsPage.modals.deliveryDetail.attempts")}</div>
                   <table className="data-table">
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>HTTP</th>
-                        <th>Error</th>
-                        <th>Latency</th>
-                        <th>Next retry</th>
-                        <th>Correlation ID</th>
+                        <th>{t("integrationsPage.modals.deliveryDetail.table.http")}</th>
+                        <th>{t("integrationsPage.modals.deliveryDetail.table.error")}</th>
+                        <th>{t("integrationsPage.modals.deliveryDetail.table.latency")}</th>
+                        <th>{t("integrationsPage.modals.deliveryDetail.table.nextRetry")}</th>
+                        <th>{t("integrationsPage.modals.deliveryDetail.table.correlationId")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(deliveryDetail.attempts ?? []).map((attempt) => (
                         <tr key={`${deliveryDetail.id}-${attempt.attempt}`}>
                           <td>{attempt.attempt}</td>
-                          <td>{attempt.http_status ?? "—"}</td>
-                          <td>{attempt.error ?? "—"}</td>
-                          <td>{attempt.latency_ms ?? "—"} ms</td>
-                          <td>{attempt.next_retry_at ? formatDateTime(attempt.next_retry_at) : "—"}</td>
-                          <td>{attempt.correlation_id ?? "—"}</td>
+                          <td>{attempt.http_status ?? t("common.notAvailable")}</td>
+                          <td>{attempt.error ?? t("common.notAvailable")}</td>
+                          <td>{attempt.latency_ms ?? t("common.notAvailable")} ms</td>
+                          <td>{attempt.next_retry_at ? formatDateTime(attempt.next_retry_at) : t("common.notAvailable")}</td>
+                          <td>{attempt.correlation_id ?? t("common.notAvailable")}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -968,12 +986,12 @@ export function IntegrationsPage() {
                 </div>
                 {isOwner && ["FAILED", "DEAD"].includes(deliveryDetail.status) ? (
                   <button type="button" className="primary" onClick={() => handleRetryDelivery(deliveryDetail)}>
-                    Retry delivery
+                    {t("integrationsPage.deliveries.actions.retry")}
                   </button>
                 ) : null}
               </div>
             ) : (
-              <LoadingState label="Готовим детали..." />
+              <LoadingState label={t("integrationsPage.loading.deliveryDetailPending")} />
             )}
           </div>
         </div>

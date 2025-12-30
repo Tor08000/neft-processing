@@ -1,0 +1,260 @@
+{
+  "app": {
+    "title": "Client Portal",
+    "clientLabel": "Client {id}",
+    "clientFallback": "Client workspace",
+    "signedInAs": "Signed in as",
+    "configMissing": "Client base path is missing",
+    "configError": "App misconfigured: API base URL missing"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "operations": "Operations",
+    "explainInsights": "Explain Insights",
+    "documents": "Documents",
+    "exports": "Exports / 1C",
+    "marketplace": "Marketplace",
+    "actions": "Actions Center",
+    "settings": "Settings"
+  },
+  "common": {
+    "notAvailable": "—",
+    "loading": "Loading data...",
+    "period": "Period",
+    "from": "From",
+    "to": "To",
+    "status": "Status",
+    "partner": "Partner",
+    "service": "Service",
+    "date": "Date",
+    "amount": "Amount",
+    "documents": "Documents",
+    "details": "Details",
+    "open": "Open",
+    "back": "Back",
+    "next": "Next"
+  },
+  "actions": {
+    "logout": "Sign out",
+    "refresh": "Refresh",
+    "comeBackLater": "Come back later",
+    "goToCatalog": "Go to services catalog",
+    "download": "Download",
+    "copyLink": "Copy link",
+    "confirmReceived": "Confirm received",
+    "resetFilters": "Reset filters"
+  },
+  "states": {
+    "loadingTitle": "Loading",
+    "emptyTitle": "No data yet",
+    "forbiddenTitle": "Access denied",
+    "forbiddenDescription": "You do not have access to this section"
+  },
+  "errors": {
+    "actionFailedTitle": "Action failed",
+    "retry": "Retry",
+    "errorCode": "Error code: {code}",
+    "correlationId": "Correlation ID: {id}"
+  },
+  "emptyStates": {
+    "marketplaceCatalog": {
+      "title": "Services are not available yet",
+      "description": "Partners have not published services for your region yet."
+    },
+    "marketplaceOrders": {
+      "title": "No orders yet",
+      "description": "Statuses and documents will appear here after you place orders."
+    },
+    "documents": {
+      "title": "Documents are not created",
+      "description": "Documents will appear after operations or orders are completed."
+    },
+    "exports": {
+      "title": "No exports yet",
+      "description": "Exports are generated after the settlement period ends."
+    }
+  },
+  "marketplaceCatalog": {
+    "title": "Marketplace",
+    "subtitle": "Choose partner services and place orders online.",
+    "errors": {
+      "loadFailed": "Unable to load services"
+    },
+    "forbidden": {
+      "clientOnly": "Marketplace access is available to clients only.",
+      "catalogDenied": "Access to the services catalog is denied."
+    },
+    "filters": {
+      "category": "Category",
+      "partner": "Partner",
+      "location": "Station / Location",
+      "priceFrom": "Price from",
+      "priceTo": "Price to",
+      "availability": "Availability"
+    },
+    "card": {
+      "categoryFallback": "Category not specified",
+      "descriptionFallback": "Service description is not provided.",
+      "partner": "Partner: {name}",
+      "priceFrom": "Price from: {price}",
+      "availability": "Availability: {availability}"
+    }
+  },
+  "marketplaceOrders": {
+    "title": "My orders",
+    "subtitle": "Marketplace order history and statuses.",
+    "errors": {
+      "loadFailed": "Unable to load orders"
+    },
+    "forbidden": {
+      "noAccess": "You do not have access to orders.",
+      "denied": "Viewing orders is not allowed."
+    },
+    "filters": {
+      "periodPreset": "Period",
+      "periodFrom": "From",
+      "periodTo": "To",
+      "status": "Status",
+      "partner": "Partner",
+      "service": "Service"
+    },
+    "table": {
+      "orderId": "Order ID",
+      "service": "Service",
+      "partner": "Partner",
+      "date": "Date",
+      "amount": "Amount",
+      "status": "Status",
+      "documents": "Documents"
+    },
+    "pagination": {
+      "page": "Page {current} of {total}"
+    }
+  },
+  "documentsPage": {
+    "title": "Documents",
+    "subtitle": "Generated documents with legal status and files.",
+    "types": {
+      "INVOICE": "Invoice",
+      "ACT": "Act",
+      "RECONCILIATION_ACT": "Reconciliation act",
+      "CLOSING_PACKAGE": "Closing package",
+      "OFFER": "Offer"
+    },
+    "filters": {
+      "dateFrom": "From",
+      "dateTo": "To",
+      "documentType": "Type",
+      "status": "Status",
+      "signature": "Signature",
+      "edoStatus": "EDO status",
+      "requiresAction": "Requires action",
+      "limit": "Limit",
+      "all": "All"
+    },
+    "table": {
+      "type": "Type",
+      "period": "Period",
+      "number": "Number",
+      "amount": "Amount",
+      "lifecycle": "Lifecycle",
+      "sign": "Signature",
+      "edo": "EDO",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "actions": {
+      "filesUnavailable": "Files unavailable",
+      "requestSign": "Request signature",
+      "resendEdo": "Resend to EDO",
+      "viewTimeline": "View status timeline"
+    },
+    "footer": {
+      "shown": "Showing {range} of {total}"
+    },
+    "periodFallback": "No period"
+  },
+  "exportsPage": {
+    "title": "Reports and exports",
+    "subtitle": "Download-ready files and archive of documents.",
+    "forbidden": {
+      "authRequired": "Authentication is required.",
+      "noAccess": "You do not have permission for exports and reconciliation."
+    },
+    "filters": {
+      "type": "Type",
+      "status": "Status",
+      "reconciliation": "Reconciliation",
+      "all": "All"
+    },
+    "types": {
+      "charges": "CHARGES",
+      "settlement": "SETTLEMENT"
+    },
+    "statuses": {
+      "generated": "GENERATED",
+      "failed": "FAILED"
+    },
+    "reconciliation": {
+      "matched": "matched",
+      "mismatch": "mismatch"
+    },
+    "table": {
+      "type": "Type",
+      "period": "Period",
+      "checksum": "Checksum",
+      "mapping": "Mapping",
+      "status": "Status",
+      "erpStatus": "ERP status",
+      "reconciliation": "Reconciliation",
+      "actions": "Actions"
+    },
+    "noFile": "No file"
+  },
+  "filters": {
+    "periodPresets": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      "custom": "Custom"
+    }
+  },
+  "statuses": {
+    "orders": {
+      "CREATED": "Created",
+      "PAID": "Paid",
+      "CONFIRMED": "Confirmed by partner",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled",
+      "REFUNDED": "Refunded"
+    },
+    "documents": {
+      "DRAFT": "Draft",
+      "ISSUED": "Issued",
+      "SIGNED": "Signed",
+      "EDO_SENT": "Sent to EDO",
+      "EDO_DELIVERED": "Delivered",
+      "EDO_FAILED": "EDO error",
+      "ACKNOWLEDGED": "Acknowledged",
+      "FINALIZED": "Finalized",
+      "VOID": "Voided"
+    },
+    "signature": {
+      "SIGNED": "Signed",
+      "VERIFIED": "Signed",
+      "REQUESTED": "Pending",
+      "SIGNING": "In progress",
+      "FAILED": "Error",
+      "REJECTED": "Rejected"
+    },
+    "edo": {
+      "SENT": "Sent to EDO",
+      "DELIVERED": "Delivered",
+      "SIGNED": "Signed",
+      "SIGNED_BY_COUNTERPARTY": "Signed",
+      "REJECTED": "EDO error",
+      "FAILED": "EDO error"
+    }
+  }
+}

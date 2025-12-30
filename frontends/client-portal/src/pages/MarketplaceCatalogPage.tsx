@@ -1,11 +1,14 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ShoppingCart } from "../components/icons";
 import { fetchMarketplaceCatalog } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { AppErrorState, AppForbiddenState } from "../components/states";
 import type { MarketplaceCatalogItem } from "../types/marketplace";
 import { formatMoney } from "../utils/format";
+import { useI18n } from "../i18n";
 
 interface CatalogErrorState {
   message: string;
@@ -15,6 +18,7 @@ interface CatalogErrorState {
 
 export function MarketplaceCatalogPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [items, setItems] = useState<MarketplaceCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<CatalogErrorState | null>(null);
@@ -38,7 +42,7 @@ export function MarketplaceCatalogPage() {
           setError({ message: err.message, status: err.status, correlationId: err.correlationId });
           return;
         }
-        setError({ message: err instanceof Error ? err.message : "Не удалось загрузить услуги" });
+        setError({ message: err instanceof Error ? err.message : t("marketplaceCatalog.errors.loadFailed") });
       })
       .finally(() => setIsLoading(false));
   };
@@ -52,28 +56,12 @@ export function MarketplaceCatalogPage() {
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleReset = () => {
-    setFilters({
-      category: "",
-      partner: "",
-      location: "",
-      priceFrom: "",
-      priceTo: "",
-      availability: "",
-    });
-  };
-
-  const hasFilters = useMemo(
-    () => Object.values(filters).some((value) => value.trim().length > 0),
-    [filters],
-  );
-
   if (!user) {
-    return <AppForbiddenState message="Доступ к маркетплейсу доступен только клиентам." />;
+    return <AppForbiddenState message={t("marketplaceCatalog.forbidden.clientOnly")} />;
   }
 
   if (error?.status === 403) {
-    return <AppForbiddenState message="Доступ к каталогу услуг запрещён." />;
+    return <AppForbiddenState message={t("marketplaceCatalog.forbidden.catalogDenied")} />;
   }
 
   return (
@@ -81,34 +69,34 @@ export function MarketplaceCatalogPage() {
       <div className="card">
         <div className="card__header">
           <div>
-            <h2>Marketplace</h2>
-            <p className="muted">Выбирайте услуги партнёров и оформляйте заказы онлайн.</p>
+            <h2>{t("marketplaceCatalog.title")}</h2>
+            <p className="muted">{t("marketplaceCatalog.subtitle")}</p>
           </div>
         </div>
 
         <div className="filters">
           <div className="filter">
-            <label htmlFor="category">Категория</label>
+            <label htmlFor="category">{t("marketplaceCatalog.filters.category")}</label>
             <input id="category" name="category" value={filters.category} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="partner">Партнёр</label>
+            <label htmlFor="partner">{t("marketplaceCatalog.filters.partner")}</label>
             <input id="partner" name="partner" value={filters.partner} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="location">Станция / Локация</label>
+            <label htmlFor="location">{t("marketplaceCatalog.filters.location")}</label>
             <input id="location" name="location" value={filters.location} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="priceFrom">Цена от</label>
+            <label htmlFor="priceFrom">{t("marketplaceCatalog.filters.priceFrom")}</label>
             <input id="priceFrom" name="priceFrom" value={filters.priceFrom} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="priceTo">Цена до</label>
+            <label htmlFor="priceTo">{t("marketplaceCatalog.filters.priceTo")}</label>
             <input id="priceTo" name="priceTo" value={filters.priceTo} onChange={handleFilterChange} />
           </div>
           <div className="filter">
-            <label htmlFor="availability">Доступность</label>
+            <label htmlFor="availability">{t("marketplaceCatalog.filters.availability")}</label>
             <input id="availability" name="availability" value={filters.availability} onChange={handleFilterChange} />
           </div>
         </div>
@@ -129,16 +117,18 @@ export function MarketplaceCatalogPage() {
       ) : null}
 
       {!isLoading && !error && items.length === 0 ? (
-        <AppEmptyState
-          title="Услуги не найдены"
-          description="Попробуйте изменить фильтры или сбросить поиск."
-          action={
-            hasFilters ? (
-              <button type="button" className="secondary" onClick={handleReset}>
-                Сбросить фильтры
-              </button>
-            ) : null
-          }
+        <EmptyState
+          icon={<ShoppingCart />}
+          title={t("emptyStates.marketplaceCatalog.title")}
+          description={t("emptyStates.marketplaceCatalog.description")}
+          primaryAction={{
+            label: t("actions.refresh"),
+            onClick: loadCatalog,
+          }}
+          secondaryAction={{
+            label: t("actions.comeBackLater"),
+            to: "/dashboard",
+          }}
         />
       ) : null}
 
@@ -146,28 +136,38 @@ export function MarketplaceCatalogPage() {
         <div className="grid two">
           {items.map((item) => (
             <div className="card" key={item.id}>
-              <div className="stack">
-                <div>
-                  <h3>{item.title}</h3>
-                  <div className="muted small">{item.category ?? "Категория не указана"}</div>
-                </div>
-                <div className="muted">{item.description ?? "Описание услуги не предоставлено."}</div>
                 <div className="stack">
-                  <div>Партнёр: {item.partner_name ?? "—"}</div>
                   <div>
-                    Цена от:{" "}
-                    {item.price_from !== undefined && item.price_from !== null
-                      ? formatMoney(item.price_from, item.currency ?? "RUB")
-                      : "—"}
+                    <h3>{item.title}</h3>
+                    <div className="muted small">{item.category ?? t("marketplaceCatalog.card.categoryFallback")}</div>
                   </div>
-                  <div>Доступность: {item.availability ?? "—"}</div>
+                  <div className="muted">
+                    {item.description ?? t("marketplaceCatalog.card.descriptionFallback")}
+                  </div>
+                  <div className="stack">
+                    <div>
+                      {t("marketplaceCatalog.card.partner", { name: item.partner_name ?? t("common.notAvailable") })}
+                    </div>
+                    <div>
+                      {t("marketplaceCatalog.card.priceFrom", {
+                        price:
+                          item.price_from !== undefined && item.price_from !== null
+                            ? formatMoney(item.price_from, item.currency ?? "RUB")
+                            : t("common.notAvailable"),
+                      })}
+                    </div>
+                    <div>
+                      {t("marketplaceCatalog.card.availability", {
+                        availability: item.availability ?? t("common.notAvailable"),
+                      })}
+                    </div>
+                  </div>
+                  <div className="actions">
+                    <Link to={`/marketplace/${item.id}`} className="link-button">
+                      {t("common.open")}
+                    </Link>
+                  </div>
                 </div>
-                <div className="actions">
-                  <Link to={`/marketplace/${item.id}`} className="link-button">
-                    Открыть
-                  </Link>
-                </div>
-              </div>
             </div>
           ))}
         </div>

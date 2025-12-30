@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Wrench } from "../components/icons";
 import {
   activateCatalogItem,
   createCatalogItem,
@@ -11,12 +12,14 @@ import {
 } from "../api/catalog";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState, ErrorState, ForbiddenState } from "../components/states";
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState, ForbiddenState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatNumber } from "../utils/format";
 import { parseCatalogCsv } from "../utils/csv";
 import { canManageServices, canReadServices } from "../utils/roles";
 import type { CatalogItem, CatalogItemInput, CatalogItemKind, CatalogItemStatus, CatalogImportPreview } from "../types/marketplace";
+import { useI18n } from "../i18n";
 
 type ApiErrorState = {
   message: string;
@@ -109,6 +112,7 @@ const getSummary = (preview: CatalogImportPreview | null, fallbackRows: number, 
 
 export function ServicesCatalogPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const canRead = canReadServices(user?.roles);
   const canManage = canManageServices(user?.roles);
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -178,10 +182,15 @@ export function ServicesCatalogPage() {
       setItems(response.items ?? []);
       setTotal(response.total ?? 0);
     } catch (err) {
-      setError(normalizeError(err, "Не удалось загрузить каталог"));
+      setError(normalizeError(err, t("servicesCatalogPage.errors.loadFailed")));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resetFilters = () => {
+    setFilters({ q: "", kind: "ALL", status: "ALL", category: "" });
+    setPage(1);
   };
 
   useEffect(() => {
@@ -213,7 +222,7 @@ export function ServicesCatalogPage() {
   const handleSave = async (activate = false) => {
     if (!user) return;
     if (!formState.title.trim() || !formState.baseUom.trim()) {
-      setFormError({ message: "Заполните обязательные поля" });
+      setFormError({ message: t("servicesCatalogPage.errors.requiredFields") });
       return;
     }
     setFormError(null);
@@ -223,19 +232,19 @@ export function ServicesCatalogPage() {
       const payload = buildCatalogPayload({ ...formState, status: activate ? "ACTIVE" : formState.status });
       if (editingItem) {
         const result = await updateCatalogItem(user.token, editingItem.id, payload);
-        setActionNotice("Изменения сохранены");
+        setActionNotice(t("servicesCatalogPage.notifications.saved"));
         setActionCorrelation(result.correlationId ?? null);
         setItems((prev) => prev.map((item) => (item.id === editingItem.id ? result.data : item)));
       } else {
         const result = await createCatalogItem(user.token, payload);
-        setActionNotice("Элемент каталога создан");
+        setActionNotice(t("servicesCatalogPage.notifications.created"));
         setActionCorrelation(result.correlationId ?? null);
         setItems((prev) => [result.data, ...prev]);
         setTotal((prev) => prev + 1);
       }
       setModalOpen(false);
     } catch (err) {
-      setFormError(normalizeError(err, "Не удалось сохранить элемент"));
+      setFormError(normalizeError(err, t("servicesCatalogPage.errors.saveFailed")));
     }
   };
 
@@ -247,22 +256,22 @@ export function ServicesCatalogPage() {
       if (item.status === "ACTIVE") {
         const result = await disableCatalogItem(user.token, item.id);
         setItems((prev) => prev.map((entry) => (entry.id === item.id ? { ...entry, status: "DISABLED" } : entry)));
-        setActionNotice("Элемент каталога отключён");
+        setActionNotice(t("servicesCatalogPage.notifications.disabled"));
         setActionCorrelation(result.correlationId ?? null);
       } else {
         const result = await activateCatalogItem(user.token, item.id);
         setItems((prev) => prev.map((entry) => (entry.id === item.id ? { ...entry, status: "ACTIVE" } : entry)));
-        setActionNotice("Элемент каталога активирован");
+        setActionNotice(t("servicesCatalogPage.notifications.activated"));
         setActionCorrelation(result.correlationId ?? null);
       }
     } catch (err) {
-      setError(normalizeError(err, "Не удалось изменить статус"));
+      setError(normalizeError(err, t("servicesCatalogPage.errors.updateStatusFailed")));
     }
   };
 
   const handlePreviewImport = async () => {
     if (!user || !importFile) {
-      setImportError({ message: "Выберите CSV файл" });
+      setImportError({ message: t("servicesCatalogPage.import.errors.selectCsv") });
       return;
     }
     setImportError(null);
@@ -275,7 +284,7 @@ export function ServicesCatalogPage() {
       const text = await importFile.text();
       const parsed = parseCatalogCsv(text);
       if (parsed.errors.length) {
-        setImportParsingErrors(parsed.errors.map((row) => `Строка ${row.row}: ${row.message}`));
+        setImportParsingErrors(parsed.errors.map((row) => t("servicesCatalogPage.import.errors.row", { row: row.row, message: row.message })));
         setImportParsingRows(parsed.rows);
         return;
       }
@@ -289,7 +298,7 @@ export function ServicesCatalogPage() {
         correlationId: preview.correlationId ?? null,
       });
     } catch (err) {
-      setImportError(normalizeError(err, "Не удалось выполнить preview"));
+      setImportError(normalizeError(err, t("servicesCatalogPage.import.errors.previewFailed")));
     } finally {
       setImportLoading(false);
     }
@@ -309,15 +318,10 @@ export function ServicesCatalogPage() {
       });
       setImportPreview(null);
     } catch (err) {
-      setImportError(normalizeError(err, "Не удалось применить импорт"));
+      setImportError(normalizeError(err, t("servicesCatalogPage.import.errors.applyFailed")));
     } finally {
       setImportApplyLoading(false);
     }
-  };
-
-  const resetFilters = () => {
-    setFilters({ q: "", kind: "ALL", status: "ALL", category: "" });
-    setPage(1);
   };
 
   const previewSummary = useMemo(() => {
@@ -336,21 +340,21 @@ export function ServicesCatalogPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>Каталог услуг и товаров</h2>
-            <div className="muted">Marketplace partner catalog</div>
+            <h2>{t("servicesCatalogPage.title")}</h2>
+            <div className="muted">{t("servicesCatalogPage.subtitle")}</div>
           </div>
           {canManage ? (
             <button type="button" className="primary" onClick={openCreateModal}>
-              Создать
+              {t("actions.create")}
             </button>
           ) : null}
         </div>
         <div className="filters">
           <label className="filter">
-            Поиск
+            {t("servicesCatalogPage.filters.search")}
             <input
               type="search"
-              placeholder="Название, описание"
+              placeholder={t("servicesCatalogPage.filters.searchPlaceholder")}
               value={filters.q}
               onChange={(event) => {
                 setFilters((prev) => ({ ...prev, q: event.target.value }));
@@ -359,7 +363,7 @@ export function ServicesCatalogPage() {
             />
           </label>
           <label className="filter">
-            Тип
+            {t("servicesCatalogPage.filters.kind")}
             <select
               value={filters.kind}
               onChange={(event) => {
@@ -367,13 +371,13 @@ export function ServicesCatalogPage() {
                 setPage(1);
               }}
             >
-              <option value="ALL">Все</option>
-              <option value="SERVICE">Service</option>
-              <option value="PRODUCT">Product</option>
+              <option value="ALL">{t("common.all")}</option>
+              <option value="SERVICE">{t("servicesCatalogPage.filters.kindOptions.service")}</option>
+              <option value="PRODUCT">{t("servicesCatalogPage.filters.kindOptions.product")}</option>
             </select>
           </label>
           <label className="filter">
-            Статус
+            {t("servicesCatalogPage.filters.status")}
             <select
               value={filters.status}
               onChange={(event) => {
@@ -381,18 +385,18 @@ export function ServicesCatalogPage() {
                 setPage(1);
               }}
             >
-              <option value="ALL">Все</option>
-              <option value="DRAFT">Draft</option>
-              <option value="ACTIVE">Active</option>
-              <option value="DISABLED">Disabled</option>
-              <option value="ARCHIVED">Archived</option>
+              <option value="ALL">{t("common.all")}</option>
+              <option value="DRAFT">{t("servicesCatalogPage.filters.statusOptions.draft")}</option>
+              <option value="ACTIVE">{t("servicesCatalogPage.filters.statusOptions.active")}</option>
+              <option value="DISABLED">{t("servicesCatalogPage.filters.statusOptions.disabled")}</option>
+              <option value="ARCHIVED">{t("servicesCatalogPage.filters.statusOptions.archived")}</option>
             </select>
           </label>
           <label className="filter">
-            Категория
+            {t("servicesCatalogPage.filters.category")}
             <input
               type="text"
-              placeholder="Например, автомойка"
+              placeholder={t("servicesCatalogPage.filters.categoryPlaceholder")}
               value={filters.category}
               onChange={(event) => {
                 setFilters((prev) => ({ ...prev, category: event.target.value }));
@@ -404,7 +408,7 @@ export function ServicesCatalogPage() {
         {actionNotice ? (
           <div className="notice">
             <div>{actionNotice}</div>
-            {actionCorrelation ? <div className="muted small">Correlation ID: {actionCorrelation}</div> : null}
+            {actionCorrelation ? <div className="muted small">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         ) : null}
         {isLoading ? (
@@ -414,29 +418,35 @@ export function ServicesCatalogPage() {
             <div className="skeleton-line" />
           </div>
         ) : error ? (
-          <ErrorState description={formatErrorDescription(error)} correlationId={error.correlationId} action={
-            <button type="button" className="secondary" onClick={fetchItems}>
-              Повторить
-            </button>
-          } />
+          <ErrorState
+            description={formatErrorDescription(error)}
+            correlationId={error.correlationId}
+            action={
+              <button type="button" className="secondary" onClick={fetchItems}>
+                {t("errors.retry")}
+              </button>
+            }
+          />
         ) : items.length === 0 ? (
           <EmptyState
-            title={hasFilters ? "Нет результатов фильтра" : "Каталог пуст"}
+            icon={<Wrench />}
+            title={hasFilters ? t("servicesCatalogPage.empty.filteredTitle") : t("emptyStates.servicesCatalog.title")}
             description={
-              hasFilters
-                ? "Измените фильтры или сбросьте настройки поиска."
-                : "Создайте первый каталог товаров или услуг для партнёра."
+              hasFilters ? t("servicesCatalogPage.empty.filteredDescription") : t("emptyStates.servicesCatalog.description")
             }
-            action={
-              hasFilters ? (
-                <button type="button" className="secondary" onClick={resetFilters}>
-                  Сбросить фильтры
-                </button>
-              ) : canManage ? (
-                <button type="button" className="primary" onClick={openCreateModal}>
-                  Создать
-                </button>
-              ) : null
+            primaryAction={
+              hasFilters
+                ? {
+                    label: t("servicesCatalogPage.actions.resetFilters"),
+                    onClick: resetFilters,
+                    variant: "secondary",
+                  }
+                : canManage
+                ? {
+                    label: t("actions.addService"),
+                    onClick: openCreateModal,
+                  }
+                : undefined
             }
           />
         ) : (
@@ -444,12 +454,12 @@ export function ServicesCatalogPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Название</th>
-                  <th>Тип</th>
-                  <th>Категория</th>
-                  <th>Статус</th>
-                  <th>Активные офферы</th>
-                  <th>Обновлено</th>
+                  <th>{t("servicesCatalogPage.table.title")}</th>
+                  <th>{t("servicesCatalogPage.table.kind")}</th>
+                  <th>{t("servicesCatalogPage.table.category")}</th>
+                  <th>{t("servicesCatalogPage.table.status")}</th>
+                  <th>{t("servicesCatalogPage.table.activeOffers")}</th>
+                  <th>{t("servicesCatalogPage.table.updatedAt")}</th>
                   <th />
                 </tr>
               </thead>
@@ -458,7 +468,7 @@ export function ServicesCatalogPage() {
                   <tr key={item.id}>
                     <td>{item.title}</td>
                     <td>{item.kind}</td>
-                    <td>{item.category ?? "—"}</td>
+                    <td>{item.category ?? t("common.notAvailable")}</td>
                     <td>
                       <StatusBadge status={item.status} tone={resolveCatalogTone(item.status)} />
                     </td>
@@ -467,15 +477,15 @@ export function ServicesCatalogPage() {
                     <td>
                       <div className="stack-inline">
                         <Link to={`/services/${item.id}`} className="link-button">
-                          Открыть
+                          {t("common.open")}
                         </Link>
                         {canManage ? (
                           <>
                             <button type="button" className="ghost" onClick={() => openEditModal(item)}>
-                              Edit
+                              {t("actions.edit")}
                             </button>
                             <button type="button" className="ghost" onClick={() => handleToggleStatus(item)}>
-                              {item.status === "ACTIVE" ? "Disable" : "Activate"}
+                              {item.status === "ACTIVE" ? t("servicesCatalogPage.actions.disable") : t("servicesCatalogPage.actions.activate")}
                             </button>
                           </>
                         ) : null}
@@ -487,10 +497,10 @@ export function ServicesCatalogPage() {
             </table>
             <div className="pagination">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                Назад
+                {t("common.back")}
               </button>
               <div className="muted">
-                Страница {page} из {totalPages}
+                {t("servicesCatalogPage.pagination", { current: page, total: totalPages })}
               </div>
               <button
                 type="button"
@@ -498,7 +508,7 @@ export function ServicesCatalogPage() {
                 onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={page >= totalPages}
               >
-                Вперёд
+                {t("common.next")}
               </button>
             </div>
           </>
@@ -507,16 +517,20 @@ export function ServicesCatalogPage() {
 
       <section className="card">
         <div className="section-title">
-          <h3>Импорт каталога</h3>
-          <div className="muted">CSV import with preview</div>
+          <h3>{t("servicesCatalogPage.import.title")}</h3>
+          <div className="muted">{t("servicesCatalogPage.import.subtitle")}</div>
         </div>
         {!canManage ? (
-          <EmptyState title="Импорт недоступен" description="Доступ только для PARTNER_OWNER или PARTNER_SERVICE_MANAGER." />
+          <EmptyState
+            icon={<Wrench />}
+            title={t("servicesCatalogPage.import.unavailableTitle")}
+            description={t("servicesCatalogPage.import.unavailableDescription")}
+          />
         ) : (
           <div className="stack">
             <div className="form-grid">
               <label className="form-field">
-                CSV файл
+                {t("servicesCatalogPage.import.csvFile")}
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -524,15 +538,15 @@ export function ServicesCatalogPage() {
                 />
               </label>
               <label className="form-field">
-                Режим
+                {t("servicesCatalogPage.import.mode")}
                 <select value={importMode} onChange={(event) => setImportMode(event.target.value as ImportMode)}>
-                  <option value="create">create-only</option>
-                  <option value="upsert">upsert</option>
+                  <option value="create">{t("servicesCatalogPage.import.modes.create")}</option>
+                  <option value="upsert">{t("servicesCatalogPage.import.modes.upsert")}</option>
                 </select>
               </label>
               <div className="form-grid__actions">
                 <button type="button" className="secondary" onClick={handlePreviewImport} disabled={importLoading}>
-                  Preview
+                  {t("servicesCatalogPage.import.preview")}
                 </button>
               </div>
             </div>
@@ -540,13 +554,13 @@ export function ServicesCatalogPage() {
               <div className="notice error">
                 {formatErrorDescription(importError)}
                 {importError.correlationId ? (
-                  <div className="muted small">Correlation ID: {importError.correlationId}</div>
+                  <div className="muted small">{t("errors.correlationId", { id: importError.correlationId })}</div>
                 ) : null}
               </div>
             ) : null}
             {importParsingErrors.length ? (
               <div className="notice error">
-                <div>Ошибка CSV:</div>
+                <div>{t("servicesCatalogPage.import.csvError")}</div>
                 <ul>
                   {importParsingErrors.map((message) => (
                     <li key={message}>{message}</li>
@@ -557,25 +571,25 @@ export function ServicesCatalogPage() {
             {importPreview ? (
               <div className="stack">
                 <div className="notice">
-                  <div className="label">Preview summary</div>
+                  <div className="label">{t("servicesCatalogPage.import.previewSummary")}</div>
                   <div className="grid two">
-                    <div>Rows parsed: {previewSummary.rowsParsed}</div>
-                    <div>Will create: {previewSummary.willCreate}</div>
-                    <div>Will update: {previewSummary.willUpdate}</div>
-                    <div>Errors count: {previewSummary.errorsCount}</div>
+                    <div>{t("servicesCatalogPage.import.rowsParsed", { count: previewSummary.rowsParsed })}</div>
+                    <div>{t("servicesCatalogPage.import.willCreate", { count: previewSummary.willCreate })}</div>
+                    <div>{t("servicesCatalogPage.import.willUpdate", { count: previewSummary.willUpdate })}</div>
+                    <div>{t("servicesCatalogPage.import.errorsCount", { count: previewSummary.errorsCount })}</div>
                   </div>
                   {importPreview.correlationId ? (
-                    <div className="muted small">Correlation ID: {importPreview.correlationId}</div>
+                    <div className="muted small">{t("errors.correlationId", { id: importPreview.correlationId })}</div>
                   ) : null}
                 </div>
                 {importPreview.errors.length ? (
                   <div className="notice error">
-                    <div className="label">Ошибки импорта</div>
+                    <div className="label">{t("servicesCatalogPage.import.errorsTitle")}</div>
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>Строка</th>
-                          <th>Описание</th>
+                          <th>{t("servicesCatalogPage.import.table.row")}</th>
+                          <th>{t("servicesCatalogPage.import.table.description")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -591,7 +605,7 @@ export function ServicesCatalogPage() {
                 ) : null}
                 {importPreview.rows.length ? (
                   <div>
-                    <div className="label">Пример строк (первые 20)</div>
+                    <div className="label">{t("servicesCatalogPage.import.sampleTitle")}</div>
                     <table className="data-table">
                       <thead>
                         <tr>
@@ -604,7 +618,7 @@ export function ServicesCatalogPage() {
                         {importPreview.rows.slice(0, 20).map((row, index) => (
                           <tr key={`${row.title ?? "row"}-${index}`}>
                             {Object.values(row).map((value, columnIndex) => (
-                              <td key={`${index}-${columnIndex}`}>{value || "—"}</td>
+                              <td key={`${index}-${columnIndex}`}>{value || t("common.notAvailable")}</td>
                             ))}
                           </tr>
                         ))}
@@ -619,33 +633,33 @@ export function ServicesCatalogPage() {
                     onClick={handleApplyImport}
                     disabled={importApplyLoading || importPreview.errors.length > 0}
                   >
-                    Apply import
+                    {t("servicesCatalogPage.import.apply")}
                   </button>
                 </div>
               </div>
             ) : null}
             {importApplyResult ? (
               <div className="notice">
-                <div className="label">Результат импорта</div>
+                <div className="label">{t("servicesCatalogPage.import.resultTitle")}</div>
                 <div className="grid two">
-                  <div>Created: {importApplyResult.created}</div>
-                  <div>Updated: {importApplyResult.updated}</div>
-                  <div>Skipped: {importApplyResult.skipped}</div>
+                  <div>{t("servicesCatalogPage.import.resultCreated", { count: importApplyResult.created })}</div>
+                  <div>{t("servicesCatalogPage.import.resultUpdated", { count: importApplyResult.updated })}</div>
+                  <div>{t("servicesCatalogPage.import.resultSkipped", { count: importApplyResult.skipped })}</div>
                 </div>
                 {importApplyResult.correlationId ? (
-                  <div className="muted small">Correlation ID: {importApplyResult.correlationId}</div>
+                  <div className="muted small">{t("errors.correlationId", { id: importApplyResult.correlationId })}</div>
                 ) : null}
                 <button type="button" className="link-button" onClick={fetchItems}>
-                  Обновить список
+                  {t("servicesCatalogPage.import.refreshList")}
                 </button>
               </div>
             ) : null}
             <div className="notice">
-              <div className="label">Формат CSV</div>
-              <div className="muted">Обязательные поля: kind, title, category, uom</div>
+              <div className="label">{t("servicesCatalogPage.import.csvFormat")}</div>
+              <div className="muted">{t("servicesCatalogPage.import.requiredFields")}</div>
               <pre className="code-block">
                 kind,title,category,uom,description,status{"\n"}
-                SERVICE,Услуга,Автомойка,услуга,Комплексная мойка,ACTIVE
+                {t("servicesCatalogPage.import.sampleRow")}
               </pre>
             </div>
           </div>
@@ -656,14 +670,16 @@ export function ServicesCatalogPage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="card__header">
-              <h3>{editingItem ? "Редактировать" : "Создать"} элемент</h3>
+              <h3>
+                {editingItem ? t("servicesCatalogPage.modal.editTitle") : t("servicesCatalogPage.modal.createTitle")}
+              </h3>
               <button type="button" className="ghost" onClick={() => setModalOpen(false)}>
-                Close
+                {t("actions.close")}
               </button>
             </div>
             <div className="form-grid">
               <label className="form-field">
-                Название *
+                {t("servicesCatalogPage.modal.fields.title")}
                 <input
                   type="text"
                   value={formState.title}
@@ -671,14 +687,14 @@ export function ServicesCatalogPage() {
                 />
               </label>
               <label className="form-field">
-                Тип
+                {t("servicesCatalogPage.modal.fields.kind")}
                 <select value={formState.kind} onChange={(event) => setFormState((prev) => ({ ...prev, kind: event.target.value as CatalogItemKind }))}>
                   <option value="SERVICE">SERVICE</option>
                   <option value="PRODUCT">PRODUCT</option>
                 </select>
               </label>
               <label className="form-field">
-                Категория
+                {t("servicesCatalogPage.modal.fields.category")}
                 <input
                   type="text"
                   value={formState.category}
@@ -686,16 +702,16 @@ export function ServicesCatalogPage() {
                 />
               </label>
               <label className="form-field">
-                Ед. измерения *
+                {t("servicesCatalogPage.modal.fields.uom")}
                 <input
                   type="text"
-                  placeholder="шт / услуга / час"
+                  placeholder={t("servicesCatalogPage.modal.fields.uomPlaceholder")}
                   value={formState.baseUom}
                   onChange={(event) => setFormState((prev) => ({ ...prev, baseUom: event.target.value }))}
                 />
               </label>
               <label className="form-field form-grid__full">
-                Описание
+                {t("servicesCatalogPage.modal.fields.description")}
                 <textarea
                   className="textarea"
                   rows={3}
@@ -704,7 +720,7 @@ export function ServicesCatalogPage() {
                 />
               </label>
               <label className="form-field">
-                Статус
+                {t("servicesCatalogPage.modal.fields.status")}
                 <select
                   value={formState.status}
                   onChange={(event) => setFormState((prev) => ({ ...prev, status: event.target.value as CatalogItemStatus }))}
@@ -718,21 +734,21 @@ export function ServicesCatalogPage() {
               <div className="notice error">
                 {formatErrorDescription(formError)}
                 {formError.correlationId ? (
-                  <div className="muted small">Correlation ID: {formError.correlationId}</div>
+                  <div className="muted small">{t("errors.correlationId", { id: formError.correlationId })}</div>
                 ) : null}
               </div>
             ) : null}
             <div className="form-actions">
               <button type="button" className="primary" onClick={() => handleSave(false)}>
-                Save
+                {t("actions.save")}
               </button>
               {canManage ? (
                 <button type="button" className="secondary" onClick={() => handleSave(true)}>
-                  Save & Activate
+                  {t("servicesCatalogPage.modal.actions.saveActivate")}
                 </button>
               ) : null}
               <button type="button" className="ghost" onClick={() => setModalOpen(false)}>
-                Отмена
+                {t("actions.cancel")}
               </button>
             </div>
           </div>

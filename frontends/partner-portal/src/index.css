@@ -59,6 +59,9 @@ a {
 }
 
 .sidebar a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
   text-decoration: none;
   padding: 0.75rem 0.85rem;
   border-radius: 0.5rem;
@@ -529,6 +532,12 @@ button.primary {
   display: grid;
   gap: 0.35rem;
   padding: 1rem 0;
+}
+
+.empty-state__icon {
+  width: 40px;
+  height: 40px;
+  color: #64748b;
 }
 
 .empty-state--full {

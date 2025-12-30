@@ -34,9 +34,9 @@ describe("Client portal shell", () => {
     );
 
     expect(await screen.findByText(/Client Portal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Dashboard/)).toBeInTheDocument();
-    expect(screen.getByText(/Documents/)).toBeInTheDocument();
-    expect(screen.getByText(/Settings/)).toBeInTheDocument();
+    expect(screen.getByText(/Дашборд/)).toBeInTheDocument();
+    expect(screen.getByText(/Документы/)).toBeInTheDocument();
+    expect(screen.getByText(/Настройки/)).toBeInTheDocument();
     expect(screen.queryByText(/Пользователи/i)).not.toBeInTheDocument();
   });
 

@@ -9,6 +9,7 @@ import { canCreateDraftPrices, canPublishPrices, canReadPrices } from "../utils/
 import { parseCsv } from "../utils/csv";
 import { ApiError } from "../api/http";
 import { StatusBadge } from "../components/StatusBadge";
+import { useI18n } from "../i18n";
 
 const tabs = ["overview", "import", "preview", "validate", "diff", "audit"] as const;
 type TabKey = (typeof tabs)[number];
@@ -18,6 +19,7 @@ const shortId = (value: string) => value.slice(0, 8);
 export function PriceVersionDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
@@ -65,7 +67,7 @@ export function PriceVersionDetailsPage() {
       .catch((err) => {
         console.error(err);
         if (active) {
-          setError(err instanceof ApiError ? err : new ApiError("Не удалось загрузить версию", 500, null));
+          setError(err instanceof ApiError ? err : new ApiError(t("priceVersionPage.errors.loadFailed"), 500, null));
         }
       })
       .finally(() => {
@@ -124,9 +126,9 @@ export function PriceVersionDetailsPage() {
       uploadFile.text().then((text) => {
         const result = parseCsv(text);
         if (result.errors.length) {
-          setUploadPreview(`Найдено ошибок: ${result.errors.length}`);
+          setUploadPreview(t("priceVersionPage.upload.csvErrors", { count: result.errors.length }));
         } else {
-          setUploadPreview(`Строк: ${result.rows.length}`);
+          setUploadPreview(t("priceVersionPage.upload.csvRows", { count: result.rows.length }));
         }
       });
     } else {
@@ -134,9 +136,9 @@ export function PriceVersionDetailsPage() {
         try {
           const parsed = JSON.parse(text) as unknown;
           const rowsCount = Array.isArray(parsed) ? parsed.length : 0;
-          setUploadPreview(`JSON записей: ${rowsCount}`);
+          setUploadPreview(t("priceVersionPage.upload.jsonRows", { count: rowsCount }));
         } catch (err) {
-          setUploadPreview("Ошибка JSON формата");
+          setUploadPreview(t("priceVersionPage.upload.jsonError"));
         }
       });
     }
@@ -149,22 +151,22 @@ export function PriceVersionDetailsPage() {
 
   const handleValidate = async () => {
     if (!user || !id) return;
-    if (!window.confirm("Запустить валидацию версии?")) return;
+    if (!window.confirm(t("priceVersionPage.confirmations.validate"))) return;
     setIsActionLoading(true);
     setActionMessage(null);
     setActionCorrelation(null);
     try {
       const response = await validatePriceVersion(user.token, id);
       setValidation(response.data);
-      setActionMessage(response.data.ok ? "Валидация пройдена" : "Валидация завершена с ошибками");
+      setActionMessage(response.data.ok ? t("priceVersionPage.notifications.validationOk") : t("priceVersionPage.notifications.validationWithErrors"));
       setActionCorrelation(response.correlationId);
     } catch (err) {
       console.error(err);
       if (err instanceof ApiError) {
-        setActionMessage(`Ошибка: ${err.message} (status ${err.status})`);
+        setActionMessage(t("priceVersionPage.errors.apiError", { message: err.message, status: err.status }));
         setActionCorrelation(err.correlationId);
       } else {
-        setActionMessage("Не удалось запустить валидацию");
+        setActionMessage(t("priceVersionPage.errors.validationFailed"));
       }
     } finally {
       setIsActionLoading(false);
@@ -173,22 +175,22 @@ export function PriceVersionDetailsPage() {
 
   const handlePublish = async () => {
     if (!user || !id) return;
-    if (!window.confirm("Опубликовать эту версию?")) return;
+    if (!window.confirm(`${t("priceVersionPage.confirmations.publishTitle")}\n${t("priceVersionPage.confirmations.publishDescription")}`)) return;
     setIsActionLoading(true);
     setActionMessage(null);
     setActionCorrelation(null);
     try {
       const response = await publishPriceVersion(user.token, id);
       setVersion(response.data);
-      setActionMessage("Версия опубликована");
+      setActionMessage(t("priceVersionPage.notifications.published"));
       setActionCorrelation(response.correlationId);
     } catch (err) {
       console.error(err);
       if (err instanceof ApiError) {
-        setActionMessage(`Ошибка: ${err.message} (status ${err.status})`);
+        setActionMessage(t("priceVersionPage.errors.apiError", { message: err.message, status: err.status }));
         setActionCorrelation(err.correlationId);
       } else {
-        setActionMessage("Не удалось опубликовать версию");
+        setActionMessage(t("priceVersionPage.errors.publishFailed"));
       }
     } finally {
       setIsActionLoading(false);
@@ -197,22 +199,22 @@ export function PriceVersionDetailsPage() {
 
   const handleRollback = async () => {
     if (!user || !id) return;
-    if (!window.confirm("Создать rollback на эту версию?")) return;
+    if (!window.confirm(`${t("priceVersionPage.confirmations.rollbackTitle")}\n${t("priceVersionPage.confirmations.rollbackDescription")}`)) return;
     setIsActionLoading(true);
     setActionMessage(null);
     setActionCorrelation(null);
     try {
       const response = await rollbackPriceVersion(user.token, id);
       setVersion(response.data);
-      setActionMessage("Rollback создан");
+      setActionMessage(t("priceVersionPage.notifications.rollbackCreated"));
       setActionCorrelation(response.correlationId);
     } catch (err) {
       console.error(err);
       if (err instanceof ApiError) {
-        setActionMessage(`Ошибка: ${err.message} (status ${err.status})`);
+        setActionMessage(t("priceVersionPage.errors.apiError", { message: err.message, status: err.status }));
         setActionCorrelation(err.correlationId);
       } else {
-        setActionMessage("Не удалось выполнить rollback");
+        setActionMessage(t("priceVersionPage.errors.rollbackFailed"));
       }
     } finally {
       setIsActionLoading(false);
@@ -221,7 +223,7 @@ export function PriceVersionDetailsPage() {
 
   const handleImport = async () => {
     if (!user || !id || !uploadFile) return;
-    if (!window.confirm("Импортировать файл в версию?")) return;
+    if (!window.confirm(t("priceVersionPage.confirmations.import"))) return;
     setIsActionLoading(true);
     setActionMessage(null);
     setActionCorrelation(null);
@@ -229,15 +231,15 @@ export function PriceVersionDetailsPage() {
       const content = await uploadFile.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(content)));
       const response = await importPriceVersion(user.token, id, { format: uploadFormat, content_base64: base64 });
-      setActionMessage(`Импорт завершён. Ошибок: ${response.data.errors_found}`);
+      setActionMessage(t("priceVersionPage.notifications.importCompleted", { errors: response.data.errors_found }));
       setActionCorrelation(response.correlationId);
     } catch (err) {
       console.error(err);
       if (err instanceof ApiError) {
-        setActionMessage(`Ошибка: ${err.message} (status ${err.status})`);
+        setActionMessage(t("priceVersionPage.errors.apiError", { message: err.message, status: err.status }));
         setActionCorrelation(err.correlationId);
       } else {
-        setActionMessage("Не удалось импортировать файл");
+        setActionMessage(t("priceVersionPage.errors.importFailed"));
       }
     } finally {
       setIsActionLoading(false);
@@ -245,22 +247,22 @@ export function PriceVersionDetailsPage() {
   };
 
   if (!canRead) {
-    return <ForbiddenState description="Роль не позволяет просматривать версию цен." />;
+    return <ForbiddenState description={t("priceVersionPage.forbidden")} />;
   }
 
   if (isLoading) {
-    return <LoadingState label="Загружаем версию цен..." />;
+    return <LoadingState label={t("priceVersionPage.loading")} />;
   }
 
   if (error) {
     return (
       <ErrorState
-        title={`Ошибка загрузки (status ${error.status})`}
+        title={t("priceVersionPage.errors.loadTitle", { status: error.status })}
         description={error.message}
         correlationId={error.correlationId}
         action={
           <button type="button" onClick={() => window.location.reload()}>
-            Повторить
+            {t("errors.retry")}
           </button>
         }
       />
@@ -270,8 +272,8 @@ export function PriceVersionDetailsPage() {
   if (!version) {
     return (
       <EmptyState
-        title="Версия не найдена"
-        description="Проверьте идентификатор версии и повторите запрос."
+        title={t("priceVersionPage.empty.notFoundTitle")}
+        description={t("priceVersionPage.empty.notFoundDescription")}
       />
     );
   }
@@ -284,12 +286,12 @@ export function PriceVersionDetailsPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>Версия {shortId(version.id)}</h2>
-            <p className="muted">Статус и управление версией прайса.</p>
+            <h2>{t("priceVersionPage.header.title", { id: shortId(version.id) })}</h2>
+            <p className="muted">{t("priceVersionPage.header.subtitle")}</p>
           </div>
           <div className="actions">
             <button type="button" onClick={handleValidate} disabled={!canImport || isActionLoading}>
-              Валидировать
+              {t("priceVersionPage.actions.validate")}
             </button>
             {canPublish ? (
               <button
@@ -298,7 +300,7 @@ export function PriceVersionDetailsPage() {
                 onClick={handlePublish}
                 disabled={publishDisabled || isActionLoading}
               >
-                Публиковать
+                {t("actions.publish")}
               </button>
             ) : null}
             {canPublish ? (
@@ -307,7 +309,7 @@ export function PriceVersionDetailsPage() {
                 onClick={handleRollback}
                 disabled={version.status !== "PUBLISHED" || isActionLoading}
               >
-                Rollback
+                {t("priceVersionPage.actions.rollback")}
               </button>
             ) : null}
           </div>
@@ -315,7 +317,7 @@ export function PriceVersionDetailsPage() {
         {actionMessage ? (
           <div className="notice">
             <strong>{actionMessage}</strong>
-            {actionCorrelation ? <div className="muted">Correlation ID: {actionCorrelation}</div> : null}
+            {actionCorrelation ? <div className="muted">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         ) : null}
       </section>
@@ -337,36 +339,40 @@ export function PriceVersionDetailsPage() {
         {tab === "overview" ? (
           <div className="meta-grid">
             <div>
-              <div className="label">Статус</div>
+              <div className="label">{t("common.status")}</div>
               <StatusBadge status={version.status.toLowerCase()} />
             </div>
             <div>
-              <div className="label">Scope</div>
-              <div>{version.station_scope === "all" ? "Все станции" : `${version.station_ids?.length ?? 0} станций`}</div>
+              <div className="label">{t("priceVersionPage.overview.scope")}</div>
+              <div>
+                {version.station_scope === "all"
+                  ? t("priceVersionPage.overview.scopeAll")
+                  : t("priceVersionPage.overview.scopeCount", { count: version.station_ids?.length ?? 0 })}
+              </div>
             </div>
             <div>
-              <div className="label">Items</div>
+              <div className="label">{t("priceVersionPage.overview.items")}</div>
               <div>{version.item_count}</div>
             </div>
             <div>
-              <div className="label">Errors</div>
+              <div className="label">{t("priceVersionPage.overview.errors")}</div>
               <div>{version.error_count}</div>
             </div>
             <div>
-              <div className="label">Создано</div>
+              <div className="label">{t("priceVersionPage.overview.createdAt")}</div>
               <div>{formatDateTime(version.created_at)}</div>
             </div>
             <div>
-              <div className="label">Создатель</div>
-              <div>{version.created_by ?? "—"}</div>
+              <div className="label">{t("priceVersionPage.overview.createdBy")}</div>
+              <div>{version.created_by ?? t("common.notAvailable")}</div>
             </div>
             <div>
-              <div className="label">Опубликовано</div>
+              <div className="label">{t("priceVersionPage.overview.publishedAt")}</div>
               <div>{formatDateTime(version.publish_at)}</div>
             </div>
             <div>
               <div className="label">Checksum</div>
-              <div>{version.checksum_sha256 ?? "—"}</div>
+              <div>{version.checksum_sha256 ?? t("common.notAvailable")}</div>
             </div>
           </div>
         ) : null}
@@ -374,8 +380,8 @@ export function PriceVersionDetailsPage() {
         {tab === "import" ? (
           <div className="stack">
             <div className="card">
-              <h3>Формат CSV</h3>
-              <p className="muted">Обязательные поля: station_code (или station_id), product_code, price, currency, valid_from.</p>
+              <h3>{t("priceVersionPage.import.csvFormat")}</h3>
+              <p className="muted">{t("priceVersionPage.import.requiredFields")}</p>
               <pre className="code-block">
                 station_code,product_code,price,currency,valid_from,valid_to,vat_rate
                 {"\n"}AZS-001,FUEL-95,52.4,RUB,2024-02-01,,20
@@ -383,21 +389,21 @@ export function PriceVersionDetailsPage() {
             </div>
             <div className="form-grid">
               <label className="form-field">
-                <span className="label">Формат</span>
+                <span className="label">{t("priceVersionPage.import.format")}</span>
                 <select value={uploadFormat} onChange={(event) => setUploadFormat(event.target.value as "CSV" | "JSON")}>
                   <option value="CSV">CSV</option>
                   <option value="JSON">JSON</option>
                 </select>
               </label>
               <label className="form-field form-grid__full">
-                <span className="label">Файл</span>
+                <span className="label">{t("priceVersionPage.import.file")}</span>
                 <input type="file" accept={uploadFormat === "CSV" ? ".csv" : ".json,application/json"} onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
               </label>
             </div>
-            {uploadPreview ? <p className="muted">Preview: {uploadPreview}</p> : null}
+            {uploadPreview ? <p className="muted">{t("priceVersionPage.import.preview", { text: uploadPreview })}</p> : null}
             <div className="actions">
               <button type="button" onClick={handleImport} disabled={!uploadFile || !canImport || isActionLoading}>
-                Commit import to version
+                {t("priceVersionPage.import.commit")}
               </button>
             </div>
           </div>
@@ -407,32 +413,32 @@ export function PriceVersionDetailsPage() {
           <div className="stack">
             <div className="form-grid">
               <label className="form-field">
-                <span className="label">Поиск</span>
-                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="station/product" />
+                <span className="label">{t("priceVersionPage.preview.search")}</span>
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("priceVersionPage.preview.searchPlaceholder")} />
               </label>
               <label className="form-field">
-                <span className="label">Errors only</span>
+                <span className="label">{t("priceVersionPage.preview.errorsOnly")}</span>
                 <input type="checkbox" checked={errorsOnly} onChange={(event) => setErrorsOnly(event.target.checked)} />
               </label>
             </div>
             {items.length === 0 ? (
-              <EmptyState title="Нет элементов" description="Элементы появятся после импорта." />
+              <EmptyState title={t("priceVersionPage.preview.emptyTitle")} description={t("priceVersionPage.preview.emptyDescription")} />
             ) : (
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Station</th>
-                    <th>Product</th>
-                    <th>Price</th>
-                    <th>Currency</th>
-                    <th>Valid from</th>
-                    <th>Errors</th>
+                    <th>{t("priceVersionPage.preview.table.station")}</th>
+                    <th>{t("priceVersionPage.preview.table.product")}</th>
+                    <th>{t("priceVersionPage.preview.table.price")}</th>
+                    <th>{t("priceVersionPage.preview.table.currency")}</th>
+                    <th>{t("priceVersionPage.preview.table.validFrom")}</th>
+                    <th>{t("priceVersionPage.preview.table.errors")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, index) => (
                     <tr key={`${item.station_id ?? item.station_code ?? "row"}-${index}`}>
-                      <td>{item.station_code ?? item.station_id ?? "—"}</td>
+                      <td>{item.station_code ?? item.station_id ?? t("common.notAvailable")}</td>
                       <td>{item.product_code}</td>
                       <td>{item.price}</td>
                       <td>{item.currency}</td>
@@ -445,14 +451,16 @@ export function PriceVersionDetailsPage() {
             )}
             <div className="actions">
               <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
-                Назад
+                {t("common.back")}
               </button>
               <span className="muted">
-                Страница {page}
-                {itemsTotal ? ` из ${Math.ceil(itemsTotal / 20)}` : ""}
+                {t("priceVersionPage.pagination.page", {
+                  current: page,
+                  total: itemsTotal ? t("priceVersionPage.pagination.total", { total: Math.ceil(itemsTotal / 20) }) : "",
+                })}
               </span>
               <button type="button" onClick={() => setPage(page + 1)} disabled={items.length < 20}>
-                Вперёд
+                {t("common.next")}
               </button>
             </div>
           </div>
@@ -461,29 +469,29 @@ export function PriceVersionDetailsPage() {
         {tab === "validate" ? (
           <div className="stack">
             <button type="button" onClick={handleValidate} disabled={!canImport || isActionLoading}>
-              Run validation
+              {t("priceVersionPage.validate.run")}
             </button>
             {validation ? (
               <div className="meta-grid">
                 <div>
                   <div className="label">OK</div>
-                  <div>{validation.ok ? "Да" : "Нет"}</div>
+                  <div>{validation.ok ? t("priceVersionPage.validate.yes") : t("priceVersionPage.validate.no")}</div>
                 </div>
                 <div>
-                  <div className="label">Errors</div>
+                  <div className="label">{t("priceVersionPage.validate.errors")}</div>
                   <div>{validation.errors_total}</div>
                 </div>
                 <div>
-                  <div className="label">Warnings</div>
+                  <div className="label">{t("priceVersionPage.validate.warnings")}</div>
                   <div>{validation.warnings_total}</div>
                 </div>
               </div>
             ) : (
-              <EmptyState title="Валидация не запускалась" description="Запустите валидацию для получения отчёта." />
+              <EmptyState title={t("priceVersionPage.validate.emptyTitle")} description={t("priceVersionPage.validate.emptyDescription")} />
             )}
             {validation?.sample_errors?.length ? (
               <div>
-                <h4>Sample errors</h4>
+                <h4>{t("priceVersionPage.validate.sampleErrors")}</h4>
                 <ul className="bullets">
                   {validation.sample_errors.map((errorItem, index) => (
                     <li key={`${errorItem.code}-${index}`}>{errorItem.message}</li>
@@ -493,7 +501,7 @@ export function PriceVersionDetailsPage() {
             ) : null}
             {validation?.recommended_actions?.length ? (
               <div>
-                <h4>Recommended actions</h4>
+                <h4>{t("priceVersionPage.validate.recommendedActions")}</h4>
                 <ul className="bullets">
                   {validation.recommended_actions.map((item) => (
                     <li key={item}>{item}</li>
@@ -507,9 +515,9 @@ export function PriceVersionDetailsPage() {
         {tab === "diff" ? (
           <div className="stack">
             <label className="form-field">
-              <span className="label">Compare to version</span>
+              <span className="label">{t("priceVersionPage.diff.compareTo")}</span>
               <select value={diffTarget} onChange={(event) => setDiffTarget(event.target.value)}>
-                <option value="">Выберите версию</option>
+                <option value="">{t("priceVersionPage.diff.selectVersion")}</option>
                 {availableDiffTargets.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {shortId(candidate.id)} — {candidate.status}
@@ -521,15 +529,15 @@ export function PriceVersionDetailsPage() {
               <div className="stack">
                 <div className="meta-grid">
                   <div>
-                    <div className="label">Добавлено</div>
+                    <div className="label">{t("priceVersionPage.diff.added")}</div>
                     <div>{diffResult.added_count}</div>
                   </div>
                   <div>
-                    <div className="label">Удалено</div>
+                    <div className="label">{t("priceVersionPage.diff.removed")}</div>
                     <div>{diffResult.removed_count}</div>
                   </div>
                   <div>
-                    <div className="label">Изменено</div>
+                    <div className="label">{t("priceVersionPage.diff.changed")}</div>
                     <div>{diffResult.changed_count}</div>
                   </div>
                 </div>
@@ -537,29 +545,29 @@ export function PriceVersionDetailsPage() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Station</th>
-                        <th>Product</th>
-                        <th>Before</th>
-                        <th>After</th>
+                        <th>{t("priceVersionPage.diff.table.station")}</th>
+                        <th>{t("priceVersionPage.diff.table.product")}</th>
+                        <th>{t("priceVersionPage.diff.table.before")}</th>
+                        <th>{t("priceVersionPage.diff.table.after")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {diffResult.sample_changed.map((item, index) => (
                         <tr key={`${item.product_code}-${index}`}>
-                          <td>{item.station_code ?? item.station_id ?? "—"}</td>
+                          <td>{item.station_code ?? item.station_id ?? t("common.notAvailable")}</td>
                           <td>{item.product_code}</td>
-                          <td>{item.before ? JSON.stringify(item.before) : "—"}</td>
-                          <td>{item.after ? JSON.stringify(item.after) : "—"}</td>
+                          <td>{item.before ? JSON.stringify(item.before) : t("common.notAvailable")}</td>
+                          <td>{item.after ? JSON.stringify(item.after) : t("common.notAvailable")}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 ) : (
-                  <EmptyState title="Нет изменений" description="Выберите другую версию для сравнения." />
+                  <EmptyState title={t("priceVersionPage.diff.emptyTitle")} description={t("priceVersionPage.diff.emptyDescription")} />
                 )}
               </div>
             ) : (
-              <EmptyState title="Выберите версию" description="Выберите версию для расчёта diff." />
+              <EmptyState title={t("priceVersionPage.diff.selectTitle")} description={t("priceVersionPage.diff.selectDescription")} />
             )}
           </div>
         ) : null}
@@ -567,7 +575,7 @@ export function PriceVersionDetailsPage() {
         {tab === "audit" ? (
           <div className="stack">
             {auditEvents.length === 0 ? (
-              <EmptyState title="Нет событий" description="Аудит появится после действий с версией." />
+              <EmptyState title={t("priceVersionPage.audit.emptyTitle")} description={t("priceVersionPage.audit.emptyDescription")} />
             ) : (
               <div className="timeline-list">
                 {auditEvents.map((eventItem) => (
@@ -577,8 +585,8 @@ export function PriceVersionDetailsPage() {
                       <span className="muted">{formatDateTime(eventItem.created_at)}</span>
                     </div>
                     <div className="timeline-item__body">
-                      <span>Actor: {eventItem.actor ?? "system"}</span>
-                      {eventItem.correlation_id ? <span className="muted">Correlation ID: {eventItem.correlation_id}</span> : null}
+                      <span>{t("priceVersionPage.audit.actor", { actor: eventItem.actor ?? "system" })}</span>
+                      {eventItem.correlation_id ? <span className="muted">{t("errors.correlationId", { id: eventItem.correlation_id })}</span> : null}
                     </div>
                   </div>
                 ))}

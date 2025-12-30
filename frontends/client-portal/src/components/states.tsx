@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../i18n";
 
 type StateLayoutProps = {
   title: string;
@@ -16,19 +17,25 @@ const StateLayout = ({ title, description, action, meta }: StateLayoutProps) => 
   </div>
 );
 
-export const AppLoadingState = ({ label = "Загружаем данные..." }: { label?: string }) => (
-  <StateLayout title="Loading" description={label} />
-);
+export const AppLoadingState = ({ label }: { label?: string }) => <LoadingStateContent label={label} />;
+
+const LoadingStateContent = ({ label }: { label?: string }) => {
+  const { t } = useI18n();
+  return <StateLayout title={t("states.loadingTitle")} description={label ?? t("common.loading")} />;
+};
 
 export const AppEmptyState = ({
-  title = "Данных пока нет",
+  title,
   description,
   action,
 }: {
   title?: string;
   description?: string;
   action?: ReactNode;
-}) => <StateLayout title={title} description={description} action={action} />;
+}) => {
+  const { t } = useI18n();
+  return <StateLayout title={title ?? t("states.emptyTitle")} description={description} action={action} />;
+};
 
 export const AppErrorState = ({
   message,
@@ -41,28 +48,49 @@ export const AppErrorState = ({
   status?: number;
   correlationId?: string | null;
 }) => (
-  <StateLayout
-    title="Ошибка"
-    description={message}
-    meta={
-      status || correlationId ? (
-        <>
-          {status ? `HTTP ${status}` : null}
-          {status && correlationId ? " · " : null}
-          {correlationId ? `Correlation ID: ${correlationId}` : null}
-        </>
-      ) : null
-    }
-    action={
-      onRetry ? (
-        <button type="button" className="secondary" onClick={onRetry}>
-          Повторить
-        </button>
-      ) : null
-    }
-  />
+  <ErrorStateContent message={message} onRetry={onRetry} status={status} correlationId={correlationId} />
 );
 
+const ErrorStateContent = ({
+  message,
+  onRetry,
+  status,
+  correlationId,
+}: {
+  message: string;
+  onRetry?: () => void;
+  status?: number;
+  correlationId?: string | null;
+}) => {
+  const { t } = useI18n();
+  const metaParts = [];
+  if (status) {
+    metaParts.push(t("errors.errorCode", { code: status }));
+  }
+  if (correlationId) {
+    metaParts.push(t("errors.correlationId", { id: correlationId }));
+  }
+  return (
+    <StateLayout
+      title={t("errors.actionFailedTitle")}
+      description={message}
+      meta={metaParts.length ? metaParts.join(" · ") : undefined}
+      action={
+        onRetry ? (
+          <button type="button" className="secondary" onClick={onRetry}>
+            {t("errors.retry")}
+          </button>
+        ) : null
+      }
+    />
+  );
+};
+
 export const AppForbiddenState = ({ message }: { message?: string }) => (
-  <StateLayout title="Доступ запрещён" description={message ?? "Недостаточно прав для просмотра"} />
+  <ForbiddenStateContent message={message} />
 );
+
+const ForbiddenStateContent = ({ message }: { message?: string }) => {
+  const { t } = useI18n();
+  return <StateLayout title={t("states.forbiddenTitle")} description={message ?? t("states.forbiddenDescription")} />;
+};
