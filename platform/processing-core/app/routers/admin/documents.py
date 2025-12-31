@@ -41,8 +41,8 @@ def _audit_immutability_violation(
     request: Request,
     token: dict,
     extra: dict | None = None,
-    ) -> None:
-        payload = {"reason": reason, "status": document.status.value, "document_type": document.document_type.value}
+) -> None:
+    payload = {"reason": reason, "status": document.status.value, "document_type": document.document_type.value}
     if extra:
         payload.update(extra)
     AuditService(db).audit(

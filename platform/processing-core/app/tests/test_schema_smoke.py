@@ -101,6 +101,35 @@ def test_core_tables_exist_after_migrations() -> None:
             ),
             {"schema": DB_SCHEMA},
         ).mappings()
+        money_flow_link_node_type_exists = conn.execute(
+            text(
+                """
+                select 1
+                from pg_type t
+                join pg_namespace n on n.oid = t.typnamespace
+                where n.nspname = :schema and t.typname = :enum_name
+                """
+            ),
+            {"schema": DB_SCHEMA, "enum_name": "money_flow_link_node_type"},
+        ).scalar()
+        subscription_segment_exists = conn.execute(
+            text(
+                """
+                select 1
+                from pg_type t
+                join pg_namespace n on n.oid = t.typnamespace
+                join pg_enum e on e.enumtypid = t.oid
+                where n.nspname = :schema
+                  and t.typname = :enum_name
+                  and e.enumlabel = :enum_value
+                """
+            ),
+            {
+                "schema": DB_SCHEMA,
+                "enum_name": "money_flow_link_node_type",
+                "enum_value": "SUBSCRIPTION_SEGMENT",
+            },
+        ).scalar()
 
     types = {
         (row["table_name"], row["column_name"]): (row["data_type"], row["udt_name"])
@@ -130,5 +159,9 @@ def test_core_tables_exist_after_migrations() -> None:
     assert cards_regclass is not None, "cards table is missing after alembic upgrade"
     assert billing_periods_regclass is not None, "billing_periods table is missing after alembic upgrade"
     assert created_at_column is not None, "cards.created_at column is missing after alembic upgrade"
+    assert money_flow_link_node_type_exists is not None, "money_flow_link_node_type enum is missing"
+    assert subscription_segment_exists is not None, (
+        "money_flow_link_node_type enum is missing SUBSCRIPTION_SEGMENT"
+    )
     assert not missing_types, f"Missing columns for FK type check: {missing_types}"
     assert not mismatched_types, f"FK column types mismatch: {mismatched_types}"
