@@ -10,7 +10,7 @@ PROJECT_NAME := neft-processing
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
         migrate test test-core test-auth test-ai test-workers \
-        health health-core health-auth health-ai smoke \
+        health health-core health-auth health-ai smoke alembic-version-check \
         clean-volumes clean-images
 
 # ----------------------------------------
@@ -126,6 +126,17 @@ health-ai:
 
 smoke:
 	pytest -q tests/test_no_merge_markers.py tests/test_smoke_gateway_routing.py
+
+# ----------------------------------------
+# ALEMBIC VERSION TABLE CHECK
+# ----------------------------------------
+
+alembic-version-check:
+	$(DOCKER_COMPOSE) exec -T postgres psql -U neft -d neft -c "select table_schema, table_name from information_schema.tables where table_name in ('alembic_version_core','alembic_version_auth') order by 1,2;"
+	$(DOCKER_COMPOSE) exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+	$(DOCKER_COMPOSE) exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
+	$(DOCKER_COMPOSE) exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_core where version_num like '%auth%';"
+	$(DOCKER_COMPOSE) exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_auth where version_num like '%core%';"
 
 # ----------------------------------------
 # ЧИСТКА

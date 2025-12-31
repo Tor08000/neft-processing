@@ -148,6 +148,24 @@ docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.
 ```
 Ожидается ровно одна строка (единственный head).
 
+### Проверка разделённых таблиц версий Alembic
+
+Быстрый smoke для проверки того, что `core-api` и `auth-host` не делят историю:
+
+```
+make alembic-version-check
+```
+
+Ручной эквивалент:
+
+```
+docker compose exec -T postgres psql -U neft -d neft -c "select table_schema, table_name from information_schema.tables where table_name in ('alembic_version_core','alembic_version_auth') order by 1,2;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
+docker compose exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_core where version_num like '%auth%';"
+docker compose exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_auth where version_num like '%core%';"
+```
+
 ### Системный стенд-чеклист (Windows CMD)
 
 Минимальный набор для фиксации статуса (запускать из корня репозитория):
@@ -167,7 +185,8 @@ curl http://localhost:8001/metrics
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini heads"
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini current"
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini history --verbose -r -50:"
-docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
 ```
 
 Gateway и direct ports отличаются. Используйте правильный URL для диагностики.

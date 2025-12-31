@@ -29,6 +29,7 @@ docker compose logs --tail=200 core-api
 ```bash
 docker compose exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
 docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
 ```
 
 ### Windows CMD
@@ -42,6 +43,63 @@ docker-compose.exe up -d --build
 docker-compose.exe logs --tail=200 core-api
 docker-compose.exe exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
 docker-compose.exe exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker-compose.exe exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
+```
+
+## Миграция существующей dev БД (после разделения alembic_version)
+
+### Быстрый dev reset (данные не важны)
+
+```bash
+docker compose down -v
+docker compose up -d postgres
+docker compose up -d core-api auth-host
+```
+
+### Аккуратный переход без сброса данных
+
+1. Проверить, что старая таблица не используется и есть ли в ней записи:
+
+```bash
+docker compose exec -T postgres psql -U neft -d neft -c "select table_schema, table_name from information_schema.tables where table_name='alembic_version' order by 1;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+```
+
+2. Создать/зафиксировать версии для core-api и auth-host через stamp:
+
+```bash
+docker compose exec core-api alembic -c app/alembic.ini stamp head
+docker compose exec auth-host alembic -c /app/alembic.ini stamp head
+```
+
+3. Убедиться, что создались новые таблицы версий:
+
+```bash
+docker compose exec -T postgres psql -U neft -d neft -c "select table_schema, table_name from information_schema.tables where table_name in ('alembic_version_core','alembic_version_auth') order by 1,2;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
+```
+
+4. (Опционально) Если `public.alembic_version` больше не нужен, можно удалить:
+
+```bash
+docker compose exec -T postgres psql -U neft -d neft -c "drop table if exists public.alembic_version;"
+```
+
+## Быстрый smoke-check разделённых таблиц версий
+
+```bash
+make alembic-version-check
+```
+
+Ручной эквивалент:
+
+```bash
+docker compose exec -T postgres psql -U neft -d neft -c "select table_schema, table_name from information_schema.tables where table_name in ('alembic_version_core','alembic_version_auth') order by 1,2;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_auth;"
+docker compose exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_core where version_num like '%auth%';"
+docker compose exec -T postgres psql -U neft -d neft -c "select version_num from public.alembic_version_auth where version_num like '%core%';"
 ```
 
 ## Проверка текущей ревизии
