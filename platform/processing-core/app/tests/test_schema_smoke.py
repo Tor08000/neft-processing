@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import create_engine, text
 
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
@@ -29,14 +30,37 @@ def _create_engine_for_schema(db_url: str):
     return create_engine(db_url)
 
 
-def test_core_tables_exist_after_migrations() -> None:
-    db_url = os.getenv("DATABASE_URL")
+def _resolve_db_url() -> str:
+    return (
+        os.getenv("DATABASE_URL")
+        or os.getenv("NEFT_DATABASE_URL")
+        or (
+            "postgresql+psycopg://neft:neft@postgres:5432/neft"
+            if os.getenv("RUNNING_IN_DOCKER") == "1"
+            else "postgresql+psycopg://neft:neft@localhost:5432/neft"
+        )
+    )
 
-    if not db_url:
-        pytest.skip("DATABASE_URL is required for schema smoke test")
+
+def _assert_db_available(db_url: str, *, running_in_docker: bool) -> None:
+    try:
+        engine = _create_engine_for_schema(db_url)
+        with engine.connect():
+            return
+    except OperationalError as exc:
+        if running_in_docker:
+            raise
+        pytest.skip(f"Postgres is not available for schema smoke test: {exc}")
+
+
+def test_core_tables_exist_after_migrations() -> None:
+    db_url = _resolve_db_url()
+    running_in_docker = os.getenv("RUNNING_IN_DOCKER") == "1"
 
     if not db_url.startswith("postgresql"):
         pytest.fail("schema smoke test requires PostgreSQL DATABASE_URL")
+
+    _assert_db_available(db_url, running_in_docker=running_in_docker)
 
     alembic_cfg = _make_alembic_config(db_url)
     command.upgrade(alembic_cfg, "head")
