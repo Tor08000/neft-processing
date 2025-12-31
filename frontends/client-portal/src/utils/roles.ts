@@ -1,6 +1,7 @@
 import type { AuthSession } from "../api/types";
 
 export type ClientRole =
+  | "CLIENT_ADMIN"
   | "CLIENT_OWNER"
   | "CLIENT_ACCOUNTANT"
   | "CLIENT_FLEET_MANAGER"

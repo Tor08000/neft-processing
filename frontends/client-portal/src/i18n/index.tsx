@@ -5,7 +5,11 @@ import en from "./en.json";
 
 export type Locale = "ru" | "en";
 
-type Translations = Record<string, string | Translations>;
+type TranslationLeaf = string;
+interface TranslationDict {
+  [key: string]: TranslationLeaf | TranslationDict;
+}
+type Translations = TranslationDict;
 
 const translations: Record<Locale, Translations> = { ru, en };
 const fallbackLocale: Locale = "en";
