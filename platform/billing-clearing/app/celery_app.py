@@ -2,7 +2,7 @@
 Celery-приложение для NEFT workers.
 
 Точка входа для команды:
-    python -m celery -A services.workers.app.celery_app:celery_app worker -Q default,limits,antifraud,reports
+    python -m celery -A app.celery_app:celery_app worker -Q default,limits,antifraud,reports
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ celery_app = Celery(
     "neft-workers",
     broker=settings.broker_url,
     backend=settings.result_backend,
-    include=["services.workers.app.tasks"],
+    include=["app.tasks"],
 )
 
 # Базовая конфигурация Celery
@@ -51,8 +51,8 @@ celery_app.conf.update(
     task_time_limit=settings.task_time_limit,
 )
 
-# Автоматический поиск задач в пакете services.workers.app.tasks
-celery_app.autodiscover_tasks(["services.workers.app.tasks"])
+# Автоматический поиск задач в пакете app.tasks
+celery_app.autodiscover_tasks(["app.tasks"])
 
 # Явно загружаем расписание beat при импорте celery_app
 apply_schedule(celery_app)
