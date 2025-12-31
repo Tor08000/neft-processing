@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { FileText } from "../components/icons";
 import { acknowledgeClosingDocument, downloadDocumentFile, fetchDocuments } from "../api/documents";
 import { useAuth } from "../auth/AuthContext";
@@ -26,6 +26,7 @@ const LAST_UPDATED_KEY = "pwa:lastUpdated:documents";
 export function ClientDocumentsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const location = useLocation();
   const [lastUpdated, setLastUpdated] = useState<string | null>(() => localStorage.getItem(LAST_UPDATED_KEY));
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   const [items, setItems] = useState<ClientDocumentSummary[]>([]);
@@ -49,6 +50,28 @@ export function ClientDocumentsPage() {
     const timer = window.setTimeout(() => setDebouncedFilters(filters), 450);
     return () => window.clearTimeout(timer);
   }, [filters]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const dateFrom = params.get("from") ?? "";
+    const dateTo = params.get("to") ?? "";
+    const status = params.get("status") ?? "";
+    const signature = params.get("signature") ?? "";
+    const edoStatus = params.get("edoStatus") ?? "";
+    const requiresAction = params.get("requiresAction") ?? "";
+    if (dateFrom || dateTo || status || signature || edoStatus || requiresAction) {
+      setFilters((prev) => ({
+        ...prev,
+        dateFrom,
+        dateTo,
+        status,
+        signature,
+        edoStatus,
+        requiresAction,
+      }));
+      setOffset(0);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const handleStatus = () => setIsOffline(!navigator.onLine);

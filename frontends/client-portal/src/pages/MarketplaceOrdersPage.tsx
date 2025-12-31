@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Package } from "../components/icons";
 import { fetchMarketplaceOrders } from "../api/marketplace";
 import { ApiError } from "../api/http";
@@ -44,6 +44,7 @@ const LAST_UPDATED_KEY = "pwa:lastUpdated:orders";
 export function MarketplaceOrdersPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const location = useLocation();
   const [lastUpdated, setLastUpdated] = useState<string | null>(() => localStorage.getItem(LAST_UPDATED_KEY));
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   const [orders, setOrders] = useState<MarketplaceOrderSummary[]>([]);
@@ -66,6 +67,27 @@ export function MarketplaceOrdersPage() {
       setFilters((prev) => ({ ...prev, ...range }));
     }
   }, [filters.preset]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const from = params.get("from") ?? "";
+    const to = params.get("to") ?? "";
+    const status = params.get("status") ?? "";
+    const partner = params.get("partner") ?? "";
+    const service = params.get("service") ?? "";
+    if (from || to || status || partner || service) {
+      setFilters((prev) => ({
+        ...prev,
+        from,
+        to,
+        status,
+        partner,
+        service,
+        preset: "custom",
+      }));
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const handleStatus = () => setIsOffline(!navigator.onLine);
