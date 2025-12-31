@@ -99,7 +99,7 @@ def upgrade() -> None:
             bind,
             "uq_decision_outcomes_scope_day",
             "decision_outcomes",
-            "(tenant_id, entity_type, entity_id, action_code, (applied_at::date))",
+            "(tenant_id, entity_type, entity_id, action_code, ((applied_at AT TIME ZONE 'UTC')::date))",
             schema=SCHEMA,
         )
 
