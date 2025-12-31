@@ -10,7 +10,7 @@ PROJECT_NAME := neft-processing
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
         migrate test test-core test-auth test-ai test-workers \
-        health health-core health-auth health-ai smoke schema-smoke-core \
+        health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
         clean-volumes clean-images
 
@@ -131,6 +131,23 @@ health-auth:
 
 health-ai:
 	@echo "AI-service health endpoint через nginx пока не определён"
+
+prometheus-smoke:
+	$(DOCKER_COMPOSE) exec -T prometheus sh -lc 'set -e; \
+targets="gateway 80 /metrics \
+core-api 8000 /metrics \
+auth-host 8000 /api/v1/metrics \
+ai-service 8000 /metrics \
+crm-service 8000 /metrics \
+logistics-service 8000 /metrics \
+document-service 8000 /metrics \
+celery-exporter 9808 /metrics"; \
+echo "$$targets" | while read -r host port path; do \
+  [ -z "$$host" ] && continue; \
+  echo "checking $$host:$$port$$path"; \
+  getent hosts "$$host" >/dev/null; \
+  wget -qO- "http://$$host:$$port$$path" >/dev/null; \
+done'
 
 smoke:
 	pytest -q tests/test_no_merge_markers.py tests/test_smoke_gateway_routing.py
