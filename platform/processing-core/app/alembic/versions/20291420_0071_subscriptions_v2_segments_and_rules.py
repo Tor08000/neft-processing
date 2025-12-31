@@ -20,6 +20,7 @@ depends_on = None
 
 
 CRM_SUBSCRIPTION_SEGMENT_REASON = ["START", "UPGRADE", "DOWNGRADE", "PAUSE", "RESUME", "CANCEL"]
+SEGMENT_ID_LEN = 36
 
 
 def upgrade() -> None:
@@ -63,7 +64,7 @@ def upgrade() -> None:
         if not column_exists(bind, "crm_usage_counters", "segment_id", schema=SCHEMA):
             op.add_column(
                 "crm_usage_counters",
-                sa.Column("segment_id", postgresql.UUID(as_uuid=False), nullable=True),
+                sa.Column("segment_id", sa.String(SEGMENT_ID_LEN), nullable=True),
                 schema=SCHEMA,
             )
         if not constraint_exists(bind, "crm_usage_counters", "fk_crm_usage_counters_segment", schema=SCHEMA):
@@ -81,7 +82,7 @@ def upgrade() -> None:
         if not column_exists(bind, "crm_subscription_charges", "segment_id", schema=SCHEMA):
             op.add_column(
                 "crm_subscription_charges",
-                sa.Column("segment_id", postgresql.UUID(as_uuid=False), nullable=True),
+                sa.Column("segment_id", sa.String(SEGMENT_ID_LEN), nullable=True),
                 schema=SCHEMA,
             )
         if not constraint_exists(bind, "crm_subscription_charges", "fk_crm_subscription_charges_segment", schema=SCHEMA):

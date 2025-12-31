@@ -182,7 +182,7 @@ class CRMSubscriptionCharge(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     subscription_id = Column(GUID(), ForeignKey("crm_subscriptions.id"), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False)
-    segment_id = Column(GUID(), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
+    segment_id = Column(String(36), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
     charge_type = Column(ExistingEnum(CRMSubscriptionChargeType, name="crm_subscription_charge_type"), nullable=False)
     code = Column(String(64), nullable=False)
     charge_key = Column(String(128), nullable=True)
@@ -202,7 +202,7 @@ class CRMUsageCounter(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     subscription_id = Column(GUID(), ForeignKey("crm_subscriptions.id"), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False)
-    segment_id = Column(GUID(), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
+    segment_id = Column(String(36), ForeignKey("crm_subscription_period_segments.id"), nullable=True)
     metric = Column(ExistingEnum(CRMUsageMetric, name="crm_usage_metric"), nullable=False)
     value = Column(BigInteger, nullable=False)
     limit_value = Column(BigInteger, nullable=True)
@@ -224,7 +224,7 @@ class CRMSubscriptionPeriodSegment(Base):
         ),
     )
 
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
     subscription_id = Column(GUID(), ForeignKey("crm_subscriptions.id"), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=False)
     tariff_plan_id = Column(String(64), ForeignKey("crm_tariff_plans.id"), nullable=False)
