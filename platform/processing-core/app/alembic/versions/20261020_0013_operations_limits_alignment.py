@@ -32,7 +32,7 @@ branch_labels = None
 depends_on = None
 
 # Migration 20261020_0013a_operations_limits_alignment_alias updates
-# `alembic_version` automatically for databases that already recorded
+# `alembic_version_core` automatically for databases that already recorded
 # version `20261020_0013`.
 
 OPERATION_TYPE_VALUES = [

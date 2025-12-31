@@ -30,6 +30,8 @@ logs/
 data/
 build/
 dist/
-alembic.ini
+/alembic.ini
+!platform/processing-core/app/alembic.ini
+!platform/auth-host/app/alembic.ini
 .vscode/
 .idea/

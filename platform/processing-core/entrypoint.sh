@@ -77,6 +77,11 @@ wait_for_postgres
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
 MIGRATION_LOG=${MIGRATION_LOG:-/tmp/alembic_migration.log}
 
+if [ ! -f "$ALEMBIC_CONFIG" ]; then
+    echo "[entrypoint] missing alembic config: $ALEMBIC_CONFIG" >&2
+    exit 1
+fi
+
 echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
 heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads 2>&1)
 heads_count=$(printf "%s\n" "$heads_output" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
@@ -150,15 +155,15 @@ with psycopg.connect(dsn, **connect_kwargs) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
         regclasses: dict[str, str | None] = {}
-        for table in ("alembic_version", "operations"):
+        for table in ("alembic_version_core", "operations"):
             qualified = f"{_quote_schema(resolution.schema)}.{table}"
             cur.execute("select to_regclass(%s)", (qualified,))
             regclasses[table] = cur.fetchone()[0]
 
-        version_reg = regclasses["alembic_version"]
+        version_reg = regclasses["alembic_version_core"]
         versions = []
         if version_reg is not None:
-            cur.execute(f'select version_num from "{resolution.schema}".alembic_version')
+            cur.execute(f'select version_num from "{resolution.schema}".alembic_version_core')
             versions = [row[0] for row in cur.fetchall()]
 
 missing = [table for table, reg in regclasses.items() if reg is None]
@@ -175,7 +180,7 @@ if missing:
 unique_versions = set(versions)
 if unique_versions != {head_revision}:
     print(
-        "[entrypoint] alembic_version mismatch: "
+        "[entrypoint] alembic_version_core mismatch: "
         f"schema_resolved={resolution.schema} regclass={regclasses} "
         f"expected={{{head_revision}}} found={sorted(unique_versions)}",
         file=sys.stderr,

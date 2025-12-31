@@ -102,6 +102,7 @@ def test_env_configures_context(monkeypatch: pytest.MonkeyPatch):
     assert dummy_config.get_main_option("sqlalchemy.url") == target_url
     assert configure_calls["connection"] is dummy_connection
     assert configure_calls["include_schemas"] is True
+    assert configure_calls["version_table"] == "alembic_version_core"
     assert configure_calls["version_table_schema"] == "public"
     assert configure_calls["transaction_per_migration"] is True
     assert any("SET search_path TO" in sql for sql, _ in dummy_connection.executed)

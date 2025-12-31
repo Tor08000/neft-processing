@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.utils import (
+    ALEMBIC_VERSION_TABLE,
     create_index_if_not_exists,
     create_table_if_not_exists,
     drop_index_if_exists,
@@ -838,10 +839,10 @@ def upgrade() -> None:
     )
 
     version_regclass = bind.exec_driver_sql(
-        f"select to_regclass('{SCHEMA}.alembic_version')"
+        f"select to_regclass('{SCHEMA}.{ALEMBIC_VERSION_TABLE}')"
     ).scalar()
     if not version_regclass:
-        raise RuntimeError("Bootstrap schema failed: missing alembic_version")
+        raise RuntimeError(f"Bootstrap schema failed: missing {ALEMBIC_VERSION_TABLE}")
 
     for table_name in ("merchants", "clients", "operations", "accounts", "ledger_entries", "limit_configs"):
         exists = bind.exec_driver_sql(

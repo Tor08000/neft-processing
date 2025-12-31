@@ -35,12 +35,12 @@ class DummyConnection:
         self.executed.append((raw_sql, params))
 
         if "to_regclass" in sql:
-            return DummyResult("alembic_version" if self.table_exists else None)
+            return DummyResult("alembic_version_core" if self.table_exists else None)
 
         if "SELECT version_num" in sql:
             return DummyResult(self.version_num)
 
-        if sql.startswith("UPDATE alembic_version"):
+        if sql.startswith("UPDATE alembic_version_core"):
             if self.table_exists and self.version_num == params["expected"]:
                 self.version_num = params["new"]
             return DummyResult(None)

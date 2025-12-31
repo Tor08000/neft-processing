@@ -27,9 +27,9 @@ def main() -> int:
 
     missing_version = not inventory.alembic_versions
     if inventory.alembic_versions:
-        print(f"[entrypoint] alembic versions present: {inventory.alembic_versions}", flush=True)
+        print(f"[entrypoint] alembic_version_core present: {inventory.alembic_versions}", flush=True)
     else:
-        print("[entrypoint] alembic_version missing", flush=True)
+        print("[entrypoint] alembic_version_core missing", flush=True)
 
     missing_tables = inventory.missing_tables(REQUIRED_CORE_TABLES)
     print(f"[entrypoint] missing_required_tables={missing_tables}", flush=True)

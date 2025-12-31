@@ -11,7 +11,7 @@ from app.db import DB_SCHEMA
 from app.tests.utils import ensure_connectable, get_database_url
 
 REQUIRED_RELATIONS = (
-    "alembic_version",
+    "alembic_version_core",
     "operations",
     "accounts",
     "ledger_entries",

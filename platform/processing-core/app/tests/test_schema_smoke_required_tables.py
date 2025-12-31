@@ -55,13 +55,18 @@ def test_required_core_tables_present_after_upgrade() -> None:
         connection.execute(sa.text("SET search_path TO :schema"), {"schema": DB_SCHEMA})
         effective_search_path = connection.execute(sa.text("SHOW search_path")).scalar_one()
         version_table = connection.execute(
-            sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.alembic_version"}
+            sa.text("select to_regclass(:reg)"), {"reg": f"{DB_SCHEMA}.alembic_version_core"}
         ).scalar()
         db_name, current_schema, search_path = connection.execute(
             sa.text("select current_database(), current_schema(), current_setting('search_path')")
         ).one()
         versions = (
-            [row[0] for row in connection.execute(sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version'))]
+            [
+                row[0]
+                for row in connection.execute(
+                    sa.text(f'SELECT version_num FROM "{DB_SCHEMA}".alembic_version_core')
+                )
+            ]
             if version_table
             else []
         )
