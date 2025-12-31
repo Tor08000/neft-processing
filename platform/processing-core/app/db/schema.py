@@ -18,6 +18,10 @@ def _quote_schema(schema: str) -> str:
     return f'"{escaped}"'
 
 
+def quote_schema(schema: str) -> str:
+    return _quote_schema(schema)
+
+
 @dataclass(frozen=True)
 class SchemaResolution:
     schema: str
