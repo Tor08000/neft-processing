@@ -16,6 +16,11 @@ cd platform/processing-core
 PYTHONPATH=$(pwd) alembic -c app/alembic.ini upgrade head
 ```
 
+## Rule: merging heads in migrations
+
+If your PR adds a migration and `main` already has another head, you must add a merge
+migration that combines the heads into a single head revision.
+
 ## Inspecting state inside the container
 
 ```bash
