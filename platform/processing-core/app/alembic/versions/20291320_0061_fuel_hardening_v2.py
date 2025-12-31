@@ -9,7 +9,9 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-SCHEMA = "public"
+from app.db.schema import resolve_db_schema
+
+SCHEMA = resolve_db_schema().schema
 
 revision = "20291320_0061_fuel_hardening_v2"
 down_revision = "20291320_0060_fuel_domain_v2"
