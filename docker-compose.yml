@@ -320,6 +320,22 @@ services:
       timeout: 10s
       retries: 5
 
+  celery-exporter:
+    image: ghcr.io/danihodovic/celery-exporter:0.10.7
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+    command: ["--broker=redis://redis:6379/0", "--port=9808"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "9808"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "-", "http://localhost:9808/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   beat:
     build:
       context: .
