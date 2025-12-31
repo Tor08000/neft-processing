@@ -1,32 +1,55 @@
 # Platform Expansion v1 Checklist
 
-## Webhooks
-- [ ] webhooks ok
+## Product contours (AS-IS verification)
+- [ ] Webhooks v1.1 (integration-hub API + partner portal UI).
+- [ ] BI exports v1.1 (BI API + CSV/JSONL + manifest + ClickHouse sync).
+- [ ] Portals MAX (client + partner portals in `frontends/`).
+- [ ] Marketplace events registry (`docs/contracts/events/marketplace`).
+- [ ] Support Inbox v1 (support requests API + portal UIs).
+- [ ] Client Controls v1 (limits/users/services/features tabs + role gating).
+- [ ] PWA v1 (manifest + service worker + routing + push wiring).
+- [ ] OSRM provider (logistics-service, `LOGISTICS_PROVIDER=osrm`).
+- [ ] Diadok prod-mode flags (integration-hub `DIADOK_MODE`, `DIADOK_API_TOKEN`).
 
-## OSRM
-- [ ] OSRM ok
+## Runtime / infra checks
+- [ ] Postgres/Redis/MinIO/ClickHouse up (compose).
+- [ ] core-api/auth-host/ai-service health checks.
+- [ ] document-service/logistics-service health checks (internal).
+- [ ] gateway proxy and /metrics.
 
-## Diadok prod
-- [ ] Diadok prod ok
+## Contract discipline
+- [ ] Event registry in `docs/contracts/events/**` актуален.
+- [ ] Marketplace namespace schemas есть и валидны.
 
-## Multi-tenant isolation
-- [ ] multi-tenant isolation ok
+## CI / quality gates (по факту workflows)
+- [ ] Enum policy: `python scripts/check_enum_policy.py`.
+- [ ] Contracts: `pytest -m contracts`.
+- [ ] Smoke: alembic upgrade head (x2) + `pytest -m smoke -q`.
+- [ ] Migration smoke: protected revisions + revision uniqueness.
+- [ ] Packaging/installation (editable installs + tests for integration-hub/logistics-service).
 
-## Load tests
-- [ ] load tests ok
+## Commands
+```bash
+python -m pip install -U pip setuptools wheel
 
-## Audit
-- [ ] audit intact
+pip install -e platform/logistics-service
+pip install -e platform/integration-hub
 
-## Packaging checks
-- [ ] tests run from repo root without PYTHONPATH
+pytest platform/logistics-service -q
+pytest platform/integration-hub -q
+pytest -m contracts
 
-Commands:
-- `python -m pip install -U pip setuptools wheel`
-- `pip install -e platform/integration-hub`
-- `pip install -e platform/logistics-service`
-- `pytest platform/integration-hub -q`
-- `pytest platform/logistics-service -q`
+python scripts/check_enum_policy.py
 
-Build tools:
-- `python -m pip install -U pip setuptools wheel`
+# Smoke / migrations (CI uses docker compose)
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up -d postgres
+
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+  core-api python -m app.alembic.check_protected_revisions
+
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+  core-api python -m app.alembic.check_revision_uniqueness
+
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke run --rm --entrypoint "" \
+  core-api alembic -c app/alembic.ini upgrade head
+```
