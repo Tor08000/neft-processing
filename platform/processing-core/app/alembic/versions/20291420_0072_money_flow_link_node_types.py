@@ -77,7 +77,7 @@ def upgrade() -> None:
               AND t.typname = enum_name
         ) THEN
             EXECUTE format(
-                'CREATE TYPE %I.%I AS ENUM (%s)',
+                'CREATE TYPE %%I.%%I AS ENUM (%%s)',
                 schema_name,
                 enum_name,
                 values_sql

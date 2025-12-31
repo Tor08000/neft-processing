@@ -250,7 +250,7 @@ def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SC
                 WHERE n.nspname = :schema_name
                   AND t.typname = :enum_name
             ) THEN
-                EXECUTE format('DROP TYPE IF EXISTS %s', :qualified_enum);
+                EXECUTE format('DROP TYPE IF EXISTS %%s', :qualified_enum);
             END IF;
         END $$;
         """,
