@@ -9,7 +9,7 @@ WORKDIR /app
 COPY shared/python /opt/python
 
 # Очень важно: чтобы neft_shared был виден
-ENV PYTHONPATH="/opt/python:${PYTHONPATH}"
+ENV PYTHONPATH="/opt/python:/app"
 
 # подключаем sitecustomize.py, чтобы он подхватывался автоматически
 COPY sitecustomize.py /app/sitecustomize.py

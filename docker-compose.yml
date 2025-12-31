@@ -228,7 +228,9 @@ services:
       - "8003:8000"
 
   crm-service:
-    build: ./platform/crm-service
+    build:
+      context: .
+      dockerfile: platform/crm-service/Dockerfile
     container_name: neft-processing-crm-1
     expose:
       - "8000"
@@ -239,7 +241,9 @@ services:
       retries: 5
 
   logistics-service:
-    build: ./platform/logistics-service
+    build:
+      context: .
+      dockerfile: platform/logistics-service/Dockerfile
     container_name: neft-processing-logistics-1
     environment:
       SERVICE_NAME: logistics-service
@@ -254,7 +258,9 @@ services:
       retries: 5
 
   document-service:
-    build: ./platform/document-service
+    build:
+      context: .
+      dockerfile: platform/document-service/Dockerfile
     container_name: neft-processing-document-1
     environment:
       S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
