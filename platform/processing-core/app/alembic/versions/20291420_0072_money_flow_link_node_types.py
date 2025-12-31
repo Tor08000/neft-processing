@@ -8,6 +8,7 @@ Create Date: 2029-04-20 00:00:00.000000
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
 
 from app.alembic.utils import SCHEMA, ensure_pg_enum_value, is_postgres
 
@@ -22,11 +23,58 @@ NEW_NODE_TYPES = [
     "DOCUMENT",
 ]
 
+BASE_NODE_TYPES = [
+    # Source of truth: MoneyFlowLinkNodeType in app/models/money_flow_v3.py,
+    # excluding NEW_NODE_TYPES introduced by this migration.
+    "SUBSCRIPTION",
+    "SUBSCRIPTION_CHARGE",
+    "INVOICE",
+    "PAYMENT",
+    "REFUND",
+    "FUEL_TX",
+    "LOGISTICS_ORDER",
+    "ACCOUNTING_EXPORT",
+    "LEDGER_TX",
+    "BILLING_PERIOD",
+]
+
 
 def upgrade() -> None:
     bind = op.get_bind()
     if not is_postgres(bind):
         return
+    bind.execute(
+        text(
+            """
+            DO $$
+            DECLARE
+                schema_name text := :schema;
+                enum_name text := :enum_name;
+                values_sql text;
+            BEGIN
+                SELECT string_agg(quote_literal(value), ', ')
+                INTO values_sql
+                FROM unnest(:values::text[]) AS value;
+
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_type t
+                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                    WHERE n.nspname = schema_name
+                      AND t.typname = enum_name
+                ) THEN
+                    EXECUTE format(
+                        'CREATE TYPE %I.%I AS ENUM (%s)',
+                        schema_name,
+                        enum_name,
+                        values_sql
+                    );
+                END IF;
+            END $$;
+            """
+        ),
+        {"schema": SCHEMA, "enum_name": "money_flow_link_node_type", "values": BASE_NODE_TYPES},
+    )
     for value in NEW_NODE_TYPES:
         ensure_pg_enum_value(bind, "money_flow_link_node_type", value, schema=SCHEMA)
 

@@ -10,7 +10,8 @@ PROJECT_NAME := neft-processing
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
         migrate test test-core test-auth test-ai test-workers \
-        health health-core health-auth health-ai smoke alembic-version-check \
+        health health-core health-auth health-ai smoke schema-smoke-core \
+        schema-smoke-core-local alembic-version-check \
         clean-volumes clean-images
 
 # ----------------------------------------
@@ -105,6 +106,13 @@ test-workers:
 
 # Запуск всех тестов по очереди
 test: test-core test-auth test-ai
+
+schema-smoke-core:
+	$(DOCKER_COMPOSE) run --rm core-api pytest platform/processing-core/app/tests/test_schema_smoke.py -q
+
+schema-smoke-core-local:
+	@if [ -z "$$DATABASE_URL" ]; then echo "DATABASE_URL is required"; exit 1; fi
+	DATABASE_URL="$$DATABASE_URL" pytest platform/processing-core/app/tests/test_schema_smoke.py -q
 
 # ----------------------------------------
 # HEALTH-CHECK'И ЧЕРЕЗ NGINX
