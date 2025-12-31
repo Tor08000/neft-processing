@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """Backwards-compatible shim for Alembic helpers."""
 
+import re
+
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
 
@@ -33,12 +35,38 @@ from app.alembic.helpers import (  # noqa: F401,F403
 
 inspect = sa_inspect
 
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_ident(value: str) -> str:
+    if not _IDENT.match(value):
+        raise ValueError(f"Unsafe identifier: {value!r}")
+    return value
+
+
+def _format_table_name(schema: str | None, table_name: str) -> str:
+    if "." in table_name:
+        if table_name.count(".") != 1:
+            raise ValueError(f"Unsafe table name: {table_name!r}")
+        table_schema, table_part = table_name.split(".", 1)
+        table_schema = _safe_ident(table_schema)
+        table_part = _safe_ident(table_part)
+        if schema is not None and _safe_ident(schema) != table_schema:
+            raise ValueError(
+                f"Schema mismatch: {schema!r} does not match table schema {table_schema!r}"
+            )
+        return f"{table_schema}.{table_part}"
+
+    schema_name = _safe_ident(schema or "public")
+    table_part = _safe_ident(table_name)
+    return f"{schema_name}.{table_part}"
+
 
 def create_unique_index_if_not_exists(
     bind,
     index_name: str,
     table_name: str,
-    columns_sql: str,
+    columns: list[str],
     schema: str,
 ) -> None:
     """Create a unique expression index if it does not exist."""
@@ -61,9 +89,11 @@ def create_unique_index_if_not_exists(
     if exists is not None:
         return
 
-    schema_name = schema or "public"
+    index_name = _safe_ident(index_name)
+    table_ref = _format_table_name(schema, table_name)
+    columns_sql = ", ".join(_safe_ident(column) for column in columns)
     bind.exec_driver_sql(
-        f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {schema_name}.{table_name} {columns_sql}"
+        f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table_ref} ({columns_sql})"
     )
 
 
