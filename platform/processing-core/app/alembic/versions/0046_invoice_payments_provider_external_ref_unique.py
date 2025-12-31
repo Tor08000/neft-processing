@@ -47,7 +47,7 @@ def upgrade() -> None:
         bind,
         "uq_invoice_payments_provider_external_ref",
         "invoice_payments",
-        "(COALESCE(provider, ''), external_ref)",
+        ["provider", "external_ref"],
         schema=SCHEMA,
     )
 
