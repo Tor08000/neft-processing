@@ -92,7 +92,10 @@ def test_core_tables_exist_after_migrations() -> None:
                     ('clients', 'id'),
                     ('cards', 'id'),
                     ('merchants', 'id'),
-                    ('terminals', 'id')
+                    ('terminals', 'id'),
+                    ('crm_usage_counters', 'segment_id'),
+                    ('crm_subscription_charges', 'segment_id'),
+                    ('crm_subscription_period_segments', 'id')
                   )
                 """
             ),
@@ -109,6 +112,8 @@ def test_core_tables_exist_after_migrations() -> None:
         (("operations", "card_id"), ("cards", "id")),
         (("operations", "merchant_id"), ("merchants", "id")),
         (("operations", "terminal_id"), ("terminals", "id")),
+        (("crm_usage_counters", "segment_id"), ("crm_subscription_period_segments", "id")),
+        (("crm_subscription_charges", "segment_id"), ("crm_subscription_period_segments", "id")),
     ]
 
     missing_types = [pair for pair in fk_pairs if pair[0] not in types or pair[1] not in types]
