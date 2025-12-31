@@ -43,6 +43,17 @@ def upgrade() -> None:
     bind = op.get_bind()
     if not is_postgres(bind):
         return
+    values_params = {f"v{index}": value for index, value in enumerate(BASE_NODE_TYPES)}
+    values_clause = ", ".join(f"(:v{index})" for index in range(len(BASE_NODE_TYPES)))
+    values_sql = bind.execute(
+        text(
+            f"""
+            SELECT string_agg(quote_literal(v), ', ')
+            FROM (VALUES {values_clause}) AS t(v)
+            """
+        ),
+        values_params,
+    ).scalar()
     bind.execute(
         text(
             """
@@ -50,12 +61,8 @@ def upgrade() -> None:
             DECLARE
                 schema_name text := :schema;
                 enum_name text := :enum_name;
-                values_sql text;
+                values_sql text := :values_sql;
             BEGIN
-                SELECT string_agg(quote_literal(value), ', ')
-                INTO values_sql
-                FROM unnest(:values::text[]) AS value;
-
                 IF NOT EXISTS (
                     SELECT 1
                     FROM pg_type t
@@ -73,7 +80,11 @@ def upgrade() -> None:
             END $$;
             """
         ),
-        {"schema": SCHEMA, "enum_name": "money_flow_link_node_type", "values": BASE_NODE_TYPES},
+        {
+            "schema": SCHEMA,
+            "enum_name": "money_flow_link_node_type",
+            "values_sql": values_sql,
+        },
     )
     for value in NEW_NODE_TYPES:
         ensure_pg_enum_value(bind, "money_flow_link_node_type", value, schema=SCHEMA)
