@@ -18,7 +18,8 @@
     "actions": "Actions Center",
     "supportRequests": "Requests",
     "settings": "Settings",
-    "management": "Settings / Management"
+    "management": "Settings / Management",
+    "analytics": "Analytics"
   },
   "common": {
     "notAvailable": "—",
@@ -266,6 +267,196 @@
       "SIGNED_BY_COUNTERPARTY": "Signed",
       "REJECTED": "EDO error",
       "FAILED": "EDO error"
+    }
+  },
+  "analytics": {
+    "forbidden": "Analytics is available to client users only.",
+    "forbiddenFinance": "Finance analytics is available to owners and accountants only.",
+    "loading": "Loading analytics...",
+    "errors": {
+      "loadFailed": "Unable to load analytics data",
+      "exportFailed": "Unable to request export"
+    },
+    "empty": {
+      "title": "Not enough data for the selected period",
+      "description": "Try expanding the date range"
+    },
+    "filters": {
+      "period": "Period",
+      "custom": "Custom",
+      "presets": {
+        "last7": "Last 7 days",
+        "last30": "Last 30 days",
+        "last90": "Last 90 days",
+        "mtd": "Month to date"
+      }
+    },
+    "tabs": {
+      "overview": "Overview",
+      "spend": "Spend",
+      "declines": "Declines",
+      "marketplace": "Marketplace",
+      "documents": "Documents",
+      "exports": "Exports"
+    },
+    "dashboard": {
+      "title": "CFO dashboard",
+      "subtitle": "Key indicators, trends, and attention signals.",
+      "kpi": {
+        "spendTotal": "Spend total",
+        "spendHint": "{from} — {to}",
+        "ordersTotal": "Orders total · completed",
+        "ordersHint": "Total orders for the selected period",
+        "refunds": "Refunds count",
+        "declines": "Declines total · top reason",
+        "documents": "Documents requiring action",
+        "exports": "Exports requiring attention"
+      },
+      "charts": {
+        "spend": {
+          "title": "Spend over time",
+          "subtitle": "Daily spend from BI mart",
+          "action": "Open spend analytics",
+          "empty": "No spend data for the selected period"
+        },
+        "orders": {
+          "title": "Orders over time",
+          "subtitle": "Marketplace order flow",
+          "action": "Open marketplace analytics",
+          "empty": "No orders data for the selected period"
+        },
+        "declines": {
+          "title": "Declines by reason",
+          "subtitle": "Top primary reasons",
+          "action": "Open declines analytics",
+          "empty": "No declines data for the selected period"
+        },
+        "documents": {
+          "title": "Documents distribution",
+          "subtitle": "Issued / signed / EDO status",
+          "action": "Open documents analytics",
+          "empty": "No document status data for the selected period"
+        }
+      },
+      "exports": {
+        "title": "Reconciliation overview",
+        "subtitle": "Last exports status summary",
+        "action": "Open exports analytics"
+      }
+    },
+    "attention": {
+      "title": "Attention inbox",
+      "subtitle": "Signals that require review right now.",
+      "empty": "No alerts for the selected period"
+    },
+    "spend": {
+      "title": "Spend analytics",
+      "subtitle": "Spend trends and drivers.",
+      "kpi": {
+        "total": "Total spend",
+        "avg": "Average daily spend",
+        "period": "{from} — {to}"
+      },
+      "trend": {
+        "title": "Spend trend",
+        "subtitle": "Day / week / month",
+        "empty": "No spend trend data for the selected period"
+      },
+      "topStations": "Top stations",
+      "topMerchants": "Top merchants",
+      "topCards": "Top cards",
+      "topDrivers": "Top drivers",
+      "productBreakdown": "Product breakdown",
+      "emptyStations": "No stations data",
+      "emptyMerchants": "No merchants data",
+      "emptyCards": "No cards data",
+      "emptyDrivers": "No drivers data",
+      "emptyProducts": "No product data",
+      "export": "Export CSV",
+      "exportDisabled": "Export coming soon"
+    },
+    "declines": {
+      "title": "Declines analytics",
+      "subtitle": "Reasons, trends, and expensive declines.",
+      "action": "Go to declined operations",
+      "topReasons": "Top primary reasons",
+      "trend": "Reason trend",
+      "expensive": "Most expensive declines",
+      "insights": "Explain insights",
+      "insightsCount": "{count} cases",
+      "heatmap": "Reason × station",
+      "emptyReasons": "No decline reasons data",
+      "emptyTrend": "No decline trend data",
+      "emptyExpensive": "No decline amount data",
+      "emptyInsights": "Explain insights are not available",
+      "table": {
+        "reason": "Reason",
+        "station": "Station",
+        "amount": "Amount",
+        "action": "Actions",
+        "view": "View operations",
+        "count": "Count"
+      }
+    },
+    "marketplace": {
+      "title": "Marketplace analytics",
+      "subtitle": "Orders, conversion, and refunds.",
+      "action": "Open marketplace orders",
+      "kpi": {
+        "total": "Orders total",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "refundsRate": "Refunds rate",
+        "refundsCount": "Refunds: {count}",
+        "avg": "Average order value"
+      },
+      "statusDistribution": "Status distribution",
+      "topServices": "Top services",
+      "emptyStatus": "No status distribution data",
+      "emptyServices": "No services data"
+    },
+    "documents": {
+      "title": "Documents analytics",
+      "subtitle": "Signature, EDO, and pending documents.",
+      "action": "Open documents",
+      "kpi": {
+        "issued": "Issued",
+        "signed": "Signed",
+        "edoPending": "EDO pending",
+        "edoFailed": "EDO failed"
+      },
+      "status": {
+        "issued": "Issued",
+        "signed": "Signed",
+        "edoPending": "EDO pending",
+        "edoFailed": "EDO failed"
+      },
+      "statusDistribution": "Status distribution",
+      "attention": "Require attention",
+      "emptyAttention": "No documents requiring attention"
+    },
+    "exports": {
+      "title": "Exports analytics",
+      "subtitle": "Accounting exports and reconciliation checks.",
+      "action": "Open exports",
+      "kpi": {
+        "total": "Exports total",
+        "ok": "Reconciliation OK",
+        "mismatch": "Mismatch"
+      },
+      "recent": "Recent exports",
+      "empty": "No exports data for the selected period",
+      "table": {
+        "id": "Export",
+        "status": "Status",
+        "mapping": "Mapping version",
+        "checksum": "Checksum",
+        "created": "Created",
+        "action": "Actions",
+        "view": "Open"
+      },
+      "exporting": "Export requested...",
+      "exportQueued": "Export queued"
     }
   }
 }

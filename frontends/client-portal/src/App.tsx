@@ -31,6 +31,12 @@ import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
 import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
 import { SupportRequestsPage } from "./pages/SupportRequestsPage";
 import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
+import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
+import { AnalyticsSpendPage } from "./pages/AnalyticsSpendPage";
+import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
+import { AnalyticsMarketplacePage } from "./pages/AnalyticsMarketplacePage";
+import { AnalyticsDocumentsPage } from "./pages/AnalyticsDocumentsPage";
+import { AnalyticsExportsPage } from "./pages/AnalyticsExportsPage";
 import { isPwaMode } from "./pwa/mode";
 
 interface AppProps {
@@ -72,6 +78,12 @@ export function App({ initialSession = null }: AppProps) {
               <>
                 <Route index element={<IndexRedirect />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/analytics" element={<AnalyticsDashboardPage />} />
+                <Route path="/analytics/spend" element={<AnalyticsSpendPage />} />
+                <Route path="/analytics/declines" element={<AnalyticsDeclinesPage />} />
+                <Route path="/analytics/marketplace" element={<AnalyticsMarketplacePage />} />
+                <Route path="/analytics/documents" element={<AnalyticsDocumentsPage />} />
+                <Route path="/analytics/exports" element={<AnalyticsExportsPage />} />
                 <Route path="/spend/transactions" element={<OperationsPage />} />
                 <Route path="/explain" element={<ExplainPage />} />
                 <Route path="/explain/insights" element={<ExplainInsightsPage />} />

@@ -86,6 +86,10 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
                 <LayoutDashboard size={18} />
                 {t("nav.dashboard")}
               </NavLink>
+              <NavLink to="/analytics">
+                <LineChart size={18} />
+                {t("nav.analytics")}
+              </NavLink>
               {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user) && (
                 <NavLink to="/operations">
                   <Workflow size={18} />
