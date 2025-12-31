@@ -341,6 +341,9 @@ def create_unique_index_if_not_exists(
     *,
     schema: str = DB_SCHEMA,
 ) -> None:
+    if isinstance(columns, str):
+        raise TypeError("columns must be a list/tuple of column names, not a string")
+
     if index_exists(bind, index_name, schema=schema):
         logger.info("Index %s.%s already exists, skipping", schema, index_name)
         return
