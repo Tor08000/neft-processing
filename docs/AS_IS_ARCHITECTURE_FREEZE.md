@@ -73,3 +73,14 @@ Core architecture is frozen. Any future development must extend, not modify, the
 
 ## 6. Forward Boundary
 Дальнейшие работы относятся не к развитию ядра, а к выделению сервисов, интеграциям, продуктовым поверхностям и масштабированию.
+
+## Stage Completion Addendum
+Завершённые контуры, появившиеся после фиксации ядра (без пересмотра freeze):
+
+* Webhooks v1.1 (replay scheduling, pause/resume delivery, SLA calculations, alerts, metrics, partner UI controls).
+* BI export v1.1 (BI mart модели/агрегация, read-only BI API, CSV/JSONL exports + manifest, ClickHouse sync).
+* Portals MAX (Client Portal MAX + Partner Portal MAX, i18n/UX polish).
+* Marketplace events (contracts) + timeline readiness.
+* PWA v1 (client portal companion: manifest/icon/sw, routing, push wiring, offline indicators).
+* Support Inbox v1 (support requests backend + UI).
+* Client Controls v1 (limits/users/services/features tabs, role gating, confirmation modals).
