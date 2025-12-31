@@ -2,6 +2,7 @@ export type CrmStatus = string;
 
 export interface CrmClient {
   client_id: string;
+  tenant_id?: number | null;
   legal_name?: string | null;
   status?: CrmStatus | null;
   country?: string | null;
