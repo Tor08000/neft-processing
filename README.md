@@ -24,6 +24,9 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
+   - Проверка Prometheus targets из контейнера: `make prometheus-smoke`
+   - Мини-проверка DOWN targets: `curl http://localhost:9090/api/v1/targets | findstr /C:"\"health\":\"down\""` (не должно быть вывода)
+   - Если registry не отдаёт tag для celery-exporter, используйте `latest` или образ из Docker Hub (danihodovic/celery-exporter:latest).
 6. Для обычной остановки используйте `docker compose down` (без `-v`), чтобы сохранить тома `postgres-data`, `minio-data` и `auth-keys`. Полная очистка с `docker compose down -v` удалит данные БД, ключи и файлы из MinIO.
 
 ### Endpoints & Ports
