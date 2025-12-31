@@ -28,7 +28,7 @@ docker compose logs --tail=200 core-api
 
 ```bash
 docker compose exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
-docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+docker compose exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
 ```
 
 ### Windows CMD
@@ -41,7 +41,7 @@ docker-compose.exe down -v
 docker-compose.exe up -d --build
 docker-compose.exe logs --tail=200 core-api
 docker-compose.exe exec -T postgres psql -U neft -d neft -c "select table_name from information_schema.tables where table_schema='public' order by 1;"
-docker-compose.exe exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version;"
+docker-compose.exe exec -T postgres psql -U neft -d neft -c "select * from public.alembic_version_core;"
 ```
 
 ## Проверка текущей ревизии

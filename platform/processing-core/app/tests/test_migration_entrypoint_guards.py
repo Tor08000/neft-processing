@@ -12,7 +12,7 @@ from app.db.schema import SCHEMA_RESOLUTION
 from app.tests.utils import ensure_connectable, get_database_url
 
 REQUIRED_TABLES = (
-    "alembic_version",
+    "alembic_version_core",
     "operations",
     "accounts",
     "ledger_entries",
@@ -43,7 +43,7 @@ def test_upgrade_creates_required_tables():
         with connectable.connect() as connection:
             version_reg = connection.execute(
                 sa.text("select to_regclass(:reg)"),
-                {"reg": f"{SCHEMA_RESOLUTION.schema}.alembic_version"},
+                {"reg": f"{SCHEMA_RESOLUTION.schema}.alembic_version_core"},
             ).scalar()
             missing = [
                 table
@@ -55,7 +55,9 @@ def test_upgrade_creates_required_tables():
             ]
             versions = (
                 connection.execute(
-                    sa.text(f'SELECT version_num FROM "{SCHEMA_RESOLUTION.schema}".alembic_version')
+                    sa.text(
+                        f'SELECT version_num FROM "{SCHEMA_RESOLUTION.schema}".alembic_version_core'
+                    )
                 )
                 .scalars()
                 .all()
@@ -65,8 +67,10 @@ def test_upgrade_creates_required_tables():
     finally:
         connectable.dispose()
 
-    assert version_reg, "alembic_version table was not created by upgrade"
-    assert set(versions) == script_heads, f"alembic_version contents mismatch: {versions} != {script_heads}"
+    assert version_reg, "alembic_version_core table was not created by upgrade"
+    assert (
+        set(versions) == script_heads
+    ), f"alembic_version_core contents mismatch: {versions} != {script_heads}"
     assert not missing, f"Required tables are missing after upgrade: {missing}"
 
 

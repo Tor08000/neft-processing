@@ -28,10 +28,10 @@ def test_bootstrap_schema_creates_tables():
             ).scalar()
             version_exists = connection.execute(
                 sa.text("select to_regclass(:reg)"),
-                {"reg": f"{DB_SCHEMA}.alembic_version"},
+                {"reg": f"{DB_SCHEMA}.alembic_version_core"},
             ).scalar()
     finally:
         connectable.dispose()
 
     assert merchants_exists, f"Migration should create {DB_SCHEMA}.merchants"
-    assert version_exists, f"alembic_version should be created in {DB_SCHEMA} schema"
+    assert version_exists, f"alembic_version_core should be created in {DB_SCHEMA} schema"

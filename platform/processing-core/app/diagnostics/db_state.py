@@ -11,6 +11,7 @@ from typing import Callable, Iterable
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection, Engine
 
+from app.alembic.helpers import ALEMBIC_VERSION_TABLE
 from app.api.dependencies.schema_guard import REQUIRED_CORE_TABLES
 from app.db import DATABASE_URL, make_engine
 from app.db.schema import SCHEMA_RESOLUTION, override_schema, schema_resolution_line
@@ -128,10 +129,13 @@ def collect_inventory(url: str = DATABASE_URL, schema: str = SCHEMA_RESOLUTION.s
         ]
 
         alembic_versions: list[str] = []
-        reg = to_regclass(conn, schema, "alembic_version")
+        reg = to_regclass(conn, schema, ALEMBIC_VERSION_TABLE)
         if reg:
             alembic_versions = [
-                row[0] for row in conn.execute(text(f'SELECT version_num FROM "{schema}".alembic_version'))
+                row[0]
+                for row in conn.execute(
+                    text(f'SELECT version_num FROM "{schema}".{ALEMBIC_VERSION_TABLE}')
+                )
             ]
 
     return ConnectionInventory(
@@ -309,9 +313,13 @@ def log_connection_fingerprint(
     _emit(prefix, f"txid_current={txid} now={now}", emitter=emitter)
 
     target_schema = schema or SCHEMA_RESOLUTION.schema
-    alembic_reg = to_regclass(connection, target_schema, "alembic_version")
+    alembic_reg = to_regclass(connection, target_schema, ALEMBIC_VERSION_TABLE)
     operations_reg = to_regclass(connection, target_schema, "operations")
-    _emit(prefix, f"alembic_version_regclass={alembic_reg} operations_regclass={operations_reg}", emitter=emitter)
+    _emit(
+        prefix,
+        f"{ALEMBIC_VERSION_TABLE}_regclass={alembic_reg} operations_regclass={operations_reg}",
+        emitter=emitter,
+    )
 
     user_schemas = [
         row[0]

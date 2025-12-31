@@ -21,7 +21,7 @@ from app.models.card import Card
 from app.services.bootstrap import ensure_default_refs
 
 REQUIRED_TABLES = (
-    "alembic_version",
+    "alembic_version_core",
     "operations",
     "accounts",
     "ledger_entries",
@@ -118,8 +118,10 @@ def _upgrade_and_inventory(db_url: str, schema: str, monkeypatch: pytest.MonkeyP
                 table: db_state.to_regclass(conn, spillover_schema, table) for table in REQUIRED_TABLES
             }
             version_values = (
-                conn.execute(sa.text(f'SELECT version_num FROM "{schema}".alembic_version')).scalars().all()
-                if regclasses.get("alembic_version")
+                conn.execute(
+                    sa.text(f'SELECT version_num FROM "{schema}".alembic_version_core')
+                ).scalars().all()
+                if regclasses.get("alembic_version_core")
                 else []
             )
             cards_created = (
@@ -229,13 +231,13 @@ def test_upgrade_places_version_table_in_target_schema(monkeypatch):
                         """
                         select table_schema
                         from information_schema.tables
-                        where table_name='alembic_version'
+                        where table_name='alembic_version_core'
                         order by table_schema
                         """
                     )
                 ).scalars().all()
                 version = conn.execute(
-                    sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version')
+                    sa.text(f'SELECT version_num FROM "{target_schema}".alembic_version_core')
                 ).scalar_one()
 
             buf = io.StringIO()

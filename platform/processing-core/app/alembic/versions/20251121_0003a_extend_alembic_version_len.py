@@ -1,4 +1,4 @@
-"""Ensure alembic_version.version_num fits long revisions early
+"""Ensure alembic_version_core.version_num fits long revisions early
 
 Revision ID: 20251121_0003a_extend_alembic_version_len
 Revises: 20251120_0003_limits_rules_v2
@@ -21,7 +21,7 @@ depends_on = None
 def upgrade() -> None:
     """Extend version_num before migrations with long revision ids.
 
-    Earlier databases were created with ``VARCHAR(32)`` for ``alembic_version.version_num``.
+    Earlier databases were created with ``VARCHAR(32)`` for ``alembic_version_core.version_num``.
     Revisions like ``20251124_0003_merchants_terminals_cards`` exceed that length, so we
     enlarge the column before those migrations run to avoid StringDataRightTruncation.
     """

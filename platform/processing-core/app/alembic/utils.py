@@ -6,6 +6,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
 
 from app.alembic.helpers import (  # noqa: F401,F403
+    ALEMBIC_VERSION_TABLE,
     MIN_VERSION_LENGTH,
     DB_SCHEMA as SCHEMA,
     column_exists,
@@ -67,7 +68,7 @@ def create_unique_index_if_not_exists(
 
 
 def ensure_alembic_version_length(connection, *, min_length: int = MIN_VERSION_LENGTH) -> None:
-    """Ensure ``alembic_version.version_num`` can store long revision ids.
+    """Ensure ``alembic_version_core.version_num`` can store long revision ids.
 
     This reimplementation mirrors ``helpers.ensure_alembic_version_length`` but
     pulls the inspector from the local module namespace so tests can patch
@@ -79,23 +80,23 @@ def ensure_alembic_version_length(connection, *, min_length: int = MIN_VERSION_L
         return
 
     inspector = inspect(connection)
-    if "alembic_version" not in inspector.get_table_names():
+    if ALEMBIC_VERSION_TABLE not in inspector.get_table_names():
         connection.exec_driver_sql(
             f"""
-            CREATE TABLE IF NOT EXISTS alembic_version (
+            CREATE TABLE IF NOT EXISTS {ALEMBIC_VERSION_TABLE} (
                 version_num VARCHAR({min_length}) NOT NULL,
-                CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)
+                CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkey PRIMARY KEY (version_num)
             )
             """
         )
         return
 
-    columns = inspector.get_columns("alembic_version")
+    columns = inspector.get_columns(ALEMBIC_VERSION_TABLE)
     version_column = next((col for col in columns if col.get("name") == "version_num"), None)
     if version_column is None:
         connection.exec_driver_sql(
             f"""
-            ALTER TABLE alembic_version
+            ALTER TABLE {ALEMBIC_VERSION_TABLE}
             ADD COLUMN version_num VARCHAR({min_length}) NOT NULL
             """
         )
@@ -106,26 +107,27 @@ def ensure_alembic_version_length(connection, *, min_length: int = MIN_VERSION_L
 
     if current_length is None or current_length < min_length:
         connection.exec_driver_sql(
-            f"ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR({min_length})"
+            f"ALTER TABLE {ALEMBIC_VERSION_TABLE} ALTER COLUMN version_num TYPE VARCHAR({min_length})"
         )
 
-    pk = inspector.get_pk_constraint("alembic_version")
+    pk = inspector.get_pk_constraint(ALEMBIC_VERSION_TABLE)
     pk_columns = set(pk.get("constrained_columns") or [])
     pk_name = pk.get("name")
 
     if pk_columns != {"version_num"}:
         if pk_name:
             connection.exec_driver_sql(
-                f'ALTER TABLE alembic_version DROP CONSTRAINT IF EXISTS "{pk_name}"'
+                f'ALTER TABLE {ALEMBIC_VERSION_TABLE} DROP CONSTRAINT IF EXISTS "{pk_name}"'
             )
 
         connection.exec_driver_sql(
-            "ALTER TABLE alembic_version"
-            " ADD CONSTRAINT alembic_version_pkey PRIMARY KEY (version_num)"
+            f"ALTER TABLE {ALEMBIC_VERSION_TABLE}"
+            f" ADD CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkey PRIMARY KEY (version_num)"
         )
 
 __all__ = [
     "MIN_VERSION_LENGTH",
+    "ALEMBIC_VERSION_TABLE",
     "column_exists",
     "constraint_exists",
     "create_index_if_not_exists",

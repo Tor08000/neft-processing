@@ -63,7 +63,7 @@ def test_migrations_apply_and_register_version(postgres_schema):
 
     inventory = collect_inventory(db_url, schema)
 
-    assert inventory.alembic_versions, "alembic_version should be populated after upgrade"
+    assert inventory.alembic_versions, "alembic_version_core should be populated after upgrade"
     assert schema in inventory.schemas
 
     missing = inventory.missing_tables(REQUIRED_CORE_TABLES)

@@ -6,6 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, text
 
+from app.alembic.helpers import ALEMBIC_VERSION_TABLE
 from app.db.schema import quote_schema, resolve_db_schema
 
 config = context.config
@@ -32,6 +33,7 @@ def _configure(connection) -> None:
     connection.execute(text(schema_resolution.search_path_sql))
     context.configure(
         connection=connection,
+        version_table=ALEMBIC_VERSION_TABLE,
         version_table_schema=schema_resolution.schema,
         include_schemas=True,
         transaction_per_migration=True,

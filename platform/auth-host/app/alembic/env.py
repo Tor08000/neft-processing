@@ -40,6 +40,7 @@ database_url = _normalize_database_url(database_url)
 config.set_main_option("sqlalchemy.url", database_url)
 
 AUTH_SCHEMA = os.getenv("AUTH_DB_SCHEMA", "public")
+AUTH_VERSION_TABLE = "alembic_version_auth"
 
 
 def run_migrations_offline() -> None:
@@ -48,6 +49,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table=AUTH_VERSION_TABLE,
         version_table_schema=AUTH_SCHEMA,
         include_schemas=True,
         transactional_ddl=True,
@@ -68,6 +70,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            version_table=AUTH_VERSION_TABLE,
             version_table_schema=AUTH_SCHEMA,
             include_schemas=True,
             transactional_ddl=True,

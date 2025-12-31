@@ -21,18 +21,18 @@ class DummyInspector:
         self.pk_columns = pk_columns if pk_columns is not None else ["version_num"]
 
     def get_table_names(self) -> list[str]:
-        return ["alembic_version"] if self.has_table else []
+        return ["alembic_version_core"] if self.has_table else []
 
     def get_columns(self, table_name: str) -> list[dict]:
-        assert table_name == "alembic_version"
+        assert table_name == "alembic_version_core"
         column_type = String(length=self.version_length) if self.version_length else String()
         if not self.has_column:
             return []
         return [{"name": "version_num", "type": column_type}]
 
     def get_pk_constraint(self, table_name: str) -> dict:
-        assert table_name == "alembic_version"
-        return {"constrained_columns": self.pk_columns, "name": "alembic_version_pkey"}
+        assert table_name == "alembic_version_core"
+        return {"constrained_columns": self.pk_columns, "name": "alembic_version_core_pkey"}
 
 
 class DummyConnection:
@@ -76,7 +76,7 @@ def test_ensure_alembic_version_length_creates_missing_table(monkeypatch: pytest
     utils.ensure_alembic_version_length(connection)
 
     assert len(connection.executed_sql) == 1
-    assert "CREATE TABLE IF NOT EXISTS alembic_version" in connection.executed_sql[0]
+    assert "CREATE TABLE IF NOT EXISTS alembic_version_core" in connection.executed_sql[0]
     assert "PRIMARY KEY" in connection.executed_sql[0]
 
 

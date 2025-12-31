@@ -1,4 +1,4 @@
-"""Extend alembic_version.version_num length
+"""Extend alembic_version_core.version_num length
 
 Revision ID: 20270301_0022_extend_alembic_version_len
 Revises: 20270215_0021_merge_heads
