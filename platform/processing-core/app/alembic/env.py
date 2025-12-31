@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, text
 
-from app.db.schema import resolve_db_schema
+from app.db.schema import quote_schema, resolve_db_schema
 
 config = context.config
 if config.config_file_name is not None:
@@ -27,6 +27,8 @@ def run_migrations_offline() -> None:
 
 
 def _configure(connection) -> None:
+    quoted_schema = quote_schema(schema_resolution.schema)
+    connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
     connection.execute(text(schema_resolution.search_path_sql))
     context.configure(
         connection=connection,
