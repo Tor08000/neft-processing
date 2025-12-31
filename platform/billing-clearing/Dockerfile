@@ -16,7 +16,7 @@ COPY shared/python /opt/python
 # Дублируем пакет в /app, чтобы он был на стандартном sys.path, даже
 # если переменные окружения не попадут в контейнер.
 COPY shared/python/neft_shared /app/neft_shared
-ENV PYTHONPATH="/opt/python:/app"
+ENV PYTHONPATH="/app/services/workers:/opt/python:/app"
 
 # подключаем sitecustomize.py, чтобы он подхватывался автоматически
 COPY sitecustomize.py /app/sitecustomize.py
@@ -28,5 +28,8 @@ COPY platform/billing-clearing /app/services/workers
 RUN sed -i 's/\r$//' /app/services/workers/entrypoint.sh \
     && chmod +x /app/services/workers/entrypoint.sh
 
-# 5. Общая точка входа (он сам решает, worker или beat по переменным)
+# 5. Рабочая директория воркеров для корректных импортов
+WORKDIR /app/services/workers
+
+# 6. Общая точка входа (он сам решает, worker или beat по переменным)
 ENTRYPOINT ["/app/services/workers/entrypoint.sh"]

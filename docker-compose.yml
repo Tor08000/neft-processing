@@ -314,7 +314,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"from services.workers.app.celery_app import celery_app; import sys; sys.exit(0 if celery_app.control.ping(timeout=5) else 1)\"",
+          "python -c \"from app.celery_app import celery_app; import sys; sys.exit(0 if celery_app.control.ping(timeout=5) else 1)\"",
         ]
       interval: 30s
       timeout: 10s
@@ -357,7 +357,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"from services.workers.app.celery_app import celery_app; import sys; conn = celery_app.connection(); conn.ensure_connection(max_retries=1); conn.release(); sys.exit(0)\"",
+          "python -c \"from app.celery_app import celery_app; import sys; conn = celery_app.connection(); conn.ensure_connection(max_retries=1); conn.release(); sys.exit(0)\"",
         ]
       interval: 30s
       timeout: 10s
@@ -398,7 +398,7 @@ services:
       - -m
       - celery
       - -A
-      - services.workers.app.celery_app:celery_app
+      - app.celery_app:celery_app
       - flower
       - --port=5555
       - --address=0.0.0.0
