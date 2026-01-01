@@ -1,0 +1,161 @@
+:root {
+  --neft-bg: #0B0F14;
+  --neft-bg2: #0F1621;
+  --neft-surface: #121B27;
+  --neft-surface2: #162235;
+  --neft-border: #243247;
+  --neft-border2: #2E3F5C;
+
+  --neft-text: #EAF0F8;
+  --neft-text-muted: #A9B4C4;
+  --neft-text-faint: #7B879A;
+
+  --neft-accent: #B6FF3B;
+  --neft-accent-hover: #A6F72A;
+  --neft-accent-soft: rgba(182, 255, 59, 0.14);
+  --neft-accent-glow: rgba(182, 255, 59, 0.28);
+
+  --neft-success: #2FEA9B;
+  --neft-warning: #FFB020;
+  --neft-danger: #FF4D4D;
+  --neft-info: #4DA3FF;
+
+  --neft-radius-card: 16px;
+  --neft-radius-control: 12px;
+  --neft-radius-pill: 999px;
+
+  --neft-shadow-sm: 0 1px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.25);
+  --neft-shadow-md: 0 2px 0 rgba(0,0,0,0.35), 0 14px 28px rgba(0,0,0,0.32);
+  --neft-shadow-lg: 0 3px 0 rgba(0,0,0,0.40), 0 20px 42px rgba(0,0,0,0.40);
+
+  --neft-focus-ring: 0 0 0 3px var(--neft-accent-soft), 0 0 0 1px var(--neft-accent);
+
+  --neft-font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  --neft-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+html, body {
+  background: var(--neft-bg);
+  color: var(--neft-text);
+  font-family: var(--neft-font-sans);
+}
+
+* { box-sizing: border-box; }
+
+::selection { background: var(--neft-accent-soft); }
+
+.neft-page {
+  background: radial-gradient(1200px 600px at 15% 10%, rgba(182,255,59,0.06), transparent 55%),
+              radial-gradient(900px 500px at 85% 0%, rgba(77,163,255,0.06), transparent 50%),
+              var(--neft-bg);
+  min-height: 100vh;
+}
+
+.neft-card {
+  background: var(--neft-surface);
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-card);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.neft-card:hover {
+  background: var(--neft-surface2);
+  border-color: var(--neft-border2);
+}
+
+.neft-input, .neft-select {
+  background: var(--neft-surface2);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+  padding: 10px 12px;
+  outline: none;
+  border-radius: var(--neft-radius-control);
+}
+
+.neft-input:focus, .neft-select:focus {
+  border-color: var(--neft-accent);
+  box-shadow: var(--neft-focus-ring);
+}
+
+.neft-btn-primary {
+  background: var(--neft-accent);
+  color: #0B0F14;
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  font-weight: 650;
+  cursor: pointer;
+  border-radius: var(--neft-radius-control);
+}
+
+.neft-btn-primary:hover {
+  background: var(--neft-accent-hover);
+}
+
+.neft-btn-secondary {
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+  padding: 10px 14px;
+  cursor: pointer;
+  border-radius: var(--neft-radius-control);
+}
+
+.neft-btn-secondary:hover {
+  background: var(--neft-surface2);
+  border-color: var(--neft-border2);
+}
+
+.neft-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--neft-radius-pill);
+  border: 1px solid var(--neft-border);
+  background: rgba(255,255,255,0.03);
+  color: var(--neft-text-muted);
+  font-size: 12px;
+}
+
+.neft-badge.success { border-color: rgba(47,234,155,0.35); color: var(--neft-success); background: rgba(47,234,155,0.08); }
+.neft-badge.warning { border-color: rgba(255,176,32,0.35); color: var(--neft-warning); background: rgba(255,176,32,0.10); }
+.neft-badge.danger  { border-color: rgba(255,77,77,0.35);  color: var(--neft-danger);  background: rgba(255,77,77,0.10); }
+.neft-badge.info    { border-color: rgba(77,163,255,0.35);  color: var(--neft-info);    background: rgba(77,163,255,0.10); }
+
+.neft-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-card);
+  background: var(--neft-surface);
+}
+
+.neft-table th {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(to bottom, rgba(18,27,39,0.98), rgba(18,27,39,0.94));
+  color: var(--neft-text-muted);
+  text-align: left;
+  font-weight: 650;
+  font-size: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--neft-border);
+}
+
+.neft-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(36,50,71,0.55);
+  color: var(--neft-text);
+  font-size: 13px;
+}
+
+.neft-table tr:hover td {
+  background: rgba(22,34,53,0.65);
+}
+
+.neft-num {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--neft-font-mono);
+}

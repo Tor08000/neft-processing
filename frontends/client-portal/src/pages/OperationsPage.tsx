@@ -304,7 +304,7 @@ export function OperationsPage() {
           </select>
         </div>
         <div className="filter">
-          <button type="button" className="secondary" onClick={handleSaveFilters}>
+          <button type="button" className="secondary neft-btn-secondary" onClick={handleSaveFilters}>
             Сохранить фильтр
           </button>
         </div>
@@ -317,7 +317,7 @@ export function OperationsPage() {
       ) : null}
       {!isLoading && !error && operations.length > 0 ? (
         <>
-          <table className="table">
+          <table className="table neft-table">
             <thead>
               <tr>
                 <th>Дата/время</th>
@@ -339,8 +339,8 @@ export function OperationsPage() {
                   <td>{op.card_id}</td>
                   <td>{op.merchant_id ?? "—"}</td>
                   <td>{op.product_type ?? "—"}</td>
-                  <td>{formatLiters(op.quantity)}</td>
-                  <td>{formatMoney(op.amount, op.currency)}</td>
+                  <td className="neft-num">{formatLiters(op.quantity)}</td>
+                  <td className="neft-num">{formatMoney(op.amount, op.currency)}</td>
                   <td>
                     <span className={`pill pill--${op.status === "APPROVED" ? "success" : "warning"}`}>
                       {op.status}

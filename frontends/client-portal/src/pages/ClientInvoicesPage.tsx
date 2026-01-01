@@ -197,7 +197,7 @@ export function ClientInvoicesPage() {
           </div>
         </div>
       ) : (
-        <table className="table">
+        <table className="table neft-table">
           <thead>
             <tr>
               <th>Номер</th>
@@ -225,10 +225,12 @@ export function ClientInvoicesPage() {
                     {getInvoiceStatusLabel(invoice.status)}
                   </span>
                 </td>
-                <td>{formatMoney(invoice.amount_total, invoice.currency)}</td>
-                <td>{formatMoney(invoice.amount_paid, invoice.currency)}</td>
-                <td>{formatMoney(invoice.amount_refunded, invoice.currency)}</td>
-                <td className={Number(invoice.amount_due) > 0 ? "amount-due amount-due--positive" : "amount-due"}>
+                <td className="neft-num">{formatMoney(invoice.amount_total, invoice.currency)}</td>
+                <td className="neft-num">{formatMoney(invoice.amount_paid, invoice.currency)}</td>
+                <td className="neft-num">{formatMoney(invoice.amount_refunded, invoice.currency)}</td>
+                <td
+                  className={`amount-due neft-num${Number(invoice.amount_due) > 0 ? " amount-due--positive" : ""}`}
+                >
                   {formatMoney(invoice.amount_due, invoice.currency)}
                 </td>
                 <td>

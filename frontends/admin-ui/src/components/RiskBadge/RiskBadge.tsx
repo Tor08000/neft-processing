@@ -11,17 +11,17 @@ export interface RiskBadgeProps {
   source?: string | null;
 }
 
-type Palette = { bg: string; color: string; label: string };
+type Palette = { label: string; variant: string };
 
 const COLORS: Record<string, Palette> = {
-  LOW: { bg: "#ecfdf3", color: "#15803d", label: "LOW" },
-  MEDIUM: { bg: "#fffbeb", color: "#b45309", label: "MEDIUM" },
-  HIGH: { bg: "#fff7ed", color: "#ea580c", label: "HIGH" },
-  BLOCK: { bg: "#fef2f2", color: "#dc2626", label: "BLOCK" },
-  HARD_DECLINE: { bg: "#fef2f2", color: "#dc2626", label: "DECLINE" },
-  MANUAL_REVIEW: { bg: "#fff7ed", color: "#9a3412", label: "REVIEW" },
-  APPROVED: { bg: "#ecfdf3", color: "#15803d", label: "APPROVED" },
-  UNKNOWN: { bg: "#e2e8f0", color: "#0f172a", label: "UNKNOWN" },
+  LOW: { label: "LOW", variant: "success" },
+  MEDIUM: { label: "MEDIUM", variant: "warning" },
+  HIGH: { label: "HIGH", variant: "warning" },
+  BLOCK: { label: "BLOCK", variant: "danger" },
+  HARD_DECLINE: { label: "DECLINE", variant: "danger" },
+  MANUAL_REVIEW: { label: "REVIEW", variant: "warning" },
+  APPROVED: { label: "APPROVED", variant: "success" },
+  UNKNOWN: { label: "UNKNOWN", variant: "info" },
 };
 
 function normalizeLevel(level?: string | null): string {
@@ -67,17 +67,9 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({ level, decision, score, re
 
   return (
     <span
-      className="badge"
+      className={`neft-badge ${palette.variant}`}
       title={tooltipParts.join(" • ")}
-      style={{
-        background: palette.bg,
-        color: palette.color,
-        minWidth: 88,
-        justifyContent: "center",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-      }}
+      style={{ minWidth: 88, justifyContent: "center" }}
     >
       <span>{label}</span>
       {decisionLabel && decisionLabel !== label && <span style={{ opacity: 0.85 }}>· {decisionLabel}</span>}

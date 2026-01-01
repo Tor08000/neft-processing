@@ -9,9 +9,19 @@ interface DateRangePickerProps {
 export const DateRangePicker: React.FC<DateRangePickerProps> = ({ start, end, onChange }) => {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <input type="date" value={start} onChange={(event) => onChange({ start: event.target.value, end })} />
+      <input
+        type="date"
+        className="neft-input"
+        value={start}
+        onChange={(event) => onChange({ start: event.target.value, end })}
+      />
       <span style={{ color: "#64748b" }}>—</span>
-      <input type="date" value={end} onChange={(event) => onChange({ start, end: event.target.value })} />
+      <input
+        type="date"
+        className="neft-input"
+        value={end}
+        onChange={(event) => onChange({ start, end: event.target.value })}
+      />
     </div>
   );
 };

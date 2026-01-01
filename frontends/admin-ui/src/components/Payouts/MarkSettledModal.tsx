@@ -44,18 +44,27 @@ export const MarkSettledModal: React.FC<MarkSettledModalProps> = ({
         <form onSubmit={handleSubmit} className="form-grid">
           <label>
             <span className="label">Provider</span>
-            <input value={provider} onChange={(e) => setProvider(e.target.value)} readOnly={Boolean(defaultProvider)} />
+            <input
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              readOnly={Boolean(defaultProvider)}
+              className="neft-input"
+            />
           </label>
           <label>
             <span className="label">External ref</span>
-            <input value={externalRef} onChange={(e) => setExternalRef(e.target.value)} required />
+            <input value={externalRef} onChange={(e) => setExternalRef(e.target.value)} className="neft-input" required />
           </label>
           {error && <div className="error-text">{error}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button type="button" className="ghost" onClick={onClose}>
+            <button type="button" className="ghost neft-btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="button primary" disabled={isSubmitting || !externalRef}>
+            <button
+              type="submit"
+              className="button primary neft-btn-primary"
+              disabled={isSubmitting || !externalRef}
+            >
               Confirm
             </button>
           </div>

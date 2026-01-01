@@ -17,7 +17,7 @@ interface TableProps<T> {
 export function Table<T>({ columns, data, onRowClick }: TableProps<T>) {
   return (
     <div className="table-container">
-      <table className="table">
+      <table className="table neft-table">
         <thead>
           <tr>
             {columns.map((col) => (
@@ -35,7 +35,19 @@ export function Table<T>({ columns, data, onRowClick }: TableProps<T>) {
               style={{ cursor: onRowClick ? "pointer" : "default" }}
             >
               {columns.map((col) => (
-                <td key={col.key}>{col.render ? col.render(row) : String(row[col.dataIndex as keyof T])}</td>
+                <td key={col.key}>
+                  {col.render ? (
+                    col.render(row)
+                  ) : (
+                    (() => {
+                      const value = row[col.dataIndex as keyof T];
+                      if (typeof value === "number") {
+                        return <span className="neft-num">{value}</span>;
+                      }
+                      return String(value);
+                    })()
+                  )}
+                </td>
               ))}
             </tr>
           ))}

@@ -52,7 +52,7 @@ export const UsersPage: React.FC = () => {
           <h2>Пользователи</h2>
           <p className="muted">Управление доступом к платформе</p>
         </div>
-        <Link to="/users/new" className="button primary">Создать пользователя</Link>
+        <Link to="/users/new" className="button primary neft-btn-primary">Создать пользователя</Link>
       </div>
 
       <div className="card" style={{ display: "flex", gap: 12, alignItems: "center" }}>
