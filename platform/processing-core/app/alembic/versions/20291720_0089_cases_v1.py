@@ -32,6 +32,7 @@ SCHEMA = resolve_db_schema().schema
 CASE_KIND = ["operation", "invoice", "order", "kpi"]
 CASE_STATUS = ["TRIAGE", "IN_PROGRESS", "RESOLVED", "CLOSED"]
 CASE_PRIORITY = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+CASE_COMMENT_TYPE = ["user", "system"]
 
 
 def _create_desc_index(bind, name: str, table: str, columns: list[str]) -> None:
@@ -47,11 +48,13 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "case_kind", CASE_KIND, schema=SCHEMA)
     ensure_pg_enum(bind, "case_status", CASE_STATUS, schema=SCHEMA)
     ensure_pg_enum(bind, "case_priority", CASE_PRIORITY, schema=SCHEMA)
+    ensure_pg_enum(bind, "case_comment_type", CASE_COMMENT_TYPE, schema=SCHEMA)
     ensure_pg_enum_value(bind, "crm_feature_flag", "CASES_ENABLED", schema=SCHEMA)
 
     kind_enum = safe_enum(bind, "case_kind", CASE_KIND, schema=SCHEMA)
     status_enum = safe_enum(bind, "case_status", CASE_STATUS, schema=SCHEMA)
     priority_enum = safe_enum(bind, "case_priority", CASE_PRIORITY, schema=SCHEMA)
+    comment_type_enum = safe_enum(bind, "case_comment_type", CASE_COMMENT_TYPE, schema=SCHEMA)
 
     create_table_if_not_exists(
         bind,
@@ -92,6 +95,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("case_id", sa.String(length=36), sa.ForeignKey("cases.id"), nullable=False),
         sa.Column("author", sa.String(length=128), nullable=True),
+        sa.Column("type", comment_type_enum, nullable=False, server_default="user"),
         sa.Column("body", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         schema=SCHEMA,

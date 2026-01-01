@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchCaseDetails } from "../api/cases";
 import { useAuth } from "../auth/AuthContext";
@@ -13,6 +13,7 @@ export function CaseDetailsPage() {
   const [payload, setPayload] = useState<CaseDetailsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -37,13 +38,19 @@ export function CaseDetailsPage() {
     payload.comments.forEach((comment) => {
       events.push({
         id: `comment-${comment.id}`,
-        label: comment.author ? `Комментарий · ${comment.author}` : "Комментарий",
+        label: comment.type === "system" ? "Система" : comment.author ? `Комментарий · ${comment.author}` : "Комментарий",
         body: comment.body,
         created_at: comment.created_at,
       });
     });
     return events.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [payload]);
+
+  const copyLink = useCallback(() => {
+    void navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, []);
 
   if (!id) {
     return <AppEmptyState title="Кейс не найден" description="Проверьте идентификатор в ссылке." />;
@@ -68,9 +75,14 @@ export function CaseDetailsPage() {
             <h2>{payload.case.title}</h2>
             <p className="muted">Case ID: {payload.case.id}</p>
           </div>
-          <Link className="ghost" to="/cases">
-            К списку кейсов
-          </Link>
+          <div className="stack-inline">
+            <button type="button" className="ghost" onClick={copyLink}>
+              {copied ? "Ссылка скопирована" : "Скопировать ссылку"}
+            </button>
+            <Link className="ghost" to="/cases">
+              К списку кейсов
+            </Link>
+          </div>
         </div>
         <div className="meta-grid">
           <div>

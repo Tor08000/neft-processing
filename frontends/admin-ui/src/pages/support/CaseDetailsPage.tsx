@@ -77,6 +77,11 @@ export function CaseDetailsPage() {
     }
   };
 
+  const copyLink = useCallback(() => {
+    void navigator.clipboard.writeText(window.location.href);
+    showToast("success", "Ссылка скопирована");
+  }, [showToast]);
+
   const handleComment = async () => {
     if (!id || !comment.trim()) return;
     try {
@@ -141,9 +146,14 @@ export function CaseDetailsPage() {
             <h2>{payload.case.title}</h2>
             <p className="muted">Case ID: {payload.case.id}</p>
           </div>
-          <Link className="ghost" to="/support/cases">
-            К списку кейсов
-          </Link>
+          <div className="stack-inline">
+            <button type="button" className="ghost" onClick={copyLink}>
+              Скопировать ссылку
+            </button>
+            <Link className="ghost" to="/support/cases">
+              К списку кейсов
+            </Link>
+          </div>
         </div>
         <div className="meta-grid">
           <div>
@@ -228,7 +238,9 @@ export function CaseDetailsPage() {
             payload.comments.map((item: CaseComment) => (
               <div className="timeline-item" key={item.id}>
                 <div className="timeline-item__meta">
-                  <span className="timeline-item__title">{item.author ?? "Комментарий"}</span>
+                  <span className="timeline-item__title">
+                    {item.type === "system" ? "Система" : item.author ?? "Комментарий"}
+                  </span>
                   <span className="muted small">{formatTimestamp(item.created_at)}</span>
                 </div>
                 <div className="timeline-item__body">{item.body}</div>

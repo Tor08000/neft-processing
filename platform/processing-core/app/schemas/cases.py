@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.cases import CaseKind, CasePriority, CaseStatus
+from app.models.cases import CaseCommentType, CaseKind, CasePriority, CaseStatus
 
 
 class CaseCreateRequest(BaseModel):
@@ -53,6 +53,7 @@ class CaseCommentOut(BaseModel):
 
     id: str
     author: str | None
+    type: CaseCommentType
     body: str
     created_at: datetime
 

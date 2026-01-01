@@ -16,6 +16,7 @@ export interface CaseSnapshot {
 export interface CaseComment {
   id: string;
   author?: string | null;
+  type: "user" | "system";
   body: string;
   created_at: string;
 }
@@ -77,7 +78,8 @@ export interface CaseCommentPayload {
 export function fetchCases(params: {
   status?: CaseStatus;
   kind?: CaseKind;
-  priority?: CasePriority;
+  priority?: CasePriority | string;
+  assigned_to?: string;
   q?: string;
   limit?: number;
   cursor?: string;

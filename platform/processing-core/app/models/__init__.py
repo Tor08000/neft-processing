@@ -120,6 +120,7 @@ from .support_request import (  # noqa: F401
 from .cases import (  # noqa: F401
     Case,
     CaseComment,
+    CaseCommentType,
     CaseKind,
     CasePriority,
     CaseSnapshot,
@@ -509,6 +510,7 @@ __all__ = [
     "StationReputationDaily",
     "Case",
     "CaseComment",
+    "CaseCommentType",
     "CaseKind",
     "CasePriority",
     "CaseSnapshot",

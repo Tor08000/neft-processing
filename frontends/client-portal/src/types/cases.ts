@@ -14,6 +14,7 @@ export interface CaseSnapshot {
 export interface CaseComment {
   id: string;
   author?: string | null;
+  type: "user" | "system";
   body: string;
   created_at: string;
 }

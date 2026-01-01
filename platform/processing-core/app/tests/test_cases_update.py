@@ -74,4 +74,5 @@ def test_update_case_status_adds_comment(make_jwt, client: TestClient, db_sessio
     assert payload["priority"] == "HIGH"
 
     comments = db_session.query(CaseComment).filter(CaseComment.case_id == case.id).all()
-    assert any("Status changed" in comment.body for comment in comments)
+    assert any("Статус изменён" in comment.body for comment in comments)
+    assert any("Назначено на ops@neft.io" in comment.body for comment in comments)

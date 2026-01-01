@@ -6,7 +6,15 @@ from typing import Any
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models.cases import Case, CaseComment, CaseKind, CasePriority, CaseSnapshot, CaseStatus
+from app.models.cases import (
+    Case,
+    CaseComment,
+    CaseCommentType,
+    CaseKind,
+    CasePriority,
+    CaseSnapshot,
+    CaseStatus,
+)
 
 
 def _format_score(value: Any) -> str | None:
@@ -117,6 +125,14 @@ def create_case(
         note=note,
     )
     db.add(snapshot)
+    db.add(
+        CaseComment(
+            case_id=case.id,
+            author=created_by,
+            type=CaseCommentType.SYSTEM,
+            body="Кейс создан",
+        )
+    )
     return case
 
 
@@ -125,22 +141,25 @@ def list_cases(
     *,
     tenant_id: int,
     created_by: str | None = None,
-    status: CaseStatus | None = None,
+    status: list[CaseStatus] | None = None,
     kind: CaseKind | None = None,
-    priority: CasePriority | None = None,
+    priority: list[CasePriority] | None = None,
     q: str | None = None,
     limit: int = 50,
     cursor: str | None = None,
+    assigned_to: str | None = None,
 ) -> tuple[list[Case], int, str | None]:
     query = db.query(Case).filter(Case.tenant_id == tenant_id)
     if created_by:
         query = query.filter(Case.created_by == created_by)
     if status:
-        query = query.filter(Case.status == status)
+        query = query.filter(Case.status.in_(status))
     if kind:
         query = query.filter(Case.kind == kind)
     if priority:
-        query = query.filter(Case.priority == priority)
+        query = query.filter(Case.priority.in_(priority))
+    if assigned_to:
+        query = query.filter(Case.assigned_to == assigned_to)
     if q:
         pattern = f"%{q.strip()}%"
         query = query.filter(
@@ -203,13 +222,15 @@ def update_case(
     changed = False
     now = datetime.now(timezone.utc)
     if status and status != case.status:
+        previous = case.status
         case.status = status
         changed = True
         db.add(
             CaseComment(
                 case_id=case.id,
                 author=actor,
-                body=f"Status changed to {status.value}",
+                type=CaseCommentType.SYSTEM,
+                body=f"Статус изменён {previous.value} → {status.value}",
             )
         )
     if assigned_to is not None and assigned_to != case.assigned_to:
@@ -220,7 +241,8 @@ def update_case(
                 CaseComment(
                     case_id=case.id,
                     author=actor,
-                    body=f"Assigned to {assigned_to}",
+                    type=CaseCommentType.SYSTEM,
+                    body=f"Назначено на {assigned_to}",
                 )
             )
     if priority and priority != case.priority:
@@ -247,7 +269,7 @@ def add_comment(
     body: str,
 ) -> CaseComment:
     now = datetime.now(timezone.utc)
-    comment = CaseComment(case_id=case.id, author=author, body=body)
+    comment = CaseComment(case_id=case.id, author=author, type=CaseCommentType.USER, body=body)
     db.add(comment)
     case.updated_at = now
     case.last_activity_at = now

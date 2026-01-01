@@ -67,3 +67,4 @@ def test_create_case_stores_snapshot(make_jwt, client: TestClient, db_session: S
     snapshot = db_session.query(CaseSnapshot).filter(CaseSnapshot.case_id == case_id).one()
     assert snapshot.explain_snapshot["decision"] == "DECLINE"
     assert snapshot.note == payload["note"]
+    assert db_session.query(CaseComment).filter(CaseComment.case_id == case_id).count() == 1

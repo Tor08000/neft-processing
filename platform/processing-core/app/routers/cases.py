@@ -52,6 +52,24 @@ def _reject_partner(token: dict) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
+def _parse_enum_list(raw: str | None, enum_cls):
+    if not raw:
+        return None
+    values = []
+    for part in raw.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        try:
+            values.append(enum_cls(item))
+        except ValueError:
+            try:
+                values.append(enum_cls(item.split(".")[-1]))
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="invalid_filter") from exc
+    return values or None
+
+
 def _ensure_client_case_creation_enabled(db: Session, *, token: dict) -> None:
     client_id = token.get("client_id")
     if not client_id:
@@ -101,10 +119,11 @@ def create_case_endpoint(
 
 @router.get("", response_model=CaseListResponse)
 def list_cases_endpoint(
-    status: CaseStatus | None = Query(None),
+    status: str | None = Query(None),
     kind: CaseKind | None = Query(None),
-    priority: CasePriority | None = Query(None),
+    priority: str | None = Query(None),
     q: str | None = Query(None),
+    assigned_to: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     cursor: str | None = Query(None),
     db: Session = Depends(get_db),
@@ -120,12 +139,13 @@ def list_cases_endpoint(
         db,
         tenant_id=tenant_id,
         created_by=created_by,
-        status=status,
+        status=_parse_enum_list(status, CaseStatus),
         kind=kind,
-        priority=priority,
+        priority=_parse_enum_list(priority, CasePriority),
         q=q,
         limit=limit,
         cursor=cursor,
+        assigned_to=assigned_to,
     )
     return CaseListResponse(
         items=[CaseResponse.model_validate(item) for item in items],

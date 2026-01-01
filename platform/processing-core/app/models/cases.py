@@ -29,6 +29,11 @@ class CasePriority(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class CaseCommentType(str, Enum):
+    USER = "user"
+    SYSTEM = "system"
+
+
 class Case(Base):
     __tablename__ = "cases"
 
@@ -76,6 +81,11 @@ class CaseComment(Base):
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     case_id = Column(GUID(), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
     author = Column(String(128), nullable=True)
+    type = Column(
+        ExistingEnum(CaseCommentType, name="case_comment_type"),
+        nullable=False,
+        default=CaseCommentType.USER,
+    )
     body = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
@@ -83,6 +93,7 @@ class CaseComment(Base):
 __all__ = [
     "Case",
     "CaseComment",
+    "CaseCommentType",
     "CaseKind",
     "CasePriority",
     "CaseSnapshot",

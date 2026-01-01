@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchCases, type CaseItem, type CaseKind, type CasePriority, type CaseStatus } from "../../api/cases";
+import { useAuth } from "../../auth/AuthContext";
 import { Table } from "../../components/Table/Table";
 
 const STATUS_OPTIONS: CaseStatus[] = ["TRIAGE", "IN_PROGRESS", "RESOLVED", "CLOSED"];
@@ -27,24 +28,38 @@ const priorityTone = (priority: CasePriority) => {
 
 export function CasesListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [items, setItems] = useState<CaseItem[]>([]);
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [kind, setKind] = useState("");
   const [query, setQuery] = useState("");
+  const [quickFilter, setQuickFilter] = useState<"mine" | "attention" | "closed" | "">("");
   const [limit] = useState(20);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const params = useMemo(
-    () => ({
-      status: (status || undefined) as CaseStatus | undefined,
-      priority: (priority || undefined) as CasePriority | undefined,
-      kind: (kind || undefined) as CaseKind | undefined,
-      q: query || undefined,
-      limit,
-    }),
-    [status, priority, kind, query, limit],
+    () => {
+      const base = {
+        status: (status || undefined) as CaseStatus | undefined,
+        priority: (priority || undefined) as CasePriority | undefined,
+        kind: (kind || undefined) as CaseKind | undefined,
+        q: query || undefined,
+        limit,
+      };
+      if (quickFilter === "mine") {
+        return { ...base, assigned_to: user?.email };
+      }
+      if (quickFilter === "attention") {
+        return { ...base, status: "TRIAGE" as CaseStatus, priority: "HIGH,CRITICAL" as CasePriority };
+      }
+      if (quickFilter === "closed") {
+        return { ...base, status: "CLOSED" as CaseStatus };
+      }
+      return base;
+    },
+    [status, priority, kind, query, limit, quickFilter, user?.email],
   );
 
   useEffect(() => {
@@ -109,6 +124,29 @@ export function CasesListPage() {
           </button>
         </div>
         <div className="filters">
+          <div className="stack-inline">
+            <button
+              type="button"
+              className={`pill ${quickFilter === "mine" ? "pill--accent" : "pill--outline"}`}
+              onClick={() => setQuickFilter(quickFilter === "mine" ? "" : "mine")}
+            >
+              Мои
+            </button>
+            <button
+              type="button"
+              className={`pill ${quickFilter === "attention" ? "pill--accent" : "pill--outline"}`}
+              onClick={() => setQuickFilter(quickFilter === "attention" ? "" : "attention")}
+            >
+              Требует внимания
+            </button>
+            <button
+              type="button"
+              className={`pill ${quickFilter === "closed" ? "pill--accent" : "pill--outline"}`}
+              onClick={() => setQuickFilter(quickFilter === "closed" ? "" : "closed")}
+            >
+              Закрытые
+            </button>
+          </div>
           <label className="filter">
             Status
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
