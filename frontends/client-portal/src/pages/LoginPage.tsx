@@ -32,8 +32,8 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-wrapper">
-      <form className="card login-card" onSubmit={handleSubmit}>
+    <div className="login-wrapper neft-page">
+      <form className="card login-card neft-card" onSubmit={handleSubmit}>
         <h1>Вход в клиентский кабинет</h1>
         <p>Используйте демо-учётные данные, чтобы продолжить работу.</p>
         {error ? (
@@ -49,6 +49,7 @@ export function LoginPage() {
         <label>
           Email
           <input
+            className="neft-input"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -61,6 +62,7 @@ export function LoginPage() {
         <label>
           Пароль
           <input
+            className="neft-input"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -70,7 +72,7 @@ export function LoginPage() {
           />
         </label>
 
-        <button type="submit" className="primary" disabled={isSubmitting}>
+        <button type="submit" className="primary neft-btn-primary" disabled={isSubmitting}>
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
       </form>

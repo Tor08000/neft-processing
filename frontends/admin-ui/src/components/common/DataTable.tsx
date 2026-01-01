@@ -25,7 +25,7 @@ export function DataTable<T>({ data, columns, loading, emptyMessage = "Нет д
 
   return (
     <div style={{ overflowX: "auto" }}>
-      <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table className="table neft-table" style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
             {columns.map((column) => (
@@ -44,7 +44,15 @@ export function DataTable<T>({ data, columns, loading, emptyMessage = "Нет д
             >
               {columns.map((column) => (
                 <td key={column.key} style={{ padding: "8px", borderBottom: "1px solid #f1f5f9" }}>
-                  {column.render ? column.render(row) : (row as Record<string, React.ReactNode>)[column.key]}
+                  {column.render
+                    ? column.render(row)
+                    : (() => {
+                        const value = (row as Record<string, React.ReactNode>)[column.key];
+                        if (typeof value === "number") {
+                          return <span className="neft-num">{value}</span>;
+                        }
+                        return value;
+                      })()}
                 </td>
               ))}
             </tr>

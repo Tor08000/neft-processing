@@ -31,7 +31,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   if (configError) {
     return (
-      <div className="app-shell">
+      <div className="app-shell neft-page">
         <header className="topbar">
           <div className="topbar__meta">
             <span className="logo">NEFT</span>
@@ -46,7 +46,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell neft-page">
       <header className="topbar">
         <div className="topbar__meta">
           <span className="logo">NEFT</span>
@@ -61,7 +61,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
             <strong>{user?.email}</strong>
             <div className="roles">{user?.roles.join(", ")}</div>
           </div>
-          <button className="ghost" onClick={logout} type="button">
+          <button className="ghost neft-btn-secondary" onClick={logout} type="button">
             {t("actions.logout")}
           </button>
         </div>

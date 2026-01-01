@@ -32,11 +32,11 @@ const buildDateRange = (preset: string) => {
 };
 
 const statusClass = (status?: string | null) => {
-  if (!status) return "badge pending";
+  if (!status) return "neft-badge warning";
   const normalized = status.toLowerCase();
-  if (["completed", "confirmed"].includes(normalized)) return "badge success";
-  if (["cancelled", "canceled", "failed"].includes(normalized)) return "badge error";
-  return "badge pending";
+  if (["completed", "confirmed"].includes(normalized)) return "neft-badge success";
+  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-badge danger";
+  return "neft-badge warning";
 };
 
 const LAST_UPDATED_KEY = "pwa:lastUpdated:orders";
@@ -238,7 +238,7 @@ export function MarketplaceOrdersPage() {
 
       {!isLoading && !error && orders.length > 0 ? (
         <div className="card">
-          <table className="data-table">
+          <table className="data-table neft-table">
             <thead>
               <tr>
                 <th>{t("marketplaceOrders.table.orderId")}</th>
@@ -258,7 +258,7 @@ export function MarketplaceOrdersPage() {
                   <td>{order.service_title ?? t("common.notAvailable")}</td>
                   <td>{order.partner_name ?? t("common.notAvailable")}</td>
                   <td>{order.created_at ? formatDate(order.created_at) : t("common.notAvailable")}</td>
-                  <td>
+                  <td className="neft-num">
                     {order.total_amount !== undefined && order.total_amount !== null
                       ? formatMoney(order.total_amount, order.currency ?? "RUB")
                       : t("common.notAvailable")}
@@ -267,7 +267,9 @@ export function MarketplaceOrdersPage() {
                     <span className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</span>
                   </td>
                   <td>
-                    <span className="badge pending">{getMarketplaceDocumentStatusLabel(order.documents_status)}</span>
+                    <span className="neft-badge warning">
+                      {getMarketplaceDocumentStatusLabel(order.documents_status)}
+                    </span>
                   </td>
                   <td>
                     <Link to={`/marketplace/orders/${order.id}`} className="link-button">

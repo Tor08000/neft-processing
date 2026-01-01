@@ -1,26 +1,26 @@
 import React from "react";
 import { PayoutState } from "../../types/payouts";
 
-export function getPayoutStateColor(state: PayoutState): string {
+export function getPayoutStateVariant(state: PayoutState): string {
   switch (state) {
     case "READY":
-      return "#64748b";
+      return "info";
     case "SENT":
-      return "#0ea5e9";
+      return "warning";
     case "SETTLED":
-      return "#16a34a";
+      return "success";
     case "FAILED":
-      return "#dc2626";
+      return "danger";
     case "DRAFT":
     default:
-      return "#94a3b8";
+      return "info";
   }
 }
 
 export const PayoutStateBadge: React.FC<{ state: PayoutState }> = ({ state }) => {
-  const background = getPayoutStateColor(state);
+  const variant = getPayoutStateVariant(state);
   return (
-    <span className="badge" style={{ background, color: "#fff" }}>
+    <span className={`neft-badge ${variant}`}>
       {state}
     </span>
   );

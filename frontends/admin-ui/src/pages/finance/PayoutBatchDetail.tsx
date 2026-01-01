@@ -139,7 +139,7 @@ export const PayoutBatchDetail: React.FC = () => {
     return (
       <div className="card">
         <p style={{ color: "#dc2626", fontWeight: 600 }}>Failed to load batch</p>
-        <button type="button" className="ghost" onClick={() => refetch()}>
+        <button type="button" className="ghost neft-btn-secondary" onClick={() => refetch()}>
           Retry
         </button>
       </div>
@@ -150,7 +150,7 @@ export const PayoutBatchDetail: React.FC = () => {
     <div className="stack">
       <div className="page-header">
         <div>
-          <button type="button" className="ghost" onClick={() => navigate(-1)}>
+          <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate(-1)}>
             ← Back
           </button>
           <h1 style={{ marginTop: 8 }}>Payout batch {batch.id.slice(0, 8)}</h1>
@@ -159,7 +159,7 @@ export const PayoutBatchDetail: React.FC = () => {
           <CopyButton value={batch.id} label="Copy batch id" onCopy={() => showToast("success", "Batch ID copied")} />
           <button
             type="button"
-            className="button"
+            className="button neft-btn-secondary"
             onClick={() => reconcileMutation.mutate()}
             disabled={reconcileMutation.isPending}
           >
@@ -167,7 +167,7 @@ export const PayoutBatchDetail: React.FC = () => {
           </button>
           <button
             type="button"
-            className="button"
+            className="button neft-btn-secondary"
             onClick={() => {
               setActionError(null);
               setSentOpen(true);
@@ -178,7 +178,7 @@ export const PayoutBatchDetail: React.FC = () => {
           </button>
           <button
             type="button"
-            className="button"
+            className="button neft-btn-secondary"
             onClick={() => {
               setActionError(null);
               setSettledOpen(true);
@@ -208,7 +208,7 @@ export const PayoutBatchDetail: React.FC = () => {
           <div className="stack">
             <button
               type="button"
-              className="button"
+              className="button neft-btn-secondary"
               onClick={() => reconcileMutation.mutate()}
               disabled={reconcileMutation.isPending}
             >
@@ -216,7 +216,7 @@ export const PayoutBatchDetail: React.FC = () => {
             </button>
             <button
               type="button"
-              className="button"
+              className="button neft-btn-secondary"
               onClick={() => {
                 setActionError(null);
                 setSentOpen(true);
@@ -227,7 +227,7 @@ export const PayoutBatchDetail: React.FC = () => {
             </button>
             <button
               type="button"
-              className="button"
+              className="button neft-btn-secondary"
               onClick={() => {
                 setActionError(null);
                 setSettledOpen(true);

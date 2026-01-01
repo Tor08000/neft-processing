@@ -6,7 +6,7 @@ export const ForbiddenPage: React.FC = () => {
     <div className="card" style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
       <h2>403 — Доступ запрещён</h2>
       <p style={{ marginBottom: 16 }}>У вас нет прав доступа к этому разделу.</p>
-      <Link className="button" to="/">
+      <Link className="button neft-btn-secondary" to="/">
         Вернуться на главную
       </Link>
     </div>

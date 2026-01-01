@@ -28,8 +28,8 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
+    <div className="login-page neft-page">
+      <div className="login-card neft-card">
         <h1>Админка NEFT</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
         <p className="muted small">Демонстрационный доступ: admin@example.com / admin</p>
@@ -37,6 +37,7 @@ export const LoginPage: React.FC = () => {
           <label>
             Email
             <input
+              className="neft-input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -48,6 +49,7 @@ export const LoginPage: React.FC = () => {
           <label>
             Пароль
             <input
+              className="neft-input"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -57,7 +59,7 @@ export const LoginPage: React.FC = () => {
             />
           </label>
           {(error || localError) && <div className="error-text">{error ?? localError}</div>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" className="neft-btn-primary" disabled={submitting}>
             {submitting ? "Входим..." : "Войти"}
           </button>
         </form>
