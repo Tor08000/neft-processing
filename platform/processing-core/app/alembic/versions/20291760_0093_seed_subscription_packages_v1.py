@@ -425,7 +425,7 @@ def _seed_plans(bind) -> None:
         "INDIVIDUAL": 1,
         "SELF_EMPLOYED": 3,
         "SMB_FLEET": 20,
-        "ENTERPRISE": "custom",
+        "ENTERPRISE": 100,
     }
 
     role_entitlements = [
@@ -482,7 +482,7 @@ def _seed_plans(bind) -> None:
     add_plan(
         {
             "code": "FREE_BASE",
-            "title": "FREE Base",
+            "title": "FREE",
             "description": "Бесплатный пакет для всех сегментов клиентов.",
             "billing_period_months": 0,
             "price_cents": 0,
@@ -492,14 +492,16 @@ def _seed_plans(bind) -> None:
         }
     )
 
-    def _bonus_override(base: float, levels: int) -> float:
-        return round(base + (0.5 * levels), 2)
+    def _bonus_override(base: float, boost: float) -> float:
+        return round(base + boost, 2)
 
-    def _control_modules(cards_max: int, bonus_multiplier: float, bonus_override: float | None, bonus_levels: int) -> dict:
+    def _control_modules(
+        cards_max: int, bonus_multiplier: float, bonus_override: float | None, bonus_boost: float
+    ) -> dict:
         limits = {"bonus_multiplier": bonus_multiplier}
         if bonus_override is not None:
             limits["bonus_multiplier_override"] = bonus_override
-            limits["bonus_level_boost"] = bonus_levels
+            limits["bonus_level_boost"] = bonus_boost
         return _full_module_set(
             {
                 "FUEL_CORE": {"enabled": True, "tier": "control", "limits": {"cards_max": cards_max}},
@@ -511,7 +513,7 @@ def _seed_plans(bind) -> None:
                 "EXPLAIN": {
                     "enabled": True,
                     "tier": "standard",
-                    "limits": {"explain_depth": 2, "explain_diff": "read_only", "what_if": "off"},
+                    "limits": {"explain_depth": 2, "explain_diff": False, "what_if": "off"},
                 },
                 "PENALTIES": {
                     "enabled": True,
@@ -521,7 +523,7 @@ def _seed_plans(bind) -> None:
                 "MARKETPLACE": {
                     "enabled": True,
                     "tier": "basic",
-                    "limits": {"marketplace_discount_percent": 0},
+                    "limits": {"marketplace_discount_percent": 2},
                 },
                 "BONUSES": {"enabled": True, "tier": "standard", "limits": limits},
                 "SLA": {
@@ -533,11 +535,13 @@ def _seed_plans(bind) -> None:
             }
         )
 
-    def _optimize_modules(cards_max: int, bonus_multiplier: float, bonus_override: float | None, bonus_levels: int) -> dict:
+    def _optimize_modules(
+        cards_max: int, bonus_multiplier: float, bonus_override: float | None, bonus_boost: float
+    ) -> dict:
         limits = {"bonus_multiplier": bonus_multiplier}
         if bonus_override is not None:
             limits["bonus_multiplier_override"] = bonus_override
-            limits["bonus_level_boost"] = bonus_levels
+            limits["bonus_level_boost"] = bonus_boost
         return _full_module_set(
             {
                 "FUEL_CORE": {"enabled": True, "tier": "optimize", "limits": {"cards_max": cards_max}},
@@ -612,10 +616,34 @@ def _seed_plans(bind) -> None:
         return int(round(base_price * (1 - discount_percent / 100)))
 
     segments = {
-        "IND": {"segment": "INDIVIDUAL", "cards_control": 5, "cards_optimize": 10, "control_price": 9900},
-        "SELF": {"segment": "SELF_EMPLOYED", "cards_control": 10, "cards_optimize": 20, "control_price": 14900, "optimize_price": 24900},
-        "SMB": {"segment": "SMB_FLEET", "cards_control": 50, "cards_optimize": 100, "control_price": 29900, "optimize_price": 49900},
-        "ENT": {"segment": "ENTERPRISE", "cards_control": 200, "cards_optimize": 500, "control_price": 69900, "optimize_price": 99900},
+        "INDIVIDUAL": {
+            "segment": "INDIVIDUAL",
+            "cards_control": 5,
+            "cards_optimize": 10,
+            "control_price": 9900,
+            "optimize_price": 19900,
+        },
+        "SELF_EMPLOYED": {
+            "segment": "SELF_EMPLOYED",
+            "cards_control": 10,
+            "cards_optimize": 20,
+            "control_price": 14900,
+            "optimize_price": 24900,
+        },
+        "SMB_FLEET": {
+            "segment": "SMB_FLEET",
+            "cards_control": 50,
+            "cards_optimize": 100,
+            "control_price": 29900,
+            "optimize_price": 49900,
+        },
+        "ENTERPRISE": {
+            "segment": "ENTERPRISE",
+            "cards_control": 200,
+            "cards_optimize": 500,
+            "control_price": 69900,
+            "optimize_price": 99900,
+        },
     }
 
     control_bonus = 1.0
@@ -624,8 +652,8 @@ def _seed_plans(bind) -> None:
 
     for segment_code, segment in segments.items():
         base_code = f"CONTROL_{segment_code}"
-        for months, discount, bonus_levels in [(1, 0, 0), (6, 10, 1), (12, 20, 2)]:
-            bonus_override = _bonus_override(control_bonus, bonus_levels) if bonus_levels else None
+        for months, discount, bonus_boost in [(1, 0, 0.0), (6, 10, 0.1), (12, 20, 0.2)]:
+            bonus_override = _bonus_override(control_bonus, bonus_boost) if bonus_boost else None
             add_plan(
                 {
                     "code": f"{base_code}_{months}M",
@@ -635,15 +663,14 @@ def _seed_plans(bind) -> None:
                     "price_cents": _variant_price(segment["control_price"], discount),
                     "discount_percent": discount,
                     "bonus_multiplier_override": bonus_override,
-                    "modules": _control_modules(segment["cards_control"], control_bonus, bonus_override, bonus_levels),
+                    "modules": _control_modules(segment["cards_control"], control_bonus, bonus_override, bonus_boost),
                 }
             )
 
-    for segment_code in ["SELF", "SMB", "ENT"]:
-        segment = segments[segment_code]
+    for segment_code, segment in segments.items():
         base_code = f"OPTIMIZE_{segment_code}"
-        for months, discount, bonus_levels in [(1, 0, 0), (6, 10, 1), (12, 20, 2)]:
-            bonus_override = _bonus_override(optimize_bonus, bonus_levels) if bonus_levels else None
+        for months, discount, bonus_boost in [(1, 0, 0.0), (6, 10, 0.1), (12, 20, 0.2)]:
+            bonus_override = _bonus_override(optimize_bonus, bonus_boost) if bonus_boost else None
             add_plan(
                 {
                     "code": f"{base_code}_{months}M",
@@ -653,20 +680,20 @@ def _seed_plans(bind) -> None:
                     "price_cents": _variant_price(segment["optimize_price"], discount),
                     "discount_percent": discount,
                     "bonus_multiplier_override": bonus_override,
-                    "modules": _optimize_modules(segment["cards_optimize"], optimize_bonus, bonus_override, bonus_levels),
+                    "modules": _optimize_modules(segment["cards_optimize"], optimize_bonus, bonus_override, bonus_boost),
                 }
             )
 
     add_plan(
         {
             "code": "ENTERPRISE_CUSTOM",
-            "title": "ENTERPRISE Custom",
+            "title": "ENTERPRISE",
             "description": "Контрактный пакет для enterprise с индивидуальными условиями.",
             "billing_period_months": 0,
             "price_cents": 0,
             "discount_percent": 0,
             "bonus_multiplier_override": None,
-            "modules": _enterprise_modules(2000, enterprise_bonus),
+            "modules": _enterprise_modules("custom", enterprise_bonus),
         }
     )
 
