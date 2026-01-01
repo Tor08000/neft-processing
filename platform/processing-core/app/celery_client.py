@@ -35,6 +35,10 @@ celery_client.conf.update(
             "task": "ops.scan_sla_expiry",
             "schedule": crontab(minute="*/5"),
         },
+        "cases.evaluate_escalations": {
+            "task": "cases.evaluate_escalations",
+            "schedule": crontab(minute="*/2"),
+        },
         "fleet_intelligence.compute_daily_aggregates": {
             "task": "fleet_intelligence.compute_daily_aggregates",
             "schedule": crontab(hour=2, minute=30),

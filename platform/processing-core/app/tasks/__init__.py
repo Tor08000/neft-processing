@@ -25,6 +25,11 @@ except Exception:
     pass
 
 try:  # pragma: no cover - optional task modules
+    import app.tasks.case_escalations  # noqa: F401
+except Exception:
+    pass
+
+try:  # pragma: no cover - optional task modules
     import app.tasks.fleet_intelligence  # noqa: F401
 except Exception:
     pass

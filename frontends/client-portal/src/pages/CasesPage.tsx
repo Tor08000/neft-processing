@@ -11,6 +11,30 @@ const STATUS_OPTIONS: CaseStatus[] = ["TRIAGE", "IN_PROGRESS", "RESOLVED", "CLOS
 const PRIORITY_OPTIONS: CasePriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
 const KIND_OPTIONS: CaseKind[] = ["operation", "invoice", "order", "kpi"];
 
+const formatRemaining = (dueAt?: string | null) => {
+  if (!dueAt) return "—";
+  const due = new Date(dueAt).getTime();
+  const now = Date.now();
+  const diffMs = due - now;
+  if (diffMs <= 0) {
+    return "BREACHED";
+  }
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `${minutes}m left`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return `${hours}h ${rem}m left`;
+};
+
+const nextDueAt = (item: CaseItem) => {
+  const first = item.first_response_due_at ? new Date(item.first_response_due_at).getTime() : null;
+  const resolve = item.resolve_due_at ? new Date(item.resolve_due_at).getTime() : null;
+  if (first && resolve) return new Date(Math.min(first, resolve)).toISOString();
+  if (first) return new Date(first).toISOString();
+  if (resolve) return new Date(resolve).toISOString();
+  return null;
+};
+
 export function CasesPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<CaseItem[]>([]);
@@ -110,6 +134,8 @@ export function CasesPage() {
                 <th>Тип</th>
                 <th>Статус</th>
                 <th>Приоритет</th>
+                <th>Queue</th>
+                <th>SLA</th>
                 <th>Обновлено</th>
               </tr>
             </thead>
@@ -125,6 +151,8 @@ export function CasesPage() {
                     <span className={caseStatusTone(item.status)}>{caseStatusLabel(item.status)}</span>
                   </td>
                   <td>{casePriorityLabel(item.priority)}</td>
+                  <td>{item.queue}</td>
+                  <td>{formatRemaining(nextDueAt(item))}</td>
                   <td>{formatDateTime(item.last_activity_at)}</td>
                 </tr>
               ))}

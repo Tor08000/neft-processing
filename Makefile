@@ -165,6 +165,16 @@ cases-smoke:
 	curl -s -X GET "http://localhost/api/core/cases?limit=5" \
 	  -H "Authorization: Bearer $$CASES_TOKEN" | cat
 
+cases-escalation-smoke:
+	@if [ -z "$$CASES_TOKEN" ]; then echo "CASES_TOKEN is required"; exit 1; fi
+	@case_id=$$(curl -s -X POST "http://localhost/api/core/cases" \
+	  -H "Authorization: Bearer $$CASES_TOKEN" \
+	  -H "Content-Type: application/json" \
+	  -d '{"kind":"operation","entity_id":"op_456","priority":"MEDIUM","note":"escalation smoke","explain":{"decision":"DECLINE","reason_codes":["velocity_high"]}}' | jq -r '.id'); \
+	echo "case_id=$$case_id"; \
+	curl -s -X GET "http://localhost/api/core/cases/$$case_id" \
+	  -H "Authorization: Bearer $$CASES_TOKEN" | cat
+
 # ----------------------------------------
 # ALEMBIC VERSION TABLE CHECK
 # ----------------------------------------

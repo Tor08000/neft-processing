@@ -33,6 +33,7 @@ from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
+from app.services.cases_metrics import metrics as cases_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveResult,
@@ -703,6 +704,31 @@ def _audit_metrics() -> list[str]:
     ]
 
 
+def _cases_metrics() -> list[str]:
+    escalation_lines = [
+        f'core_api_cases_escalations_total{{level="{level}"}} {count}'
+        for level, count in cases_metrics.escalations_total.items()
+    ]
+    if not escalation_lines:
+        escalation_lines.append('core_api_cases_escalations_total{level="unset"} 0')
+
+    breach_lines = [
+        f'core_api_cases_sla_breaches_total{{kind="{kind}"}} {count}'
+        for kind, count in cases_metrics.sla_breaches_total.items()
+    ]
+    if not breach_lines:
+        breach_lines.append('core_api_cases_sla_breaches_total{kind="unset"} 0')
+
+    return [
+        "# HELP core_api_cases_escalations_total Total SLA escalations by level.",
+        "# TYPE core_api_cases_escalations_total counter",
+        *escalation_lines,
+        "# HELP core_api_cases_sla_breaches_total Total SLA breaches by kind.",
+        "# TYPE core_api_cases_sla_breaches_total counter",
+        *breach_lines,
+    ]
+
+
 def _accounting_export_metrics() -> list[str]:
     return [
         "# HELP core_api_accounting_export_overdue_total Accounting export batches overdue for generation.",
@@ -792,6 +818,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_risk_metrics())
     lines.extend(_risk_v5_metrics())
     lines.extend(_audit_metrics())
+    lines.extend(_cases_metrics())
     lines.extend(_accounting_export_metrics())
     lines.extend(_bi_metrics())
     return "\n".join(lines) + "\n"

@@ -12,9 +12,12 @@ from app.models.cases import (
     CaseCommentType,
     CaseKind,
     CasePriority,
+    CaseQueue,
+    CaseSlaState,
     CaseSnapshot,
     CaseStatus,
 )
+from app.services.case_escalation_service import apply_classification, apply_sla_filter, classify_case
 
 
 def _format_score(value: Any) -> str | None:
@@ -133,6 +136,8 @@ def create_case(
             body="Кейс создан",
         )
     )
+    classification = classify_case(case, explain, diff)
+    apply_classification(db, case=case, result=classification, now=now)
     return case
 
 
@@ -144,6 +149,9 @@ def list_cases(
     status: list[CaseStatus] | None = None,
     kind: CaseKind | None = None,
     priority: list[CasePriority] | None = None,
+    queue: CaseQueue | None = None,
+    sla_state: CaseSlaState | None = None,
+    escalation_level_min: int | None = None,
     q: str | None = None,
     limit: int = 50,
     cursor: str | None = None,
@@ -158,6 +166,10 @@ def list_cases(
         query = query.filter(Case.kind == kind)
     if priority:
         query = query.filter(Case.priority.in_(priority))
+    if queue:
+        query = query.filter(Case.queue == queue)
+    if escalation_level_min is not None:
+        query = query.filter(Case.escalation_level >= escalation_level_min)
     if assigned_to:
         query = query.filter(Case.assigned_to == assigned_to)
     if q:
@@ -169,6 +181,8 @@ def list_cases(
                 Case.kpi_key.ilike(pattern),
             )
         )
+    if sla_state:
+        query = apply_sla_filter(query, sla_state=sla_state, now=datetime.now(timezone.utc))
 
     total = query.count()
     offset = int(cursor or 0)

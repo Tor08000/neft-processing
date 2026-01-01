@@ -3,6 +3,8 @@ import { apiGet, apiPatch, apiPost } from "./client";
 export type CaseKind = "operation" | "invoice" | "order" | "kpi";
 export type CaseStatus = "TRIAGE" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type CaseQueue = "FRAUD_OPS" | "FINANCE_OPS" | "SUPPORT" | "GENERAL";
+export type CaseSlaState = "ON_TRACK" | "WARNING" | "BREACHED";
 
 export interface CaseSnapshot {
   id: string;
@@ -30,7 +32,12 @@ export interface CaseItem {
   window_days?: number | null;
   title: string;
   status: CaseStatus;
+  queue: CaseQueue;
   priority: CasePriority;
+  escalation_level: number;
+  first_response_due_at?: string | null;
+  resolve_due_at?: string | null;
+  sla_state?: CaseSlaState | null;
   created_by?: string | null;
   assigned_to?: string | null;
   created_at: string;
@@ -79,6 +86,9 @@ export function fetchCases(params: {
   status?: CaseStatus;
   kind?: CaseKind;
   priority?: CasePriority | string;
+  queue?: CaseQueue;
+  sla_state?: CaseSlaState;
+  escalation_level_min?: number;
   assigned_to?: string;
   q?: string;
   limit?: number;
