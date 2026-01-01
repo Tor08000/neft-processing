@@ -1,12 +1,24 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { CopyButton } from "../CopyButton/CopyButton";
 
 interface JsonViewerProps {
   value: unknown;
   title?: string;
+  enableSearch?: boolean;
+  enableCollapse?: boolean;
+  collapsedLines?: number;
 }
 
-export const JsonViewer: React.FC<JsonViewerProps> = ({ value, title }) => {
+export const JsonViewer: React.FC<JsonViewerProps> = ({
+  value,
+  title,
+  enableSearch = false,
+  enableCollapse = false,
+  collapsedLines = 20,
+}) => {
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+
   const formatted = useMemo(() => {
     if (typeof value === "string") {
       try {
@@ -18,13 +30,45 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({ value, title }) => {
     return JSON.stringify(value ?? {}, null, 2);
   }, [value]);
 
+  const lines = useMemo(() => formatted.split("\n"), [formatted]);
+  const filteredLines = useMemo(() => {
+    if (!query) return lines;
+    const lowered = query.toLowerCase();
+    return lines.filter((line) => line.toLowerCase().includes(lowered));
+  }, [lines, query]);
+
+  const visibleLines = useMemo(() => {
+    if (!enableCollapse || !collapsed || filteredLines.length <= collapsedLines) {
+      return filteredLines;
+    }
+    return [...filteredLines.slice(0, collapsedLines), "…"];
+  }, [collapsed, collapsedLines, enableCollapse, filteredLines]);
+
   return (
-    <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+    <div className="json-viewer">
+      <div className="json-viewer__header">
         <strong>{title ?? "JSON"}</strong>
-        <CopyButton value={formatted} label="Copy JSON" />
+        <div className="json-viewer__actions">
+          {enableSearch ? (
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search"
+            />
+          ) : null}
+          {enableCollapse && filteredLines.length > collapsedLines ? (
+            <button type="button" className="ghost" onClick={() => setCollapsed((prev) => !prev)}>
+              {collapsed ? "Expand" : "Collapse"}
+            </button>
+          ) : null}
+          <CopyButton value={formatted} label="Copy JSON" />
+        </div>
       </div>
-      <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>{formatted}</pre>
+      {enableSearch && query ? (
+        <div className="json-viewer__meta">{filteredLines.length} lines match</div>
+      ) : null}
+      <pre className="json-viewer__content">{visibleLines.join("\n")}</pre>
     </div>
   );
 };
