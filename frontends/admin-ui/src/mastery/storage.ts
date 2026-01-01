@@ -32,12 +32,20 @@ const sanitizeEvent = (raw: Partial<MasteryEvent>): MasteryEvent | null => {
   if (!raw.type || !isEventType(raw.type)) return null;
   if (!raw.at || typeof raw.at !== "string") return null;
   const score = raw.score;
+  const scoreAfter = raw.score_after;
   return {
     type: raw.type,
     at: raw.at,
     score:
       score && typeof score.level === "string" && typeof score.confidence === "number" && typeof score.penalty === "number"
         ? { level: score.level, confidence: score.confidence, penalty: score.penalty }
+        : undefined,
+    score_after:
+      scoreAfter &&
+      typeof scoreAfter.level === "string" &&
+      typeof scoreAfter.confidence === "number" &&
+      typeof scoreAfter.penalty === "number"
+        ? { level: scoreAfter.level, confidence: scoreAfter.confidence, penalty: scoreAfter.penalty }
         : undefined,
     selected_actions_count:
       typeof raw.selected_actions_count === "number" ? raw.selected_actions_count : undefined,

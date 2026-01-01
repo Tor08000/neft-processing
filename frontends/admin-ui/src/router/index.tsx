@@ -19,6 +19,8 @@ const ExplainPage = React.lazy(() => import("../pages/ExplainPage"));
 const EscalationsPage = React.lazy(() => import("../pages/ops/EscalationsPage"));
 const KpiPage = React.lazy(() => import("../pages/ops/KpiPage"));
 const SupportRequestsPage = React.lazy(() => import("../pages/SupportRequestsPage"));
+const CasesListPage = React.lazy(() => import("../pages/cases/CasesListPage"));
+const CaseDetailsPage = React.lazy(() => import("../pages/cases/CaseDetailsPage"));
 
 export function AppRouter() {
   const { accessToken } = useAuth();
@@ -42,6 +44,8 @@ export function AppRouter() {
             <Route path="/payouts" element={<PayoutBatchesPage />} />
             <Route path="/health" element={<HealthPage />} />
             <Route path="/explain" element={<ExplainPage />} />
+            <Route path="/cases" element={<CasesListPage />} />
+            <Route path="/cases/:id" element={<CaseDetailsPage />} />
             <Route path="/ops/escalations" element={<EscalationsPage />} />
             <Route path="/ops/kpi" element={<KpiPage />} />
             <Route path="/support/requests" element={<SupportRequestsPage />} />
