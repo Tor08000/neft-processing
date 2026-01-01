@@ -26,6 +26,8 @@ class SubscriptionPlanBase(BaseModel):
     is_active: bool = True
     billing_period_months: int = 0
     price_cents: int = 0
+    discount_percent: int = 0
+    bonus_multiplier_override: float | None = None
     currency: str = "RUB"
 
 
@@ -40,6 +42,8 @@ class SubscriptionPlanUpdate(BaseModel):
     is_active: bool | None = None
     billing_period_months: int | None = None
     price_cents: int | None = None
+    discount_percent: int | None = None
+    bonus_multiplier_override: float | None = None
     currency: str | None = None
 
 

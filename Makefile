@@ -12,7 +12,7 @@ PROJECT_NAME := neft-processing
         migrate test test-core test-auth test-ai test-workers \
         health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
-        clean-volumes clean-images kpi-smoke cases-smoke subscription-smoke plans-smoke
+        clean-volumes clean-images kpi-smoke cases-smoke subscription-smoke plans-smoke seed-smoke gamification-smoke
 
 # ----------------------------------------
 # БАЗОВЫЕ ОПЕРАЦИИ С СТЕКОМ
@@ -196,6 +196,24 @@ plans-smoke:
 	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" \
 	  -H "Content-Type: application/json" \
 	  -d "{\"plan_id\":\"$$plan_id\",\"duration_months\":1,\"auto_renew\":false}" | cat
+
+seed-smoke:
+	@if [ -z "$$SUBSCRIPTIONS_ADMIN_TOKEN" ]; then echo "SUBSCRIPTIONS_ADMIN_TOKEN is required"; exit 1; fi
+	curl -s "http://localhost/api/core/subscriptions/plans" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="FREE_BASE")' >/dev/null
+	curl -s "http://localhost/api/core/subscriptions/plans" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="CONTROL_SMB_1M")' >/dev/null
+	curl -s "http://localhost/api/core/subscriptions/gamification/achievements" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="ACH_NO_PENALTIES_30D")' >/dev/null
+
+gamification-smoke:
+	@if [ -z "$$SUBSCRIPTIONS_ADMIN_TOKEN" ]; then echo "SUBSCRIPTIONS_ADMIN_TOKEN is required"; exit 1; fi
+	curl -s "http://localhost/api/core/subscriptions/gamification/achievements" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="ACH_EXPORTS_ONTIME_7D")' >/dev/null
+	curl -s "http://localhost/api/core/subscriptions/gamification/streaks" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="STREAK_NO_CRITICAL_ERRORS_7D")' >/dev/null
+	curl -s "http://localhost/api/core/subscriptions/gamification/bonuses" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" | jq -e '.[] | select(.code=="BONUS_MARKETPLACE_DISCOUNT")' >/dev/null
 
 # ----------------------------------------
 # ALEMBIC VERSION TABLE CHECK

@@ -3,7 +3,19 @@ from __future__ import annotations
 import uuid
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import BigInteger, JSON
 
@@ -40,6 +52,8 @@ class SubscriptionPlan(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     billing_period_months = Column(Integer, nullable=False, server_default="0")
     price_cents = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, server_default="0")
+    discount_percent = Column(Integer, nullable=False, server_default="0")
+    bonus_multiplier_override = Column(Float, nullable=True)
     currency = Column(String(3), nullable=False, server_default="RUB")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

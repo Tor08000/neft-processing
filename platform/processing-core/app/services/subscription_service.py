@@ -24,6 +24,8 @@ from app.schemas.subscriptions import (
 )
 
 DEFAULT_TENANT_ID = 1
+FREE_PLAN_CODES = {"FREE_BASE", "FREE"}
+DEFAULT_FREE_PLAN_CODE = "FREE_BASE"
 
 
 def _now() -> datetime:
@@ -31,6 +33,9 @@ def _now() -> datetime:
 
 
 def get_free_plan(db: Session) -> SubscriptionPlan | None:
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.code == DEFAULT_FREE_PLAN_CODE).one_or_none()
+    if plan:
+        return plan
     return db.query(SubscriptionPlan).filter(SubscriptionPlan.code == "FREE").one_or_none()
 
 
@@ -47,30 +52,52 @@ def ensure_free_subscription(db: Session, *, tenant_id: int, client_id: str) -> 
     plan = get_free_plan(db)
     if plan is None:
         plan = SubscriptionPlan(
-            code="FREE",
-            title="FREE",
+            code=DEFAULT_FREE_PLAN_CODE,
+            title="FREE Base",
             description="Базовая бесплатная подписка",
             is_active=True,
             billing_period_months=0,
             price_cents=0,
+            discount_percent=0,
+            bonus_multiplier_override=None,
             currency="RUB",
         )
         db.add(plan)
         db.flush()
 
+        base_modules = {
+            SubscriptionModuleCode.FUEL_CORE: {"enabled": True, "tier": "free", "limits": {"cards_max": 5}},
+            SubscriptionModuleCode.MARKETPLACE: {
+                "enabled": True,
+                "tier": "free",
+                "limits": {"marketplace_discount_percent": 0},
+            },
+            SubscriptionModuleCode.EXPLAIN: {
+                "enabled": True,
+                "tier": "basic",
+                "limits": {"explain_depth": 1, "explain_diff": False, "what_if": "off"},
+            },
+            SubscriptionModuleCode.ANALYTICS: {
+                "enabled": True,
+                "tier": "basic",
+                "limits": {"exports_per_month": 1},
+            },
+            SubscriptionModuleCode.BONUSES: {
+                "enabled": True,
+                "tier": "preview",
+                "limits": {"preview_only": True, "bonus_multiplier": 0},
+            },
+        }
+
         for module_code in SubscriptionModuleCode:
-            enabled = module_code in {
-                SubscriptionModuleCode.FUEL_CORE,
-                SubscriptionModuleCode.EXPLAIN,
-                SubscriptionModuleCode.MARKETPLACE,
-            }
+            config = base_modules.get(module_code, {"enabled": False, "tier": "off", "limits": {}})
             db.add(
                 SubscriptionPlanModule(
                     plan_id=plan.id,
                     module_code=module_code,
-                    enabled=enabled,
-                    tier="free",
-                    limits={"enabled": enabled},
+                    enabled=config["enabled"],
+                    tier=config["tier"],
+                    limits=config["limits"],
                 )
             )
 
@@ -119,7 +146,7 @@ def assign_plan_to_client(
         month = month % 12 + 1
         end_at = end_at.replace(year=year, month=month)
 
-    status = SubscriptionStatus.FREE if plan.code == "FREE" else SubscriptionStatus.ACTIVE
+    status = SubscriptionStatus.FREE if plan.code in FREE_PLAN_CODES else SubscriptionStatus.ACTIVE
 
     subscription = ClientSubscription(
         tenant_id=tenant_id,
@@ -155,6 +182,8 @@ def create_plan(db: Session, payload: SubscriptionPlanCreate) -> SubscriptionPla
         is_active=payload.is_active,
         billing_period_months=payload.billing_period_months,
         price_cents=payload.price_cents,
+        discount_percent=payload.discount_percent,
+        bonus_multiplier_override=payload.bonus_multiplier_override,
         currency=payload.currency,
     )
     db.add(plan)
