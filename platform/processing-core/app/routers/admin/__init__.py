@@ -36,6 +36,7 @@ from app.routers.admin import (
     fraud,
     money_flow,
     ops,
+    audit,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -74,5 +75,6 @@ router.include_router(fleet_control.router)
 router.include_router(fleet_intelligence.router)
 router.include_router(what_if.router)
 router.include_router(ops.router)
+router.include_router(audit.router)
 
 __all__ = ["router"]
