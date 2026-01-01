@@ -66,6 +66,7 @@ def build_sla(
     expires_at = started_at + timedelta(minutes=definition.timeout_minutes)
     remaining_seconds = (expires_at - current_time).total_seconds()
     remaining_minutes = max(0, int(remaining_seconds // 60))
+    remaining_minutes = min(definition.timeout_minutes, remaining_minutes)
 
     return SLAClock(
         started_at=started_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),

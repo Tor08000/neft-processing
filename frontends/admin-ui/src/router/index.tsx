@@ -15,7 +15,7 @@ const AccountDetailsPage = React.lazy(() => import("../pages/AccountDetailsPage"
 const IntegrationMonitoringPage = React.lazy(() => import("../pages/IntegrationMonitoringPage"));
 const HealthPage = React.lazy(() => import("../pages/HealthPage"));
 const LoginPage = React.lazy(() => import("../pages/LoginPage"));
-const UnifiedExplainPage = React.lazy(() => import("../pages/UnifiedExplainPage"));
+const ExplainPage = React.lazy(() => import("../pages/ExplainPage"));
 const EscalationsPage = React.lazy(() => import("../pages/ops/EscalationsPage"));
 const KpiPage = React.lazy(() => import("../pages/ops/KpiPage"));
 const SupportRequestsPage = React.lazy(() => import("../pages/SupportRequestsPage"));
@@ -41,7 +41,7 @@ export function AppRouter() {
             <Route path="/clearing" element={<ClearingBatchesPage />} />
             <Route path="/payouts" element={<PayoutBatchesPage />} />
             <Route path="/health" element={<HealthPage />} />
-            <Route path="/explain" element={<UnifiedExplainPage />} />
+            <Route path="/explain" element={<ExplainPage />} />
             <Route path="/ops/escalations" element={<EscalationsPage />} />
             <Route path="/ops/kpi" element={<KpiPage />} />
             <Route path="/support/requests" element={<SupportRequestsPage />} />

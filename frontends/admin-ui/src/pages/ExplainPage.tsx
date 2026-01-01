@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { fetchExplainDiff, fetchExplainV2 } from "../api/explainV2";
-import { useAuth } from "../auth/AuthContext";
-import { Toast } from "../components/Toast/Toast";
+import { useSearchParams } from "react-router-dom";
+import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
-import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
+import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
   ExplainEvidence,
   ExplainReasonNode,
   ExplainV2Response,
+  WhatIfResponse,
 } from "../types/explainV2";
 
 type EvidenceFilter = "all" | "linked";
@@ -37,38 +36,6 @@ const scoreBandLabel = (band?: string | null) => {
     review: "проверка",
   };
   return map[band] ?? band;
-};
-
-const riskDeltaLabel = (delta: number) => {
-  const percentValue = Math.abs(delta * 100).toFixed(0);
-  if (delta < 0) return `Риск снизится на ${percentValue}%`;
-  if (delta > 0) return `Риск вырастет на ${percentValue}%`;
-  return "Риск не изменится";
-};
-
-const buildReasonStatusMap = (diff: ExplainDiffResponse | null) => {
-  const map = new Map<string, string>();
-  if (!diff) return map;
-  diff.diff.reasons.removed.forEach((code) => map.set(code, "removed"));
-  diff.diff.reasons.added.forEach((code) => map.set(code, "added"));
-  diff.diff.reasons.weakened.forEach((item) => map.set(item.code, "weakened"));
-  diff.diff.reasons.strengthened.forEach((item) => map.set(item.code, "strengthened"));
-  return map;
-};
-
-const buildEvidenceStatusMap = (diff: ExplainDiffResponse | null) => {
-  const map = new Map<string, string>();
-  if (!diff) return map;
-  diff.diff.evidence.removed.forEach((id) => map.set(id, "removed"));
-  diff.diff.evidence.added.forEach((id) => map.set(id, "added"));
-  return map;
-};
-
-const diffBadgeLabel: Record<string, string> = {
-  removed: "устранено",
-  weakened: "ослаблено",
-  strengthened: "усилено",
-  added: "добавлено",
 };
 
 const collectEvidenceRefs = (node: ExplainReasonNode): Set<string> => {
@@ -133,6 +100,38 @@ const renderEvidenceValue = (item: ExplainEvidence) => {
     );
   }
   return <pre className="explain-evidence__value">{JSON.stringify(item.value, null, 2)}</pre>;
+};
+
+const diffBadgeLabel: Record<string, string> = {
+  removed: "устранено",
+  weakened: "ослаблено",
+  strengthened: "усилено",
+  added: "добавлено",
+};
+
+const riskDeltaLabel = (delta: number) => {
+  const percentValue = Math.abs(delta * 100).toFixed(0);
+  if (delta < 0) return `Риск снизится на ${percentValue}%`;
+  if (delta > 0) return `Риск вырастет на ${percentValue}%`;
+  return "Риск не изменится";
+};
+
+const buildReasonStatusMap = (diff: ExplainDiffResponse | null) => {
+  const map = new Map<string, string>();
+  if (!diff) return map;
+  diff.diff.reasons.removed.forEach((code) => map.set(code, "removed"));
+  diff.diff.reasons.added.forEach((code) => map.set(code, "added"));
+  diff.diff.reasons.weakened.forEach((item) => map.set(item.code, "weakened"));
+  diff.diff.reasons.strengthened.forEach((item) => map.set(item.code, "strengthened"));
+  return map;
+};
+
+const buildEvidenceStatusMap = (diff: ExplainDiffResponse | null) => {
+  const map = new Map<string, string>();
+  if (!diff) return map;
+  diff.diff.evidence.removed.forEach((id) => map.set(id, "removed"));
+  diff.diff.evidence.added.forEach((id) => map.set(id, "added"));
+  return map;
 };
 
 const ReasonTreeNode = ({
@@ -211,19 +210,22 @@ const EvidenceCard = ({ item, highlighted }: { item: ExplainEvidence; highlighte
   </div>
 );
 
-export function ExplainPage() {
-  const { id } = useParams();
+export const ExplainPage = () => {
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
   const { toast, showToast } = useToast();
   const [payload, setPayload] = useState<ExplainV2Response | null>(null);
+  const [actionsCatalog, setActionsCatalog] = useState<ExplainActionCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<EvidenceFilter>("all");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedActions, setSelectedActions] = useState<ExplainActionCatalogItem[]>([]);
+  const [whatIf, setWhatIf] = useState<WhatIfResponse | null>(null);
+  const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [isWhatIfLoading, setIsWhatIfLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedReasonId, setSelectedReasonId] = useState<string | null>(null);
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set());
-  const [selectedActions, setSelectedActions] = useState<ExplainActionCatalogItem[]>([]);
   const [diffData, setDiffData] = useState<ExplainDiffResponse | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
@@ -234,7 +236,7 @@ export function ExplainPage() {
   const syncGuard = useRef(false);
 
   const kind = searchParams.get("kind") ?? (searchParams.get("kpi_key") ? "kpi" : null);
-  const entityId = searchParams.get("id") ?? id ?? null;
+  const entityId = searchParams.get("id");
   const kpiKey = searchParams.get("kpi_key");
   const windowDays = searchParams.get("window_days") ?? "7";
 
@@ -257,9 +259,6 @@ export function ExplainPage() {
     setShowDiff(false);
   }, [payload?.id, kind]);
 
-  const reasonStatusMap = useMemo(() => buildReasonStatusMap(diffData), [diffData]);
-  const evidenceStatusMap = useMemo(() => buildEvidenceStatusMap(diffData), [diffData]);
-
   useEffect(() => {
     if (selectedReasonId) {
       setFilter("linked");
@@ -278,20 +277,7 @@ export function ExplainPage() {
     return items;
   }, [filter, linkedEvidenceIds, payload?.evidence]);
 
-  const toggle = useCallback((nodeId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-      return next;
-    });
-  }, []);
-
   const loadExplain = useCallback(async () => {
-    if (!user) return;
     if (!kind) {
       setError("Не указан тип explain.");
       return;
@@ -316,22 +302,40 @@ export function ExplainPage() {
         setIsLoading(false);
         return;
       }
-      const data = await fetchExplainV2(user, params);
+      const data = await fetchExplainV2(params);
       setPayload(data);
-      if (data.reason_tree) {
-        setExpanded(new Set([data.reason_tree.id]));
-      }
     } catch (err) {
       setError((err as Error).message);
       setPayload(null);
     } finally {
       setIsLoading(false);
     }
-  }, [entityId, kind, kpiKey, user, windowDays]);
+  }, [entityId, kind, kpiKey, windowDays]);
+
+  const loadActions = useCallback(async () => {
+    if (!kind) return;
+    try {
+      const params: Record<string, string> = {};
+      if (kind === "kpi") {
+        if (!kpiKey) return;
+        params.kpi_key = kpiKey;
+      } else if (entityId) {
+        params.kind = kind;
+        params.id = entityId;
+      } else {
+        return;
+      }
+      const data = await fetchExplainActions(params);
+      setActionsCatalog(data);
+    } catch {
+      setActionsCatalog([]);
+    }
+  }, [entityId, kind, kpiKey]);
 
   useEffect(() => {
     void loadExplain();
-  }, [loadExplain]);
+    void loadActions();
+  }, [loadExplain, loadActions]);
 
   const copyLink = useCallback(() => {
     const url = window.location.href;
@@ -339,27 +343,15 @@ export function ExplainPage() {
     showToast("success", "Ссылка скопирована");
   }, [showToast]);
 
-  const actionOptions = useMemo<ExplainActionOption[]>(() => {
-    return (
-      payload?.recommended_actions.map((item) => ({
-        action_code: item.action_code,
-        label: item.title,
-        description: item.description ?? null,
-        recommended: true,
-      })) ?? []
-    );
-  }, [payload?.recommended_actions]);
-
-  const selectedActionCodes = useMemo(() => new Set(selectedActions.map((item) => item.action_code)), [selectedActions]);
-
-  const toggleAction = useCallback((item: ExplainActionCatalogItem) => {
-    setSelectedActions((prev) => {
-      const exists = prev.find((action) => action.action_code === item.action_code);
-      if (exists) {
-        return prev.filter((action) => action.action_code !== item.action_code);
+  const toggleNode = useCallback((nodeId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
       }
-      if (prev.length >= 3) return prev;
-      return [...prev, item];
+      return next;
     });
   }, []);
 
@@ -374,27 +366,15 @@ export function ExplainPage() {
     });
   }, []);
 
-  const handleScrollSync = useCallback((source: "before" | "after") => {
-    if (syncGuard.current) return;
-    const sourceEl = source === "before" ? beforeRef.current : afterRef.current;
-    const targetEl = source === "before" ? afterRef.current : beforeRef.current;
-    if (!sourceEl || !targetEl) return;
-    syncGuard.current = true;
-    targetEl.scrollTop = sourceEl.scrollTop;
-    window.setTimeout(() => {
-      syncGuard.current = false;
-    }, 0);
-  }, []);
-
   const loadDiff = useCallback(async () => {
-    if (!user || !kind || selectedActions.length < 1) return;
+    if (!kind || selectedActions.length < 1) return;
     const targetId = kind === "kpi" ? kpiKey : entityId;
     if (!targetId) return;
     setIsDiffLoading(true);
     setDiffError(null);
     try {
       const diffKind = (kind === "marketplace_order" ? "order" : kind) as "operation" | "invoice" | "order" | "kpi";
-      const response = await fetchExplainDiff(user, {
+      const response = await fetchExplainDiff({
         context: { kind: diffKind, id: targetId },
         actions: selectedActions.map((item) => ({ code: item.action_code })),
       });
@@ -407,197 +387,169 @@ export function ExplainPage() {
     } finally {
       setIsDiffLoading(false);
     }
-  }, [entityId, kind, kpiKey, selectedActions, user]);
+  }, [entityId, kind, kpiKey, selectedActions]);
 
-  if (showDiff) {
-    return (
-      <div className="card">
-        <div className="card__header">
-          <Toast toast={toast} />
-          <div>
-            <h2>Explain Diff</h2>
-            <p className="muted">Simulation only · {selectedActions.map((item) => item.label).join(", ")}</p>
-          </div>
-          <button type="button" className="ghost" onClick={() => setShowDiff(false)}>
-            Назад к explain
-          </button>
-        </div>
+  const actionOptions = useMemo<ExplainActionOption[]>(() => {
+    const merged = [
+      ...(payload?.recommended_actions.map((item) => ({
+        action_code: item.action_code,
+        label: item.title,
+        description: item.description ?? null,
+        recommended: true,
+      })) ?? []),
+      ...actionsCatalog.map((item) => ({ ...item, recommended: false })),
+    ];
+    const seen = new Map<string, ExplainActionOption>();
+    merged.forEach((item) => {
+      if (!seen.has(item.action_code)) {
+        seen.set(item.action_code, item);
+      }
+    });
+    return Array.from(seen.values());
+  }, [actionsCatalog, payload?.recommended_actions]);
 
-        {isDiffLoading ? <AppLoadingState label="Готовим diff..." /> : null}
-        {diffError ? (
-          diffError.toLowerCase().includes("forbidden") ? (
-            <AppEmptyState title="Недостаточно прав для симуляции" description="Обратитесь к администратору." />
-          ) : (
-            <AppErrorState message={diffError} onRetry={loadDiff} />
-          )
-        ) : null}
+  const selectedActionCodes = useMemo(() => new Set(selectedActions.map((item) => item.action_code)), [selectedActions]);
 
-        {diffData ? (
-          <div className="explain-diff__grid">
-            {diffData.diff.risk.label === "NO_CHANGE" ? (
-              <AppEmptyState title="Действие не изменяет причины" description="Изменения не обнаружены." />
-            ) : null}
-            <div className="explain-diff__column" ref={beforeRef} onScroll={() => handleScrollSync("before")}>
-              <div className="explain-diff__header">Before</div>
-              <div className="card explain-card">
-                <div className="explain-diff__risk">
-                  <strong>{diffData.before.risk_score?.toFixed(2) ?? "—"}</strong>
-                  <span className="muted small">{diffData.before.decision ?? "—"}</span>
-                </div>
-                <div className="explain-diff__risk-note">{riskDeltaLabel(diffData.diff.risk.delta)}</div>
-              </div>
-              <div className="card explain-card">
-                <h3>Reasons</h3>
-                <div className="explain-diff__list">
-                  {diffData.before.reasons.map((reason) => {
-                    const status = reasonStatusMap.get(reason.code);
-                    return (
-                      <div
-                        key={reason.code}
-                        className={`explain-diff__item ${status ? `is-${status}` : ""} ${
-                          hoveredReason === reason.code ? "is-hovered" : ""
-                        }`}
-                        onMouseEnter={() => setHoveredReason(reason.code)}
-                        onMouseLeave={() => setHoveredReason(null)}
-                      >
-                        <span>{reason.title}</span>
-                        {status ? <span className="pill pill--accent">{diffBadgeLabel[status]}</span> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="card explain-card">
-                <h3>Evidence</h3>
-                <div className="explain-diff__list">
-                  {diffData.before.evidence.map((item) => {
-                    const status = evidenceStatusMap.get(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        className={`explain-diff__item explain-diff__item--evidence ${status ? `is-${status}` : ""}`}
-                      >
-                        <span>{item.label}</span>
-                        {status === "removed" ? <span className="pill pill--neutral">removed</span> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            <div className="explain-diff__column" ref={afterRef} onScroll={() => handleScrollSync("after")}>
-              <div className="explain-diff__header">After</div>
-              <div className="card explain-card">
-                <div className="explain-diff__risk">
-                  <strong>{diffData.after.risk_score?.toFixed(2) ?? "—"}</strong>
-                  <span className="muted small">{diffData.after.decision ?? "—"}</span>
-                </div>
-                <div className="explain-diff__risk-note">{riskDeltaLabel(diffData.diff.risk.delta)}</div>
-              </div>
-              <div className="card explain-card">
-                <h3>Reasons</h3>
-                <div className="explain-diff__list">
-                  {diffData.after.reasons.map((reason) => {
-                    const status = reasonStatusMap.get(reason.code);
-                    return (
-                      <div
-                        key={reason.code}
-                        className={`explain-diff__item ${status ? `is-${status}` : ""} ${
-                          hoveredReason === reason.code ? "is-hovered" : ""
-                        }`}
-                        onMouseEnter={() => setHoveredReason(reason.code)}
-                        onMouseLeave={() => setHoveredReason(null)}
-                      >
-                        <span>{reason.title}</span>
-                        {status ? <span className="pill pill--accent">{diffBadgeLabel[status]}</span> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="card explain-card">
-                <h3>Evidence</h3>
-                <div className="explain-diff__list">
-                  {diffData.after.evidence.map((item) => {
-                    const status = evidenceStatusMap.get(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        className={`explain-diff__item explain-diff__item--evidence ${status ? `is-${status}` : ""}`}
-                      >
-                        <span>{item.label}</span>
-                        {status === "added" ? <span className="pill pill--accent">NEW</span> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+  const toggleAction = useCallback(
+    (item: ExplainActionCatalogItem) => {
+      setSelectedActions((prev) => {
+        const exists = prev.find((action) => action.action_code === item.action_code);
+        if (exists) {
+          return prev.filter((action) => action.action_code !== item.action_code);
+        }
+        if (prev.length >= 3) return prev;
+        return [...prev, item];
+      });
+    },
+    [],
+  );
+
+  const openWhatIf = useCallback(() => {
+    setDrawerOpen(true);
+    setWhatIf(null);
+    setWhatIfError(null);
+  }, []);
+
+  const evaluate = useCallback(async () => {
+    if (!kind || !entityId) return;
+    const subjectType = kind === "operation" ? "FUEL_TX" : kind === "invoice" ? "INVOICE" : "ORDER";
+    setIsWhatIfLoading(true);
+    setWhatIfError(null);
+    try {
+      const response = await evaluateWhatIf({
+        subject: { type: subjectType, id: entityId },
+        max_candidates: Math.min(3, Math.max(1, selectedActions.length)),
+      });
+      setWhatIf(response);
+    } catch (err) {
+      setWhatIfError((err as Error).message);
+      setWhatIf(null);
+    } finally {
+      setIsWhatIfLoading(false);
+    }
+  }, [entityId, kind, selectedActions.length]);
+
+  const candidatesByAction = useMemo(() => {
+    if (!whatIf) return new Map<string, WhatIfResponse["candidates"][number]>();
+    return new Map(whatIf.candidates.map((candidate) => [candidate.action.code, candidate]));
+  }, [whatIf]);
+
+  const filteredCandidates = useMemo(() => {
+    if (!selectedActions.length) return [];
+    return selectedActions.map((action) => ({
+      action,
+      candidate: candidatesByAction.get(action.action_code) ?? null,
+    }));
+  }, [candidatesByAction, selectedActions]);
+
+  const canCompare = kind !== "kpi" && entityId;
+  const canDiff = Boolean(kind === "kpi" ? kpiKey : entityId);
+
+  const reasonStatusMap = useMemo(() => buildReasonStatusMap(diffData), [diffData]);
+  const evidenceStatusMap = useMemo(() => buildEvidenceStatusMap(diffData), [diffData]);
+
+  const handleScrollSync = useCallback((source: "before" | "after") => {
+    if (syncGuard.current) return;
+    const sourceEl = source === "before" ? beforeRef.current : afterRef.current;
+    const targetEl = source === "before" ? afterRef.current : beforeRef.current;
+    if (!sourceEl || !targetEl) return;
+    syncGuard.current = true;
+    targetEl.scrollTop = sourceEl.scrollTop;
+    window.setTimeout(() => {
+      syncGuard.current = false;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (drawerOpen && canCompare && selectedActions.length >= 2 && !isWhatIfLoading) {
+      void evaluate();
+    }
+  }, [drawerOpen, canCompare, selectedActions.length, evaluate, isWhatIfLoading]);
 
   return (
-    <div className="card">
-      <div className="card__header">
-        <Toast toast={toast} />
+    <div className="explain-v2">
+      <Toast toast={toast} />
+      <div className="page-header">
         <div>
-          <h2>Explain v2</h2>
-          <p className="muted">Почему принято решение и какие есть доказательства.</p>
+          <h1>Explain v2</h1>
+          <p className="muted">Почему принято решение и как можно повлиять на риск.</p>
         </div>
         <div className="stack-inline">
           <button
             type="button"
-            className="ghost"
+            className="neft-btn-secondary"
             onClick={() => void loadDiff()}
-            disabled={selectedActions.length < 1}
+            disabled={selectedActions.length < 1 || !canDiff}
           >
             Показать изменения
           </button>
-          <button type="button" className="ghost" onClick={copyLink}>
+          <button type="button" className="neft-btn-secondary" onClick={copyLink}>
             Скопировать ссылку
           </button>
-          <button type="button" className="ghost" title="В разработке" disabled>
+          <button type="button" className="neft-btn-secondary" title="В разработке" disabled>
             Экспорт
           </button>
-          <Link className="ghost" to="/dashboard">
-            На дашборд
-          </Link>
         </div>
       </div>
 
-      {isLoading ? <AppLoadingState label="Загружаем explain..." /> : null}
-      {error ? <AppErrorState message={error} onRetry={loadExplain} /> : null}
+      {isLoading ? <div className="card">Загружаем explain...</div> : null}
+      {error ? (
+        <div className="card card--error">
+          <div>Ошибка: {error}</div>
+          <button type="button" className="ghost" onClick={() => void loadExplain()}>
+            Повторить
+          </button>
+        </div>
+      ) : null}
 
       {!isLoading && !error && !payload?.reason_tree ? (
-        <AppEmptyState title="Explain недоступен" description="Попробуйте позже или уточните параметры." />
+        <div className="card card--empty">Explain недоступен. Попробуйте позже.</div>
       ) : null}
 
       {payload ? (
-        <div className="stack">
-          <section className="card__section">
+        <div className="explain-grid">
+          <section className="card explain-card">
             <div className="explain-header">
               <div>
-                <span
-                  className={`pill pill--${payload.decision === "DECLINE" ? "danger" : payload.decision === "APPROVE" ? "success" : "neutral"}`}
-                >
+                <div className={`pill pill--${payload.decision === "DECLINE" ? "danger" : payload.decision === "APPROVE" ? "success" : "neutral"}`}>
                   {payload.decision}
-                </span>
-                <div className="muted small">
-                  Score: {payload.score ?? "—"} • Band: {scoreBandLabel(payload.score_band)}
+                </div>
+                <div className="explain-header__meta">
+                  <span>Score: {payload.score ?? "—"}</span>
+                  <span>Band: {scoreBandLabel(payload.score_band)}</span>
                 </div>
               </div>
-              <div className="muted small">
-                {payload.policy_snapshot ? `Policy: ${payload.policy_snapshot}` : "Policy: —"}
-                <div>{formatTimestamp(payload.generated_at)}</div>
+              <div className="explain-header__meta">
+                <span>Policy: {payload.policy_snapshot ?? "—"}</span>
+                <span>{formatTimestamp(payload.generated_at)}</span>
               </div>
             </div>
           </section>
 
-          <section className="card__section">
-            <h3>Reason Tree</h3>
+          <section className="card explain-card">
+            <div className="card__header">
+              <h3>Reason Tree</h3>
+            </div>
             {payload.reason_tree ? (
               <div className="explain-tree">
                 <ReasonTreeNode
@@ -605,21 +557,26 @@ export function ExplainPage() {
                   level={1}
                   expanded={expanded}
                   selectedId={selectedReasonId}
-                  onToggle={toggle}
+                  onToggle={toggleNode}
                   onSelect={handleSelectNode}
                 />
               </div>
             ) : (
-              <p className="muted">Reason tree недоступен.</p>
+              <div className="muted">Reason tree недоступен.</div>
             )}
           </section>
 
-          <section className="card__section">
-            <div className="stack-inline" style={{ justifyContent: "space-between" }}>
+          <section className="card explain-card">
+            <div className="card__header">
               <h3>Evidence</h3>
               <div className="explain-filter">
                 <label>
-                  <input type="radio" checked={filter === "all"} onChange={() => setFilter("all")} /> Все
+                  <input
+                    type="radio"
+                    checked={filter === "all"}
+                    onChange={() => setFilter("all")}
+                  />
+                  Все
                 </label>
                 <label>
                   <input
@@ -627,41 +584,45 @@ export function ExplainPage() {
                     checked={filter === "linked"}
                     onChange={() => setFilter("linked")}
                     disabled={linkedEvidenceIds.size === 0}
-                  />{" "}
+                  />
                   Связанные
                 </label>
               </div>
             </div>
             <div className="explain-evidence">
               {filter === "linked" && selectedReasonId && evidence.length === 0 ? (
-                <p className="muted">Нет доказательств для выбранной причины.</p>
+                <div className="muted">Нет доказательств для выбранной причины.</div>
               ) : evidence.length ? (
                 evidence.map((item) => (
                   <EvidenceCard key={item.id} item={item} highlighted={linkedEvidenceIds.has(item.id)} />
                 ))
               ) : (
-                <p className="muted">Evidence отсутствуют.</p>
+                <div className="muted">Evidence отсутствуют.</div>
               )}
             </div>
           </section>
 
-          <section className="card__section">
-            <h3>Documents</h3>
+          <section className="card explain-card">
+            <div className="card__header">
+              <h3>Documents</h3>
+            </div>
             {payload.documents.length ? (
               <div className="explain-docs">
                 {payload.documents.map((doc) => (
-                  <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer">
+                  <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer" className="ghost">
                     {doc.title}
                   </a>
                 ))}
               </div>
             ) : (
-              <AppEmptyState title="Документы отсутствуют" description="Нет связанных документов." />
+              <div className="card card--empty">Документы отсутствуют.</div>
             )}
           </section>
 
-          <section className="card__section">
-            <h3>Recommended actions</h3>
+          <section className="card explain-card">
+            <div className="card__header">
+              <h3>Recommended actions</h3>
+            </div>
             <div className="explain-actions">
               {actionOptions.length ? (
                 actionOptions.map((action) => {
@@ -684,12 +645,13 @@ export function ExplainPage() {
                           {action.recommended ? <span className="pill pill--accent">recommended</span> : null}
                         </div>
                         {action.description ? <div className="muted small">{action.description}</div> : null}
+                        {action.risk_hint ? <div className="muted small">Hint: {action.risk_hint}</div> : null}
                       </div>
                     </label>
                   );
                 })
               ) : (
-                <p className="muted">Рекомендации отсутствуют.</p>
+                <div className="muted">Рекомендации отсутствуют.</div>
               )}
             </div>
             <div className="explain-actions__footer">
@@ -697,20 +659,88 @@ export function ExplainPage() {
                 type="button"
                 className="primary"
                 onClick={() => void loadDiff()}
-                disabled={selectedActions.length < 1}
+                disabled={!canDiff || selectedActions.length < 1}
               >
                 Показать изменения
               </button>
-              {selectedActions.length < 1 ? (
-                <span className="muted small">Выберите минимум 1 действие.</span>
-              ) : null}
-              <button type="button" className="secondary" disabled title="Только симуляция">
-                Применить
+              {!canCompare ? <span className="muted small">What-if доступен только для операций/инвойсов/заказов.</span> : null}
+              {selectedActions.length < 1 ? <span className="muted small">Выберите минимум 1 действие.</span> : null}
+              <button type="button" className="ghost" onClick={openWhatIf} disabled={!canCompare}>
+                Открыть What-if
               </button>
             </div>
           </section>
         </div>
       ) : null}
+
+      {drawerOpen ? (
+        <div className="explain-drawer">
+          <div className="explain-drawer__content">
+            <div className="explain-drawer__header">
+              <h3>What-if сравнение</h3>
+              <button type="button" className="ghost" onClick={() => setDrawerOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+            <div className="explain-drawer__body">
+              <div className="explain-drawer__actions">
+                <h4>Выбранные действия</h4>
+                <div className="explain-drawer__list">
+                  {selectedActions.length ? (
+                    selectedActions.map((item) => (
+                      <div key={item.action_code} className="explain-drawer__selected">
+                        <strong>{item.label}</strong>
+                        {item.description ? <span className="muted small">{item.description}</span> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="muted small">Выберите 2–3 действия в списке выше.</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void evaluate()}
+                  disabled={!canCompare || selectedActions.length < 2 || isWhatIfLoading}
+                >
+                  Запустить симуляцию
+                </button>
+                <button type="button" className="ghost" onClick={() => void loadDiff()} disabled={selectedActions.length < 1}>
+                  Показать изменения
+                </button>
+                <div className="muted small">Применение недоступно — только симуляция.</div>
+              </div>
+
+              <div className="explain-drawer__results">
+                <div className="explain-whatif-banner">Симуляция (не исполняется)</div>
+                {isWhatIfLoading ? <div className="muted">Рассчитываем...</div> : null}
+                {whatIfError ? <div className="muted">Ошибка: {whatIfError}</div> : null}
+                {filteredCandidates.map(({ action, candidate }) => (
+                  <div key={action.action_code} className="explain-whatif-card">
+                    <div className="explain-whatif-card__title">{action.label}</div>
+                    {candidate ? (
+                      <>
+                        <div className="explain-whatif-card__meta">
+                          <span>Эффект: {candidate.projection.expected_effect_label}</span>
+                          <span>Вероятность: {candidate.projection.probability_improved_pct}%</span>
+                        </div>
+                        <div className="explain-whatif-card__meta">
+                          <span>Risk: {candidate.risk.outlook}</span>
+                          <span>Memory penalty: {candidate.memory.memory_penalty_pct}%</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="muted">Нет данных симуляции.</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-}
+};
+
+export default ExplainPage;

@@ -19,6 +19,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import PayoutsList from "./pages/finance/PayoutsList";
 import PayoutBatchDetail from "./pages/finance/PayoutBatchDetail";
 import ForbiddenPage from "./pages/ForbiddenPage";
+import ExplainPage from "./pages/ExplainPage";
 import ClientsPage from "./pages/crm/ClientsPage";
 import ClientDetailsPage from "./pages/crm/ClientDetailsPage";
 import ContractsPage from "./pages/crm/ContractsPage";
@@ -57,6 +58,7 @@ export function App() {
             <Route path="/finance/payouts" element={<PayoutsList />} />
             <Route path="/finance/payouts/:batchId" element={<PayoutBatchDetail />} />
             <Route path="/forbidden" element={<ForbiddenPage />} />
+            <Route path="/explain" element={<ExplainPage />} />
             <Route path="/crm/clients" element={<ClientsPage />} />
             <Route path="/crm/clients/:id" element={<ClientDetailsPage />} />
             <Route path="/crm/contracts" element={<ContractsPage />} />

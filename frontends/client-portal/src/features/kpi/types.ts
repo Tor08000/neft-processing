@@ -19,6 +19,7 @@ export interface KpiCardData {
   actionTo?: string;
   praiseLabel?: string;
   explainKey?: string;
+  explainWindowDays?: number;
   unit?: KpiUnit;
   target?: number;
   progress?: number;

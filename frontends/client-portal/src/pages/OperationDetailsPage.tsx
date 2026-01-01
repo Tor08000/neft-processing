@@ -45,7 +45,7 @@ export function OperationDetailsPage() {
           <p className="muted">Полная информация по транзакции</p>
         </div>
         <div className="actions">
-          <Link to={`/explain/${operation.id}`} className="ghost">
+          <Link to={`/explain?kind=operation&id=${encodeURIComponent(operation.id)}`} className="ghost">
             Explain
           </Link>
           <Link to="/documents" className="ghost">

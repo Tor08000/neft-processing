@@ -45,16 +45,38 @@ const operationsPayload = {
 };
 
 const explainPayload = {
-  primary_reason: "LIMIT",
-  secondary_reasons: ["RISK"],
-  recommendations: ["Обновить лимиты"],
-  actions: [],
-  sla: {
-    started_at: "2024-03-07T10:00:00Z",
-    expires_at: "2024-03-07T12:00:00Z",
-    remaining_minutes: 60,
+  kind: "operation",
+  id: "op-1",
+  decision: "DECLINE",
+  score: 78,
+  score_band: "high",
+  policy_snapshot: "policy_2025",
+  generated_at: "2024-03-07T10:00:00Z",
+  reason_tree: {
+    id: "root",
+    title: "Decline",
+    weight: 1.0,
+    children: [
+      {
+        id: "rule_velocity",
+        title: "Аномальная частота операций",
+        weight: 0.4,
+        evidence_refs: ["ev_tx_rate"],
+      },
+    ],
   },
-  escalation: { target: "CRM", status: "PENDING" },
+  evidence: [
+    {
+      id: "ev_tx_rate",
+      type: "metric",
+      label: "Tx rate last 60m",
+      value: { actual: 14, threshold: 5 },
+      source: "operations",
+      confidence: 0.9,
+    },
+  ],
+  documents: [],
+  recommended_actions: [],
 };
 
 describe("Client portal pages", () => {
@@ -96,12 +118,12 @@ describe("Client portal pages", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/explain/op-1"]}>
+      <MemoryRouter initialEntries={["/explain?kind=operation&id=op-1"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("LIMIT")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("DECLINE")).toBeInTheDocument());
   });
 
   it("renders actions page", () => {

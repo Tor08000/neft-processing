@@ -1,5 +1,5 @@
 import React, { Suspense, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOperation, fetchOperationChildren, fetchOperations } from "../api/operations";
 import { StatusBadge } from "../components/StatusBadge/StatusBadge";
@@ -103,6 +103,11 @@ export const OperationDetailsPage: React.FC = () => {
         <h1>Operation details</h1>
         {(isLoading || isFetching || isChildrenFetching) && <Loader label="Загружаем операцию" />}
         {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
+        {operation ? (
+          <Link className="ghost" to={`/explain?kind=operation&id=${encodeURIComponent(operation.operation_id)}`}>
+            Explain
+          </Link>
+        ) : null}
       </div>
 
       {operation && (

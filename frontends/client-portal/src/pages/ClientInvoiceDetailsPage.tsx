@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { fetchInvoiceAudit, searchAuditByExternalRef } from "../api/audit";
 import { acknowledgeDocument } from "../api/documents";
 import type { AuditFilters } from "../api/audit";
@@ -258,9 +258,14 @@ export function ClientInvoiceDetailsPage() {
             </span>
           </p>
         </div>
-        <button type="button" className="secondary" onClick={handleDownload} disabled={!invoice.pdf_available}>
-          Скачать PDF
-        </button>
+        <div className="stack-inline">
+          <Link className="secondary" to={`/explain?kind=invoice&id=${encodeURIComponent(invoice.id)}`}>
+            Explain
+          </Link>
+          <button type="button" className="secondary" onClick={handleDownload} disabled={!invoice.pdf_available}>
+            Скачать PDF
+          </button>
+        </div>
       </div>
 
       <div className="invoice-actions">
