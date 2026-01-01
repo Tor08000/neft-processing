@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { EmptyState } from "../EmptyState";
+import { ErrorState } from "./ErrorState";
 import { TableSkeleton } from "./TableSkeleton";
 import { TableDensityToggle } from "./TableDensityToggle";
 import { useTableDensity } from "./useTableDensity";
@@ -17,6 +18,13 @@ interface TableProps<T> {
   columns: Column<T>[];
   data: T[];
   loading?: boolean;
+  errorState?: {
+    title: string;
+    description?: string;
+    actionLabel?: string;
+    actionOnClick?: () => void;
+    details?: string;
+  };
   emptyState?: {
     title: string;
     description?: string;
@@ -37,7 +45,7 @@ const renderNumber = (value: number) => {
   );
 };
 
-export function Table<T>({ columns, data, loading, emptyState, emptyMessage, onRowClick }: TableProps<T>) {
+export function Table<T>({ columns, data, loading, errorState, emptyState, emptyMessage, onRowClick }: TableProps<T>) {
   const { density, setDensity } = useTableDensity();
 
   if (loading) {
@@ -58,6 +66,21 @@ export function Table<T>({ columns, data, loading, emptyState, emptyMessage, onR
             </table>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (errorState) {
+    return (
+      <div className="table-shell">
+        <TableDensityToggle density={density} onChange={setDensity} />
+        <ErrorState
+          title={errorState.title}
+          description={errorState.description}
+          actionLabel={errorState.actionLabel}
+          onAction={errorState.actionOnClick}
+          details={errorState.details}
+        />
       </div>
     );
   }

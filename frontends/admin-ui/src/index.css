@@ -2,6 +2,7 @@
   color: var(--neft-text);
   background-color: var(--neft-bg);
   font-family: var(--neft-font-sans);
+  --neft-header-height: 64px;
 }
 
 * {
@@ -401,6 +402,43 @@ p {
   justify-items: center;
 }
 
+.error-state {
+  text-align: center;
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(22, 34, 53, 0.4);
+}
+
+.error-state__content {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.error-state__details {
+  width: 100%;
+  max-width: 520px;
+  text-align: left;
+  color: var(--neft-text-muted);
+}
+
+.error-state__details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--neft-text);
+}
+
+.error-state__details pre {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--neft-border);
+  white-space: pre-wrap;
+  color: var(--neft-text-muted);
+  font-family: var(--neft-font-mono);
+  font-size: 12px;
+}
+
 .neft-spinner {
   width: 16px;
   height: 16px;
@@ -589,7 +627,8 @@ p {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  height: var(--neft-header-height);
+  padding: 0 24px;
   background: rgba(18, 27, 39, 0.82);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--neft-border);
@@ -631,6 +670,7 @@ p {
 
 .admin-content {
   padding: 24px;
+  padding-top: var(--neft-header-height);
 }
 
 .progress-hints {

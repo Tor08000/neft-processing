@@ -27,7 +27,7 @@ export function AnalyticsSpendPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const hasData = Boolean(summary && (summary.total_spend > 0 || summary.trend.length));
+  const hasData = Boolean(summary);
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
 

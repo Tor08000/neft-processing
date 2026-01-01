@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listUsers, updateUser } from "../api/adminUsers";
 import { UnauthorizedError } from "../api/http";
@@ -14,9 +14,10 @@ export const UsersPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadUsers = useCallback(() => {
     if (!accessToken) return;
     setLoading(true);
+    setError(null);
     listUsers(accessToken)
       .then((data) => setUsers(data))
       .catch((err) => {
@@ -29,6 +30,10 @@ export const UsersPage: React.FC = () => {
       })
       .finally(() => setLoading(false));
   }, [accessToken, logout]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -85,8 +90,6 @@ export const UsersPage: React.FC = () => {
         </button>
       </div>
 
-      {error ? <div className="error-text">{error}</div> : null}
-
       <DataTable
         data={filtered}
         columns={[
@@ -114,6 +117,16 @@ export const UsersPage: React.FC = () => {
           },
         ]}
         loading={loading}
+        errorState={
+          error
+            ? {
+                title: "Не удалось загрузить пользователей",
+                description: error,
+                actionLabel: "Повторить",
+                actionOnClick: loadUsers,
+              }
+            : undefined
+        }
         emptyState={{
           title: filtersActive ? "Пользователи не найдены" : "Пользователи отсутствуют",
           description: filtersActive ? "Попробуйте изменить фильтры поиска." : "Создайте первого пользователя.",

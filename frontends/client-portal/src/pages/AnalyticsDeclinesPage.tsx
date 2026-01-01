@@ -29,14 +29,7 @@ export function AnalyticsDeclinesPage() {
   const [insights, setInsights] = useState<ExplainInsightsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
-  const hasData = Boolean(
-    declines &&
-      (declines.total > 0 ||
-        declines.top_reasons.length ||
-        declines.trend.length ||
-        declines.expensive.length ||
-        insights?.top_primary_reasons.length),
-  );
+  const hasData = Boolean(declines);
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
 

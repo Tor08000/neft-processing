@@ -135,6 +135,17 @@ html, body {
   box-shadow: var(--neft-focus-ring);
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.sidebar a:focus-visible {
+  outline: none;
+  box-shadow: var(--neft-focus-ring);
+  border-color: var(--neft-accent);
+}
+
 .neft-btn-primary:focus-visible,
 .neft-btn-secondary:focus-visible,
 .neft-button:focus-visible,
