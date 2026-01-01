@@ -10,6 +10,7 @@ from app.models.cases import (
     Case,
     CaseComment,
     CaseCommentType,
+    CaseEventType,
     CaseKind,
     CasePriority,
     CaseQueue,
@@ -17,6 +18,7 @@ from app.models.cases import (
     CaseSnapshot,
     CaseStatus,
 )
+from app.services.case_events_service import CaseEventActor, CaseEventChange, emit_case_event
 from app.services.case_escalation_service import apply_classification, apply_sla_filter, classify_case
 
 
@@ -95,6 +97,8 @@ def create_case(
     diff: dict[str, Any] | None,
     selected_actions: list[dict[str, Any]] | None,
     created_by: str | None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
 ) -> Case:
     now = datetime.now(timezone.utc)
     resolved_title = title or _build_case_title(
@@ -138,6 +142,24 @@ def create_case(
     )
     classification = classify_case(case, explain, diff)
     apply_classification(db, case=case, result=classification, now=now)
+    emit_case_event(
+        db,
+        case_id=case.id,
+        event_type=CaseEventType.CASE_CREATED,
+        actor=CaseEventActor(id=created_by, email=None) if created_by else None,
+        request_id=request_id,
+        trace_id=trace_id,
+        changes=[
+            CaseEventChange(field="status", before=None, after=case.status.value),
+            CaseEventChange(field="priority", before=None, after=case.priority.value),
+            CaseEventChange(field="queue", before=None, after=case.queue.value),
+        ]
+        + (
+            [CaseEventChange(field="note", before=None, after=note)]
+            if note is not None
+            else []
+        ),
+    )
     return case
 
 
@@ -232,13 +254,21 @@ def update_case(
     assigned_to: str | None,
     priority: CasePriority | None,
     actor: str | None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
 ) -> Case:
     changed = False
     now = datetime.now(timezone.utc)
+    change_entries: list[CaseEventChange] = []
+    status_changed = False
     if status and status != case.status:
         previous = case.status
         case.status = status
         changed = True
+        status_changed = True
+        change_entries.append(
+            CaseEventChange(field="status", before=previous.value, after=status.value)
+        )
         db.add(
             CaseComment(
                 case_id=case.id,
@@ -248,8 +278,12 @@ def update_case(
             )
         )
     if assigned_to is not None and assigned_to != case.assigned_to:
+        previous_assigned = case.assigned_to
         case.assigned_to = assigned_to
         changed = True
+        change_entries.append(
+            CaseEventChange(field="assigned_to", before=previous_assigned, after=assigned_to)
+        )
         if assigned_to:
             db.add(
                 CaseComment(
@@ -260,8 +294,12 @@ def update_case(
                 )
             )
     if priority and priority != case.priority:
+        previous_priority = case.priority
         case.priority = priority
         changed = True
+        change_entries.append(
+            CaseEventChange(field="priority", before=previous_priority.value, after=priority.value)
+        )
         db.add(
             CaseComment(
                 case_id=case.id,
@@ -272,6 +310,57 @@ def update_case(
     if changed:
         case.updated_at = now
         case.last_activity_at = now
+        if status_changed:
+            emit_case_event(
+                db,
+                case_id=case.id,
+                event_type=CaseEventType.STATUS_CHANGED,
+                actor=CaseEventActor(id=actor, email=None) if actor else None,
+                request_id=request_id,
+                trace_id=trace_id,
+                changes=change_entries,
+            )
+    return case
+
+
+def close_case(
+    db: Session,
+    *,
+    case: Case,
+    actor: str | None,
+    resolution_note: str | None,
+    now: datetime | None = None,
+    request_id: str | None = None,
+    trace_id: str | None = None,
+) -> Case:
+    resolved_now = now or datetime.now(timezone.utc)
+    previous = case.status
+    case.status = CaseStatus.CLOSED
+    case.updated_at = resolved_now
+    case.last_activity_at = resolved_now
+    db.add(
+        CaseComment(
+            case_id=case.id,
+            author=actor,
+            type=CaseCommentType.SYSTEM,
+            body="Кейс закрыт",
+        )
+    )
+    changes = [
+        CaseEventChange(field="status", before=previous.value, after=case.status.value),
+        CaseEventChange(field="closed_at", before=None, after=resolved_now.isoformat()),
+    ]
+    if resolution_note is not None:
+        changes.append(CaseEventChange(field="resolution_note", before=None, after=resolution_note))
+    emit_case_event(
+        db,
+        case_id=case.id,
+        event_type=CaseEventType.CASE_CLOSED,
+        actor=CaseEventActor(id=actor, email=None) if actor else None,
+        request_id=request_id,
+        trace_id=trace_id,
+        changes=changes,
+    )
     return case
 
 
@@ -292,6 +381,7 @@ def add_comment(
 
 __all__ = [
     "add_comment",
+    "close_case",
     "create_case",
     "get_case",
     "list_case_comments",

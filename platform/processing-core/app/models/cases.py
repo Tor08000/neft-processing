@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -45,6 +45,15 @@ class CaseSlaState(str, Enum):
 class CaseCommentType(str, Enum):
     USER = "user"
     SYSTEM = "system"
+
+
+class CaseEventType(str, Enum):
+    CASE_CREATED = "CASE_CREATED"
+    STATUS_CHANGED = "STATUS_CHANGED"
+    CASE_CLOSED = "CASE_CLOSED"
+    NOTE_UPDATED = "NOTE_UPDATED"
+    ACTIONS_APPLIED = "ACTIONS_APPLIED"
+    EXPORT_CREATED = "EXPORT_CREATED"
 
 
 class Case(Base):
@@ -112,10 +121,32 @@ class CaseComment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
 
+class CaseEvent(Base):
+    __tablename__ = "case_events"
+    __table_args__ = (UniqueConstraint("case_id", "seq", name="ux_case_events_case_seq"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    case_id = Column(GUID(), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    seq = Column(BigInteger, nullable=False)
+    at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    type = Column(ExistingEnum(CaseEventType, name="case_event_type"), nullable=False)
+    actor_user_id = Column(String(128), nullable=True)
+    actor_email = Column(String(256), nullable=True)
+    request_id = Column(String(128), nullable=True)
+    trace_id = Column(String(128), nullable=True)
+    payload_redacted = Column(JSON, nullable=False)
+    prev_hash = Column(Text, nullable=False)
+    hash = Column(Text, nullable=False)
+    signature = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "Case",
     "CaseComment",
     "CaseCommentType",
+    "CaseEvent",
+    "CaseEventType",
     "CaseKind",
     "CasePriority",
     "CaseQueue",

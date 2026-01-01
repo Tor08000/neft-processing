@@ -28,6 +28,7 @@ from app.routers.admin import (
     refunds,
     finance,
     reversals,
+    cases,
     risk_rules,
     risk_v5,
     settlements,
@@ -62,6 +63,7 @@ router.include_router(logistics.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
 router.include_router(decision_memory.router)
+router.include_router(cases.router)
 router.include_router(legal_integrations.router)
 router.include_router(legal_graph.router)
 router.include_router(crm.router)

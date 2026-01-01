@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.support import support_user_dep
@@ -91,6 +91,7 @@ def _ensure_client_case_creation_enabled(db: Session, *, token: dict) -> None:
 @router.post("", response_model=CaseResponse, status_code=201)
 def create_case_endpoint(
     payload: CaseCreateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(support_user_dep),
 ) -> CaseResponse:
@@ -114,6 +115,8 @@ def create_case_endpoint(
         diff=payload.diff,
         selected_actions=payload.selected_actions,
         created_by=actor,
+        request_id=request.headers.get("x-request-id"),
+        trace_id=request.headers.get("x-trace-id"),
     )
     db.commit()
     db.refresh(case)
@@ -203,6 +206,7 @@ def get_case_endpoint(
 def update_case_endpoint(
     case_id: str,
     payload: CaseUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(support_user_dep),
 ) -> CaseResponse:
@@ -221,6 +225,8 @@ def update_case_endpoint(
         assigned_to=payload.assigned_to,
         priority=payload.priority,
         actor=actor,
+        request_id=request.headers.get("x-request-id"),
+        trace_id=request.headers.get("x-trace-id"),
     )
     db.commit()
     db.refresh(updated)

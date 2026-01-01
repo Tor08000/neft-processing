@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import get_db
 from app.main import app
-from app.models.cases import Case, CaseComment, CaseKind, CasePriority, CaseSnapshot, CaseStatus
+from app.models.cases import Case, CaseComment, CaseEvent, CaseKind, CasePriority, CaseSnapshot, CaseStatus
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -22,11 +22,13 @@ def db_session() -> Session:
     Case.__table__.create(bind=engine)
     CaseSnapshot.__table__.create(bind=engine)
     CaseComment.__table__.create(bind=engine)
+    CaseEvent.__table__.create(bind=engine)
     session = SessionLocal()
     try:
         yield session
     finally:
         session.close()
+        CaseEvent.__table__.drop(bind=engine)
         CaseComment.__table__.drop(bind=engine)
         CaseSnapshot.__table__.drop(bind=engine)
         Case.__table__.drop(bind=engine)

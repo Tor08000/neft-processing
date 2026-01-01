@@ -121,6 +121,8 @@ from .cases import (  # noqa: F401
     Case,
     CaseComment,
     CaseCommentType,
+    CaseEvent,
+    CaseEventType,
     CaseKind,
     CasePriority,
     CaseQueue,
