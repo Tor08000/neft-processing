@@ -39,6 +39,7 @@ import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
 import { AnalyticsMarketplacePage } from "./pages/AnalyticsMarketplacePage";
 import { AnalyticsDocumentsPage } from "./pages/AnalyticsDocumentsPage";
 import { AnalyticsExportsPage } from "./pages/AnalyticsExportsPage";
+import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { isPwaMode } from "./pwa/mode";
 
 interface AppProps {
@@ -116,6 +117,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
                 <Route path="/cases" element={<CasesPage />} />
                 <Route path="/cases/:id" element={<CaseDetailsPage />} />
+                <Route path="/subscription" element={<SubscriptionPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />

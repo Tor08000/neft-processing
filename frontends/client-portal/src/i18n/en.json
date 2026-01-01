@@ -18,6 +18,7 @@
     "actions": "Actions Center",
     "supportRequests": "Requests",
     "cases": "Cases",
+    "subscription": "Subscription",
     "settings": "Settings",
     "management": "Settings / Management",
     "analytics": "Analytics"
@@ -86,6 +87,29 @@
       "title": "No exports yet",
       "description": "Exports are generated after the settlement period ends."
     }
+  },
+  "subscription": {
+    "title": "Subscription",
+    "currentPlan": "Current plan",
+    "status": "Status",
+    "period": "Period",
+    "includes": "Included modules",
+    "unavailable": "Unavailable in your plan",
+    "availableInPro": "Available in PRO",
+    "active": "Active",
+    "allEnabled": "All modules are active",
+    "savingsTitle": "Savings for period",
+    "savingsFallback": "Savings will be calculated after activity appears",
+    "savingsValue": "Active bonuses: {value}",
+    "bonuses": "Bonuses & rewards",
+    "bonusesEmpty": "No bonuses yet",
+    "previewTitle": "Preview for upgrade",
+    "previewSubtitle": "What you get in {plan}",
+    "streaks": "Streaks",
+    "streaksEmpty": "No streaks yet",
+    "achievements": "Achievements",
+    "achievementsEmpty": "No achievements yet",
+    "empty": "Subscription details are not available"
   },
   "marketplaceCatalog": {
     "title": "Marketplace",

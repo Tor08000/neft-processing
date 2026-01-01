@@ -30,6 +30,8 @@ import SubscriptionsPage from "./pages/crm/SubscriptionsPage";
 import SubscriptionDetailsPage from "./pages/crm/SubscriptionDetailsPage";
 import SubscriptionPreviewBillingPage from "./pages/crm/SubscriptionPreviewBillingPage";
 import SubscriptionCfoExplainPage from "./pages/crm/SubscriptionCfoExplainPage";
+import SubscriptionPlansPage from "./pages/subscriptions/SubscriptionPlansPage";
+import SubscriptionPlanDetailsPage from "./pages/subscriptions/SubscriptionPlanDetailsPage";
 import MoneyHealthPage from "./pages/money/MoneyHealthPage";
 import MoneyReplayPage from "./pages/money/MoneyReplayPage";
 import InvoiceCfoExplainPage from "./pages/money/InvoiceCfoExplainPage";
@@ -71,6 +73,8 @@ export function App() {
             <Route path="/crm/subscriptions/:id" element={<SubscriptionDetailsPage />} />
             <Route path="/crm/subscriptions/:id/preview-billing" element={<SubscriptionPreviewBillingPage />} />
             <Route path="/crm/subscriptions/:id/cfo-explain" element={<SubscriptionCfoExplainPage />} />
+            <Route path="/subscriptions/plans" element={<SubscriptionPlansPage />} />
+            <Route path="/subscriptions/plans/:id" element={<SubscriptionPlanDetailsPage />} />
             <Route path="/money/health" element={<MoneyHealthPage />} />
             <Route path="/money/replay" element={<MoneyReplayPage />} />
             <Route path="/money/invoices/:id/cfo-explain" element={<InvoiceCfoExplainPage />} />

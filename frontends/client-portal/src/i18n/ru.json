@@ -18,6 +18,7 @@
     "actions": "Центр действий",
     "supportRequests": "Запросы",
     "cases": "Кейсы",
+    "subscription": "Подписка",
     "settings": "Настройки",
     "management": "Настройки / Управление",
     "analytics": "Аналитика"
@@ -86,6 +87,29 @@
       "title": "Экспортов пока нет",
       "description": "Экспорты создаются после расчётного периода."
     }
+  },
+  "subscription": {
+    "title": "Подписка",
+    "currentPlan": "Текущий план",
+    "status": "Статус",
+    "period": "Период",
+    "includes": "Что включено",
+    "unavailable": "Недоступно в вашем плане",
+    "availableInPro": "Доступно в PRO",
+    "active": "Активно",
+    "allEnabled": "Все модули активны",
+    "savingsTitle": "Выгода за период",
+    "savingsFallback": "Выгода появится после активности",
+    "savingsValue": "Активных бонусов: {value}",
+    "bonuses": "Бонусы и награды",
+    "bonusesEmpty": "Пока нет бонусов",
+    "previewTitle": "Preview апгрейда",
+    "previewSubtitle": "Что будет в плане {plan}",
+    "streaks": "Серии",
+    "streaksEmpty": "Пока нет серий",
+    "achievements": "Достижения",
+    "achievementsEmpty": "Пока нет достижений",
+    "empty": "Нет данных по подписке"
   },
   "marketplaceCatalog": {
     "title": "Marketplace",

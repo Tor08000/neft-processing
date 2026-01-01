@@ -12,7 +12,7 @@ PROJECT_NAME := neft-processing
         migrate test test-core test-auth test-ai test-workers \
         health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
-        clean-volumes clean-images kpi-smoke cases-smoke
+        clean-volumes clean-images kpi-smoke cases-smoke subscription-smoke plans-smoke
 
 # ----------------------------------------
 # БАЗОВЫЕ ОПЕРАЦИИ С СТЕКОМ
@@ -174,6 +174,28 @@ cases-escalation-smoke:
 	echo "case_id=$$case_id"; \
 	curl -s -X GET "http://localhost/api/core/cases/$$case_id" \
 	  -H "Authorization: Bearer $$CASES_TOKEN" | cat
+
+subscription-smoke:
+	@if [ -z "$$SUBSCRIPTIONS_CLIENT_TOKEN" ]; then echo "SUBSCRIPTIONS_CLIENT_TOKEN is required"; exit 1; fi
+	curl -s -X GET "http://localhost/api/core/subscriptions/me" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_CLIENT_TOKEN" | cat
+
+plans-smoke:
+	@if [ -z "$$SUBSCRIPTIONS_ADMIN_TOKEN" ]; then echo "SUBSCRIPTIONS_ADMIN_TOKEN is required"; exit 1; fi
+	@if [ -z "$$SUBSCRIPTIONS_CLIENT_ID" ]; then echo "SUBSCRIPTIONS_CLIENT_ID is required"; exit 1; fi
+	@plan_id=$$(curl -s -X POST "http://localhost/api/core/subscriptions/plans" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" \
+	  -H "Content-Type: application/json" \
+	  -d '{"code":"BASIC","title":"BASIC","description":"Smoke plan","is_active":true,"billing_period_months":1,"price_cents":10000,"currency":"RUB"}' | jq -r '.id'); \
+	echo "plan_id=$$plan_id"; \
+	curl -s -X PATCH "http://localhost/api/core/subscriptions/plans/$$plan_id/modules" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" \
+	  -H "Content-Type: application/json" \
+	  -d '[{"module_code":"FUEL_CORE","enabled":true,"tier":"basic","limits":{"cards_max":10}},{"module_code":"ANALYTICS","enabled":true,"tier":"basic","limits":{"dashboards":true}}]' | cat; \
+	curl -s -X POST "http://localhost/api/core/admin/clients/$$SUBSCRIPTIONS_CLIENT_ID/subscription/assign" \
+	  -H "Authorization: Bearer $$SUBSCRIPTIONS_ADMIN_TOKEN" \
+	  -H "Content-Type: application/json" \
+	  -d "{\"plan_id\":\"$$plan_id\",\"duration_months\":1,\"auto_renew\":false}" | cat
 
 # ----------------------------------------
 # ALEMBIC VERSION TABLE CHECK

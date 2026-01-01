@@ -306,6 +306,16 @@ from .crm import (  # noqa: F401
     CRMBillingPeriod,
     CRMBillingCycle,
 )
+from .subscriptions_v1 import (  # noqa: F401
+    BonusRule,
+    ClientBonusState,
+    ClientSubscription,
+    RoleEntitlement,
+    SubscriptionModuleCode,
+    SubscriptionPlan,
+    SubscriptionPlanModule,
+    SubscriptionStatus,
+)
 
 __all__ = [
     "Client",
@@ -558,4 +568,12 @@ __all__ = [
     "CRMBillingMode",
     "CRMBillingPeriod",
     "CRMBillingCycle",
+    "SubscriptionStatus",
+    "SubscriptionModuleCode",
+    "SubscriptionPlan",
+    "SubscriptionPlanModule",
+    "ClientSubscription",
+    "RoleEntitlement",
+    "BonusRule",
+    "ClientBonusState",
 ]
