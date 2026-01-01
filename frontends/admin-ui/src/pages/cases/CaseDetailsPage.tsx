@@ -27,6 +27,8 @@ import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
 import { loadCaseExports } from "../../utils/caseExportRegistry";
 import { CopyChip } from "../../components/common/CopyChip";
+import { isRedactedValue, redactForAudit } from "../../redaction/apply";
+import type { RedactedValue } from "../../redaction/types";
 
 const statusTone = (status: CaseStatus) => {
   if (status === "CLOSED") return "badge badge-danger";
@@ -90,7 +92,21 @@ const toEventLabel = (event: CaseEvent) => EVENT_TYPE_LABELS[event.type] ?? even
 
 const formatActor = (actor?: CaseEvent["actor"] | null) => actor?.name ?? actor?.email ?? actor?.id ?? "System";
 
-const renderAuditValue = (value: unknown): ReactNode => {
+const renderRedactedValue = (value: RedactedValue): ReactNode => {
+  const tooltip = `${value.reason.message} (${value.reason.kind}:${value.reason.rule})`;
+  return (
+    <span className="audit-redacted" title={tooltip}>
+      <span aria-hidden="true">🔒</span> {value.display}
+      {value.hash ? <span className="muted small"> ({value.hash})</span> : null}
+    </span>
+  );
+};
+
+const renderAuditValue = (fieldPath: string, value: unknown): ReactNode => {
+  const redacted = redactForAudit(fieldPath, value);
+  if (isRedactedValue(redacted)) {
+    return renderRedactedValue(redacted);
+  }
   if (value === null || value === undefined) {
     return <span className="muted">—</span>;
   }
@@ -105,7 +121,7 @@ const renderAuditValue = (value: unknown): ReactNode => {
         <span className="audit-json__label">View JSON</span>
       </summary>
       <div className="audit-json__content">
-        <JsonViewer value={value} />
+        <JsonViewer value={value} redactionMode="audit" />
       </div>
     </details>
   );
@@ -681,8 +697,8 @@ export function CaseDetailsPage() {
                             {event.meta.changes.map((change) => (
                               <tr key={`${event.id}-${change.field}`}>
                                 <td>{change.field}</td>
-                                <td>{renderAuditValue(change.from)}</td>
-                                <td>{renderAuditValue(change.to)}</td>
+                                <td>{renderAuditValue(change.field, change.from)}</td>
+                                <td>{renderAuditValue(change.field, change.to)}</td>
                               </tr>
                             ))}
                           </tbody>

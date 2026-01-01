@@ -29,6 +29,7 @@ import { recordCaseCreated, recordDiffRunSuccess, recordExplainRunSuccess } from
 import { buildMasterySnapshot } from "../mastery/levels";
 import { loadMasteryEvents, loadMasteryState } from "../mastery/storage";
 import { recordCaseExport, type CaseExportType } from "../utils/caseExportRegistry";
+import { redactForExport } from "../redaction/apply";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -887,11 +888,12 @@ export const ExplainPage = () => {
         note: queryState.caseNote || null,
       },
     };
+    const redactedPayload = redactForExport(payloadData);
     const exportType: CaseExportType = queryState.mode === "diff" ? "diff" : "explain";
     if (createdCaseId) {
       recordCaseExport({ caseId: createdCaseId, type: exportType });
     }
-    const blob = new Blob([JSON.stringify(payloadData, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(redactedPayload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
