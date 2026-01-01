@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import CaseDetailsPage from "./CaseDetailsPage";
@@ -9,7 +9,7 @@ import * as masteryEvents from "../../mastery/events";
 
 vi.mock("../../api/adminCases", () => ({
   fetchAdminCaseDetails: vi.fn(),
-  fetchAdminCaseEvents: vi.fn(),
+  listCaseEvents: vi.fn(),
   closeAdminCase: vi.fn(),
   updateAdminCaseStatus: vi.fn(),
   isNotAvailableError: vi.fn(() => false),
@@ -54,12 +54,13 @@ const explainSnapshot = {
 
 describe("CaseDetailsPage", () => {
   beforeEach(() => {
+    localStorage.clear();
     (adminCasesApi.fetchAdminCaseDetails as unknown as Mock).mockResolvedValue({
       case: baseCase,
       latest_snapshot: explainSnapshot,
       snapshots: [explainSnapshot],
     });
-    (adminCasesApi.fetchAdminCaseEvents as unknown as Mock).mockResolvedValue({ items: [] });
+    (adminCasesApi.listCaseEvents as unknown as Mock).mockResolvedValue({ items: [] });
     (adminCasesApi.closeAdminCase as unknown as Mock).mockResolvedValue({
       ...baseCase,
       status: "CLOSED",
@@ -107,5 +108,58 @@ describe("CaseDetailsPage", () => {
     await waitFor(() => expect(screen.getByText("CLOSED")).toBeInTheDocument());
     expect(masteryEvents.recordCaseClosed).toHaveBeenCalled();
     expect(masteryEvents.recordActionApplied).toHaveBeenCalled();
+  });
+
+  it("renders timeline with real events", async () => {
+    (adminCasesApi.listCaseEvents as unknown as Mock).mockResolvedValue({
+      items: [
+        {
+          id: "evt-1",
+          at: "2024-01-02T10:00:00Z",
+          type: "STATUS_CHANGED",
+          actor: { email: "ops@neft.io", name: "Ops" },
+          request_id: "req-1",
+          trace_id: "trace-1",
+          meta: {
+            changes: [{ field: "status", from: "OPEN", to: "IN_PROGRESS" }],
+            export_ref: { kind: "explain_export", id: "exp-1", url: "/api/admin/exports/exp-1" },
+          },
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/cases/case-1"]}>
+        <Routes>
+          <Route path="/cases/:id" element={<CaseDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Audit timeline")).toBeInTheDocument());
+    const timeline = screen.getByTestId("audit-timeline");
+    expect(within(timeline).getByText("Status changed")).toBeInTheDocument();
+    expect(within(timeline).getByText("status")).toBeInTheDocument();
+    expect(within(timeline).getByText("IN_PROGRESS")).toBeInTheDocument();
+    expect(within(timeline).getByText("Request ID")).toBeInTheDocument();
+    expect(within(timeline).getByText("Trace ID")).toBeInTheDocument();
+    const exportLink = within(timeline).getByRole("link", { name: "Open export" });
+    expect(exportLink).toHaveAttribute("href", "/api/admin/exports/exp-1");
+  });
+
+  it("falls back to synthetic events when unavailable", async () => {
+    (adminCasesApi.listCaseEvents as unknown as Mock).mockResolvedValue({ items: [], unavailable: true });
+
+    render(
+      <MemoryRouter initialEntries={["/cases/case-1"]}>
+        <Routes>
+          <Route path="/cases/:id" element={<CaseDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Audit timeline")).toBeInTheDocument());
+    const timeline = screen.getByTestId("audit-timeline");
+    expect(within(timeline).getByText("Case created")).toBeInTheDocument();
   });
 });

@@ -1,25 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   closeAdminCase,
   fetchAdminCaseDetails,
-  fetchAdminCaseEvents,
   isNotAvailableError,
+  listCaseEvents,
   updateAdminCaseStatus,
   type CaseDetailsResponse,
   type CaseEvent,
+  type CaseItem,
   type CaseSnapshot,
   type CaseStatus,
+  type CaseEventType,
+  type CaseFieldChange,
 } from "../../api/adminCases";
 import { UnauthorizedError } from "../../api/client";
 import { computeExplainScore } from "../../gamification/score";
 import type { ExplainV2Response } from "../../types/explainV2";
 import { recordActionApplied, recordCaseClosed } from "../../mastery/events";
+import { loadMasteryEvents } from "../../mastery/storage";
+import type { MasteryEvent } from "../../mastery/types";
 import { Tabs } from "../../components/common/Tabs";
 import { JsonViewer } from "../../components/common/JsonViewer";
 import { CloseCaseModal, getSelectedActionsCount } from "../../components/cases/CloseCaseModal";
 import { Toast } from "../../components/common/Toast";
 import { useToast } from "../../components/Toast/useToast";
+import { loadCaseExports } from "../../utils/caseExportRegistry";
+import { CopyChip } from "../../components/common/CopyChip";
 
 const statusTone = (status: CaseStatus) => {
   if (status === "CLOSED") return "badge badge-danger";
@@ -46,11 +53,168 @@ const toScoreSnapshot = (snapshot?: CaseSnapshot | null) => {
 const sortSnapshots = (snapshots?: CaseSnapshot[] | null) =>
   (snapshots ?? []).slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
+const EVENT_TYPE_LABELS: Record<CaseEventType, string> = {
+  CASE_CREATED: "Case created",
+  STATUS_CHANGED: "Status changed",
+  CASE_CLOSED: "Case closed",
+  NOTE_UPDATED: "Note updated",
+  ACTIONS_APPLIED: "Actions applied",
+  EXPORT_CREATED: "Export created",
+};
+
+const EVENT_TYPE_ICONS: Record<CaseEventType, string> = {
+  CASE_CREATED: "🟢",
+  STATUS_CHANGED: "🔄",
+  CASE_CLOSED: "✅",
+  NOTE_UPDATED: "📝",
+  ACTIONS_APPLIED: "⚙️",
+  EXPORT_CREATED: "📦",
+};
+
+const EVENT_FILTERS: CaseEventType[] = [
+  "CASE_CREATED",
+  "STATUS_CHANGED",
+  "CASE_CLOSED",
+  "NOTE_UPDATED",
+  "ACTIONS_APPLIED",
+  "EXPORT_CREATED",
+];
+
+const EXPORT_KIND_LABELS: Record<NonNullable<NonNullable<CaseEvent["meta"]>["export_ref"]>["kind"], string> = {
+  explain_export: "Explain export",
+  diff_export: "Diff export",
+  case_export: "Case export",
+};
+
+const toEventLabel = (event: CaseEvent) => EVENT_TYPE_LABELS[event.type] ?? event.type;
+
+const formatActor = (actor?: CaseEvent["actor"] | null) => actor?.name ?? actor?.email ?? actor?.id ?? "System";
+
+const renderAuditValue = (value: unknown): ReactNode => {
+  if (value === null || value === undefined) {
+    return <span className="muted">—</span>;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return <span>{String(value)}</span>;
+  }
+  const preview = Array.isArray(value) ? "[…]" : "{…}";
+  return (
+    <details className="audit-json">
+      <summary>
+        <span className="code-inline">{preview}</span>
+        <span className="audit-json__label">View JSON</span>
+      </summary>
+      <div className="audit-json__content">
+        <JsonViewer value={value} />
+      </div>
+    </details>
+  );
+};
+
+const createChange = (field: string, from: unknown, to: unknown): CaseFieldChange => ({ field, from, to });
+
+const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
+  const events: CaseEvent[] = [];
+  events.push({
+    id: `synthetic_created_${caseItem.id}`,
+    at: caseItem.created_at,
+    type: "CASE_CREATED",
+    actor: caseItem.created_by ? { email: caseItem.created_by } : null,
+    meta: {
+      changes: [
+        createChange("status", null, "OPEN"),
+        ...(caseItem.priority ? [createChange("priority", null, caseItem.priority)] : []),
+      ],
+      reason: "Derived from case fields",
+    },
+  });
+  if (caseItem.status === "IN_PROGRESS" && caseItem.updated_at) {
+    events.push({
+      id: `synthetic_status_${caseItem.id}`,
+      at: caseItem.updated_at,
+      type: "STATUS_CHANGED",
+      actor: null,
+      meta: {
+        changes: [createChange("status", "OPEN", "IN_PROGRESS")],
+        reason: "Derived from case fields",
+      },
+    });
+  }
+  if (caseItem.closed_at) {
+    events.push({
+      id: `synthetic_closed_${caseItem.id}`,
+      at: caseItem.closed_at,
+      type: "CASE_CLOSED",
+      actor: caseItem.closed_by ? { email: caseItem.closed_by } : null,
+      meta: {
+        changes: [createChange("status", "IN_PROGRESS", "CLOSED")],
+        reason: "Derived from case fields",
+      },
+    });
+  }
+  return events;
+};
+
+const buildExportEvents = (caseId: string): CaseEvent[] =>
+  loadCaseExports()
+    .filter((entry) => entry.case_id === caseId)
+    .map((entry) => ({
+      id: `synthetic_export_${entry.id}`,
+      at: entry.created_at,
+      type: "EXPORT_CREATED" as const,
+      actor: null,
+      meta: {
+        export_ref: {
+          kind:
+            entry.type === "diff"
+              ? "diff_export"
+              : entry.type === "case"
+                ? "case_export"
+                : "explain_export",
+          id: entry.id,
+        },
+        reason: "Local export registry",
+      },
+    }));
+
+const buildMasteryEvents = (caseItem: CaseItem, masteryEvents: MasteryEvent[]): CaseEvent[] =>
+  masteryEvents
+    .filter((event) => event.case_id === caseItem.id)
+    .map<CaseEvent | null>((event, index) => {
+      if (event.type === "action_applied") {
+        return {
+          id: `synthetic_action_${caseItem.id}_${index}`,
+          at: event.at,
+          type: "ACTIONS_APPLIED",
+          actor: null,
+          meta: {
+            selected_actions_count: event.selected_actions_count ?? null,
+            reason: "Derived from mastery events",
+          },
+        };
+      }
+      if (event.type === "case_closed" && !caseItem.closed_at) {
+        return {
+          id: `synthetic_closed_mastery_${caseItem.id}_${index}`,
+          at: event.at,
+          type: "CASE_CLOSED",
+          actor: null,
+          meta: {
+            changes: [createChange("status", "IN_PROGRESS", "CLOSED")],
+            reason: "Derived from mastery events",
+          },
+        };
+      }
+      return null;
+    })
+    .filter((event): event is CaseEvent => event !== null);
+
 export function CaseDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const { toast, showToast } = useToast();
   const [payload, setPayload] = useState<CaseDetailsResponse | null>(null);
   const [events, setEvents] = useState<CaseEvent[]>([]);
+  const [optimisticEvents, setOptimisticEvents] = useState<CaseEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +225,9 @@ export function CaseDetailsPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("explain");
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
+  const [selectedTypes, setSelectedTypes] = useState<CaseEventType[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSynthetic, setShowSynthetic] = useState(false);
 
   const loadDetails = useCallback(() => {
     if (!id) return;
@@ -78,10 +245,10 @@ export function CaseDetailsPage() {
           setUnauthorized(true);
           return;
         }
-      if (isNotAvailableError(err)) {
-        setNotAvailable(true);
-        return;
-      }
+        if (isNotAvailableError(err)) {
+          setNotAvailable(true);
+          return;
+        }
         setError((err as Error).message);
       })
       .finally(() => setIsLoading(false));
@@ -90,16 +257,13 @@ export function CaseDetailsPage() {
   const loadEvents = useCallback(() => {
     if (!id) return;
     setIsEventsLoading(true);
-    fetchAdminCaseEvents(id)
+    listCaseEvents(id)
       .then((data) => {
         setEvents(data.items ?? []);
-        setEventsAvailable(true);
+        setEventsAvailable(!data.unavailable);
+        setOptimisticEvents([]);
       })
-      .catch((err: unknown) => {
-        if (isNotAvailableError(err)) {
-          setEventsAvailable(false);
-          return;
-        }
+      .catch(() => {
         setEventsAvailable(true);
       })
       .finally(() => setIsEventsLoading(false));
@@ -114,6 +278,57 @@ export function CaseDetailsPage() {
   const firstSnapshot = snapshotsSorted[0];
   const lastSnapshot = snapshotsSorted[snapshotsSorted.length - 1] ?? payload?.latest_snapshot;
   const selectedActionsCount = getSelectedActionsCount(lastSnapshot);
+  const masteryEvents = useMemo(() => loadMasteryEvents(), []);
+  const syntheticEvents = useMemo(() => {
+    if (!payload) return [];
+    const caseEvents = buildSyntheticEvents(payload.case);
+    const exportEvents = buildExportEvents(payload.case.id);
+    const masteryDerived = buildMasteryEvents(payload.case, masteryEvents);
+    return [...caseEvents, ...exportEvents, ...masteryDerived].sort(
+      (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+    );
+  }, [payload, masteryEvents]);
+
+  const hasRemoteEvents = eventsAvailable && events.length > 0;
+  const showSyntheticToggle = hasRemoteEvents && syntheticEvents.length > 0;
+
+  const baseEvents = useMemo(() => {
+    if (hasRemoteEvents) return events;
+    if (!eventsAvailable || events.length === 0) return syntheticEvents;
+    return events;
+  }, [events, eventsAvailable, hasRemoteEvents, syntheticEvents]);
+
+  const combinedEvents = useMemo(() => {
+    const includeSynthetic = showSyntheticToggle && showSynthetic;
+    const merged = includeSynthetic ? [...baseEvents, ...syntheticEvents] : baseEvents;
+    const withOptimistic = [...merged, ...optimisticEvents];
+    return withOptimistic.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  }, [baseEvents, optimisticEvents, showSyntheticToggle, showSynthetic, syntheticEvents]);
+
+  const filteredEvents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return combinedEvents.filter((event) => {
+      if (selectedTypes.length > 0 && !selectedTypes.includes(event.type)) {
+        return false;
+      }
+      if (!query) return true;
+      const actor = event.actor;
+      const changeFields = event.meta?.changes?.map((change) => change.field) ?? [];
+      const haystack = [
+        event.type,
+        actor?.email,
+        actor?.name,
+        actor?.id,
+        event.request_id,
+        event.trace_id,
+        ...changeFields,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [combinedEvents, searchQuery, selectedTypes]);
 
   const tabOptions = useMemo(
     () => [
@@ -133,11 +348,28 @@ export function CaseDetailsPage() {
     if (!id || !payload) return;
     setIsStatusUpdating(true);
     try {
+      const previousStatus = payload.case.status;
       const response = await updateAdminCaseStatus(id, "IN_PROGRESS");
       if (response) {
         setPayload((prev) => (prev ? { ...prev, case: response } : prev));
       } else {
         setPayload((prev) => (prev ? { ...prev, case: { ...prev.case, status: "IN_PROGRESS" } } : prev));
+      }
+      setOptimisticEvents((prev) => [
+        ...prev,
+        {
+          id: `synthetic_status_${Date.now()}`,
+          at: new Date().toISOString(),
+          type: "STATUS_CHANGED",
+          actor: null,
+          meta: {
+            changes: [createChange("status", previousStatus, "IN_PROGRESS")],
+            reason: "Updated from UI",
+          },
+        },
+      ]);
+      if (eventsAvailable) {
+        loadEvents();
       }
       showToast("success", "Status updated");
     } catch (err) {
@@ -167,6 +399,22 @@ export function CaseDetailsPage() {
         };
       setPayload((prev) => (prev ? { ...prev, case: { ...prev.case, ...updatedCase } } : prev));
       setCloseOpen(false);
+      setOptimisticEvents((prev) => [
+        ...prev,
+        {
+          id: `synthetic_close_${Date.now()}`,
+          at: new Date().toISOString(),
+          type: "CASE_CLOSED",
+          actor: null,
+          meta: {
+            changes: [createChange("status", payload.case.status, "CLOSED")],
+            reason: "Updated from UI",
+          },
+        },
+      ]);
+      if (eventsAvailable) {
+        loadEvents();
+      }
       const scoreSnapshot = toScoreSnapshot(lastSnapshot);
       recordCaseClosed(id, { scoreSnapshot });
       if (payloadInput.actionsApplied) {
@@ -219,6 +467,7 @@ export function CaseDetailsPage() {
   }
 
   const activeSnapshot = lastSnapshot ?? payload.latest_snapshot;
+  const traceUrlTemplate = import.meta.env.VITE_OBSERVABILITY_TRACE_URL_TEMPLATE as string | undefined;
 
   return (
     <div className="stack">
@@ -335,27 +584,144 @@ export function CaseDetailsPage() {
       </section>
 
       <section className="card">
-        <h3>Timeline / Events</h3>
-        {!eventsAvailable ? (
-          <div className="muted">Events not available</div>
-        ) : isEventsLoading ? (
-          <div className="muted">Loading events...</div>
-        ) : events.length === 0 ? (
+        <div className="audit-header">
+          <div>
+            <h3>Audit timeline</h3>
+            {!eventsAvailable ? (
+              <p className="muted small">Events endpoint unavailable · Showing synthetic timeline</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="audit-controls">
+          <div className="audit-controls__filters">
+            {EVENT_FILTERS.map((type) => (
+              <label className="checkbox audit-filter" key={type}>
+                <input
+                  type="checkbox"
+                  checked={selectedTypes.includes(type)}
+                  onChange={(event) => {
+                    setSelectedTypes((prev) => {
+                      if (event.target.checked) {
+                        return [...prev, type];
+                      }
+                      return prev.filter((entry) => entry !== type);
+                    });
+                  }}
+                />
+                <span>{EVENT_TYPE_LABELS[type]}</span>
+              </label>
+            ))}
+          </div>
+          <div className="audit-controls__search">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search by actor, field, request id"
+            />
+          </div>
+          {showSyntheticToggle ? (
+            <label className="checkbox audit-toggle">
+              <input
+                type="checkbox"
+                checked={showSynthetic}
+                onChange={(event) => setShowSynthetic(event.target.checked)}
+              />
+              <span>Show synthetic events</span>
+            </label>
+          ) : null}
+        </div>
+        {isEventsLoading ? (
+          <div className="muted">Loading timeline...</div>
+        ) : filteredEvents.length === 0 ? (
           <div className="muted">No events yet</div>
         ) : (
-          <div className="timeline-list">
-            {events.map((event) => (
-              <div className="timeline-item" key={event.id}>
-                <div className="timeline-item__meta">
-                  <span className="timeline-item__title">{event.actor ?? "System"}</span>
-                  <span className="muted small">{formatTimestamp(event.created_at)}</span>
+          <div className="audit-timeline" data-testid="audit-timeline">
+            {filteredEvents.map((event) => {
+              const isSynthetic = event.id.startsWith("synthetic_");
+              const exportRef = event.meta?.export_ref ?? null;
+              const traceUrl =
+                event.trace_id && traceUrlTemplate
+                  ? traceUrlTemplate.replace("{trace_id}", event.trace_id)
+                  : null;
+              return (
+                <div className="audit-item" key={event.id}>
+                  <div className="audit-item__marker">
+                    <span className="audit-item__icon">{EVENT_TYPE_ICONS[event.type]}</span>
+                  </div>
+                  <div className="audit-item__content">
+                    <div className="audit-item__header">
+                      <div className="audit-item__title">
+                        <span>{toEventLabel(event)}</span>
+                        {isSynthetic ? <span className="pill pill--outline">Synthetic</span> : null}
+                      </div>
+                      <div className="audit-item__meta">
+                        <span>{formatActor(event.actor)}</span>
+                        <span className="muted small">{formatTimestamp(event.at)}</span>
+                      </div>
+                    </div>
+                    {event.meta?.reason ? <div className="audit-item__reason">Reason: {event.meta.reason}</div> : null}
+                    {event.meta?.selected_actions_count !== null && event.meta?.selected_actions_count !== undefined ? (
+                      <div className="audit-item__reason">
+                        Selected actions: {event.meta.selected_actions_count}
+                      </div>
+                    ) : null}
+                    {event.meta?.changes && event.meta.changes.length > 0 ? (
+                      <div className="audit-block">
+                        <div className="label">Changes</div>
+                        <table className="audit-table">
+                          <thead>
+                            <tr>
+                              <th>Field</th>
+                              <th>From</th>
+                              <th>To</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {event.meta.changes.map((change) => (
+                              <tr key={`${event.id}-${change.field}`}>
+                                <td>{change.field}</td>
+                                <td>{renderAuditValue(change.from)}</td>
+                                <td>{renderAuditValue(change.to)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                    {event.request_id || event.trace_id ? (
+                      <div className="audit-block">
+                        <div className="label">Trace</div>
+                        <div className="audit-trace">
+                          {event.request_id ? <CopyChip label="Request ID" value={event.request_id} /> : null}
+                          {event.trace_id ? <CopyChip label="Trace ID" value={event.trace_id} /> : null}
+                          {traceUrl ? (
+                            <a className="ghost" href={traceUrl} target="_blank" rel="noreferrer">
+                              Open trace
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {exportRef ? (
+                      <div className="audit-block">
+                        <div className="label">Artifacts</div>
+                        <div className="audit-artifacts">
+                          <span className="muted">{EXPORT_KIND_LABELS[exportRef.kind]}</span>
+                          {exportRef.url ? (
+                            <a className="neft-btn-secondary" href={exportRef.url}>
+                              Open export
+                            </a>
+                          ) : (
+                            <CopyChip label="Export ID" value={exportRef.id} />
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="timeline-item__body">
-                  <strong>{event.type}</strong>
-                  {event.note ? ` · ${event.note}` : ""}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
