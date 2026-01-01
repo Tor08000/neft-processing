@@ -550,6 +550,57 @@ p {
   gap: 12px;
 }
 
+.audit-integrity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.audit-integrity--verified {
+  color: var(--neft-success);
+  border-color: rgba(22, 163, 74, 0.4);
+}
+
+.audit-integrity--broken {
+  color: var(--neft-danger);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.audit-integrity--unknown {
+  color: var(--neft-warning);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.audit-integrity__icon {
+  font-size: 16px;
+}
+
+.audit-integrity-details {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
+  display: grid;
+  gap: 8px;
+}
+
+.audit-integrity-details__title {
+  font-weight: 700;
+  color: var(--neft-danger);
+}
+
+.audit-integrity-details__hashes {
+  display: grid;
+  gap: 8px;
+}
+
 .audit-controls {
   margin-top: 12px;
   display: flex;
@@ -589,6 +640,19 @@ p {
   display: grid;
   grid-template-columns: 32px 1fr;
   gap: 12px;
+}
+
+.audit-item--broken .audit-item__content {
+  border-color: rgba(220, 38, 38, 0.5);
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.2);
+}
+
+.audit-item--broken .audit-item__icon {
+  border-color: rgba(220, 38, 38, 0.6);
+}
+
+.audit-item--broken .audit-item__marker::before {
+  background: rgba(220, 38, 38, 0.6);
 }
 
 .audit-item__marker {
@@ -707,6 +771,43 @@ p {
 
 .audit-json__content {
   margin-top: 8px;
+}
+
+.audit-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--neft-text-muted);
+}
+
+.audit-advanced__content {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.audit-hash {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audit-hash__label {
+  font-weight: 600;
+  color: var(--neft-text-muted);
+}
+
+.audit-hash__value {
+  font-family: var(--neft-font-mono);
+  font-size: 12px;
+  background: rgba(148, 163, 184, 0.2);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.audit-hash__button {
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .role-grid {
