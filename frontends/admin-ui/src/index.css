@@ -673,6 +673,244 @@ p {
   padding-top: var(--neft-header-height);
 }
 
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.kpi-card {
+  background: var(--neft-surface2);
+  border: 1px solid var(--neft-border);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.kpi-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kpi-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.kpi-card__subvalue {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__delta {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--neft-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__delta.is-positive {
+  background: rgba(47, 234, 155, 0.12);
+  border-color: rgba(47, 234, 155, 0.35);
+  color: var(--neft-success);
+}
+
+.kpi-card__delta.is-negative {
+  background: rgba(255, 77, 77, 0.14);
+  border-color: rgba(255, 77, 77, 0.35);
+  color: var(--neft-danger);
+}
+
+.kpi-card__delta.is-neutral {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--neft-border);
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(182, 255, 59, 0.15);
+  overflow: hidden;
+}
+
+.kpi-card__progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: 999px;
+}
+
+.kpi-card__target {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.kpi-hints {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  color: var(--neft-text);
+  font-weight: 600;
+}
+
+.kpi-hints__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(22, 34, 53, 0.5);
+  border: 1px solid var(--neft-border);
+}
+
+.kpi-hints__item.is-positive {
+  border-color: rgba(47, 234, 155, 0.35);
+}
+
+.kpi-hints__icon {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neft-text-muted);
+}
+
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.achievement-badge {
+  border: 1px solid var(--neft-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--neft-surface2);
+  display: grid;
+  gap: 8px;
+}
+
+.achievement-badge.is-locked {
+  opacity: 0.6;
+}
+
+.achievement-badge__header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.achievement-badge__icon {
+  font-size: 18px;
+  font-weight: 700;
+  width: 28px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.achievement-badge__title {
+  font-weight: 700;
+}
+
+.achievement-badge__description {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.achievement-badge__status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--neft-text-muted);
+}
+
+.achievement-badge__status.status-unlocked {
+  color: var(--neft-success);
+}
+
+.achievement-badge__status.status-in-progress {
+  color: var(--neft-accent);
+}
+
+.achievement-badge__progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(182, 255, 59, 0.15);
+  overflow: hidden;
+}
+
+.achievement-badge__progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: 999px;
+}
+
+.achievement-streak {
+  margin-top: 12px;
+}
+
+.streak-widget {
+  background: var(--neft-surface2);
+  border: 1px solid var(--neft-border);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.streak-widget__title {
+  font-weight: 700;
+}
+
+.streak-widget__description {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.streak-widget__dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.streak-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.streak-dot.is-active {
+  background: var(--neft-accent);
+}
+
+.streak-widget__meta {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
 .progress-hints {
   list-style: none;
   margin: 0;
