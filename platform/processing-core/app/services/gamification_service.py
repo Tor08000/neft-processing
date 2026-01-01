@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.subscriptions_v1 import Achievement, Bonus, ClientProgress, Streak, SubscriptionPlan, SubscriptionPlanModule
+from app.services.subscription_service import FREE_PLAN_CODES
 from app.schemas.subscriptions import GamificationSummary
 
 
@@ -33,7 +34,7 @@ def _module_preview(db: Session, plan_id: str) -> list[dict]:
 def compute_preview_for_free(db: Session) -> dict | None:
     upgrade_plan = (
         db.query(SubscriptionPlan)
-        .filter(SubscriptionPlan.code != "FREE", SubscriptionPlan.is_active.is_(True))
+        .filter(~SubscriptionPlan.code.in_(sorted(FREE_PLAN_CODES)), SubscriptionPlan.is_active.is_(True))
         .order_by(SubscriptionPlan.price_cents.desc())
         .first()
     )
@@ -100,8 +101,8 @@ def get_client_rewards_summary(
         ],
     }
 
-    preview = compute_preview_for_free(db) if plan_code == "FREE" else None
-    if plan_code == "FREE":
+    preview = compute_preview_for_free(db) if plan_code in FREE_PLAN_CODES else None
+    if plan_code in FREE_PLAN_CODES:
         preview = {**(preview or {}), "available": available}
     else:
         bonuses = bonuses or available["bonuses"]

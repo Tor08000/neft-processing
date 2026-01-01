@@ -41,6 +41,7 @@ from app.schemas.subscriptions import (
 from app.services import admin_auth, client_auth
 from app.services.gamification_service import get_client_rewards_summary
 from app.services.subscription_service import (
+    DEFAULT_FREE_PLAN_CODE,
     DEFAULT_TENANT_ID,
     create_bonus_rule,
     create_plan,
@@ -80,6 +81,8 @@ def _build_plan_out(db: Session, plan: SubscriptionPlan) -> SubscriptionPlanOut:
         is_active=plan.is_active,
         billing_period_months=plan.billing_period_months,
         price_cents=plan.price_cents,
+        discount_percent=plan.discount_percent,
+        bonus_multiplier_override=plan.bonus_multiplier_override,
         currency=plan.currency,
         modules=[
             SubscriptionPlanModuleOut(
@@ -557,7 +560,7 @@ def get_my_gamification_summary(
         subscription = ensure_free_subscription(db, tenant_id=tenant_id, client_id=client_id)
 
     plan = db.get(SubscriptionPlan, subscription.plan_id)
-    plan_code = plan.code if plan else "FREE"
+    plan_code = plan.code if plan else DEFAULT_FREE_PLAN_CODE
     return get_client_rewards_summary(db, tenant_id=tenant_id, client_id=client_id, plan_code=plan_code)
 
 
