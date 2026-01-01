@@ -29,6 +29,9 @@ export function SubscriptionPage() {
   const previewModules = gamification?.preview?.modules as
     | { module_code: string; enabled: boolean; tier?: string | null }[]
     | undefined;
+  const previewAvailable = gamification?.preview?.available as
+    | { achievements?: { title: string }[]; streaks?: { title: string }[]; bonuses?: { title: string }[] }
+    | undefined;
 
   const savings = useMemo(() => {
     if (!gamification?.bonuses?.length) return t("subscription.savingsFallback");
@@ -99,7 +102,7 @@ export function SubscriptionPage() {
         {gamification?.bonuses?.length ? (
           <ul>
             {gamification.bonuses.map((bonus, index) => (
-              <li key={index}>{JSON.stringify(bonus)}</li>
+              <li key={index}>{bonus.title ?? t("subscription.bonusUnlocked")}</li>
             ))}
           </ul>
         ) : (
@@ -112,9 +115,12 @@ export function SubscriptionPage() {
             {previewModules ? (
               <ul>
                 {previewModules.map((module, index) => (
-                  <li key={`${module.module_code}-${index}`}> {module.module_code}</li>
+                  <li key={`${module.module_code}-${index}`}>{module.module_code}</li>
                 ))}
               </ul>
+            ) : null}
+            {previewAvailable?.bonuses?.length ? (
+              <div style={{ marginTop: 8 }}>{t("subscription.availableByPlan")}</div>
             ) : null}
           </div>
         ) : null}
@@ -125,7 +131,7 @@ export function SubscriptionPage() {
         {gamification?.streaks?.length ? (
           <ul>
             {gamification.streaks.map((streak, index) => (
-              <li key={index}>{JSON.stringify(streak)}</li>
+              <li key={index}>{streak.title ?? t("subscription.streakActive")}</li>
             ))}
           </ul>
         ) : (
@@ -138,12 +144,15 @@ export function SubscriptionPage() {
         {gamification?.achievements?.length ? (
           <ul>
             {gamification.achievements.map((achievement, index) => (
-              <li key={index}>{JSON.stringify(achievement)}</li>
+              <li key={index}>{achievement.title ?? t("subscription.achievementUnlocked")}</li>
             ))}
           </ul>
         ) : (
           <div>{t("subscription.achievementsEmpty")}</div>
         )}
+        {subscription.status === "FREE" && previewAvailable?.achievements?.length ? (
+          <div style={{ marginTop: 8 }}>{t("subscription.availableByPlan")}</div>
+        ) : null}
       </section>
     </div>
   );

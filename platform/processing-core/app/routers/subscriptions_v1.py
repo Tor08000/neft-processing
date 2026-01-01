@@ -5,13 +5,22 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.subscriptions_v1 import (
+    Achievement,
+    Bonus,
     BonusRule,
     RoleEntitlement,
+    Streak,
     SubscriptionModuleCode,
     SubscriptionPlan,
     SubscriptionPlanModule,
 )
 from app.schemas.subscriptions import (
+    AchievementBase,
+    AchievementOut,
+    AchievementUpdate,
+    BonusBase,
+    BonusOut,
+    BonusUpdate,
     BonusRuleBase,
     BonusRuleOut,
     BonusRuleUpdate,
@@ -25,6 +34,9 @@ from app.schemas.subscriptions import (
     SubscriptionPlanModuleOut,
     SubscriptionPlanOut,
     SubscriptionPlanUpdate,
+    StreakBase,
+    StreakOut,
+    StreakUpdate,
 )
 from app.services import admin_auth, client_auth
 from app.services.gamification_service import get_client_rewards_summary
@@ -241,6 +253,236 @@ def patch_subscription_bonus_rule(
         condition=updated.condition,
         reward=updated.reward,
         enabled=updated.enabled,
+    )
+
+
+@router.get("/gamification/achievements", response_model=list[AchievementOut])
+def list_gamification_achievements(
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> list[AchievementOut]:
+    items = db.query(Achievement).order_by(Achievement.created_at.desc()).all()
+    return [
+        AchievementOut(
+            id=item.id,
+            code=item.code,
+            title=item.title,
+            description=item.description,
+            is_active=item.is_active,
+            is_hidden=item.is_hidden,
+            module_code=item.module_code,
+            plan_codes=item.plan_codes,
+        )
+        for item in items
+    ]
+
+
+@router.post("/gamification/achievements", response_model=AchievementOut)
+def create_gamification_achievement(
+    payload: AchievementBase,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> AchievementOut:
+    item = Achievement(
+        code=payload.code,
+        title=payload.title,
+        description=payload.description,
+        is_active=payload.is_active,
+        is_hidden=payload.is_hidden,
+        module_code=payload.module_code,
+        plan_codes=payload.plan_codes,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return AchievementOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        is_active=item.is_active,
+        is_hidden=item.is_hidden,
+        module_code=item.module_code,
+        plan_codes=item.plan_codes,
+    )
+
+
+@router.patch("/gamification/achievements/{achievement_id}", response_model=AchievementOut)
+def patch_gamification_achievement(
+    achievement_id: int,
+    payload: AchievementUpdate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> AchievementOut:
+    item = db.get(Achievement, achievement_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Achievement not found")
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return AchievementOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        is_active=item.is_active,
+        is_hidden=item.is_hidden,
+        module_code=item.module_code,
+        plan_codes=item.plan_codes,
+    )
+
+
+@router.get("/gamification/streaks", response_model=list[StreakOut])
+def list_gamification_streaks(
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> list[StreakOut]:
+    items = db.query(Streak).order_by(Streak.created_at.desc()).all()
+    return [
+        StreakOut(
+            id=item.id,
+            code=item.code,
+            title=item.title,
+            description=item.description,
+            is_active=item.is_active,
+            module_code=item.module_code,
+            plan_codes=item.plan_codes,
+            condition=item.condition,
+        )
+        for item in items
+    ]
+
+
+@router.post("/gamification/streaks", response_model=StreakOut)
+def create_gamification_streak(
+    payload: StreakBase,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> StreakOut:
+    item = Streak(
+        code=payload.code,
+        title=payload.title,
+        description=payload.description,
+        is_active=payload.is_active,
+        module_code=payload.module_code,
+        plan_codes=payload.plan_codes,
+        condition=payload.condition,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return StreakOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        is_active=item.is_active,
+        module_code=item.module_code,
+        plan_codes=item.plan_codes,
+        condition=item.condition,
+    )
+
+
+@router.patch("/gamification/streaks/{streak_id}", response_model=StreakOut)
+def patch_gamification_streak(
+    streak_id: int,
+    payload: StreakUpdate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> StreakOut:
+    item = db.get(Streak, streak_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Streak not found")
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return StreakOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        is_active=item.is_active,
+        module_code=item.module_code,
+        plan_codes=item.plan_codes,
+        condition=item.condition,
+    )
+
+
+@router.get("/gamification/bonuses", response_model=list[BonusOut])
+def list_gamification_bonuses(
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> list[BonusOut]:
+    items = db.query(Bonus).order_by(Bonus.created_at.desc()).all()
+    return [
+        BonusOut(
+            id=item.id,
+            code=item.code,
+            title=item.title,
+            description=item.description,
+            reward=item.reward,
+            is_active=item.is_active,
+            plan_codes=item.plan_codes,
+        )
+        for item in items
+    ]
+
+
+@router.post("/gamification/bonuses", response_model=BonusOut)
+def create_gamification_bonus(
+    payload: BonusBase,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> BonusOut:
+    item = Bonus(
+        code=payload.code,
+        title=payload.title,
+        description=payload.description,
+        reward=payload.reward,
+        is_active=payload.is_active,
+        plan_codes=payload.plan_codes,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return BonusOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        reward=item.reward,
+        is_active=item.is_active,
+        plan_codes=item.plan_codes,
+    )
+
+
+@router.patch("/gamification/bonuses/{bonus_id}", response_model=BonusOut)
+def patch_gamification_bonus(
+    bonus_id: int,
+    payload: BonusUpdate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(admin_auth.verify_admin_token),
+) -> BonusOut:
+    item = db.get(Bonus, bonus_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Bonus not found")
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return BonusOut(
+        id=item.id,
+        code=item.code,
+        title=item.title,
+        description=item.description,
+        reward=item.reward,
+        is_active=item.is_active,
+        plan_codes=item.plan_codes,
     )
 
 

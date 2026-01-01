@@ -34,6 +34,38 @@ export interface BonusRule {
   enabled: boolean;
 }
 
+export interface Achievement {
+  id: number;
+  code: string;
+  title: string;
+  description?: string | null;
+  is_active: boolean;
+  is_hidden: boolean;
+  module_code?: string | null;
+  plan_codes?: string[] | null;
+}
+
+export interface Streak {
+  id: number;
+  code: string;
+  title: string;
+  description?: string | null;
+  is_active: boolean;
+  module_code?: string | null;
+  plan_codes?: string[] | null;
+  condition?: Record<string, unknown> | null;
+}
+
+export interface Bonus {
+  id: number;
+  code: string;
+  title: string;
+  description?: string | null;
+  reward?: Record<string, unknown> | null;
+  is_active: boolean;
+  plan_codes?: string[] | null;
+}
+
 export interface SubscriptionPlan {
   id: string;
   code: string;

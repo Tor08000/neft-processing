@@ -107,6 +107,82 @@ class GamificationSummary(BaseModel):
     preview: dict[str, Any] | None = None
 
 
+class AchievementBase(BaseModel):
+    code: str
+    title: str
+    description: str | None = None
+    is_active: bool = True
+    is_hidden: bool = False
+    module_code: str | None = None
+    plan_codes: list[str] | None = None
+
+
+class AchievementOut(AchievementBase):
+    id: int
+
+
+class AchievementUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    is_hidden: bool | None = None
+    module_code: str | None = None
+    plan_codes: list[str] | None = None
+
+
+class AchievementConditionBase(BaseModel):
+    condition: dict[str, Any] | None = None
+
+
+class AchievementConditionOut(AchievementConditionBase):
+    id: int
+    achievement_id: int
+
+
+class StreakBase(BaseModel):
+    code: str
+    title: str
+    description: str | None = None
+    is_active: bool = True
+    module_code: str | None = None
+    plan_codes: list[str] | None = None
+    condition: dict[str, Any] | None = None
+
+
+class StreakOut(StreakBase):
+    id: int
+
+
+class StreakUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    module_code: str | None = None
+    plan_codes: list[str] | None = None
+    condition: dict[str, Any] | None = None
+
+
+class BonusBase(BaseModel):
+    code: str
+    title: str
+    description: str | None = None
+    reward: dict[str, Any] | None = None
+    is_active: bool = True
+    plan_codes: list[str] | None = None
+
+
+class BonusOut(BonusBase):
+    id: int
+
+
+class BonusUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    reward: dict[str, Any] | None = None
+    is_active: bool | None = None
+    plan_codes: list[str] | None = None
+
+
 class AssignSubscriptionIn(BaseModel):
     plan_id: str
     duration_months: int | None = None

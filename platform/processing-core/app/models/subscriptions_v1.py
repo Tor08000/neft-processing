@@ -113,6 +113,71 @@ class ClientBonusState(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class Achievement(Base):
+    __tablename__ = "achievements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(128), nullable=False, unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    is_hidden = Column(Boolean, nullable=False, server_default="false")
+    module_code = Column(String(64), nullable=True)
+    plan_codes = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AchievementCondition(Base):
+    __tablename__ = "achievement_conditions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    achievement_id = Column(Integer, ForeignKey("achievements.id"), nullable=False, index=True)
+    condition = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Streak(Base):
+    __tablename__ = "streaks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(128), nullable=False, unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    module_code = Column(String(64), nullable=True)
+    plan_codes = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    condition = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class Bonus(Base):
+    __tablename__ = "bonuses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(128), nullable=False, unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    reward = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    plan_codes = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ClientProgress(Base):
+    __tablename__ = "client_progress"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    achievements = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    streaks = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    bonuses = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 __all__ = [
     "SubscriptionStatus",
     "SubscriptionModuleCode",
@@ -122,4 +187,9 @@ __all__ = [
     "RoleEntitlement",
     "BonusRule",
     "ClientBonusState",
+    "Achievement",
+    "AchievementCondition",
+    "Streak",
+    "Bonus",
+    "ClientProgress",
 ]

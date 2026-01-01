@@ -307,10 +307,15 @@ from .crm import (  # noqa: F401
     CRMBillingCycle,
 )
 from .subscriptions_v1 import (  # noqa: F401
+    Achievement,
+    AchievementCondition,
+    Bonus,
     BonusRule,
     ClientBonusState,
+    ClientProgress,
     ClientSubscription,
     RoleEntitlement,
+    Streak,
     SubscriptionModuleCode,
     SubscriptionPlan,
     SubscriptionPlanModule,
@@ -576,4 +581,9 @@ __all__ = [
     "RoleEntitlement",
     "BonusRule",
     "ClientBonusState",
+    "Achievement",
+    "AchievementCondition",
+    "Streak",
+    "Bonus",
+    "ClientProgress",
 ]

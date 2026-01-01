@@ -103,12 +103,16 @@
     "savingsValue": "Active bonuses: {value}",
     "bonuses": "Bonuses & rewards",
     "bonusesEmpty": "No bonuses yet",
+    "bonusUnlocked": "Bonus unlocked",
     "previewTitle": "Preview for upgrade",
     "previewSubtitle": "What you get in {plan}",
+    "availableByPlan": "Bonus available by subscription",
     "streaks": "Streaks",
     "streaksEmpty": "No streaks yet",
+    "streakActive": "Progress in progress",
     "achievements": "Achievements",
     "achievementsEmpty": "No achievements yet",
+    "achievementUnlocked": "Achievement unlocked",
     "empty": "Subscription details are not available"
   },
   "marketplaceCatalog": {

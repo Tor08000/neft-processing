@@ -103,12 +103,16 @@
     "savingsValue": "Активных бонусов: {value}",
     "bonuses": "Бонусы и награды",
     "bonusesEmpty": "Пока нет бонусов",
+    "bonusUnlocked": "Бонус получен",
     "previewTitle": "Preview апгрейда",
     "previewSubtitle": "Что будет в плане {plan}",
+    "availableByPlan": "Бонус доступен по подписке",
     "streaks": "Серии",
     "streaksEmpty": "Пока нет серий",
+    "streakActive": "Прогресс в серии",
     "achievements": "Достижения",
     "achievementsEmpty": "Пока нет достижений",
+    "achievementUnlocked": "Достижение получено",
     "empty": "Нет данных по подписке"
   },
   "marketplaceCatalog": {
