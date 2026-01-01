@@ -29,6 +29,8 @@ import { loadCaseExports } from "../../utils/caseExportRegistry";
 import { CopyChip } from "../../components/common/CopyChip";
 import { isRedactedValue, redactForAudit } from "../../redaction/apply";
 import type { RedactedValue } from "../../redaction/types";
+import { computeChain, verifyChain } from "../../audit_chain/chain";
+import type { ChainLink, ChainVerificationResult } from "../../audit_chain/types";
 
 const statusTone = (status: CaseStatus) => {
   if (status === "CLOSED") return "badge badge-danger";
@@ -127,6 +129,42 @@ const renderAuditValue = (fieldPath: string, value: unknown): ReactNode => {
   );
 };
 
+const HASH_PREVIEW_LENGTH = 12;
+
+const shortenHash = (value: string) =>
+  value.length > HASH_PREVIEW_LENGTH ? `${value.slice(0, HASH_PREVIEW_LENGTH)}…` : value;
+
+const HashCopy = ({ label, value }: { label: string; value: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch (err) {
+      console.error("Copy failed", err);
+    }
+  };
+
+  return (
+    <div className="audit-hash">
+      <span className="audit-hash__label">{label}</span>
+      <span className="audit-hash__value" title={value}>
+        {shortenHash(value)}
+      </span>
+      <button type="button" className="neft-btn-secondary audit-hash__button" onClick={handleCopy}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+};
+
 const createChange = (field: string, from: unknown, to: unknown): CaseFieldChange => ({ field, from, to });
 
 const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
@@ -136,6 +174,7 @@ const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
     at: caseItem.created_at,
     type: "CASE_CREATED",
     actor: caseItem.created_by ? { email: caseItem.created_by } : null,
+    source: "synthetic",
     meta: {
       changes: [
         createChange("status", null, "OPEN"),
@@ -150,6 +189,7 @@ const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
       at: caseItem.updated_at,
       type: "STATUS_CHANGED",
       actor: null,
+      source: "synthetic",
       meta: {
         changes: [createChange("status", "OPEN", "IN_PROGRESS")],
         reason: "Derived from case fields",
@@ -162,6 +202,7 @@ const buildSyntheticEvents = (caseItem: CaseItem): CaseEvent[] => {
       at: caseItem.closed_at,
       type: "CASE_CLOSED",
       actor: caseItem.closed_by ? { email: caseItem.closed_by } : null,
+      source: "synthetic",
       meta: {
         changes: [createChange("status", "IN_PROGRESS", "CLOSED")],
         reason: "Derived from case fields",
@@ -179,6 +220,7 @@ const buildExportEvents = (caseId: string): CaseEvent[] =>
       at: entry.created_at,
       type: "EXPORT_CREATED" as const,
       actor: null,
+      source: "local",
       meta: {
         export_ref: {
           kind:
@@ -203,6 +245,7 @@ const buildMasteryEvents = (caseItem: CaseItem, masteryEvents: MasteryEvent[]): 
           at: event.at,
           type: "ACTIONS_APPLIED",
           actor: null,
+          source: "synthetic",
           meta: {
             selected_actions_count: event.selected_actions_count ?? null,
             reason: "Derived from mastery events",
@@ -215,6 +258,7 @@ const buildMasteryEvents = (caseItem: CaseItem, masteryEvents: MasteryEvent[]): 
           at: event.at,
           type: "CASE_CLOSED",
           actor: null,
+          source: "synthetic",
           meta: {
             changes: [createChange("status", "IN_PROGRESS", "CLOSED")],
             reason: "Derived from mastery events",
@@ -244,6 +288,8 @@ export function CaseDetailsPage() {
   const [selectedTypes, setSelectedTypes] = useState<CaseEventType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSynthetic, setShowSynthetic] = useState(false);
+  const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
+  const [chainStatus, setChainStatus] = useState<ChainVerificationResult>({ status: "unknown" });
 
   const loadDetails = useCallback(() => {
     if (!id) return;
@@ -346,6 +392,40 @@ export function CaseDetailsPage() {
     });
   }, [combinedEvents, searchQuery, selectedTypes]);
 
+  const chainLinksById = useMemo(
+    () => new Map(chainLinks.map((link) => [link.event_id, link])),
+    [chainLinks],
+  );
+
+  useEffect(() => {
+    let isActive = true;
+    const run = async () => {
+      if (!payload?.case.id || filteredEvents.length === 0) {
+        if (isActive) {
+          setChainLinks([]);
+          setChainStatus({ status: "unknown" });
+        }
+        return;
+      }
+      try {
+        const links = await computeChain(payload.case.id, filteredEvents);
+        const verification = await verifyChain(payload.case.id, filteredEvents, links);
+        if (!isActive) return;
+        setChainLinks(links);
+        setChainStatus(verification);
+      } catch (err) {
+        console.error("Audit chain verification failed", err);
+        if (!isActive) return;
+        setChainLinks([]);
+        setChainStatus({ status: "unknown" });
+      }
+    };
+    void run();
+    return () => {
+      isActive = false;
+    };
+  }, [filteredEvents, payload?.case.id]);
+
   const tabOptions = useMemo(
     () => [
       { id: "explain", label: "Explain JSON" },
@@ -378,6 +458,7 @@ export function CaseDetailsPage() {
           at: new Date().toISOString(),
           type: "STATUS_CHANGED",
           actor: null,
+          source: "local",
           meta: {
             changes: [createChange("status", previousStatus, "IN_PROGRESS")],
             reason: "Updated from UI",
@@ -422,6 +503,7 @@ export function CaseDetailsPage() {
           at: new Date().toISOString(),
           type: "CASE_CLOSED",
           actor: null,
+          source: "local",
           meta: {
             changes: [createChange("status", payload.case.status, "CLOSED")],
             reason: "Updated from UI",
@@ -484,6 +566,20 @@ export function CaseDetailsPage() {
 
   const activeSnapshot = lastSnapshot ?? payload.latest_snapshot;
   const traceUrlTemplate = import.meta.env.VITE_OBSERVABILITY_TRACE_URL_TEMPLATE as string | undefined;
+  const integrityLabel =
+    chainStatus.status === "verified"
+      ? "Integrity: Verified"
+      : chainStatus.status === "broken"
+        ? "Integrity: Broken"
+        : "Integrity: Unknown";
+  const integrityIcon =
+    chainStatus.status === "verified" ? "✅" : chainStatus.status === "broken" ? "⚠️" : "ⓘ";
+  const integrityTooltip =
+    chainStatus.status === "verified"
+      ? "Hash chain matches all events"
+      : chainStatus.status === "broken"
+        ? `Event sequence mismatch detected at #${(chainStatus.broken_at_index ?? 0) + 1}`
+        : "Not enough data to verify chain";
 
   return (
     <div className="stack">
@@ -607,7 +703,24 @@ export function CaseDetailsPage() {
               <p className="muted small">Events endpoint unavailable · Showing synthetic timeline</p>
             ) : null}
           </div>
+          <div className={`audit-integrity audit-integrity--${chainStatus.status}`} title={integrityTooltip}>
+            <span className="audit-integrity__icon" aria-hidden="true">
+              {integrityIcon}
+            </span>
+            <span>{integrityLabel}</span>
+          </div>
         </div>
+        {chainStatus.status === "broken" ? (
+          <div className="audit-integrity-details">
+            <div className="audit-integrity-details__title">
+              Mismatch detected at event #{(chainStatus.broken_at_index ?? 0) + 1}
+            </div>
+            <div className="audit-integrity-details__hashes">
+              {chainStatus.expected_hash ? <HashCopy label="Expected" value={chainStatus.expected_hash} /> : null}
+              {chainStatus.actual_hash ? <HashCopy label="Actual" value={chainStatus.actual_hash} /> : null}
+            </div>
+          </div>
+        ) : null}
         <div className="audit-controls">
           <div className="audit-controls__filters">
             {EVENT_FILTERS.map((type) => (
@@ -653,15 +766,17 @@ export function CaseDetailsPage() {
           <div className="muted">No events yet</div>
         ) : (
           <div className="audit-timeline" data-testid="audit-timeline">
-            {filteredEvents.map((event) => {
-              const isSynthetic = event.id.startsWith("synthetic_");
+            {filteredEvents.map((event, index) => {
+              const isSynthetic = event.source === "synthetic" || event.id.startsWith("synthetic_");
+              const isBroken = chainStatus.status === "broken" && chainStatus.broken_at_index === index;
               const exportRef = event.meta?.export_ref ?? null;
               const traceUrl =
                 event.trace_id && traceUrlTemplate
                   ? traceUrlTemplate.replace("{trace_id}", event.trace_id)
                   : null;
+              const chainLink = chainLinksById.get(event.id);
               return (
-                <div className="audit-item" key={event.id}>
+                <div className={`audit-item${isBroken ? " audit-item--broken" : ""}`} key={event.id}>
                   <div className="audit-item__marker">
                     <span className="audit-item__icon">{EVENT_TYPE_ICONS[event.type]}</span>
                   </div>
@@ -733,6 +848,15 @@ export function CaseDetailsPage() {
                           )}
                         </div>
                       </div>
+                    ) : null}
+                    {chainLink ? (
+                      <details className="audit-advanced">
+                        <summary>Advanced</summary>
+                        <div className="audit-advanced__content">
+                          <HashCopy label="hash" value={chainLink.hash} />
+                          <HashCopy label="prev" value={chainLink.prev_hash} />
+                        </div>
+                      </details>
                     ) : null}
                   </div>
                 </div>

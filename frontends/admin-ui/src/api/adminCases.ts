@@ -44,6 +44,9 @@ export type CaseEvent = {
   actor?: { id?: string; email?: string; name?: string } | null;
   request_id?: string | null;
   trace_id?: string | null;
+  source?: "backend" | "synthetic" | "local";
+  prev_hash?: string | null;
+  hash?: string | null;
   meta?: {
     changes?: CaseFieldChange[];
     reason?: string | null;
@@ -215,6 +218,11 @@ const normalizeCaseEvent = (value: unknown, index: number): CaseEvent | null => 
   const actor = normalizeActor(value.actor ?? value.user ?? value.author);
   const requestId = normalizeString(value.request_id ?? value.requestId);
   const traceId = normalizeString(value.trace_id ?? value.traceId);
+  const prevHash = normalizeString(value.prev_hash ?? value.prevHash);
+  const hash = normalizeString(value.hash);
+  const source = normalizeString(value.source);
+  const normalizedSource =
+    source === "backend" || source === "synthetic" || source === "local" ? source : undefined;
   const rawMeta = isRecord(value.meta) ? value.meta : isRecord(value.metadata) ? value.metadata : undefined;
   const changes = normalizeChanges(rawMeta?.changes);
   const exportRef = normalizeExportRef(rawMeta?.export_ref ?? rawMeta?.exportRef);
@@ -237,6 +245,9 @@ const normalizeCaseEvent = (value: unknown, index: number): CaseEvent | null => 
     actor,
     request_id: requestId,
     trace_id: traceId,
+    prev_hash: prevHash ?? undefined,
+    hash: hash ?? undefined,
+    source: normalizedSource,
     meta,
   };
 };
