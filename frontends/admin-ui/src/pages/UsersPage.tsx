@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { listUsers, updateUser } from "../api/adminUsers";
 import { UnauthorizedError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
+import { DataTable } from "../components/common/DataTable";
 import type { AdminUser } from "../types/users";
 
 export const UsersPage: React.FC = () => {
   const { accessToken, logout } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,8 @@ export const UsersPage: React.FC = () => {
     return users.filter((u) => u.email.toLowerCase().includes(query));
   }, [users, search]);
 
+  const filtersActive = search.trim().length > 0;
+
   const toggleActive = async (item: AdminUser) => {
     if (!accessToken) return;
     try {
@@ -52,66 +56,71 @@ export const UsersPage: React.FC = () => {
           <h2>Пользователи</h2>
           <p className="muted">Управление доступом к платформе</p>
         </div>
-        <Link to="/users/new" className="button primary neft-btn-primary">Создать пользователя</Link>
+        <Link to="/users/new" className="button primary neft-btn-primary">
+          Создать пользователя
+        </Link>
       </div>
 
-      <div className="card" style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <label className="label" htmlFor="email-filter">
-          Фильтр по email
-        </label>
-        <input
-          id="email-filter"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="client@neft.local"
-          style={{ maxWidth: 260 }}
-        />
+      <div className="card" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div>
+          <label className="label" htmlFor="email-filter">
+            Фильтр по email
+          </label>
+          <input
+            id="email-filter"
+            className="neft-input neft-focus-ring"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="client@neft.local"
+            style={{ maxWidth: 260 }}
+          />
+        </div>
+        <button
+          type="button"
+          className="button neft-btn-secondary"
+          onClick={() => setSearch("")}
+          disabled={!filtersActive}
+        >
+          Сбросить
+        </button>
       </div>
 
       {error ? <div className="error-text">{error}</div> : null}
 
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Полное имя</th>
-              <th>Активен</th>
-              <th>Роли</th>
-              <th>Создан</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6}>Загрузка...</td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6}>Пользователи не найдены</td>
-              </tr>
-            ) : (
-              filtered.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.email}</td>
-                  <td>{item.full_name ?? "—"}</td>
-                  <td>
-                    <button className="ghost" onClick={() => toggleActive(item)}>
-                      {item.is_active ? "Активен" : "Выключен"}
-                    </button>
-                  </td>
-                  <td>{item.roles.join(", ")}</td>
-                  <td>{item.created_at ? new Date(item.created_at).toLocaleString() : "—"}</td>
-                  <td>
-                    <Link to={`/users/${item.id}`}>Редактировать</Link>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={filtered}
+        columns={[
+          { key: "email", title: "Email", render: (item) => item.email },
+          { key: "full_name", title: "Полное имя", render: (item) => item.full_name ?? "—" },
+          {
+            key: "active",
+            title: "Активен",
+            render: (item) => (
+              <button className="ghost neft-focus-ring" onClick={() => toggleActive(item)}>
+                {item.is_active ? "Активен" : "Выключен"}
+              </button>
+            ),
+          },
+          { key: "roles", title: "Роли", render: (item) => item.roles.join(", ") },
+          {
+            key: "created_at",
+            title: "Создан",
+            render: (item) => (item.created_at ? new Date(item.created_at).toLocaleString() : "—"),
+          },
+          {
+            key: "actions",
+            title: "Действия",
+            render: (item) => <Link to={`/users/${item.id}`}>Редактировать</Link>,
+          },
+        ]}
+        loading={loading}
+        emptyState={{
+          title: filtersActive ? "Пользователи не найдены" : "Пользователи отсутствуют",
+          description: filtersActive ? "Попробуйте изменить фильтры поиска." : "Создайте первого пользователя.",
+          actionLabel: filtersActive ? "Сбросить фильтры" : "Создать пользователя",
+          actionOnClick: filtersActive ? () => setSearch("") : () => navigate("/users/new"),
+        }}
+      />
     </div>
   );
 };

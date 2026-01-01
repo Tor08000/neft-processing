@@ -13,6 +13,14 @@ body {
   background-color: var(--neft-bg);
 }
 
+.muted {
+  color: var(--neft-text-muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -22,8 +30,26 @@ body {
   }
 }
 
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 a {
   color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--neft-focus-ring);
 }
 
 button:disabled {
@@ -223,14 +249,7 @@ p {
 }
 
 .login-form button {
-  background: var(--neft-accent);
-  color: #0b0f14;
-  border: none;
-  padding: 12px;
-  border-radius: var(--neft-radius-control);
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.2s ease, transform 0.1s ease;
+  width: 100%;
 }
 
 .login-form button:hover:not(:disabled) {
@@ -244,6 +263,79 @@ p {
 .error-text {
   color: var(--neft-danger);
   font-size: 14px;
+}
+
+.login-demo {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(22, 34, 53, 0.9);
+  border: 1px solid var(--neft-border);
+  color: var(--neft-text);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.copy-chip__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neft-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.copy-chip__value {
+  font-family: var(--neft-font-mono);
+  font-size: 13px;
+}
+
+.copy-chip__button {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.capslock-hint {
+  font-size: 12px;
+  color: var(--neft-warning);
+}
+
+.table-skeleton__row td {
+  padding: 12px;
+}
+
+.table-skeleton__cell {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.2s ease-in-out infinite;
+}
+
+.empty-state {
+  text-align: center;
+}
+
+.empty-state__content {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.neft-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(11, 15, 20, 0.3);
+  border-top-color: rgba(11, 15, 20, 0.9);
+  animation: spin 1s linear infinite;
 }
 
 .button {

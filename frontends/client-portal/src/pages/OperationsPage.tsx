@@ -3,7 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { fetchOperations } from "../api/operations";
 import { fetchCards } from "../api/cards";
 import { useAuth } from "../auth/AuthContext";
-import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { AppErrorState, AppForbiddenState } from "../components/states";
+import { Table } from "../components/common/Table";
 import type { OperationSummary } from "../types/operations";
 import type { ClientCard } from "../types/cards";
 import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
@@ -24,6 +25,19 @@ const PERIOD_PRESETS = [
 ];
 
 const FILTERS_STORAGE = "client-ops-filters";
+const DEFAULT_FILTERS = {
+  preset: "30d",
+  status: "",
+  cardId: "",
+  from: "",
+  to: "",
+  merchantId: "",
+  productType: "",
+  driverId: "",
+  vehicleId: "",
+  minAmount: "",
+  maxAmount: "",
+};
 
 const buildDateRange = (preset: string) => {
   const to = new Date();
@@ -47,19 +61,7 @@ export function OperationsPage() {
   const [isCardsLoading, setIsCardsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({
-    preset: "30d",
-    status: "",
-    cardId: "",
-    from: "",
-    to: "",
-    merchantId: "",
-    productType: "",
-    driverId: "",
-    vehicleId: "",
-    minAmount: "",
-    maxAmount: "",
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [pagination, setPagination] = useState({ limit: 10, offset: 0 });
   const [savedFilters, setSavedFilters] = useState<Record<string, typeof filters>>({});
 
@@ -156,6 +158,13 @@ export function OperationsPage() {
       setFilters(saved);
       setPagination((prev) => ({ ...prev, offset: 0 }));
     }
+  };
+
+  const filtersActive = Object.entries(filters).some(([key, value]) => value !== DEFAULT_FILTERS[key as keyof typeof DEFAULT_FILTERS]);
+
+  const handleResetFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setPagination((prev) => ({ ...prev, offset: 0 }));
   };
 
   if (!user) {
@@ -308,79 +317,88 @@ export function OperationsPage() {
             Сохранить фильтр
           </button>
         </div>
+        <div className="filter">
+          <button type="button" className="secondary neft-btn-secondary" onClick={handleResetFilters} disabled={!filtersActive}>
+            Сбросить
+          </button>
+        </div>
       </div>
 
-      {isLoading ? <AppLoadingState /> : null}
       {error ? <AppErrorState message={error} /> : null}
-      {!isLoading && !error && operations.length === 0 ? (
-        <AppEmptyState title="Операций пока нет" description="Проверьте фильтры или период." />
-      ) : null}
-      {!isLoading && !error && operations.length > 0 ? (
+      {!error ? (
         <>
-          <table className="table neft-table">
-            <thead>
-              <tr>
-                <th>Дата/время</th>
-                <th>Карта</th>
-                <th>АЗС</th>
-                <th>Продукт</th>
-                <th>Литры</th>
-                <th>Сумма</th>
-                <th>Статус</th>
-                <th>Причина</th>
-                <th>Risk</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {operations.map((op) => (
-                <tr key={op.id}>
-                  <td>{formatDateTime(op.created_at)}</td>
-                  <td>{op.card_id}</td>
-                  <td>{op.merchant_id ?? "—"}</td>
-                  <td>{op.product_type ?? "—"}</td>
-                  <td className="neft-num">{formatLiters(op.quantity)}</td>
-                  <td className="neft-num">{formatMoney(op.amount, op.currency)}</td>
-                  <td>
-                    <span className={`pill pill--${op.status === "APPROVED" ? "success" : "warning"}`}>
-                      {op.status}
-                    </span>
-                    {op.status === "DECLINED" && op.reason && <div className="muted small">{op.reason}</div>}
-                  </td>
-                  <td>
-                    {op.primary_reason ? (
-                      <span className="pill pill--neutral">{op.primary_reason}</span>
-                    ) : (
-                      op.reason ?? "—"
-                    )}
-                  </td>
-                  <td>{op.risk_level ? <span className="pill pill--warning">{op.risk_level}</span> : "—"}</td>
-                  <td>
-                    <div className="actions">
-                      <Link to={`/operations/${op.id}`} className="ghost">
-                        Подробнее
-                      </Link>
-                      <Link to={`/explain/${op.id}`} className="ghost">
-                        Explain
-                      </Link>
-                      {op.document_ids?.length ? (
-                        <Link to={`/documents/${op.document_ids[0]}`} className="ghost">
-                          Open linked docs
-                        </Link>
-                      ) : (
-                        <button type="button" className="ghost" disabled>
-                          Open linked docs
-                        </button>
-                      )}
-                      <button type="button" className="ghost" disabled>
-                        Open money flow summary
-                      </button>
+          <Table
+            data={operations}
+            loading={isLoading}
+            columns={[
+              { key: "created_at", title: "Дата/время", render: (op) => formatDateTime(op.created_at) },
+              { key: "card", title: "Карта", render: (op) => op.card_id },
+              { key: "merchant", title: "АЗС", render: (op) => op.merchant_id ?? "—" },
+              { key: "product", title: "Продукт", render: (op) => op.product_type ?? "—" },
+              { key: "liters", title: "Литры", className: "neft-num", render: (op) => formatLiters(op.quantity) },
+              { key: "amount", title: "Сумма", className: "neft-num", render: (op) => formatMoney(op.amount, op.currency) },
+              {
+                key: "status",
+                title: "Статус",
+                render: (op) => {
+                  const statusTone = op.status === "APPROVED" ? "success" : op.status === "DECLINED" ? "danger" : "warning";
+                  return (
+                    <div>
+                      <span className={`neft-badge ${statusTone}`}>{op.status}</span>
+                      {op.status === "DECLINED" && op.reason && <div className="muted small">{op.reason}</div>}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  );
+                },
+              },
+              {
+                key: "reason",
+                title: "Причина",
+                render: (op) =>
+                  op.primary_reason ? (
+                    <span className="neft-badge info">{op.primary_reason}</span>
+                  ) : (
+                    op.reason ?? "—"
+                  ),
+              },
+              {
+                key: "risk",
+                title: "Risk",
+                render: (op) => (op.risk_level ? <span className="neft-badge warning">{op.risk_level}</span> : "—"),
+              },
+              {
+                key: "actions",
+                title: "",
+                render: (op) => (
+                  <div className="actions">
+                    <Link to={`/operations/${op.id}`} className="ghost">
+                      Подробнее
+                    </Link>
+                    <Link to={`/explain/${op.id}`} className="ghost">
+                      Explain
+                    </Link>
+                    {op.document_ids?.length ? (
+                      <Link to={`/documents/${op.document_ids[0]}`} className="ghost">
+                        Open linked docs
+                      </Link>
+                    ) : (
+                      <button type="button" className="ghost" disabled>
+                        Open linked docs
+                      </button>
+                    )}
+                    <button type="button" className="ghost" disabled>
+                      Open money flow summary
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            emptyState={{
+              title: "Операций пока нет",
+              description: filtersActive ? "Сбросьте фильтры или измените период." : "Попробуйте обновить список позже.",
+              actionLabel: filtersActive ? "Сбросить фильтры" : "Обновить",
+              actionOnClick: filtersActive ? handleResetFilters : () => setPagination((prev) => ({ ...prev })),
+            }}
+          />
 
           <div className="pagination">
             <button

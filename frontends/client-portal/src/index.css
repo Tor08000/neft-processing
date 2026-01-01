@@ -10,8 +10,22 @@ body {
   background: var(--neft-bg);
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 a {
   color: inherit;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 * {
@@ -219,6 +233,15 @@ button.primary {
   cursor: pointer;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--neft-focus-ring);
+}
+
 .login-wrapper {
   display: grid;
   place-items: center;
@@ -229,6 +252,64 @@ button.primary {
 .login-card {
   width: min(420px, 100%);
   gap: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.login-demo {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(22, 34, 53, 0.9);
+  border: 1px solid var(--neft-border);
+  color: var(--neft-text);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.copy-chip__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--neft-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.copy-chip__value {
+  font-family: var(--neft-font-mono);
+  font-size: 13px;
+}
+
+.copy-chip__button {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.capslock-hint {
+  font-size: 12px;
+  color: var(--neft-warning);
+}
+
+.neft-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(11, 15, 20, 0.3);
+  border-top-color: rgba(11, 15, 20, 0.9);
+  animation: spin 1s linear infinite;
 }
 
 .login-card h1 {
@@ -554,6 +635,50 @@ button.primary {
   background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
+}
+
+.table-container {
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-card);
+  overflow: auto;
+  background: var(--neft-surface);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.table-skeleton__row td {
+  padding: 12px;
+}
+
+.table-skeleton__cell {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.2s ease-in-out infinite;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #0b0f14;
+  font-weight: 700;
+  z-index: 50;
+  box-shadow: var(--neft-shadow-lg);
+}
+
+.toast.success {
+  background: var(--neft-success);
+}
+
+.toast.error {
+  background: var(--neft-danger);
+}
+
+.toast.info {
+  background: var(--neft-info);
 }
 
 @keyframes skeleton {

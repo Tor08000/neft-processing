@@ -244,7 +244,16 @@ export const PayoutBatchDetail: React.FC = () => {
 
       <div>
         <h3>Items</h3>
-        {items.length === 0 ? <div className="card">No items found</div> : <Table columns={columns} data={items} />}
+        <Table
+          columns={columns}
+          data={items}
+          emptyState={{
+            title: "Нет позиций",
+            description: "В этом батче пока нет операций.",
+            actionLabel: "Обновить",
+            actionOnClick: () => refetch(),
+          }}
+        />
       </div>
 
       <MarkSentModal

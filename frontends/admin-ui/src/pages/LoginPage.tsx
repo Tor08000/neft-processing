@@ -1,6 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { CopyChip } from "../components/common/CopyChip";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 
 export const LoginPage: React.FC = () => {
   const { login, error, user } = useAuth();
@@ -8,6 +11,10 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("admin");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const { toast, showToast } = useToast();
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
 
   if (user) {
     return <Navigate to="/dashboard" replace />;
@@ -22,48 +29,78 @@ export const LoginPage: React.FC = () => {
     } catch (err) {
       console.error("Ошибка входа", err);
       setLocalError("Не удалось выполнить вход, попробуйте позже");
+      showToast("error", "Ошибка входа");
     } finally {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    emailRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (error || localError) {
+      errorRef.current?.focus();
+    }
+  }, [error, localError]);
 
   return (
     <div className="login-page neft-page">
       <div className="login-card neft-card">
         <h1>Админка NEFT</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
-        <p className="muted small">Демонстрационный доступ: admin@example.com / admin</p>
+        <div className="login-demo">
+          <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
+          <CopyChip label="Demo" value="admin" onCopy={() => showToast("success", "Скопировано")} />
+        </div>
         <form onSubmit={handleSubmit} className="login-form">
-          <label>
+          <label htmlFor="admin-email">
             Email
             <input
-              className="neft-input"
+              ref={emailRef}
+              id="admin-email"
+              className="neft-input neft-focus-ring"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@example.com"
               required
               autoComplete="username"
+              disabled={submitting}
+              aria-invalid={Boolean(error || localError)}
             />
           </label>
-          <label>
+          <label htmlFor="admin-password">
             Пароль
             <input
-              className="neft-input"
+              id="admin-password"
+              className="neft-input neft-focus-ring"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
+              onBlur={() => setCapsLockOn(false)}
               placeholder="admin"
               required
               autoComplete="current-password"
+              disabled={submitting}
+              aria-invalid={Boolean(error || localError)}
             />
           </label>
-          {(error || localError) && <div className="error-text">{error ?? localError}</div>}
-          <button type="submit" className="neft-btn-primary" disabled={submitting}>
+          {capsLockOn ? <div className="capslock-hint">Caps Lock включён</div> : null}
+          {(error || localError) && (
+            <div className="error-text" role="alert" tabIndex={-1} ref={errorRef}>
+              {error ?? localError}
+            </div>
+          )}
+          <button type="submit" className="neft-button neft-btn-primary" disabled={submitting}>
+            {submitting ? <span className="neft-spinner" aria-hidden /> : null}
             {submitting ? "Входим..." : "Войти"}
           </button>
         </form>
       </div>
+      <Toast toast={toast} />
     </div>
   );
 };

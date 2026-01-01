@@ -1,13 +1,13 @@
-import React from "react";
-import { EmptyState } from "../common/EmptyState";
-import { TableSkeleton } from "../common/TableSkeleton";
+import type { ReactNode } from "react";
+import { EmptyState } from "../EmptyState";
+import { TableSkeleton } from "./TableSkeleton";
 
 export interface Column<T> {
   key: string;
   title: string;
   dataIndex?: keyof T;
-  render?: (record: T) => React.ReactNode;
-  width?: string | number;
+  render?: (record: T) => ReactNode;
+  className?: string;
 }
 
 interface TableProps<T> {
@@ -21,19 +21,10 @@ interface TableProps<T> {
     actionOnClick?: () => void;
   };
   emptyMessage?: string;
-  skeletonRows?: number;
   onRowClick?: (record: T) => void;
 }
 
-export function Table<T>({
-  columns,
-  data,
-  loading,
-  emptyState,
-  emptyMessage,
-  skeletonRows,
-  onRowClick,
-}: TableProps<T>) {
+export function Table<T>({ columns, data, loading, emptyState, emptyMessage, onRowClick }: TableProps<T>) {
   if (loading) {
     return (
       <div className="table-container">
@@ -41,13 +32,11 @@ export function Table<T>({
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col.key} style={{ width: col.width }}>
-                  {col.title}
-                </th>
+                <th key={col.key}>{col.title}</th>
               ))}
             </tr>
           </thead>
-          <TableSkeleton columns={columns.length} rows={skeletonRows} />
+          <TableSkeleton columns={columns.length} />
         </table>
       </div>
     );
@@ -58,13 +47,13 @@ export function Table<T>({
       return (
         <EmptyState
           title={emptyState.title}
-          description={emptyState.description}
+          description={emptyState.description ?? ""}
           actionLabel={emptyState.actionLabel}
           actionOnClick={emptyState.actionOnClick}
         />
       );
     }
-    return <div className="card empty-state">{emptyMessage}</div>;
+    return <div className="card state">{emptyMessage}</div>;
   }
 
   return (
@@ -73,9 +62,7 @@ export function Table<T>({
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key} style={{ width: col.width }}>
-                {col.title}
-              </th>
+              <th key={col.key}>{col.title}</th>
             ))}
           </tr>
         </thead>
@@ -87,18 +74,16 @@ export function Table<T>({
               style={{ cursor: onRowClick ? "pointer" : "default" }}
             >
               {columns.map((col) => (
-                <td key={col.key}>
-                  {col.render ? (
-                    col.render(row)
-                  ) : (
-                    (() => {
-                      const value = row[col.dataIndex as keyof T];
-                      if (typeof value === "number") {
-                        return <span className="neft-num">{value}</span>;
-                      }
-                      return String(value);
-                    })()
-                  )}
+                <td key={col.key} className={col.className}>
+                  {col.render
+                    ? col.render(row)
+                    : (() => {
+                        const value = row[col.dataIndex as keyof T];
+                        if (typeof value === "number") {
+                          return <span className="neft-num">{value}</span>;
+                        }
+                        return value as ReactNode;
+                      })()}
                 </td>
               ))}
             </tr>

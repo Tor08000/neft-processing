@@ -4,6 +4,7 @@ import { downloadInvoicePdf, fetchInvoices } from "../api/invoices";
 import { useAuth } from "../auth/AuthContext";
 import type { ClientInvoiceSummary } from "../types/invoices";
 import { CopyButton } from "../components/CopyButton";
+import { Table } from "../components/common/Table";
 import { formatDate, formatMoney } from "../utils/format";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
 
@@ -14,18 +15,19 @@ const STATUS_OPTIONS = [
 ];
 
 const DEFAULT_LIMIT = 25;
+const DEFAULT_FILTERS = {
+  dateFrom: "",
+  dateTo: "",
+  status: [] as string[],
+  limit: DEFAULT_LIMIT,
+  sort: "issued_at:desc",
+};
 
 export function ClientInvoicesPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<ClientInvoiceSummary[]>([]);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({
-    dateFrom: "",
-    dateTo: "",
-    status: [] as string[],
-    limit: DEFAULT_LIMIT,
-    sort: "issued_at:desc",
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [offset, setOffset] = useState(0);
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,6 +101,13 @@ export function ClientInvoicesPage() {
     } catch (err) {
       setError((err as Error).message);
     }
+  };
+
+  const filtersActive = filters.dateFrom !== "" || filters.dateTo !== "" || filters.status.length > 0;
+
+  const handleResetFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setOffset(0);
   };
 
   const totalRange = useMemo(() => {
@@ -175,79 +184,87 @@ export function ClientInvoicesPage() {
             ))}
           </select>
         </div>
+        <div className="filter">
+          <button type="button" className="secondary neft-btn-secondary" onClick={handleResetFilters} disabled={!filtersActive}>
+            Сбросить
+          </button>
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="skeleton-stack">
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-        </div>
-      ) : items.length === 0 ? (
-        <div className="empty-state">
-          <p className="muted">Счета не найдены.</p>
-          <p className="muted small">Попробуйте изменить фильтры или выбрать другой период.</p>
-          <div className="actions">
-            <button type="button" className="ghost" onClick={() => setFilters((prev) => ({ ...prev, status: [] }))}>
-              Сбросить фильтры
-            </button>
-            <button type="button" className="ghost" onClick={() => setOffset(0)}>
-              Обновить
-            </button>
-          </div>
-        </div>
-      ) : (
-        <table className="table neft-table">
-          <thead>
-            <tr>
-              <th>Номер</th>
-              <th>Дата</th>
-              <th>Статус</th>
-              <th>Сумма</th>
-              <th>Оплачено</th>
-              <th>Возвращено</th>
-              <th>Остаток</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((invoice) => (
-              <tr key={invoice.id}>
-                <td>
-                  <div className="stack-inline">
-                    <span>{invoice.number}</span>
-                    <CopyButton value={invoice.number} />
-                  </div>
-                </td>
-                <td>{formatDate(invoice.issued_at)}</td>
-                <td>
-                  <span className={`pill ${getInvoiceStatusTone(invoice.status)}`}>
-                    {getInvoiceStatusLabel(invoice.status)}
-                  </span>
-                </td>
-                <td className="neft-num">{formatMoney(invoice.amount_total, invoice.currency)}</td>
-                <td className="neft-num">{formatMoney(invoice.amount_paid, invoice.currency)}</td>
-                <td className="neft-num">{formatMoney(invoice.amount_refunded, invoice.currency)}</td>
-                <td
-                  className={`amount-due neft-num${Number(invoice.amount_due) > 0 ? " amount-due--positive" : ""}`}
-                >
-                  {formatMoney(invoice.amount_due, invoice.currency)}
-                </td>
-                <td>
-                  <div className="actions">
-                    <Link to={`/finance/invoices/${invoice.id}`} className="ghost">
-                      Открыть
-                    </Link>
-                    <button type="button" className="ghost" onClick={() => handleDownload(invoice.id)}>
-                      Скачать PDF
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <Table
+        data={items}
+        loading={isLoading}
+        columns={[
+          {
+            key: "number",
+            title: "Номер",
+            render: (invoice) => (
+              <div className="stack-inline">
+                <span>{invoice.number}</span>
+                <CopyButton value={invoice.number} />
+              </div>
+            ),
+          },
+          { key: "issued_at", title: "Дата", render: (invoice) => formatDate(invoice.issued_at) },
+          {
+            key: "status",
+            title: "Статус",
+            render: (invoice) => (
+              <span className={`neft-badge ${getInvoiceStatusTone(invoice.status)}`}>
+                {getInvoiceStatusLabel(invoice.status)}
+              </span>
+            ),
+          },
+          {
+            key: "amount_total",
+            title: "Сумма",
+            className: "neft-num",
+            render: (invoice) => formatMoney(invoice.amount_total, invoice.currency),
+          },
+          {
+            key: "amount_paid",
+            title: "Оплачено",
+            className: "neft-num",
+            render: (invoice) => formatMoney(invoice.amount_paid, invoice.currency),
+          },
+          {
+            key: "amount_refunded",
+            title: "Возвращено",
+            className: "neft-num",
+            render: (invoice) => formatMoney(invoice.amount_refunded, invoice.currency),
+          },
+          {
+            key: "amount_due",
+            title: "Остаток",
+            className: `amount-due neft-num`,
+            render: (invoice) => (
+              <span className={Number(invoice.amount_due) > 0 ? "amount-due--positive" : undefined}>
+                {formatMoney(invoice.amount_due, invoice.currency)}
+              </span>
+            ),
+          },
+          {
+            key: "actions",
+            title: "",
+            render: (invoice) => (
+              <div className="actions">
+                <Link to={`/finance/invoices/${invoice.id}`} className="ghost">
+                  Открыть
+                </Link>
+                <button type="button" className="ghost" onClick={() => handleDownload(invoice.id)}>
+                  Скачать PDF
+                </button>
+              </div>
+            ),
+          },
+        ]}
+        emptyState={{
+          title: "Счета не найдены",
+          description: filtersActive ? "Попробуйте изменить фильтры или период." : "Попробуйте обновить список позже.",
+          actionLabel: filtersActive ? "Сбросить фильтры" : "Обновить",
+          actionOnClick: filtersActive ? handleResetFilters : () => setFilters((prev) => ({ ...prev })),
+        }}
+      />
 
       <div className="pagination">
         <div className="muted small">

@@ -1,11 +1,12 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Package } from "../components/icons";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { fetchMarketplaceOrders } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState } from "../components/EmptyState";
 import { AppErrorState, AppForbiddenState } from "../components/states";
+import { Table } from "../components/common/Table";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 import type { MarketplaceOrderSummary } from "../types/marketplace";
 import { formatDate, formatDateTime, formatMoney } from "../utils/format";
 import { getMarketplaceDocumentStatusLabel, getOrderStatusLabel } from "../utils/status";
@@ -40,24 +41,27 @@ const statusClass = (status?: string | null) => {
 };
 
 const LAST_UPDATED_KEY = "pwa:lastUpdated:orders";
+const DEFAULT_FILTERS = {
+  preset: "30d",
+  from: "",
+  to: "",
+  status: "",
+  partner: "",
+  service: "",
+};
 
 export function MarketplaceOrdersPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { toast, showToast } = useToast();
   const [lastUpdated, setLastUpdated] = useState<string | null>(() => localStorage.getItem(LAST_UPDATED_KEY));
   const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
   const [orders, setOrders] = useState<MarketplaceOrderSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<OrdersErrorState | null>(null);
-  const [filters, setFilters] = useState({
-    preset: "30d",
-    from: "",
-    to: "",
-    status: "",
-    partner: "",
-    service: "",
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [pagination, setPagination] = useState({ limit: isPwaMode ? 20 : 10, offset: 0 });
   const [total, setTotal] = useState(0);
 
@@ -133,6 +137,13 @@ export function MarketplaceOrdersPage() {
     loadOrders();
   }, [user, filters, pagination]);
 
+  useEffect(() => {
+    if (!error?.status) return;
+    if (error.status === 403 || error.status >= 500) {
+      showToast("error", error.message);
+    }
+  }, [error, showToast]);
+
   const handleFilterChange = (evt: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = evt.target;
     setPagination((prev) => ({ ...prev, offset: 0 }));
@@ -165,6 +176,18 @@ export function MarketplaceOrdersPage() {
   if (error?.status === 403) {
     return <AppForbiddenState message={t("marketplaceOrders.forbidden.denied")} />;
   }
+
+  const filtersActive =
+    filters.status !== "" ||
+    filters.partner !== "" ||
+    filters.service !== "" ||
+    filters.from !== "" ||
+    filters.to !== "";
+
+  const handleResetFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setPagination((prev) => ({ ...prev, offset: 0 }));
+  };
 
   return (
     <div className="stack">
@@ -210,76 +233,96 @@ export function MarketplaceOrdersPage() {
             <label htmlFor="service">{t("marketplaceOrders.filters.service")}</label>
             <input id="service" name="service" value={filters.service} onChange={handleFilterChange} />
           </div>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="card">
-          <div className="skeleton-stack">
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
+          <div className="filter">
+            <button
+              type="button"
+              className="secondary neft-btn-secondary"
+              onClick={handleResetFilters}
+              disabled={!filtersActive}
+            >
+              {t("actions.resetFilters")}
+            </button>
           </div>
         </div>
-      ) : null}
+      </div>
 
       {error ? (
         <AppErrorState message={error.message} status={error.status} correlationId={error.correlationId} onRetry={loadOrders} />
       ) : null}
 
-      {!isLoading && !error && orders.length === 0 ? (
-        <EmptyState
-          icon={<Package />}
-          title={t("emptyStates.marketplaceOrders.title")}
-          description={t("emptyStates.marketplaceOrders.description")}
-          primaryAction={isPwaMode ? undefined : { label: t("actions.goToCatalog"), to: "/marketplace" }}
-        />
-      ) : null}
-
-      {!isLoading && !error && orders.length > 0 ? (
+      {!error ? (
         <div className="card">
-          <table className="data-table neft-table">
-            <thead>
-              <tr>
-                <th>{t("marketplaceOrders.table.orderId")}</th>
-                <th>{t("marketplaceOrders.table.service")}</th>
-                <th>{t("marketplaceOrders.table.partner")}</th>
-                <th>{t("marketplaceOrders.table.date")}</th>
-                <th>{t("marketplaceOrders.table.amount")}</th>
-                <th>{t("marketplaceOrders.table.status")}</th>
-                <th>{t("marketplaceOrders.table.documents")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td className="mono">{order.id.slice(0, 8)}</td>
-                  <td>{order.service_title ?? t("common.notAvailable")}</td>
-                  <td>{order.partner_name ?? t("common.notAvailable")}</td>
-                  <td>{order.created_at ? formatDate(order.created_at) : t("common.notAvailable")}</td>
-                  <td className="neft-num">
-                    {order.total_amount !== undefined && order.total_amount !== null
-                      ? formatMoney(order.total_amount, order.currency ?? "RUB")
-                      : t("common.notAvailable")}
-                  </td>
-                  <td>
-                    <span className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</span>
-                  </td>
-                  <td>
-                    <span className="neft-badge warning">
-                      {getMarketplaceDocumentStatusLabel(order.documents_status)}
-                    </span>
-                  </td>
-                  <td>
-                    <Link to={`/marketplace/orders/${order.id}`} className="link-button">
-                      {t("common.open")}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table
+            data={orders}
+            loading={isLoading}
+            columns={[
+              {
+                key: "id",
+                title: t("marketplaceOrders.table.orderId"),
+                className: "mono",
+                render: (order) => order.id.slice(0, 8),
+              },
+              {
+                key: "service",
+                title: t("marketplaceOrders.table.service"),
+                render: (order) => order.service_title ?? t("common.notAvailable"),
+              },
+              {
+                key: "partner",
+                title: t("marketplaceOrders.table.partner"),
+                render: (order) => order.partner_name ?? t("common.notAvailable"),
+              },
+              {
+                key: "date",
+                title: t("marketplaceOrders.table.date"),
+                render: (order) => (order.created_at ? formatDate(order.created_at) : t("common.notAvailable")),
+              },
+              {
+                key: "amount",
+                title: t("marketplaceOrders.table.amount"),
+                className: "neft-num",
+                render: (order) =>
+                  order.total_amount !== undefined && order.total_amount !== null
+                    ? formatMoney(order.total_amount, order.currency ?? "RUB")
+                    : t("common.notAvailable"),
+              },
+              {
+                key: "status",
+                title: t("marketplaceOrders.table.status"),
+                render: (order) => <span className={statusClass(order.status)}>{getOrderStatusLabel(order.status)}</span>,
+              },
+              {
+                key: "documents",
+                title: t("marketplaceOrders.table.documents"),
+                render: (order) => (
+                  <span className="neft-badge warning">{getMarketplaceDocumentStatusLabel(order.documents_status)}</span>
+                ),
+              },
+              {
+                key: "actions",
+                title: "",
+                render: (order) => (
+                  <Link to={`/marketplace/orders/${order.id}`} className="link-button">
+                    {t("common.open")}
+                  </Link>
+                ),
+              },
+            ]}
+            emptyState={{
+              title: t("emptyStates.marketplaceOrders.title"),
+              description: t("emptyStates.marketplaceOrders.description"),
+              actionLabel: filtersActive
+                ? t("actions.resetFilters")
+                : isPwaMode
+                  ? undefined
+                  : t("actions.goToCatalog"),
+              actionOnClick: filtersActive
+                ? handleResetFilters
+                : isPwaMode
+                  ? undefined
+                  : () => navigate("/marketplace"),
+            }}
+          />
 
           <div className="pagination">
             <button
@@ -308,6 +351,7 @@ export function MarketplaceOrdersPage() {
           </div>
         </div>
       ) : null}
+      <Toast toast={toast} />
     </div>
   );
 }

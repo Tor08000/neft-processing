@@ -70,11 +70,32 @@ html, body {
   padding: 10px 12px;
   outline: none;
   border-radius: var(--neft-radius-control);
+  min-height: 44px;
 }
 
 .neft-input:focus, .neft-select:focus {
   border-color: var(--neft-accent);
   box-shadow: var(--neft-focus-ring);
+}
+
+.neft-input:hover, .neft-select:hover {
+  border-color: var(--neft-border2);
+}
+
+.neft-input::placeholder, .neft-select::placeholder {
+  color: var(--neft-text-faint);
+}
+
+.neft-input.is-error, .neft-select.is-error,
+.neft-input[aria-invalid="true"], .neft-select[aria-invalid="true"] {
+  border-color: var(--neft-danger);
+  box-shadow: 0 0 0 1px rgba(255, 77, 77, 0.6);
+}
+
+.neft-input:disabled, .neft-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: rgba(15, 22, 33, 0.6);
 }
 
 .neft-btn-primary {
@@ -103,6 +124,56 @@ html, body {
 .neft-btn-secondary:hover {
   background: var(--neft-surface2);
   border-color: var(--neft-border2);
+}
+
+.neft-focus-ring {
+  outline: none;
+}
+
+.neft-focus-ring:focus-visible {
+  box-shadow: var(--neft-focus-ring);
+}
+
+.neft-btn-primary:focus-visible,
+.neft-btn-secondary:focus-visible,
+.neft-button:focus-visible,
+.neft-input:focus-visible,
+.neft-select:focus-visible {
+  box-shadow: var(--neft-focus-ring);
+  border-color: var(--neft-accent);
+}
+
+.neft-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--neft-radius-control);
+  border: 1px solid transparent;
+  background: var(--neft-accent);
+  color: #0b0f14;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.neft-button:hover:not(:disabled) {
+  background: var(--neft-accent-hover);
+}
+
+.neft-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.neft-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.neft-button.is-loading {
+  cursor: progress;
 }
 
 .neft-badge {
