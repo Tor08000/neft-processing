@@ -12,7 +12,7 @@ import { useI18n } from "../i18n";
 import type { AnalyticsDeclinesResponse } from "../types/analytics";
 import type { ExplainInsightsResponse } from "../types/explain";
 import { buildDateRange } from "../utils/dateRange";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { hasAnyRole } from "../utils/roles";
 
 interface AnalyticsErrorState {
@@ -162,7 +162,9 @@ export function AnalyticsDeclinesPage() {
                     <tr key={item.id}>
                       <td>{item.reason}</td>
                       <td>{item.station ?? t("common.notAvailable")}</td>
-                      <td>{formatMoney(item.amount)}</td>
+                      <td className="neft-num-cell">
+                        <MoneyValue amount={item.amount} />
+                      </td>
                       <td>
                         <Link className="link-button" to={`/operations?status=DECLINED`}>
                           {t("analytics.declines.table.view")}

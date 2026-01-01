@@ -4,7 +4,8 @@ import { fetchExportDetails } from "../api/exports";
 import { useAuth } from "../auth/AuthContext";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { AccountingExportDetails } from "../types/exports";
-import { formatDate, formatDateTime, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 
 export function FinanceExportDetailsPage() {
   const { id } = useParams();
@@ -91,7 +92,7 @@ export function FinanceExportDetailsPage() {
           <ul className="bullets">
             {Object.entries(details.totals).map(([key, value]) => (
               <li key={key}>
-                {key}: {formatMoney(value)}
+                {key}: <MoneyValue amount={value} />
               </li>
             ))}
           </ul>
@@ -125,11 +126,15 @@ export function FinanceExportDetailsPage() {
           <dl className="meta-grid">
             <div>
               <dt className="label">Expected total</dt>
-              <dd>{formatMoney(details.reconciliation.expected_total ?? 0)}</dd>
+              <dd>
+                <MoneyValue amount={details.reconciliation.expected_total ?? 0} />
+              </dd>
             </div>
             <div>
               <dt className="label">Received total</dt>
-              <dd>{formatMoney(details.reconciliation.received_total ?? 0)}</dd>
+              <dd>
+                <MoneyValue amount={details.reconciliation.received_total ?? 0} />
+              </dd>
             </div>
             <div>
               <dt className="label">Mismatch summary</dt>

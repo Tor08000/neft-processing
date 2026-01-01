@@ -22,13 +22,13 @@ export const supportStatusTone = (status: SupportRequestStatus): string => {
     case "OPEN":
     case "IN_PROGRESS":
     case "WAITING":
-      return "pending";
+      return "warning";
     case "RESOLVED":
       return "success";
     case "CLOSED":
-      return "error";
+      return "neutral";
     default:
-      return "pending";
+      return "warning";
   }
 };
 

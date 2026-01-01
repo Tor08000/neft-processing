@@ -9,8 +9,9 @@ import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { SupportRequestModal } from "../components/SupportRequestModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState } from "../components/states";
+import { MoneyValue } from "../components/common/MoneyValue";
 import type { MarketplaceOrderDetails, MarketplaceOrderDocument, MarketplaceOrderEvent } from "../types/marketplace";
-import { formatDate, formatDateTime, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime } from "../utils/format";
 
 interface OrderErrorState {
   message: string;
@@ -19,11 +20,11 @@ interface OrderErrorState {
 }
 
 const statusClass = (status?: string | null) => {
-  if (!status) return "badge pending";
+  if (!status) return "badge warning";
   const normalized = status.toLowerCase();
   if (["completed", "confirmed"].includes(normalized)) return "badge success";
   if (["cancelled", "canceled", "failed"].includes(normalized)) return "badge error";
-  return "badge pending";
+  return "badge warning";
 };
 
 export function MarketplaceOrderDetailsPage() {
@@ -153,7 +154,7 @@ export function MarketplaceOrderDetailsPage() {
               <div className="muted small">Сумма</div>
               <div>
                 {order.total_amount !== undefined && order.total_amount !== null
-                  ? formatMoney(order.total_amount, order.currency ?? "RUB")
+                  ? <MoneyValue amount={order.total_amount} currency={order.currency ?? "RUB"} />
                   : "—"}
               </div>
             </div>

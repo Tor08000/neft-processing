@@ -6,7 +6,8 @@ import { CopyButton } from "../components/CopyButton";
 import { SupportRequestModal } from "../components/SupportRequestModal";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { OperationDetails } from "../types/operations";
-import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
+import { formatDateTime, formatLiters } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 
 export function OperationDetailsPage() {
   const { id } = useParams();
@@ -82,16 +83,24 @@ export function OperationDetailsPage() {
         </div>
         <div>
           <dt className="label">Сумма</dt>
-          <dd>{formatMoney(operation.amount, operation.currency)}</dd>
+          <dd>
+            <MoneyValue amount={operation.amount} currency={operation.currency} />
+          </dd>
         </div>
         <div>
           <dt className="label">Статус</dt>
           <dd>
-            <span className={`pill pill--${operation.status === "APPROVED" ? "success" : "warning"}`}>
+            <span
+              className={`pill pill--${
+                operation.status === "APPROVED" ? "success" : operation.status === "DECLINED" ? "danger" : "warning"
+              }`}
+            >
               {operation.status}
             </span>
             {operation.primary_reason ? (
-              <span className="pill pill--neutral">{operation.primary_reason}</span>
+              <span className="pill pill--neutral" title={operation.primary_reason}>
+                {operation.primary_reason}
+              </span>
             ) : null}
           </dd>
         </div>
@@ -107,7 +116,9 @@ export function OperationDetailsPage() {
         </div>
         <div>
           <dt className="label">Risk level</dt>
-          <dd>{operation.risk_level ?? "—"}</dd>
+          <dd title={operation.risk_level ? `Risk level: ${operation.risk_level}` : undefined}>
+            {operation.risk_level ?? "—"}
+          </dd>
         </div>
         <div>
           <dt className="label">Correlation ID</dt>

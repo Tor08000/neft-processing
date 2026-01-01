@@ -7,7 +7,8 @@ import { AppErrorState, AppForbiddenState } from "../components/states";
 import { Table } from "../components/common/Table";
 import type { OperationSummary } from "../types/operations";
 import type { ClientCard } from "../types/cards";
-import { formatDateTime, formatLiters, formatMoney } from "../utils/format";
+import { formatDateTime, formatLiters } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessOps } from "../utils/roles";
 
 const STATUS_OPTIONS = [
@@ -336,12 +337,17 @@ export function OperationsPage() {
               { key: "merchant", title: "АЗС", render: (op) => op.merchant_id ?? "—" },
               { key: "product", title: "Продукт", render: (op) => op.product_type ?? "—" },
               { key: "liters", title: "Литры", className: "neft-num", render: (op) => formatLiters(op.quantity) },
-              { key: "amount", title: "Сумма", className: "neft-num", render: (op) => formatMoney(op.amount, op.currency) },
+              {
+                key: "amount",
+                title: "Сумма",
+                className: "neft-num",
+                render: (op) => <MoneyValue amount={op.amount} currency={op.currency} />,
+              },
               {
                 key: "status",
                 title: "Статус",
                 render: (op) => {
-                  const statusTone = op.status === "APPROVED" ? "success" : op.status === "DECLINED" ? "danger" : "warning";
+                  const statusTone = op.status === "APPROVED" ? "success" : op.status === "DECLINED" ? "error" : "warning";
                   return (
                     <div>
                       <span className={`neft-badge ${statusTone}`}>{op.status}</span>
@@ -355,7 +361,9 @@ export function OperationsPage() {
                 title: "Причина",
                 render: (op) =>
                   op.primary_reason ? (
-                    <span className="neft-badge info">{op.primary_reason}</span>
+                    <span className="neft-badge neutral" title={op.primary_reason}>
+                      {op.primary_reason}
+                    </span>
                   ) : (
                     op.reason ?? "—"
                   ),
@@ -363,7 +371,14 @@ export function OperationsPage() {
               {
                 key: "risk",
                 title: "Risk",
-                render: (op) => (op.risk_level ? <span className="neft-badge warning">{op.risk_level}</span> : "—"),
+                render: (op) =>
+                  op.risk_level ? (
+                    <span className="neft-badge warning" title={`Risk score: ${op.risk_level}`}>
+                      {op.risk_level}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
               },
               {
                 key: "actions",

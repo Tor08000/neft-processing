@@ -17,7 +17,7 @@ import type {
   AnalyticsExportsSummaryResponse,
 } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessFinance, hasAnyRole } from "../utils/roles";
 
 interface AnalyticsErrorState {
@@ -144,7 +144,7 @@ export function AnalyticsDashboardPage() {
         <section className="grid analytics-kpi-grid">
           <AnalyticsKpiCard
             label={t("analytics.dashboard.kpi.spendTotal")}
-            value={formatMoney(dailyMetrics.spend.total, dailyMetrics.currency ?? "RUB")}
+            value={<MoneyValue amount={dailyMetrics.spend.total} currency={dailyMetrics.currency ?? "RUB"} />}
             hint={t("analytics.dashboard.kpi.spendHint", { from: dailyMetrics.from, to: dailyMetrics.to })}
           />
           <AnalyticsKpiCard
@@ -195,7 +195,9 @@ export function AnalyticsDashboardPage() {
                         style={{ width: `${spendMax ? Math.max(4, (point.value / spendMax) * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="small">{formatMoney(point.value, dailyMetrics.currency ?? "RUB")}</span>
+                    <span className="small">
+                      <MoneyValue amount={point.value} currency={dailyMetrics.currency ?? "RUB"} />
+                    </span>
                   </div>
                 ))}
               </div>

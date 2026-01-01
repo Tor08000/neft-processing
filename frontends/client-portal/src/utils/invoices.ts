@@ -12,4 +12,4 @@ const STATUS_TONES: Record<string, string> = {
 
 export const getInvoiceStatusLabel = (status: string): string => INVOICE_STATUS_LABELS[status] ?? status;
 
-export const getInvoiceStatusTone = (status: string): string => STATUS_TONES[status] ?? "info";
+export const getInvoiceStatusTone = (status: string): string => STATUS_TONES[status] ?? "neutral";

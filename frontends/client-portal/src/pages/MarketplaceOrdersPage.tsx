@@ -5,10 +5,11 @@ import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AppErrorState, AppForbiddenState } from "../components/states";
 import { Table } from "../components/common/Table";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import type { MarketplaceOrderSummary } from "../types/marketplace";
-import { formatDate, formatDateTime, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime } from "../utils/format";
 import { getMarketplaceDocumentStatusLabel, getOrderStatusLabel } from "../utils/status";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
@@ -36,7 +37,7 @@ const statusClass = (status?: string | null) => {
   if (!status) return "neft-badge warning";
   const normalized = status.toLowerCase();
   if (["completed", "confirmed"].includes(normalized)) return "neft-badge success";
-  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-badge danger";
+  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-badge error";
   return "neft-badge warning";
 };
 
@@ -283,7 +284,7 @@ export function MarketplaceOrdersPage() {
                 className: "neft-num",
                 render: (order) =>
                   order.total_amount !== undefined && order.total_amount !== null
-                    ? formatMoney(order.total_amount, order.currency ?? "RUB")
+                    ? <MoneyValue amount={order.total_amount} currency={order.currency ?? "RUB"} />
                     : t("common.notAvailable"),
               },
               {
@@ -295,7 +296,9 @@ export function MarketplaceOrdersPage() {
                 key: "documents",
                 title: t("marketplaceOrders.table.documents"),
                 render: (order) => (
-                  <span className="neft-badge warning">{getMarketplaceDocumentStatusLabel(order.documents_status)}</span>
+                  <span className="neft-badge warning" title={getMarketplaceDocumentStatusLabel(order.documents_status)}>
+                    {getMarketplaceDocumentStatusLabel(order.documents_status)}
+                  </span>
                 ),
               },
               {

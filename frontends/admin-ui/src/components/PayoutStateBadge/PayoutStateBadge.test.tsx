@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { getPayoutStateColor } from "./PayoutStateBadge";
+import { getPayoutStateVariant } from "./PayoutStateBadge";
 
 describe("PayoutStateBadge", () => {
-  it("maps payout states to colors", () => {
-    expect(getPayoutStateColor("READY")).toBe("#64748b");
-    expect(getPayoutStateColor("SENT")).toBe("#0ea5e9");
-    expect(getPayoutStateColor("SETTLED")).toBe("#16a34a");
-    expect(getPayoutStateColor("FAILED")).toBe("#dc2626");
-    expect(getPayoutStateColor("DRAFT")).toBe("#94a3b8");
+  it("maps payout states to variants", () => {
+    expect(getPayoutStateVariant("READY")).toBe("warning");
+    expect(getPayoutStateVariant("SENT")).toBe("warning");
+    expect(getPayoutStateVariant("SETTLED")).toBe("success");
+    expect(getPayoutStateVariant("FAILED")).toBe("error");
+    expect(getPayoutStateVariant("DRAFT")).toBe("neutral");
   });
 });
