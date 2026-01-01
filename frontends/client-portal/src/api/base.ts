@@ -29,6 +29,7 @@ export const CORE_API_BASE = `${buildBase(import.meta.env.VITE_CORE_API_BASE, "/
   /\/+$/,
   "",
 );
+export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core").replace(/\/+$/, "");
 export const AUTH_API_BASE = `${buildBase(import.meta.env.VITE_AUTH_API_BASE, "/api/auth")}/api/v1/auth`.replace(
   /\/+$/,
   "",

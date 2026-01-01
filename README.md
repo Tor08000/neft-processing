@@ -32,6 +32,60 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 * Gateway health: `GET http://localhost/health`
 * Core через gateway: `GET http://localhost/api/core/health` (OpenAPI/Swagger: `http://localhost/api/core/docs`)
+* Core KPI/Achievements через gateway:
+  * `GET http://localhost/api/core/kpi/summary?window_days=7`
+  * `GET http://localhost/api/core/achievements/summary?window_days=7`
+
+Пример ответа KPI:
+
+```json
+{
+  "window_days": 7,
+  "as_of": "2026-01-01T00:00:00Z",
+  "kpis": [
+    {
+      "key": "billing_errors",
+      "title": "Billing errors",
+      "value": 0,
+      "unit": "count",
+      "delta": -12.4,
+      "good_when": "down",
+      "target": 0,
+      "progress": 1.0,
+      "meta": { "source": "billing_job_runs" }
+    }
+  ]
+}
+```
+
+Пример ответа Achievements:
+
+```json
+{
+  "window_days": 7,
+  "as_of": "2026-01-01T00:00:00Z",
+  "badges": [
+    {
+      "key": "clean_billing",
+      "title": "Чистый биллинг",
+      "description": "0 критических ошибок за неделю",
+      "status": "unlocked",
+      "progress": 1.0,
+      "how_to": "Держите billing_errors=0 за период",
+      "meta": { "window_days": 7 }
+    }
+  ],
+  "streak": {
+    "key": "no_critical_errors",
+    "title": "Серия без ошибок",
+    "current": 7,
+    "target": 7,
+    "history": [true, true, true, true, true, true, true],
+    "status": "unlocked",
+    "how_to": "Ежедневно без критических ошибок"
+  }
+}
+```
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
 * AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
@@ -120,6 +174,12 @@ docker compose up -d --build
 pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
+
+KPI smoke (core-api напрямую):
+
+```
+make kpi-smoke
+```
 
 ### Contract testing
 

@@ -1,18 +1,34 @@
-import type { AchievementBadgeData, StreakData } from "./types";
+import { apiGet } from "../../api/client";
 
-export interface AchievementsSet {
-  badges: AchievementBadgeData[];
-  streak: StreakData;
+export type AchievementStatus = "locked" | "in_progress" | "unlocked" | "blocked";
+
+export interface AchievementBadgeSummary {
+  key: string;
+  title: string;
+  description: string;
+  status: AchievementStatus;
+  progress: number | null;
+  how_to?: string | null;
+  meta?: Record<string, unknown> | null;
 }
 
-export const fetchAchievements = async (): Promise<AchievementsSet> => {
-  const response = await fetch("/api/achievements");
-  if (!response.ok) {
-    throw new Error("Achievements API unavailable");
-  }
-  const data: AchievementsSet = await response.json();
-  if (!data || !Array.isArray(data.badges) || !data.streak) {
-    throw new Error("Invalid achievements payload");
-  }
-  return data;
+export interface AchievementStreakSummary {
+  key: string;
+  title: string;
+  current: number;
+  target: number;
+  history: boolean[];
+  status: AchievementStatus;
+  how_to?: string | null;
+}
+
+export interface AchievementsSummary {
+  window_days: number;
+  as_of: string;
+  badges: AchievementBadgeSummary[];
+  streak: AchievementStreakSummary;
+}
+
+export const fetchAchievementsSummary = async (windowDays = 7): Promise<AchievementsSummary> => {
+  return apiGet("/achievements/summary", { window_days: windowDays });
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { listUsers } from "../api/adminUsers";
 import { useAuth } from "../auth/AuthContext";
+import { ErrorState } from "../components/common/ErrorState";
 import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AchievementBadge } from "../features/achievements/components/AchievementBadge";
@@ -16,8 +17,20 @@ export const DashboardPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const { kpis, hints } = useKpis({ showToast });
-  const { badges, streak } = useAchievements({ showToast });
+  const {
+    kpis,
+    hints,
+    error: kpiError,
+    isLoading: kpiLoading,
+    reload: reloadKpis,
+  } = useKpis({ showToast });
+  const {
+    badges,
+    streak,
+    error: achievementsError,
+    isLoading: achievementsLoading,
+    reload: reloadAchievements,
+  } = useAchievements({ showToast });
 
   useEffect(() => {
     if (!accessToken) return;
@@ -56,16 +69,27 @@ export const DashboardPage: React.FC = () => {
       <div className="card">
         <h3>KPI за период</h3>
         <p className="muted">Операционные метрики по качеству и скорости исполнения.</p>
-        <div className="kpi-grid">
-          {kpis.map((kpi) => (
-            <KpiCard key={kpi.id} {...kpi} />
-          ))}
-        </div>
+        {kpiError ? (
+          <ErrorState
+            title="Не удалось загрузить KPI"
+            description={kpiError}
+            actionLabel="Повторить"
+            onAction={reloadKpis}
+          />
+        ) : kpiLoading ? (
+          <p className="muted">Загрузка KPI...</p>
+        ) : (
+          <div className="kpi-grid">
+            {kpis.map((kpi) => (
+              <KpiCard key={kpi.id} {...kpi} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card">
         <h3>Прогресс и дисциплина</h3>
-        <KpiHintList hints={hints} />
+        {kpiError ? null : <KpiHintList hints={hints} />}
       </div>
 
       <div className="card">
@@ -75,14 +99,27 @@ export const DashboardPage: React.FC = () => {
 
       <div className="card">
         <h3>Badges & Streak</h3>
-        <div className="achievement-grid">
-          {badges.map((badge) => (
-            <AchievementBadge key={badge.id} {...badge} />
-          ))}
-        </div>
-        <div className="achievement-streak">
-          <StreakWidget {...streak} />
-        </div>
+        {achievementsError ? (
+          <ErrorState
+            title="Не удалось загрузить достижения"
+            description={achievementsError}
+            actionLabel="Повторить"
+            onAction={reloadAchievements}
+          />
+        ) : achievementsLoading ? (
+          <p className="muted">Загрузка достижений...</p>
+        ) : (
+          <>
+            <div className="achievement-grid">
+              {badges.map((badge) => (
+                <AchievementBadge key={badge.id} {...badge} />
+              ))}
+            </div>
+            <div className="achievement-streak">
+              <StreakWidget {...streak} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

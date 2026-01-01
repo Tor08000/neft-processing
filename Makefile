@@ -12,7 +12,7 @@ PROJECT_NAME := neft-processing
         migrate test test-core test-auth test-ai test-workers \
         health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
-        clean-volumes clean-images
+        clean-volumes clean-images kpi-smoke
 
 # ----------------------------------------
 # БАЗОВЫЕ ОПЕРАЦИИ С СТЕКОМ
@@ -151,6 +151,10 @@ done'
 
 smoke:
 	pytest -q tests/test_no_merge_markers.py tests/test_smoke_gateway_routing.py
+
+kpi-smoke:
+	curl "http://localhost:8001/api/core/kpi/summary?window_days=7"
+	curl "http://localhost:8001/api/core/achievements/summary?window_days=7"
 
 # ----------------------------------------
 # ALEMBIC VERSION TABLE CHECK

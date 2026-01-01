@@ -18,10 +18,12 @@ from neft_shared.logging_setup import get_logger, init_logging
 
 from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
+from app.routers.achievements import router as achievements_router
 from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
+from app.routers.kpi import router as kpi_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
@@ -379,6 +381,8 @@ if payouts_router is not None:
 
 app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_router, prefix=API_PREFIX_CORE)
+app.include_router(kpi_router, prefix=API_PREFIX_CORE)
+app.include_router(achievements_router, prefix=API_PREFIX_CORE)
 app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
@@ -417,6 +421,8 @@ if payouts_router is not None:
     core_prefixed_router.include_router(payouts_router, prefix="")
 
 core_prefixed_router.include_router(admin_router)
+core_prefixed_router.include_router(kpi_router)
+core_prefixed_router.include_router(achievements_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(client_portal_router)
 core_prefixed_router.include_router(client_documents_router)

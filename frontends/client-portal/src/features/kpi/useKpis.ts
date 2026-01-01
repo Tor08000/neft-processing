@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OperationSummary } from "../../types/operations";
 import type { SpendDashboardSummary } from "../../types/spend";
-import { fetchKpis } from "./api";
+import { useAuth } from "../../auth/AuthContext";
+import { fetchKpiSummary } from "./api";
 import { formatCount, formatDeltaPercent, formatMoney, formatPercent } from "./formatters";
 import type { KpiCardData, KpiHint } from "./types";
 
@@ -16,6 +17,10 @@ interface KpiContext {
 interface KpiResponse {
   kpis: KpiCardData[];
   hints: KpiHint[];
+  error: string | null;
+  isLoading: boolean;
+  isMock: boolean;
+  reload: () => void;
 }
 
 const getCompletedCount = (operations: OperationSummary[]) =>
@@ -29,6 +34,7 @@ export const useKpis = ({
   showToast,
 }: KpiContext): KpiResponse => {
   const isDev = import.meta.env.DEV;
+  const { user } = useAuth();
   const totalAmount = summary?.total_amount ?? 0;
   const periodLabel = summary?.period ?? "за период";
   const declinedCount = operations.filter((op) => op.status === "DECLINED").length;
@@ -118,6 +124,10 @@ export const useKpis = ({
           tone: "neutral",
         },
       ],
+      error: null,
+      isLoading: false,
+      isMock: true,
+      reload: () => undefined,
     }),
     [
       balanceAmount,
@@ -133,24 +143,79 @@ export const useKpis = ({
     ],
   );
   const [apiData, setApiData] = useState<KpiResponse | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey((prev) => prev + 1), []);
+
+  const toastOnce = useCallback(
+    (key: string, text: string) => {
+      if (!showToast || typeof window === "undefined") return;
+      try {
+        const storageKey = `mock-toast-${key}`;
+        if (sessionStorage.getItem(storageKey)) {
+          return;
+        }
+        sessionStorage.setItem(storageKey, "1");
+      } catch {
+        return;
+      }
+      showToast("info", text);
+    },
+    [showToast],
+  );
 
   useEffect(() => {
     let active = true;
-    fetchKpis()
+    const token = user?.token;
+    if (!token) {
+      setApiData({ kpis: [], hints: [], error: "Требуется авторизация", isLoading: false, isMock: false, reload });
+      return;
+    }
+    setApiData((prev) =>
+      prev
+        ? { ...prev, isLoading: true, error: null }
+        : { kpis: [], hints: [], error: null, isLoading: true, isMock: false, reload },
+    );
+    fetchKpiSummary(token)
       .then((data) => {
-        if (active) {
-          setApiData(data);
-        }
+        if (!active) return;
+        const kpis = data.kpis.map((item) => {
+          const delta = item.delta ?? undefined;
+          const trend = delta === undefined ? undefined : delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+          return {
+            id: item.key,
+            title: item.title,
+            value:
+              item.unit === "money"
+                ? formatMoney(item.value)
+                : item.unit === "percent"
+                  ? formatPercent(item.value, 1)
+                  : formatCount(item.value),
+            current: item.value,
+            subvalue: `за ${data.window_days} дней`,
+            delta: delta === undefined ? undefined : formatDeltaPercent(delta),
+            trend,
+            goodWhen: item.good_when,
+            unit: item.unit,
+            target: item.target ?? undefined,
+            progress: item.progress ?? undefined,
+          };
+        });
+        setApiData({ kpis, hints: [], error: null, isLoading: false, isMock: false, reload });
       })
-      .catch(() => {
-        if (isDev && showToast) {
-          showToast("info", "Mock mode: KPI");
+      .catch((err) => {
+        if (!active) return;
+        if (isDev) {
+          toastOnce("client-kpi", "Mock mode: KPI");
+          setApiData({ ...mockData, reload });
+          return;
         }
+        const message = err instanceof Error ? err.message : "Не удалось загрузить KPI";
+        setApiData({ kpis: [], hints: [], error: message, isLoading: false, isMock: false, reload });
       });
     return () => {
       active = false;
     };
-  }, [isDev, showToast]);
+  }, [isDev, mockData, reload, reloadKey, toastOnce, user?.token]);
 
   return apiData ?? mockData;
 };
