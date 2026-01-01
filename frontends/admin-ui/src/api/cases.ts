@@ -8,9 +8,9 @@ export type CaseSlaState = "ON_TRACK" | "WARNING" | "BREACHED";
 
 export interface CaseSnapshot {
   id: string;
-  explain_snapshot: Record<string, unknown>;
-  diff_snapshot?: Record<string, unknown> | null;
-  selected_actions?: { code: string; what_if?: Record<string, unknown> | null }[] | null;
+  explain_snapshot: unknown;
+  diff_snapshot?: unknown | null;
+  selected_actions?: { code: string; what_if?: unknown | null }[] | null;
   note?: string | null;
   created_at: string;
 }
@@ -67,9 +67,9 @@ export interface CaseCreatePayload {
   title?: string | null;
   priority: CasePriority;
   note?: string | null;
-  explain?: Record<string, unknown> | null;
-  diff?: Record<string, unknown> | null;
-  selected_actions?: { code: string; what_if?: Record<string, unknown> | null }[] | null;
+  explain?: unknown | null;
+  diff?: unknown | null;
+  selected_actions?: { code: string; what_if?: unknown | null }[] | null;
 }
 
 export interface CaseUpdatePayload {

@@ -26,6 +26,12 @@ export function SubscriptionPage() {
 
   const disabledModules = benefits?.unavailable_modules ?? [];
   const enabledModules = benefits?.modules ?? [];
+  const getRecordString = (value: unknown, key: string): string | undefined => {
+    if (!value || typeof value !== "object") return undefined;
+    const record = value as Record<string, unknown>;
+    const candidate = record[key];
+    return typeof candidate === "string" ? candidate : undefined;
+  };
   const previewModules = gamification?.preview?.modules as
     | { module_code: string; enabled: boolean; tier?: string | null }[]
     | undefined;
@@ -101,9 +107,10 @@ export function SubscriptionPage() {
         <h3>{t("subscription.bonuses")}</h3>
         {gamification?.bonuses?.length ? (
           <ul>
-            {gamification.bonuses.map((bonus, index) => (
-              <li key={index}>{bonus.title ?? t("subscription.bonusUnlocked")}</li>
-            ))}
+            {gamification.bonuses.map((bonus, index) => {
+              const title = getRecordString(bonus, "title");
+              return <li key={index}>{title ?? t("subscription.bonusUnlocked")}</li>;
+            })}
           </ul>
         ) : (
           <div>{t("subscription.bonusesEmpty")}</div>
@@ -111,7 +118,11 @@ export function SubscriptionPage() {
         {gamification?.preview && subscription.status === "FREE" ? (
           <div style={{ marginTop: 12 }}>
             <strong>{t("subscription.previewTitle")}</strong>
-            <div>{t("subscription.previewSubtitle", { plan: gamification.preview.plan_title })}</div>
+            <div>
+              {t("subscription.previewSubtitle", {
+                plan: getRecordString(gamification.preview, "plan_title") ?? t("common.notAvailable"),
+              })}
+            </div>
             {previewModules ? (
               <ul>
                 {previewModules.map((module, index) => (
@@ -130,9 +141,10 @@ export function SubscriptionPage() {
         <h3>{t("subscription.streaks")}</h3>
         {gamification?.streaks?.length ? (
           <ul>
-            {gamification.streaks.map((streak, index) => (
-              <li key={index}>{streak.title ?? t("subscription.streakActive")}</li>
-            ))}
+            {gamification.streaks.map((streak, index) => {
+              const title = getRecordString(streak, "title");
+              return <li key={index}>{title ?? t("subscription.streakActive")}</li>;
+            })}
           </ul>
         ) : (
           <div>{t("subscription.streaksEmpty")}</div>
@@ -143,9 +155,10 @@ export function SubscriptionPage() {
         <h3>{t("subscription.achievements")}</h3>
         {gamification?.achievements?.length ? (
           <ul>
-            {gamification.achievements.map((achievement, index) => (
-              <li key={index}>{achievement.title ?? t("subscription.achievementUnlocked")}</li>
-            ))}
+            {gamification.achievements.map((achievement, index) => {
+              const title = getRecordString(achievement, "title");
+              return <li key={index}>{title ?? t("subscription.achievementUnlocked")}</li>;
+            })}
           </ul>
         ) : (
           <div>{t("subscription.achievementsEmpty")}</div>
