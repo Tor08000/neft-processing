@@ -31,6 +31,8 @@ import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
 import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
 import { SupportRequestsPage } from "./pages/SupportRequestsPage";
 import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
+import { CasesPage } from "./pages/CasesPage";
+import { CaseDetailsPage } from "./pages/CaseDetailsPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
 import { AnalyticsSpendPage } from "./pages/AnalyticsSpendPage";
 import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
@@ -112,6 +114,8 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/marketplace/:serviceId" element={<MarketplaceServicePage />} />
                 <Route path="/support/requests" element={<SupportRequestsPage />} />
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
+                <Route path="/cases" element={<CasesPage />} />
+                <Route path="/cases/:id" element={<CaseDetailsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />

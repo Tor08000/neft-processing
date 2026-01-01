@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { createCase, type CaseKind, type CasePriority } from "../api/cases";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
 import { reduceExplainDiffReasons, type ExplainDiffTab } from "../features/explain/diffReducer";
 import type {
@@ -174,6 +175,94 @@ const ReasonTreeNode = ({
           ))}
         </div>
       ) : null}
+      {caseModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal__header">
+              <h3>Создать кейс</h3>
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal__body">
+              <label className="filter">
+                Priority
+                <select value={casePriority} onChange={(event) => setCasePriority(event.target.value as CasePriority)}>
+                  <option value="LOW">LOW</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="CRITICAL">CRITICAL</option>
+                </select>
+              </label>
+              <label className="filter">
+                Note
+                <textarea
+                  rows={3}
+                  value={caseNote}
+                  onChange={(event) => setCaseNote(event.target.value)}
+                  placeholder="Комментарий для кейса"
+                />
+              </label>
+              <div className="checkbox">
+                <input
+                  id="include-explain"
+                  type="checkbox"
+                  checked={includeExplain}
+                  onChange={(event) => setIncludeExplain(event.target.checked)}
+                />
+                <label htmlFor="include-explain">Include explain snapshot</label>
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-diff"
+                  type="checkbox"
+                  checked={includeDiff}
+                  onChange={(event) => setIncludeDiff(event.target.checked)}
+                  disabled={!diffData}
+                />
+                <label htmlFor="include-diff">Include diff snapshot</label>
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-actions"
+                  type="checkbox"
+                  checked={includeActions}
+                  onChange={(event) => setIncludeActions(event.target.checked)}
+                  disabled={!selectedActions.length}
+                />
+                <label htmlFor="include-actions">Include selected actions</label>
+              </div>
+              {createdCaseId ? (
+                <div className="card" style={{ marginTop: 12 }}>
+                  <strong>Кейс создан</strong>
+                  <div className="muted">ID: {createdCaseId}</div>
+                  <button
+                    type="button"
+                    className="neft-btn-secondary"
+                    style={{ marginTop: 8 }}
+                    onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
+                  >
+                    Открыть кейс
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="modal__footer">
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="neft-btn-primary"
+                onClick={() => void handleCreateCase()}
+                disabled={isCaseSubmitting}
+              >
+                {isCaseSubmitting ? "Создаём..." : "Создать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -217,6 +306,14 @@ export const ExplainPage = () => {
   const [rightSnapshot, setRightSnapshot] = useState("");
   const [actionId, setActionId] = useState("");
   const [reasonTab, setReasonTab] = useState<ExplainDiffTab>("strong");
+  const [caseModalOpen, setCaseModalOpen] = useState(false);
+  const [casePriority, setCasePriority] = useState<CasePriority>("MEDIUM");
+  const [caseNote, setCaseNote] = useState("");
+  const [includeExplain, setIncludeExplain] = useState(true);
+  const [includeDiff, setIncludeDiff] = useState(true);
+  const [includeActions, setIncludeActions] = useState(true);
+  const [isCaseSubmitting, setIsCaseSubmitting] = useState(false);
+  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
   const kind = searchParams.get("kind") ?? (searchParams.get("kpi_key") ? "kpi" : null);
   const entityId = searchParams.get("id");
@@ -255,6 +352,12 @@ export const ExplainPage = () => {
   useEffect(() => {
     setReasonTab("strong");
   }, [diffData]);
+
+  useEffect(() => {
+    if (caseModalOpen) {
+      setCreatedCaseId(null);
+    }
+  }, [caseModalOpen]);
 
   useEffect(() => {
     if (selectedReasonId) {
@@ -501,6 +604,57 @@ export const ExplainPage = () => {
 
   const canCompare = kind !== "kpi" && entityId;
   const canDiff = Boolean(kind === "kpi" ? kpiKey : entityId);
+  const caseKind = useMemo<CaseKind | null>(() => {
+    if (!kind) return null;
+    if (kind === "marketplace_order") return "order";
+    return kind;
+  }, [kind]);
+
+  const handleCreateCase = useCallback(async () => {
+    if (!payload || !caseKind) return;
+    setIsCaseSubmitting(true);
+    try {
+      const candidatesByCode = new Map(
+        (whatIf?.candidates ?? []).map((candidate) => [candidate.action.code, candidate]),
+      );
+      const selected = includeActions
+        ? selectedActions.map((item) => ({
+            code: item.action_code,
+            what_if: candidatesByCode.get(item.action_code) ?? null,
+          }))
+        : null;
+      const response = await createCase({
+        kind: caseKind,
+        entity_id: caseKind === "kpi" ? undefined : payload.id,
+        kpi_key: caseKind === "kpi" ? payload.id : undefined,
+        window_days: caseKind === "kpi" ? Number(windowDays) : undefined,
+        priority: casePriority,
+        note: caseNote || null,
+        explain: includeExplain ? payload : null,
+        diff: includeDiff ? diffData ?? null : null,
+        selected_actions: selected,
+      });
+      setCreatedCaseId(response.id);
+      showToast("success", "Кейс создан");
+    } catch (err) {
+      showToast("error", (err as Error).message);
+    } finally {
+      setIsCaseSubmitting(false);
+    }
+  }, [
+    payload,
+    caseKind,
+    whatIf?.candidates,
+    includeActions,
+    selectedActions,
+    includeExplain,
+    includeDiff,
+    diffData,
+    windowDays,
+    casePriority,
+    caseNote,
+    showToast,
+  ]);
 
   useEffect(() => {
     if (drawerOpen && canCompare && selectedActions.length >= 2 && !isWhatIfLoading) {
@@ -749,6 +903,14 @@ export const ExplainPage = () => {
             onClick={() => setShowDiff(true)}
           >
             Сравнить
+          </button>
+          <button
+            type="button"
+            className="neft-btn-primary"
+            onClick={() => setCaseModalOpen(true)}
+            disabled={!payload || !caseKind}
+          >
+            Создать кейс
           </button>
           <button type="button" className="neft-btn-secondary" onClick={copyLink}>
             Скопировать ссылку
