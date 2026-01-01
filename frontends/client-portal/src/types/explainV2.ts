@@ -56,45 +56,25 @@ export interface ExplainV2Response {
   recommended_actions: ExplainRecommendedAction[];
 }
 
-export type ExplainDiffRiskLabel = "IMPROVED" | "WORSENED" | "NO_CHANGE";
-
-export interface ExplainDiffReason {
-  code: string;
-  title: string;
-  weight?: number | null;
-}
-
-export interface ExplainDiffEvidence {
-  id: string;
-  label: string;
-  type?: string | null;
-  source?: string | null;
-  confidence?: number | null;
-}
-
-export interface ExplainDiffSnapshot {
-  risk_score?: number | null;
-  decision?: ExplainDecision | null;
-  reasons: ExplainDiffReason[];
-  evidence: ExplainDiffEvidence[];
-}
+export type ExplainDiffReasonStatus = "added" | "removed" | "strengthened" | "weakened" | "unchanged";
+export type ExplainDiffEvidenceStatus = "added" | "removed" | "changed";
 
 export interface ExplainDiffResponse {
-  before: ExplainDiffSnapshot;
-  after: ExplainDiffSnapshot;
-  diff: {
-    risk: { delta: number; label: ExplainDiffRiskLabel };
-    reasons: {
-      removed: string[];
-      weakened: { code: string; delta: number }[];
-      strengthened: { code: string; delta: number }[];
-      added: string[];
-    };
-    evidence: { removed: string[]; added: string[] };
-  };
   meta: {
-    simulation: boolean;
-    confidence?: number | null;
-    memory_penalty?: "LOW" | "MEDIUM" | "HIGH" | null;
+    kind: "operation" | "invoice" | "order" | "kpi";
+    entity_id?: string | null;
+    left: { snapshot_id: string; label: string };
+    right: { snapshot_id: string; label: string };
   };
+  score_diff: { risk_before?: number | null; risk_after?: number | null; delta?: number | null };
+  decision_diff: { before?: ExplainDecision | null; after?: ExplainDecision | null };
+  reasons_diff: {
+    reason_code: string;
+    weight_before?: number | null;
+    weight_after?: number | null;
+    delta: number;
+    status: ExplainDiffReasonStatus;
+  }[];
+  evidence_diff: { evidence_id: string; status: ExplainDiffEvidenceStatus }[];
+  action_impact?: { action_id: string; expected_delta: number; confidence: number } | null;
 }

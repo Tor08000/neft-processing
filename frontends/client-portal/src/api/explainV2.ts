@@ -32,7 +32,23 @@ export function fetchExplainActions(
 
 export function fetchExplainDiff(
   user: AuthSession | null,
-  payload: { context: { kind: "operation" | "invoice" | "order" | "kpi"; id: string }; actions: { code: string }[] },
+  params: {
+    kind: "operation" | "invoice" | "order" | "kpi";
+    id?: string;
+    left_snapshot: string;
+    right_snapshot: string;
+    action_id?: string;
+  },
 ): Promise<ExplainDiffResponse> {
-  return request<ExplainDiffResponse>("/explain/diff", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+  const search = new URLSearchParams();
+  search.set("kind", params.kind);
+  if (params.id) {
+    search.set("id", params.id);
+  }
+  search.set("left_snapshot", params.left_snapshot);
+  search.set("right_snapshot", params.right_snapshot);
+  if (params.action_id) {
+    search.set("action_id", params.action_id);
+  }
+  return request<ExplainDiffResponse>(`/explain/diff?${search.toString()}`, { method: "GET" }, withToken(user));
 }

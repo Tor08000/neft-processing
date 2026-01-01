@@ -262,6 +262,9 @@ export function ClientInvoiceDetailsPage() {
           <Link className="secondary" to={`/explain?kind=invoice&id=${encodeURIComponent(invoice.id)}`}>
             Explain
           </Link>
+          <Link className="secondary" to={`/explain?kind=invoice&id=${encodeURIComponent(invoice.id)}&diff=1`}>
+            Сравнить
+          </Link>
           <button type="button" className="secondary" onClick={handleDownload} disabled={!invoice.pdf_available}>
             Скачать PDF
           </button>

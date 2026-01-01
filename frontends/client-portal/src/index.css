@@ -1790,25 +1790,56 @@ textarea:focus-visible {
   flex-wrap: wrap;
 }
 
-.explain-diff__grid {
+.explain-diff__controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.explain-diff__column {
-  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
-  max-height: 70vh;
-  overflow: auto;
-  padding-right: 0.4rem;
+  margin-bottom: 1rem;
 }
 
-.explain-diff__header {
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.7rem;
+.explain-diff__controls label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
   color: var(--neft-text-muted);
+}
+
+.explain-diff__controls input,
+.explain-diff__controls select {
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  color: var(--neft-text);
+}
+
+.explain-diff__controls-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.explain-diff__panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.explain-diff__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.explain-diff__meta-item {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.explain-diff__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .explain-diff__risk {
@@ -1818,12 +1849,108 @@ textarea:focus-visible {
   font-size: 1.1rem;
 }
 
-.explain-diff__risk-note {
+.explain-diff__delta {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.explain-diff__delta.is-improved {
+  color: #22c55e;
+}
+
+.explain-diff__delta.is-worsened {
+  color: #ef4444;
+}
+
+.explain-diff__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.explain-diff__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+.explain-diff__tab {
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  color: var(--neft-text);
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
   font-size: 0.75rem;
+}
+
+.explain-diff__tab.is-active {
+  border-color: #2563eb;
+  color: #bfdbfe;
+}
+
+.explain-diff__table {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.explain-diff__row {
+  display: grid;
+  grid-template-columns: minmax(160px, 2fr) repeat(3, minmax(60px, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  font-size: 0.85rem;
+}
+
+.explain-diff__row--head {
+  border: none;
+  background: transparent;
+  font-weight: 600;
   color: var(--neft-text-muted);
+  padding: 0;
+}
+
+.explain-diff__row.is-added {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.explain-diff__row.is-removed {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.explain-diff__row.is-strengthened {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.explain-diff__row.is-weakened {
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.explain-diff__reason {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .explain-diff__list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.explain-diff__evidence-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.explain-diff__evidence-column {
   display: grid;
   gap: 0.5rem;
 }
@@ -1837,37 +1964,20 @@ textarea:focus-visible {
   border-radius: 0.6rem;
   border: 1px solid var(--neft-border);
   background: var(--neft-surface2);
-}
-
-.explain-diff__item.is-removed {
-  border-color: rgba(34, 197, 94, 0.35);
-  color: #86efac;
-}
-
-.explain-diff__item.is-weakened {
-  border-color: rgba(234, 179, 8, 0.35);
-  color: #fde047;
-}
-
-.explain-diff__item.is-strengthened {
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #fecaca;
+  text-align: left;
+  color: var(--neft-text);
 }
 
 .explain-diff__item.is-added {
   border-color: rgba(59, 130, 246, 0.35);
-  color: #bfdbfe;
 }
 
-.explain-diff__item.is-hovered {
-  outline: 2px solid rgba(59, 130, 246, 0.4);
+.explain-diff__item.is-removed {
+  border-color: rgba(34, 197, 94, 0.35);
 }
 
-.explain-diff__item--evidence.is-removed span:first-child {
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-
-.explain-diff__item--evidence.is-added span:first-child {
-  font-weight: 600;
+.explain-diff__action {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
 }
