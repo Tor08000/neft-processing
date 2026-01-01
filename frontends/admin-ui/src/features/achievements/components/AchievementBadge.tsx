@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AchievementBadgeData } from "../types";
 
 const statusLabels: Record<AchievementBadgeData["status"], string> = {
@@ -11,8 +12,10 @@ const clampProgress = (value?: number) => {
   return Math.min(1, Math.max(0, value));
 };
 
-export const AchievementBadge = ({ icon, title, description, status, progress }: AchievementBadgeData) => {
+export const AchievementBadge = ({ icon, title, description, details, status, progress }: AchievementBadgeData) => {
   const progressValue = clampProgress(progress);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const detailsText = details ?? description;
 
   return (
     <div className={`achievement-badge is-${status}`}>
@@ -20,12 +23,25 @@ export const AchievementBadge = ({ icon, title, description, status, progress }:
         <span className="achievement-badge__icon" aria-hidden>
           {icon}
         </span>
-        <div>
-          <div className="achievement-badge__title">{title}</div>
+        <div className="achievement-badge__content">
+          <div className="achievement-badge__title-row">
+            <div className="achievement-badge__title">{title}</div>
+            <button
+              className="achievement-badge__action"
+              type="button"
+              title="Как получить"
+              aria-label="Как получить"
+              aria-expanded={isExpanded}
+              onClick={() => setIsExpanded((prev) => !prev)}
+            >
+              ?
+            </button>
+          </div>
           <div className="achievement-badge__description">{description}</div>
         </div>
       </div>
       <div className={`achievement-badge__status status-${status}`}>{statusLabels[status]}</div>
+      {isExpanded ? <div className="achievement-badge__details">{detailsText}</div> : null}
       {status === "in-progress" && progressValue !== null ? (
         <div className="achievement-badge__progress">
           <span className="achievement-badge__progress-fill" style={{ width: `${progressValue * 100}%` }} />

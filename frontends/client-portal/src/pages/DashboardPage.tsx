@@ -9,6 +9,8 @@ import type { OperationSummary } from "../types/operations";
 import type { SpendDashboardSummary } from "../types/spend";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { MoneyValue } from "../components/common/MoneyValue";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 import { AchievementBadge } from "../features/achievements/components/AchievementBadge";
 import { StreakWidget } from "../features/achievements/components/StreakWidget";
 import { useAchievements } from "../features/achievements/useAchievements";
@@ -33,6 +35,7 @@ const summarizeTop = (items: OperationSummary[], key: keyof OperationSummary) =>
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const { toast, showToast } = useToast();
   const [summary, setSummary] = useState<SpendDashboardSummary | null>(null);
   const [operations, setOperations] = useState<OperationSummary[]>([]);
   const [docsAttention, setDocsAttention] = useState(0);
@@ -79,8 +82,8 @@ export function DashboardPage() {
   const topCards = useMemo(() => summarizeTop(operations, "card_id"), [operations]);
 
   const trendMax = Math.max(...(summary?.spending_trend ?? [0]));
-  const { kpis, hints } = useKpis({ summary, operations, docsAttention, exportsAttention });
-  const { badges, streak } = useAchievements();
+  const { kpis, hints } = useKpis({ summary, operations, docsAttention, exportsAttention, showToast });
+  const { badges, streak } = useAchievements({ showToast });
 
   if (!user) {
     return null;
@@ -88,6 +91,7 @@ export function DashboardPage() {
 
   return (
     <div className="stack" aria-live="polite">
+      <Toast toast={toast} />
       <section className="card">
         <div className="card__header">
           <div>

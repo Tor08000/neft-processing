@@ -1,14 +1,21 @@
 export type KpiTrend = "up" | "down" | "flat";
+export type KpiGoodWhen = "up" | "down" | "neutral";
+export type KpiUnit = "money" | "count" | "percent";
+export type KpiProgressMode = "higher-is-better" | "lower-is-better";
 
 export interface KpiCardData {
   id: string;
   title: string;
   value: string | number;
+  current?: number;
   subvalue?: string;
   delta?: string;
   trend?: KpiTrend;
+  goodWhen?: KpiGoodWhen;
+  unit?: KpiUnit;
+  target?: number;
   progress?: number;
-  targetLabel?: string;
+  progressMode?: KpiProgressMode;
 }
 
 export interface KpiHint {
