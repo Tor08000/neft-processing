@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { createCase, type CaseKind, type CasePriority } from "../api/cases";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
@@ -7,6 +7,24 @@ import { JsonViewer } from "../components/common/JsonViewer";
 import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { reduceExplainDiffReasons, type ExplainDiffTab } from "../features/explain/diffReducer";
+import {
+  ACHIEVEMENT_DEFINITIONS,
+  loadAchievementsState,
+  loadAchievementStats,
+  saveAchievementsState,
+  saveAchievementStats,
+  unlockAchievements,
+  updateAchievementStats,
+} from "../gamification/achievements";
+import { computeExplainScore } from "../gamification/score";
+import { loadStreakState, saveStreakState, updateStreak } from "../gamification/streak";
+import type {
+  AchievementEvent,
+  AchievementStats,
+  AchievementsState,
+  ExplainScore,
+  StreakState,
+} from "../gamification/types";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -251,13 +269,49 @@ const EmptyState = ({ title, subtitle }: { title: string; subtitle?: string }) =
   </div>
 );
 
-const SummaryCard = ({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+const SummaryCard = ({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) => (
   <div className="explain-summary__card">
     <span className="explain-summary__label">{label}</span>
     <span className="explain-summary__value">{value}</span>
     {hint ? <span className="muted small">{hint}</span> : null}
   </div>
 );
+
+const SCORE_LABELS: Record<ExplainScore["level"], string> = {
+  clean: "Clean",
+  risky: "Risky",
+  critical: "Critical",
+};
+
+const ScoreBadge = ({ score, compact }: { score: ExplainScore; compact?: boolean }) => (
+  <span
+    className={`score-badge score-badge--${score.level}${compact ? " score-badge--compact" : ""}`}
+    title={`Explain score: ${SCORE_LABELS[score.level]}`}
+  >
+    {SCORE_LABELS[score.level]}
+  </span>
+);
+
+const ConfidenceMeter = ({ confidence }: { confidence: number }) => (
+  <div
+    className="explain-metric explain-metric--confidence"
+    title="Model confidence based on data completeness and signal strength"
+  >
+    <div className="explain-metric__bar">
+      <div className="explain-metric__fill" style={{ width: `${Math.round(confidence * 100)}%` }} />
+    </div>
+    <span className="explain-metric__value">{percent(confidence)}</span>
+  </div>
+);
+
+const PenaltyMarker = ({ penalty }: { penalty: number }) => {
+  const tone = penalty >= 70 ? "critical" : penalty >= 40 ? "risky" : "clean";
+  return (
+    <span className={`penalty-marker penalty-marker--${tone}`} title="Penalty increased due to elevated risk signals">
+      {penalty}
+    </span>
+  );
+};
 
 const ActionSelectionList = ({
   actions,
@@ -328,6 +382,9 @@ export const ExplainPage = () => {
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
   const [lastRunDuration, setLastRunDuration] = useState<number | null>(null);
+  const [streak, setStreak] = useState<StreakState>(() => loadStreakState());
+  const [achievementStats, setAchievementStats] = useState<AchievementStats>(() => loadAchievementStats());
+  const [achievements, setAchievements] = useState<AchievementsState>(() => loadAchievementsState());
 
   const lastRunStateRef = useRef<ExplainQueryState | null>(null);
   const explainRequestIdRef = useRef(0);
@@ -385,6 +442,19 @@ export const ExplainPage = () => {
       setFilter("all");
     }
   }, [selectedReasonId]);
+
+  const registerAchievementEvent = useCallback((event: AchievementEvent) => {
+    setAchievementStats((prevStats) => {
+      const nextStats = updateAchievementStats(prevStats, event);
+      saveAchievementStats(nextStats);
+      setAchievements((prevAchievements) => {
+        const nextAchievements = unlockAchievements(prevAchievements, nextStats);
+        saveAchievementsState(nextAchievements);
+        return nextAchievements;
+      });
+      return nextStats;
+    });
+  }, []);
 
   const linkedEvidenceIds = useMemo(() => selectedEvidenceIds, [selectedEvidenceIds]);
 
@@ -480,10 +550,17 @@ export const ExplainPage = () => {
       ]);
       if (requestId !== explainRequestIdRef.current) return;
       if (explainResult.status === "fulfilled") {
+        const runAt = new Date();
         setPayload(explainResult.value);
-        setLastRunAt(new Date());
+        setLastRunAt(runAt);
         setLastRunDuration(Math.round(performance.now() - startedAt));
         lastRunStateRef.current = queryState;
+        setStreak((prev) => {
+          const next = updateStreak(prev, runAt);
+          saveStreakState(next);
+          return next;
+        });
+        registerAchievementEvent("explain_run");
       } else {
         setPayload(null);
         setError({ title: "Explain failed", message: explainResult.reason.message });
@@ -502,7 +579,7 @@ export const ExplainPage = () => {
         setIsLoading(false);
       }
     }
-  }, [entityId, kind, kpiKey, queryState, windowDays]);
+  }, [entityId, kind, kpiKey, queryState, registerAchievementEvent, windowDays]);
 
   const loadDiff = useCallback(async () => {
     if (!kind) return;
@@ -528,6 +605,7 @@ export const ExplainPage = () => {
       });
       if (requestId !== diffRequestIdRef.current) return;
       setDiffData(response);
+      registerAchievementEvent("diff_run");
     } catch (err) {
       if (requestId !== diffRequestIdRef.current) return;
       setDiffError({ title: "Diff failed", message: (err as Error).message });
@@ -537,7 +615,7 @@ export const ExplainPage = () => {
         setIsDiffLoading(false);
       }
     }
-  }, [entityId, kind, queryState.actionId, queryState.leftSnapshot, queryState.rightSnapshot]);
+  }, [entityId, kind, queryState.actionId, queryState.leftSnapshot, queryState.rightSnapshot, registerAchievementEvent]);
 
   const reasonSummary = useMemo(
     () => reduceExplainDiffReasons(diffData?.reasons_diff ?? [], reasonTab),
@@ -645,6 +723,7 @@ export const ExplainPage = () => {
       });
       setCreatedCaseId(response.id);
       setCaseModalOpen(false);
+      registerAchievementEvent("case_created");
       showToast("success", "Кейс создан");
     } catch (err) {
       showToast("error", (err as Error).message);
@@ -658,6 +737,7 @@ export const ExplainPage = () => {
     queryState,
     diffData,
     windowDays,
+    registerAchievementEvent,
     showToast,
   ]);
 
@@ -716,6 +796,15 @@ export const ExplainPage = () => {
         mode: queryState.mode,
         params: queryState,
         duration_ms: lastRunDuration ?? null,
+        score: payload
+          ? {
+              level: explainScore.level,
+              confidence: explainScore.confidence,
+              penalty: explainScore.penalty,
+            }
+          : null,
+        streak: streak.count,
+        achievements: unlockedAchievementKeys,
       },
       explain: payload ?? null,
       diff: diffData ?? null,
@@ -735,7 +824,7 @@ export const ExplainPage = () => {
     link.download = `explain_${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [diffData, lastRunDuration, payload, queryState]);
+  }, [diffData, explainScore, lastRunDuration, payload, queryState, streak.count, unlockedAchievementKeys]);
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpanded((prev) => {
@@ -780,6 +869,16 @@ export const ExplainPage = () => {
     return "—";
   }, [entityId, kpiKey, kind, payload?.id, payload?.kind]);
 
+  const explainScore = useMemo(() => computeExplainScore(payload), [payload]);
+  const unlockedAchievements = useMemo(
+    () => ACHIEVEMENT_DEFINITIONS.filter((achievement) => achievements[achievement.key]),
+    [achievements],
+  );
+  const unlockedAchievementKeys = useMemo(
+    () => unlockedAchievements.map((achievement) => achievement.key),
+    [unlockedAchievements],
+  );
+
   const explainSummaryCards = useMemo(() => {
     if (!payload) return [];
     const cards = [
@@ -791,6 +890,19 @@ export const ExplainPage = () => {
         label: "Score",
         value: payload.score?.toFixed(2) ?? "—",
         hint: `Band: ${scoreBandLabel(payload.score_band)}`,
+      },
+      {
+        label: "Status",
+        value: <ScoreBadge score={explainScore} />,
+        hint: `Confidence: ${percent(explainScore.confidence)} · Penalty: ${explainScore.penalty}`,
+      },
+      {
+        label: "Confidence",
+        value: <ConfidenceMeter confidence={explainScore.confidence} />,
+      },
+      {
+        label: "Penalty",
+        value: <PenaltyMarker penalty={explainScore.penalty} />,
       },
     ];
     if (topReasons.length) {
@@ -807,7 +919,7 @@ export const ExplainPage = () => {
       });
     }
     return cards;
-  }, [payload, topReasons]);
+  }, [explainScore, payload, topReasons]);
 
   const diffSummaryCards = useMemo(() => {
     if (!diffData) return [];
@@ -887,11 +999,33 @@ export const ExplainPage = () => {
           </div>
 
           <div className="explain-control-bar__status">
-            <span>Last run: {formatTime(lastRunAt)}</span>
+            <div className="explain-control-bar__status-row">
+              <span>Last run: {formatTime(lastRunAt)}</span>
+              {payload ? <ScoreBadge score={explainScore} compact /> : null}
+            </div>
             <span>Duration: {lastRunDuration ? `${lastRunDuration}ms` : "—"}</span>
             <span>Source: {sourceLabel}</span>
             <div className="explain-control-bar__meta">
               {hasUnsavedChanges ? <span className="pill pill--accent">Unsaved changes</span> : null}
+              <span className="pill pill--outline" title="Consecutive explain runs without interruption">
+                🔥 Streak: {streak.count || "—"}
+              </span>
+              {unlockedAchievements.length ? (
+                <div
+                  className="explain-control-bar__achievements"
+                  title={`Progress: ${achievementStats.explainRuns} explains · ${achievementStats.diffRuns} diffs · ${achievementStats.casesCreated} cases`}
+                >
+                  {unlockedAchievements.map((achievement) => (
+                    <span
+                      key={achievement.key}
+                      className="explain-achievement"
+                      title={`${achievement.label} · ${achievement.description}`}
+                    >
+                      {achievement.icon}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
