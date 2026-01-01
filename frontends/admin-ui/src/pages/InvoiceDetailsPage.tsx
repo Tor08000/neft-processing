@@ -53,6 +53,12 @@ export const InvoiceDetailsPage: React.FC = () => {
         <button type="button" onClick={() => navigate(`/explain?kind=invoice&id=${encodeURIComponent(invoice.id)}`)}>
           Explain
         </button>
+        <button
+          type="button"
+          onClick={() => navigate(`/explain?kind=invoice&id=${encodeURIComponent(invoice.id)}&diff=1`)}
+        >
+          Сравнить
+        </button>
       </div>
       <p>
         Amount: {formatAmount(invoice.total_with_tax ?? invoice.total_amount)} • Status: {invoice.status}

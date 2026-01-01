@@ -2,120 +2,89 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 ExplainDiffKind = Literal["operation", "invoice", "order", "kpi"]
 ExplainDiffDecision = Literal["APPROVE", "DECLINE", "REVIEW"]
-ExplainDiffRiskLabel = Literal["IMPROVED", "WORSENED", "NO_CHANGE"]
-ExplainDiffMemoryPenalty = Literal["LOW", "MEDIUM", "HIGH"]
+ExplainDiffReasonStatus = Literal["added", "removed", "strengthened", "weakened", "unchanged"]
+ExplainDiffEvidenceStatus = Literal["added", "removed", "changed"]
 
 
-class ExplainDiffContext(BaseModel):
+class ExplainDiffSnapshotLabel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: ExplainDiffKind
-    id: str
-
-
-class ExplainDiffAction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str
-
-
-class ExplainDiffRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    context: ExplainDiffContext
-    actions: list[ExplainDiffAction] = Field(..., min_length=1, max_length=3)
-
-
-class ExplainDiffReason(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str
-    title: str
-    weight: float | None = None
-
-
-class ExplainDiffEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
+    snapshot_id: str
     label: str
-    type: str | None = None
-    source: str | None = None
-    confidence: float | None = None
-
-
-class ExplainDiffSnapshot(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    risk_score: float | None = None
-    decision: ExplainDiffDecision | None = None
-    reasons: list[ExplainDiffReason] = Field(default_factory=list)
-    evidence: list[ExplainDiffEvidence] = Field(default_factory=list)
-
-
-class ExplainDiffReasonDelta(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str
-    delta: float
-
-
-class ExplainDiffReasons(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    removed: list[str] = Field(default_factory=list)
-    weakened: list[ExplainDiffReasonDelta] = Field(default_factory=list)
-    strengthened: list[ExplainDiffReasonDelta] = Field(default_factory=list)
-    added: list[str] = Field(default_factory=list)
-
-
-class ExplainDiffEvidenceChanges(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    removed: list[str] = Field(default_factory=list)
-    added: list[str] = Field(default_factory=list)
-
-
-class ExplainDiffRisk(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    delta: float
-    label: ExplainDiffRiskLabel
 
 
 class ExplainDiffMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    simulation: bool = True
-    confidence: float | None = None
-    memory_penalty: ExplainDiffMemoryPenalty | None = None
+    kind: ExplainDiffKind
+    entity_id: str | None = None
+    left: ExplainDiffSnapshotLabel
+    right: ExplainDiffSnapshotLabel
 
 
-class ExplainDiffPayload(BaseModel):
+class ExplainDiffScoreDiff(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    risk: ExplainDiffRisk
-    reasons: ExplainDiffReasons
-    evidence: ExplainDiffEvidenceChanges
+    risk_before: float | None = None
+    risk_after: float | None = None
+    delta: float | None = None
+
+
+class ExplainDiffDecisionDiff(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    before: ExplainDiffDecision | None = None
+    after: ExplainDiffDecision | None = None
+
+
+class ExplainDiffReasonItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: str
+    weight_before: float | None = None
+    weight_after: float | None = None
+    delta: float
+    status: ExplainDiffReasonStatus
+
+
+class ExplainDiffEvidenceItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_id: str
+    status: ExplainDiffEvidenceStatus
+
+
+class ExplainDiffActionImpact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str
+    expected_delta: float
+    confidence: float
 
 
 class ExplainDiffResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    before: ExplainDiffSnapshot
-    after: ExplainDiffSnapshot
-    diff: ExplainDiffPayload
     meta: ExplainDiffMeta
+    score_diff: ExplainDiffScoreDiff
+    decision_diff: ExplainDiffDecisionDiff
+    reasons_diff: list[ExplainDiffReasonItem]
+    evidence_diff: list[ExplainDiffEvidenceItem]
+    action_impact: ExplainDiffActionImpact | None = None
 
 
 __all__ = [
-    "ExplainDiffAction",
-    "ExplainDiffContext",
-    "ExplainDiffRequest",
+    "ExplainDiffActionImpact",
+    "ExplainDiffDecision",
+    "ExplainDiffEvidenceItem",
+    "ExplainDiffKind",
+    "ExplainDiffMeta",
+    "ExplainDiffReasonItem",
     "ExplainDiffResponse",
+    "ExplainDiffScoreDiff",
 ]

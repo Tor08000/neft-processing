@@ -21,9 +21,12 @@ export const evaluateWhatIf = async (payload: WhatIfEvaluateRequest): Promise<Wh
   return apiPost("/v1/admin/what-if/evaluate", payload);
 };
 
-export const fetchExplainDiff = async (payload: {
-  context: { kind: "operation" | "invoice" | "order" | "kpi"; id: string };
-  actions: { code: string }[];
+export const fetchExplainDiff = async (params: {
+  kind: "operation" | "invoice" | "order" | "kpi";
+  id?: string;
+  left_snapshot: string;
+  right_snapshot: string;
+  action_id?: string;
 }): Promise<ExplainDiffResponse> => {
-  return apiPost("/explain/diff", payload);
+  return apiGet("/explain/diff", params);
 };

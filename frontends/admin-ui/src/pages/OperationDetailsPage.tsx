@@ -104,9 +104,17 @@ export const OperationDetailsPage: React.FC = () => {
         {(isLoading || isFetching || isChildrenFetching) && <Loader label="Загружаем операцию" />}
         {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
         {operation ? (
-          <Link className="ghost" to={`/explain?kind=operation&id=${encodeURIComponent(operation.operation_id)}`}>
-            Explain
-          </Link>
+          <div className="stack-inline">
+            <Link className="ghost" to={`/explain?kind=operation&id=${encodeURIComponent(operation.operation_id)}`}>
+              Explain
+            </Link>
+            <Link
+              className="ghost"
+              to={`/explain?kind=operation&id=${encodeURIComponent(operation.operation_id)}&diff=1`}
+            >
+              Сравнить
+            </Link>
+          </div>
         ) : null}
       </div>
 

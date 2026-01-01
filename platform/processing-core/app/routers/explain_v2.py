@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.explain_diff import ExplainDiffRequest, ExplainDiffResponse
+from app.schemas.explain_diff import ExplainDiffKind, ExplainDiffResponse
 from app.schemas.explain_v2 import ExplainActionCatalogItem, ExplainKind, ExplainV2Response
 from app.services import admin_auth, client_auth
 from app.services.explain_diff_service import build_explain_diff
@@ -165,11 +165,15 @@ def explain_actions(
     return list_actions_catalog(resolved_kind)
 
 
-@router.post("/diff", response_model=ExplainDiffResponse)
+@router.get("/diff", response_model=ExplainDiffResponse)
 def explain_diff(
-    payload: ExplainDiffRequest,
     request: Request,
     db: Session = Depends(get_db),
+    kind: ExplainDiffKind = Query(...),
+    id: str | None = None,
+    left_snapshot: str = Query(...),
+    right_snapshot: str = Query(...),
+    action_id: str | None = None,
     tenant_id: int | None = Query(None, ge=1),
 ) -> ExplainDiffResponse:
     token_type, token = _resolve_token_context(request)
@@ -178,20 +182,27 @@ def explain_diff(
         token_type=token_type,
         tenant_override=tenant_id,
     )
-    actions = [item.code for item in payload.actions]
-    if len(actions) < 1 or len(actions) > 3:
-        raise HTTPException(status_code=422, detail="actions_limit")
+    if kind != "kpi" and not id:
+        raise HTTPException(status_code=422, detail="id_required")
+    roles = _normalize_roles(token)
+    is_partner = any("PARTNER" in role for role in roles)
     try:
         return build_explain_diff(
             db,
-            kind=payload.context.kind,
-            context_id=payload.context.id,
-            actions=actions,
+            kind=kind,
+            entity_id=id,
+            left_snapshot=left_snapshot,
+            right_snapshot=right_snapshot,
+            action_id=action_id,
             tenant_id=resolved_tenant_id,
-            is_admin=token_type == "admin",
+            include_hidden=token_type == "admin",
+            include_weights=not is_partner,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        detail = str(exc)
+        if detail == "snapshot_not_found":
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
 __all__ = ["router"]

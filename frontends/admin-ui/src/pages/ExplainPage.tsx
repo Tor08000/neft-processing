@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
+import { reduceExplainDiffReasons, type ExplainDiffTab } from "../features/explain/diffReducer";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -103,35 +104,17 @@ const renderEvidenceValue = (item: ExplainEvidence) => {
 };
 
 const diffBadgeLabel: Record<string, string> = {
-  removed: "устранено",
+  removed: "убрано",
   weakened: "ослаблено",
   strengthened: "усилено",
   added: "добавлено",
+  unchanged: "без изменений",
 };
 
-const riskDeltaLabel = (delta: number) => {
-  const percentValue = Math.abs(delta * 100).toFixed(0);
-  if (delta < 0) return `Риск снизится на ${percentValue}%`;
-  if (delta > 0) return `Риск вырастет на ${percentValue}%`;
-  return "Риск не изменится";
-};
-
-const buildReasonStatusMap = (diff: ExplainDiffResponse | null) => {
-  const map = new Map<string, string>();
-  if (!diff) return map;
-  diff.diff.reasons.removed.forEach((code) => map.set(code, "removed"));
-  diff.diff.reasons.added.forEach((code) => map.set(code, "added"));
-  diff.diff.reasons.weakened.forEach((item) => map.set(item.code, "weakened"));
-  diff.diff.reasons.strengthened.forEach((item) => map.set(item.code, "strengthened"));
-  return map;
-};
-
-const buildEvidenceStatusMap = (diff: ExplainDiffResponse | null) => {
-  const map = new Map<string, string>();
-  if (!diff) return map;
-  diff.diff.evidence.removed.forEach((id) => map.set(id, "removed"));
-  diff.diff.evidence.added.forEach((id) => map.set(id, "added"));
-  return map;
+const formatDelta = (delta?: number | null) => {
+  if (delta === null || delta === undefined) return "—";
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toFixed(2)}`;
 };
 
 const ReasonTreeNode = ({
@@ -196,7 +179,7 @@ const ReasonTreeNode = ({
 };
 
 const EvidenceCard = ({ item, highlighted }: { item: ExplainEvidence; highlighted: boolean }) => (
-  <div className={`explain-evidence__card${highlighted ? " is-highlighted" : ""}`}>
+  <div className={`explain-evidence__card${highlighted ? " is-highlighted" : ""}`} data-evidence-id={item.id}>
     <div className="explain-evidence__meta">
       <div className="explain-evidence__chips">
         <span className="pill pill--neutral">{item.type}</span>
@@ -230,15 +213,16 @@ export const ExplainPage = () => {
   const [diffError, setDiffError] = useState<string | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
-  const [hoveredReason, setHoveredReason] = useState<string | null>(null);
-  const beforeRef = useRef<HTMLDivElement | null>(null);
-  const afterRef = useRef<HTMLDivElement | null>(null);
-  const syncGuard = useRef(false);
+  const [leftSnapshot, setLeftSnapshot] = useState("");
+  const [rightSnapshot, setRightSnapshot] = useState("");
+  const [actionId, setActionId] = useState("");
+  const [reasonTab, setReasonTab] = useState<ExplainDiffTab>("strong");
 
   const kind = searchParams.get("kind") ?? (searchParams.get("kpi_key") ? "kpi" : null);
   const entityId = searchParams.get("id");
   const kpiKey = searchParams.get("kpi_key");
   const windowDays = searchParams.get("window_days") ?? "7";
+  const diffRequested = searchParams.get("diff") === "1";
 
   useEffect(() => {
     if (payload?.reason_tree) {
@@ -258,6 +242,19 @@ export const ExplainPage = () => {
     setDiffError(null);
     setShowDiff(false);
   }, [payload?.id, kind]);
+
+  useEffect(() => {
+    setLeftSnapshot(searchParams.get("left_snapshot") ?? "");
+    setRightSnapshot(searchParams.get("right_snapshot") ?? "");
+    setActionId(searchParams.get("action_id") ?? "");
+    if (diffRequested) {
+      setShowDiff(true);
+    }
+  }, [diffRequested, searchParams]);
+
+  useEffect(() => {
+    setReasonTab("strong");
+  }, [diffData]);
 
   useEffect(() => {
     if (selectedReasonId) {
@@ -367,16 +364,22 @@ export const ExplainPage = () => {
   }, []);
 
   const loadDiff = useCallback(async () => {
-    if (!kind || selectedActions.length < 1) return;
-    const targetId = kind === "kpi" ? kpiKey : entityId;
-    if (!targetId) return;
+    if (!kind) return;
+    if (!leftSnapshot || !rightSnapshot) {
+      setDiffError("Укажите snapshot для сравнения.");
+      setShowDiff(true);
+      return;
+    }
     setIsDiffLoading(true);
     setDiffError(null);
     try {
       const diffKind = (kind === "marketplace_order" ? "order" : kind) as "operation" | "invoice" | "order" | "kpi";
       const response = await fetchExplainDiff({
-        context: { kind: diffKind, id: targetId },
-        actions: selectedActions.map((item) => ({ code: item.action_code })),
+        kind: diffKind,
+        id: diffKind === "kpi" ? undefined : entityId ?? undefined,
+        left_snapshot: leftSnapshot,
+        right_snapshot: rightSnapshot,
+        action_id: actionId || undefined,
       });
       setDiffData(response);
       setShowDiff(true);
@@ -387,7 +390,41 @@ export const ExplainPage = () => {
     } finally {
       setIsDiffLoading(false);
     }
-  }, [entityId, kind, kpiKey, selectedActions]);
+  }, [actionId, entityId, kind, leftSnapshot, rightSnapshot]);
+
+  const reasonSummary = useMemo(
+    () => reduceExplainDiffReasons(diffData?.reasons_diff ?? [], reasonTab),
+    [diffData?.reasons_diff, reasonTab],
+  );
+
+  const snapshotOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [
+      {
+        value: "latest",
+        label: payload?.generated_at ? `Последний · ${formatTimestamp(payload.generated_at)}` : "Последний",
+      },
+      { value: "previous", label: "Предыдущий" },
+      { value: "baseline", label: "Baseline" },
+    ];
+    if (payload?.policy_snapshot) {
+      options.push({ value: payload.policy_snapshot, label: `Policy · ${payload.policy_snapshot}` });
+    }
+    if (payload?.generated_at) {
+      options.push({
+        value: `generated_at:${payload.generated_at}`,
+        label: `Generated · ${formatTimestamp(payload.generated_at)}`,
+      });
+    }
+    const ensureOption = (value: string) => {
+      if (!value) return;
+      if (!options.some((item) => item.value === value)) {
+        options.push({ value, label: `Выбран: ${value}` });
+      }
+    };
+    ensureOption(leftSnapshot);
+    ensureOption(rightSnapshot);
+    return options;
+  }, [leftSnapshot, payload?.generated_at, payload?.policy_snapshot, rightSnapshot]);
 
   const actionOptions = useMemo<ExplainActionOption[]>(() => {
     const merged = [
@@ -465,26 +502,237 @@ export const ExplainPage = () => {
   const canCompare = kind !== "kpi" && entityId;
   const canDiff = Boolean(kind === "kpi" ? kpiKey : entityId);
 
-  const reasonStatusMap = useMemo(() => buildReasonStatusMap(diffData), [diffData]);
-  const evidenceStatusMap = useMemo(() => buildEvidenceStatusMap(diffData), [diffData]);
-
-  const handleScrollSync = useCallback((source: "before" | "after") => {
-    if (syncGuard.current) return;
-    const sourceEl = source === "before" ? beforeRef.current : afterRef.current;
-    const targetEl = source === "before" ? afterRef.current : beforeRef.current;
-    if (!sourceEl || !targetEl) return;
-    syncGuard.current = true;
-    targetEl.scrollTop = sourceEl.scrollTop;
-    window.setTimeout(() => {
-      syncGuard.current = false;
-    }, 0);
-  }, []);
-
   useEffect(() => {
     if (drawerOpen && canCompare && selectedActions.length >= 2 && !isWhatIfLoading) {
       void evaluate();
     }
   }, [drawerOpen, canCompare, selectedActions.length, evaluate, isWhatIfLoading]);
+
+  if (showDiff) {
+    return (
+      <div className="card">
+        <div className="card__header">
+          <Toast toast={toast} />
+          <div>
+            <h2>Explain Diff</h2>
+            <p className="muted">До → После · режим сравнения</p>
+          </div>
+          <button type="button" className="ghost" onClick={() => setShowDiff(false)}>
+            Назад к explain
+          </button>
+        </div>
+
+        <div className="explain-diff__controls">
+          <label>
+            Снимок: До
+            <select value={leftSnapshot} onChange={(event) => setLeftSnapshot(event.target.value)}>
+              <option value="">Выберите...</option>
+              {snapshotOptions.map((option) => (
+                <option key={`left-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={leftSnapshot}
+              onChange={(event) => setLeftSnapshot(event.target.value)}
+              placeholder="snapshot_id / policy_version"
+            />
+          </label>
+          <label>
+            Снимок: После
+            <select value={rightSnapshot} onChange={(event) => setRightSnapshot(event.target.value)}>
+              <option value="">Выберите...</option>
+              {snapshotOptions.map((option) => (
+                <option key={`right-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={rightSnapshot}
+              onChange={(event) => setRightSnapshot(event.target.value)}
+              placeholder="snapshot_id / policy_version"
+            />
+          </label>
+          <label>
+            Action (optional)
+            <input
+              type="text"
+              value={actionId}
+              onChange={(event) => setActionId(event.target.value)}
+              placeholder="action_id"
+            />
+          </label>
+          <div className="explain-diff__controls-actions">
+            <button type="button" className="neft-btn-primary" onClick={() => void loadDiff()}>
+              Сравнить
+            </button>
+            <button type="button" className="ghost" disabled title="Экспорт скоро">
+              Экспорт
+            </button>
+          </div>
+        </div>
+
+        {isDiffLoading ? <div className="card">Готовим diff...</div> : null}
+        {diffError ? <div className="card card--error">Ошибка: {diffError}</div> : null}
+
+        {diffData ? (
+          <div className="explain-diff__panel">
+            <div className="explain-diff__meta">
+              <div className="explain-diff__meta-item">
+                <span className="muted small">{diffData.meta.left.label}</span>
+                <strong>{diffData.decision_diff.before ?? "—"}</strong>
+              </div>
+              <div className="explain-diff__meta-item">
+                <span className="muted small">→</span>
+              </div>
+              <div className="explain-diff__meta-item">
+                <span className="muted small">{diffData.meta.right.label}</span>
+                <strong>{diffData.decision_diff.after ?? "—"}</strong>
+              </div>
+              <div className="explain-diff__meta-item">
+                <span className="muted small">Δ риска</span>
+                <strong
+                  className={`explain-diff__delta ${diffData.score_diff.delta && diffData.score_diff.delta < 0 ? "is-improved" : diffData.score_diff.delta && diffData.score_diff.delta > 0 ? "is-worsened" : ""}`}
+                >
+                  {diffData.score_diff.delta === null || diffData.score_diff.delta === undefined
+                    ? "—"
+                    : `${diffData.score_diff.delta < 0 ? "↓" : diffData.score_diff.delta > 0 ? "↑" : "→"} ${formatDelta(
+                        diffData.score_diff.delta,
+                      )}`}
+                </strong>
+              </div>
+            </div>
+
+            <div className="card explain-card explain-diff__summary">
+              <div>
+                <div className="muted small">Risk</div>
+                <div className="explain-diff__risk">
+                  <strong>{diffData.score_diff.risk_before?.toFixed(2) ?? "—"}</strong>
+                  <span>→</span>
+                  <strong>{diffData.score_diff.risk_after?.toFixed(2) ?? "—"}</strong>
+                </div>
+              </div>
+              <div
+                className={`explain-diff__delta ${diffData.score_diff.delta && diffData.score_diff.delta < 0 ? "is-improved" : diffData.score_diff.delta && diffData.score_diff.delta > 0 ? "is-worsened" : ""}`}
+              >
+                {formatDelta(diffData.score_diff.delta)}
+              </div>
+            </div>
+
+            <div className="card explain-card">
+              <div className="explain-diff__section-header">
+                <h3>Причины</h3>
+              </div>
+              <div className="explain-diff__tabs">
+                {(
+                  [
+                    { id: "strong", label: "Сильно изменилось" },
+                    { id: "added", label: "Добавилось" },
+                    { id: "removed", label: "Убрано" },
+                    { id: "all", label: "Показать всё" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`explain-diff__tab${reasonTab === tab.id ? " is-active" : ""}`}
+                    onClick={() => setReasonTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="explain-diff__table">
+                <div className="explain-diff__row explain-diff__row--head">
+                  <span>Причина</span>
+                  <span>Было</span>
+                  <span>Стало</span>
+                  <span>Δ</span>
+                </div>
+                {reasonSummary.visible.length ? (
+                  reasonSummary.visible.map((reason) => (
+                    <div key={reason.reason_code} className={`explain-diff__row is-${reason.status}`}>
+                      <span className="explain-diff__reason">
+                        {reason.reason_code}
+                        <span className="pill pill--outline">{diffBadgeLabel[reason.status]}</span>
+                      </span>
+                      <span>{reason.weight_before ?? "—"}</span>
+                      <span>{reason.weight_after ?? "—"}</span>
+                      <span>{formatDelta(reason.delta)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="muted small">Нет значимых изменений.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="card explain-card">
+              <h3>Evidence</h3>
+              {diffData.evidence_diff.length ? (
+                <div className="explain-diff__evidence-columns">
+                  {(["removed", "added"] as const).map((status) => (
+                    <div key={status} className="explain-diff__evidence-column">
+                      <div className="muted small">{status === "removed" ? "Removed" : "Added"}</div>
+                      <div className="explain-diff__list">
+                        {diffData.evidence_diff
+                          .filter((item) => item.status === status)
+                          .map((item) => (
+                            <button
+                              key={item.evidence_id}
+                              type="button"
+                              className={`explain-diff__item is-${item.status}`}
+                              onClick={() => {
+                                const anchor = document.querySelector(`[data-evidence-id="${item.evidence_id}"]`);
+                                if (anchor) {
+                                  anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+                                }
+                              }}
+                            >
+                              <span>{item.evidence_id}</span>
+                              <span className="pill pill--outline">{item.status}</span>
+                            </button>
+                          ))}
+                        {!diffData.evidence_diff.some((item) => item.status === status) ? (
+                          <div className="muted small">Нет изменений.</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted small">Изменений нет.</div>
+              )}
+            </div>
+
+            {diffData.action_impact ? (
+              <div className="card explain-card">
+                <h3>Action impact</h3>
+                <div className="explain-diff__action">
+                  <div>
+                    <div className="muted small">Action</div>
+                    <strong>{diffData.action_impact.action_id}</strong>
+                  </div>
+                  <div>
+                    <div className="muted small">Ожидаемый эффект</div>
+                    <strong>{formatDelta(diffData.action_impact.expected_delta)}</strong>
+                  </div>
+                  <div>
+                    <div className="muted small">Confidence</div>
+                    <strong>{diffData.action_impact.confidence.toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="explain-v2">
@@ -498,10 +746,9 @@ export const ExplainPage = () => {
           <button
             type="button"
             className="neft-btn-secondary"
-            onClick={() => void loadDiff()}
-            disabled={selectedActions.length < 1 || !canDiff}
+            onClick={() => setShowDiff(true)}
           >
-            Показать изменения
+            Сравнить
           </button>
           <button type="button" className="neft-btn-secondary" onClick={copyLink}>
             Скопировать ссылку
@@ -658,13 +905,12 @@ export const ExplainPage = () => {
               <button
                 type="button"
                 className="primary"
-                onClick={() => void loadDiff()}
-                disabled={!canDiff || selectedActions.length < 1}
+                onClick={() => setShowDiff(true)}
+                disabled={!canDiff}
               >
-                Показать изменения
+                Сравнить
               </button>
               {!canCompare ? <span className="muted small">What-if доступен только для операций/инвойсов/заказов.</span> : null}
-              {selectedActions.length < 1 ? <span className="muted small">Выберите минимум 1 действие.</span> : null}
               <button type="button" className="ghost" onClick={openWhatIf} disabled={!canCompare}>
                 Открыть What-if
               </button>
@@ -705,8 +951,8 @@ export const ExplainPage = () => {
                 >
                   Запустить симуляцию
                 </button>
-                <button type="button" className="ghost" onClick={() => void loadDiff()} disabled={selectedActions.length < 1}>
-                  Показать изменения
+                <button type="button" className="ghost" onClick={() => setShowDiff(true)} disabled={!canDiff}>
+                  Сравнить
                 </button>
                 <div className="muted small">Применение недоступно — только симуляция.</div>
               </div>

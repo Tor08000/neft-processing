@@ -48,6 +48,9 @@ export function OperationDetailsPage() {
           <Link to={`/explain?kind=operation&id=${encodeURIComponent(operation.id)}`} className="ghost">
             Explain
           </Link>
+          <Link to={`/explain?kind=operation&id=${encodeURIComponent(operation.id)}&diff=1`} className="ghost">
+            Сравнить
+          </Link>
           <Link to="/documents" className="ghost">
             Related documents
           </Link>

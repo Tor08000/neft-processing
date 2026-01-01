@@ -120,6 +120,14 @@ export function MarketplaceOrderDetailsPage() {
                 Explain
               </Link>
             ) : null}
+            {orderId ? (
+              <Link
+                to={`/explain?kind=marketplace_order&id=${encodeURIComponent(orderId)}&diff=1`}
+                className="link-button"
+              >
+                Сравнить
+              </Link>
+            ) : null}
             <Link to="/marketplace/orders" className="link-button">
               Назад к заказам
             </Link>
