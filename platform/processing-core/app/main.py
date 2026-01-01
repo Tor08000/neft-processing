@@ -24,6 +24,8 @@ from app.routers.client import router as client_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
 from app.routers.kpi import router as kpi_router
+from app.routers.subscriptions_admin import router as subscriptions_admin_router
+from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
 from app.services.bootstrap import ensure_default_refs
@@ -388,6 +390,8 @@ app.include_router(kpi_router, prefix=API_PREFIX_CORE)
 app.include_router(explain_v2_router, prefix=API_PREFIX_CORE)
 app.include_router(cases_router, prefix=API_PREFIX_CORE)
 app.include_router(achievements_router, prefix=API_PREFIX_CORE)
+app.include_router(subscriptions_router, prefix=API_PREFIX_CORE)
+app.include_router(subscriptions_admin_router, prefix=API_PREFIX_CORE)
 app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
@@ -430,6 +434,8 @@ core_prefixed_router.include_router(kpi_router)
 core_prefixed_router.include_router(explain_v2_router)
 core_prefixed_router.include_router(cases_router)
 core_prefixed_router.include_router(achievements_router)
+core_prefixed_router.include_router(subscriptions_router)
+core_prefixed_router.include_router(subscriptions_admin_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(client_portal_router)
 core_prefixed_router.include_router(client_documents_router)

@@ -17,6 +17,8 @@ const baseNavItems = [
   { to: "/crm/contracts", label: "CRM · Contracts" },
   { to: "/crm/tariffs", label: "CRM · Tariffs" },
   { to: "/crm/subscriptions", label: "CRM · Subscriptions" },
+  { to: "/subscriptions/plans", label: "Subscriptions · Plans" },
+  { to: "/subscriptions/gamification", label: "Subscriptions · Gamification" },
   { to: "/money/health", label: "Money · Health" },
   { to: "/money/replay", label: "Money · Replay" },
   { to: "/explain", label: "Explain v2" },
