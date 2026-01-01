@@ -52,6 +52,12 @@ class Settings:
         "yes",
     }
 
+    # Audit retention defaults
+    AUDIT_EXPORT_RETENTION_DAYS: int = int(os.getenv("AUDIT_EXPORT_RETENTION_DAYS", "180"))
+    AUDIT_ATTACHMENT_RETENTION_DAYS: int = int(os.getenv("AUDIT_ATTACHMENT_RETENTION_DAYS", "365"))
+    AUDIT_DEBUG_RETENTION_DAYS: int = int(os.getenv("AUDIT_DEBUG_RETENTION_DAYS", "30"))
+    AUDIT_CACHE_RETENTION_DAYS: int = int(os.getenv("AUDIT_CACHE_RETENTION_DAYS", "7"))
+
     # Billing & clearing configuration
     NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))
     NEFT_BILLING_TZ: str = os.getenv("NEFT_BILLING_TZ", "UTC")
