@@ -23,6 +23,7 @@ const baseNavItems = [
   { to: "/ops/escalations", label: "Ops · Escalations" },
   { to: "/ops/kpi", label: "Ops · KPI" },
   { to: "/support/requests", label: "Support Inbox" },
+  { to: "/support/cases", label: "Support Inbox · Cases" },
 ];
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {

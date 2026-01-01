@@ -117,6 +117,14 @@ from .support_request import (  # noqa: F401
     SupportRequestStatus,
     SupportRequestSubjectType,
 )
+from .cases import (  # noqa: F401
+    Case,
+    CaseComment,
+    CaseKind,
+    CasePriority,
+    CaseSnapshot,
+    CaseStatus,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -499,6 +507,12 @@ __all__ = [
     "FuelStation",
     "FuelStationStatus",
     "StationReputationDaily",
+    "Case",
+    "CaseComment",
+    "CaseKind",
+    "CasePriority",
+    "CaseSnapshot",
+    "CaseStatus",
     "FuelTransaction",
     "FuelTransactionStatus",
     "FuelType",

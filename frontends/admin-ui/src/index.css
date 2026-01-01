@@ -514,6 +514,35 @@ p {
   max-width: 520px;
 }
 
+.timeline-list {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.timeline-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.timeline-item__title {
+  font-weight: 600;
+}
+
+.timeline-item__body {
+  color: var(--neft-text);
+}
+
 .role-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -560,6 +589,26 @@ p {
   padding: 20px;
   box-shadow: var(--neft-shadow-lg);
   border: 1px solid var(--neft-border);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal__body {
+  display: grid;
+  gap: 12px;
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .toast {

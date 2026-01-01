@@ -72,6 +72,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
         { to: "/marketplace", label: t("nav.marketplace"), icon: <ShoppingCart size={18} /> },
         { to: "/actions", label: t("nav.actions"), icon: <ClipboardCheck size={18} /> },
         { to: "/support/requests", label: t("nav.supportRequests"), icon: <MessageCircle size={18} /> },
+        { to: "/cases", label: t("nav.cases"), icon: <MessageCircle size={18} /> },
         { to: "/settings", label: t("nav.settings"), icon: <Settings size={18} /> },
         { to: "/settings/management", label: t("nav.management"), icon: <Settings size={18} /> },
       ];

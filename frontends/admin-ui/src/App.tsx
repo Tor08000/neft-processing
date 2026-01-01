@@ -33,6 +33,8 @@ import SubscriptionCfoExplainPage from "./pages/crm/SubscriptionCfoExplainPage";
 import MoneyHealthPage from "./pages/money/MoneyHealthPage";
 import MoneyReplayPage from "./pages/money/MoneyReplayPage";
 import InvoiceCfoExplainPage from "./pages/money/InvoiceCfoExplainPage";
+import CasesListPage from "./pages/support/CasesListPage";
+import CaseDetailsPage from "./pages/support/CaseDetailsPage";
 
 export function App() {
   return (
@@ -72,6 +74,8 @@ export function App() {
             <Route path="/money/health" element={<MoneyHealthPage />} />
             <Route path="/money/replay" element={<MoneyReplayPage />} />
             <Route path="/money/invoices/:id/cfo-explain" element={<InvoiceCfoExplainPage />} />
+            <Route path="/support/cases" element={<CasesListPage />} />
+            <Route path="/support/cases/:id" element={<CaseDetailsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />

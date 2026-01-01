@@ -12,7 +12,7 @@ PROJECT_NAME := neft-processing
         migrate test test-core test-auth test-ai test-workers \
         health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
-        clean-volumes clean-images kpi-smoke
+        clean-volumes clean-images kpi-smoke cases-smoke
 
 # ----------------------------------------
 # БАЗОВЫЕ ОПЕРАЦИИ С СТЕКОМ
@@ -155,6 +155,15 @@ smoke:
 kpi-smoke:
 	curl "http://localhost:8001/api/core/kpi/summary?window_days=7"
 	curl "http://localhost:8001/api/core/achievements/summary?window_days=7"
+
+cases-smoke:
+	@if [ -z "$$CASES_TOKEN" ]; then echo "CASES_TOKEN is required"; exit 1; fi
+	curl -s -X POST "http://localhost/api/core/cases" \
+	  -H "Authorization: Bearer $$CASES_TOKEN" \
+	  -H "Content-Type: application/json" \
+	  -d '{"kind":"operation","entity_id":"op_123","priority":"MEDIUM","note":"smoke case","explain":{"decision":"DECLINE","score":82},"diff":{"score_diff":{"risk_before":0.82,"risk_after":0.47}},"selected_actions":[{"code":"REQUEST_DOCS","what_if":{"impact":0.1}}]}' | cat
+	curl -s -X GET "http://localhost/api/core/cases?limit=5" \
+	  -H "Authorization: Bearer $$CASES_TOKEN" | cat
 
 # ----------------------------------------
 # ALEMBIC VERSION TABLE CHECK
