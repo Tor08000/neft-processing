@@ -894,7 +894,7 @@ export const ExplainPage = () => {
       <div className="page-header">
         <div>
           <h1>Explain v2</h1>
-          <p className="muted">Почему принято решение и как можно повлиять на риск.</p>
+          <p className="muted">Решение, причины, статус, действия.</p>
         </div>
         <div className="stack-inline">
           <button
@@ -924,7 +924,23 @@ export const ExplainPage = () => {
       {isLoading ? <div className="card">Загружаем explain...</div> : null}
       {error ? (
         <div className="card card--error">
-          <div>Ошибка: {error}</div>
+          <div className="stack">
+            <div>
+              <strong>Проблема:</strong> Данные Explain временно недоступны.
+            </div>
+            <div>
+              <strong>Причина:</strong> {error}
+            </div>
+            <div>
+              <strong>Статус:</strong> ожидание повторной попытки.
+            </div>
+            <div>
+              <strong>Система:</strong> повторит запрос через 60 секунд.
+            </div>
+            <div>
+              <strong>Действие:</strong> можно запустить запрос вручную.
+            </div>
+          </div>
           <button type="button" className="ghost" onClick={() => void loadExplain()}>
             Повторить
           </button>
@@ -932,7 +948,25 @@ export const ExplainPage = () => {
       ) : null}
 
       {!isLoading && !error && !payload?.reason_tree ? (
-        <div className="card card--empty">Explain недоступен. Попробуйте позже.</div>
+        <div className="card card--empty">
+          <div className="stack">
+            <div>
+              <strong>Проблема:</strong> Нет данных Explain.
+            </div>
+            <div>
+              <strong>Причина:</strong> Explain не сформирован по выбранным параметрам.
+            </div>
+            <div>
+              <strong>Статус:</strong> данных нет.
+            </div>
+            <div>
+              <strong>Система:</strong> работает штатно.
+            </div>
+            <div>
+              <strong>Действие:</strong> уточните параметры или выберите другой период.
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {payload ? (
@@ -971,7 +1005,7 @@ export const ExplainPage = () => {
                 />
               </div>
             ) : (
-              <div className="muted">Reason tree недоступен.</div>
+              <div className="muted">Дерево причин недоступно.</div>
             )}
           </section>
 

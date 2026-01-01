@@ -643,7 +643,7 @@ export function ExplainPage() {
         <Toast toast={toast} />
         <div>
           <h2>Explain v2</h2>
-          <p className="muted">Почему принято решение и какие есть доказательства.</p>
+          <p className="muted">Решение, причины, статус, действия.</p>
         </div>
         <div className="stack-inline">
           <button
@@ -666,10 +666,54 @@ export function ExplainPage() {
       </div>
 
       {isLoading ? <AppLoadingState label="Загружаем explain..." /> : null}
-      {error ? <AppErrorState message={error} onRetry={loadExplain} /> : null}
+      {error ? (
+        <AppErrorState
+          message={
+            <div className="stack">
+              <div>
+                <strong>Проблема:</strong> Данные Explain временно недоступны.
+              </div>
+              <div>
+                <strong>Причина:</strong> {error}
+              </div>
+              <div>
+                <strong>Статус:</strong> ожидание повторной попытки.
+              </div>
+              <div>
+                <strong>Система:</strong> повторит запрос через 60 секунд.
+              </div>
+              <div>
+                <strong>Действие:</strong> можно запустить запрос вручную.
+              </div>
+            </div>
+          }
+          onRetry={loadExplain}
+        />
+      ) : null}
 
       {!isLoading && !error && !payload?.reason_tree ? (
-        <AppEmptyState title="Explain недоступен" description="Попробуйте позже или уточните параметры." />
+        <AppEmptyState
+          title="Нет данных Explain"
+          description={
+            <div className="stack">
+              <div>
+                <strong>Проблема:</strong> Нет данных Explain.
+              </div>
+              <div>
+                <strong>Причина:</strong> Explain не сформирован по выбранным параметрам.
+              </div>
+              <div>
+                <strong>Статус:</strong> данных нет.
+              </div>
+              <div>
+                <strong>Система:</strong> работает штатно.
+              </div>
+              <div>
+                <strong>Действие:</strong> уточните параметры или выберите другой период.
+              </div>
+            </div>
+          }
+        />
       ) : null}
 
       {payload ? (
@@ -707,7 +751,7 @@ export function ExplainPage() {
                 />
               </div>
             ) : (
-              <p className="muted">Reason tree недоступен.</p>
+              <p className="muted">Дерево причин недоступно.</p>
             )}
           </section>
 

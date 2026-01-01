@@ -3,7 +3,7 @@ import { useI18n } from "../i18n";
 
 type StateLayoutProps = {
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
   meta?: ReactNode;
 };
@@ -11,7 +11,7 @@ type StateLayoutProps = {
 const StateLayout = ({ title, description, action, meta }: StateLayoutProps) => (
   <div className="card state">
     <h2>{title}</h2>
-    {description && <p className="muted">{description}</p>}
+    {description ? <div className="muted">{description}</div> : null}
     {meta ? <div className="muted small">{meta}</div> : null}
     {action ? <div className="actions">{action}</div> : null}
   </div>
@@ -30,7 +30,7 @@ export const AppEmptyState = ({
   action,
 }: {
   title?: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
 }) => {
   const { t } = useI18n();
@@ -43,7 +43,7 @@ export const AppErrorState = ({
   status,
   correlationId,
 }: {
-  message: string;
+  message: ReactNode;
   onRetry?: () => void;
   status?: number;
   correlationId?: string | null;
@@ -57,7 +57,7 @@ const ErrorStateContent = ({
   status,
   correlationId,
 }: {
-  message: string;
+  message: ReactNode;
   onRetry?: () => void;
   status?: number;
   correlationId?: string | null;
