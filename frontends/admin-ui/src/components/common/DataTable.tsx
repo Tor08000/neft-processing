@@ -1,5 +1,6 @@
 import React from "react";
 import { EmptyState } from "./EmptyState";
+import { ErrorState } from "./ErrorState";
 import { TableSkeleton } from "./TableSkeleton";
 import { TableDensityToggle } from "./TableDensityToggle";
 import { useTableDensity } from "./useTableDensity";
@@ -15,6 +16,13 @@ interface DataTableProps<T> {
   data: T[];
   columns: DataColumn<T>[];
   loading?: boolean;
+  errorState?: {
+    title: string;
+    description?: string;
+    actionLabel?: string;
+    actionOnClick?: () => void;
+    details?: string;
+  };
   emptyMessage?: string;
   emptyState?: {
     title: string;
@@ -40,6 +48,7 @@ export function DataTable<T>({
   columns,
   loading,
   emptyMessage = "Нет данных",
+  errorState,
   emptyState,
   onRowClick,
 }: DataTableProps<T>) {
@@ -63,6 +72,21 @@ export function DataTable<T>({
             </table>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (errorState) {
+    return (
+      <div className="table-shell">
+        <TableDensityToggle density={density} onChange={setDensity} />
+        <ErrorState
+          title={errorState.title}
+          description={errorState.description}
+          actionLabel={errorState.actionLabel}
+          onAction={errorState.actionOnClick}
+          details={errorState.details}
+        />
       </div>
     );
   }

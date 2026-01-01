@@ -105,12 +105,7 @@ export function AnalyticsDashboardPage() {
     return Math.max(documentsSummary.issued, documentsSummary.signed, documentsSummary.edo_pending, documentsSummary.edo_failed);
   }, [documentsSummary]);
 
-  const hasContent = Boolean(
-    dailyMetrics?.spend.series.length ||
-      dailyMetrics?.orders.series.length ||
-      declines?.top_reasons.length ||
-      documentsSummary,
-  );
+  const hasContent = Boolean(dailyMetrics || declines || documentsSummary || exportsSummary);
 
   if (!user || !canAccess) {
     return <AppForbiddenState message={t("analytics.forbidden") } />;

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 export type TableDensity = "compact" | "comfortable";
 
-const STORAGE_KEY = "neft-table-density";
+const STORAGE_KEY = "neft.tableDensity.admin";
 const DEFAULT_DENSITY: TableDensity = "comfortable";
 
 export function useTableDensity() {
