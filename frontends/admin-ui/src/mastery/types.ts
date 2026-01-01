@@ -19,6 +19,7 @@ export type MasteryEvent = {
   type: MasteryEventType;
   at: string;
   score?: MasteryScoreSnapshot;
+  score_after?: MasteryScoreSnapshot;
   selected_actions_count?: number;
   case_id?: string;
 };

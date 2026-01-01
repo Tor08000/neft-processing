@@ -68,20 +68,27 @@ export const recordCaseCreated = (options: {
   );
 };
 
-export const recordCaseClosed = (caseId: string) => {
-  appendMasteryEvent(buildEvent("case_closed", { case_id: caseId }));
+export const recordCaseClosed = (caseId: string, options?: { scoreSnapshot?: ExplainScore | null }) => {
+  appendMasteryEvent(
+    buildEvent("case_closed", {
+      case_id: caseId,
+      score: toScoreSnapshot(options?.scoreSnapshot ?? null),
+    }),
+  );
 };
 
 export const recordActionApplied = (options: {
   caseId?: string | null;
   selectedActionsCount?: number;
-  score?: ExplainScore | null;
+  scoreBefore?: ExplainScore | null;
+  scoreAfter?: ExplainScore | null;
 }) => {
   appendMasteryEvent(
     buildEvent("action_applied", {
       case_id: options.caseId ?? undefined,
       selected_actions_count: options.selectedActionsCount,
-      score: toScoreSnapshot(options.score),
+      score: toScoreSnapshot(options.scoreBefore ?? null),
+      score_after: toScoreSnapshot(options.scoreAfter ?? null),
     }),
   );
 };

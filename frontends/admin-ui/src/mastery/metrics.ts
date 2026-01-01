@@ -97,11 +97,12 @@ export const computeQualitySignals = (events: MasteryEvent[]): Pick<MasterySigna
         new Date(candidate.at).getTime() - eventTime <= windowMs,
     );
 
-    if (!nextExplain) continue;
-    if (isImproved(event.score, nextExplain.score)) {
+    const afterScore = event.score_after ?? nextExplain?.score;
+    if (!afterScore) continue;
+    if (isImproved(event.score, afterScore)) {
       improvements += 1;
     }
-    if (isCleanAfterAction(event.score, nextExplain.score)) {
+    if (isCleanAfterAction(event.score, afterScore)) {
       cleanAfterActionCount += 1;
     }
   }
