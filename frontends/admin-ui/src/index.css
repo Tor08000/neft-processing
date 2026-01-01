@@ -892,11 +892,121 @@ p {
   text-align: right;
 }
 
+.explain-control-bar__status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .explain-control-bar__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.explain-control-bar__achievements {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--neft-border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.explain-achievement {
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.score-badge--compact {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.score-badge--clean {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+
+.score-badge--risky {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+.score-badge--critical {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.explain-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.explain-metric__bar {
+  width: 72px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.explain-metric__fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.8));
+}
+
+.explain-metric__value {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--neft-text);
+}
+
+.penalty-marker {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.penalty-marker--clean {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+
+.penalty-marker--risky {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+.penalty-marker--critical {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
 }
 
 .segmented-control {
