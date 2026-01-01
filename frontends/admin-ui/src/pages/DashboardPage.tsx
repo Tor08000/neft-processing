@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { listUsers } from "../api/adminUsers";
 import { useAuth } from "../auth/AuthContext";
+import { Toast } from "../components/common/Toast";
+import { useToast } from "../components/Toast/useToast";
 import { AchievementBadge } from "../features/achievements/components/AchievementBadge";
 import { StreakWidget } from "../features/achievements/components/StreakWidget";
 import { useAchievements } from "../features/achievements/useAchievements";
@@ -11,10 +13,11 @@ import type { AdminUser } from "../types/users";
 
 export const DashboardPage: React.FC = () => {
   const { user, accessToken, logout } = useAuth();
+  const { toast, showToast } = useToast();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const { kpis, hints } = useKpis();
-  const { badges, streak } = useAchievements();
+  const { kpis, hints } = useKpis({ showToast });
+  const { badges, streak } = useAchievements({ showToast });
 
   useEffect(() => {
     if (!accessToken) return;
@@ -31,6 +34,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="stack">
+      <Toast toast={toast} />
       <div className="card">
         <h2>Добро пожаловать, {user?.email}</h2>
         <p className="muted">Роль: {user?.roles.join(", ")}</p>

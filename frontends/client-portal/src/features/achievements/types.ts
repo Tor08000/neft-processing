@@ -5,6 +5,7 @@ export interface AchievementBadgeData {
   icon: string;
   title: string;
   description: string;
+  details?: string;
   status: AchievementStatus;
   progress?: number;
 }
