@@ -130,6 +130,7 @@ from .cases import (  # noqa: F401
     CaseSlaState,
     CaseStatus,
 )
+from .case_exports import CaseExport, CaseExportKind  # noqa: F401
 from .audit_retention import AuditLegalHold, AuditLegalHoldScope, AuditPurgeLog  # noqa: F401
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
 from neft_shared.settings import get_settings
 
 from app.models.audit_retention import AuditPurgeLog
-from app.models.cases import CaseSnapshot
+from app.models.case_exports import CaseExport
 from app.services.audit_retention_service import has_active_legal_hold
+from app.services.export_storage import ExportStorage
 
 
 @dataclass
@@ -36,32 +37,34 @@ def purge_expired_exports(
     policy: str = "case_exports_retention",
     sample_limit: int = 10,
 ) -> PurgeResult:
-    """Purge case snapshot exports (case_snapshots)."""
+    """Purge case exports (case_exports)."""
 
     settings = get_settings()
     effective_retention = retention_days or settings.AUDIT_EXPORT_RETENTION_DAYS
     resolved_now = _resolve_now(now)
-    cutoff = resolved_now - timedelta(days=effective_retention)
-
-    snapshots = (
-        db.query(CaseSnapshot)
-        .filter(CaseSnapshot.created_at < cutoff)
-        .order_by(CaseSnapshot.created_at.asc())
+    exports = (
+        db.query(CaseExport)
+        .filter(
+            CaseExport.deleted_at.is_(None),
+            CaseExport.retention_until.isnot(None),
+            CaseExport.retention_until < resolved_now,
+        )
+        .order_by(CaseExport.retention_until.asc())
         .all()
     )
 
-    eligible: list[CaseSnapshot] = []
+    eligible: list[CaseExport] = []
     skipped_hold = 0
-    for snapshot in snapshots:
-        if has_active_legal_hold(db, case_id=str(snapshot.case_id)):
+    for export in exports:
+        if has_active_legal_hold(db, case_id=str(export.case_id) if export.case_id else None):
             skipped_hold += 1
             continue
-        eligible.append(snapshot)
+        eligible.append(export)
 
-    sample_ids = [str(snapshot.id) for snapshot in eligible[:sample_limit]]
+    sample_ids = [str(export.id) for export in eligible[:sample_limit]]
     if dry_run:
         return PurgeResult(
-            entity_type="case_snapshot",
+            entity_type="case_export",
             retention_days=effective_retention,
             candidates=len(eligible),
             purged=0,
@@ -69,23 +72,28 @@ def purge_expired_exports(
             sample_ids=sample_ids,
         )
 
+    storage = ExportStorage()
     purged = 0
-    for snapshot in eligible:
-        db.delete(snapshot)
+    for export in eligible:
+        storage.delete(export.object_key)
+        export.deleted_at = resolved_now
+        export.delete_reason = "retention"
+        db.add(export)
         db.add(
             AuditPurgeLog(
-                entity_type="case_snapshot",
-                entity_id=str(snapshot.id),
-                case_id=str(snapshot.case_id),
+                entity_type="case_export",
+                entity_id=str(export.id),
+                case_id=str(export.case_id) if export.case_id else None,
                 policy=policy,
                 retention_days=effective_retention,
                 purged_by=purged_by,
+                reason="retention",
             )
         )
         purged += 1
 
     return PurgeResult(
-        entity_type="case_snapshot",
+        entity_type="case_export",
         retention_days=effective_retention,
         candidates=len(eligible),
         purged=purged,

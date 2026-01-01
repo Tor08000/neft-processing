@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { createCase, type CaseKind, type CasePriority } from "../api/cases";
+import { createCaseExport, type CaseExportKind } from "../api/adminExports";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
 import { CopyButton } from "../components/CopyButton/CopyButton";
 import { JsonViewer } from "../components/common/JsonViewer";
@@ -74,6 +75,8 @@ const formatTime = (value?: Date | null) => {
   if (!value) return "—";
   return value.toLocaleTimeString("ru-RU");
 };
+
+const shortenHash = (value: string, length = 12) => (value.length > length ? `${value.slice(0, length)}…` : value);
 
 const scoreBandLabel = (band?: string | null) => {
   if (!band) return "—";
@@ -381,6 +384,14 @@ export const ExplainPage = () => {
   const [diffData, setDiffData] = useState<ExplainDiffResponse | null>(null);
   const [diffError, setDiffError] = useState<ErrorDetails | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
+  const [exportInfo, setExportInfo] = useState<{
+    id: string;
+    sha: string;
+    url?: string | null;
+    expiresIn?: number | null;
+  } | null>(null);
+  const [useServerExport, setUseServerExport] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [reasonTab, setReasonTab] = useState<ExplainDiffTab>("strong");
   const [caseModalOpen, setCaseModalOpen] = useState(false);
   const [isCaseSubmitting, setIsCaseSubmitting] = useState(false);
@@ -834,6 +845,7 @@ export const ExplainPage = () => {
     setWhatIf(null);
     setDiffData(null);
     setDiffError(null);
+    setExportInfo(null);
   }, []);
 
   const shareUrl = useMemo(() => {
@@ -848,7 +860,18 @@ export const ExplainPage = () => {
     showToast("success", "Ссылка скопирована");
   }, [shareUrl, showToast]);
 
-  const handleExport = useCallback(() => {
+  const copyExportLink = useCallback(async () => {
+    if (!exportInfo?.url) return;
+    await navigator.clipboard.writeText(exportInfo.url);
+    showToast("success", "Export link copied");
+  }, [exportInfo?.url, showToast]);
+
+  const openExportDownload = useCallback(() => {
+    if (!exportInfo?.url) return;
+    window.open(exportInfo.url, "_blank", "noopener,noreferrer");
+  }, [exportInfo?.url]);
+
+  const handleExport = useCallback(async () => {
     const payloadData = {
       meta: {
         generated_at: new Date().toISOString(),
@@ -888,6 +911,30 @@ export const ExplainPage = () => {
         note: queryState.caseNote || null,
       },
     };
+    const exportKind: CaseExportKind =
+      queryState.mode === "diff" ? "DIFF" : queryState.mode === "case" ? "CASE" : "EXPLAIN";
+    if (useServerExport) {
+      setIsExporting(true);
+      try {
+        const response = await createCaseExport({
+          kind: exportKind,
+          case_id: createdCaseId,
+          payload: payloadData,
+        });
+        setExportInfo({
+          id: response.id,
+          sha: response.content_sha256,
+          url: response.download?.url ?? null,
+          expiresIn: response.download?.expires_in ?? null,
+        });
+        showToast("success", "Export saved to storage");
+      } catch (err) {
+        showToast("error", (err as Error).message);
+      } finally {
+        setIsExporting(false);
+      }
+      return;
+    }
     const redactedPayload = redactForExport(payloadData);
     const exportType: CaseExportType = queryState.mode === "diff" ? "diff" : "explain";
     if (createdCaseId) {
@@ -909,6 +956,9 @@ export const ExplainPage = () => {
     queryState,
     streak.count,
     unlockedAchievementKeys,
+    createdCaseId,
+    showToast,
+    useServerExport,
   ]);
 
   const toggleNode = useCallback((nodeId: string) => {
@@ -1071,9 +1121,22 @@ export const ExplainPage = () => {
             <button type="button" className="ghost" onClick={copyLink}>
               Share
             </button>
-            <button type="button" className="ghost" onClick={handleExport} disabled={!canExport}>
-              Export
+            <button
+              type="button"
+              className="ghost"
+              onClick={handleExport}
+              disabled={!canExport || isExporting}
+            >
+              {isExporting ? "Exporting..." : "Export"}
             </button>
+            <label className="checkbox explain-control-bar__toggle">
+              <input
+                type="checkbox"
+                checked={useServerExport}
+                onChange={(event) => setUseServerExport(event.target.checked)}
+              />
+              <span>Server export</span>
+            </label>
           </div>
 
           <div className="explain-control-bar__status">
@@ -1142,6 +1205,49 @@ export const ExplainPage = () => {
           </div>
         </div>
       </div>
+
+      {exportInfo ? (
+        <section className="card export-info">
+          <div className="export-info__header">
+            <strong>Export recorded in audit chain</strong>
+            <span className="muted small">
+              {exportInfo.expiresIn ? `Signed URL expires in ${exportInfo.expiresIn}s` : null}
+            </span>
+          </div>
+          <div className="export-info__meta">
+            <div>
+              <div className="label">Export ID</div>
+              <div className="export-info__row">
+                <span className="code-inline">{exportInfo.id}</span>
+                <CopyButton value={exportInfo.id} label="Copy ID" />
+              </div>
+            </div>
+            <div>
+              <div className="label">SHA256</div>
+              <div className="export-info__row">
+                <span className="code-inline" title={exportInfo.sha}>
+                  {shortenHash(exportInfo.sha)}
+                </span>
+                <CopyButton value={exportInfo.sha} label="Copy SHA" />
+              </div>
+            </div>
+          </div>
+          <div className="export-info__actions">
+            {exportInfo.url ? (
+              <>
+                <button type="button" className="neft-btn-primary" onClick={openExportDownload}>
+                  Download
+                </button>
+                <button type="button" className="neft-btn-secondary" onClick={copyExportLink}>
+                  Copy link
+                </button>
+              </>
+            ) : (
+              <span className="muted">Signed URL unavailable</span>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <div className="explain-layout">
         <div className="explain-layout__left">

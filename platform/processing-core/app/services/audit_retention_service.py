@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from neft_shared.settings import get_settings
 
 from app.models.audit_retention import AuditLegalHold, AuditLegalHoldScope
 
@@ -72,7 +76,19 @@ def has_active_legal_hold(db: Session, *, case_id: str | None = None) -> bool:
     return db.query(query.exists()).scalar() is True
 
 
+def compute_export_retention_until(
+    *, now: datetime | None = None, retention_days: int | None = None
+) -> datetime | None:
+    settings = get_settings()
+    effective_days = retention_days if retention_days is not None else settings.AUDIT_EXPORT_RETENTION_DAYS
+    if effective_days <= 0:
+        return None
+    resolved_now = now or datetime.now(timezone.utc)
+    return resolved_now + timedelta(days=effective_days)
+
+
 __all__ = [
+    "compute_export_retention_until",
     "create_legal_hold",
     "disable_legal_hold",
     "list_legal_holds",

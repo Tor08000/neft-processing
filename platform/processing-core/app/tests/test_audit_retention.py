@@ -16,7 +16,8 @@ from sqlalchemy.pool import StaticPool
 from app.db import engine
 from app.db.schema import DB_SCHEMA
 from app.models.audit_retention import AuditLegalHold, AuditLegalHoldScope, AuditPurgeLog
-from app.models.cases import Case, CaseKind, CasePriority, CaseQueue, CaseSnapshot, CaseStatus
+from app.models.cases import Case, CaseKind, CasePriority, CaseQueue, CaseStatus
+from app.models.case_exports import CaseExport, CaseExportKind
 from app.services.audit_purge_service import purge_expired_exports
 from app.tests.utils import ensure_connectable, get_database_url
 
@@ -34,7 +35,7 @@ def db_session() -> Session:
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
     Case.__table__.create(bind=engine)
-    CaseSnapshot.__table__.create(bind=engine)
+    CaseExport.__table__.create(bind=engine)
     AuditLegalHold.__table__.create(bind=engine)
     AuditPurgeLog.__table__.create(bind=engine)
     session = SessionLocal()
@@ -44,7 +45,7 @@ def db_session() -> Session:
         session.close()
         AuditPurgeLog.__table__.drop(bind=engine)
         AuditLegalHold.__table__.drop(bind=engine)
-        CaseSnapshot.__table__.drop(bind=engine)
+        CaseExport.__table__.drop(bind=engine)
         Case.__table__.drop(bind=engine)
         engine.dispose()
 
@@ -65,17 +66,30 @@ def _create_case(db_session: Session) -> Case:
     return case
 
 
-def test_purge_snapshots_writes_purge_log(db_session: Session) -> None:
+def test_purge_exports_writes_purge_log(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     case = _create_case(db_session)
-    snapshot = CaseSnapshot(
+    export = CaseExport(
         id=str(uuid4()),
         case_id=case.id,
-        explain_snapshot={"decision": "DECLINE"},
+        kind=CaseExportKind.EXPLAIN,
+        object_key="exports/case-1/explain/2025/01/export.json",
+        content_type="application/json",
+        content_sha256="abc",
+        size_bytes=10,
         created_at=now - timedelta(days=200),
+        retention_until=now - timedelta(days=1),
     )
-    db_session.add(snapshot)
+    db_session.add(export)
     db_session.commit()
+
+    deleted_keys: list[str] = []
+
+    class DummyStorage:
+        def delete(self, key: str) -> None:
+            deleted_keys.append(key)
+
+    monkeypatch.setattr("app.services.audit_purge_service.ExportStorage", DummyStorage)
 
     result = purge_expired_exports(
         db_session,
@@ -87,20 +101,28 @@ def test_purge_snapshots_writes_purge_log(db_session: Session) -> None:
     db_session.commit()
 
     assert result.purged == 1
-    assert db_session.query(CaseSnapshot).count() == 0
+    stored_export = db_session.query(CaseExport).one()
+    assert stored_export.deleted_at is not None
+    assert stored_export.delete_reason == "retention"
     log_entry = db_session.query(AuditPurgeLog).one()
-    assert log_entry.entity_type == "case_snapshot"
+    assert log_entry.entity_type == "case_export"
     assert log_entry.case_id == case.id
+    assert deleted_keys == [export.object_key]
 
 
-def test_purge_respects_legal_hold(db_session: Session) -> None:
+def test_purge_respects_legal_hold(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     case = _create_case(db_session)
-    snapshot = CaseSnapshot(
+    export = CaseExport(
         id=str(uuid4()),
         case_id=case.id,
-        explain_snapshot={"decision": "DECLINE"},
+        kind=CaseExportKind.EXPLAIN,
+        object_key="exports/case-1/explain/2025/01/export.json",
+        content_type="application/json",
+        content_sha256="abc",
+        size_bytes=10,
         created_at=now - timedelta(days=200),
+        retention_until=now - timedelta(days=1),
     )
     hold = AuditLegalHold(
         scope=AuditLegalHoldScope.CASE.value,
@@ -108,8 +130,14 @@ def test_purge_respects_legal_hold(db_session: Session) -> None:
         reason="legal hold",
         active=True,
     )
-    db_session.add_all([snapshot, hold])
+    db_session.add_all([export, hold])
     db_session.commit()
+
+    class DummyStorage:
+        def delete(self, key: str) -> None:
+            raise AssertionError("delete should not be called when legal hold is active")
+
+    monkeypatch.setattr("app.services.audit_purge_service.ExportStorage", DummyStorage)
 
     result = purge_expired_exports(
         db_session,
@@ -122,21 +150,32 @@ def test_purge_respects_legal_hold(db_session: Session) -> None:
 
     assert result.purged == 0
     assert result.skipped_hold == 1
-    assert db_session.query(CaseSnapshot).count() == 1
+    assert db_session.query(CaseExport).count() == 1
     assert db_session.query(AuditPurgeLog).count() == 0
 
 
-def test_purge_dry_run_returns_candidates(db_session: Session) -> None:
+def test_purge_dry_run_returns_candidates(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     case = _create_case(db_session)
-    snapshot = CaseSnapshot(
+    export = CaseExport(
         id=str(uuid4()),
         case_id=case.id,
-        explain_snapshot={"decision": "DECLINE"},
+        kind=CaseExportKind.EXPLAIN,
+        object_key="exports/case-1/explain/2025/01/export.json",
+        content_type="application/json",
+        content_sha256="abc",
+        size_bytes=10,
         created_at=now - timedelta(days=200),
+        retention_until=now - timedelta(days=1),
     )
-    db_session.add(snapshot)
+    db_session.add(export)
     db_session.commit()
+
+    class DummyStorage:
+        def delete(self, key: str) -> None:
+            raise AssertionError("delete should not be called in dry run")
+
+    monkeypatch.setattr("app.services.audit_purge_service.ExportStorage", DummyStorage)
 
     result = purge_expired_exports(
         db_session,
@@ -148,7 +187,7 @@ def test_purge_dry_run_returns_candidates(db_session: Session) -> None:
 
     assert result.candidates == 1
     assert result.purged == 0
-    assert db_session.query(CaseSnapshot).count() == 1
+    assert db_session.query(CaseExport).count() == 1
     assert db_session.query(AuditPurgeLog).count() == 0
 
 

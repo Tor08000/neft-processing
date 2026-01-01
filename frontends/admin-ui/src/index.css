@@ -1150,6 +1150,14 @@ p {
   justify-content: center;
 }
 
+.explain-control-bar__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
 .explain-control-bar__status {
   display: grid;
   gap: 4px;
@@ -1260,6 +1268,39 @@ p {
   border-radius: 999px;
   border: 1px solid var(--neft-border);
   background: rgba(148, 163, 184, 0.08);
+}
+
+.export-info {
+  display: grid;
+  gap: 12px;
+}
+
+.export-info__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.export-info__meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.export-info__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.export-info__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .explain-achievement {

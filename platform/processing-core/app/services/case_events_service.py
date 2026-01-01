@@ -80,6 +80,7 @@ def _build_payload(
     changes: list[CaseEventChange] | None,
     artifact: CaseEventArtifact | None,
     reason: str | None,
+    extra_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": event_id,
@@ -103,6 +104,10 @@ def _build_payload(
         payload["artifact"] = {"kind": artifact.kind, "id": artifact.id, "url": artifact.url}
     if reason is not None:
         payload["reason"] = redact_for_audit("reason", reason)
+    if extra_payload:
+        for key, value in extra_payload.items():
+            if key not in payload:
+                payload[key] = value
     return payload
 
 
@@ -123,6 +128,7 @@ def emit_case_event(
     changes: list[CaseEventChange] | None = None,
     artifact: CaseEventArtifact | None = None,
     reason: str | None = None,
+    extra_payload: dict[str, Any] | None = None,
     at: datetime | None = None,
 ) -> CaseEvent:
     _lock_case(db, case_id)
@@ -153,6 +159,7 @@ def emit_case_event(
         changes=changes,
         artifact=artifact,
         reason=reason,
+        extra_payload=extra_payload,
     )
     event_hash = _compute_hash(prev_hash, payload_redacted)
     event = CaseEvent(
