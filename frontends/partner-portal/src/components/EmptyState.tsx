@@ -12,7 +12,7 @@ type EmptyStateAction = {
 type EmptyStateProps = {
   title: string;
   description: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   primaryAction?: EmptyStateAction;
   secondaryAction?: EmptyStateAction;
 };
@@ -43,9 +43,11 @@ const renderAction = (action: EmptyStateAction, fallbackVariant: EmptyStateActio
 export function EmptyState({ title, description, icon, primaryAction, secondaryAction }: EmptyStateProps) {
   return (
     <div className="empty-state">
-      <div className="empty-state__icon" aria-hidden>
-        {icon}
-      </div>
+      {icon ? (
+        <div className="empty-state__icon" aria-hidden>
+          {icon}
+        </div>
+      ) : null}
       <h1>{title}</h1>
       <p className="muted">{description}</p>
       {(primaryAction || secondaryAction) && (

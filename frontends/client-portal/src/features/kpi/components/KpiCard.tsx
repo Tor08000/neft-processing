@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { KpiCardData, KpiGoodWhen, KpiProgressMode, KpiTrend, KpiUnit } from "../types";
 import { formatCount, formatMoney, formatPercent } from "../formatters";
 
@@ -41,8 +42,14 @@ export const KpiCard = ({
   current,
   subvalue,
   delta,
+  deltaValue,
   trend,
   goodWhen,
+  status,
+  actionLabel,
+  actionTo,
+  praiseLabel,
+  explainKey,
   unit,
   target,
   progress,
@@ -59,6 +66,9 @@ export const KpiCard = ({
         ? Math.max(current - target, 0)
         : Math.max(target - current, 0)
       : null;
+  const isProblem = status === "bad" || (deltaValue !== undefined && deltaValue < 0);
+  const isGood = status === "good" && !isProblem;
+  const explainUrl = explainKey ? `/explain?context=kpi&key=${encodeURIComponent(explainKey)}` : null;
 
   return (
     <div className="kpi-card">
@@ -70,6 +80,23 @@ export const KpiCard = ({
       </div>
       <div className="kpi-card__value">{value}</div>
       {subvalue !== undefined && subvalue !== null ? <div className="kpi-card__subvalue">{subvalue}</div> : null}
+      {isProblem && actionLabel ? (
+        <div className="kpi-card__callout is-problem">
+          {actionTo ? (
+            <Link className="kpi-card__link" to={actionTo}>
+              {actionLabel}
+            </Link>
+          ) : (
+            <span>{actionLabel}</span>
+          )}
+          {explainUrl ? (
+            <Link className="kpi-card__explain" to={explainUrl}>
+              Почему?
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+      {isGood && praiseLabel ? <div className="kpi-card__callout is-good">{praiseLabel}</div> : null}
       {hasTarget ? (
         <>
           {progressValue !== null ? (

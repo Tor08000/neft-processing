@@ -218,9 +218,9 @@ export function PricesPage() {
             <span className="label">{t("pricesPage.filters.status")}</span>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="">{t("common.all")}</option>
-              {Object.keys(statusLabels).map((status) => (
+              {Object.entries(statusLabels).map(([status, label]) => (
                 <option key={status} value={status}>
-                  {statusLabels[status]}
+                  {label}
                 </option>
               ))}
             </select>

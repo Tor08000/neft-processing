@@ -196,6 +196,7 @@ export interface TransactionFilters {
   status?: string;
   amountMin?: string;
   amountMax?: string;
+  [key: string]: string | undefined;
 }
 
 const toQuery = (filters: Record<string, string | undefined>): string => {

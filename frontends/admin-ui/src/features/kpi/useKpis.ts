@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KpiCardData, KpiHint } from "./types";
+import type { KpiSummaryItem, KpiUnit } from "./api";
 import { fetchKpiSummary } from "./api";
 import { formatCount, formatDeltaPercent, formatMoney, formatPercent } from "./formatters";
 
@@ -26,7 +27,7 @@ const toastOnce = (key: string, showToast?: (kind: "success" | "error", text: st
   showToast("error", text ?? "Mock mode");
 };
 
-const formatValue = (value: number, unit?: string) => {
+const formatValue = (value: number, unit?: KpiUnit) => {
   if (unit === "percent") {
     return formatPercent(value, 1);
   }
@@ -36,7 +37,7 @@ const formatValue = (value: number, unit?: string) => {
   return formatCount(value);
 };
 
-const buildKpiCard = (item: { key: string; title: string; value: number; unit: string; delta?: number | null; good_when?: string; target?: number | null; progress?: number | null }, windowDays: number): KpiCardData => {
+const buildKpiCard = (item: KpiSummaryItem, windowDays: number): KpiCardData => {
   const delta = item.delta ?? undefined;
   const trend = delta === undefined ? undefined : delta > 0 ? "up" : delta < 0 ? "down" : "flat";
   return {

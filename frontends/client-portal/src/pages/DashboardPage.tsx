@@ -89,6 +89,14 @@ export function DashboardPage() {
     isLoading: kpiLoading,
     reload: reloadKpis,
   } = useKpis({ summary, operations, docsAttention, exportsAttention, showToast });
+  const { problemKpis, healthyKpis } = useMemo(() => {
+    const isProblem = (kpi: (typeof kpis)[number]) =>
+      kpi.status === "bad" || (kpi.deltaValue !== undefined && kpi.deltaValue < 0);
+    return {
+      problemKpis: kpis.filter(isProblem),
+      healthyKpis: kpis.filter((kpi) => !isProblem(kpi)),
+    };
+  }, [kpis]);
   const {
     badges,
     streak,
@@ -107,8 +115,8 @@ export function DashboardPage() {
       <section className="card">
         <div className="card__header">
           <div>
-            <h2>Обзор расходов</h2>
-            <p className="muted">Spend dashboard с ключевыми метриками по операциям.</p>
+            <h2>Что сейчас не так</h2>
+            <p className="muted">Сигналы, которые требуют реакции и Explain.</p>
           </div>
           {canAccessOps(user) ? (
             <Link className="ghost" to="/operations">
@@ -125,9 +133,11 @@ export function DashboardPage() {
             <AppLoadingState label="Загрузка KPI..." />
           ) : (
             <div className="kpi-grid">
-              {kpis.map((kpi) => (
-                <KpiCard key={kpi.id} {...kpi} />
-              ))}
+              {problemKpis.length ? (
+                problemKpis.map((kpi) => <KpiCard key={kpi.id} {...kpi} />)
+              ) : (
+                <AppEmptyState description="Пока нет тревожных сигналов. Мы сообщим, если появятся." />
+              )}
             </div>
           )
         ) : null}
@@ -135,8 +145,25 @@ export function DashboardPage() {
       </section>
 
       <section className="card">
-        <h3>Прогресс и дисциплина</h3>
-        {kpiError ? null : <KpiHintList hints={hints} />}
+        <div className="card__header">
+          <div>
+            <h3>Что под контролем</h3>
+            <p className="muted">Показатели, которые идут в плановом режиме.</p>
+          </div>
+        </div>
+        {kpiError ? (
+          <AppErrorState message={kpiError} onRetry={reloadKpis} />
+        ) : kpiLoading ? (
+          <AppLoadingState label="Загрузка KPI..." />
+        ) : healthyKpis.length ? (
+          <div className="kpi-grid">
+            {healthyKpis.map((kpi) => (
+              <KpiCard key={kpi.id} {...kpi} />
+            ))}
+          </div>
+        ) : (
+          <AppEmptyState description="Пока нет стабильных KPI в выбранном периоде." />
+        )}
       </section>
 
       <section className="grid two">
@@ -223,25 +250,12 @@ export function DashboardPage() {
       </section>
 
       <section className="card">
-        <h3>Explain readiness</h3>
-        <p className="muted">
-          Для каждой операции доступно Explain с причиной, действиями и SLA. Откройте любую операцию, чтобы
-          увидеть детализацию.
-        </p>
-        <div className="actions">
-          <Link className="ghost" to="/explain">
-            Перейти к explain
-          </Link>
-          {canAccessFinance(user) ? (
-            <Link className="ghost" to="/exports">
-              Проверить выгрузки
-            </Link>
-          ) : null}
-        </div>
+        <h3>Прогресс и дисциплина</h3>
+        {kpiError ? null : <KpiHintList hints={hints} />}
       </section>
 
       <section className="card">
-        <h3>Badges & Streak</h3>
+        <h3>Достижения и серия</h3>
         {achievementsError ? (
           <AppErrorState message={achievementsError} onRetry={reloadAchievements} />
         ) : achievementsLoading ? (
@@ -258,6 +272,24 @@ export function DashboardPage() {
             </div>
           </>
         )}
+      </section>
+
+      <section className="card">
+        <h3>Explain readiness</h3>
+        <p className="muted">
+          Для каждой операции доступно Explain с причиной, действиями и SLA. Откройте любую операцию, чтобы
+          увидеть детализацию.
+        </p>
+        <div className="actions">
+          <Link className="ghost" to="/explain">
+            Перейти к explain
+          </Link>
+          {canAccessFinance(user) ? (
+            <Link className="ghost" to="/exports">
+              Проверить выгрузки
+            </Link>
+          ) : null}
+        </div>
       </section>
 
       <section className="card">
