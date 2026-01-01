@@ -524,6 +524,244 @@ textarea:focus-visible {
   margin: 1rem 0;
 }
 
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.kpi-card {
+  background: var(--neft-surface2);
+  border: 1px solid var(--neft-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.kpi-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kpi-card__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.kpi-card__subvalue {
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__delta {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--neft-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__delta.is-positive {
+  background: rgba(47, 234, 155, 0.12);
+  border-color: rgba(47, 234, 155, 0.35);
+  color: var(--neft-success);
+}
+
+.kpi-card__delta.is-negative {
+  background: rgba(255, 77, 77, 0.14);
+  border-color: rgba(255, 77, 77, 0.35);
+  color: var(--neft-danger);
+}
+
+.kpi-card__delta.is-neutral {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--neft-border);
+  color: var(--neft-text-muted);
+}
+
+.kpi-card__progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(182, 255, 59, 0.16);
+  overflow: hidden;
+}
+
+.kpi-card__progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: 999px;
+}
+
+.kpi-card__target {
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
+.kpi-hints {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+  color: var(--neft-text);
+  font-weight: 600;
+}
+
+.kpi-hints__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(22, 34, 53, 0.5);
+  border: 1px solid var(--neft-border);
+}
+
+.kpi-hints__item.is-positive {
+  border-color: rgba(47, 234, 155, 0.35);
+}
+
+.kpi-hints__icon {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--neft-text-muted);
+}
+
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.achievement-badge {
+  border: 1px solid var(--neft-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: var(--neft-surface2);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.achievement-badge.is-locked {
+  opacity: 0.6;
+}
+
+.achievement-badge__header {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.achievement-badge__icon {
+  font-size: 1rem;
+  font-weight: 700;
+  width: 24px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.achievement-badge__title {
+  font-weight: 700;
+}
+
+.achievement-badge__description {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
+.achievement-badge__status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--neft-text-muted);
+}
+
+.achievement-badge__status.status-unlocked {
+  color: var(--neft-success);
+}
+
+.achievement-badge__status.status-in-progress {
+  color: var(--neft-accent);
+}
+
+.achievement-badge__progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(182, 255, 59, 0.16);
+  overflow: hidden;
+}
+
+.achievement-badge__progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: 999px;
+}
+
+.achievement-streak {
+  margin-top: 0.75rem;
+}
+
+.streak-widget {
+  background: var(--neft-surface2);
+  border: 1px solid var(--neft-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.streak-widget__title {
+  font-weight: 700;
+}
+
+.streak-widget__description {
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
+.streak-widget__dots {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.streak-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.streak-dot.is-active {
+  background: var(--neft-accent);
+}
+
+.streak-widget__meta {
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
 .invoice-actions {
   display: grid;
   gap: 1.5rem;

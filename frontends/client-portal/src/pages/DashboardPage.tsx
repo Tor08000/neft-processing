@@ -9,6 +9,12 @@ import type { OperationSummary } from "../types/operations";
 import type { SpendDashboardSummary } from "../types/spend";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { MoneyValue } from "../components/common/MoneyValue";
+import { AchievementBadge } from "../features/achievements/components/AchievementBadge";
+import { StreakWidget } from "../features/achievements/components/StreakWidget";
+import { useAchievements } from "../features/achievements/useAchievements";
+import { KpiCard } from "../features/kpi/components/KpiCard";
+import { KpiHintList } from "../features/kpi/components/KpiHintList";
+import { useKpis } from "../features/kpi/useKpis";
 import { canAccessFinance, canAccessOps } from "../utils/roles";
 
 const TOP_LIMIT = 5;
@@ -71,24 +77,10 @@ export function DashboardPage() {
   const topCategories = useMemo(() => summarizeTop(operations, "product_type"), [operations]);
   const topMerchants = useMemo(() => summarizeTop(operations, "merchant_id"), [operations]);
   const topCards = useMemo(() => summarizeTop(operations, "card_id"), [operations]);
-  const declinedShare = useMemo(() => {
-    if (operations.length === 0) return 0;
-    const declined = operations.filter((op) => op.status === "DECLINED").length;
-    return Math.round((declined / operations.length) * 100);
-  }, [operations]);
-  const declinedCount = useMemo(() => operations.filter((op) => op.status === "DECLINED").length, [operations]);
-  const topDeclineReason = useMemo(() => {
-    const declined = operations.filter((op) => op.status === "DECLINED" && op.primary_reason);
-    if (!declined.length) return "—";
-    const counts = summarizeTop(declined, "primary_reason");
-    return counts[0]?.[0] ?? "—";
-  }, [operations]);
-  const highRiskCount = useMemo(
-    () => operations.filter((op) => ["HIGH", "CRITICAL"].includes(op.risk_level ?? "")).length,
-    [operations],
-  );
 
   const trendMax = Math.max(...(summary?.spending_trend ?? [0]));
+  const { kpis, hints } = useKpis({ summary, operations, docsAttention, exportsAttention });
+  const { badges, streak } = useAchievements();
 
   if (!user) {
     return null;
@@ -111,48 +103,18 @@ export function DashboardPage() {
         {isLoading ? <AppLoadingState /> : null}
         {error ? <AppErrorState message={error} /> : null}
         {!isLoading && !error && summary ? (
-          <div className="stats-grid">
-            <div className="stat">
-              <div className="stat__label">Total spend (MTD)</div>
-              <div className="stat__value">
-                <MoneyValue amount={summary.total_amount} />
-              </div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Total spend (selected period)</div>
-              <div className="stat__value">
-                <MoneyValue amount={summary.total_amount} />
-              </div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Δ к прошлому периоду</div>
-              <div className="stat__value">{summary.active_limits ? `${summary.active_limits}%` : "—"}</div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Declines</div>
-              <div className="stat__value">
-                {declinedCount} · {topDeclineReason}
-              </div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">High-risk operations</div>
-              <div className="stat__value">{highRiskCount}</div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Documents requiring action</div>
-              <div className="stat__value">{docsAttention}</div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Exports requiring attention</div>
-              <div className="stat__value">{exportsAttention}</div>
-            </div>
-            <div className="stat">
-              <div className="stat__label">Declined share</div>
-              <div className="stat__value">{declinedShare}%</div>
-            </div>
+          <div className="kpi-grid">
+            {kpis.map((kpi) => (
+              <KpiCard key={kpi.id} {...kpi} />
+            ))}
           </div>
         ) : null}
         {!isLoading && !error && !summary ? <AppEmptyState description="Нет данных для обзора." /> : null}
+      </section>
+
+      <section className="card">
+        <h3>Прогресс и дисциплина</h3>
+        <KpiHintList hints={hints} />
       </section>
 
       <section className="grid two">
@@ -253,6 +215,18 @@ export function DashboardPage() {
               Проверить выгрузки
             </Link>
           ) : null}
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>Badges & Streak</h3>
+        <div className="achievement-grid">
+          {badges.map((badge) => (
+            <AchievementBadge key={badge.id} {...badge} />
+          ))}
+        </div>
+        <div className="achievement-streak">
+          <StreakWidget {...streak} />
         </div>
       </section>
 
