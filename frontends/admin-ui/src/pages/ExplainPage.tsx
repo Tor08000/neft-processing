@@ -16,6 +16,8 @@ import type {
 
 type EvidenceFilter = "all" | "linked";
 type ExplainActionOption = ExplainActionCatalogItem & { recommended?: boolean };
+const isCaseKind = (value: string): value is CaseKind =>
+  value === "operation" || value === "invoice" || value === "order" || value === "kpi";
 
 const percent = (value?: number | null) => {
   if (value === null || value === undefined) return "—";
@@ -173,94 +175,6 @@ const ReasonTreeNode = ({
               onSelect={onSelect}
             />
           ))}
-        </div>
-      ) : null}
-      {caseModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="modal__header">
-              <h3>Создать кейс</h3>
-              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
-                ✕
-              </button>
-            </div>
-            <div className="modal__body">
-              <label className="filter">
-                Priority
-                <select value={casePriority} onChange={(event) => setCasePriority(event.target.value as CasePriority)}>
-                  <option value="LOW">LOW</option>
-                  <option value="MEDIUM">MEDIUM</option>
-                  <option value="HIGH">HIGH</option>
-                  <option value="CRITICAL">CRITICAL</option>
-                </select>
-              </label>
-              <label className="filter">
-                Note
-                <textarea
-                  rows={3}
-                  value={caseNote}
-                  onChange={(event) => setCaseNote(event.target.value)}
-                  placeholder="Комментарий для кейса"
-                />
-              </label>
-              <div className="checkbox">
-                <input
-                  id="include-explain"
-                  type="checkbox"
-                  checked={includeExplain}
-                  onChange={(event) => setIncludeExplain(event.target.checked)}
-                />
-                <label htmlFor="include-explain">Include explain snapshot</label>
-              </div>
-              <div className="checkbox">
-                <input
-                  id="include-diff"
-                  type="checkbox"
-                  checked={includeDiff}
-                  onChange={(event) => setIncludeDiff(event.target.checked)}
-                  disabled={!diffData}
-                />
-                <label htmlFor="include-diff">Include diff snapshot</label>
-              </div>
-              <div className="checkbox">
-                <input
-                  id="include-actions"
-                  type="checkbox"
-                  checked={includeActions}
-                  onChange={(event) => setIncludeActions(event.target.checked)}
-                  disabled={!selectedActions.length}
-                />
-                <label htmlFor="include-actions">Include selected actions</label>
-              </div>
-              {createdCaseId ? (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <strong>Кейс создан</strong>
-                  <div className="muted">ID: {createdCaseId}</div>
-                  <button
-                    type="button"
-                    className="neft-btn-secondary"
-                    style={{ marginTop: 8 }}
-                    onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
-                  >
-                    Открыть кейс
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div className="modal__footer">
-              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="neft-btn-primary"
-                onClick={() => void handleCreateCase()}
-                disabled={isCaseSubmitting}
-              >
-                {isCaseSubmitting ? "Создаём..." : "Создать"}
-              </button>
-            </div>
-          </div>
         </div>
       ) : null}
     </div>
@@ -606,8 +520,8 @@ export const ExplainPage = () => {
   const canDiff = Boolean(kind === "kpi" ? kpiKey : entityId);
   const caseKind = useMemo<CaseKind | null>(() => {
     if (!kind) return null;
-    if (kind === "marketplace_order") return "order";
-    return kind;
+    const normalized = kind === "marketplace_order" ? "order" : kind;
+    return isCaseKind(normalized) ? normalized : null;
   }, [kind]);
 
   const handleCreateCase = useCallback(async () => {
@@ -920,6 +834,94 @@ export const ExplainPage = () => {
           </button>
         </div>
       </div>
+      {caseModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal__header">
+              <h3>Создать кейс</h3>
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal__body">
+              <label className="filter">
+                Priority
+                <select value={casePriority} onChange={(event) => setCasePriority(event.target.value as CasePriority)}>
+                  <option value="LOW">LOW</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="CRITICAL">CRITICAL</option>
+                </select>
+              </label>
+              <label className="filter">
+                Note
+                <textarea
+                  rows={3}
+                  value={caseNote}
+                  onChange={(event) => setCaseNote(event.target.value)}
+                  placeholder="Комментарий для кейса"
+                />
+              </label>
+              <div className="checkbox">
+                <input
+                  id="include-explain"
+                  type="checkbox"
+                  checked={includeExplain}
+                  onChange={(event) => setIncludeExplain(event.target.checked)}
+                />
+                <label htmlFor="include-explain">Include explain snapshot</label>
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-diff"
+                  type="checkbox"
+                  checked={includeDiff}
+                  onChange={(event) => setIncludeDiff(event.target.checked)}
+                  disabled={!diffData}
+                />
+                <label htmlFor="include-diff">Include diff snapshot</label>
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-actions"
+                  type="checkbox"
+                  checked={includeActions}
+                  onChange={(event) => setIncludeActions(event.target.checked)}
+                  disabled={!selectedActions.length}
+                />
+                <label htmlFor="include-actions">Include selected actions</label>
+              </div>
+              {createdCaseId ? (
+                <div className="card" style={{ marginTop: 12 }}>
+                  <strong>Кейс создан</strong>
+                  <div className="muted">ID: {createdCaseId}</div>
+                  <button
+                    type="button"
+                    className="neft-btn-secondary"
+                    style={{ marginTop: 8 }}
+                    onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
+                  >
+                    Открыть кейс
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="modal__footer">
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="neft-btn-primary"
+                onClick={() => void handleCreateCase()}
+                disabled={isCaseSubmitting}
+              >
+                {isCaseSubmitting ? "Создаём..." : "Создать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isLoading ? <div className="card">Загружаем explain...</div> : null}
       {error ? (
