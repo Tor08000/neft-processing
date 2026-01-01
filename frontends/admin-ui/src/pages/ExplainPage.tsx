@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Toast } from "../components/common/Toast";
-import { useToast } from "../components/Toast/useToast";
 import { createCase, type CaseKind, type CasePriority } from "../api/cases";
 import { fetchExplainActions, fetchExplainDiff, fetchExplainV2, evaluateWhatIf } from "../api/explainV2";
+import { CopyButton } from "../components/CopyButton/CopyButton";
+import { JsonViewer } from "../components/common/JsonViewer";
+import { Toast } from "../components/common/Toast";
+import { useToast } from "../components/Toast/useToast";
 import { reduceExplainDiffReasons, type ExplainDiffTab } from "../features/explain/diffReducer";
 import type {
   ExplainActionCatalogItem,
@@ -13,9 +15,24 @@ import type {
   ExplainV2Response,
   WhatIfResponse,
 } from "../types/explainV2";
+import {
+  DEFAULT_EXPLAIN_QUERY_STATE,
+  type ExplainMode,
+  type ExplainQueryState,
+  parseExplainQueryState,
+  serializeExplainQueryState,
+} from "./explainQueryState";
 
 type EvidenceFilter = "all" | "linked";
+
 type ExplainActionOption = ExplainActionCatalogItem & { recommended?: boolean };
+
+type ErrorDetails = {
+  title: string;
+  message: string;
+  details?: string | null;
+};
+
 const isCaseKind = (value: string): value is CaseKind =>
   value === "operation" || value === "invoice" || value === "order" || value === "kpi";
 
@@ -28,6 +45,11 @@ const formatTimestamp = (value?: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
   return date.toLocaleString("ru-RU");
+};
+
+const formatTime = (value?: Date | null) => {
+  if (!value) return "—";
+  return value.toLocaleTimeString("ru-RU");
 };
 
 const scoreBandLabel = (band?: string | null) => {
@@ -61,7 +83,8 @@ const renderEvidenceValue = (item: ExplainEvidence) => {
   if (item.value === null || item.value === undefined) return null;
   if (item.type === "metric" && typeof item.value === "object") {
     const actual = (item.value as Record<string, unknown>).actual ?? (item.value as Record<string, unknown>).value;
-    const threshold = (item.value as Record<string, unknown>).threshold ?? (item.value as Record<string, unknown>).limit;
+    const threshold =
+      (item.value as Record<string, unknown>).threshold ?? (item.value as Record<string, unknown>).limit;
     if (actual !== undefined || threshold !== undefined) {
       return (
         <div className="explain-evidence__kv">
@@ -120,6 +143,20 @@ const formatDelta = (delta?: number | null) => {
   return `${sign}${delta.toFixed(2)}`;
 };
 
+const MODE_OPTIONS: { id: ExplainMode; label: string }[] = [
+  { id: "explain", label: "Explain" },
+  { id: "diff", label: "Diff" },
+  { id: "actions", label: "Actions" },
+  { id: "case", label: "Case" },
+];
+
+const CASE_PRIORITY_HINTS: Record<CasePriority, string> = {
+  LOW: "1 · Низкий",
+  MEDIUM: "2 · Средний",
+  HIGH: "3 · Высокий",
+  CRITICAL: "4 · Критичный",
+};
+
 const ReasonTreeNode = ({
   node,
   level,
@@ -143,12 +180,7 @@ const ReasonTreeNode = ({
   return (
     <div className="explain-tree__node">
       <div className={`explain-tree__row${selectedId === node.id ? " is-selected" : ""}`}>
-        <button
-          type="button"
-          className="explain-tree__toggle"
-          onClick={() => onToggle(node.id)}
-          disabled={!hasChildren}
-        >
+        <button type="button" className="explain-tree__toggle" onClick={() => onToggle(node.id)} disabled={!hasChildren}>
           {hasChildren ? (isExpanded ? "−" : "+") : "•"}
         </button>
         <button type="button" className="explain-tree__title" onClick={() => onSelect(node)}>
@@ -196,16 +228,91 @@ const EvidenceCard = ({ item, highlighted }: { item: ExplainEvidence; highlighte
   </div>
 );
 
+const ErrorNotice = ({ error }: { error: ErrorDetails }) => {
+  const copyValue = `${error.title}\n${error.message}${error.details ? `\n${error.details}` : ""}`;
+  return (
+    <div className="card card--error explain-error">
+      <div className="explain-error__meta">
+        <div>
+          <strong>{error.title}</strong>
+          <div className="muted small">{error.message}</div>
+          {error.details ? <div className="muted small">{error.details}</div> : null}
+        </div>
+        <CopyButton value={copyValue} label="Copy error details" />
+      </div>
+    </div>
+  );
+};
+
+const EmptyState = ({ title, subtitle }: { title: string; subtitle?: string }) => (
+  <div className="explain-empty">
+    <strong>{title}</strong>
+    {subtitle ? <span>{subtitle}</span> : null}
+  </div>
+);
+
+const SummaryCard = ({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+  <div className="explain-summary__card">
+    <span className="explain-summary__label">{label}</span>
+    <span className="explain-summary__value">{value}</span>
+    {hint ? <span className="muted small">{hint}</span> : null}
+  </div>
+);
+
+const ActionSelectionList = ({
+  actions,
+  selectedCodes,
+  onToggle,
+  limit,
+}: {
+  actions: ExplainActionOption[];
+  selectedCodes: Set<string>;
+  onToggle: (item: ExplainActionOption) => void;
+  limit: number;
+}) => (
+  <div className="explain-actions">
+    {actions.length ? (
+      actions.map((action) => {
+        const disabled = !selectedCodes.has(action.action_code) && selectedCodes.size >= limit;
+        return (
+          <label
+            key={action.action_code}
+            className={`explain-action${disabled ? " is-disabled" : ""}`}
+            title={disabled ? `Максимум ${limit}` : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={selectedCodes.has(action.action_code)}
+              onChange={() => onToggle(action)}
+              disabled={disabled}
+            />
+            <div className="explain-action__body">
+              <div className="explain-action__title">
+                {action.label}
+                {action.recommended ? <span className="pill pill--accent">recommended</span> : null}
+              </div>
+              {action.description ? <div className="muted small">{action.description}</div> : null}
+              {action.risk_hint ? <div className="muted small">Hint: {action.risk_hint}</div> : null}
+            </div>
+          </label>
+        );
+      })
+    ) : (
+      <div className="muted">Рекомендации отсутствуют.</div>
+    )}
+  </div>
+);
+
 export const ExplainPage = () => {
   const [searchParams] = useSearchParams();
   const { toast, showToast } = useToast();
+  const [queryState, setQueryState] = useState<ExplainQueryState>(() => parseExplainQueryState(searchParams));
   const [payload, setPayload] = useState<ExplainV2Response | null>(null);
   const [actionsCatalog, setActionsCatalog] = useState<ExplainActionCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorDetails | null>(null);
   const [filter, setFilter] = useState<EvidenceFilter>("all");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedActions, setSelectedActions] = useState<ExplainActionCatalogItem[]>([]);
   const [whatIf, setWhatIf] = useState<WhatIfResponse | null>(null);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
   const [isWhatIfLoading, setIsWhatIfLoading] = useState(false);
@@ -213,27 +320,39 @@ export const ExplainPage = () => {
   const [selectedReasonId, setSelectedReasonId] = useState<string | null>(null);
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<Set<string>>(new Set());
   const [diffData, setDiffData] = useState<ExplainDiffResponse | null>(null);
-  const [diffError, setDiffError] = useState<string | null>(null);
+  const [diffError, setDiffError] = useState<ErrorDetails | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
-  const [leftSnapshot, setLeftSnapshot] = useState("");
-  const [rightSnapshot, setRightSnapshot] = useState("");
-  const [actionId, setActionId] = useState("");
   const [reasonTab, setReasonTab] = useState<ExplainDiffTab>("strong");
   const [caseModalOpen, setCaseModalOpen] = useState(false);
-  const [casePriority, setCasePriority] = useState<CasePriority>("MEDIUM");
-  const [caseNote, setCaseNote] = useState("");
-  const [includeExplain, setIncludeExplain] = useState(true);
-  const [includeDiff, setIncludeDiff] = useState(true);
-  const [includeActions, setIncludeActions] = useState(true);
   const [isCaseSubmitting, setIsCaseSubmitting] = useState(false);
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
+  const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
+  const [lastRunDuration, setLastRunDuration] = useState<number | null>(null);
+
+  const lastRunStateRef = useRef<ExplainQueryState | null>(null);
+  const explainRequestIdRef = useRef(0);
+  const diffRequestIdRef = useRef(0);
+  const querySyncRef = useRef<string>("");
+  const initialRunRef = useRef(false);
 
   const kind = searchParams.get("kind") ?? (searchParams.get("kpi_key") ? "kpi" : null);
   const entityId = searchParams.get("id");
   const kpiKey = searchParams.get("kpi_key");
   const windowDays = searchParams.get("window_days") ?? "7";
-  const diffRequested = searchParams.get("diff") === "1";
+
+  useEffect(() => {
+    setQueryState(parseExplainQueryState(searchParams));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = serializeExplainQueryState(queryState, new URLSearchParams(window.location.search));
+    const nextSearch = params.toString();
+    if (querySyncRef.current === nextSearch) return;
+    querySyncRef.current = nextSearch;
+    const url = new URL(window.location.href);
+    url.search = nextSearch;
+    window.history.replaceState({}, "", url.toString());
+  }, [queryState]);
 
   useEffect(() => {
     if (payload?.reason_tree) {
@@ -245,23 +364,9 @@ export const ExplainPage = () => {
   }, [payload?.reason_tree]);
 
   useEffect(() => {
-    setSelectedActions([]);
-  }, [payload?.id]);
-
-  useEffect(() => {
     setDiffData(null);
     setDiffError(null);
-    setShowDiff(false);
   }, [payload?.id, kind]);
-
-  useEffect(() => {
-    setLeftSnapshot(searchParams.get("left_snapshot") ?? "");
-    setRightSnapshot(searchParams.get("right_snapshot") ?? "");
-    setActionId(searchParams.get("action_id") ?? "");
-    if (diffRequested) {
-      setShowDiff(true);
-    }
-  }, [diffRequested, searchParams]);
 
   useEffect(() => {
     setReasonTab("strong");
@@ -291,18 +396,71 @@ export const ExplainPage = () => {
     return items;
   }, [filter, linkedEvidenceIds, payload?.evidence]);
 
+  const topReasons = useMemo(() => {
+    const children = payload?.reason_tree?.children ?? [];
+    return [...children]
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 3)
+      .map((node) => node.title);
+  }, [payload?.reason_tree?.children]);
+
+  const actionOptions = useMemo<ExplainActionOption[]>(() => {
+    const merged = [
+      ...(payload?.recommended_actions.map((item) => ({
+        action_code: item.action_code,
+        label: item.title,
+        description: item.description ?? null,
+        recommended: true,
+      })) ?? []),
+      ...actionsCatalog.map((item) => ({ ...item, recommended: false })),
+    ];
+    const seen = new Map<string, ExplainActionOption>();
+    merged.forEach((item) => {
+      if (!seen.has(item.action_code)) {
+        seen.set(item.action_code, item);
+      }
+    });
+    return Array.from(seen.values());
+  }, [actionsCatalog, payload?.recommended_actions]);
+
+  const selectedActionCodes = useMemo(() => new Set(queryState.selectedActions), [queryState.selectedActions]);
+
+  const selectedActions = useMemo(() => {
+    if (!queryState.selectedActions.length) return [];
+    const mapped = new Map(actionOptions.map((item) => [item.action_code, item]));
+    return queryState.selectedActions.map((code) =>
+      mapped.get(code) ?? ({ action_code: code, label: code } satisfies ExplainActionCatalogItem),
+    );
+  }, [actionOptions, queryState.selectedActions]);
+
+  const toggleAction = useCallback(
+    (item: ExplainActionCatalogItem) => {
+      setQueryState((prev) => {
+        const exists = prev.selectedActions.includes(item.action_code);
+        if (exists) {
+          return { ...prev, selectedActions: prev.selectedActions.filter((code) => code !== item.action_code) };
+        }
+        if (prev.selectedActions.length >= 3) return prev;
+        return { ...prev, selectedActions: [...prev.selectedActions, item.action_code] };
+      });
+    },
+    [],
+  );
+
   const loadExplain = useCallback(async () => {
     if (!kind) {
-      setError("Не указан тип explain.");
+      setError({ title: "Explain failed", message: "Не указан тип explain." });
       return;
     }
+    const requestId = ++explainRequestIdRef.current;
+    const startedAt = performance.now();
     setIsLoading(true);
     setError(null);
     try {
       const params: Record<string, string> = {};
       if (kind === "kpi") {
         if (!kpiKey) {
-          setError("Не указан KPI.");
+          setError({ title: "Explain failed", message: "Не указан KPI." });
           setIsLoading(false);
           return;
         }
@@ -312,102 +470,74 @@ export const ExplainPage = () => {
         params.kind = kind;
         params.id = entityId;
       } else {
-        setError("Не указан идентификатор.");
+        setError({ title: "Explain failed", message: "Не указан идентификатор." });
         setIsLoading(false);
         return;
       }
-      const data = await fetchExplainV2(params);
-      setPayload(data);
+      const [explainResult, actionsResult] = await Promise.allSettled([
+        fetchExplainV2(params),
+        fetchExplainActions(params),
+      ]);
+      if (requestId !== explainRequestIdRef.current) return;
+      if (explainResult.status === "fulfilled") {
+        setPayload(explainResult.value);
+        setLastRunAt(new Date());
+        setLastRunDuration(Math.round(performance.now() - startedAt));
+        lastRunStateRef.current = queryState;
+      } else {
+        setPayload(null);
+        setError({ title: "Explain failed", message: explainResult.reason.message });
+      }
+      if (actionsResult.status === "fulfilled") {
+        setActionsCatalog(actionsResult.value);
+      } else {
+        setActionsCatalog([]);
+      }
     } catch (err) {
-      setError((err as Error).message);
+      if (requestId !== explainRequestIdRef.current) return;
+      setError({ title: "Explain failed", message: (err as Error).message });
       setPayload(null);
     } finally {
-      setIsLoading(false);
+      if (requestId === explainRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [entityId, kind, kpiKey, windowDays]);
-
-  const loadActions = useCallback(async () => {
-    if (!kind) return;
-    try {
-      const params: Record<string, string> = {};
-      if (kind === "kpi") {
-        if (!kpiKey) return;
-        params.kpi_key = kpiKey;
-      } else if (entityId) {
-        params.kind = kind;
-        params.id = entityId;
-      } else {
-        return;
-      }
-      const data = await fetchExplainActions(params);
-      setActionsCatalog(data);
-    } catch {
-      setActionsCatalog([]);
-    }
-  }, [entityId, kind, kpiKey]);
-
-  useEffect(() => {
-    void loadExplain();
-    void loadActions();
-  }, [loadExplain, loadActions]);
-
-  const copyLink = useCallback(() => {
-    const url = window.location.href;
-    void navigator.clipboard.writeText(url);
-    showToast("success", "Ссылка скопирована");
-  }, [showToast]);
-
-  const toggleNode = useCallback((nodeId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleSelectNode = useCallback((node: ExplainReasonNode) => {
-    setSelectedReasonId((prev) => {
-      if (prev === node.id) {
-        setSelectedEvidenceIds(new Set());
-        return null;
-      }
-      setSelectedEvidenceIds(collectEvidenceRefs(node));
-      return node.id;
-    });
-  }, []);
+  }, [entityId, kind, kpiKey, queryState, windowDays]);
 
   const loadDiff = useCallback(async () => {
     if (!kind) return;
-    if (!leftSnapshot || !rightSnapshot) {
-      setDiffError("Укажите snapshot для сравнения.");
-      setShowDiff(true);
+    if (!queryState.leftSnapshot || !queryState.rightSnapshot) {
+      setDiffError({ title: "Diff failed", message: "Укажите snapshot для сравнения." });
       return;
     }
+    const requestId = ++diffRequestIdRef.current;
     setIsDiffLoading(true);
     setDiffError(null);
     try {
-      const diffKind = (kind === "marketplace_order" ? "order" : kind) as "operation" | "invoice" | "order" | "kpi";
+      const diffKind = (kind === "marketplace_order" ? "order" : kind) as
+        | "operation"
+        | "invoice"
+        | "order"
+        | "kpi";
       const response = await fetchExplainDiff({
         kind: diffKind,
         id: diffKind === "kpi" ? undefined : entityId ?? undefined,
-        left_snapshot: leftSnapshot,
-        right_snapshot: rightSnapshot,
-        action_id: actionId || undefined,
+        left_snapshot: queryState.leftSnapshot,
+        right_snapshot: queryState.rightSnapshot,
+        action_id: queryState.actionId || undefined,
       });
+      if (requestId !== diffRequestIdRef.current) return;
       setDiffData(response);
-      setShowDiff(true);
     } catch (err) {
-      setDiffError((err as Error).message);
+      if (requestId !== diffRequestIdRef.current) return;
+      setDiffError({ title: "Diff failed", message: (err as Error).message });
       setDiffData(null);
-      setShowDiff(true);
     } finally {
-      setIsDiffLoading(false);
+      if (requestId === diffRequestIdRef.current) {
+        setIsDiffLoading(false);
+      }
     }
-  }, [actionId, entityId, kind, leftSnapshot, rightSnapshot]);
+  }, [entityId, kind, queryState.actionId, queryState.leftSnapshot, queryState.rightSnapshot]);
 
   const reasonSummary = useMemo(
     () => reduceExplainDiffReasons(diffData?.reasons_diff ?? [], reasonTab),
@@ -438,45 +568,10 @@ export const ExplainPage = () => {
         options.push({ value, label: `Выбран: ${value}` });
       }
     };
-    ensureOption(leftSnapshot);
-    ensureOption(rightSnapshot);
+    ensureOption(queryState.leftSnapshot);
+    ensureOption(queryState.rightSnapshot);
     return options;
-  }, [leftSnapshot, payload?.generated_at, payload?.policy_snapshot, rightSnapshot]);
-
-  const actionOptions = useMemo<ExplainActionOption[]>(() => {
-    const merged = [
-      ...(payload?.recommended_actions.map((item) => ({
-        action_code: item.action_code,
-        label: item.title,
-        description: item.description ?? null,
-        recommended: true,
-      })) ?? []),
-      ...actionsCatalog.map((item) => ({ ...item, recommended: false })),
-    ];
-    const seen = new Map<string, ExplainActionOption>();
-    merged.forEach((item) => {
-      if (!seen.has(item.action_code)) {
-        seen.set(item.action_code, item);
-      }
-    });
-    return Array.from(seen.values());
-  }, [actionsCatalog, payload?.recommended_actions]);
-
-  const selectedActionCodes = useMemo(() => new Set(selectedActions.map((item) => item.action_code)), [selectedActions]);
-
-  const toggleAction = useCallback(
-    (item: ExplainActionCatalogItem) => {
-      setSelectedActions((prev) => {
-        const exists = prev.find((action) => action.action_code === item.action_code);
-        if (exists) {
-          return prev.filter((action) => action.action_code !== item.action_code);
-        }
-        if (prev.length >= 3) return prev;
-        return [...prev, item];
-      });
-    },
-    [],
-  );
+  }, [queryState.leftSnapshot, payload?.generated_at, payload?.policy_snapshot, queryState.rightSnapshot]);
 
   const openWhatIf = useCallback(() => {
     setDrawerOpen(true);
@@ -492,7 +587,7 @@ export const ExplainPage = () => {
     try {
       const response = await evaluateWhatIf({
         subject: { type: subjectType, id: entityId },
-        max_candidates: Math.min(3, Math.max(1, selectedActions.length)),
+        max_candidates: Math.min(3, Math.max(1, queryState.selectedActions.length)),
       });
       setWhatIf(response);
     } catch (err) {
@@ -501,7 +596,7 @@ export const ExplainPage = () => {
     } finally {
       setIsWhatIfLoading(false);
     }
-  }, [entityId, kind, selectedActions.length]);
+  }, [entityId, kind, queryState.selectedActions.length]);
 
   const candidatesByAction = useMemo(() => {
     if (!whatIf) return new Map<string, WhatIfResponse["candidates"][number]>();
@@ -531,10 +626,10 @@ export const ExplainPage = () => {
       const candidatesByCode = new Map(
         (whatIf?.candidates ?? []).map((candidate) => [candidate.action.code, candidate]),
       );
-      const selected = includeActions
-        ? selectedActions.map((item) => ({
-            code: item.action_code,
-            what_if: candidatesByCode.get(item.action_code) ?? null,
+      const selected = queryState.includeActions
+        ? queryState.selectedActions.map((code) => ({
+            code,
+            what_if: candidatesByCode.get(code) ?? null,
           }))
         : null;
       const response = await createCase({
@@ -542,13 +637,14 @@ export const ExplainPage = () => {
         entity_id: caseKind === "kpi" ? undefined : payload.id,
         kpi_key: caseKind === "kpi" ? payload.id : undefined,
         window_days: caseKind === "kpi" ? Number(windowDays) : undefined,
-        priority: casePriority,
-        note: caseNote || null,
-        explain: includeExplain ? payload : null,
-        diff: includeDiff ? diffData ?? null : null,
+        priority: queryState.casePriority,
+        note: queryState.caseNote || null,
+        explain: queryState.includeExplain ? payload : null,
+        diff: queryState.includeDiff ? diffData ?? null : null,
         selected_actions: selected,
       });
       setCreatedCaseId(response.id);
+      setCaseModalOpen(false);
       showToast("success", "Кейс создан");
     } catch (err) {
       showToast("error", (err as Error).message);
@@ -559,248 +655,191 @@ export const ExplainPage = () => {
     payload,
     caseKind,
     whatIf?.candidates,
-    includeActions,
-    selectedActions,
-    includeExplain,
-    includeDiff,
+    queryState,
     diffData,
     windowDays,
-    casePriority,
-    caseNote,
     showToast,
   ]);
 
   useEffect(() => {
-    if (drawerOpen && canCompare && selectedActions.length >= 2 && !isWhatIfLoading) {
+    if (drawerOpen && canCompare && queryState.selectedActions.length >= 2 && !isWhatIfLoading) {
       void evaluate();
     }
-  }, [drawerOpen, canCompare, selectedActions.length, evaluate, isWhatIfLoading]);
+  }, [drawerOpen, canCompare, queryState.selectedActions.length, evaluate, isWhatIfLoading]);
 
-  if (showDiff) {
-    return (
-      <div className="card">
-        <div className="card__header">
-          <Toast toast={toast} />
-          <div>
-            <h2>Explain Diff</h2>
-            <p className="muted">До → После · режим сравнения</p>
-          </div>
-          <button type="button" className="ghost" onClick={() => setShowDiff(false)}>
-            Назад к explain
-          </button>
-        </div>
+  useEffect(() => {
+    if (!initialRunRef.current && canDiff) {
+      initialRunRef.current = true;
+      void loadExplain();
+    }
+  }, [canDiff, loadExplain]);
 
-        <div className="explain-diff__controls">
-          <label>
-            Снимок: До
-            <select value={leftSnapshot} onChange={(event) => setLeftSnapshot(event.target.value)}>
-              <option value="">Выберите...</option>
-              {snapshotOptions.map((option) => (
-                <option key={`left-${option.value}`} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={leftSnapshot}
-              onChange={(event) => setLeftSnapshot(event.target.value)}
-              placeholder="snapshot_id / policy_version"
-            />
-          </label>
-          <label>
-            Снимок: После
-            <select value={rightSnapshot} onChange={(event) => setRightSnapshot(event.target.value)}>
-              <option value="">Выберите...</option>
-              {snapshotOptions.map((option) => (
-                <option key={`right-${option.value}`} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={rightSnapshot}
-              onChange={(event) => setRightSnapshot(event.target.value)}
-              placeholder="snapshot_id / policy_version"
-            />
-          </label>
-          <label>
-            Action (optional)
-            <input
-              type="text"
-              value={actionId}
-              onChange={(event) => setActionId(event.target.value)}
-              placeholder="action_id"
-            />
-          </label>
-          <div className="explain-diff__controls-actions">
-            <button type="button" className="neft-btn-primary" onClick={() => void loadDiff()}>
-              Сравнить
-            </button>
-            <button type="button" className="ghost" disabled title="Экспорт скоро">
-              Экспорт
-            </button>
-          </div>
-        </div>
+  const handleRun = useCallback(async () => {
+    await loadExplain();
+    if (queryState.mode === "diff") {
+      await loadDiff();
+    }
+  }, [loadDiff, loadExplain, queryState.mode]);
 
-        {isDiffLoading ? <div className="card">Готовим diff...</div> : null}
-        {diffError ? <div className="card card--error">Ошибка: {diffError}</div> : null}
+  const handleReset = useCallback(() => {
+    setQueryState({
+      ...DEFAULT_EXPLAIN_QUERY_STATE,
+      mode: "explain",
+      leftSnapshot: "",
+      rightSnapshot: "",
+      actionId: "",
+    });
+    setDrawerOpen(false);
+    setCaseModalOpen(false);
+    setCreatedCaseId(null);
+    setWhatIf(null);
+    setDiffData(null);
+    setDiffError(null);
+  }, []);
 
-        {diffData ? (
-          <div className="explain-diff__panel">
-            <div className="explain-diff__meta">
-              <div className="explain-diff__meta-item">
-                <span className="muted small">{diffData.meta.left.label}</span>
-                <strong>{diffData.decision_diff.before ?? "—"}</strong>
-              </div>
-              <div className="explain-diff__meta-item">
-                <span className="muted small">→</span>
-              </div>
-              <div className="explain-diff__meta-item">
-                <span className="muted small">{diffData.meta.right.label}</span>
-                <strong>{diffData.decision_diff.after ?? "—"}</strong>
-              </div>
-              <div className="explain-diff__meta-item">
-                <span className="muted small">Δ риска</span>
-                <strong
-                  className={`explain-diff__delta ${diffData.score_diff.delta && diffData.score_diff.delta < 0 ? "is-improved" : diffData.score_diff.delta && diffData.score_diff.delta > 0 ? "is-worsened" : ""}`}
-                >
-                  {diffData.score_diff.delta === null || diffData.score_diff.delta === undefined
-                    ? "—"
-                    : `${diffData.score_diff.delta < 0 ? "↓" : diffData.score_diff.delta > 0 ? "↑" : "→"} ${formatDelta(
-                        diffData.score_diff.delta,
-                      )}`}
-                </strong>
-              </div>
-            </div>
+  const shareUrl = useMemo(() => {
+    const params = serializeExplainQueryState(queryState, new URLSearchParams(window.location.search));
+    const url = new URL(window.location.href);
+    url.search = params.toString();
+    return url.toString();
+  }, [queryState]);
 
-            <div className="card explain-card explain-diff__summary">
-              <div>
-                <div className="muted small">Risk</div>
-                <div className="explain-diff__risk">
-                  <strong>{diffData.score_diff.risk_before?.toFixed(2) ?? "—"}</strong>
-                  <span>→</span>
-                  <strong>{diffData.score_diff.risk_after?.toFixed(2) ?? "—"}</strong>
-                </div>
-              </div>
-              <div
-                className={`explain-diff__delta ${diffData.score_diff.delta && diffData.score_diff.delta < 0 ? "is-improved" : diffData.score_diff.delta && diffData.score_diff.delta > 0 ? "is-worsened" : ""}`}
-              >
-                {formatDelta(diffData.score_diff.delta)}
-              </div>
-            </div>
+  const copyLink = useCallback(() => {
+    void navigator.clipboard.writeText(shareUrl);
+    showToast("success", "Ссылка скопирована");
+  }, [shareUrl, showToast]);
 
-            <div className="card explain-card">
-              <div className="explain-diff__section-header">
-                <h3>Причины</h3>
-              </div>
-              <div className="explain-diff__tabs">
-                {(
-                  [
-                    { id: "strong", label: "Сильно изменилось" },
-                    { id: "added", label: "Добавилось" },
-                    { id: "removed", label: "Убрано" },
-                    { id: "all", label: "Показать всё" },
-                  ] as const
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`explain-diff__tab${reasonTab === tab.id ? " is-active" : ""}`}
-                    onClick={() => setReasonTab(tab.id)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div className="explain-diff__table">
-                <div className="explain-diff__row explain-diff__row--head">
-                  <span>Причина</span>
-                  <span>Было</span>
-                  <span>Стало</span>
-                  <span>Δ</span>
-                </div>
-                {reasonSummary.visible.length ? (
-                  reasonSummary.visible.map((reason) => (
-                    <div key={reason.reason_code} className={`explain-diff__row is-${reason.status}`}>
-                      <span className="explain-diff__reason">
-                        {reason.reason_code}
-                        <span className="pill pill--outline">{diffBadgeLabel[reason.status]}</span>
-                      </span>
-                      <span>{reason.weight_before ?? "—"}</span>
-                      <span>{reason.weight_after ?? "—"}</span>
-                      <span>{formatDelta(reason.delta)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="muted small">Нет значимых изменений.</div>
-                )}
-              </div>
-            </div>
+  const handleExport = useCallback(() => {
+    const payloadData = {
+      meta: {
+        generated_at: new Date().toISOString(),
+        mode: queryState.mode,
+        params: queryState,
+        duration_ms: lastRunDuration ?? null,
+      },
+      explain: payload ?? null,
+      diff: diffData ?? null,
+      actions: {
+        include_actions: queryState.includeActions,
+        selected: queryState.selectedActions,
+      },
+      case: {
+        priority: queryState.casePriority,
+        note: queryState.caseNote || null,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payloadData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `explain_${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [diffData, lastRunDuration, payload, queryState]);
 
-            <div className="card explain-card">
-              <h3>Evidence</h3>
-              {diffData.evidence_diff.length ? (
-                <div className="explain-diff__evidence-columns">
-                  {(["removed", "added"] as const).map((status) => (
-                    <div key={status} className="explain-diff__evidence-column">
-                      <div className="muted small">{status === "removed" ? "Removed" : "Added"}</div>
-                      <div className="explain-diff__list">
-                        {diffData.evidence_diff
-                          .filter((item) => item.status === status)
-                          .map((item) => (
-                            <button
-                              key={item.evidence_id}
-                              type="button"
-                              className={`explain-diff__item is-${item.status}`}
-                              onClick={() => {
-                                const anchor = document.querySelector(`[data-evidence-id="${item.evidence_id}"]`);
-                                if (anchor) {
-                                  anchor.scrollIntoView({ behavior: "smooth", block: "center" });
-                                }
-                              }}
-                            >
-                              <span>{item.evidence_id}</span>
-                              <span className="pill pill--outline">{item.status}</span>
-                            </button>
-                          ))}
-                        {!diffData.evidence_diff.some((item) => item.status === status) ? (
-                          <div className="muted small">Нет изменений.</div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="muted small">Изменений нет.</div>
-              )}
-            </div>
+  const toggleNode = useCallback((nodeId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  }, []);
 
-            {diffData.action_impact ? (
-              <div className="card explain-card">
-                <h3>Action impact</h3>
-                <div className="explain-diff__action">
-                  <div>
-                    <div className="muted small">Action</div>
-                    <strong>{diffData.action_impact.action_id}</strong>
-                  </div>
-                  <div>
-                    <div className="muted small">Ожидаемый эффект</div>
-                    <strong>{formatDelta(diffData.action_impact.expected_delta)}</strong>
-                  </div>
-                  <div>
-                    <div className="muted small">Confidence</div>
-                    <strong>{diffData.action_impact.confidence.toFixed(2)}</strong>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+  const handleSelectNode = useCallback((node: ExplainReasonNode) => {
+    setSelectedReasonId((prev) => {
+      if (prev === node.id) {
+        setSelectedEvidenceIds(new Set());
+        return null;
+      }
+      setSelectedEvidenceIds(collectEvidenceRefs(node));
+      return node.id;
+    });
+  }, []);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!lastRunStateRef.current) return false;
+    return JSON.stringify(lastRunStateRef.current) !== JSON.stringify(queryState);
+  }, [queryState]);
+
+  const canRunExplain = Boolean(kind && (kind === "kpi" ? kpiKey : entityId));
+  const canRunDiff = queryState.mode !== "diff" || (queryState.leftSnapshot && queryState.rightSnapshot);
+  const canRun = canRunExplain && canRunDiff;
+
+  const panelUpdating = isLoading || (queryState.mode === "diff" && isDiffLoading);
+
+  const sourceLabel = useMemo(() => {
+    if (payload?.kind) {
+      return `${payload.kind} · ${payload.id}`;
+    }
+    if (kind === "kpi" && kpiKey) return `kpi · ${kpiKey}`;
+    if (kind && entityId) return `${kind} · ${entityId}`;
+    return "—";
+  }, [entityId, kpiKey, kind, payload?.id, payload?.kind]);
+
+  const explainSummaryCards = useMemo(() => {
+    if (!payload) return [];
+    const cards = [
+      {
+        label: "Outcome",
+        value: payload.decision,
+      },
+      {
+        label: "Score",
+        value: payload.score?.toFixed(2) ?? "—",
+        hint: `Band: ${scoreBandLabel(payload.score_band)}`,
+      },
+    ];
+    if (topReasons.length) {
+      cards.push({
+        label: "Top reasons",
+        value: topReasons.join(", "),
+      });
+    }
+    if (payload.recommended_actions.length) {
+      cards.push({
+        label: "Recommended",
+        value: String(payload.recommended_actions.length),
+        hint: "actions",
+      });
+    }
+    return cards;
+  }, [payload, topReasons]);
+
+  const diffSummaryCards = useMemo(() => {
+    if (!diffData) return [];
+    return [
+      {
+        label: "Decision",
+        value: `${diffData.decision_diff.before ?? "—"} → ${diffData.decision_diff.after ?? "—"}`,
+      },
+      {
+        label: "Δ риска",
+        value: formatDelta(diffData.score_diff.delta),
+        hint: `${diffData.score_diff.risk_before?.toFixed(2) ?? "—"} → ${
+          diffData.score_diff.risk_after?.toFixed(2) ?? "—"
+        }`,
+      },
+    ];
+  }, [diffData]);
+
+  const caseValidation = useMemo(() => {
+    const issues: string[] = [];
+    if (queryState.includeExplain && !payload) {
+      issues.push("Explain отсутствует — выполните Run.");
+    }
+    if (queryState.includeDiff && !diffData) {
+      issues.push("Diff отсутствует — выполните сравнение.");
+    }
+    return issues;
+  }, [diffData, payload, queryState.includeDiff, queryState.includeExplain]);
+
+  const disableCreateCase = Boolean(caseValidation.length) || !caseKind || isCaseSubmitting;
+
+  const canExport = Boolean(payload || diffData || queryState.selectedActions.length);
 
   return (
     <div className="explain-v2">
@@ -810,192 +849,62 @@ export const ExplainPage = () => {
           <h1>Explain v2</h1>
           <p className="muted">Решение, причины, статус, действия.</p>
         </div>
-        <div className="stack-inline">
-          <button
-            type="button"
-            className="neft-btn-secondary"
-            onClick={() => setShowDiff(true)}
-          >
-            Сравнить
-          </button>
-          <button
-            type="button"
-            className="neft-btn-primary"
-            onClick={() => setCaseModalOpen(true)}
-            disabled={!payload || !caseKind}
-          >
-            Создать кейс
-          </button>
-          <button type="button" className="neft-btn-secondary" onClick={copyLink}>
-            Скопировать ссылку
-          </button>
-          <button type="button" className="neft-btn-secondary" title="В разработке" disabled>
-            Экспорт
-          </button>
+      </div>
+
+      <div className="explain-control-bar">
+        <div className="explain-control-bar__row">
+          <div className="segmented-control" role="tablist" aria-label="Explain modes">
+            {MODE_OPTIONS.map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={queryState.mode === mode.id ? "is-active" : ""}
+                onClick={() => setQueryState((prev) => ({ ...prev, mode: mode.id }))}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="explain-control-bar__actions">
+            <button
+              type="button"
+              className="neft-btn-primary"
+              onClick={() => void handleRun()}
+              disabled={!canRun || isLoading}
+            >
+              {isLoading ? "Running..." : payload ? "Re-run" : "Run"}
+            </button>
+            <button type="button" className="ghost" onClick={handleReset}>
+              Reset
+            </button>
+            <button type="button" className="ghost" onClick={copyLink}>
+              Share
+            </button>
+            <button type="button" className="ghost" onClick={handleExport} disabled={!canExport}>
+              Export
+            </button>
+          </div>
+
+          <div className="explain-control-bar__status">
+            <span>Last run: {formatTime(lastRunAt)}</span>
+            <span>Duration: {lastRunDuration ? `${lastRunDuration}ms` : "—"}</span>
+            <span>Source: {sourceLabel}</span>
+            <div className="explain-control-bar__meta">
+              {hasUnsavedChanges ? <span className="pill pill--accent">Unsaved changes</span> : null}
+            </div>
+          </div>
         </div>
       </div>
-      {caseModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="modal__header">
-              <h3>Создать кейс</h3>
-              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
-                ✕
-              </button>
-            </div>
-            <div className="modal__body">
-              <label className="filter">
-                Priority
-                <select value={casePriority} onChange={(event) => setCasePriority(event.target.value as CasePriority)}>
-                  <option value="LOW">LOW</option>
-                  <option value="MEDIUM">MEDIUM</option>
-                  <option value="HIGH">HIGH</option>
-                  <option value="CRITICAL">CRITICAL</option>
-                </select>
-              </label>
-              <label className="filter">
-                Note
-                <textarea
-                  rows={3}
-                  value={caseNote}
-                  onChange={(event) => setCaseNote(event.target.value)}
-                  placeholder="Комментарий для кейса"
-                />
-              </label>
-              <div className="checkbox">
-                <input
-                  id="include-explain"
-                  type="checkbox"
-                  checked={includeExplain}
-                  onChange={(event) => setIncludeExplain(event.target.checked)}
-                />
-                <label htmlFor="include-explain">Include explain snapshot</label>
-              </div>
-              <div className="checkbox">
-                <input
-                  id="include-diff"
-                  type="checkbox"
-                  checked={includeDiff}
-                  onChange={(event) => setIncludeDiff(event.target.checked)}
-                  disabled={!diffData}
-                />
-                <label htmlFor="include-diff">Include diff snapshot</label>
-              </div>
-              <div className="checkbox">
-                <input
-                  id="include-actions"
-                  type="checkbox"
-                  checked={includeActions}
-                  onChange={(event) => setIncludeActions(event.target.checked)}
-                  disabled={!selectedActions.length}
-                />
-                <label htmlFor="include-actions">Include selected actions</label>
-              </div>
-              {createdCaseId ? (
-                <div className="card" style={{ marginTop: 12 }}>
-                  <strong>Кейс создан</strong>
-                  <div className="muted">ID: {createdCaseId}</div>
-                  <button
-                    type="button"
-                    className="neft-btn-secondary"
-                    style={{ marginTop: 8 }}
-                    onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
-                  >
-                    Открыть кейс
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div className="modal__footer">
-              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="neft-btn-primary"
-                onClick={() => void handleCreateCase()}
-                disabled={isCaseSubmitting}
-              >
-                {isCaseSubmitting ? "Создаём..." : "Создать"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
-      {isLoading ? <div className="card">Загружаем explain...</div> : null}
-      {error ? (
-        <div className="card card--error">
-          <div className="stack">
-            <div>
-              <strong>Проблема:</strong> Данные Explain временно недоступны.
-            </div>
-            <div>
-              <strong>Причина:</strong> {error}
-            </div>
-            <div>
-              <strong>Статус:</strong> ожидание повторной попытки.
-            </div>
-            <div>
-              <strong>Система:</strong> повторит запрос через 60 секунд.
-            </div>
-            <div>
-              <strong>Действие:</strong> можно запустить запрос вручную.
-            </div>
-          </div>
-          <button type="button" className="ghost" onClick={() => void loadExplain()}>
-            Повторить
-          </button>
-        </div>
-      ) : null}
-
-      {!isLoading && !error && !payload?.reason_tree ? (
-        <div className="card card--empty">
-          <div className="stack">
-            <div>
-              <strong>Проблема:</strong> Нет данных Explain.
-            </div>
-            <div>
-              <strong>Причина:</strong> Explain не сформирован по выбранным параметрам.
-            </div>
-            <div>
-              <strong>Статус:</strong> данных нет.
-            </div>
-            <div>
-              <strong>Система:</strong> работает штатно.
-            </div>
-            <div>
-              <strong>Действие:</strong> уточните параметры или выберите другой период.
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {payload ? (
-        <div className="explain-grid">
-          <section className="card explain-card">
-            <div className="explain-header">
-              <div>
-                <div className={`pill pill--${payload.decision === "DECLINE" ? "danger" : payload.decision === "APPROVE" ? "success" : "neutral"}`}>
-                  {payload.decision}
-                </div>
-                <div className="explain-header__meta">
-                  <span>Score: {payload.score ?? "—"}</span>
-                  <span>Band: {scoreBandLabel(payload.score_band)}</span>
-                </div>
-              </div>
-              <div className="explain-header__meta">
-                <span>Policy: {payload.policy_snapshot ?? "—"}</span>
-                <span>{formatTimestamp(payload.generated_at)}</span>
-              </div>
-            </div>
-          </section>
-
+      <div className="explain-layout">
+        <div className="explain-layout__left">
           <section className="card explain-card">
             <div className="card__header">
               <h3>Reason Tree</h3>
             </div>
-            {payload.reason_tree ? (
+            {isLoading && !payload ? <div className="muted">Загружаем explain...</div> : null}
+            {payload?.reason_tree ? (
               <div className="explain-tree">
                 <ReasonTreeNode
                   node={payload.reason_tree}
@@ -1007,7 +916,7 @@ export const ExplainPage = () => {
                 />
               </div>
             ) : (
-              <div className="muted">Дерево причин недоступно.</div>
+              <EmptyState title="Нажмите Run чтобы получить explain" subtitle="Дерево причин появится здесь." />
             )}
           </section>
 
@@ -1016,11 +925,7 @@ export const ExplainPage = () => {
               <h3>Evidence</h3>
               <div className="explain-filter">
                 <label>
-                  <input
-                    type="radio"
-                    checked={filter === "all"}
-                    onChange={() => setFilter("all")}
-                  />
+                  <input type="radio" checked={filter === "all"} onChange={() => setFilter("all")} />
                   Все
                 </label>
                 <label>
@@ -1051,7 +956,7 @@ export const ExplainPage = () => {
             <div className="card__header">
               <h3>Documents</h3>
             </div>
-            {payload.documents.length ? (
+            {payload?.documents.length ? (
               <div className="explain-docs">
                 {payload.documents.map((doc) => (
                   <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer" className="ghost">
@@ -1063,57 +968,380 @@ export const ExplainPage = () => {
               <div className="card card--empty">Документы отсутствуют.</div>
             )}
           </section>
+        </div>
 
-          <section className="card explain-card">
-            <div className="card__header">
-              <h3>Recommended actions</h3>
-            </div>
-            <div className="explain-actions">
-              {actionOptions.length ? (
-                actionOptions.map((action) => {
-                  const disabled = !selectedActionCodes.has(action.action_code) && selectedActions.length >= 3;
-                  return (
-                    <label
-                      key={action.action_code}
-                      className={`explain-action${disabled ? " is-disabled" : ""}`}
-                      title={disabled ? "Максимум 3" : undefined}
-                    >
+        <div className="explain-layout__right">
+          <div className="explain-tabs">
+            {MODE_OPTIONS.map((mode) => (
+              <button
+                key={`tab-${mode.id}`}
+                type="button"
+                className={`explain-tab${queryState.mode === mode.id ? " is-active" : ""}`}
+                onClick={() => setQueryState((prev) => ({ ...prev, mode: mode.id }))}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="explain-panel">
+            {panelUpdating ? <div className="explain-panel__overlay">Updating…</div> : null}
+
+            {queryState.mode === "explain" ? (
+              <>
+                {explainSummaryCards.length ? (
+                  <div className="explain-summary">
+                    {explainSummaryCards.map((card) => (
+                      <SummaryCard key={card.label} label={card.label} value={card.value} hint={card.hint} />
+                    ))}
+                  </div>
+                ) : null}
+                {error ? (
+                  <ErrorNotice error={error} />
+                ) : payload ? (
+                  <JsonViewer value={payload} title="Explain JSON" enableSearch enableCollapse />
+                ) : (
+                  <EmptyState title="Нажмите Run чтобы получить explain" subtitle="Здесь появится JSON ответ." />
+                )}
+              </>
+            ) : null}
+
+            {queryState.mode === "diff" ? (
+              <>
+                <div className="card explain-card">
+                  <div className="explain-diff__controls">
+                    <label>
+                      Снимок: До
+                      <select
+                        value={queryState.leftSnapshot}
+                        onChange={(event) =>
+                          setQueryState((prev) => ({ ...prev, leftSnapshot: event.target.value }))
+                        }
+                      >
+                        <option value="">Выберите...</option>
+                        {snapshotOptions.map((option) => (
+                          <option key={`left-${option.value}`} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                       <input
-                        type="checkbox"
-                        checked={selectedActionCodes.has(action.action_code)}
-                        onChange={() => toggleAction(action)}
-                        disabled={disabled}
+                        type="text"
+                        value={queryState.leftSnapshot}
+                        onChange={(event) =>
+                          setQueryState((prev) => ({ ...prev, leftSnapshot: event.target.value }))
+                        }
+                        placeholder="snapshot_id / policy_version"
                       />
-                      <div className="explain-action__body">
-                        <div className="explain-action__title">
-                          {action.label}
-                          {action.recommended ? <span className="pill pill--accent">recommended</span> : null}
-                        </div>
-                        {action.description ? <div className="muted small">{action.description}</div> : null}
-                        {action.risk_hint ? <div className="muted small">Hint: {action.risk_hint}</div> : null}
-                      </div>
                     </label>
-                  );
-                })
-              ) : (
-                <div className="muted">Рекомендации отсутствуют.</div>
-              )}
+                    <label>
+                      Снимок: После
+                      <select
+                        value={queryState.rightSnapshot}
+                        onChange={(event) =>
+                          setQueryState((prev) => ({ ...prev, rightSnapshot: event.target.value }))
+                        }
+                      >
+                        <option value="">Выберите...</option>
+                        {snapshotOptions.map((option) => (
+                          <option key={`right-${option.value}`} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={queryState.rightSnapshot}
+                        onChange={(event) =>
+                          setQueryState((prev) => ({ ...prev, rightSnapshot: event.target.value }))
+                        }
+                        placeholder="snapshot_id / policy_version"
+                      />
+                    </label>
+                    <label>
+                      Action (optional)
+                      <input
+                        type="text"
+                        value={queryState.actionId}
+                        onChange={(event) => setQueryState((prev) => ({ ...prev, actionId: event.target.value }))}
+                        placeholder="action_id"
+                      />
+                    </label>
+                    <div className="explain-diff__controls-actions">
+                      <button type="button" className="neft-btn-primary" onClick={() => void loadDiff()}>
+                        Сравнить
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {diffSummaryCards.length ? (
+                  <div className="explain-summary">
+                    {diffSummaryCards.map((card) => (
+                      <SummaryCard key={card.label} label={card.label} value={card.value} hint={card.hint} />
+                    ))}
+                  </div>
+                ) : null}
+
+                {diffError ? (
+                  <ErrorNotice error={diffError} />
+                ) : diffData ? (
+                  <>
+                    <div className="card explain-card">
+                      <div className="explain-diff__section-header">
+                        <h3>Причины</h3>
+                      </div>
+                      <div className="explain-diff__tabs">
+                        {(
+                          [
+                            { id: "strong", label: "Сильно изменилось" },
+                            { id: "added", label: "Добавилось" },
+                            { id: "removed", label: "Убрано" },
+                            { id: "all", label: "Показать всё" },
+                          ] as const
+                        ).map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            className={`explain-diff__tab${reasonTab === tab.id ? " is-active" : ""}`}
+                            onClick={() => setReasonTab(tab.id)}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="explain-diff__table">
+                        <div className="explain-diff__row explain-diff__row--head">
+                          <span>Причина</span>
+                          <span>Было</span>
+                          <span>Стало</span>
+                          <span>Δ</span>
+                        </div>
+                        {reasonSummary.visible.length ? (
+                          reasonSummary.visible.map((reason) => (
+                            <div key={reason.reason_code} className={`explain-diff__row is-${reason.status}`}>
+                              <span className="explain-diff__reason">
+                                {reason.reason_code}
+                                <span className="pill pill--outline">{diffBadgeLabel[reason.status]}</span>
+                              </span>
+                              <span>{reason.weight_before ?? "—"}</span>
+                              <span>{reason.weight_after ?? "—"}</span>
+                              <span>{formatDelta(reason.delta)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="muted small">Нет значимых изменений.</div>
+                        )}
+                      </div>
+                    </div>
+                    <JsonViewer value={diffData} title="Diff JSON" enableSearch enableCollapse />
+                  </>
+                ) : (
+                  <EmptyState title="Diff требует два состояния" subtitle="Выберите snapshots и нажмите Сравнить." />
+                )}
+              </>
+            ) : null}
+
+            {queryState.mode === "actions" ? (
+              <>
+                <div className="explain-summary">
+                  <SummaryCard label="Selected actions" value={String(selectedActionCodes.size)} hint="до 3" />
+                  <SummaryCard
+                    label="Recommended"
+                    value={String(payload?.recommended_actions.length ?? 0)}
+                    hint="доступно"
+                  />
+                </div>
+                <ActionSelectionList
+                  actions={actionOptions}
+                  selectedCodes={selectedActionCodes}
+                  onToggle={toggleAction}
+                  limit={3}
+                />
+                <div className="explain-actions__footer">
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => setQueryState((prev) => ({ ...prev, mode: "diff" }))}
+                    disabled={!canDiff}
+                  >
+                    Сравнить
+                  </button>
+                  {!canCompare ? (
+                    <span className="muted small">What-if доступен только для операций/инвойсов/заказов.</span>
+                  ) : null}
+                  <button type="button" className="ghost" onClick={openWhatIf} disabled={!canCompare}>
+                    Открыть What-if
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {queryState.mode === "case" ? (
+              <>
+                <div className="explain-summary">
+                  <SummaryCard label="Priority" value={queryState.casePriority} hint={CASE_PRIORITY_HINTS[queryState.casePriority]} />
+                  <SummaryCard
+                    label="Include"
+                    value={[
+                      queryState.includeExplain ? "Explain" : null,
+                      queryState.includeDiff ? "Diff" : null,
+                      queryState.includeActions ? "Actions" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "—"}
+                  />
+                  <SummaryCard label="Selected actions" value={String(selectedActionCodes.size)} />
+                </div>
+                <div className="explain-case__meta">
+                  <div className="card explain-card">
+                    <div className="stack">
+                      <strong>Case note</strong>
+                      <span className="muted small">
+                        {queryState.caseNote ? "Готово к отправке" : "Add context for reviewers"}
+                      </span>
+                    </div>
+                    {queryState.caseNote ? <div>{queryState.caseNote}</div> : null}
+                  </div>
+                  {createdCaseId ? (
+                    <div className="card explain-card">
+                      <strong>Кейс создан</strong>
+                      <div className="muted">ID: {createdCaseId}</div>
+                      <div className="stack-inline">
+                        <CopyButton value={createdCaseId} label="Copy ID" />
+                        <button
+                          type="button"
+                          className="neft-btn-secondary"
+                          onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
+                        >
+                          Открыть кейс
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="neft-btn-primary"
+                    onClick={() => setCaseModalOpen(true)}
+                    disabled={!payload || !caseKind}
+                  >
+                    Создать кейс
+                  </button>
+                  {caseValidation.length ? (
+                    <div className="explain-empty">
+                      {caseValidation.map((issue) => (
+                        <div key={issue}>{issue}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {caseModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal__header">
+              <h3>Создать кейс</h3>
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                ✕
+              </button>
             </div>
-            <div className="explain-actions__footer">
+            <div className="modal__body">
+              <label className="filter">
+                Priority
+                <select
+                  value={queryState.casePriority}
+                  onChange={(event) =>
+                    setQueryState((prev) => ({ ...prev, casePriority: event.target.value as CasePriority }))
+                  }
+                >
+                  <option value="LOW">LOW</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="CRITICAL">CRITICAL</option>
+                </select>
+                <span className="muted small">{CASE_PRIORITY_HINTS[queryState.casePriority]}</span>
+              </label>
+              <label className="filter">
+                Note
+                <textarea
+                  rows={4}
+                  value={queryState.caseNote}
+                  maxLength={1000}
+                  onChange={(event) => setQueryState((prev) => ({ ...prev, caseNote: event.target.value }))}
+                  placeholder="Комментарий для кейса"
+                />
+                <span className="muted small">
+                  {queryState.caseNote ? `${queryState.caseNote.length}/1000` : "Add context for reviewers"}
+                </span>
+              </label>
+              <div className="checkbox">
+                <input
+                  id="include-explain"
+                  type="checkbox"
+                  checked={queryState.includeExplain}
+                  onChange={(event) =>
+                    setQueryState((prev) => ({ ...prev, includeExplain: event.target.checked }))
+                  }
+                />
+                <label htmlFor="include-explain">Include explain snapshot</label>
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-diff"
+                  type="checkbox"
+                  checked={queryState.includeDiff}
+                  onChange={(event) => setQueryState((prev) => ({ ...prev, includeDiff: event.target.checked }))}
+                  disabled={!diffData}
+                />
+                <label htmlFor="include-diff">Include diff snapshot</label>
+                {!diffData ? <span className="muted small">Diff недоступен — выполните сравнение.</span> : null}
+              </div>
+              <div className="checkbox">
+                <input
+                  id="include-actions"
+                  type="checkbox"
+                  checked={queryState.includeActions}
+                  onChange={(event) =>
+                    setQueryState((prev) => ({ ...prev, includeActions: event.target.checked }))
+                  }
+                />
+                <label htmlFor="include-actions">Include selected actions</label>
+              </div>
+              {queryState.includeActions ? (
+                <ActionSelectionList
+                  actions={actionOptions}
+                  selectedCodes={selectedActionCodes}
+                  onToggle={toggleAction}
+                  limit={3}
+                />
+              ) : null}
+              {caseValidation.length ? (
+                <div className="explain-empty">
+                  {caseValidation.map((issue) => (
+                    <div key={issue}>{issue}</div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="modal__footer">
+              <button type="button" className="ghost" onClick={() => setCaseModalOpen(false)}>
+                Отмена
+              </button>
               <button
                 type="button"
-                className="primary"
-                onClick={() => setShowDiff(true)}
-                disabled={!canDiff}
+                className="neft-btn-primary"
+                onClick={() => void handleCreateCase()}
+                disabled={disableCreateCase}
               >
-                Сравнить
-              </button>
-              {!canCompare ? <span className="muted small">What-if доступен только для операций/инвойсов/заказов.</span> : null}
-              <button type="button" className="ghost" onClick={openWhatIf} disabled={!canCompare}>
-                Открыть What-if
+                {isCaseSubmitting ? "Создаём..." : "Создать"}
               </button>
             </div>
-          </section>
+          </div>
         </div>
       ) : null}
 
@@ -1145,11 +1373,16 @@ export const ExplainPage = () => {
                   type="button"
                   className="primary"
                   onClick={() => void evaluate()}
-                  disabled={!canCompare || selectedActions.length < 2 || isWhatIfLoading}
+                  disabled={!canCompare || queryState.selectedActions.length < 2 || isWhatIfLoading}
                 >
                   Запустить симуляцию
                 </button>
-                <button type="button" className="ghost" onClick={() => setShowDiff(true)} disabled={!canDiff}>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setQueryState((prev) => ({ ...prev, mode: "diff" }))}
+                  disabled={!canDiff}
+                >
                   Сравнить
                 </button>
                 <div className="muted small">Применение недоступно — только симуляция.</div>
