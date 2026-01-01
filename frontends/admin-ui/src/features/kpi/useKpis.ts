@@ -52,6 +52,8 @@ const buildKpiCard = (item: KpiSummaryItem, windowDays: number): KpiCardData => 
     unit: item.unit,
     target: item.target ?? undefined,
     progress: item.progress ?? undefined,
+    explainKey: item.key,
+    explainWindowDays: windowDays,
   };
 };
 
@@ -71,6 +73,8 @@ export const useKpis = (options?: { showToast?: (kind: "success" | "error", text
           goodWhen: "down",
           unit: "count",
           target: 0,
+          explainKey: "billing_errors",
+          explainWindowDays: 7,
         },
         {
           id: "exports-ontime",
@@ -83,6 +87,8 @@ export const useKpis = (options?: { showToast?: (kind: "success" | "error", text
           goodWhen: "up",
           unit: "percent",
           target: 98,
+          explainKey: "exports_ontime_percent",
+          explainWindowDays: 7,
         },
         {
           id: "declines-total",
@@ -95,6 +101,8 @@ export const useKpis = (options?: { showToast?: (kind: "success" | "error", text
           goodWhen: "down",
           unit: "count",
           target: 10,
+          explainKey: "declines_total",
+          explainWindowDays: 7,
         },
         {
           id: "payout-batches",
@@ -106,6 +114,8 @@ export const useKpis = (options?: { showToast?: (kind: "success" | "error", text
           trend: "up",
           goodWhen: "up",
           unit: "count",
+          explainKey: "payout_batches_settled",
+          explainWindowDays: 7,
         },
         {
           id: "audit-breaks",
@@ -118,6 +128,8 @@ export const useKpis = (options?: { showToast?: (kind: "success" | "error", text
           goodWhen: "down",
           unit: "count",
           target: 0,
+          explainKey: "audit_chain_breaks",
+          explainWindowDays: 7,
         },
       ],
       hints: [

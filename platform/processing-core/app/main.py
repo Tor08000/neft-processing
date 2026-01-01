@@ -24,6 +24,7 @@ from app.routers.client import router as client_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
 from app.routers.kpi import router as kpi_router
+from app.routers.explain_v2 import router as explain_v2_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
@@ -382,6 +383,7 @@ if payouts_router is not None:
 app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
 app.include_router(admin_router, prefix=API_PREFIX_CORE)
 app.include_router(kpi_router, prefix=API_PREFIX_CORE)
+app.include_router(explain_v2_router, prefix=API_PREFIX_CORE)
 app.include_router(achievements_router, prefix=API_PREFIX_CORE)
 app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
@@ -422,6 +424,7 @@ if payouts_router is not None:
 
 core_prefixed_router.include_router(admin_router)
 core_prefixed_router.include_router(kpi_router)
+core_prefixed_router.include_router(explain_v2_router)
 core_prefixed_router.include_router(achievements_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(client_portal_router)

@@ -388,7 +388,7 @@ export function OperationsPage() {
                     <Link to={`/operations/${op.id}`} className="ghost">
                       Подробнее
                     </Link>
-                    <Link to={`/explain/${op.id}`} className="ghost">
+                    <Link to={`/explain?kind=operation&id=${encodeURIComponent(op.id)}`} className="ghost">
                       Explain
                     </Link>
                     {op.document_ids?.length ? (

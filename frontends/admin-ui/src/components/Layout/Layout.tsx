@@ -19,7 +19,7 @@ const baseNavItems = [
   { to: "/crm/subscriptions", label: "CRM · Subscriptions" },
   { to: "/money/health", label: "Money · Health" },
   { to: "/money/replay", label: "Money · Replay" },
-  { to: "/explain", label: "Unified Explain" },
+  { to: "/explain", label: "Explain v2" },
   { to: "/ops/escalations", label: "Ops · Escalations" },
   { to: "/ops/kpi", label: "Ops · KPI" },
   { to: "/support/requests", label: "Support Inbox" },

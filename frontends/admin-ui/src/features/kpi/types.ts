@@ -16,6 +16,8 @@ export interface KpiCardData {
   target?: number;
   progress?: number;
   progressMode?: KpiProgressMode;
+  explainKey?: string;
+  explainWindowDays?: number;
 }
 
 export interface KpiHint {

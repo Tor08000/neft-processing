@@ -50,6 +50,7 @@ export const KpiCard = ({
   actionTo,
   praiseLabel,
   explainKey,
+  explainWindowDays,
   unit,
   target,
   progress,
@@ -68,7 +69,9 @@ export const KpiCard = ({
       : null;
   const isProblem = status === "bad" || (deltaValue !== undefined && deltaValue < 0);
   const isGood = status === "good" && !isProblem;
-  const explainUrl = explainKey ? `/explain?context=kpi&key=${encodeURIComponent(explainKey)}` : null;
+  const explainUrl = explainKey
+    ? `/explain?kpi_key=${encodeURIComponent(explainKey)}&window_days=${explainWindowDays ?? 7}`
+    : null;
 
   return (
     <div className="kpi-card">

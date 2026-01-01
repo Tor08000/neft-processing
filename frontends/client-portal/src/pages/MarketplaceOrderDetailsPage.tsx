@@ -115,6 +115,11 @@ export function MarketplaceOrderDetailsPage() {
             <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
               Сообщить о проблеме
             </button>
+            {orderId ? (
+              <Link to={`/explain?kind=marketplace_order&id=${encodeURIComponent(orderId)}`} className="link-button">
+                Explain
+              </Link>
+            ) : null}
             <Link to="/marketplace/orders" className="link-button">
               Назад к заказам
             </Link>

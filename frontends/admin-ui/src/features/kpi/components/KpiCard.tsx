@@ -47,6 +47,8 @@ export const KpiCard = ({
   target,
   progress,
   progressMode,
+  explainKey,
+  explainWindowDays,
 }: KpiCardData) => {
   const resolvedMode = getProgressMode(goodWhen, progressMode);
   const hasTarget = target !== undefined && target !== null;
@@ -59,6 +61,7 @@ export const KpiCard = ({
         ? Math.max(current - target, 0)
         : Math.max(target - current, 0)
       : null;
+  const explainUrl = explainKey ? `/explain?kpi_key=${encodeURIComponent(explainKey)}&window_days=${explainWindowDays ?? 7}` : null;
 
   return (
     <div className="kpi-card">
@@ -68,6 +71,11 @@ export const KpiCard = ({
           <span className={`kpi-card__delta ${getDeltaTone(trend, goodWhen)}`}>{delta}</span>
         ) : null}
       </div>
+      {explainUrl ? (
+        <a className="kpi-card__explain" href={explainUrl}>
+          Почему?
+        </a>
+      ) : null}
       <div className="kpi-card__value">{value}</div>
       {subvalue !== undefined && subvalue !== null ? <div className="kpi-card__subvalue">{subvalue}</div> : null}
       {hasTarget ? (
