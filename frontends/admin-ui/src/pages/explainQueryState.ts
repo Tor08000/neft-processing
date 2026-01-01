@@ -44,13 +44,15 @@ const parseList = (value: string | null): string[] =>
   value ? value.split(",").map((item) => item.trim()).filter(Boolean) : [];
 
 export const parseExplainQueryState = (params: URLSearchParams): ExplainQueryState => {
-  const mode = isMode(params.get("mode")) ? params.get("mode") : DEFAULT_EXPLAIN_QUERY_STATE.mode;
+  const modeParam = params.get("mode");
+  const mode = isMode(modeParam) ? modeParam : DEFAULT_EXPLAIN_QUERY_STATE.mode;
   const includeExplain = parseBoolean(params.get("include_explain"), DEFAULT_EXPLAIN_QUERY_STATE.includeExplain);
   const includeDiff = parseBoolean(params.get("include_diff"), DEFAULT_EXPLAIN_QUERY_STATE.includeDiff);
   const includeActions = parseBoolean(params.get("include_actions"), DEFAULT_EXPLAIN_QUERY_STATE.includeActions);
   const selectedActions = parseList(params.get("selected_actions"));
-  const casePriority = isCasePriority(params.get("case_priority"))
-    ? params.get("case_priority")
+  const casePriorityParam = params.get("case_priority");
+  const casePriority = isCasePriority(casePriorityParam)
+    ? casePriorityParam
     : DEFAULT_EXPLAIN_QUERY_STATE.casePriority;
   const caseNote = params.get("case_note") ?? DEFAULT_EXPLAIN_QUERY_STATE.caseNote;
   const leftSnapshot = params.get("left_snapshot") ?? DEFAULT_EXPLAIN_QUERY_STATE.leftSnapshot;

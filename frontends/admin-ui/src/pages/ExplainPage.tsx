@@ -25,6 +25,9 @@ import type {
   ExplainScore,
   StreakState,
 } from "../gamification/types";
+import { recordCaseCreated, recordDiffRunSuccess, recordExplainRunSuccess } from "../mastery/events";
+import { buildMasterySnapshot } from "../mastery/levels";
+import { loadMasteryEvents, loadMasteryState } from "../mastery/storage";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -385,6 +388,13 @@ export const ExplainPage = () => {
   const [streak, setStreak] = useState<StreakState>(() => loadStreakState());
   const [achievementStats, setAchievementStats] = useState<AchievementStats>(() => loadAchievementStats());
   const [achievements, setAchievements] = useState<AchievementsState>(() => loadAchievementsState());
+  const [masterySnapshot, setMasterySnapshot] = useState(() =>
+    buildMasterySnapshot({
+      events: loadMasteryEvents(),
+      state: loadMasteryState(),
+      streakCount: loadStreakState().count,
+    }),
+  );
 
   const lastRunStateRef = useRef<ExplainQueryState | null>(null);
   const explainRequestIdRef = useRef(0);
@@ -455,6 +465,22 @@ export const ExplainPage = () => {
       return nextStats;
     });
   }, []);
+
+  const refreshMasterySnapshot = useCallback(() => {
+    setMasterySnapshot(
+      buildMasterySnapshot({
+        events: loadMasteryEvents(),
+        state: loadMasteryState(),
+        streakCount: streak.count,
+      }),
+    );
+  }, [streak.count]);
+
+  useEffect(() => {
+    refreshMasterySnapshot();
+  }, [refreshMasterySnapshot]);
+
+  // TODO: wire recordCaseClosed / recordActionApplied when case workflows are available.
 
   const linkedEvidenceIds = useMemo(() => selectedEvidenceIds, [selectedEvidenceIds]);
 
@@ -551,6 +577,7 @@ export const ExplainPage = () => {
       if (requestId !== explainRequestIdRef.current) return;
       if (explainResult.status === "fulfilled") {
         const runAt = new Date();
+        const scoreSnapshot = computeExplainScore(explainResult.value);
         setPayload(explainResult.value);
         setLastRunAt(runAt);
         setLastRunDuration(Math.round(performance.now() - startedAt));
@@ -561,6 +588,8 @@ export const ExplainPage = () => {
           return next;
         });
         registerAchievementEvent("explain_run");
+        recordExplainRunSuccess(scoreSnapshot);
+        refreshMasterySnapshot();
       } else {
         setPayload(null);
         setError({ title: "Explain failed", message: explainResult.reason.message });
@@ -579,7 +608,7 @@ export const ExplainPage = () => {
         setIsLoading(false);
       }
     }
-  }, [entityId, kind, kpiKey, queryState, registerAchievementEvent, windowDays]);
+  }, [entityId, kind, kpiKey, queryState, refreshMasterySnapshot, registerAchievementEvent, windowDays]);
 
   const loadDiff = useCallback(async () => {
     if (!kind) return;
@@ -606,6 +635,8 @@ export const ExplainPage = () => {
       if (requestId !== diffRequestIdRef.current) return;
       setDiffData(response);
       registerAchievementEvent("diff_run");
+      recordDiffRunSuccess();
+      refreshMasterySnapshot();
     } catch (err) {
       if (requestId !== diffRequestIdRef.current) return;
       setDiffError({ title: "Diff failed", message: (err as Error).message });
@@ -615,7 +646,15 @@ export const ExplainPage = () => {
         setIsDiffLoading(false);
       }
     }
-  }, [entityId, kind, queryState.actionId, queryState.leftSnapshot, queryState.rightSnapshot, registerAchievementEvent]);
+  }, [
+    entityId,
+    kind,
+    queryState.actionId,
+    queryState.leftSnapshot,
+    queryState.rightSnapshot,
+    refreshMasterySnapshot,
+    registerAchievementEvent,
+  ]);
 
   const reasonSummary = useMemo(
     () => reduceExplainDiffReasons(diffData?.reasons_diff ?? [], reasonTab),
@@ -697,6 +736,16 @@ export const ExplainPage = () => {
     return isCaseKind(normalized) ? normalized : null;
   }, [kind]);
 
+  const explainScore = useMemo(() => computeExplainScore(payload), [payload]);
+  const unlockedAchievements = useMemo(
+    () => ACHIEVEMENT_DEFINITIONS.filter((achievement) => achievements[achievement.key]),
+    [achievements],
+  );
+  const unlockedAchievementKeys = useMemo(
+    () => unlockedAchievements.map((achievement) => achievement.key),
+    [unlockedAchievements],
+  );
+
   const handleCreateCase = useCallback(async () => {
     if (!payload || !caseKind) return;
     setIsCaseSubmitting(true);
@@ -724,6 +773,12 @@ export const ExplainPage = () => {
       setCreatedCaseId(response.id);
       setCaseModalOpen(false);
       registerAchievementEvent("case_created");
+      recordCaseCreated({
+        caseId: response.id,
+        selectedActionsCount: queryState.includeActions ? queryState.selectedActions.length : 0,
+        score: explainScore,
+      });
+      refreshMasterySnapshot();
       showToast("success", "Кейс создан");
     } catch (err) {
       showToast("error", (err as Error).message);
@@ -737,6 +792,8 @@ export const ExplainPage = () => {
     queryState,
     diffData,
     windowDays,
+    explainScore,
+    refreshMasterySnapshot,
     registerAchievementEvent,
     showToast,
   ]);
@@ -805,6 +862,18 @@ export const ExplainPage = () => {
           : null,
         streak: streak.count,
         achievements: unlockedAchievementKeys,
+        mastery: {
+          level: masterySnapshot.level,
+          label: masterySnapshot.label,
+          progress_to_next: Number(masterySnapshot.progressToNext.toFixed(2)),
+          signals: {
+            total_explains: masterySnapshot.counters.totalExplains,
+            total_diffs: masterySnapshot.counters.totalDiffs,
+            total_cases_created: masterySnapshot.counters.totalCasesCreated,
+            improvements: masterySnapshot.signals.improvements,
+            clean_after_action_rate: Number(masterySnapshot.signals.cleanAfterActionRate.toFixed(2)),
+          },
+        },
       },
       explain: payload ?? null,
       diff: diffData ?? null,
@@ -824,7 +893,16 @@ export const ExplainPage = () => {
     link.download = `explain_${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [diffData, explainScore, lastRunDuration, payload, queryState, streak.count, unlockedAchievementKeys]);
+  }, [
+    diffData,
+    explainScore,
+    lastRunDuration,
+    masterySnapshot,
+    payload,
+    queryState,
+    streak.count,
+    unlockedAchievementKeys,
+  ]);
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpanded((prev) => {
@@ -869,19 +947,9 @@ export const ExplainPage = () => {
     return "—";
   }, [entityId, kpiKey, kind, payload?.id, payload?.kind]);
 
-  const explainScore = useMemo(() => computeExplainScore(payload), [payload]);
-  const unlockedAchievements = useMemo(
-    () => ACHIEVEMENT_DEFINITIONS.filter((achievement) => achievements[achievement.key]),
-    [achievements],
-  );
-  const unlockedAchievementKeys = useMemo(
-    () => unlockedAchievements.map((achievement) => achievement.key),
-    [unlockedAchievements],
-  );
-
   const explainSummaryCards = useMemo(() => {
     if (!payload) return [];
-    const cards = [
+    const cards: { label: string; value: ReactNode; hint?: string }[] = [
       {
         label: "Outcome",
         value: payload.decision,
@@ -952,6 +1020,9 @@ export const ExplainPage = () => {
   const disableCreateCase = Boolean(caseValidation.length) || !caseKind || isCaseSubmitting;
 
   const canExport = Boolean(payload || diffData || queryState.selectedActions.length);
+  const masteryTitle = masterySnapshot.missingRequirements.length
+    ? `What counts:\n${masterySnapshot.missingRequirements.join("\n")}`
+    : "All criteria met.";
 
   return (
     <div className="explain-v2">
@@ -1005,6 +1076,40 @@ export const ExplainPage = () => {
             </div>
             <span>Duration: {lastRunDuration ? `${lastRunDuration}ms` : "—"}</span>
             <span>Source: {sourceLabel}</span>
+            <div className="explain-control-bar__mastery" title={masteryTitle}>
+              <div className="explain-control-bar__mastery-row">
+                <span className="pill pill--outline">Mastery: {masterySnapshot.label}</span>
+                {masterySnapshot.nextLabel ? <span>Next: {masterySnapshot.nextLabel}</span> : <span>Top level</span>}
+              </div>
+              <div className="explain-control-bar__mastery-progress">
+                <div className="explain-control-bar__mastery-bar">
+                  <span style={{ width: `${Math.round(masterySnapshot.progressToNext * 100)}%` }} />
+                </div>
+                <span>{Math.round(masterySnapshot.progressToNext * 100)}%</span>
+                <details className="explain-control-bar__mastery-details">
+                  <summary>What counts</summary>
+                  <div className="explain-control-bar__mastery-body">
+                    {masterySnapshot.requirements.length ? (
+                      <ul>
+                        {masterySnapshot.requirements.map((req) => (
+                          <li key={req.id} className={req.met ? "is-met" : undefined}>
+                            {req.label} · {req.current}/{req.target}
+                            {req.soft ? " (future metric)" : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div>All criteria met.</div>
+                    )}
+                    {masterySnapshot.recommendations.length ? (
+                      <div className="muted small">
+                        Next steps: {masterySnapshot.recommendations.join(" · ")}
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              </div>
+            </div>
             <div className="explain-control-bar__meta">
               {hasUnsavedChanges ? <span className="pill pill--accent">Unsaved changes</span> : null}
               <span className="pill pill--outline" title="Consecutive explain runs without interruption">
