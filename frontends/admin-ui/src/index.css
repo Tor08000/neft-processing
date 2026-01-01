@@ -906,6 +906,85 @@ p {
   justify-content: flex-end;
 }
 
+.explain-control-bar__mastery {
+  display: grid;
+  gap: 6px;
+  align-items: end;
+}
+
+.explain-control-bar__mastery-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.explain-control-bar__mastery-progress {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--neft-text-muted);
+}
+
+.explain-control-bar__mastery-bar {
+  position: relative;
+  width: 96px;
+  height: 6px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.explain-control-bar__mastery-bar span {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: 999px;
+}
+
+.explain-control-bar__mastery-details {
+  text-align: left;
+  color: var(--neft-text);
+}
+
+.explain-control-bar__mastery-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  color: var(--neft-text-muted);
+}
+
+.explain-control-bar__mastery-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.explain-control-bar__mastery-body {
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  font-size: 11px;
+  color: var(--neft-text);
+}
+
+.explain-control-bar__mastery-body ul {
+  margin: 0 0 6px;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.explain-control-bar__mastery-body li.is-met {
+  color: var(--neft-text-muted);
+  text-decoration: line-through;
+}
+
 .explain-control-bar__achievements {
   display: inline-flex;
   gap: 6px;
