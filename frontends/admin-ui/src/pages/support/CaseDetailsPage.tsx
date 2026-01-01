@@ -7,6 +7,7 @@ import {
   type CaseComment,
   type CaseDetailsResponse,
   type CasePriority,
+  type CaseSlaState,
   type CaseStatus,
 } from "../../api/cases";
 import { JsonViewer } from "../../components/common/JsonViewer";
@@ -30,6 +31,27 @@ const statusTone = (status: CaseStatus) => {
 const priorityTone = (priority: CasePriority) => {
   if (priority === "HIGH" || priority === "CRITICAL") return "badge badge-danger";
   return "badge";
+};
+
+const slaTone = (slaState?: CaseSlaState | null) => {
+  if (slaState === "BREACHED") return "badge badge-danger";
+  if (slaState === "WARNING") return "badge badge-success";
+  return "badge";
+};
+
+const formatRemaining = (dueAt?: string | null) => {
+  if (!dueAt) return "—";
+  const due = new Date(dueAt).getTime();
+  const now = Date.now();
+  const diffMs = due - now;
+  if (diffMs <= 0) {
+    return "BREACHED";
+  }
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `${minutes}m left`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return `${hours}h ${rem}m left`;
 };
 
 export function CaseDetailsPage() {
@@ -119,6 +141,17 @@ export function CaseDetailsPage() {
     return entries.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [payload]);
 
+  const escalationHistory = useMemo(() => {
+    if (!payload) return [];
+    return payload.comments
+      .filter((comment) => comment.type === "system" && comment.body.startsWith("Эскалация"))
+      .map((comment) => ({
+        id: comment.id,
+        body: comment.body,
+        created_at: comment.created_at,
+      }));
+  }, [payload]);
+
   if (!id) {
     return <div className="card">Кейс не найден</div>;
   }
@@ -169,6 +202,16 @@ export function CaseDetailsPage() {
             <div>{payload.case.assigned_to ?? "—"}</div>
           </div>
           <div>
+            <div className="label">Queue</div>
+            <span className="badge">{payload.case.queue}</span>
+          </div>
+          <div>
+            <div className="label">SLA</div>
+            <span className={slaTone(payload.case.sla_state)}>
+              {payload.case.sla_state ?? "ON_TRACK"}
+            </span>
+          </div>
+          <div>
             <div className="label">Kind</div>
             <div>{payload.case.kind}</div>
           </div>
@@ -181,6 +224,43 @@ export function CaseDetailsPage() {
             <div>{formatTimestamp(payload.case.last_activity_at)}</div>
           </div>
         </div>
+      </section>
+
+      <section className="card">
+        <h3>SLA таймеры</h3>
+        <div className="meta-grid">
+          <div>
+            <div className="label">First response</div>
+            <div>{formatRemaining(payload.case.first_response_due_at ?? null)}</div>
+          </div>
+          <div>
+            <div className="label">Resolve</div>
+            <div>{formatRemaining(payload.case.resolve_due_at ?? null)}</div>
+          </div>
+          <div>
+            <div className="label">Escalation level</div>
+            <span className="badge">{`E${payload.case.escalation_level}`}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>Эскалации</h3>
+        {escalationHistory.length === 0 ? (
+          <div className="muted">Эскалаций пока нет</div>
+        ) : (
+          <div className="timeline-list">
+            {escalationHistory.map((item) => (
+              <div className="timeline-item" key={item.id}>
+                <div className="timeline-item__meta">
+                  <span className="timeline-item__title">Система</span>
+                  <span className="muted small">{formatTimestamp(item.created_at)}</span>
+                </div>
+                <div className="timeline-item__body">{item.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card">

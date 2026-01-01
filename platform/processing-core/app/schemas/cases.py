@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.cases import CaseCommentType, CaseKind, CasePriority, CaseStatus
+from app.models.cases import CaseCommentType, CaseKind, CasePriority, CaseQueue, CaseSlaState, CaseStatus
 
 
 class CaseCreateRequest(BaseModel):
@@ -69,7 +69,12 @@ class CaseResponse(BaseModel):
     window_days: int | None
     title: str
     status: CaseStatus
+    queue: CaseQueue
     priority: CasePriority
+    escalation_level: int
+    first_response_due_at: datetime | None = None
+    resolve_due_at: datetime | None = None
+    sla_state: CaseSlaState | None = None
     created_by: str | None
     assigned_to: str | None
     created_at: datetime

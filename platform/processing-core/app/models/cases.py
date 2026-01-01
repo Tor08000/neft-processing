@@ -29,6 +29,19 @@ class CasePriority(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class CaseQueue(str, Enum):
+    FRAUD_OPS = "FRAUD_OPS"
+    FINANCE_OPS = "FINANCE_OPS"
+    SUPPORT = "SUPPORT"
+    GENERAL = "GENERAL"
+
+
+class CaseSlaState(str, Enum):
+    ON_TRACK = "ON_TRACK"
+    WARNING = "WARNING"
+    BREACHED = "BREACHED"
+
+
 class CaseCommentType(str, Enum):
     USER = "user"
     SYSTEM = "system"
@@ -50,12 +63,21 @@ class Case(Base):
         index=True,
         default=CaseStatus.TRIAGE,
     )
+    queue = Column(
+        ExistingEnum(CaseQueue, name="case_queue"),
+        nullable=False,
+        index=True,
+        default=CaseQueue.GENERAL,
+    )
     priority = Column(
         ExistingEnum(CasePriority, name="case_priority"),
         nullable=False,
         index=True,
         default=CasePriority.MEDIUM,
     )
+    escalation_level = Column(Integer, nullable=False, default=0)
+    first_response_due_at = Column(DateTime(timezone=True), nullable=True)
+    resolve_due_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(String(128), nullable=True)
     assigned_to = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -96,6 +118,8 @@ __all__ = [
     "CaseCommentType",
     "CaseKind",
     "CasePriority",
+    "CaseQueue",
     "CaseSnapshot",
+    "CaseSlaState",
     "CaseStatus",
 ]

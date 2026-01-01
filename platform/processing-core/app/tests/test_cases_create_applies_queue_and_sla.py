@@ -45,26 +45,20 @@ def client(db_session: Session):
     app.dependency_overrides.pop(get_db, None)
 
 
-def test_create_case_stores_snapshot(make_jwt, client: TestClient, db_session: Session):
+def test_create_case_applies_queue_and_sla(make_jwt, client: TestClient):
     token = make_jwt(roles=("ADMIN",), extra={"tenant_id": 1, "email": "admin@neft.io"})
     payload = {
         "kind": "operation",
-        "entity_id": "op-123",
+        "entity_id": "op-999",
         "priority": "MEDIUM",
-        "note": "Проверить причины отказов по SLA",
-        "explain": {"decision": "DECLINE", "score": 82},
-        "diff": {"score_diff": {"risk_before": 0.82, "risk_after": 0.47}},
-        "selected_actions": [{"code": "REQUEST_DOCS", "what_if": {"impact": 0.1}}],
+        "note": "Проверить причины отклонений",
+        "explain": {"decision": "DECLINE", "reason_codes": ["velocity_high"]},
     }
 
     resp = client.post("/api/core/cases", headers=_auth_headers(token), json=payload)
 
     assert resp.status_code == 201
     body = resp.json()
-    assert body["status"] == "TRIAGE"
-    case_id = body["id"]
-
-    snapshot = db_session.query(CaseSnapshot).filter(CaseSnapshot.case_id == case_id).one()
-    assert snapshot.explain_snapshot["decision"] == "DECLINE"
-    assert snapshot.note == payload["note"]
-    assert db_session.query(CaseComment).filter(CaseComment.case_id == case_id).count() == 3
+    assert body["queue"] == "FRAUD_OPS"
+    assert body["first_response_due_at"] is not None
+    assert body["resolve_due_at"] is not None

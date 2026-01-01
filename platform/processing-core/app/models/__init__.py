@@ -123,7 +123,9 @@ from .cases import (  # noqa: F401
     CaseCommentType,
     CaseKind,
     CasePriority,
+    CaseQueue,
     CaseSnapshot,
+    CaseSlaState,
     CaseStatus,
 )
 from .reversal import Reversal, ReversalStatus  # noqa: F401
@@ -513,7 +515,9 @@ __all__ = [
     "CaseCommentType",
     "CaseKind",
     "CasePriority",
+    "CaseQueue",
     "CaseSnapshot",
+    "CaseSlaState",
     "CaseStatus",
     "FuelTransaction",
     "FuelTransactionStatus",

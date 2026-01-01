@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.support import support_user_dep
 from app.db import get_db
-from app.models.cases import CaseKind, CasePriority, CaseStatus
+from app.models.cases import CaseKind, CasePriority, CaseQueue, CaseSlaState, CaseStatus
 from app.models.crm import CRMFeatureFlagType
 from app.schemas.cases import (
     CaseCommentCreateRequest,
@@ -27,6 +29,7 @@ from app.services.cases_service import (
     list_cases,
     update_case,
 )
+from app.services.case_escalation_service import compute_sla_state
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -114,6 +117,7 @@ def create_case_endpoint(
     )
     db.commit()
     db.refresh(case)
+    case.sla_state = compute_sla_state(case)
     return CaseResponse.model_validate(case)
 
 
@@ -122,6 +126,9 @@ def list_cases_endpoint(
     status: str | None = Query(None),
     kind: CaseKind | None = Query(None),
     priority: str | None = Query(None),
+    queue: CaseQueue | None = Query(None),
+    sla_state: CaseSlaState | None = Query(None),
+    escalation_level_min: int | None = Query(None, ge=0),
     q: str | None = Query(None),
     assigned_to: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
@@ -142,11 +149,17 @@ def list_cases_endpoint(
         status=_parse_enum_list(status, CaseStatus),
         kind=kind,
         priority=_parse_enum_list(priority, CasePriority),
+        queue=queue,
+        sla_state=sla_state,
+        escalation_level_min=escalation_level_min,
         q=q,
         limit=limit,
         cursor=cursor,
         assigned_to=assigned_to,
     )
+    now = datetime.now(timezone.utc)
+    for item in items:
+        item.sla_state = compute_sla_state(item, now=now)
     return CaseListResponse(
         items=[CaseResponse.model_validate(item) for item in items],
         total=total,
@@ -177,6 +190,7 @@ def get_case_endpoint(
     snapshots = list_case_snapshots(db, case_id=case_id, limit=None if include_snapshots else 1)
     latest_snapshot = snapshots[0] if snapshots else None
     comments = list_case_comments(db, case_id=case_id)
+    case.sla_state = compute_sla_state(case)
     return CaseDetailsResponse(
         case=CaseResponse.model_validate(case),
         latest_snapshot=CaseSnapshotOut.model_validate(latest_snapshot) if latest_snapshot else None,
@@ -210,6 +224,7 @@ def update_case_endpoint(
     )
     db.commit()
     db.refresh(updated)
+    updated.sla_state = compute_sla_state(updated)
     return CaseResponse.model_validate(updated)
 
 
