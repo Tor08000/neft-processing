@@ -34,6 +34,7 @@ export interface ImportPriceVersionRequest {
 export interface PriceAnalyticsFilters {
   from: string;
   to: string;
+  [key: string]: string | undefined;
 }
 
 export interface PriceAnalyticsOffersFilters extends PriceAnalyticsFilters {

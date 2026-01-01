@@ -279,7 +279,7 @@ export function PriceVersionDetailsPage() {
   }
 
   const isValidated = version.status === "VALIDATED";
-  const publishDisabled = !isValidated || validation?.errors_total;
+  const publishDisabled = !isValidated || Boolean(validation?.errors_total);
 
   return (
     <div className="stack">

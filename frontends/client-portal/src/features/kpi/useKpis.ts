@@ -4,7 +4,7 @@ import type { SpendDashboardSummary } from "../../types/spend";
 import { useAuth } from "../../auth/AuthContext";
 import { fetchKpiSummary } from "./api";
 import { formatCount, formatDeltaPercent, formatMoney, formatPercent } from "./formatters";
-import type { KpiCardData, KpiHint } from "./types";
+import type { KpiCardData, KpiGoodWhen, KpiHint, KpiStatus, KpiTrend } from "./types";
 
 interface KpiContext {
   summary: SpendDashboardSummary | null;
@@ -25,6 +25,48 @@ interface KpiResponse {
 
 const getCompletedCount = (operations: OperationSummary[]) =>
   operations.filter((op) => ["APPROVED", "COMPLETED", "SETTLED"].includes(op.status)).length;
+
+const resolveStatus = (trend?: KpiTrend, goodWhen: KpiGoodWhen = "neutral", deltaValue?: number): KpiStatus => {
+  if (!trend || goodWhen === "neutral") {
+    if (deltaValue === undefined) return "neutral";
+    if (deltaValue > 0) return "good";
+    if (deltaValue < 0) return "bad";
+    return "neutral";
+  }
+  if (goodWhen === "up") return trend === "up" ? "good" : trend === "down" ? "bad" : "neutral";
+  if (goodWhen === "down") return trend === "down" ? "good" : trend === "up" ? "bad" : "neutral";
+  return "neutral";
+};
+
+const resolveStatusByTarget = (
+  current: number | undefined,
+  target: number | null | undefined,
+  goodWhen: KpiGoodWhen,
+): KpiStatus | null => {
+  if (current === undefined || target === null || target === undefined) return null;
+  if (goodWhen === "down") return current <= target ? "good" : "bad";
+  if (goodWhen === "up") return current >= target ? "good" : "bad";
+  return null;
+};
+
+const resolveKpiNudges = (key: string) => {
+  if (key.includes("decline")) {
+    return { actionLabel: "Посмотреть причины отказов", actionTo: "/analytics/declines", praiseLabel: "Отлично, отказов меньше" };
+  }
+  if (key.includes("export")) {
+    return { actionLabel: "Проверить выгрузки", actionTo: "/analytics/exports", praiseLabel: "Отлично, SLA соблюдается" };
+  }
+  if (key.includes("invoice") || key.includes("document")) {
+    return { actionLabel: "Проверить статус документов", actionTo: "/analytics/documents", praiseLabel: "Документы под контролем" };
+  }
+  if (key.includes("order")) {
+    return { actionLabel: "Посмотреть операции", actionTo: "/analytics/marketplace", praiseLabel: "Отлично, заказы идут по плану" };
+  }
+  if (key.includes("spend") || key.includes("balance")) {
+    return { actionLabel: "Проверить лимиты и бюджет", actionTo: "/analytics/spend", praiseLabel: "Бюджет в норме" };
+  }
+  return { actionLabel: "Проверить показатель", actionTo: "/analytics/spend", praiseLabel: "Отлично, показатель в норме" };
+};
 
 export const useKpis = ({
   summary,
@@ -55,8 +97,12 @@ export const useKpis = ({
           current: totalAmount,
           subvalue: periodLabel,
           delta: summary ? formatDeltaPercent(totalAmountDelta) : undefined,
+          deltaValue: summary ? totalAmountDelta : undefined,
           trend: totalAmountDelta > 0 ? "up" : totalAmountDelta < 0 ? "down" : "flat",
           goodWhen: "up",
+          status: resolveStatus(totalAmountDelta > 0 ? "up" : totalAmountDelta < 0 ? "down" : "flat", "up", totalAmountDelta),
+          ...resolveKpiNudges("spend-total"),
+          explainKey: "spend_total",
           unit: "money",
           target: 1_200_000,
         },
@@ -67,8 +113,12 @@ export const useKpis = ({
           current: declinedCount,
           subvalue: periodLabel,
           delta: formatDeltaPercent(-3.2),
+          deltaValue: -3.2,
           trend: "down",
           goodWhen: "down",
+          status: resolveStatus("down", "down", -3.2),
+          ...resolveKpiNudges("declines-total"),
+          explainKey: "declines_total",
           unit: "count",
           target: 2,
         },
@@ -79,6 +129,9 @@ export const useKpis = ({
           current: invoiceDue,
           subvalue: periodLabel,
           goodWhen: "down",
+          status: resolveStatusByTarget(invoiceDue, 0, "down") ?? resolveStatus(undefined, "down", undefined),
+          ...resolveKpiNudges("invoices-due"),
+          explainKey: "invoices_due",
           unit: "count",
           target: 0,
         },
@@ -89,6 +142,10 @@ export const useKpis = ({
           current: completedCount,
           subvalue: periodLabel,
           goodWhen: "up",
+          status: resolveStatusByTarget(completedCount, operations.length ? Math.round(operations.length * 0.95) : 95, "up")
+            ?? resolveStatus(undefined, "up", undefined),
+          ...resolveKpiNudges("orders-completed"),
+          explainKey: "orders_completed",
           unit: "count",
           target: operations.length ? Math.round(operations.length * 0.95) : 95,
         },
@@ -99,8 +156,12 @@ export const useKpis = ({
           current: balanceAmount,
           subvalue: "на текущий момент",
           delta: formatDeltaPercent(1.1),
+          deltaValue: 1.1,
           trend: "up",
           goodWhen: "neutral",
+          status: resolveStatus("up", "neutral", 1.1),
+          ...resolveKpiNudges("balance"),
+          explainKey: "balance",
           unit: "money",
         },
       ],
@@ -180,7 +241,12 @@ export const useKpis = ({
         if (!active) return;
         const kpis = data.kpis.map((item) => {
           const delta = item.delta ?? undefined;
-          const trend = delta === undefined ? undefined : delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+          const trend: KpiTrend | undefined =
+            delta === undefined ? undefined : delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+          const status =
+            resolveStatusByTarget(item.value, item.target ?? undefined, item.good_when) ??
+            resolveStatus(trend, item.good_when, delta);
+          const nudges = resolveKpiNudges(item.key);
           return {
             id: item.key,
             title: item.title,
@@ -189,12 +255,16 @@ export const useKpis = ({
                 ? formatMoney(item.value)
                 : item.unit === "percent"
                   ? formatPercent(item.value, 1)
-                  : formatCount(item.value),
+              : formatCount(item.value),
             current: item.value,
             subvalue: `за ${data.window_days} дней`,
             delta: delta === undefined ? undefined : formatDeltaPercent(delta),
+            deltaValue: delta ?? undefined,
             trend,
             goodWhen: item.good_when,
+            status,
+            ...nudges,
+            explainKey: item.key,
             unit: item.unit,
             target: item.target ?? undefined,
             progress: item.progress ?? undefined,

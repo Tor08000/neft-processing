@@ -5,7 +5,9 @@ import en from "./en.json";
 
 export type Locale = "ru" | "en";
 
-type Translations = Record<string, string | Translations>;
+interface Translations {
+  [key: string]: string | Translations;
+}
 
 const translations: Record<Locale, Translations> = { ru, en };
 const fallbackLocale: Locale = "en";

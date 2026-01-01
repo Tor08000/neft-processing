@@ -24,6 +24,11 @@ const resolveIcon = (status: AchievementBadgeData["status"]) => {
   return "•";
 };
 
+const isHiddenBadge = (meta: Record<string, unknown> | null | undefined) => {
+  if (!meta) return false;
+  return Boolean((meta as { hidden?: boolean }).hidden);
+};
+
 export const useAchievements = (
   options?: { showToast?: (kind: "success" | "error" | "info", text: string) => void },
 ): AchievementsResponse => {
@@ -63,6 +68,9 @@ export const useAchievements = (
         description: "Операции проходят без критических отклонений.",
         totalDays: 7,
         currentDays: 6,
+        history: [true, true, true, true, true, true, false],
+        keepText: "Продлится, если операции проходят без критических отклонений.",
+        breakText: "Сорвется, если появятся критические отклонения или ручные корректировки.",
       },
       error: null,
       isLoading: false,
@@ -107,8 +115,11 @@ export const useAchievements = (
     fetchAchievementsSummary(token)
       .then((data) => {
         if (!active) return;
-        const badges = data.badges.map((badge) => {
+        const badges = data.badges.map<AchievementBadgeData | null>((badge) => {
           const status = mapStatus(badge.status);
+          if (status === "locked" && isHiddenBadge(badge.meta)) {
+            return null;
+          }
           return {
             id: badge.key,
             icon: resolveIcon(status),
@@ -118,12 +129,15 @@ export const useAchievements = (
             status,
             progress: badge.progress ?? undefined,
           };
-        });
+        }).filter((badge): badge is AchievementBadgeData => badge !== null);
         const streak = {
           title: data.streak.title,
           description: data.streak.how_to ?? data.streak.title,
           totalDays: data.streak.target,
           currentDays: data.streak.current,
+          history: data.streak.history,
+          keepText: "Продлится, если операции проходят без критических отклонений.",
+          breakText: "Сорвется, если появятся критические отклонения или ручные корректировки.",
         };
         setApiData({ badges, streak, error: null, isLoading: false, isMock: false, reload });
       })

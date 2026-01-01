@@ -15,4 +15,7 @@ export interface StreakData {
   description: string;
   totalDays: number;
   currentDays: number;
+  history?: boolean[];
+  keepText?: string;
+  breakText?: string;
 }
