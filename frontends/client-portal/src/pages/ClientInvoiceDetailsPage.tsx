@@ -252,7 +252,7 @@ export function ClientInvoiceDetailsPage() {
           </div>
           <p className="muted">
             Дата {formatDate(invoice.issued_at)} ·{" "}
-            <span className={`pill ${getInvoiceStatusTone(invoice.status)}`}>
+            <span className={`neft-badge ${getInvoiceStatusTone(invoice.status)}`}>
               {getInvoiceStatusLabel(invoice.status)}
             </span>
           </p>

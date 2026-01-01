@@ -1,4 +1,6 @@
 import React from "react";
+import { EmptyState } from "./EmptyState";
+import { TableSkeleton } from "./TableSkeleton";
 
 export interface DataColumn<T> {
   key: string;
@@ -11,20 +13,56 @@ interface DataTableProps<T> {
   columns: DataColumn<T>[];
   loading?: boolean;
   emptyMessage?: string;
+  emptyState?: {
+    title: string;
+    description?: string;
+    actionLabel?: string;
+    actionOnClick?: () => void;
+  };
   onRowClick?: (row: T) => void;
 }
 
-export function DataTable<T>({ data, columns, loading, emptyMessage = "Нет данных", onRowClick }: DataTableProps<T>) {
+export function DataTable<T>({
+  data,
+  columns,
+  loading,
+  emptyMessage = "Нет данных",
+  emptyState,
+  onRowClick,
+}: DataTableProps<T>) {
   if (loading) {
-    return <div style={{ padding: "12px 0" }}>Загрузка...</div>;
+    return (
+      <div className="table-container">
+        <table className="table neft-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column.key}>{column.title}</th>
+              ))}
+            </tr>
+          </thead>
+          <TableSkeleton columns={columns.length} />
+        </table>
+      </div>
+    );
   }
 
   if (!data.length) {
+    if (emptyState) {
+      return (
+        <EmptyState
+          title={emptyState.title}
+          description={emptyState.description}
+          actionLabel={emptyState.actionLabel}
+          actionOnClick={emptyState.actionOnClick}
+        />
+      );
+    }
     return <div style={{ padding: "12px 0", color: "#475569" }}>{emptyMessage}</div>;
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div className="table-container" style={{ overflowX: "auto" }}>
       <table className="table neft-table" style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>

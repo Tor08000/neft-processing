@@ -12,9 +12,11 @@ type EmptyStateAction = {
 type EmptyStateProps = {
   title: string;
   description: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   primaryAction?: EmptyStateAction;
   secondaryAction?: EmptyStateAction;
+  actionLabel?: string;
+  actionOnClick?: () => void;
 };
 
 const renderAction = (action: EmptyStateAction, fallbackVariant: EmptyStateAction["variant"]) => {
@@ -40,18 +42,29 @@ const renderAction = (action: EmptyStateAction, fallbackVariant: EmptyStateActio
   );
 };
 
-export function EmptyState({ title, description, icon, primaryAction, secondaryAction }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  description,
+  icon,
+  primaryAction,
+  secondaryAction,
+  actionLabel,
+  actionOnClick,
+}: EmptyStateProps) {
+  const primary = primaryAction ?? (actionLabel ? { label: actionLabel, onClick: actionOnClick } : undefined);
   return (
     <div className="card state">
       <div className="empty-state">
-        <div className="empty-state__icon" aria-hidden>
-          {icon}
-        </div>
+        {icon ? (
+          <div className="empty-state__icon" aria-hidden>
+            {icon}
+          </div>
+        ) : null}
         <h2>{title}</h2>
         <p className="muted">{description}</p>
-        {(primaryAction || secondaryAction) && (
+        {(primary || secondaryAction) && (
           <div className="actions">
-            {primaryAction ? renderAction(primaryAction, "primary") : null}
+            {primary ? renderAction(primary, "primary") : null}
             {secondaryAction ? renderAction(secondaryAction, "secondary") : null}
           </div>
         )}
