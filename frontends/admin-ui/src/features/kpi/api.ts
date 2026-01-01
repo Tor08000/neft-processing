@@ -1,18 +1,26 @@
-import type { KpiCardData, KpiHint } from "./types";
+import { apiGet } from "../../api/client";
 
-export interface KpiSet {
-  kpis: KpiCardData[];
-  hints: KpiHint[];
+export type KpiUnit = "money" | "count" | "percent";
+export type KpiGoodWhen = "up" | "down" | "neutral";
+
+export interface KpiSummaryItem {
+  key: string;
+  title: string;
+  value: number;
+  unit: KpiUnit;
+  delta: number | null;
+  good_when: KpiGoodWhen;
+  target: number | null;
+  progress: number | null;
+  meta?: Record<string, unknown> | null;
 }
 
-export const fetchKpis = async (): Promise<KpiSet> => {
-  const response = await fetch("/api/kpi");
-  if (!response.ok) {
-    throw new Error("KPI API unavailable");
-  }
-  const data: KpiSet = await response.json();
-  if (!data || !Array.isArray(data.kpis) || !Array.isArray(data.hints)) {
-    throw new Error("Invalid KPI payload");
-  }
-  return data;
+export interface KpiSummary {
+  window_days: number;
+  as_of: string;
+  kpis: KpiSummaryItem[];
+}
+
+export const fetchKpiSummary = async (windowDays = 7): Promise<KpiSummary> => {
+  return apiGet("/kpi/summary", { window_days: windowDays });
 };

@@ -82,8 +82,20 @@ export function DashboardPage() {
   const topCards = useMemo(() => summarizeTop(operations, "card_id"), [operations]);
 
   const trendMax = Math.max(...(summary?.spending_trend ?? [0]));
-  const { kpis, hints } = useKpis({ summary, operations, docsAttention, exportsAttention, showToast });
-  const { badges, streak } = useAchievements({ showToast });
+  const {
+    kpis,
+    hints,
+    error: kpiError,
+    isLoading: kpiLoading,
+    reload: reloadKpis,
+  } = useKpis({ summary, operations, docsAttention, exportsAttention, showToast });
+  const {
+    badges,
+    streak,
+    error: achievementsError,
+    isLoading: achievementsLoading,
+    reload: reloadAchievements,
+  } = useAchievements({ showToast });
 
   if (!user) {
     return null;
@@ -107,18 +119,24 @@ export function DashboardPage() {
         {isLoading ? <AppLoadingState /> : null}
         {error ? <AppErrorState message={error} /> : null}
         {!isLoading && !error && summary ? (
-          <div className="kpi-grid">
-            {kpis.map((kpi) => (
-              <KpiCard key={kpi.id} {...kpi} />
-            ))}
-          </div>
+          kpiError ? (
+            <AppErrorState message={kpiError} onRetry={reloadKpis} />
+          ) : kpiLoading ? (
+            <AppLoadingState label="Загрузка KPI..." />
+          ) : (
+            <div className="kpi-grid">
+              {kpis.map((kpi) => (
+                <KpiCard key={kpi.id} {...kpi} />
+              ))}
+            </div>
+          )
         ) : null}
         {!isLoading && !error && !summary ? <AppEmptyState description="Нет данных для обзора." /> : null}
       </section>
 
       <section className="card">
         <h3>Прогресс и дисциплина</h3>
-        <KpiHintList hints={hints} />
+        {kpiError ? null : <KpiHintList hints={hints} />}
       </section>
 
       <section className="grid two">
@@ -224,14 +242,22 @@ export function DashboardPage() {
 
       <section className="card">
         <h3>Badges & Streak</h3>
-        <div className="achievement-grid">
-          {badges.map((badge) => (
-            <AchievementBadge key={badge.id} {...badge} />
-          ))}
-        </div>
-        <div className="achievement-streak">
-          <StreakWidget {...streak} />
-        </div>
+        {achievementsError ? (
+          <AppErrorState message={achievementsError} onRetry={reloadAchievements} />
+        ) : achievementsLoading ? (
+          <AppLoadingState label="Загрузка достижений..." />
+        ) : (
+          <>
+            <div className="achievement-grid">
+              {badges.map((badge) => (
+                <AchievementBadge key={badge.id} {...badge} />
+              ))}
+            </div>
+            <div className="achievement-streak">
+              <StreakWidget {...streak} />
+            </div>
+          </>
+        )}
       </section>
 
       <section className="card">
