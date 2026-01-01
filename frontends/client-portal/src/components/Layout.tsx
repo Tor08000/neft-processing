@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   ClipboardCheck,
   FileSpreadsheet,
@@ -22,12 +22,66 @@ interface LayoutProps {
   pwaMode?: boolean;
 }
 
+type NavItem = {
+  to: string;
+  label: string;
+  icon?: React.ReactNode;
+  isHidden?: boolean;
+};
+
+const buildContextLabel = (section: string, path: string, basePath?: string) => {
+  if (!basePath) return "Обзор";
+  const suffix = path.replace(basePath, "");
+  const trail = suffix
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment));
+  return trail.length ? `${section} → ${trail.join(" / ")}` : `${section} → Обзор`;
+};
+
 export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const location = useLocation();
   const apiBase = CLIENT_BASE_PATH ? null : t("app.configMissing");
   const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
   const configError = isApiBaseMissing ? t("app.configError") : apiBase;
+
+  const navItems: NavItem[] = pwaMode
+    ? [
+        { to: "/marketplace/orders", label: t("nav.orders"), icon: <ShoppingCart size={18} /> },
+        { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} /> },
+      ]
+    : [
+        { to: "/dashboard", label: t("nav.dashboard"), icon: <LayoutDashboard size={18} /> },
+        { to: "/analytics", label: t("nav.analytics"), icon: <LineChart size={18} /> },
+        {
+          to: "/operations",
+          label: t("nav.operations"),
+          icon: <Workflow size={18} />,
+          isHidden: !(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user),
+        },
+        { to: "/explain/insights", label: t("nav.explainInsights"), icon: <LineChart size={18} /> },
+        { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} /> },
+        {
+          to: "/exports",
+          label: t("nav.exports"),
+          icon: <FileSpreadsheet size={18} />,
+          isHidden: !(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user),
+        },
+        { to: "/marketplace", label: t("nav.marketplace"), icon: <ShoppingCart size={18} /> },
+        { to: "/actions", label: t("nav.actions"), icon: <ClipboardCheck size={18} /> },
+        { to: "/support/requests", label: t("nav.supportRequests"), icon: <MessageCircle size={18} /> },
+        { to: "/settings", label: t("nav.settings"), icon: <Settings size={18} /> },
+        { to: "/settings/management", label: t("nav.management"), icon: <Settings size={18} /> },
+      ];
+
+  const visibleNavItems = navItems.filter((item) => !item.isHidden);
+  const activeItem = visibleNavItems.find(
+    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
+  );
+  const sectionTitle = activeItem?.label ?? t("app.title");
+  const contextLabel = buildContextLabel(sectionTitle, location.pathname, activeItem?.to);
 
   if (configError) {
     return (
@@ -50,7 +104,10 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
       <header className="topbar">
         <div className="topbar__meta">
           <span className="logo">NEFT</span>
-          <div className="topbar__title">{t("app.title")}</div>
+          <div className="topbar__titles">
+            <div className="topbar__title">{sectionTitle}</div>
+            <div className="topbar__context">{contextLabel}</div>
+          </div>
           <div className="muted">
             {user?.clientId ? t("app.clientLabel", { id: user.clientId }) : t("app.clientFallback")}
           </div>
@@ -69,69 +126,12 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
       <div className="sidebar-layout">
         <nav className="sidebar">
-          {pwaMode ? (
-            <>
-              <NavLink to="/marketplace/orders">
-                <ShoppingCart size={18} />
-                {t("nav.orders")}
-              </NavLink>
-              <NavLink to="/documents">
-                <FileText size={18} />
-                {t("nav.documents")}
-              </NavLink>
-            </>
-          ) : (
-            <>
-              <NavLink to="/dashboard">
-                <LayoutDashboard size={18} />
-                {t("nav.dashboard")}
-              </NavLink>
-              <NavLink to="/analytics">
-                <LineChart size={18} />
-                {t("nav.analytics")}
-              </NavLink>
-              {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user) && (
-                <NavLink to="/operations">
-                  <Workflow size={18} />
-                  {t("nav.operations")}
-                </NavLink>
-              )}
-              <NavLink to="/explain/insights">
-                <LineChart size={18} />
-                {t("nav.explainInsights")}
-              </NavLink>
-              <NavLink to="/documents">
-                <FileText size={18} />
-                {t("nav.documents")}
-              </NavLink>
-              {(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user) && (
-                <NavLink to="/exports">
-                  <FileSpreadsheet size={18} />
-                  {t("nav.exports")}
-                </NavLink>
-              )}
-              <NavLink to="/marketplace">
-                <ShoppingCart size={18} />
-                {t("nav.marketplace")}
-              </NavLink>
-              <NavLink to="/actions">
-                <ClipboardCheck size={18} />
-                {t("nav.actions")}
-              </NavLink>
-              <NavLink to="/support/requests">
-                <MessageCircle size={18} />
-                {t("nav.supportRequests")}
-              </NavLink>
-              <NavLink to="/settings">
-                <Settings size={18} />
-                {t("nav.settings")}
-              </NavLink>
-              <NavLink to="/settings/management">
-                <Settings size={18} />
-                {t("nav.management")}
-              </NavLink>
-            </>
-          )}
+          {visibleNavItems.map((item) => (
+            <NavLink key={item.to} to={item.to} title={item.label}>
+              {item.icon}
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <main className="main-area">

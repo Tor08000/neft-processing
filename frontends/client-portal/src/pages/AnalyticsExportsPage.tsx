@@ -108,7 +108,7 @@ export function AnalyticsExportsPage() {
                   <tr key={item.id}>
                     <td>{item.id}</td>
                     <td>
-                      <span className={item.status.toLowerCase().includes("ok") ? "badge success" : "badge pending"}>
+                      <span className={item.status.toLowerCase().includes("ok") ? "badge success" : "badge warning"}>
                         {item.status}
                       </span>
                     </td>

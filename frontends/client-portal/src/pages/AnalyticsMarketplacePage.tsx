@@ -11,7 +11,7 @@ import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from
 import { useI18n } from "../i18n";
 import type { AnalyticsOrdersSummaryResponse } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { hasAnyRole } from "../utils/roles";
 
 interface AnalyticsErrorState {
@@ -101,7 +101,7 @@ export function AnalyticsMarketplacePage() {
           />
           <AnalyticsKpiCard
             label={t("analytics.marketplace.kpi.avg")}
-            value={formatMoney(summary.avg_order_value)}
+            value={<MoneyValue amount={summary.avg_order_value} />}
           />
         </section>
       ) : null}

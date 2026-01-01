@@ -6,7 +6,8 @@ import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { AppErrorState, AppLoadingState } from "../components/states";
 import type { ClientDocumentSummary } from "../types/documents";
-import { formatDate, formatDateTime, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import {
   getDocumentStatusLabel,
   getDocumentStatusTone,
@@ -345,7 +346,9 @@ export function ClientDocumentsPage() {
                         {formatDate(doc.period_from)} — {formatDate(doc.period_to)}
                       </td>
                       <td>{doc.number ?? t("common.notAvailable")}</td>
-                      <td>{doc.amount ? formatMoney(doc.amount) : t("common.notAvailable")}</td>
+                      <td className="neft-num-cell">
+                        {doc.amount ? <MoneyValue amount={doc.amount} currency="RUB" /> : t("common.notAvailable")}
+                      </td>
                       <td>
                         <span className={`pill pill--${getDocumentStatusTone(doc.status)}`}>
                           {getDocumentStatusLabel(doc.status)}

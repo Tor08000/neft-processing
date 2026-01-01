@@ -45,6 +45,24 @@ export const DashboardPage: React.FC = () => {
         <h3>Мониторинг</h3>
         <p className="muted">Секции для клиентских аккаунтов, операций и мониторинга появятся позже.</p>
       </div>
+
+      <div className="card">
+        <h3>Progress hints</h3>
+        <ul className="progress-hints">
+          <li>
+            <span className="progress-hints__icon" aria-hidden>
+              ✅
+            </span>
+            Экспорт закрыт за 2 мин — быстрее среднего
+          </li>
+          <li>
+            <span className="progress-hints__icon" aria-hidden>
+              🛡️
+            </span>
+            0 ошибок за последние 7 дней
+          </li>
+        </ul>
+      </div>
     </div>
   );
 };

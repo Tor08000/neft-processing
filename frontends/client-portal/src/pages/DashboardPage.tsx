@@ -8,7 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { OperationSummary } from "../types/operations";
 import type { SpendDashboardSummary } from "../types/spend";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { canAccessFinance, canAccessOps } from "../utils/roles";
 
 const TOP_LIMIT = 5;
@@ -114,11 +114,15 @@ export function DashboardPage() {
           <div className="stats-grid">
             <div className="stat">
               <div className="stat__label">Total spend (MTD)</div>
-              <div className="stat__value">{formatMoney(summary.total_amount)}</div>
+              <div className="stat__value">
+                <MoneyValue amount={summary.total_amount} />
+              </div>
             </div>
             <div className="stat">
               <div className="stat__label">Total spend (selected period)</div>
-              <div className="stat__value">{formatMoney(summary.total_amount)}</div>
+              <div className="stat__value">
+                <MoneyValue amount={summary.total_amount} />
+              </div>
             </div>
             <div className="stat">
               <div className="stat__label">Δ к прошлому периоду</div>
@@ -165,7 +169,9 @@ export function DashboardPage() {
                       style={{ width: `${trendMax ? Math.max(4, (value / trendMax) * 100) : 0}%` }}
                     />
                   </div>
-                  <span className="small">{formatMoney(value)}</span>
+                  <span className="small">
+                    <MoneyValue amount={value} />
+                  </span>
                 </div>
               ))}
             </div>

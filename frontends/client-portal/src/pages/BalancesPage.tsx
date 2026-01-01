@@ -4,7 +4,7 @@ import { fetchStatements } from "../api/statements";
 import { useAuth } from "../auth/AuthContext";
 import type { BalanceItem } from "../types/balances";
 import type { Statement } from "../types/statements";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -82,15 +82,21 @@ export function BalancesPage() {
       <div className="kpis">
         <div className="kpi">
           <p className="label">Текущий баланс</p>
-          <p className="value">{formatMoney(totals.totalCurrent, items[0]?.currency ?? "RUB")}</p>
+          <p className="value">
+            <MoneyValue amount={totals.totalCurrent} currency={items[0]?.currency ?? "RUB"} />
+          </p>
         </div>
         <div className="kpi">
           <p className="label">Пополнено за период</p>
-          <p className="value success">{formatMoney(totals.totalTopup, items[0]?.currency ?? "RUB")}</p>
+          <p className="value success">
+            <MoneyValue amount={totals.totalTopup} currency={items[0]?.currency ?? "RUB"} />
+          </p>
         </div>
         <div className="kpi">
           <p className="label">Израсходовано за период</p>
-          <p className="value warning">{formatMoney(totals.totalSpent, items[0]?.currency ?? "RUB")}</p>
+          <p className="value warning">
+            <MoneyValue amount={totals.totalSpent} currency={items[0]?.currency ?? "RUB"} />
+          </p>
         </div>
       </div>
 
@@ -109,8 +115,12 @@ export function BalancesPage() {
             {items.map((item) => (
               <tr key={item.currency}>
                 <td>{item.currency}</td>
-                <td>{formatMoney(item.current, item.currency)}</td>
-                <td>{formatMoney(item.available, item.currency)}</td>
+                <td className="neft-num-cell">
+                  <MoneyValue amount={item.current} currency={item.currency} />
+                </td>
+                <td className="neft-num-cell">
+                  <MoneyValue amount={item.available} currency={item.currency} />
+                </td>
               </tr>
             ))}
           </tbody>

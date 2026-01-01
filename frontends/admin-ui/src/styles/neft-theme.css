@@ -19,6 +19,7 @@
   --neft-warning: #FFB020;
   --neft-danger: #FF4D4D;
   --neft-info: #4DA3FF;
+  --neft-neutral: #94A3B8;
 
   --neft-radius-card: 16px;
   --neft-radius-control: 12px;
@@ -190,8 +191,10 @@ html, body {
 
 .neft-badge.success { border-color: rgba(47,234,155,0.35); color: var(--neft-success); background: rgba(47,234,155,0.08); }
 .neft-badge.warning { border-color: rgba(255,176,32,0.35); color: var(--neft-warning); background: rgba(255,176,32,0.10); }
-.neft-badge.danger  { border-color: rgba(255,77,77,0.35);  color: var(--neft-danger);  background: rgba(255,77,77,0.10); }
-.neft-badge.info    { border-color: rgba(77,163,255,0.35);  color: var(--neft-info);    background: rgba(77,163,255,0.10); }
+.neft-badge.error,
+.neft-badge.danger { border-color: rgba(255,77,77,0.35); color: var(--neft-danger); background: rgba(255,77,77,0.10); }
+.neft-badge.neutral,
+.neft-badge.info { border-color: rgba(148,163,184,0.35); color: var(--neft-neutral); background: rgba(148,163,184,0.10); }
 
 .neft-table {
   width: 100%;
@@ -207,6 +210,7 @@ html, body {
   position: sticky;
   top: 0;
   background: linear-gradient(to bottom, rgba(18,27,39,0.98), rgba(18,27,39,0.94));
+  backdrop-filter: blur(10px);
   color: var(--neft-text-muted);
   text-align: left;
   font-weight: 650;
@@ -229,4 +233,17 @@ html, body {
 .neft-num {
   font-variant-numeric: tabular-nums;
   font-family: var(--neft-font-mono);
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  width: 100%;
+  gap: 2px;
+}
+
+.neft-num__fraction {
+  color: var(--neft-text-faint);
+}
+
+.neft-num-cell {
+  text-align: right;
 }

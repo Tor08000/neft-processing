@@ -16,30 +16,30 @@ const STATUS_LABELS: Record<string, string> = {
   VOID: "statuses.documents.VOID",
 };
 
-const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+const STATUS_TONE: Record<string, "success" | "warning" | "error" | "neutral"> = {
   DRAFT: "neutral",
   ISSUED: "warning",
   ACKNOWLEDGED: "success",
   FINALIZED: "success",
-  VOID: "danger",
+  VOID: "error",
 };
 
-const SIGNATURE_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+const SIGNATURE_TONE: Record<string, "success" | "warning" | "error" | "neutral"> = {
   SIGNED: "success",
   VERIFIED: "success",
   REQUESTED: "warning",
   SIGNING: "warning",
-  FAILED: "danger",
-  REJECTED: "danger",
+  FAILED: "error",
+  REJECTED: "error",
 };
 
-const EDO_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+const EDO_TONE: Record<string, "success" | "warning" | "error" | "neutral"> = {
   SENT: "warning",
   DELIVERED: "warning",
   SIGNED: "success",
   SIGNED_BY_COUNTERPARTY: "success",
-  REJECTED: "danger",
-  FAILED: "danger",
+  REJECTED: "error",
+  FAILED: "error",
 };
 
 const SIGNATURE_LABELS: Record<string, string> = {
@@ -71,11 +71,11 @@ export const getEdoStatusLabel = (value?: string | null): string => {
   if (!value) return translate("common.notAvailable");
   return translate(EDO_LABELS[value] ?? value);
 };
-export const getSignatureTone = (value?: string | null): "success" | "warning" | "danger" | "neutral" => {
+export const getSignatureTone = (value?: string | null): "success" | "warning" | "error" | "neutral" => {
   if (!value) return "neutral";
   return SIGNATURE_TONE[value] ?? "neutral";
 };
-export const getEdoTone = (value?: string | null): "success" | "warning" | "danger" | "neutral" => {
+export const getEdoTone = (value?: string | null): "success" | "warning" | "error" | "neutral" => {
   if (!value) return "neutral";
   return EDO_TONE[value] ?? "neutral";
 };

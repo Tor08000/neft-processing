@@ -10,7 +10,7 @@ import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from
 import { useI18n } from "../i18n";
 import type { AnalyticsSpendSummaryResponse } from "../types/analytics";
 import { buildDateRange } from "../utils/dateRange";
-import { formatMoney } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { hasAnyRole } from "../utils/roles";
 
 interface AnalyticsErrorState {
@@ -122,12 +122,12 @@ export function AnalyticsSpendPage() {
         <section className="grid analytics-kpi-grid">
           <AnalyticsKpiCard
             label={t("analytics.spend.kpi.total")}
-            value={formatMoney(summary.total_spend, summary.currency ?? "RUB")}
+            value={<MoneyValue amount={summary.total_spend} currency={summary.currency ?? "RUB"} />}
             hint={t("analytics.spend.kpi.period", { from: filters.from, to: filters.to })}
           />
           <AnalyticsKpiCard
             label={t("analytics.spend.kpi.avg")}
-            value={formatMoney(summary.avg_daily_spend ?? 0, summary.currency ?? "RUB")}
+            value={<MoneyValue amount={summary.avg_daily_spend ?? 0} currency={summary.currency ?? "RUB"} />}
           />
         </section>
       ) : null}
@@ -158,7 +158,9 @@ export function AnalyticsSpendPage() {
                       style={{ width: `${trendMax ? Math.max(4, (point.value / trendMax) * 100) : 0}%` }}
                     />
                   </div>
-                  <span className="small">{formatMoney(point.value, summary.currency ?? "RUB")}</span>
+                  <span className="small">
+                    <MoneyValue amount={point.value} currency={summary.currency ?? "RUB"} />
+                  </span>
                 </div>
               ))}
             </div>
@@ -183,7 +185,9 @@ export function AnalyticsSpendPage() {
                         style={{ width: `${topStationsMax ? Math.max(6, (item.amount / topStationsMax) * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="small">{formatMoney(item.amount, summary.currency ?? "RUB")}</span>
+                    <span className="small">
+                      <MoneyValue amount={item.amount} currency={summary.currency ?? "RUB"} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -204,7 +208,9 @@ export function AnalyticsSpendPage() {
                         style={{ width: `${topMerchantsMax ? Math.max(6, (item.amount / topMerchantsMax) * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="small">{formatMoney(item.amount, summary.currency ?? "RUB")}</span>
+                    <span className="small">
+                      <MoneyValue amount={item.amount} currency={summary.currency ?? "RUB"} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -229,7 +235,9 @@ export function AnalyticsSpendPage() {
                         style={{ width: `${topCardsMax ? Math.max(6, (item.amount / topCardsMax) * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="small">{formatMoney(item.amount, summary.currency ?? "RUB")}</span>
+                    <span className="small">
+                      <MoneyValue amount={item.amount} currency={summary.currency ?? "RUB"} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -250,7 +258,9 @@ export function AnalyticsSpendPage() {
                         style={{ width: `${topDriversMax ? Math.max(6, (item.amount / topDriversMax) * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="small">{formatMoney(item.amount, summary.currency ?? "RUB")}</span>
+                    <span className="small">
+                      <MoneyValue amount={item.amount} currency={summary.currency ?? "RUB"} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -274,7 +284,9 @@ export function AnalyticsSpendPage() {
                       style={{ width: `${productMax ? Math.max(6, (item.amount / productMax) * 100) : 0}%` }}
                     />
                   </div>
-                  <span className="small">{formatMoney(item.amount, summary.currency ?? "RUB")}</span>
+                  <span className="small">
+                    <MoneyValue amount={item.amount} currency={summary.currency ?? "RUB"} />
+                  </span>
                 </li>
               ))}
             </ul>

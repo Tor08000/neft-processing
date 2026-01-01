@@ -7,18 +7,16 @@ const variantMap: Record<string, string> = {
   capture: "success",
   pending: "warning",
   sent: "warning",
-  auth: "info",
-  failed: "danger",
-  error: "danger",
-  declined: "danger",
+  auth: "warning",
+  failed: "error",
+  error: "error",
+  declined: "error",
+  draft: "neutral",
+  unknown: "neutral",
 };
 
 export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const normalized = status.toLowerCase();
-  const variant = variantMap[normalized] || "info";
-  return (
-    <span className={`neft-badge ${variant}`}>
-      {status}
-    </span>
-  );
+  const variant = variantMap[normalized] || "neutral";
+  return <span className={`neft-badge ${variant}`}>{status}</span>;
 };

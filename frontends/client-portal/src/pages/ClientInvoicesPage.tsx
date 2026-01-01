@@ -5,7 +5,8 @@ import { useAuth } from "../auth/AuthContext";
 import type { ClientInvoiceSummary } from "../types/invoices";
 import { CopyButton } from "../components/CopyButton";
 import { Table } from "../components/common/Table";
-import { formatDate, formatMoney } from "../utils/format";
+import { formatDate } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
 
 const STATUS_OPTIONS = [
@@ -219,19 +220,19 @@ export function ClientInvoicesPage() {
             key: "amount_total",
             title: "Сумма",
             className: "neft-num",
-            render: (invoice) => formatMoney(invoice.amount_total, invoice.currency),
+            render: (invoice) => <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />,
           },
           {
             key: "amount_paid",
             title: "Оплачено",
             className: "neft-num",
-            render: (invoice) => formatMoney(invoice.amount_paid, invoice.currency),
+            render: (invoice) => <MoneyValue amount={invoice.amount_paid} currency={invoice.currency} />,
           },
           {
             key: "amount_refunded",
             title: "Возвращено",
             className: "neft-num",
-            render: (invoice) => formatMoney(invoice.amount_refunded, invoice.currency),
+            render: (invoice) => <MoneyValue amount={invoice.amount_refunded} currency={invoice.currency} />,
           },
           {
             key: "amount_due",
@@ -239,7 +240,7 @@ export function ClientInvoicesPage() {
             className: `amount-due neft-num`,
             render: (invoice) => (
               <span className={Number(invoice.amount_due) > 0 ? "amount-due--positive" : undefined}>
-                {formatMoney(invoice.amount_due, invoice.currency)}
+                <MoneyValue amount={invoice.amount_due} currency={invoice.currency} />
               </span>
             ),
           },

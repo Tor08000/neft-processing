@@ -7,7 +7,8 @@ import { createInvoiceMessage, downloadInvoicePdf, fetchInvoiceDetails, fetchInv
 import { useAuth } from "../auth/AuthContext";
 import type { ClientAuditEvent, ClientInvoiceDetails, InvoiceMessage, InvoiceThreadMessages } from "../types/invoices";
 import { CopyButton } from "../components/CopyButton";
-import { formatDate, formatDateTime, formatMoney } from "../utils/format";
+import { formatDate, formatDateTime } from "../utils/format";
+import { MoneyValue } from "../components/common/MoneyValue";
 import { getActorLabel, getAuditEventLabel } from "../utils/audit";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
 import { getThreadStatusLabel, getThreadStatusTone } from "../utils/threads";
@@ -370,20 +371,26 @@ export function ClientInvoiceDetailsPage() {
         <div className="stats-grid">
           <div className="stat">
             <div className="stat__label">Сумма</div>
-            <div className="stat__value">{formatMoney(invoice.amount_total, invoice.currency)}</div>
+            <div className="stat__value">
+              <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />
+            </div>
           </div>
           <div className="stat">
             <div className="stat__label">Оплачено</div>
-            <div className="stat__value">{formatMoney(invoice.amount_paid, invoice.currency)}</div>
+            <div className="stat__value">
+              <MoneyValue amount={invoice.amount_paid} currency={invoice.currency} />
+            </div>
           </div>
           <div className="stat">
             <div className="stat__label">Возвращено</div>
-            <div className="stat__value">{formatMoney(invoice.amount_refunded, invoice.currency)}</div>
+            <div className="stat__value">
+              <MoneyValue amount={invoice.amount_refunded} currency={invoice.currency} />
+            </div>
           </div>
           <div className="stat">
             <div className="stat__label">Остаток</div>
             <div className={`stat__value ${Number(invoice.amount_due) > 0 ? "amount-due--positive" : ""}`}>
-              {formatMoney(invoice.amount_due, invoice.currency)}
+              <MoneyValue amount={invoice.amount_due} currency={invoice.currency} />
             </div>
           </div>
         </div>
@@ -405,7 +412,9 @@ export function ClientInvoiceDetailsPage() {
               {invoice.payments.map((payment) => (
                 <tr key={payment.id}>
                   <td>{formatDateTime(payment.created_at)}</td>
-                  <td>{formatMoney(payment.amount, invoice.currency)}</td>
+                  <td className="neft-num-cell">
+                    <MoneyValue amount={payment.amount} currency={invoice.currency} />
+                  </td>
                   <td>{payment.provider ?? "—"}</td>
                   <td>
                     <div className="stack-inline">
@@ -438,7 +447,9 @@ export function ClientInvoiceDetailsPage() {
               {invoice.refunds.map((refund) => (
                 <tr key={refund.id}>
                   <td>{formatDateTime(refund.created_at)}</td>
-                  <td>{formatMoney(refund.amount, invoice.currency)}</td>
+                  <td className="neft-num-cell">
+                    <MoneyValue amount={refund.amount} currency={invoice.currency} />
+                  </td>
                   <td>{refund.provider ?? "—"}</td>
                   <td>
                     <div className="stack-inline">
@@ -529,7 +540,7 @@ export function ClientInvoiceDetailsPage() {
                   <div className="timeline-item__body">
                     {event.after?.amount ? (
                       <div className="timeline-item__amount">
-                        {formatMoney(event.after.amount as number | string, invoice.currency)}
+                        <MoneyValue amount={event.after.amount as number | string} currency={invoice.currency} />
                       </div>
                     ) : null}
                     {event.external_refs?.provider || event.external_refs?.external_ref ? (

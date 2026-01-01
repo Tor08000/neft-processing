@@ -17,11 +17,11 @@ const COLORS: Record<string, Palette> = {
   LOW: { label: "LOW", variant: "success" },
   MEDIUM: { label: "MEDIUM", variant: "warning" },
   HIGH: { label: "HIGH", variant: "warning" },
-  BLOCK: { label: "BLOCK", variant: "danger" },
-  HARD_DECLINE: { label: "DECLINE", variant: "danger" },
+  BLOCK: { label: "BLOCK", variant: "error" },
+  HARD_DECLINE: { label: "DECLINE", variant: "error" },
   MANUAL_REVIEW: { label: "REVIEW", variant: "warning" },
   APPROVED: { label: "APPROVED", variant: "success" },
-  UNKNOWN: { label: "UNKNOWN", variant: "info" },
+  UNKNOWN: { label: "UNKNOWN", variant: "neutral" },
 };
 
 function normalizeLevel(level?: string | null): string {

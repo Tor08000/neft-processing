@@ -12,6 +12,45 @@ export function formatDateTime(dateStr: string): string {
   }
 }
 
+export type NumberParts = {
+  int: string;
+  fraction?: string | null;
+};
+
+export const formatNumberParts = (value: number, fractionDigits = 2): NumberParts => {
+  const hasFraction = !Number.isInteger(value);
+  const digits = hasFraction ? fractionDigits : 0;
+  const fixed = value.toFixed(digits);
+  const [intRaw, fraction] = fixed.split(".");
+  const intPart = intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return {
+    int: intPart,
+    fraction: fraction && digits > 0 ? fraction : null,
+  };
+};
+
+export type MoneyParts = {
+  int: string;
+  fraction?: string | null;
+  currency: string;
+};
+
+export const formatMoneyParts = (amount: number | string, currency = "RUB"): MoneyParts | null => {
+  const value = typeof amount === "string" ? Number(amount) : amount;
+  if (Number.isNaN(value)) return null;
+  const formatter = new Intl.NumberFormat("ru-RU", { style: "currency", currency, currencyDisplay: "symbol" });
+  const currencySymbol =
+    formatter.formatToParts(value).find((part) => part.type === "currency")?.value ?? currency;
+  const fixed = value.toFixed(2);
+  const [intRaw, fraction] = fixed.split(".");
+  const intPart = intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return {
+    int: intPart,
+    fraction,
+    currency: currencySymbol,
+  };
+};
+
 export function formatMoney(amount: number | string, currency = "RUB"): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   if (Number.isNaN(value)) return `${amount} ${currency}`;

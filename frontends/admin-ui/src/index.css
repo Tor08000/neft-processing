@@ -72,6 +72,78 @@ textarea {
   box-shadow: var(--neft-shadow-sm);
 }
 
+.table-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-density {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.table-density__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.table-density__controls {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.table-density__button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  color: var(--neft-text-muted);
+  cursor: pointer;
+}
+
+.table-density__button.is-active {
+  background: var(--neft-accent);
+  color: #0b0f14;
+}
+
+.table-scroll {
+  overflow: auto;
+  max-height: min(70vh, 640px);
+}
+
+.table-density-compact .table th,
+.table-density-compact .table td {
+  padding: 6px 10px;
+}
+
+.table-density-comfortable .table th,
+.table-density-comfortable .table td {
+  padding: 12px 14px;
+}
+
+.table-empty {
+  padding: 12px 0;
+  color: var(--neft-text-muted);
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -489,12 +561,23 @@ p {
 
 .admin-nav-link:hover {
   color: var(--neft-text);
-  background: rgba(22, 34, 53, 0.5);
+  background: rgba(22, 34, 53, 0.45);
 }
 
 .admin-nav-link.is-active {
   color: #0b0f14;
   background: var(--neft-accent);
+}
+
+.admin-nav-link.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-nav-link.is-subsection {
+  padding-left: 22px;
+  font-size: 13px;
+  color: var(--neft-text-faint);
 }
 
 .admin-main {
@@ -505,9 +588,36 @@ p {
 .admin-topbar {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 16px 24px;
-  background: var(--neft-surface);
+  background: rgba(18, 27, 39, 0.82);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--neft-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.admin-topbar__context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-topbar__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.admin-topbar__subtitle {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.admin-topbar__actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
 }
 
 .admin-user__email {
@@ -521,4 +631,28 @@ p {
 
 .admin-content {
   padding: 24px;
+}
+
+.progress-hints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  color: var(--neft-text);
+  font-weight: 600;
+}
+
+.progress-hints li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(22, 34, 53, 0.5);
+  border: 1px solid var(--neft-border);
+}
+
+.progress-hints__icon {
+  font-size: 18px;
 }
