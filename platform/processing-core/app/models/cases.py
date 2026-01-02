@@ -138,6 +138,9 @@ class CaseEvent(Base):
     prev_hash = Column(Text, nullable=False)
     hash = Column(Text, nullable=False)
     signature = Column(Text, nullable=True)
+    signature_alg = Column(String(64), nullable=True)
+    signing_key_id = Column(String(256), nullable=True)
+    signed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

@@ -14,15 +14,19 @@ from app.schemas.admin.case_events import (
     CaseEventArtifact,
     CaseEventChange,
     CaseEventMeta,
+    CaseEventsVerifyChain,
+    CaseEventsVerifySignatures,
     CaseStatusUpdateRequest,
     CaseWithEventResponse,
 )
 from app.schemas.cases import CaseResponse
 from app.services.admin_auth import require_admin
 from app.services.case_events_service import (
-    CaseEventIntegrityResult,
+    CaseEventChainIntegrityResult,
+    CaseEventSignatureIntegrityResult,
     list_case_events,
     verify_case_event_chain,
+    verify_case_event_signatures,
 )
 from app.services.cases_service import close_case, update_case
 
@@ -73,6 +77,10 @@ def _event_to_schema(event: CaseEvent) -> CaseEventOut:
         source="backend",
         prev_hash=event.prev_hash,
         hash=event.hash,
+        signature=event.signature,
+        signature_alg=event.signature_alg,
+        signing_key_id=event.signing_key_id,
+        signed_at=event.signed_at,
         meta=meta,
     )
 
@@ -115,12 +123,22 @@ def verify_case_events_endpoint(
     db: Session = Depends(get_db),
 ) -> CaseEventsVerifyResponse:
     _get_case(db, case_id)
-    result: CaseEventIntegrityResult = verify_case_event_chain(db, case_id=case_id)
+    result: CaseEventChainIntegrityResult = verify_case_event_chain(db, case_id=case_id)
+    signature_result: CaseEventSignatureIntegrityResult = verify_case_event_signatures(db, case_id=case_id)
     return CaseEventsVerifyResponse(
-        verified=result.verified,
-        broken_index=result.broken_index,
-        expected_hash=result.expected_hash,
-        actual_hash=result.actual_hash,
+        chain=CaseEventsVerifyChain(
+            status="verified" if result.verified else "broken",
+            tail_hash=result.tail_hash,
+            count=result.count,
+            broken_index=result.broken_index,
+            expected_hash=result.expected_hash,
+            actual_hash=result.actual_hash,
+        ),
+        signatures=CaseEventsVerifySignatures(
+            status="verified" if signature_result.verified else "broken",
+            broken_index=signature_result.broken_index,
+            key_id=signature_result.key_id,
+        ),
     )
 
 

@@ -51,6 +51,10 @@ class CaseEventOut(BaseModel):
     source: str | None = None
     prev_hash: str | None = None
     hash: str | None = None
+    signature: str | None = None
+    signature_alg: str | None = None
+    signing_key_id: str | None = None
+    signed_at: datetime | None = None
     meta: CaseEventMeta | None = None
 
 
@@ -61,13 +65,30 @@ class CaseEventsResponse(BaseModel):
     next_cursor: str | None = None
 
 
-class CaseEventsVerifyResponse(BaseModel):
+class CaseEventsVerifyChain(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    verified: bool
+    status: str
+    tail_hash: str | None = None
+    count: int
     broken_index: int | None = None
     expected_hash: str | None = None
     actual_hash: str | None = None
+
+
+class CaseEventsVerifySignatures(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    broken_index: int | None = None
+    key_id: str | None = None
+
+
+class CaseEventsVerifyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chain: CaseEventsVerifyChain
+    signatures: CaseEventsVerifySignatures
 
 
 class CaseStatusUpdateRequest(BaseModel):
