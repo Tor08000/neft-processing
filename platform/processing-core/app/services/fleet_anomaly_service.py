@@ -14,6 +14,8 @@ from app.models.fuel import (
     FuelAnomaly,
     FuelAnomalyStatus,
     FuelAnomalyType,
+    FuelLimitBreach,
+    FuelLimitBreachScopeType,
     FuelTransaction,
 )
 from app.security.rbac.principal import Principal
@@ -262,4 +264,122 @@ def detect_anomalies_for_transaction(
     return anomalies
 
 
-__all__ = ["detect_anomalies_for_transaction"]
+def _record_synthetic_anomaly(
+    db: Session,
+    *,
+    client_id: str,
+    card_id: str | None,
+    group_id: str | None,
+    anomaly_type: FuelAnomalyType,
+    severity: FleetNotificationSeverity,
+    score: Decimal,
+    occurred_at: datetime,
+    details: dict[str, Any],
+    principal: Principal | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FuelAnomaly:
+    event_id = fleet_service._emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FUEL_ANOMALY_DETECTED,
+        payload={
+            "anomaly_type": anomaly_type.value,
+            "severity": severity.value,
+            "score": str(score),
+            "details": details,
+        },
+    )
+    anomaly = FuelAnomaly(
+        client_id=client_id,
+        card_id=card_id,
+        group_id=group_id,
+        tx_id=None,
+        anomaly_type=anomaly_type,
+        severity=severity,
+        score=score,
+        baseline=None,
+        details=redact_deep(details, "", include_hash=True),
+        status=FuelAnomalyStatus.OPEN,
+        occurred_at=occurred_at,
+        audit_event_id=event_id,
+    )
+    db.add(anomaly)
+    db.flush()
+    fleet_metrics.mark_anomaly(anomaly_type.value, severity.value)
+    fleet_metrics.adjust_alerts_open(1)
+    record_decision_memory(
+        db,
+        case_id=None,
+        decision_type="anomaly",
+        decision_ref_id=str(anomaly.id),
+        decision_at=occurred_at,
+        decided_by_user_id=str(principal.user_id) if principal and principal.user_id else None,
+        context_snapshot={"anomaly_type": anomaly_type.value, "details": details},
+        rationale="synthetic_anomaly_detected",
+        score_snapshot={"score": float(score)},
+        mastery_snapshot=None,
+        audit_event_id=event_id,
+    )
+    return anomaly
+
+
+def detect_repeated_breach_anomaly(
+    db: Session,
+    *,
+    breach: FuelLimitBreach,
+    card_id: str | None,
+    principal: Principal | None,
+    request_id: str | None,
+    trace_id: str | None,
+    window_minutes: int = 60,
+    threshold: int = 3,
+) -> FuelAnomaly | None:
+    if not card_id:
+        return None
+    window_start = breach.occurred_at - timedelta(minutes=window_minutes)
+    existing = (
+        db.query(FuelAnomaly)
+        .filter(FuelAnomaly.card_id == card_id)
+        .filter(FuelAnomaly.anomaly_type == FuelAnomalyType.REPEATED_BREACH)
+        .filter(FuelAnomaly.occurred_at >= window_start)
+        .one_or_none()
+    )
+    if existing:
+        return None
+    breach_count = (
+        db.query(FuelLimitBreach)
+        .filter(FuelLimitBreach.client_id == breach.client_id)
+        .filter(FuelLimitBreach.scope_type == FuelLimitBreachScopeType.CARD)
+        .filter(FuelLimitBreach.scope_id == card_id)
+        .filter(FuelLimitBreach.occurred_at >= window_start)
+        .filter(FuelLimitBreach.occurred_at <= breach.occurred_at)
+        .count()
+    )
+    if breach_count < threshold:
+        return None
+    return _record_synthetic_anomaly(
+        db,
+        client_id=breach.client_id,
+        card_id=card_id,
+        group_id=None,
+        anomaly_type=FuelAnomalyType.REPEATED_BREACH,
+        severity=FleetNotificationSeverity.HIGH,
+        score=Decimal("0.7"),
+        occurred_at=breach.occurred_at,
+        details={
+            "reason": "repeated_breach",
+            "breach_id": str(breach.id),
+            "count": breach_count,
+            "window_minutes": window_minutes,
+        },
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+
+__all__ = ["detect_anomalies_for_transaction", "detect_repeated_breach_anomaly"]

@@ -15,6 +15,7 @@ from app.schemas.client_fleet import (
     FleetCardCreateIn,
     FleetCardListResponse,
     FleetCardOut,
+    FleetCardUnblockIn,
     FleetEmployeeInviteIn,
     FleetEmployeeListResponse,
     FleetEmployeeOut,
@@ -35,6 +36,9 @@ from app.schemas.client_fleet import (
     FleetNotificationPolicyIn,
     FleetNotificationPolicyListResponse,
     FleetNotificationPolicyOut,
+    FleetActionPolicyIn,
+    FleetActionPolicyListResponse,
+    FleetActionPolicyOut,
     FleetSpendSummaryOut,
     FleetSpendSummaryRow,
     FleetSpendSummaryTotals,
@@ -227,15 +231,16 @@ def block_card(
 )
 def unblock_card(
     card_id: str,
+    payload: FleetCardUnblockIn,
     request: Request,
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetCardOut:
     request_id, trace_id = _request_ids(request)
-    card = fleet_service.set_card_status(
+    card = fleet_service.unblock_card_with_reason(
         db,
         card_id=card_id,
-        status=FuelCardStatus.ACTIVE,
+        reason=payload.reason,
         principal=principal,
         request_id=request_id,
         trace_id=trace_id,
@@ -901,7 +906,7 @@ def disable_notification_policy(
     request: Request,
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
     db: Session = Depends(get_db),
-) -> FleetNotificationPolicyOut:
+    ) -> FleetNotificationPolicyOut:
     client_id = _ensure_client_context(principal)
     request_id, trace_id = _request_ids(request)
     policy = fleet_service.disable_notification_policy(
@@ -924,6 +929,109 @@ def disable_notification_policy(
         active=policy.active,
         action_on_critical=policy.action_on_critical.value if policy.action_on_critical else None,
         hard_breach_only=policy.hard_breach_only,
+        created_at=policy.created_at,
+    )
+
+
+@router.get(
+    "/policies",
+    response_model=FleetActionPolicyListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def list_action_policies(
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetActionPolicyListResponse:
+    client_id = _ensure_client_context(principal)
+    policies = fleet_service.list_action_policies(db, client_id=client_id, principal=principal)
+    return FleetActionPolicyListResponse(
+        items=[
+            FleetActionPolicyOut(
+                id=str(policy.id),
+                scope_type=policy.scope_type,
+                scope_id=str(policy.scope_id) if policy.scope_id else None,
+                trigger_type=policy.trigger_type,
+                trigger_severity_min=policy.trigger_severity_min,
+                breach_kind=policy.breach_kind,
+                action=policy.action,
+                cooldown_seconds=policy.cooldown_seconds,
+                active=policy.active,
+                created_at=policy.created_at,
+            )
+            for policy in policies
+        ]
+    )
+
+
+@router.post(
+    "/policies",
+    response_model=FleetActionPolicyOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def create_action_policy(
+    payload: FleetActionPolicyIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetActionPolicyOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    policy = fleet_service.create_action_policy(
+        db,
+        client_id=client_id,
+        payload=payload,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetActionPolicyOut(
+        id=str(policy.id),
+        scope_type=policy.scope_type,
+        scope_id=str(policy.scope_id) if policy.scope_id else None,
+        trigger_type=policy.trigger_type,
+        trigger_severity_min=policy.trigger_severity_min,
+        breach_kind=policy.breach_kind,
+        action=policy.action,
+        cooldown_seconds=policy.cooldown_seconds,
+        active=policy.active,
+        created_at=policy.created_at,
+    )
+
+
+@router.post(
+    "/policies/{policy_id}/disable",
+    response_model=FleetActionPolicyOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def disable_action_policy(
+    policy_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetActionPolicyOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    policy = fleet_service.disable_action_policy(
+        db,
+        policy_id=policy_id,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetActionPolicyOut(
+        id=str(policy.id),
+        scope_type=policy.scope_type,
+        scope_id=str(policy.scope_id) if policy.scope_id else None,
+        trigger_type=policy.trigger_type,
+        trigger_severity_min=policy.trigger_severity_min,
+        breach_kind=policy.breach_kind,
+        action=policy.action,
+        cooldown_seconds=policy.cooldown_seconds,
+        active=policy.active,
         created_at=policy.created_at,
     )
 

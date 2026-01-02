@@ -104,6 +104,7 @@ def handle_limit_breaches(
                         principal=_system_principal(),
                         request_id=request_id,
                         trace_id=trace_id,
+                        reason="auto_block_due_to_limit_breach",
                     )
                     audit_event_id = fleet_service._emit_event(
                         db,

@@ -13,6 +13,10 @@ class FleetMetrics:
     notifications_outbox_total: Dict[tuple[str, str], int] = field(default_factory=dict)
     notifications_delivery_seconds: Dict[str, list[float]] = field(default_factory=dict)
     auto_actions_total: Dict[tuple[str, str], int] = field(default_factory=dict)
+    policy_actions_total: Dict[tuple[str, str], int] = field(default_factory=dict)
+    auto_block_total: Dict[str, int] = field(default_factory=dict)
+    escalations_total: Dict[str, int] = field(default_factory=dict)
+    policy_execution_latency_seconds: list[float] = field(default_factory=list)
     alerts_open_gauge: int = 0
     transactions_total: int = 0
     export_requests_total: int = 0
@@ -43,6 +47,19 @@ class FleetMetrics:
         key = (action, status)
         self.auto_actions_total[key] = self.auto_actions_total.get(key, 0) + 1
 
+    def mark_policy_action(self, action: str, status: str) -> None:
+        key = (action, status)
+        self.policy_actions_total[key] = self.policy_actions_total.get(key, 0) + 1
+
+    def mark_auto_block(self, status: str) -> None:
+        self.auto_block_total[status] = self.auto_block_total.get(status, 0) + 1
+
+    def mark_escalation(self, status: str) -> None:
+        self.escalations_total[status] = self.escalations_total.get(status, 0) + 1
+
+    def observe_policy_execution_latency(self, seconds: float) -> None:
+        self.policy_execution_latency_seconds.append(seconds)
+
     def adjust_alerts_open(self, delta: int) -> None:
         self.alerts_open_gauge = max(0, self.alerts_open_gauge + delta)
 
@@ -60,6 +77,10 @@ class FleetMetrics:
         self.notifications_outbox_total.clear()
         self.notifications_delivery_seconds.clear()
         self.auto_actions_total.clear()
+        self.policy_actions_total.clear()
+        self.auto_block_total.clear()
+        self.escalations_total.clear()
+        self.policy_execution_latency_seconds.clear()
         self.alerts_open_gauge = 0
         self.transactions_total = 0
         self.export_requests_total = 0
