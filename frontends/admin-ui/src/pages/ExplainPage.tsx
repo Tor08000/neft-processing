@@ -408,6 +408,13 @@ export const ExplainPage = () => {
       streakCount: loadStreakState().count,
     }),
   );
+  const masterySnapshotPayload = useMemo(
+    () => ({
+      level: masterySnapshot.level,
+      progress_to_next: Number(masterySnapshot.progressToNext.toFixed(2)),
+    }),
+    [masterySnapshot.level, masterySnapshot.progressToNext],
+  );
 
   const lastRunStateRef = useRef<ExplainQueryState | null>(null);
   const explainRequestIdRef = useRef(0);
@@ -782,6 +789,7 @@ export const ExplainPage = () => {
         explain: queryState.includeExplain ? payload : null,
         diff: queryState.includeDiff ? diffData ?? null : null,
         selected_actions: selected,
+        mastery_snapshot: masterySnapshotPayload,
       });
       setCreatedCaseId(response.id);
       setCaseModalOpen(false);
@@ -920,6 +928,7 @@ export const ExplainPage = () => {
           kind: exportKind,
           case_id: createdCaseId,
           payload: payloadData,
+          mastery_snapshot: masterySnapshotPayload,
         });
         setExportInfo({
           id: response.id,

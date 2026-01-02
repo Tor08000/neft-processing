@@ -20,6 +20,7 @@ from app.models.cases import (
 )
 from app.services.case_events_service import CaseEventActor, CaseEventChange, emit_case_event
 from app.services.case_escalation_service import apply_classification, apply_sla_filter, classify_case
+from app.services.decision_memory.records import _extract_score_snapshot, record_decision_memory
 
 
 def _format_score(value: Any) -> str | None:
@@ -96,6 +97,7 @@ def create_case(
     explain: dict[str, Any] | None,
     diff: dict[str, Any] | None,
     selected_actions: list[dict[str, Any]] | None,
+    mastery_snapshot: dict[str, Any] | None,
     created_by: str | None,
     request_id: str | None = None,
     trace_id: str | None = None,
@@ -140,9 +142,10 @@ def create_case(
             body="Кейс создан",
         )
     )
+    db.flush()
     classification = classify_case(case, explain, diff)
     apply_classification(db, case=case, result=classification, now=now)
-    emit_case_event(
+    event = emit_case_event(
         db,
         case_id=case.id,
         event_type=CaseEventType.CASE_CREATED,
@@ -160,6 +163,52 @@ def create_case(
             else []
         ),
     )
+    record_decision_memory(
+        db,
+        case_id=case.id,
+        decision_type="action",
+        decision_ref_id=event.id,
+        decision_at=now,
+        decided_by_user_id=created_by,
+        context_snapshot={
+            "case_id": str(case.id),
+            "status": case.status.value,
+            "priority": case.priority.value,
+            "queue": case.queue.value,
+        },
+        rationale=note,
+        score_snapshot=_extract_score_snapshot(explain),
+        mastery_snapshot=mastery_snapshot,
+        audit_event_id=event.id,
+    )
+    if explain:
+        record_decision_memory(
+            db,
+            case_id=case.id,
+            decision_type="explain",
+            decision_ref_id=snapshot.id,
+            decision_at=now,
+            decided_by_user_id=created_by,
+            context_snapshot=explain,
+            rationale=None,
+            score_snapshot=_extract_score_snapshot(explain),
+            mastery_snapshot=mastery_snapshot,
+            audit_event_id=event.id,
+        )
+    if diff:
+        record_decision_memory(
+            db,
+            case_id=case.id,
+            decision_type="diff",
+            decision_ref_id=snapshot.id,
+            decision_at=now,
+            decided_by_user_id=created_by,
+            context_snapshot=diff,
+            rationale=None,
+            score_snapshot=_extract_score_snapshot(diff),
+            mastery_snapshot=mastery_snapshot,
+            audit_event_id=event.id,
+        )
     return case
 
 
@@ -329,6 +378,8 @@ def close_case(
     case: Case,
     actor: str | None,
     resolution_note: str | None,
+    score_snapshot: dict[str, Any] | None,
+    mastery_snapshot: dict[str, Any] | None,
     now: datetime | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
@@ -352,7 +403,7 @@ def close_case(
     ]
     if resolution_note is not None:
         changes.append(CaseEventChange(field="resolution_note", before=None, after=resolution_note))
-    emit_case_event(
+    event = emit_case_event(
         db,
         case_id=case.id,
         event_type=CaseEventType.CASE_CLOSED,
@@ -360,6 +411,23 @@ def close_case(
         request_id=request_id,
         trace_id=trace_id,
         changes=changes,
+    )
+    record_decision_memory(
+        db,
+        case_id=case.id,
+        decision_type="close",
+        decision_ref_id=event.id,
+        decision_at=resolved_now,
+        decided_by_user_id=actor,
+        context_snapshot={
+            "case_id": str(case.id),
+            "status": case.status.value,
+            "resolution_note": resolution_note,
+        },
+        rationale=resolution_note,
+        score_snapshot=score_snapshot,
+        mastery_snapshot=mastery_snapshot,
+        audit_event_id=event.id,
     )
     return case
 

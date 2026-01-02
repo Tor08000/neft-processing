@@ -271,6 +271,7 @@ from .decision_memory import (  # noqa: F401
     DecisionActionStatsDaily,
     DecisionMemoryEffectLabel,
     DecisionMemoryEntityType,
+    DecisionMemoryRecord,
     DecisionOutcome,
 )
 from .fleet_intelligence_actions import (  # noqa: F401
@@ -510,6 +511,7 @@ __all__ = [
     "DecisionActionStatsDaily",
     "DecisionMemoryEffectLabel",
     "DecisionMemoryEntityType",
+    "DecisionMemoryRecord",
     "DecisionOutcome",
     "FuelLimit",
     "FuelLimitPeriod",

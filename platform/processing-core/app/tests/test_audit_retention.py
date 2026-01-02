@@ -236,6 +236,76 @@ def test_case_events_worm_guard_blocks_update_and_delete() -> None:
             )
         assert "case_events is WORM" in str(exc_info.value)
 
+
+@pytest.mark.skipif(engine.dialect.name != "postgresql", reason="WORM guard requires Postgres")
+def test_decision_memory_worm_guard_blocks_update_and_delete() -> None:
+    db_url = get_database_url()
+    engine = ensure_connectable(db_url)
+    alembic_cfg = _make_alembic_config(db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    schema = DB_SCHEMA
+    case_id = str(uuid4())
+    event_id = str(uuid4())
+    record_id = str(uuid4())
+    schema_prefix = f'"{schema}".' if schema else ""
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f'SET search_path TO "{schema}"')
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}cases (id, tenant_id, kind, title)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (case_id, 1, "operation", "case"),
+        )
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}case_events
+                (id, case_id, seq, type, payload_redacted, prev_hash, hash)
+            VALUES (%s, %s, %s, %s, %s::json, %s, %s)
+            """,
+            (
+                event_id,
+                case_id,
+                1,
+                "CASE_CREATED",
+                json.dumps({"note": "hello"}),
+                "GENESIS",
+                "hash",
+            ),
+        )
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}decision_memory
+                (id, case_id, decision_type, decision_ref_id, decision_at, context_snapshot, audit_event_id)
+            VALUES (%s, %s, %s, %s, %s, %s::json, %s)
+            """,
+            (
+                record_id,
+                case_id,
+                "action",
+                event_id,
+                datetime.now(timezone.utc),
+                json.dumps({"context": "value"}),
+                event_id,
+            ),
+        )
+
+        with pytest.raises(sa.exc.DBAPIError) as exc_info:
+            connection.exec_driver_sql(
+                f"UPDATE {schema_prefix}decision_memory SET rationale = %s WHERE id = %s",
+                ("tampered", record_id),
+            )
+        assert "decision_memory is WORM" in str(exc_info.value)
+
+        with pytest.raises(sa.exc.DBAPIError) as exc_info:
+            connection.exec_driver_sql(
+                f"DELETE FROM {schema_prefix}decision_memory WHERE id = %s",
+                (record_id,),
+            )
+        assert "decision_memory is WORM" in str(exc_info.value)
+
         with pytest.raises(sa.exc.DBAPIError) as exc_info:
             connection.exec_driver_sql(
                 f"DELETE FROM {schema_prefix}case_events WHERE id = %s",

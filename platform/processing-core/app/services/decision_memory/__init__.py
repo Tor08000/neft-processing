@@ -10,6 +10,7 @@ from app.services.decision_memory.defaults import (
     MIN_SAMPLE_SIZE,
 )
 from app.services.decision_memory.explain import build_decision_memory_section
+from app.services.decision_memory.records import list_decision_memory_for_case, record_decision_memory
 from app.services.decision_memory.stats import DecisionActionStats, build_action_stats_map, compute_action_stats
 from app.services.decision_memory.store import record_outcome_from_effect
 
@@ -22,6 +23,8 @@ __all__ = [
     "compute_action_stats",
     "compute_weighted_stats",
     "evaluate_cooldown",
+    "list_decision_memory_for_case",
+    "record_decision_memory",
     "record_outcome_from_effect",
     "COOLDOWN_DAYS",
     "COOLDOWN_PENALTY",

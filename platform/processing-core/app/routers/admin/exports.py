@@ -14,10 +14,12 @@ from app.schemas.admin.case_exports import (
     CaseExportDownload,
     CaseExportDownloadResponse,
     CaseExportOut,
+    CaseExportVerifyResponse,
 )
 from app.services.admin_auth import require_admin
 from app.services.case_events_service import CaseEventActor
 from app.services.case_export_service import create_export
+from app.services.case_export_verification_service import verify_export
 from app.services.export_storage import ExportStorage
 
 router = APIRouter(prefix="/exports", tags=["admin-exports"])
@@ -35,6 +37,10 @@ def _export_to_schema(export: CaseExport, download: CaseExportDownload | None = 
         case_id=str(export.case_id) if export.case_id else None,
         content_type=export.content_type,
         content_sha256=export.content_sha256,
+        artifact_signature=export.artifact_signature,
+        artifact_signature_alg=export.artifact_signature_alg,
+        artifact_signing_key_id=export.artifact_signing_key_id,
+        artifact_signed_at=export.artifact_signed_at,
         size_bytes=export.size_bytes,
         created_at=export.created_at,
         deleted_at=export.deleted_at,
@@ -64,6 +70,7 @@ def create_export_endpoint(
         kind=payload.kind.value,
         case_id=UUID(payload.case_id) if payload.case_id else None,
         payload=payload.payload,
+        mastery_snapshot=payload.mastery_snapshot,
         actor=actor,
         request_id=request_id,
         trace_id=trace_id,
@@ -98,6 +105,23 @@ def get_export_download(
         url=url,
         expires_in=settings.S3_SIGNED_URL_TTL_SECONDS,
         content_sha256=export.content_sha256,
+    )
+
+
+@router.post("/{export_id}/verify", response_model=CaseExportVerifyResponse)
+def verify_export_endpoint(
+    export_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin),
+) -> CaseExportVerifyResponse:
+    export = _load_export(db, export_id)
+    result = verify_export(db, export=export)
+    return CaseExportVerifyResponse(
+        content_hash_verified=result.content_hash_verified,
+        artifact_signature_verified=result.artifact_signature_verified,
+        signed_by=result.signed_by,
+        signed_at=result.signed_at,
+        audit_chain_verified=result.audit_chain_verified,
     )
 
 

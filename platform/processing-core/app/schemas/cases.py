@@ -21,6 +21,7 @@ class CaseCreateRequest(BaseModel):
     explain: dict[str, Any] | None = None
     diff: dict[str, Any] | None = None
     selected_actions: list[dict[str, Any]] | None = None
+    mastery_snapshot: dict[str, Any] | None = None
 
 
 class CaseUpdateRequest(BaseModel):

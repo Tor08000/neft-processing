@@ -14,6 +14,7 @@ class CaseExportCreateRequest(BaseModel):
     kind: CaseExportKind
     case_id: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
+    mastery_snapshot: dict[str, Any] | None = None
 
 
 class CaseExportDownload(BaseModel):
@@ -31,6 +32,10 @@ class CaseExportOut(BaseModel):
     case_id: str | None = None
     content_type: str
     content_sha256: str
+    artifact_signature: str | None = None
+    artifact_signature_alg: str | None = None
+    artifact_signing_key_id: str | None = None
+    artifact_signed_at: datetime | None = None
     size_bytes: int
     created_at: datetime
     deleted_at: datetime | None = None
@@ -44,6 +49,16 @@ class CaseExportDownloadResponse(BaseModel):
     url: str
     expires_in: int
     content_sha256: str
+
+
+class CaseExportVerifyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_hash_verified: bool
+    artifact_signature_verified: bool
+    signed_by: str | None = None
+    signed_at: datetime | None = None
+    audit_chain_verified: bool
 
 
 class CaseExportListResponse(BaseModel):
@@ -64,4 +79,5 @@ __all__ = [
     "CaseExportDownloadResponse",
     "CaseExportListResponse",
     "CaseExportOut",
+    "CaseExportVerifyResponse",
 ]
