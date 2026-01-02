@@ -26,8 +26,13 @@ from app.services.reconciliation_service import (
     run_internal_reconciliation,
     upload_external_statement,
 )
+from app.security.rbac.guard import require_permission
 
-router = APIRouter(prefix="/reconciliation", tags=["admin", "reconciliation"])
+router = APIRouter(
+    prefix="/reconciliation",
+    tags=["admin", "reconciliation"],
+    dependencies=[Depends(require_permission("admin:reconciliation:*"))],
+)
 
 
 @router.post("/internal", response_model=ReconciliationRunResponse, status_code=201)
