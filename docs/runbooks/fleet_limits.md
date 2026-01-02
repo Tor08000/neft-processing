@@ -5,6 +5,8 @@ Fuel limit checks are evaluated deterministically at ingestion. Breaches create 
 
 ## Signals & metrics
 - `core_api_fleet_limit_breaches_total{type,scope}`
+- `core_api_fleet_auto_actions_total{action,status}`
+- `core_api_fleet_alerts_open_gauge`
 
 ## Operational checks
 1. Inspect open breaches:
@@ -28,3 +30,4 @@ Fuel limit checks are evaluated deterministically at ingestion. Breaches create 
 
 ## Escalation
 Escalate repeated `HARD_BREACH` events to the operations team for follow-up and policy tuning.
+Refer to `docs/runbooks/fleet_notifications.md` for notification and auto-action troubleshooting.

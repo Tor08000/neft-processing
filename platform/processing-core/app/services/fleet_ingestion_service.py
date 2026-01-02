@@ -26,8 +26,15 @@ from app.schemas.fleet_ingestion import FleetIngestRequestIn
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.case_event_redaction import redact_deep
+from app.services.fleet_anomaly_service import detect_anomalies_for_transaction
+from app.services.fleet_escalation_service import handle_limit_breaches
 from app.services.fleet_limit_check import apply_limit_checks
 from app.services.fleet_metrics import metrics as fleet_metrics
+from app.services.fleet_notification_dispatcher import (
+    enqueue_anomaly_notification,
+    enqueue_breach_notification,
+    enqueue_ingest_failed_notification,
+)
 
 CATEGORY_MAP = {
     "FUEL": "FUEL",
@@ -297,13 +304,44 @@ def ingest_transactions(
             )
             db.add(tx)
             db.flush()
-            apply_limit_checks(
+            breaches = apply_limit_checks(
                 db,
                 transaction=tx,
                 principal=principal,
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            if breaches:
+                handle_limit_breaches(
+                    db,
+                    breaches=breaches,
+                    principal=principal,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                for breach in breaches:
+                    enqueue_breach_notification(
+                        db,
+                        breach=breach,
+                        principal=principal,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+            anomalies = detect_anomalies_for_transaction(
+                db,
+                transaction=tx,
+                principal=principal,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            for anomaly in anomalies:
+                enqueue_anomaly_notification(
+                    db,
+                    anomaly=anomaly,
+                    principal=principal,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
             _ensure_merchant(
                 db,
                 provider_code=payload.provider_code,
@@ -351,6 +389,15 @@ def ingest_transactions(
                 "idempotency_key": payload.idempotency_key,
                 "error": job.error,
             },
+        )
+        enqueue_ingest_failed_notification(
+            db,
+            client_id=job.client_id or payload.items[0].client_ref or "unknown",
+            job_id=str(job.id),
+            error=job.error,
+            principal=principal,
+            request_id=request_id,
+            trace_id=trace_id,
         )
         fleet_metrics.mark_ingest_job("FAILED", payload.provider_code)
         raise

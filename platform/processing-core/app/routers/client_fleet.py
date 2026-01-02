@@ -29,6 +29,12 @@ from app.schemas.client_fleet import (
     FleetAlertIgnoreIn,
     FleetAlertListResponse,
     FleetAlertOut,
+    FleetNotificationChannelIn,
+    FleetNotificationChannelListResponse,
+    FleetNotificationChannelOut,
+    FleetNotificationPolicyIn,
+    FleetNotificationPolicyListResponse,
+    FleetNotificationPolicyOut,
     FleetSpendSummaryOut,
     FleetSpendSummaryRow,
     FleetSpendSummaryTotals,
@@ -602,26 +608,37 @@ def export_transactions(
 )
 def list_alerts(
     status: str | None = Query(None),
+    severity_min: str | None = Query(None),
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
     db: Session = Depends(get_db),
 ) -> FleetAlertListResponse:
     client_id = _ensure_client_context(principal)
-    alerts = fleet_service.list_alerts(db, client_id=client_id, principal=principal, status=status)
+    alerts = fleet_service.list_alerts(
+        db,
+        client_id=client_id,
+        principal=principal,
+        status=status,
+        severity_min=severity_min,
+    )
     return FleetAlertListResponse(
         items=[
             FleetAlertOut(
-                id=str(alert.id),
-                status=alert.status,
-                scope_type=str(alert.scope_type),
-                scope_id=str(alert.scope_id),
-                period=alert.period,
-                breach_type=str(alert.breach_type),
-                threshold=alert.threshold,
-                observed=alert.observed,
-                delta=alert.delta,
-                occurred_at=alert.occurred_at,
-                tx_id=str(alert.tx_id) if alert.tx_id else None,
-                limit_id=str(alert.limit_id),
+                id=alert["id"],
+                alert_type=alert["alert_type"],
+                status=alert["status"],
+                severity=alert["severity"],
+                occurred_at=alert["occurred_at"],
+                card_id=alert.get("card_id"),
+                group_id=alert.get("group_id"),
+                tx_id=alert.get("tx_id"),
+                limit_id=alert.get("limit_id"),
+                breach_type=alert.get("breach_type"),
+                threshold=alert.get("threshold"),
+                observed=alert.get("observed"),
+                delta=alert.get("delta"),
+                period=alert.get("period"),
+                anomaly_type=alert.get("anomaly_type"),
+                score=alert.get("score"),
             )
             for alert in alerts
         ]
@@ -651,18 +668,22 @@ def ack_alert(
     )
     db.commit()
     return FleetAlertOut(
-        id=str(alert.id),
-        status=alert.status,
-        scope_type=str(alert.scope_type),
-        scope_id=str(alert.scope_id),
-        period=alert.period,
-        breach_type=str(alert.breach_type),
-        threshold=alert.threshold,
-        observed=alert.observed,
-        delta=alert.delta,
-        occurred_at=alert.occurred_at,
-        tx_id=str(alert.tx_id) if alert.tx_id else None,
-        limit_id=str(alert.limit_id),
+        id=alert["id"],
+        alert_type=alert["alert_type"],
+        status=alert["status"],
+        severity=alert["severity"],
+        occurred_at=alert["occurred_at"],
+        card_id=alert.get("card_id"),
+        group_id=alert.get("group_id"),
+        tx_id=alert.get("tx_id"),
+        limit_id=alert.get("limit_id"),
+        breach_type=alert.get("breach_type"),
+        threshold=alert.get("threshold"),
+        observed=alert.get("observed"),
+        delta=alert.get("delta"),
+        period=alert.get("period"),
+        anomaly_type=alert.get("anomaly_type"),
+        score=alert.get("score"),
     )
 
 
@@ -690,18 +711,220 @@ def ignore_alert(
     )
     db.commit()
     return FleetAlertOut(
-        id=str(alert.id),
-        status=alert.status,
-        scope_type=str(alert.scope_type),
-        scope_id=str(alert.scope_id),
-        period=alert.period,
-        breach_type=str(alert.breach_type),
-        threshold=alert.threshold,
-        observed=alert.observed,
-        delta=alert.delta,
-        occurred_at=alert.occurred_at,
-        tx_id=str(alert.tx_id) if alert.tx_id else None,
-        limit_id=str(alert.limit_id),
+        id=alert["id"],
+        alert_type=alert["alert_type"],
+        status=alert["status"],
+        severity=alert["severity"],
+        occurred_at=alert["occurred_at"],
+        card_id=alert.get("card_id"),
+        group_id=alert.get("group_id"),
+        tx_id=alert.get("tx_id"),
+        limit_id=alert.get("limit_id"),
+        breach_type=alert.get("breach_type"),
+        threshold=alert.get("threshold"),
+        observed=alert.get("observed"),
+        delta=alert.get("delta"),
+        period=alert.get("period"),
+        anomaly_type=alert.get("anomaly_type"),
+        score=alert.get("score"),
+    )
+
+
+@router.get(
+    "/notifications/channels",
+    response_model=FleetNotificationChannelListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def list_notification_channels(
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationChannelListResponse:
+    client_id = _ensure_client_context(principal)
+    channels = fleet_service.list_notification_channels(db, client_id=client_id, principal=principal)
+    return FleetNotificationChannelListResponse(
+        items=[
+            FleetNotificationChannelOut(
+                id=str(channel.id),
+                channel_type=channel.channel_type,
+                target=channel.target,
+                status=channel.status,
+                created_at=channel.created_at,
+            )
+            for channel in channels
+        ]
+    )
+
+
+@router.post(
+    "/notifications/channels",
+    response_model=FleetNotificationChannelOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def create_notification_channel(
+    payload: FleetNotificationChannelIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationChannelOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    channel = fleet_service.create_notification_channel(
+        db,
+        client_id=client_id,
+        channel_type=payload.channel_type,
+        target=payload.target,
+        secret_ref=payload.secret_ref,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetNotificationChannelOut(
+        id=str(channel.id),
+        channel_type=channel.channel_type,
+        target=channel.target,
+        status=channel.status,
+        created_at=channel.created_at,
+    )
+
+
+@router.post(
+    "/notifications/channels/{channel_id}/disable",
+    response_model=FleetNotificationChannelOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def disable_notification_channel(
+    channel_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationChannelOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    channel = fleet_service.disable_notification_channel(
+        db,
+        channel_id=channel_id,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetNotificationChannelOut(
+        id=str(channel.id),
+        channel_type=channel.channel_type,
+        target=channel.target,
+        status=channel.status,
+        created_at=channel.created_at,
+    )
+
+
+@router.get(
+    "/notifications/policies",
+    response_model=FleetNotificationPolicyListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def list_notification_policies(
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationPolicyListResponse:
+    client_id = _ensure_client_context(principal)
+    policies = fleet_service.list_notification_policies(db, client_id=client_id, principal=principal)
+    return FleetNotificationPolicyListResponse(
+        items=[
+            FleetNotificationPolicyOut(
+                id=str(policy.id),
+                scope_type=policy.scope_type,
+                scope_id=str(policy.scope_id) if policy.scope_id else None,
+                event_type=policy.event_type,
+                severity_min=policy.severity_min,
+                channels=policy.channels or [],
+                cooldown_seconds=policy.cooldown_seconds,
+                active=policy.active,
+                action_on_critical=policy.action_on_critical.value
+                if policy.action_on_critical
+                else None,
+                hard_breach_only=policy.hard_breach_only,
+                created_at=policy.created_at,
+            )
+            for policy in policies
+        ]
+    )
+
+
+@router.post(
+    "/notifications/policies",
+    response_model=FleetNotificationPolicyOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def create_notification_policy(
+    payload: FleetNotificationPolicyIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationPolicyOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    policy = fleet_service.create_notification_policy(
+        db,
+        client_id=client_id,
+        payload=payload,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetNotificationPolicyOut(
+        id=str(policy.id),
+        scope_type=policy.scope_type,
+        scope_id=str(policy.scope_id) if policy.scope_id else None,
+        event_type=policy.event_type,
+        severity_min=policy.severity_min,
+        channels=policy.channels or [],
+        cooldown_seconds=policy.cooldown_seconds,
+        active=policy.active,
+        action_on_critical=policy.action_on_critical.value if policy.action_on_critical else None,
+        hard_breach_only=policy.hard_breach_only,
+        created_at=policy.created_at,
+    )
+
+
+@router.post(
+    "/notifications/policies/{policy_id}/disable",
+    response_model=FleetNotificationPolicyOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def disable_notification_policy(
+    policy_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationPolicyOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    policy = fleet_service.disable_notification_policy(
+        db,
+        policy_id=policy_id,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetNotificationPolicyOut(
+        id=str(policy.id),
+        scope_type=policy.scope_type,
+        scope_id=str(policy.scope_id) if policy.scope_id else None,
+        event_type=policy.event_type,
+        severity_min=policy.severity_min,
+        channels=policy.channels or [],
+        cooldown_seconds=policy.cooldown_seconds,
+        active=policy.active,
+        action_on_critical=policy.action_on_critical.value if policy.action_on_critical else None,
+        hard_breach_only=policy.hard_breach_only,
+        created_at=policy.created_at,
     )
 
 

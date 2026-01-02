@@ -14,6 +14,7 @@ from sqlalchemy import (
     JSON,
     Numeric,
     String,
+    Text,
     Time,
     UniqueConstraint,
     func,
@@ -102,6 +103,71 @@ class FuelLimitPeriod(str, Enum):
     DAILY = "DAILY"
     WEEKLY = "WEEKLY"
     MONTHLY = "MONTHLY"
+
+
+class FuelAnomalyType(str, Enum):
+    SPIKE_AMOUNT = "SPIKE_AMOUNT"
+    SPIKE_VOLUME = "SPIKE_VOLUME"
+    NEW_MERCHANT = "NEW_MERCHANT"
+    MERCHANT_OUTLIER = "MERCHANT_OUTLIER"
+    TIME_OF_DAY = "TIME_OF_DAY"
+    FREQUENCY_BURST = "FREQUENCY_BURST"
+    GEO_DISTANCE = "GEO_DISTANCE"
+
+
+class FleetNotificationSeverity(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class FuelAnomalyStatus(str, Enum):
+    OPEN = "OPEN"
+    ACKED = "ACKED"
+    IGNORED = "IGNORED"
+
+
+class FleetNotificationChannelType(str, Enum):
+    WEBHOOK = "WEBHOOK"
+    EMAIL = "EMAIL"
+
+
+class FleetNotificationChannelStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+
+
+class FleetNotificationPolicyScopeType(str, Enum):
+    CLIENT = "client"
+    GROUP = "group"
+    CARD = "card"
+
+
+class FleetNotificationEventType(str, Enum):
+    LIMIT_BREACH = "LIMIT_BREACH"
+    ANOMALY = "ANOMALY"
+    INGEST_FAILED = "INGEST_FAILED"
+    DAILY_SUMMARY = "DAILY_SUMMARY"
+
+
+class FleetNotificationOutboxStatus(str, Enum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    DEAD = "DEAD"
+
+
+class FuelLimitEscalationAction(str, Enum):
+    NOTIFY_ONLY = "NOTIFY_ONLY"
+    AUTO_BLOCK_CARD = "AUTO_BLOCK_CARD"
+    SUSPEND_GROUP = "SUSPEND_GROUP"
+
+
+class FuelLimitEscalationStatus(str, Enum):
+    TRIGGERED = "TRIGGERED"
+    APPLIED = "APPLIED"
+    FAILED = "FAILED"
 
 
 class FuelType(str, Enum):
@@ -336,6 +402,107 @@ class FuelLimitBreach(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FleetNotificationChannel(Base):
+    __tablename__ = "fleet_notification_channels"
+    __table_args__ = (Index("ix_fleet_notification_channels_client_type_status", "client_id", "channel_type", "status"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    channel_type = Column(
+        ExistingEnum(FleetNotificationChannelType, name="fleet_notification_channel_type"), nullable=False
+    )
+    target = Column(String(512), nullable=False)
+    status = Column(
+        ExistingEnum(FleetNotificationChannelStatus, name="fleet_notification_channel_status"), nullable=False
+    )
+    secret_ref = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetNotificationPolicy(Base):
+    __tablename__ = "fleet_notification_policies"
+    __table_args__ = (Index("ix_fleet_notification_policies_client_event_active", "client_id", "event_type", "active"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    scope_type = Column(ExistingEnum(FleetNotificationPolicyScopeType, name="fleet_notification_scope_type"), nullable=False)
+    scope_id = Column(GUID(), nullable=True)
+    event_type = Column(ExistingEnum(FleetNotificationEventType, name="fleet_notification_event_type"), nullable=False)
+    severity_min = Column(ExistingEnum(FleetNotificationSeverity, name="fleet_notification_severity"), nullable=False)
+    channels = Column(JSON, nullable=False)
+    cooldown_seconds = Column(Integer, nullable=False, default=300, server_default="300")
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
+    action_on_critical = Column(
+        ExistingEnum(FuelLimitEscalationAction, name="fuel_limit_escalation_action"),
+        nullable=True,
+    )
+    hard_breach_only = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetNotificationOutbox(Base):
+    __tablename__ = "fleet_notification_outbox"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False)
+    severity = Column(String(32), nullable=False)
+    event_ref_type = Column(String(64), nullable=False)
+    event_ref_id = Column(GUID(), nullable=False)
+    payload_redacted = Column(JSON, nullable=True)
+    channels_attempted = Column(JSON, nullable=True)
+    status = Column(
+        ExistingEnum(FleetNotificationOutboxStatus, name="fleet_notification_outbox_status"), nullable=False
+    )
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    dedupe_key = Column(String(256), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FuelAnomaly(Base):
+    __tablename__ = "fuel_anomalies"
+    __table_args__ = (
+        Index("ix_fuel_anomalies_client_status_ts", "client_id", "status", "occurred_at"),
+        Index("ix_fuel_anomalies_card_ts", "card_id", "occurred_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    card_id = Column(GUID(), ForeignKey("fuel_cards.id"), nullable=True, index=True)
+    group_id = Column(GUID(), ForeignKey("fuel_card_groups.id"), nullable=True, index=True)
+    tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=True, index=True)
+    anomaly_type = Column(ExistingEnum(FuelAnomalyType, name="fuel_anomaly_type"), nullable=False)
+    severity = Column(ExistingEnum(FleetNotificationSeverity, name="fleet_notification_severity"), nullable=False)
+    score = Column(Numeric, nullable=False)
+    baseline = Column(JSON, nullable=True)
+    details = Column(JSON, nullable=True)
+    status = Column(ExistingEnum(FuelAnomalyStatus, name="fuel_anomaly_status"), nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FuelLimitEscalation(Base):
+    __tablename__ = "fuel_limit_escalations"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    breach_id = Column(GUID(), ForeignKey("fuel_limit_breaches.id"), nullable=False, index=True)
+    action = Column(
+        ExistingEnum(FuelLimitEscalationAction, name="fuel_limit_escalation_action"), nullable=False
+    )
+    status = Column(ExistingEnum(FuelLimitEscalationStatus, name="fuel_limit_escalation_status"), nullable=False)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class FuelLimit(Base):
     __tablename__ = "fuel_limits"
     __table_args__ = (
@@ -497,10 +664,25 @@ __all__ = [
     "FuelLimitBreachScopeType",
     "FuelLimitBreachStatus",
     "FuelLimitBreachType",
+    "FuelLimitEscalation",
+    "FuelLimitEscalationAction",
+    "FuelLimitEscalationStatus",
     "FuelLimitPeriod",
     "FuelLimitCheckStatus",
     "FuelLimitScopeType",
     "FuelLimitType",
+    "FuelAnomaly",
+    "FuelAnomalyStatus",
+    "FuelAnomalyType",
+    "FleetNotificationChannel",
+    "FleetNotificationChannelStatus",
+    "FleetNotificationChannelType",
+    "FleetNotificationEventType",
+    "FleetNotificationOutbox",
+    "FleetNotificationOutboxStatus",
+    "FleetNotificationPolicy",
+    "FleetNotificationPolicyScopeType",
+    "FleetNotificationSeverity",
     "FuelMerchant",
     "FuelNetwork",
     "FuelNetworkStatus",

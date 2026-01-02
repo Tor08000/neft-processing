@@ -264,6 +264,7 @@ def apply_limit_checks(
             audit_event_id=event_id,
         )
         db.add(breach)
+        fleet_metrics.adjust_alerts_open(1)
         return breach
 
     if card_limits:
