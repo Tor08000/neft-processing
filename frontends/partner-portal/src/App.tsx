@@ -10,6 +10,7 @@ import { StationsPage } from "./pages/StationsPage";
 import { StationDetailsPage } from "./pages/StationDetailsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { TransactionDetailsPage } from "./pages/TransactionDetailsPage";
+import { PartnerContractsPage } from "./pages/PartnerContractsPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
 import { SettlementDetailsPage } from "./pages/SettlementDetailsPage";
 import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
@@ -41,6 +42,7 @@ export function App({ initialSession = null }: AppProps) {
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="/contracts" element={<PartnerContractsPage />} />
             <Route path="/stations" element={<StationsPage />} />
             <Route path="/stations/:id" element={<StationDetailsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />

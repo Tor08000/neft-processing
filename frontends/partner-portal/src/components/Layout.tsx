@@ -56,6 +56,10 @@ export function Layout() {
             <BadgeDollarSign size={18} />
             {t("nav.prices")}
           </NavLink>
+          <NavLink to="/contracts">
+            <FileText size={18} />
+            {t("nav.contracts")}
+          </NavLink>
           <NavLink to="/transactions">
             <Workflow size={18} />
             {t("nav.transactions")}

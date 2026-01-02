@@ -1,299 +1,124 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import {
-  confirmSettlementReceived,
-  fetchSettlementDetail,
-  requestReconciliation,
-  type SettlementDetail,
-} from "../api/partner";
+import { confirmPartnerSettlement, fetchPartnerSettlementDetails } from "../api/portal";
 import { useAuth } from "../auth/AuthContext";
+import type { PartnerSettlementDetails } from "../types/portal";
+import { formatCurrency, formatDate } from "../utils/format";
+import { ErrorState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
-import { SupportRequestModal } from "../components/SupportRequestModal";
-import { formatCurrency, formatDate, formatNumber } from "../utils/format";
-import { canManagePayouts } from "../utils/roles";
 
 export function SettlementDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
-  const [settlement, setSettlement] = useState<SettlementDetail | null>(null);
+  const [settlement, setSettlement] = useState<PartnerSettlementDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [isActionLoading, setIsActionLoading] = useState(false);
-  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    if (!user || !id) return;
+    if (!id) return;
     setIsLoading(true);
-    fetchSettlementDetail(user.token, id)
-      .then((data) => {
-        if (active) {
-          setSettlement(data);
-        }
-      })
-      .catch((err) => {
-        console.error(err);
-        if (active) {
-          setError("Не удалось загрузить settlement");
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [user, id]);
+    setError(null);
+    fetchPartnerSettlementDetails(user, id)
+      .then((data) => setSettlement(data))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false));
+  }, [id, user]);
 
   const handleConfirm = async () => {
-    if (!user || !id) return;
-    setIsActionLoading(true);
-    setActionMessage(null);
+    if (!id) return;
+    setConfirming(true);
     try {
-      await confirmSettlementReceived(user.token, id);
-      setActionMessage("Подтверждение отправлено");
+      await confirmPartnerSettlement(user, id);
+      setSettlement((prev) => (prev ? { ...prev, payout_status: "CONFIRMED" } : prev));
     } catch (err) {
-      console.error(err);
-      setActionMessage("Не удалось подтвердить получение");
+      setError((err as Error).message);
     } finally {
-      setIsActionLoading(false);
+      setConfirming(false);
     }
   };
 
-  const handleReconciliation = async () => {
-    if (!user || !id) return;
-    setIsActionLoading(true);
-    setActionMessage(null);
-    try {
-      await requestReconciliation(user.token, id);
-      setActionMessage("Запрос сверки отправлен");
-    } catch (err) {
-      console.error(err);
-      setActionMessage("Не удалось отправить запрос сверки");
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="card">
-        <div className="skeleton-stack" aria-busy="true">
-          <div className="skeleton-line" />
-          <div className="skeleton-line" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="card">
-        <div className="error" role="alert">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  if (!settlement) {
-    return (
-      <div className="empty-state empty-state--full">
-        <h2>Settlement не найден</h2>
-        <Link className="ghost" to="/payouts">
-          Вернуться к списку
-        </Link>
-      </div>
-    );
-  }
-
-  const canManage = canManagePayouts(user?.roles);
-  const exportLink =
-    settlement.payoutBatches?.flatMap((batch) => batch.exportFiles ?? []).find((file) => file.url)?.url ?? null;
+  if (!id) return null;
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState description={error} />;
+  if (!settlement) return <ErrorState description="Settlement не найден" />;
 
   return (
     <div className="stack">
-      <section className="card">
-        <div className="section-title">
-          <h2>Settlement {settlement.id}</h2>
+      <div className="card">
+        <div className="card__header">
+          <div>
+            <h2>Settlement {settlement.settlement_ref}</h2>
+            <p className="muted">
+              {formatDate(settlement.period_start)} — {formatDate(settlement.period_end)}
+            </p>
+          </div>
           <div className="actions">
-            <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
-              Создать обращение
-            </button>
             <Link className="ghost" to="/payouts">
               Назад
             </Link>
+            <button type="button" className="ghost" onClick={handleConfirm} disabled={confirming}>
+              Подтвердить payout
+            </button>
           </div>
         </div>
-        <div className="meta-grid">
-          <div>
-            <div className="label">Период</div>
-            <div>
-              {formatDate(settlement.periodStart)} — {formatDate(settlement.periodEnd)}
-            </div>
+        <div className="stats-grid">
+          <div className="stat">
+            <span className="muted">Gross</span>
+            <strong>{formatCurrency(settlement.gross, settlement.currency)}</strong>
           </div>
-          <div>
-            <div className="label">Gross</div>
-            <div>{formatCurrency(settlement.grossAmount)}</div>
+          <div className="stat">
+            <span className="muted">Fees</span>
+            <strong>{formatCurrency(settlement.fees, settlement.currency)}</strong>
           </div>
-          <div>
-            <div className="label">Net</div>
-            <div>{formatCurrency(settlement.netAmount)}</div>
+          <div className="stat">
+            <span className="muted">Refunds</span>
+            <strong>{formatCurrency(settlement.refunds, settlement.currency)}</strong>
           </div>
-          <div>
-            <div className="label">Статус</div>
+          <div className="stat">
+            <span className="muted">Net</span>
+            <strong>{formatCurrency(settlement.net_amount, settlement.currency)}</strong>
+          </div>
+          <div className="stat">
+            <span className="muted">Статус</span>
             <StatusBadge status={settlement.status} />
           </div>
-          <div>
-            <div className="label">Кол-во операций</div>
-            <div>{formatNumber(settlement.transactionsCount ?? null)}</div>
-          </div>
-          <div>
-            <div className="label">Статус ЭДО</div>
-            <div>{settlement.edoStatus ?? "—"}</div>
+          <div className="stat">
+            <span className="muted">Payout status</span>
+            <strong>{settlement.payout_status ?? "—"}</strong>
           </div>
         </div>
-      </section>
+      </div>
 
       <section className="card">
-        <h3>Действия</h3>
-        <div className="actions">
-          {exportLink ? (
-            <a className="secondary" href={exportLink} target="_blank" rel="noreferrer">
-              Download payout export
-            </a>
-          ) : (
-            <button type="button" className="secondary" disabled>
-              Download payout export
-            </button>
-          )}
-          <button type="button" className="secondary" disabled={!canManage || isActionLoading} onClick={handleConfirm}>
-            Confirm received
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={!canManage || isActionLoading}
-            onClick={handleReconciliation}
-          >
-            Request reconciliation
-          </button>
+        <div className="card__header">
+          <h3>Settlement breakdown</h3>
         </div>
-        {actionMessage ? <p className="muted">{actionMessage}</p> : null}
-        {!canManage ? <p className="muted">Действия доступны только владельцу или бухгалтеру.</p> : null}
-      </section>
-
-      <section className="card">
-        <h3>Breakdown по станциям и продуктам</h3>
-        {settlement.breakdowns && settlement.breakdowns.length ? (
+        {settlement.items_summary.length ? (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Станция</th>
-                <th>Продукт</th>
+                <th>Источник</th>
+                <th>Направление</th>
+                <th>Количество</th>
                 <th>Сумма</th>
-                <th>Операции</th>
               </tr>
             </thead>
             <tbody>
-              {settlement.breakdowns.map((row, index) => (
-                <tr key={`${row.station}-${row.product}-${index}`}>
-                  <td>{row.station}</td>
-                  <td>{row.product}</td>
-                  <td>{formatCurrency(row.amount)}</td>
-                  <td>{formatNumber(row.count ?? null)}</td>
+              {settlement.items_summary.map((item, index) => (
+                <tr key={`${item.source_type}-${item.direction}-${index}`}>
+                  <td>{item.source_type}</td>
+                  <td>{item.direction}</td>
+                  <td>{item.count}</td>
+                  <td>{formatCurrency(item.amount, settlement.currency)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="muted">Детализация пока не доступна.</p>
+          <p className="muted">Детализация пока недоступна.</p>
         )}
       </section>
-
-      <section className="card">
-        <h3>Комиссии</h3>
-        {settlement.commissions && settlement.commissions.length ? (
-          <ul className="bullets">
-            {settlement.commissions.map((commission) => (
-              <li key={commission.label}>
-                {commission.label}: {formatCurrency(commission.amount)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">Комиссии не рассчитаны.</p>
-        )}
-      </section>
-
-      <section className="card">
-        <h3>Payout batches</h3>
-        {settlement.payoutBatches && settlement.payoutBatches.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Статус</th>
-                <th>Checksum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {settlement.payoutBatches.map((batch) => (
-                <tr key={batch.id}>
-                  <td>{batch.id}</td>
-                  <td>
-                    <StatusBadge status={batch.status} />
-                  </td>
-                  <td>{batch.checksum ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="muted">Батчи не связаны.</p>
-        )}
-      </section>
-
-      <section className="card">
-        <h3>Документы</h3>
-        {settlement.documents && settlement.documents.length ? (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Тип</th>
-                <th>Статус</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {settlement.documents.map((doc) => (
-                <tr key={doc.id}>
-                  <td>{doc.type}</td>
-                  <td>{doc.status}</td>
-                  <td>
-                    <Link className="link-button" to={`/documents/${doc.id}`}>
-                      Открыть
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="muted">Документы не прикреплены.</p>
-        )}
-      </section>
-
-      <SupportRequestModal
-        isOpen={isSupportOpen}
-        onClose={() => setIsSupportOpen(false)}
-        subjectType="PAYOUT"
-        subjectId={settlement.id}
-        defaultTitle={`Проблема с выплатой ${settlement.id}`}
-      />
     </div>
   );
 }

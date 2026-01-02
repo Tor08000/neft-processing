@@ -9,6 +9,8 @@
   },
   "nav": {
     "dashboard": "Дашборд",
+    "invoices": "Инвойсы",
+    "contracts": "Контракты",
     "operations": "Операции",
     "explainInsights": "Explain Insights",
     "orders": "Заказы",

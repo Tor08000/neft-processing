@@ -39,7 +39,7 @@ describe("Client invoices", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/finance/invoices"]}>
+      <MemoryRouter initialEntries={["/invoices"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
@@ -52,19 +52,19 @@ describe("Client invoices", () => {
   it("opens invoice details", async () => {
     const detailResponse = new Response(
       JSON.stringify({
-        id: "inv-2",
-        number: "INV-2024-02",
-        issued_at: "2024-03-05T00:00:00Z",
+        invoice_number: "INV-2024-02",
+        period_start: "2024-03-01",
+        period_end: "2024-03-31",
         currency: "RUB",
         amount_total: 1500,
         amount_paid: 1000,
         amount_refunded: 0,
         amount_due: 500,
         status: "PAID",
-        pdf_available: true,
+        due_date: "2024-04-10",
+        download_url: "/api/client/invoices/INV-2024-02/download",
         payments: [
           {
-            id: "pay-1",
             amount: 1000,
             status: "POSTED",
             provider: "bank",
@@ -81,7 +81,7 @@ describe("Client invoices", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/finance/invoices/inv-2"]}>
+      <MemoryRouter initialEntries={["/invoices/INV-2024-02"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );

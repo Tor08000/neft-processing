@@ -1,9 +1,8 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { downloadInvoicePdf, fetchInvoices } from "../api/invoices";
+import { fetchClientInvoices } from "../api/portal";
 import { useAuth } from "../auth/AuthContext";
-import type { ClientInvoiceSummary } from "../types/invoices";
-import { CopyButton } from "../components/CopyButton";
+import type { ClientInvoiceSummary } from "../types/portal";
 import { Table } from "../components/common/Table";
 import { formatDate } from "../utils/format";
 import { MoneyValue } from "../components/common/MoneyValue";
@@ -13,6 +12,7 @@ const STATUS_OPTIONS = [
   { value: "SENT", label: "Выставлен" },
   { value: "PARTIALLY_PAID", label: "Частично оплачен" },
   { value: "PAID", label: "Оплачен" },
+  { value: "OVERDUE", label: "Просрочен" },
 ];
 
 const DEFAULT_LIMIT = 25;
@@ -21,7 +21,6 @@ const DEFAULT_FILTERS = {
   dateTo: "",
   status: [] as string[],
   limit: DEFAULT_LIMIT,
-  sort: "issued_at:desc",
 };
 
 export function ClientInvoicesPage() {
@@ -42,13 +41,12 @@ export function ClientInvoicesPage() {
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-    fetchInvoices(user, {
+    fetchClientInvoices(user, {
       dateFrom: debouncedFilters.dateFrom || undefined,
       dateTo: debouncedFilters.dateTo || undefined,
       status: debouncedFilters.status.length > 0 ? debouncedFilters.status : undefined,
       limit: debouncedFilters.limit,
       offset,
-      sort: debouncedFilters.sort,
     })
       .then((resp) => {
         setItems(resp.items);
@@ -79,7 +77,7 @@ export function ClientInvoicesPage() {
   };
 
   const handleQuickUnpaid = () => {
-    setFilters((prev) => ({ ...prev, status: ["SENT", "PARTIALLY_PAID"] }));
+    setFilters((prev) => ({ ...prev, status: ["SENT", "PARTIALLY_PAID", "OVERDUE"] }));
     setOffset(0);
   };
 
@@ -96,12 +94,9 @@ export function ClientInvoicesPage() {
     setOffset(0);
   };
 
-  const handleDownload = async (invoiceId: string) => {
-    try {
-      await downloadInvoicePdf(invoiceId, user);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+  const handleDownload = (invoice: ClientInvoiceSummary) => {
+    if (!invoice.invoice_number || invoice.invoice_number === "UNASSIGNED") return;
+    window.open(`/api/client/invoices/${invoice.invoice_number}/download`, "_blank", "noopener");
   };
 
   const filtersActive = filters.dateFrom !== "" || filters.dateTo !== "" || filters.status.length > 0;
@@ -199,14 +194,19 @@ export function ClientInvoicesPage() {
           {
             key: "number",
             title: "Номер",
-            render: (invoice) => (
-              <div className="stack-inline">
-                <span>{invoice.number}</span>
-                <CopyButton value={invoice.number} />
-              </div>
-            ),
+            render: (invoice) => <span>{invoice.invoice_number}</span>,
           },
-          { key: "issued_at", title: "Дата", render: (invoice) => formatDate(invoice.issued_at) },
+          {
+            key: "period",
+            title: "Период",
+            render: (invoice) => `${formatDate(invoice.period_start)} — ${formatDate(invoice.period_end)}`,
+          },
+          {
+            key: "amount_total",
+            title: "Сумма",
+            className: "neft-num",
+            render: (invoice) => <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />,
+          },
           {
             key: "status",
             title: "Статус",
@@ -217,42 +217,28 @@ export function ClientInvoicesPage() {
             ),
           },
           {
-            key: "amount_total",
-            title: "Сумма",
-            className: "neft-num",
-            render: (invoice) => <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />,
-          },
-          {
-            key: "amount_paid",
-            title: "Оплачено",
-            className: "neft-num",
-            render: (invoice) => <MoneyValue amount={invoice.amount_paid} currency={invoice.currency} />,
-          },
-          {
-            key: "amount_refunded",
-            title: "Возвращено",
-            className: "neft-num",
-            render: (invoice) => <MoneyValue amount={invoice.amount_refunded} currency={invoice.currency} />,
-          },
-          {
-            key: "amount_due",
-            title: "Остаток",
-            className: `amount-due neft-num`,
-            render: (invoice) => (
-              <span className={Number(invoice.amount_due) > 0 ? "amount-due--positive" : undefined}>
-                <MoneyValue amount={invoice.amount_due} currency={invoice.currency} />
-              </span>
-            ),
+            key: "due_date",
+            title: "Срок",
+            render: (invoice) => (invoice.due_date ? formatDate(invoice.due_date) : "—"),
           },
           {
             key: "actions",
             title: "",
             render: (invoice) => (
               <div className="actions">
-                <Link to={`/finance/invoices/${invoice.id}`} className="ghost">
-                  Открыть
-                </Link>
-                <button type="button" className="ghost" onClick={() => handleDownload(invoice.id)}>
+                {invoice.invoice_number && invoice.invoice_number !== "UNASSIGNED" ? (
+                  <Link to={`/invoices/${invoice.invoice_number}`} className="ghost">
+                    Открыть
+                  </Link>
+                ) : (
+                  <span className="muted">Недоступно</span>
+                )}
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => handleDownload(invoice)}
+                  disabled={!invoice.invoice_number || invoice.invoice_number === "UNASSIGNED"}
+                >
                   Скачать PDF
                 </button>
               </div>
