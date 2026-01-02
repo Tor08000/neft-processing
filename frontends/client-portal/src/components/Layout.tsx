@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LineChart,
   MessageCircle,
+  Package,
   Settings,
   ShoppingCart,
   Workflow,
@@ -43,9 +44,8 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const location = useLocation();
-  const apiBase = CLIENT_BASE_PATH ? null : t("app.configMissing");
   const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
-  const configError = isApiBaseMissing ? t("app.configError") : apiBase;
+  const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
   const navItems: NavItem[] = pwaMode
     ? [
@@ -72,6 +72,10 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
           icon: <FileSpreadsheet size={18} />,
           isHidden: !(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user),
         },
+        { to: "/fleet/cards", label: t("nav.fleetCards"), icon: <Package size={18} /> },
+        { to: "/fleet/groups", label: t("nav.fleetGroups"), icon: <Package size={18} /> },
+        { to: "/fleet/employees", label: t("nav.fleetEmployees"), icon: <Package size={18} /> },
+        { to: "/fleet/spend", label: t("nav.fleetSpend"), icon: <Package size={18} /> },
         { to: "/marketplace", label: t("nav.marketplace"), icon: <ShoppingCart size={18} /> },
         { to: "/actions", label: t("nav.actions"), icon: <ClipboardCheck size={18} /> },
         { to: "/support/requests", label: t("nav.supportRequests"), icon: <MessageCircle size={18} /> },
@@ -86,6 +90,26 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   );
   const sectionTitle = activeItem?.label ?? t("app.title");
   const contextLabel = buildContextLabel(sectionTitle, location.pathname, activeItem?.to);
+
+  if (isApiBaseMissing) {
+    return (
+      <div className="app-shell neft-page">
+        <header className="topbar">
+          <div className="topbar__meta">
+            <span className="logo">NEFT</span>
+            <div className="topbar__title">{t("app.title")}</div>
+          </div>
+        </header>
+        <main className="main-area">
+          <div className="card state">
+            <h2>{t("app.configMissingTitle")}</h2>
+            <div className="muted">{t("app.configMissingDescription")}</div>
+            <pre className="code-sample">{t("app.configMissingExample")}</pre>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (configError) {
     return (

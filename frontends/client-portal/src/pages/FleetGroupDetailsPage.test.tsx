@@ -1,0 +1,80 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { App } from "../App";
+import type { AuthSession } from "../api/types";
+
+const session: AuthSession = {
+  token: "token-1",
+  email: "viewer@demo.test",
+  roles: ["CLIENT_USER"],
+  subjectType: "CLIENT",
+  clientId: "client-1",
+  expiresAt: Date.now() + 1000 * 60 * 60,
+};
+
+describe("FleetGroupDetailsPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("renders tabs and hides admin actions for viewer", async () => {
+    const fetchMock = vi.fn((input: RequestInfo, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes("/client/fleet/groups") && init?.method !== "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [{ id: "group-1", name: "Group A", description: "Demo" }],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/client/fleet/cards")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                { id: "card-1", card_alias: "Card A", masked_pan: "123456******7890" },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/client/fleet/groups/group-1/access")) {
+        return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+      }
+      if (url.includes("/client/fleet/employees")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ items: [{ id: "emp-1", email: "viewer@demo.test", status: "ACTIVE" }] }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <MemoryRouter initialEntries={["/fleet/groups/group-1"]}>
+        <App initialSession={session} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Карты/i)).toBeInTheDocument();
+    expect(screen.getByText(/Доступы/i)).toBeInTheDocument();
+    expect(screen.getByText(/Лимиты/i)).toBeInTheDocument();
+    expect(screen.getByText(/Расходы/i)).toBeInTheDocument();
+
+    const accessTab = screen.getByRole("button", { name: /Доступы/i });
+    await userEvent.click(accessTab);
+
+    expect(screen.queryByRole("button", { name: /Выдать доступ/i })).not.toBeInTheDocument();
+  });
+});

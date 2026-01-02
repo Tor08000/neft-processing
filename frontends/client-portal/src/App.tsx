@@ -42,6 +42,12 @@ import { AnalyticsMarketplacePage } from "./pages/AnalyticsMarketplacePage";
 import { AnalyticsDocumentsPage } from "./pages/AnalyticsDocumentsPage";
 import { AnalyticsExportsPage } from "./pages/AnalyticsExportsPage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
+import { FleetCardsPage } from "./pages/FleetCardsPage";
+import { FleetCardDetailsPage } from "./pages/FleetCardDetailsPage";
+import { FleetGroupsPage } from "./pages/FleetGroupsPage";
+import { FleetGroupDetailsPage } from "./pages/FleetGroupDetailsPage";
+import { FleetEmployeesPage } from "./pages/FleetEmployeesPage";
+import { FleetSpendPage } from "./pages/FleetSpendPage";
 import { isPwaMode } from "./pwa/mode";
 
 interface AppProps {
@@ -127,6 +133,12 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />
+                <Route path="/fleet/cards" element={<FleetCardsPage />} />
+                <Route path="/fleet/cards/:id" element={<FleetCardDetailsPage />} />
+                <Route path="/fleet/groups" element={<FleetGroupsPage />} />
+                <Route path="/fleet/groups/:id" element={<FleetGroupDetailsPage />} />
+                <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
+                <Route path="/fleet/spend" element={<FleetSpendPage />} />
               </>
             )}
           </Route>
