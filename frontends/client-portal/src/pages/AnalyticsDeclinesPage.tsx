@@ -29,7 +29,7 @@ export function AnalyticsDeclinesPage() {
   const [insights, setInsights] = useState<ExplainInsightsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
-  const hasData = Boolean(declines);
+  const hasData = (declines?.total ?? 0) > 0;
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
 
@@ -91,7 +91,7 @@ export function AnalyticsDeclinesPage() {
         <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
       ) : null}
 
-      {!isLoading && !error && declines ? (
+      {!isLoading && !error && hasData && declines ? (
         <section className="grid two">
           <AnalyticsChartPanel title={t("analytics.declines.topReasons")}> 
             {declines.top_reasons.length ? (
@@ -137,7 +137,7 @@ export function AnalyticsDeclinesPage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && declines ? (
+      {!isLoading && !error && hasData && declines ? (
         <section className="grid two">
           <AnalyticsChartPanel title={t("analytics.declines.expensive")}> 
             {declines.expensive.length ? (
@@ -189,7 +189,7 @@ export function AnalyticsDeclinesPage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && declines?.heatmap?.length ? (
+      {!isLoading && !error && hasData && declines?.heatmap?.length ? (
         <AnalyticsChartPanel title={t("analytics.declines.heatmap")}> 
           <table className="data-table">
             <thead>
