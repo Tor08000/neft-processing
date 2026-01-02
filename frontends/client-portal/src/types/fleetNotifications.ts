@@ -23,7 +23,7 @@ export interface FleetAlert {
   category?: string | null;
 }
 
-export type FleetChannelType = "WEBHOOK" | "EMAIL" | string;
+export type FleetChannelType = "WEBHOOK" | "EMAIL" | "PUSH" | string;
 
 export interface FleetNotificationChannel {
   id: string;
@@ -31,6 +31,14 @@ export interface FleetNotificationChannel {
   target?: string | null;
   status?: "ACTIVE" | "DISABLED" | string | null;
   created_at?: string | null;
+}
+
+export interface FleetPushSubscription {
+  id: string;
+  endpoint: string;
+  active: boolean;
+  created_at?: string | null;
+  last_sent_at?: string | null;
 }
 
 export interface FleetNotificationPolicy {

@@ -132,6 +132,7 @@ class FuelAnomalyStatus(str, Enum):
 class FleetNotificationChannelType(str, Enum):
     WEBHOOK = "WEBHOOK"
     EMAIL = "EMAIL"
+    PUSH = "PUSH"
 
 
 class FleetNotificationChannelStatus(str, Enum):
@@ -151,6 +152,7 @@ class FleetNotificationEventType(str, Enum):
     INGEST_FAILED = "INGEST_FAILED"
     DAILY_SUMMARY = "DAILY_SUMMARY"
     POLICY_ACTION = "POLICY_ACTION"
+    TEST = "TEST"
 
 
 class FleetNotificationOutboxStatus(str, Enum):
@@ -566,9 +568,28 @@ class FleetNotificationOutbox(Base):
     attempts = Column(Integer, nullable=False, default=0, server_default="0")
     next_attempt_at = Column(DateTime(timezone=True), nullable=True)
     last_error = Column(Text, nullable=True)
+    delivery_message_id = Column(String(256), nullable=True)
+    last_status = Column(String(32), nullable=True)
+    last_response_status = Column(Integer, nullable=True)
+    last_response_body = Column(Text, nullable=True)
     dedupe_key = Column(String(256), nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetPushSubscription(Base):
+    __tablename__ = "fleet_push_subscriptions"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    employee_id = Column(GUID(), nullable=True, index=True)
+    endpoint = Column(String(1024), nullable=False)
+    p256dh = Column(String(256), nullable=False)
+    auth = Column(String(256), nullable=False)
+    user_agent = Column(String(512), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_sent_at = Column(DateTime(timezone=True), nullable=True)
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
 
 
 class FuelAnomaly(Base):
@@ -797,6 +818,7 @@ __all__ = [
     "FleetNotificationPolicy",
     "FleetNotificationPolicyScopeType",
     "FleetNotificationSeverity",
+    "FleetPushSubscription",
     "FleetPolicyExecution",
     "FleetPolicyExecutionStatus",
     "FuelMerchant",

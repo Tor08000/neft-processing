@@ -11,8 +11,13 @@ import {
   createChannel,
   disableChannel,
   listChannels,
+  testChannel,
+  subscribePush,
+  unsubscribePush,
+  getPushStatus,
+  sendTestPush,
 } from "../api/fleetNotifications";
-import type { FleetNotificationChannel } from "../types/fleetNotifications";
+import type { FleetNotificationChannel, FleetPushSubscription } from "../types/fleetNotifications";
 import { canAdminFleetNotifications } from "../utils/fleetPermissions";
 import { formatDateTime } from "../utils/format";
 
@@ -21,6 +26,17 @@ const generateSecret = () => {
     return crypto.randomUUID().replaceAll("-", "");
   }
   return Math.random().toString(36).slice(2, 18);
+};
+
+const urlBase64ToUint8Array = (base64String: string) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 };
 
 export function FleetNotificationChannelsPage() {
@@ -37,6 +53,13 @@ export function FleetNotificationChannelsPage() {
   const [secret, setSecret] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<FleetNotificationChannel | null>(null);
+  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [pushStatus, setPushStatus] = useState<FleetPushSubscription | null>(null);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const vapidKey = import.meta.env.VITE_PUSH_PUBLIC_KEY;
+  const supportsPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const pushAvailable = supportsPush && Boolean(vapidKey);
 
   const canAdmin = canAdminFleetNotifications(user);
 
@@ -67,6 +90,26 @@ export function FleetNotificationChannelsPage() {
     if (!canAdmin) return;
     void loadChannels();
   }, [canAdmin, loadChannels]);
+
+  useEffect(() => {
+    if (!user?.token || !supportsPush) return;
+    navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then(async (subscription) => {
+        setPushSubscription(subscription);
+        if (!subscription) {
+          setPushStatus(null);
+          return;
+        }
+        const statusResponse = await getPushStatus(user.token, subscription.endpoint);
+        if (statusResponse.unavailable) {
+          setUnavailable(true);
+          return;
+        }
+        setPushStatus(statusResponse.item ?? null);
+      })
+      .catch(() => setPushStatus(null));
+  }, [supportsPush, user?.token]);
 
   const resetForm = () => {
     setChannelType("WEBHOOK");
@@ -139,6 +182,100 @@ export function FleetNotificationChannelsPage() {
     }
   };
 
+  const handleTestChannel = async (channelId: string) => {
+    if (!user?.token) return;
+    try {
+      const response = await testChannel(user.token, channelId);
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      showToast({ kind: "success", text: t("fleetNotifications.channels.testSent") });
+    } catch (err) {
+      showToast({ kind: "error", text: err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed") });
+    }
+  };
+
+  const handleEnablePush = async () => {
+    if (!user?.token || !pushAvailable) {
+      setPushError(t("fleetNotifications.push.notSupported"));
+      return;
+    }
+    setPushLoading(true);
+    setPushError(null);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushError(t("fleetNotifications.push.permissionDenied"));
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      }
+      const json = subscription.toJSON();
+      if (!json.keys?.p256dh || !json.keys?.auth) {
+        throw new Error("missing_keys");
+      }
+      const response = await subscribePush(user.token, {
+        endpoint: subscription.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        user_agent: navigator.userAgent,
+      });
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      setPushSubscription(subscription);
+      setPushStatus(response.item ?? null);
+      showToast({ kind: "success", text: t("fleetNotifications.push.enabled") });
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed"));
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    if (!user?.token || !pushSubscription) return;
+    setPushLoading(true);
+    setPushError(null);
+    try {
+      await pushSubscription.unsubscribe();
+      const response = await unsubscribePush(user.token, pushSubscription.endpoint);
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      setPushSubscription(null);
+      setPushStatus(response.item ?? null);
+      showToast({ kind: "success", text: t("fleetNotifications.push.disabled") });
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed"));
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleTestPush = async () => {
+    if (!user?.token) return;
+    try {
+      const response = await sendTestPush(user.token);
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      showToast({ kind: "success", text: t("fleetNotifications.push.testSent") });
+    } catch (err) {
+      showToast({ kind: "error", text: err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed") });
+    }
+  };
+
   if (!canAdmin) {
     return <AppForbiddenState message={t("fleetNotifications.errors.adminOnly")} />;
   }
@@ -198,6 +335,8 @@ export function FleetNotificationChannelsPage() {
                       ? t("fleetNotifications.channels.webhook")
                       : channel.channel_type === "EMAIL"
                         ? t("fleetNotifications.channels.email")
+                        : channel.channel_type === "PUSH"
+                          ? t("fleetNotifications.channels.push")
                         : channel.channel_type ?? t("common.notAvailable")}
                   </span>
                   <div className="channel-card__target">{channel.target ?? t("common.notAvailable")}</div>
@@ -222,11 +361,65 @@ export function FleetNotificationChannelsPage() {
                 >
                   {t("fleetNotifications.channels.disable")}
                 </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void handleTestChannel(channel.id)}
+                  disabled={channel.status === "DISABLED"}
+                >
+                  {t("fleetNotifications.channels.sendTest")}
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
+      <div className="card push-card">
+        <div className="channel-card__header">
+          <div>
+            <span className="badge badge-info">{t("fleetNotifications.channels.push")}</span>
+            <div className="channel-card__target">{t("fleetNotifications.push.deviceLabel")}</div>
+          </div>
+          <span className={pushSubscription ? "badge badge-success" : "badge badge-muted"}>
+            {pushSubscription ? t("fleetNotifications.push.enabledStatus") : t("fleetNotifications.push.disabledStatus")}
+          </span>
+        </div>
+        <div className="channel-card__meta">
+          {pushStatus?.last_sent_at ? (
+            <span>{t("fleetNotifications.push.lastSent", { value: formatDateTime(pushStatus.last_sent_at) })}</span>
+          ) : (
+            <span className="muted">{t("fleetNotifications.push.neverSent")}</span>
+          )}
+          {!pushAvailable ? <span className="muted">{t("fleetNotifications.push.notSupported")}</span> : null}
+        </div>
+        {pushError ? <div className="error-text">{pushError}</div> : null}
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void handleEnablePush()}
+            disabled={!pushAvailable || pushLoading}
+          >
+            {t("fleetNotifications.push.enable")}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void handleDisablePush()}
+            disabled={!pushSubscription || pushLoading}
+          >
+            {t("fleetNotifications.push.disable")}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void handleTestPush()}
+            disabled={!pushSubscription || pushLoading}
+          >
+            {t("fleetNotifications.push.sendTest")}
+          </button>
+        </div>
+      </div>
       {showCreateModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card">
@@ -253,6 +446,8 @@ export function FleetNotificationChannelsPage() {
                     <span className="muted">{t("fleetNotifications.channels.headersTitle")}</span>
                     <ul>
                       <li>X-NEFT-Signature</li>
+                      <li>X-NEFT-Signature-Timestamp</li>
+                      <li>X-NEFT-Event-Id</li>
                       <li>X-NEFT-Event-Type</li>
                     </ul>
                   </div>

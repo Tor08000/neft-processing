@@ -223,6 +223,7 @@ def _notify_policy_action(
     event_ref_id: str,
     payload: dict[str, str | None],
 ) -> None:
+    payload.setdefault("route", "/client/fleet/notifications/alerts")
     enqueue_notification(
         db,
         client_id=client_id,
