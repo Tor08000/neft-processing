@@ -26,8 +26,8 @@ from app.schemas.fleet_ingestion import FleetIngestRequestIn
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.case_event_redaction import redact_deep
-from app.services.fleet_anomaly_service import detect_anomalies_for_transaction
-from app.services.fleet_escalation_service import handle_limit_breaches
+from app.services.fleet_anomaly_service import detect_anomalies_for_transaction, detect_repeated_breach_anomaly
+from app.services.fleet_policy_engine import evaluate_policies_for_anomaly, evaluate_policies_for_breach
 from app.services.fleet_limit_check import apply_limit_checks
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.fleet_notification_dispatcher import (
@@ -312,13 +312,6 @@ def ingest_transactions(
                 trace_id=trace_id,
             )
             if breaches:
-                handle_limit_breaches(
-                    db,
-                    breaches=breaches,
-                    principal=principal,
-                    request_id=request_id,
-                    trace_id=trace_id,
-                )
                 for breach in breaches:
                     enqueue_breach_notification(
                         db,
@@ -327,6 +320,24 @@ def ingest_transactions(
                         request_id=request_id,
                         trace_id=trace_id,
                     )
+                    evaluate_policies_for_breach(db, str(breach.id))
+                repeated_anomaly = detect_repeated_breach_anomaly(
+                    db,
+                    breach=breaches[0],
+                    card_id=str(tx.card_id),
+                    principal=principal,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                if repeated_anomaly:
+                    enqueue_anomaly_notification(
+                        db,
+                        anomaly=repeated_anomaly,
+                        principal=principal,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                    evaluate_policies_for_anomaly(db, str(repeated_anomaly.id))
             anomalies = detect_anomalies_for_transaction(
                 db,
                 transaction=tx,
@@ -342,6 +353,7 @@ def ingest_transactions(
                     request_id=request_id,
                     trace_id=trace_id,
                 )
+                evaluate_policies_for_anomaly(db, str(anomaly.id))
             _ensure_merchant(
                 db,
                 provider_code=payload.provider_code,

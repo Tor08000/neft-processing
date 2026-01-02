@@ -19,6 +19,11 @@ from app.models.fleet import (
     FuelGroupRole,
 )
 from app.models.fuel import (
+    FleetActionBreachKind,
+    FleetActionPolicy,
+    FleetActionPolicyAction,
+    FleetActionPolicyScopeType,
+    FleetActionTriggerType,
     FleetNotificationChannel,
     FleetNotificationChannelStatus,
     FleetNotificationChannelType,
@@ -28,6 +33,8 @@ from app.models.fuel import (
     FuelCardGroup,
     FuelCardGroupStatus,
     FuelCardStatus,
+    FuelCardStatusEvent,
+    FuelCardStatusEventActorType,
     FuelAnomaly,
     FuelAnomalyStatus,
     FuelLimit,
@@ -411,6 +418,7 @@ def set_card_status(
     principal: Principal,
     request_id: str | None,
     trace_id: str | None,
+    reason: str | None = None,
 ) -> FuelCard:
     card = get_card(db, card_id=card_id, principal=principal)
     if not _is_client_admin(principal):
@@ -431,6 +439,18 @@ def set_card_status(
         },
     )
     card.audit_event_id = audit_event_id
+    db.add(
+        FuelCardStatusEvent(
+            client_id=card.client_id,
+            card_id=card.id,
+            from_status=previous,
+            to_status=status,
+            reason=reason,
+            actor_type=FuelCardStatusEventActorType.USER if principal.user_id else FuelCardStatusEventActorType.SYSTEM,
+            actor_id=str(principal.user_id) if principal.user_id else None,
+            audit_event_id=audit_event_id,
+        )
+    )
     record_decision_memory(
         db,
         case_id=None,
@@ -440,6 +460,49 @@ def set_card_status(
         decided_by_user_id=str(principal.user_id) if principal.user_id else None,
         context_snapshot={"card_id": str(card.id), "status": status.value},
         rationale="card_status_change",
+        score_snapshot=None,
+        mastery_snapshot=None,
+        audit_event_id=audit_event_id,
+    )
+    return card
+
+
+def unblock_card_with_reason(
+    db: Session,
+    *,
+    card_id: str,
+    reason: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FuelCard:
+    card = set_card_status(
+        db,
+        card_id=card_id,
+        status=FuelCardStatus.ACTIVE,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        reason=reason,
+    )
+    audit_event_id = _emit_event(
+        db,
+        client_id=card.client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FUEL_CARD_UNBLOCKED,
+        payload={"card_id": str(card.id), "reason": reason},
+    )
+    record_decision_memory(
+        db,
+        case_id=None,
+        decision_type="manual_unblock",
+        decision_ref_id=str(card.id),
+        decision_at=_now(),
+        decided_by_user_id=str(principal.user_id) if principal.user_id else None,
+        context_snapshot={"card_id": str(card.id), "reason": reason},
+        rationale="manual unblock",
         score_snapshot=None,
         mastery_snapshot=None,
         audit_event_id=audit_event_id,
@@ -1615,6 +1678,133 @@ def disable_notification_policy(
     return policy
 
 
+def list_action_policies(
+    db: Session,
+    *,
+    client_id: str,
+    principal: Principal,
+) -> list[FleetActionPolicy]:
+    _ensure_client_access(principal, client_id)
+    return (
+        db.query(FleetActionPolicy)
+        .filter(FleetActionPolicy.client_id == client_id)
+        .order_by(FleetActionPolicy.created_at.desc())
+        .all()
+    )
+
+
+def _ensure_action_policy_scope_access(
+    db: Session,
+    *,
+    principal: Principal,
+    client_id: str,
+    scope_type: FleetActionPolicyScopeType,
+    scope_id: str | None,
+) -> None:
+    _ensure_client_access(principal, client_id)
+    if scope_type == FleetActionPolicyScopeType.CLIENT:
+        if not _is_client_admin(principal):
+            raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "client_admin_required"})
+        return
+    if scope_type == FleetActionPolicyScopeType.GROUP:
+        if not scope_id:
+            raise HTTPException(status_code=400, detail="missing_scope_id")
+        require_group_role(db, principal=principal, group_id=scope_id, min_role=FuelGroupRole.ADMIN)
+        return
+    if scope_type == FleetActionPolicyScopeType.CARD:
+        if not scope_id:
+            raise HTTPException(status_code=400, detail="missing_scope_id")
+        card = db.query(FuelCard).filter(FuelCard.id == scope_id).one_or_none()
+        if not card:
+            raise HTTPException(status_code=404, detail="card_not_found")
+        if not _is_client_admin(principal):
+            _ensure_card_manager_access(db, principal=principal, card=card)
+        return
+
+
+def create_action_policy(
+    db: Session,
+    *,
+    client_id: str,
+    payload,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetActionPolicy:
+    _ensure_action_policy_scope_access(
+        db,
+        principal=principal,
+        client_id=client_id,
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+    )
+    policy = FleetActionPolicy(
+        client_id=client_id,
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        trigger_type=payload.trigger_type,
+        trigger_severity_min=payload.trigger_severity_min,
+        breach_kind=payload.breach_kind,
+        action=payload.action,
+        cooldown_seconds=payload.cooldown_seconds,
+        active=True,
+    )
+    db.add(policy)
+    db.flush()
+    policy.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_ACTION_POLICY_CREATED,
+        payload={
+            "policy_id": str(policy.id),
+            "trigger_type": policy.trigger_type.value,
+            "action": policy.action.value,
+        },
+    )
+    return policy
+
+
+def disable_action_policy(
+    db: Session,
+    *,
+    policy_id: str,
+    client_id: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetActionPolicy:
+    _ensure_client_access(principal, client_id)
+    policy = (
+        db.query(FleetActionPolicy)
+        .filter(FleetActionPolicy.id == policy_id)
+        .filter(FleetActionPolicy.client_id == client_id)
+        .one_or_none()
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="policy_not_found")
+    _ensure_action_policy_scope_access(
+        db,
+        principal=principal,
+        client_id=client_id,
+        scope_type=policy.scope_type,
+        scope_id=str(policy.scope_id) if policy.scope_id else None,
+    )
+    policy.active = False
+    policy.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_ACTION_POLICY_DISABLED,
+        payload={"policy_id": str(policy.id)},
+    )
+    return policy
+
+
 __all__ = [
     "SpendSummaryResult",
     "SpendSummaryRow",
@@ -1639,11 +1829,15 @@ __all__ = [
     "list_notification_policies",
     "create_notification_policy",
     "disable_notification_policy",
+    "list_action_policies",
+    "create_action_policy",
+    "disable_action_policy",
     "list_transactions",
     "remove_card_from_group",
     "revoke_group_access",
     "revoke_limit",
     "set_card_status",
+    "unblock_card_with_reason",
     "set_limit",
     "spend_summary",
     "update_alert_status",

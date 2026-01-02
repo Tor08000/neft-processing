@@ -113,6 +113,7 @@ class FuelAnomalyType(str, Enum):
     TIME_OF_DAY = "TIME_OF_DAY"
     FREQUENCY_BURST = "FREQUENCY_BURST"
     GEO_DISTANCE = "GEO_DISTANCE"
+    REPEATED_BREACH = "REPEATED_BREACH"
 
 
 class FleetNotificationSeverity(str, Enum):
@@ -149,6 +150,7 @@ class FleetNotificationEventType(str, Enum):
     ANOMALY = "ANOMALY"
     INGEST_FAILED = "INGEST_FAILED"
     DAILY_SUMMARY = "DAILY_SUMMARY"
+    POLICY_ACTION = "POLICY_ACTION"
 
 
 class FleetNotificationOutboxStatus(str, Enum):
@@ -215,6 +217,33 @@ class FuelCard(Base):
     currency = Column(String(3), nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelCardStatusEventActorType(str, Enum):
+    SYSTEM = "system"
+    USER = "user"
+
+
+class FuelCardStatusEvent(Base):
+    __tablename__ = "fuel_card_status_events"
+    __table_args__ = (
+        Index("ix_fuel_card_status_events_card_created", "card_id", "created_at"),
+        Index("ix_fuel_card_status_events_client_created", "client_id", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    card_id = Column(GUID(), ForeignKey("fuel_cards.id"), nullable=False, index=True)
+    from_status = Column(ExistingEnum(FuelCardStatus, name="fuel_card_status"), nullable=True)
+    to_status = Column(ExistingEnum(FuelCardStatus, name="fuel_card_status"), nullable=False)
+    reason = Column(Text, nullable=True)
+    actor_type = Column(
+        ExistingEnum(FuelCardStatusEventActorType, name="fuel_card_status_actor_type"),
+        nullable=False,
+    )
+    actor_id = Column(GUID(), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
 
 
 class FuelCardGroupStatus(str, Enum):
@@ -442,6 +471,84 @@ class FleetNotificationPolicy(Base):
     audit_event_id = Column(GUID(), nullable=True)
 
 
+class FleetActionPolicyScopeType(str, Enum):
+    CLIENT = "client"
+    GROUP = "group"
+    CARD = "card"
+
+
+class FleetActionTriggerType(str, Enum):
+    LIMIT_BREACH = "LIMIT_BREACH"
+    ANOMALY = "ANOMALY"
+
+
+class FleetActionBreachKind(str, Enum):
+    SOFT = "SOFT"
+    HARD = "HARD"
+    ANY = "ANY"
+
+
+class FleetActionPolicyAction(str, Enum):
+    NONE = "NONE"
+    NOTIFY_ONLY = "NOTIFY_ONLY"
+    AUTO_BLOCK_CARD = "AUTO_BLOCK_CARD"
+    ESCALATE_CASE = "ESCALATE_CASE"
+
+
+class FleetPolicyExecutionStatus(str, Enum):
+    TRIGGERED = "TRIGGERED"
+    APPLIED = "APPLIED"
+    SKIPPED = "SKIPPED"
+    FAILED = "FAILED"
+
+
+class FleetActionPolicy(Base):
+    __tablename__ = "fleet_action_policies"
+    __table_args__ = (
+        Index("ix_fleet_action_policies_client_trigger_active", "client_id", "trigger_type", "active"),
+        Index("ix_fleet_action_policies_scope_active", "scope_type", "scope_id", "active"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    scope_type = Column(
+        ExistingEnum(FleetActionPolicyScopeType, name="fleet_action_policy_scope_type"),
+        nullable=False,
+    )
+    scope_id = Column(GUID(), nullable=True)
+    trigger_type = Column(ExistingEnum(FleetActionTriggerType, name="fleet_action_trigger_type"), nullable=False)
+    trigger_severity_min = Column(
+        ExistingEnum(FleetNotificationSeverity, name="fleet_notification_severity"), nullable=False
+    )
+    breach_kind = Column(
+        ExistingEnum(FleetActionBreachKind, name="fleet_action_policy_breach_kind"), nullable=True
+    )
+    action = Column(ExistingEnum(FleetActionPolicyAction, name="fleet_action_policy_action"), nullable=False)
+    cooldown_seconds = Column(Integer, nullable=False, default=300, server_default="300")
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetPolicyExecution(Base):
+    __tablename__ = "fleet_policy_executions"
+    __table_args__ = (Index("ix_fleet_policy_executions_client_created", "client_id", "created_at"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    policy_id = Column(GUID(), ForeignKey("fleet_action_policies.id"), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False)
+    event_id = Column(GUID(), nullable=False)
+    action = Column(String(64), nullable=False)
+    status = Column(
+        ExistingEnum(FleetPolicyExecutionStatus, name="fleet_policy_execution_status"), nullable=False
+    )
+    reason = Column(Text, nullable=True)
+    dedupe_key = Column(String(256), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
 class FleetNotificationOutbox(Base):
     __tablename__ = "fleet_notification_outbox"
 
@@ -657,6 +764,13 @@ __all__ = [
     "FuelCardGroup",
     "FuelCardGroupStatus",
     "FuelCardStatus",
+    "FuelCardStatusEvent",
+    "FuelCardStatusEventActorType",
+    "FleetActionBreachKind",
+    "FleetActionPolicy",
+    "FleetActionPolicyAction",
+    "FleetActionPolicyScopeType",
+    "FleetActionTriggerType",
     "FuelIngestJob",
     "FuelIngestJobStatus",
     "FuelLimit",
@@ -683,6 +797,8 @@ __all__ = [
     "FleetNotificationPolicy",
     "FleetNotificationPolicyScopeType",
     "FleetNotificationSeverity",
+    "FleetPolicyExecution",
+    "FleetPolicyExecutionStatus",
     "FuelMerchant",
     "FuelNetwork",
     "FuelNetworkStatus",

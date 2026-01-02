@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 
 from app.models.fleet import EmployeeStatus, FuelGroupRole
 from app.models.fuel import (
+    FleetActionBreachKind,
+    FleetActionPolicyAction,
+    FleetActionPolicyScopeType,
+    FleetActionTriggerType,
     FuelCardStatus,
     FuelLimitBreachStatus,
     FuelLimitPeriod,
@@ -39,6 +43,10 @@ class FleetCardOut(BaseModel):
     currency: str | None = None
     issued_at: datetime | None = None
     created_at: datetime
+
+
+class FleetCardUnblockIn(BaseModel):
+    reason: str
 
 
 class FleetCardListResponse(BaseModel):
@@ -270,6 +278,33 @@ class FleetNotificationPolicyOut(BaseModel):
 
 class FleetNotificationPolicyListResponse(BaseModel):
     items: list[FleetNotificationPolicyOut]
+
+
+class FleetActionPolicyIn(BaseModel):
+    scope_type: FleetActionPolicyScopeType
+    scope_id: str | None = None
+    trigger_type: FleetActionTriggerType
+    trigger_severity_min: FleetNotificationSeverity
+    breach_kind: FleetActionBreachKind | None = None
+    action: FleetActionPolicyAction
+    cooldown_seconds: int = 300
+
+
+class FleetActionPolicyOut(BaseModel):
+    id: str
+    scope_type: FleetActionPolicyScopeType
+    scope_id: str | None = None
+    trigger_type: FleetActionTriggerType
+    trigger_severity_min: FleetNotificationSeverity
+    breach_kind: FleetActionBreachKind | None = None
+    action: FleetActionPolicyAction
+    cooldown_seconds: int
+    active: bool
+    created_at: datetime
+
+
+class FleetActionPolicyListResponse(BaseModel):
+    items: list[FleetActionPolicyOut]
 
 
 class FleetTransactionsExportOut(BaseModel):

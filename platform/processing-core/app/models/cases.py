@@ -71,6 +71,12 @@ class CaseEventType(str, Enum):
     FUEL_LIMIT_BREACH_DETECTED = "FUEL_LIMIT_BREACH_DETECTED"
     FUEL_ANOMALY_DETECTED = "FUEL_ANOMALY_DETECTED"
     FUEL_CARD_AUTO_BLOCKED = "FUEL_CARD_AUTO_BLOCKED"
+    FUEL_CARD_UNBLOCKED = "FUEL_CARD_UNBLOCKED"
+    FLEET_POLICY_ACTION_APPLIED = "FLEET_POLICY_ACTION_APPLIED"
+    FLEET_POLICY_ACTION_FAILED = "FLEET_POLICY_ACTION_FAILED"
+    FLEET_ESCALATION_CASE_CREATED = "FLEET_ESCALATION_CASE_CREATED"
+    FLEET_ACTION_POLICY_CREATED = "FLEET_ACTION_POLICY_CREATED"
+    FLEET_ACTION_POLICY_DISABLED = "FLEET_ACTION_POLICY_DISABLED"
     FLEET_ALERT_STATUS_UPDATED = "FLEET_ALERT_STATUS_UPDATED"
     FLEET_NOTIFICATION_CHANNEL_CREATED = "FLEET_NOTIFICATION_CHANNEL_CREATED"
     FLEET_NOTIFICATION_CHANNEL_DISABLED = "FLEET_NOTIFICATION_CHANNEL_DISABLED"
@@ -121,6 +127,8 @@ class Case(Base):
     resolve_due_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(String(128), nullable=True)
     assigned_to = Column(String(128), nullable=True)
+    case_source_ref_type = Column(String(64), nullable=True, index=True)
+    case_source_ref_id = Column(GUID(), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_activity_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
