@@ -7,6 +7,7 @@ This runbook describes the ingestion pipeline for external fuel transactions, in
 - `core_api_fleet_ingest_jobs_total{status,provider}`
 - `core_api_fleet_ingest_items_total{result}`
 - `core_api_fleet_transactions_total`
+- `core_api_fleet_notifications_outbox_total{status,event_type}`
 
 ## Common failure modes
 - **Idempotency conflicts**: reuse of `idempotency_key` returns the existing job result.
@@ -33,3 +34,4 @@ This runbook describes the ingestion pipeline for external fuel transactions, in
 ## Escalation
 - Re-ingest with a new `idempotency_key` only after confirming the batch was not partially ingested.
 - For persistent provider failures, disable provider in `fuel_providers` and notify integrations team.
+- Review the fleet notifications runbook for outbox replay and channel configuration guidance.

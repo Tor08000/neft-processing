@@ -12,6 +12,13 @@ from app.models.fuel import (
     FuelLimitBreachStatus,
     FuelLimitPeriod,
     FuelLimitScopeType,
+    FleetNotificationChannelStatus,
+    FleetNotificationChannelType,
+    FleetNotificationEventType,
+    FleetNotificationPolicyScopeType,
+    FleetNotificationSeverity,
+    FuelAnomalyStatus,
+    FuelAnomalyType,
 )
 
 
@@ -193,17 +200,21 @@ class FleetSpendSummaryOut(BaseModel):
 
 class FleetAlertOut(BaseModel):
     id: str
-    status: FuelLimitBreachStatus
-    scope_type: str
-    scope_id: str
-    period: FuelLimitPeriod
-    breach_type: str
-    threshold: Decimal
-    observed: Decimal
-    delta: Decimal
+    alert_type: str
+    status: str
+    severity: FleetNotificationSeverity
     occurred_at: datetime
+    card_id: str | None = None
+    group_id: str | None = None
     tx_id: str | None = None
-    limit_id: str
+    limit_id: str | None = None
+    breach_type: str | None = None
+    threshold: Decimal | None = None
+    observed: Decimal | None = None
+    delta: Decimal | None = None
+    period: FuelLimitPeriod | None = None
+    anomaly_type: FuelAnomalyType | None = None
+    score: Decimal | None = None
 
 
 class FleetAlertListResponse(BaseModel):
@@ -212,6 +223,53 @@ class FleetAlertListResponse(BaseModel):
 
 class FleetAlertIgnoreIn(BaseModel):
     reason: str | None = None
+
+
+class FleetNotificationChannelIn(BaseModel):
+    channel_type: FleetNotificationChannelType
+    target: str
+    secret_ref: str | None = None
+
+
+class FleetNotificationChannelOut(BaseModel):
+    id: str
+    channel_type: FleetNotificationChannelType
+    target: str
+    status: FleetNotificationChannelStatus
+    created_at: datetime
+
+
+class FleetNotificationChannelListResponse(BaseModel):
+    items: list[FleetNotificationChannelOut]
+
+
+class FleetNotificationPolicyIn(BaseModel):
+    scope_type: FleetNotificationPolicyScopeType
+    scope_id: str | None = None
+    event_type: FleetNotificationEventType
+    severity_min: FleetNotificationSeverity
+    channels: list[FleetNotificationChannelType]
+    cooldown_seconds: int = 300
+    action_on_critical: str | None = None
+    hard_breach_only: bool = False
+
+
+class FleetNotificationPolicyOut(BaseModel):
+    id: str
+    scope_type: FleetNotificationPolicyScopeType
+    scope_id: str | None = None
+    event_type: FleetNotificationEventType
+    severity_min: FleetNotificationSeverity
+    channels: list[FleetNotificationChannelType]
+    cooldown_seconds: int
+    active: bool
+    action_on_critical: str | None = None
+    hard_breach_only: bool
+    created_at: datetime
+
+
+class FleetNotificationPolicyListResponse(BaseModel):
+    items: list[FleetNotificationPolicyOut]
 
 
 class FleetTransactionsExportOut(BaseModel):

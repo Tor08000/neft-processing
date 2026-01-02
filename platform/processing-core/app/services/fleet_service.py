@@ -19,13 +19,21 @@ from app.models.fleet import (
     FuelGroupRole,
 )
 from app.models.fuel import (
+    FleetNotificationChannel,
+    FleetNotificationChannelStatus,
+    FleetNotificationChannelType,
+    FleetNotificationPolicy,
+    FleetNotificationSeverity,
     FuelCard,
     FuelCardGroup,
     FuelCardGroupStatus,
     FuelCardStatus,
+    FuelAnomaly,
+    FuelAnomalyStatus,
     FuelLimit,
     FuelLimitBreach,
     FuelLimitBreachStatus,
+    FuelLimitEscalationAction,
     FuelLimitPeriod,
     FuelLimitScopeType,
     FuelLimitType,
@@ -75,6 +83,30 @@ class SpendSummaryResult:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _severity_rank(severity: FleetNotificationSeverity) -> int:
+    return {
+        FleetNotificationSeverity.LOW: 1,
+        FleetNotificationSeverity.MEDIUM: 2,
+        FleetNotificationSeverity.HIGH: 3,
+        FleetNotificationSeverity.CRITICAL: 4,
+    }[severity]
+
+
+def _breach_severity(breach: FuelLimitBreach) -> FleetNotificationSeverity:
+    if breach.breach_type.value in {"CATEGORY", "STATION"}:
+        return FleetNotificationSeverity.HIGH
+    threshold = Decimal(str(breach.threshold or 0))
+    observed = Decimal(str(breach.observed or 0))
+    if threshold <= 0:
+        return FleetNotificationSeverity.HIGH
+    ratio = observed / threshold
+    if ratio >= Decimal("2.0"):
+        return FleetNotificationSeverity.CRITICAL
+    if ratio >= Decimal("1.5"):
+        return FleetNotificationSeverity.HIGH
+    return FleetNotificationSeverity.MEDIUM
 
 
 def _ensure_client_access(principal: Principal, client_id: str) -> None:
@@ -303,6 +335,7 @@ def _emit_event(
         changes=None,
         extra_payload=payload,
     )
+    db.flush()
     return str(event.id)
 
 
@@ -1268,16 +1301,75 @@ def list_alerts(
     client_id: str,
     principal: Principal,
     status: str | None,
-) -> list[FuelLimitBreach]:
+    severity_min: str | None,
+) -> list[dict[str, Any]]:
     _ensure_client_access(principal, client_id)
-    query = db.query(FuelLimitBreach).filter(FuelLimitBreach.client_id == client_id)
+    alerts: list[dict[str, Any]] = []
+    breach_query = db.query(FuelLimitBreach).filter(FuelLimitBreach.client_id == client_id)
     if status:
         try:
             normalized = FuelLimitBreachStatus(status)
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid_status")
-        query = query.filter(FuelLimitBreach.status == normalized)
-    return query.order_by(FuelLimitBreach.occurred_at.desc()).all()
+        breach_query = breach_query.filter(FuelLimitBreach.status == normalized)
+    for breach in breach_query.order_by(FuelLimitBreach.occurred_at.desc()).all():
+        severity = _breach_severity(breach)
+        alerts.append(
+            {
+                "id": str(breach.id),
+                "alert_type": "LIMIT_BREACH",
+                "status": breach.status.value,
+                "severity": severity,
+                "occurred_at": breach.occurred_at,
+                "card_id": str(breach.scope_id)
+                if breach.scope_type.value == "card"
+                else None,
+                "group_id": str(breach.scope_id)
+                if breach.scope_type.value == "group"
+                else None,
+                "tx_id": str(breach.tx_id) if breach.tx_id else None,
+                "limit_id": str(breach.limit_id),
+                "breach_type": breach.breach_type.value,
+                "threshold": breach.threshold,
+                "observed": breach.observed,
+                "delta": breach.delta,
+                "period": breach.period,
+            }
+        )
+    anomaly_query = db.query(FuelAnomaly).filter(FuelAnomaly.client_id == client_id)
+    if status:
+        try:
+            normalized_anomaly = FuelAnomalyStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid_status")
+        anomaly_query = anomaly_query.filter(FuelAnomaly.status == normalized_anomaly)
+    for anomaly in anomaly_query.order_by(FuelAnomaly.occurred_at.desc()).all():
+        alerts.append(
+            {
+                "id": str(anomaly.id),
+                "alert_type": "ANOMALY",
+                "status": anomaly.status.value,
+                "severity": anomaly.severity,
+                "occurred_at": anomaly.occurred_at,
+                "card_id": str(anomaly.card_id) if anomaly.card_id else None,
+                "group_id": str(anomaly.group_id) if anomaly.group_id else None,
+                "tx_id": str(anomaly.tx_id) if anomaly.tx_id else None,
+                "anomaly_type": anomaly.anomaly_type,
+                "score": anomaly.score,
+            }
+        )
+    if severity_min:
+        try:
+            min_severity = FleetNotificationSeverity(severity_min)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid_severity")
+        alerts = [
+            alert
+            for alert in alerts
+            if _severity_rank(alert["severity"]) >= _severity_rank(min_severity)
+        ]
+    alerts.sort(key=lambda alert: alert["occurred_at"], reverse=True)
+    return alerts
 
 
 def update_alert_status(
@@ -1289,24 +1381,238 @@ def update_alert_status(
     request_id: str | None,
     trace_id: str | None,
     reason: str | None,
-) -> FuelLimitBreach:
+) -> dict[str, Any]:
     alert = db.query(FuelLimitBreach).filter(FuelLimitBreach.id == alert_id).one_or_none()
-    if not alert:
+    if alert:
+        _ensure_client_access(principal, alert.client_id)
+        if status not in {FuelLimitBreachStatus.ACKED.value, FuelLimitBreachStatus.IGNORED.value}:
+            raise HTTPException(status_code=400, detail="invalid_status")
+        previous = alert.status
+        alert.status = FuelLimitBreachStatus(status)
+        alert.audit_event_id = _emit_event(
+            db,
+            client_id=alert.client_id,
+            principal=principal,
+            request_id=request_id,
+            trace_id=trace_id,
+            event_type=CaseEventType.FLEET_ALERT_STATUS_UPDATED,
+            payload={"alert_id": str(alert.id), "status": status, "reason": reason},
+        )
+        if previous == FuelLimitBreachStatus.OPEN and alert.status != FuelLimitBreachStatus.OPEN:
+            fleet_metrics.adjust_alerts_open(-1)
+        severity = _breach_severity(alert)
+        return {
+            "id": str(alert.id),
+            "alert_type": "LIMIT_BREACH",
+            "status": alert.status.value,
+            "severity": severity,
+            "occurred_at": alert.occurred_at,
+            "card_id": str(alert.scope_id) if alert.scope_type.value == "card" else None,
+            "group_id": str(alert.scope_id) if alert.scope_type.value == "group" else None,
+            "tx_id": str(alert.tx_id) if alert.tx_id else None,
+            "limit_id": str(alert.limit_id),
+            "breach_type": alert.breach_type.value,
+            "threshold": alert.threshold,
+            "observed": alert.observed,
+            "delta": alert.delta,
+            "period": alert.period,
+        }
+    anomaly = db.query(FuelAnomaly).filter(FuelAnomaly.id == alert_id).one_or_none()
+    if not anomaly:
         raise HTTPException(status_code=404, detail="alert_not_found")
-    _ensure_client_access(principal, alert.client_id)
-    if status not in {FuelLimitBreachStatus.ACKED.value, FuelLimitBreachStatus.IGNORED.value}:
+    _ensure_client_access(principal, anomaly.client_id)
+    if status not in {FuelAnomalyStatus.ACKED.value, FuelAnomalyStatus.IGNORED.value}:
         raise HTTPException(status_code=400, detail="invalid_status")
-    alert.status = FuelLimitBreachStatus(status)
-    alert.audit_event_id = _emit_event(
+    previous_status = anomaly.status
+    anomaly.status = FuelAnomalyStatus(status)
+    anomaly.audit_event_id = _emit_event(
         db,
-        client_id=alert.client_id,
+        client_id=anomaly.client_id,
         principal=principal,
         request_id=request_id,
         trace_id=trace_id,
         event_type=CaseEventType.FLEET_ALERT_STATUS_UPDATED,
-        payload={"alert_id": str(alert.id), "status": status, "reason": reason},
+        payload={"alert_id": str(anomaly.id), "status": status, "reason": reason},
     )
-    return alert
+    if previous_status == FuelAnomalyStatus.OPEN and anomaly.status != FuelAnomalyStatus.OPEN:
+        fleet_metrics.adjust_alerts_open(-1)
+    return {
+        "id": str(anomaly.id),
+        "alert_type": "ANOMALY",
+        "status": anomaly.status.value,
+        "severity": anomaly.severity,
+        "occurred_at": anomaly.occurred_at,
+        "card_id": str(anomaly.card_id) if anomaly.card_id else None,
+        "group_id": str(anomaly.group_id) if anomaly.group_id else None,
+        "tx_id": str(anomaly.tx_id) if anomaly.tx_id else None,
+        "anomaly_type": anomaly.anomaly_type,
+        "score": anomaly.score,
+    }
+
+
+def list_notification_channels(
+    db: Session,
+    *,
+    client_id: str,
+    principal: Principal,
+) -> list[FleetNotificationChannel]:
+    _ensure_client_access(principal, client_id)
+    return (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .order_by(FleetNotificationChannel.created_at.desc())
+        .all()
+    )
+
+
+def create_notification_channel(
+    db: Session,
+    *,
+    client_id: str,
+    channel_type: FleetNotificationChannelType,
+    target: str,
+    secret_ref: str | None,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetNotificationChannel:
+    _ensure_client_access(principal, client_id)
+    channel = FleetNotificationChannel(
+        client_id=client_id,
+        channel_type=channel_type,
+        target=target,
+        status=FleetNotificationChannelStatus.ACTIVE,
+        secret_ref=secret_ref,
+    )
+    db.add(channel)
+    db.flush()
+    channel.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_NOTIFICATION_CHANNEL_CREATED,
+        payload={"channel_id": str(channel.id), "channel_type": channel_type.value, "target": target},
+    )
+    return channel
+
+
+def disable_notification_channel(
+    db: Session,
+    *,
+    channel_id: str,
+    client_id: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetNotificationChannel:
+    _ensure_client_access(principal, client_id)
+    channel = (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.id == channel_id)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .one_or_none()
+    )
+    if not channel:
+        raise HTTPException(status_code=404, detail="channel_not_found")
+    channel.status = FleetNotificationChannelStatus.DISABLED
+    channel.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_NOTIFICATION_CHANNEL_DISABLED,
+        payload={"channel_id": str(channel.id)},
+    )
+    return channel
+
+
+def list_notification_policies(
+    db: Session,
+    *,
+    client_id: str,
+    principal: Principal,
+) -> list[FleetNotificationPolicy]:
+    _ensure_client_access(principal, client_id)
+    return (
+        db.query(FleetNotificationPolicy)
+        .filter(FleetNotificationPolicy.client_id == client_id)
+        .order_by(FleetNotificationPolicy.created_at.desc())
+        .all()
+    )
+
+
+def create_notification_policy(
+    db: Session,
+    *,
+    client_id: str,
+    payload,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetNotificationPolicy:
+    _ensure_client_access(principal, client_id)
+    policy = FleetNotificationPolicy(
+        client_id=client_id,
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        event_type=payload.event_type,
+        severity_min=payload.severity_min,
+        channels=[channel.value for channel in payload.channels],
+        cooldown_seconds=payload.cooldown_seconds,
+        active=True,
+        action_on_critical=(
+            FuelLimitEscalationAction(payload.action_on_critical)
+            if payload.action_on_critical
+            else None
+        ),
+        hard_breach_only=payload.hard_breach_only,
+    )
+    db.add(policy)
+    db.flush()
+    policy.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_NOTIFICATION_POLICY_CREATED,
+        payload={"policy_id": str(policy.id), "event_type": policy.event_type.value},
+    )
+    return policy
+
+
+def disable_notification_policy(
+    db: Session,
+    *,
+    policy_id: str,
+    client_id: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetNotificationPolicy:
+    _ensure_client_access(principal, client_id)
+    policy = (
+        db.query(FleetNotificationPolicy)
+        .filter(FleetNotificationPolicy.id == policy_id)
+        .filter(FleetNotificationPolicy.client_id == client_id)
+        .one_or_none()
+    )
+    if not policy:
+        raise HTTPException(status_code=404, detail="policy_not_found")
+    policy.active = False
+    policy.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_NOTIFICATION_POLICY_DISABLED,
+        payload={"policy_id": str(policy.id)},
+    )
+    return policy
 
 
 __all__ = [
@@ -1327,6 +1633,12 @@ __all__ = [
     "list_groups",
     "list_limits",
     "list_alerts",
+    "list_notification_channels",
+    "create_notification_channel",
+    "disable_notification_channel",
+    "list_notification_policies",
+    "create_notification_policy",
+    "disable_notification_policy",
     "list_transactions",
     "remove_card_from_group",
     "revoke_group_access",

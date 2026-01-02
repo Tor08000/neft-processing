@@ -797,6 +797,20 @@ def _fleet_metrics() -> list[str]:
     if fleet_metrics.limit_breaches_total:
         for (breach_type, scope), count in fleet_metrics.limit_breaches_total.items():
             lines.append(f'core_api_fleet_limit_breaches_total{{type="{breach_type}",scope="{scope}"}} {count}')
+    if fleet_metrics.anomalies_total:
+        for (anomaly_type, severity), count in fleet_metrics.anomalies_total.items():
+            lines.append(f'core_api_fleet_anomalies_total{{type="{anomaly_type}",severity="{severity}"}} {count}')
+    if fleet_metrics.notifications_outbox_total:
+        for (status, event_type), count in fleet_metrics.notifications_outbox_total.items():
+            lines.append(f'core_api_fleet_notifications_outbox_total{{status="{status}",event_type="{event_type}"}} {count}')
+    if fleet_metrics.notifications_delivery_seconds:
+        for channel, values in fleet_metrics.notifications_delivery_seconds.items():
+            p95 = _percentile(values, 95) or 0
+            lines.append(f'core_api_fleet_notifications_delivery_seconds{{channel="{channel}"}} {p95}')
+    if fleet_metrics.auto_actions_total:
+        for (action, status), count in fleet_metrics.auto_actions_total.items():
+            lines.append(f'core_api_fleet_auto_actions_total{{action="{action}",status="{status}"}} {count}')
+    lines.append(f"core_api_fleet_alerts_open_gauge {fleet_metrics.alerts_open_gauge}")
     lines.append(f"core_api_fleet_transactions_total {fleet_metrics.transactions_total}")
     lines.append(f"core_api_fleet_export_requests_total {fleet_metrics.export_requests_total}")
     return lines
