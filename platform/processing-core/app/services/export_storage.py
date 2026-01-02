@@ -55,5 +55,12 @@ class ExportStorage:
         except ClientError:
             return None
 
+    def get_bytes(self, key: str) -> bytes:
+        response = self._client.get_object(Bucket=self.bucket, Key=key)
+        body = response.get("Body")
+        if body is None:
+            return b""
+        return body.read()
+
 
 __all__ = ["ExportStorage"]

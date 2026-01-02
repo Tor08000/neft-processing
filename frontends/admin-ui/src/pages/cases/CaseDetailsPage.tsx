@@ -14,12 +14,20 @@ import {
   type CaseEventType,
   type CaseFieldChange,
 } from "../../api/adminCases";
-import { downloadCaseExport, listCaseExports, type CaseExportItem } from "../../api/adminExports";
+import {
+  downloadCaseExport,
+  listCaseExports,
+  verifyCaseExport,
+  type CaseExportItem,
+  type CaseExportVerifyResult,
+} from "../../api/adminExports";
+import { listDecisionMemory, type DecisionMemoryEntry } from "../../api/decisionMemory";
 import { UnauthorizedError } from "../../api/client";
 import { computeExplainScore } from "../../gamification/score";
 import type { ExplainV2Response } from "../../types/explainV2";
 import { recordActionApplied, recordCaseClosed } from "../../mastery/events";
-import { loadMasteryEvents } from "../../mastery/storage";
+import { buildMasterySnapshot } from "../../mastery/levels";
+import { loadMasteryEvents, loadMasteryState } from "../../mastery/storage";
 import type { MasteryEvent } from "../../mastery/types";
 import { Tabs } from "../../components/common/Tabs";
 import { JsonViewer } from "../../components/common/JsonViewer";
@@ -85,6 +93,18 @@ const EVENT_FILTERS: CaseEventType[] = [
   "EXPORT_CREATED",
 ];
 
+const TIMELINE_TABS = [
+  { id: "audit", label: "Audit timeline" },
+  { id: "decisions", label: "Decision History" },
+];
+
+const DECISION_TYPE_LABELS: Record<DecisionMemoryEntry["decision_type"], string> = {
+  explain: "Explain",
+  diff: "Diff",
+  action: "Action",
+  close: "Close",
+};
+
 const EXPORT_KIND_LABELS: Record<NonNullable<NonNullable<CaseEvent["meta"]>["export_ref"]>["kind"], string> = {
   explain_export: "Explain export",
   diff_export: "Diff export",
@@ -128,6 +148,25 @@ const renderAuditValue = (fieldPath: string, value: unknown): ReactNode => {
       </div>
     </details>
   );
+};
+
+const formatScoreSummary = (snapshot?: Record<string, unknown> | null) => {
+  if (!snapshot) return "—";
+  const parts: string[] = [];
+  if ("score" in snapshot) parts.push(`score: ${String(snapshot.score)}`);
+  if ("penalty" in snapshot) parts.push(`penalty: ${String(snapshot.penalty)}`);
+  if ("confidence" in snapshot) parts.push(`confidence: ${String(snapshot.confidence)}`);
+  return parts.length ? parts.join(" · ") : JSON.stringify(snapshot);
+};
+
+const formatMasterySummary = (snapshot?: Record<string, unknown> | null) => {
+  if (!snapshot) return "—";
+  const level = snapshot.level ? String(snapshot.level) : "—";
+  const progress = snapshot.progress_to_next;
+  if (typeof progress === "number") {
+    return `${level} · ${Math.round(progress * 100)}%`;
+  }
+  return level;
 };
 
 const HASH_PREVIEW_LENGTH = 12;
@@ -280,6 +319,10 @@ export function CaseDetailsPage() {
   const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [exports, setExports] = useState<CaseExportItem[]>([]);
   const [isExportsLoading, setIsExportsLoading] = useState(false);
+  const [exportVerifications, setExportVerifications] = useState<Record<string, CaseExportVerifyResult>>({});
+  const [exportVerifyLoading, setExportVerifyLoading] = useState<Record<string, boolean>>({});
+  const [decisionHistory, setDecisionHistory] = useState<DecisionMemoryEntry[]>([]);
+  const [isDecisionHistoryLoading, setIsDecisionHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
   const [notAvailable, setNotAvailable] = useState(false);
@@ -291,6 +334,7 @@ export function CaseDetailsPage() {
   const [selectedTypes, setSelectedTypes] = useState<CaseEventType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSynthetic, setShowSynthetic] = useState(false);
+  const [timelineTab, setTimelineTab] = useState<"audit" | "decisions">("audit");
   const [chainLinks, setChainLinks] = useState<ChainLink[]>([]);
   const [chainStatus, setChainStatus] = useState<ChainVerificationResult>({ status: "unknown" });
 
@@ -340,6 +384,7 @@ export function CaseDetailsPage() {
     listCaseExports(id)
       .then((data) => {
         setExports(data.items ?? []);
+        setExportVerifications({});
       })
       .catch((err: unknown) => {
         console.error("Failed to load exports", err);
@@ -348,17 +393,63 @@ export function CaseDetailsPage() {
       .finally(() => setIsExportsLoading(false));
   }, [id]);
 
+  const loadDecisionHistory = useCallback(() => {
+    if (!id) return;
+    setIsDecisionHistoryLoading(true);
+    listDecisionMemory(id)
+      .then((data) => {
+        setDecisionHistory(data.items ?? []);
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load decision history", err);
+        setDecisionHistory([]);
+      })
+      .finally(() => setIsDecisionHistoryLoading(false));
+  }, [id]);
+
+  const handleVerifyExport = useCallback(
+    async (exportId: string) => {
+      setExportVerifyLoading((prev) => ({ ...prev, [exportId]: true }));
+      try {
+        const result = await verifyCaseExport(exportId);
+        setExportVerifications((prev) => ({ ...prev, [exportId]: result }));
+      } catch (err) {
+        showToast("error", (err as Error).message);
+      } finally {
+        setExportVerifyLoading((prev) => ({ ...prev, [exportId]: false }));
+      }
+    },
+    [showToast],
+  );
+
   useEffect(() => {
     loadDetails();
     loadEvents();
     loadExports();
-  }, [loadDetails, loadEvents, loadExports]);
+    loadDecisionHistory();
+  }, [loadDetails, loadEvents, loadExports, loadDecisionHistory]);
 
   const snapshotsSorted = useMemo(() => sortSnapshots(payload?.snapshots), [payload?.snapshots]);
   const firstSnapshot = snapshotsSorted[0];
   const lastSnapshot = snapshotsSorted[snapshotsSorted.length - 1] ?? payload?.latest_snapshot;
   const selectedActionsCount = getSelectedActionsCount(lastSnapshot);
+  const exportsById = useMemo(() => new Map(exports.map((item) => [item.id, item])), [exports]);
   const masteryEvents = useMemo(() => loadMasteryEvents(), []);
+  const masterySnapshot = useMemo(
+    () =>
+      buildMasterySnapshot({
+        events: masteryEvents,
+        state: loadMasteryState(),
+      }),
+    [masteryEvents],
+  );
+  const masterySnapshotPayload = useMemo(
+    () => ({
+      level: masterySnapshot.level,
+      progress_to_next: Number(masterySnapshot.progressToNext.toFixed(2)),
+    }),
+    [masterySnapshot.level, masterySnapshot.progressToNext],
+  );
   const syntheticEvents = useMemo(() => {
     if (!payload) return [];
     const caseEvents = buildSyntheticEvents(payload.case);
@@ -526,9 +617,12 @@ export function CaseDetailsPage() {
   const handleClose = async (payloadInput: { resolutionNote: string; actionsApplied: boolean }) => {
     if (!id || !payload) return;
     try {
+      const scoreSnapshot = toScoreSnapshot(lastSnapshot);
       const response = await closeAdminCase(id, {
         resolution_note: payloadInput.resolutionNote,
         resolution_code: null,
+        score_snapshot: scoreSnapshot ?? null,
+        mastery_snapshot: masterySnapshotPayload,
       });
       const updatedCase =
         response ?? {
@@ -555,7 +649,6 @@ export function CaseDetailsPage() {
       if (eventsAvailable) {
         loadEvents();
       }
-      const scoreSnapshot = toScoreSnapshot(lastSnapshot);
       recordCaseClosed(id, { scoreSnapshot });
       if (payloadInput.actionsApplied) {
         const scoreBefore = toScoreSnapshot(firstSnapshot);
@@ -752,12 +845,25 @@ export function CaseDetailsPage() {
                 <th>Kind</th>
                 <th>Created</th>
                 <th>SHA256</th>
+                <th>Signature</th>
+                <th>Key ID</th>
+                <th>Verification</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {exports.map((exportItem) => {
                 const isDeleted = Boolean(exportItem.deleted_at);
+                const verification = exportVerifications[exportItem.id];
+                const signature = exportItem.artifact_signature ?? null;
+                const keyId = exportItem.artifact_signing_key_id ?? null;
+                const verificationStatus = verification
+                  ? verification.content_hash_verified &&
+                    verification.artifact_signature_verified &&
+                    verification.audit_chain_verified
+                    ? "✅ Verified"
+                    : "❌ Broken"
+                  : "—";
                 return (
                   <tr key={exportItem.id}>
                     <td>
@@ -766,6 +872,21 @@ export function CaseDetailsPage() {
                     </td>
                     <td>{formatTimestamp(exportItem.created_at)}</td>
                     <td title={exportItem.content_sha256}>{shortenHash(exportItem.content_sha256)}</td>
+                    <td title={signature ?? undefined}>{signature ? shortenHash(signature) : "—"}</td>
+                    <td title={keyId ?? undefined}>{keyId ? shortenHash(keyId) : "—"}</td>
+                    <td>
+                      <div className="stack-inline">
+                        <span>{verificationStatus}</span>
+                        <button
+                          type="button"
+                          className="neft-btn-secondary"
+                          onClick={() => void handleVerifyExport(exportItem.id)}
+                          disabled={isDeleted || exportVerifyLoading[exportItem.id]}
+                        >
+                          {exportVerifyLoading[exportItem.id] ? "Verifying..." : "Verify"}
+                        </button>
+                      </div>
+                    </td>
                     <td>
                       <div className="stack-inline">
                         <button
@@ -788,185 +909,263 @@ export function CaseDetailsPage() {
       </section>
 
       <section className="card">
-        <div className="audit-header">
-          <div>
-            <h3>Audit timeline</h3>
-            {!eventsAvailable ? (
-              <p className="muted small">Events endpoint unavailable · Showing synthetic timeline</p>
+        <div className="card__header">
+          <h3>Timeline</h3>
+        </div>
+        <Tabs tabs={TIMELINE_TABS} active={timelineTab} onChange={(id) => setTimelineTab(id as "audit" | "decisions")} />
+        {timelineTab === "audit" ? (
+          <>
+            <div className="audit-header">
+              <div>
+                <h4>Audit timeline</h4>
+                {!eventsAvailable ? (
+                  <p className="muted small">Events endpoint unavailable · Showing synthetic timeline</p>
+                ) : null}
+              </div>
+              <div className={`audit-integrity audit-integrity--${chainStatus.status}`} title={integrityTooltip}>
+                <span className="audit-integrity__icon" aria-hidden="true">
+                  {integrityIcon}
+                </span>
+                <span>{integrityLabel}</span>
+              </div>
+            </div>
+            {chainStatus.status === "broken" ? (
+              <div className="audit-integrity-details">
+                <div className="audit-integrity-details__title">
+                  Mismatch detected at event #{(chainStatus.broken_at_index ?? 0) + 1}
+                </div>
+                <div className="audit-integrity-details__hashes">
+                  {chainStatus.expected_hash ? <HashCopy label="Expected" value={chainStatus.expected_hash} /> : null}
+                  {chainStatus.actual_hash ? <HashCopy label="Actual" value={chainStatus.actual_hash} /> : null}
+                </div>
+              </div>
             ) : null}
-          </div>
-          <div className={`audit-integrity audit-integrity--${chainStatus.status}`} title={integrityTooltip}>
-            <span className="audit-integrity__icon" aria-hidden="true">
-              {integrityIcon}
-            </span>
-            <span>{integrityLabel}</span>
-          </div>
-        </div>
-        {chainStatus.status === "broken" ? (
-          <div className="audit-integrity-details">
-            <div className="audit-integrity-details__title">
-              Mismatch detected at event #{(chainStatus.broken_at_index ?? 0) + 1}
-            </div>
-            <div className="audit-integrity-details__hashes">
-              {chainStatus.expected_hash ? <HashCopy label="Expected" value={chainStatus.expected_hash} /> : null}
-              {chainStatus.actual_hash ? <HashCopy label="Actual" value={chainStatus.actual_hash} /> : null}
-            </div>
-          </div>
-        ) : null}
-        <div className="audit-controls">
-          <div className="audit-controls__filters">
-            {EVENT_FILTERS.map((type) => (
-              <label className="checkbox audit-filter" key={type}>
+            <div className="audit-controls">
+              <div className="audit-controls__filters">
+                {EVENT_FILTERS.map((type) => (
+                  <label className="checkbox audit-filter" key={type}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTypes.includes(type)}
+                      onChange={(event) => {
+                        setSelectedTypes((prev) => {
+                          if (event.target.checked) {
+                            return [...prev, type];
+                          }
+                          return prev.filter((entry) => entry !== type);
+                        });
+                      }}
+                    />
+                    <span>{EVENT_TYPE_LABELS[type]}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="audit-controls__search">
                 <input
-                  type="checkbox"
-                  checked={selectedTypes.includes(type)}
-                  onChange={(event) => {
-                    setSelectedTypes((prev) => {
-                      if (event.target.checked) {
-                        return [...prev, type];
-                      }
-                      return prev.filter((entry) => entry !== type);
-                    });
-                  }}
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by actor, field, request id"
                 />
-                <span>{EVENT_TYPE_LABELS[type]}</span>
-              </label>
-            ))}
-          </div>
-          <div className="audit-controls__search">
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search by actor, field, request id"
-            />
-          </div>
-          {showSyntheticToggle ? (
-            <label className="checkbox audit-toggle">
-              <input
-                type="checkbox"
-                checked={showSynthetic}
-                onChange={(event) => setShowSynthetic(event.target.checked)}
-              />
-              <span>Show synthetic events</span>
-            </label>
-          ) : null}
-        </div>
-        {isEventsLoading ? (
-          <div className="muted">Loading timeline...</div>
-        ) : filteredEvents.length === 0 ? (
-          <div className="muted">No events yet</div>
-        ) : (
-          <div className="audit-timeline" data-testid="audit-timeline">
-            {filteredEvents.map((event, index) => {
-              const isSynthetic = event.source === "synthetic" || event.id.startsWith("synthetic_");
-              const isBroken = chainStatus.status === "broken" && chainStatus.broken_at_index === index;
-              const exportRef = event.meta?.export_ref ?? null;
-              const traceUrl =
-                event.trace_id && traceUrlTemplate
-                  ? traceUrlTemplate.replace("{trace_id}", event.trace_id)
-                  : null;
-              const chainLink = chainLinksById.get(event.id);
-              return (
-                <div className={`audit-item${isBroken ? " audit-item--broken" : ""}`} key={event.id}>
-                  <div className="audit-item__marker">
-                    <span className="audit-item__icon">{EVENT_TYPE_ICONS[event.type]}</span>
-                  </div>
-                  <div className="audit-item__content">
-                    <div className="audit-item__header">
-                      <div className="audit-item__title">
-                        <span>{toEventLabel(event)}</span>
-                        {isSynthetic ? <span className="pill pill--outline">Synthetic</span> : null}
+              </div>
+              {showSyntheticToggle ? (
+                <label className="checkbox audit-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showSynthetic}
+                    onChange={(event) => setShowSynthetic(event.target.checked)}
+                  />
+                  <span>Show synthetic events</span>
+                </label>
+              ) : null}
+            </div>
+            {isEventsLoading ? (
+              <div className="muted">Loading timeline...</div>
+            ) : filteredEvents.length === 0 ? (
+              <div className="muted">No events yet</div>
+            ) : (
+              <div className="audit-timeline" data-testid="audit-timeline">
+                {filteredEvents.map((event, index) => {
+                  const isSynthetic = event.source === "synthetic" || event.id.startsWith("synthetic_");
+                  const isBroken = chainStatus.status === "broken" && chainStatus.broken_at_index === index;
+                  const exportRef = event.meta?.export_ref ?? null;
+                  const traceUrl =
+                    event.trace_id && traceUrlTemplate
+                      ? traceUrlTemplate.replace("{trace_id}", event.trace_id)
+                      : null;
+                  const chainLink = chainLinksById.get(event.id);
+                  return (
+                    <div className={`audit-item${isBroken ? " audit-item--broken" : ""}`} key={event.id}>
+                      <div className="audit-item__marker">
+                        <span className="audit-item__icon">{EVENT_TYPE_ICONS[event.type]}</span>
                       </div>
-                      <div className="audit-item__meta">
-                        <span>{formatActor(event.actor)}</span>
-                        <span className="muted small">{formatTimestamp(event.at)}</span>
+                      <div className="audit-item__content">
+                        <div className="audit-item__header">
+                          <div className="audit-item__title">
+                            <span>{toEventLabel(event)}</span>
+                            {isSynthetic ? <span className="pill pill--outline">Synthetic</span> : null}
+                          </div>
+                          <div className="audit-item__meta">
+                            <span>{formatActor(event.actor)}</span>
+                            <span className="muted small">{formatTimestamp(event.at)}</span>
+                          </div>
+                        </div>
+                        {event.meta?.reason ? <div className="audit-item__reason">Reason: {event.meta.reason}</div> : null}
+                        {event.meta?.selected_actions_count !== null && event.meta?.selected_actions_count !== undefined ? (
+                          <div className="audit-item__reason">
+                            Selected actions: {event.meta.selected_actions_count}
+                          </div>
+                        ) : null}
+                        {event.meta?.changes && event.meta.changes.length > 0 ? (
+                          <div className="audit-block">
+                            <div className="label">Changes</div>
+                            <table className="audit-table">
+                              <thead>
+                                <tr>
+                                  <th>Field</th>
+                                  <th>From</th>
+                                  <th>To</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {event.meta.changes.map((change) => (
+                                  <tr key={`${event.id}-${change.field}`}>
+                                    <td>{change.field}</td>
+                                    <td>{renderAuditValue(change.field, change.from)}</td>
+                                    <td>{renderAuditValue(change.field, change.to)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
+                        {event.request_id || event.trace_id ? (
+                          <div className="audit-block">
+                            <div className="label">Trace</div>
+                            <div className="audit-trace">
+                              {event.request_id ? <CopyChip label="Request ID" value={event.request_id} /> : null}
+                              {event.trace_id ? <CopyChip label="Trace ID" value={event.trace_id} /> : null}
+                              {traceUrl ? (
+                                <a className="ghost" href={traceUrl} target="_blank" rel="noreferrer">
+                                  Open trace
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        {exportRef ? (
+                          <div className="audit-block">
+                            <div className="label">Artifacts</div>
+                            <div className="audit-artifacts">
+                              <span className="muted">{EXPORT_KIND_LABELS[exportRef.kind]}</span>
+                              {exportRef.url ? (
+                                <a className="neft-btn-secondary" href={exportRef.url}>
+                                  Open export
+                                </a>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="neft-btn-secondary"
+                                    onClick={() => void handleOpenExportRef(exportRef.id)}
+                                  >
+                                    Open export
+                                  </button>
+                                  <CopyChip label="Export ID" value={exportRef.id} />
+                                </>
+                              )}
+                              {event.meta?.content_sha256 ? (
+                                <CopyChip label="SHA256" value={event.meta.content_sha256} />
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        {chainLink ? (
+                          <details className="audit-advanced">
+                            <summary>Advanced</summary>
+                            <div className="audit-advanced__content">
+                              <HashCopy label="hash" value={chainLink.hash} />
+                              <HashCopy label="prev" value={chainLink.prev_hash} />
+                            </div>
+                          </details>
+                        ) : null}
                       </div>
                     </div>
-                    {event.meta?.reason ? <div className="audit-item__reason">Reason: {event.meta.reason}</div> : null}
-                    {event.meta?.selected_actions_count !== null && event.meta?.selected_actions_count !== undefined ? (
-                      <div className="audit-item__reason">
-                        Selected actions: {event.meta.selected_actions_count}
-                      </div>
-                    ) : null}
-                    {event.meta?.changes && event.meta.changes.length > 0 ? (
-                      <div className="audit-block">
-                        <div className="label">Changes</div>
-                        <table className="audit-table">
-                          <thead>
-                            <tr>
-                              <th>Field</th>
-                              <th>From</th>
-                              <th>To</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {event.meta.changes.map((change) => (
-                              <tr key={`${event.id}-${change.field}`}>
-                                <td>{change.field}</td>
-                                <td>{renderAuditValue(change.field, change.from)}</td>
-                                <td>{renderAuditValue(change.field, change.to)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : null}
-                    {event.request_id || event.trace_id ? (
-                      <div className="audit-block">
-                        <div className="label">Trace</div>
-                        <div className="audit-trace">
-                          {event.request_id ? <CopyChip label="Request ID" value={event.request_id} /> : null}
-                          {event.trace_id ? <CopyChip label="Trace ID" value={event.trace_id} /> : null}
-                          {traceUrl ? (
-                            <a className="ghost" href={traceUrl} target="_blank" rel="noreferrer">
-                              Open trace
-                            </a>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {exportRef ? (
-                      <div className="audit-block">
-                        <div className="label">Artifacts</div>
-                        <div className="audit-artifacts">
-                          <span className="muted">{EXPORT_KIND_LABELS[exportRef.kind]}</span>
-                          {exportRef.url ? (
-                            <a className="neft-btn-secondary" href={exportRef.url}>
-                              Open export
-                            </a>
-                          ) : (
-                            <>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="audit-header">
+              <div>
+                <h4>Decision history</h4>
+                <p className="muted small">Read-only decision memory linked to audit events</p>
+              </div>
+            </div>
+            {isDecisionHistoryLoading ? (
+              <div className="muted">Loading decision history...</div>
+            ) : decisionHistory.length === 0 ? (
+              <div className="muted">No decisions recorded</div>
+            ) : (
+              <table className="neft-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Rationale</th>
+                    <th>Score</th>
+                    <th>Mastery</th>
+                    <th>Links</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {decisionHistory.map((entry) => {
+                    const auditStatus =
+                      entry.audit_chain_verified && entry.audit_signature_verified ? "✅ Verified" : "❌ Broken";
+                    const signatureStatus =
+                      entry.artifact_signature_verified === null || entry.artifact_signature_verified === undefined
+                        ? "—"
+                        : entry.artifact_signature_verified
+                          ? "✅ Verified"
+                          : "❌ Broken";
+                    const exportItem = exportsById.get(entry.decision_ref_id);
+                    return (
+                      <tr key={entry.id}>
+                        <td>{formatTimestamp(entry.decision_at)}</td>
+                        <td>{DECISION_TYPE_LABELS[entry.decision_type] ?? entry.decision_type}</td>
+                        <td>{entry.rationale ?? "—"}</td>
+                        <td>{formatScoreSummary(entry.score_snapshot ?? null)}</td>
+                        <td>{formatMasterySummary(entry.mastery_snapshot ?? null)}</td>
+                        <td>
+                          <div className="stack-inline">
+                            <CopyChip label="Audit event" value={entry.audit_event_id} />
+                            {exportItem ? (
                               <button
                                 type="button"
                                 className="neft-btn-secondary"
-                                onClick={() => void handleOpenExportRef(exportRef.id)}
+                                onClick={() => void handleOpenExportRef(exportItem.id)}
                               >
-                                Open export
+                                Export
                               </button>
-                              <CopyChip label="Export ID" value={exportRef.id} />
-                            </>
-                          )}
-                          {event.meta?.content_sha256 ? (
-                            <CopyChip label="SHA256" value={event.meta.content_sha256} />
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {chainLink ? (
-                      <details className="audit-advanced">
-                        <summary>Advanced</summary>
-                        <div className="audit-advanced__content">
-                          <HashCopy label="hash" value={chainLink.hash} />
-                          <HashCopy label="prev" value={chainLink.prev_hash} />
-                        </div>
-                      </details>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="stack-inline">
+                            <span>Audit: {auditStatus}</span>
+                            <span>Signature: {signatureStatus}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </section>
 

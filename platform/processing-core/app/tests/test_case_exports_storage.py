@@ -43,6 +43,10 @@ class FakeExportStorage:
         content, _ = self.objects[key]
         return {"ContentLength": len(content)}
 
+    def get_bytes(self, key: str) -> bytes:
+        content, _ = self.objects.get(key, (b"", ""))
+        return content
+
 
 @pytest.fixture(autouse=True)
 def _reset_fake_storage() -> None:
@@ -115,6 +119,7 @@ def test_create_export_redacts_payload_and_hashes_stably(db_session: Session, mo
         kind="EXPLAIN",
         case_id=case.id,
         payload=payload,
+        mastery_snapshot=None,
         actor=CaseEventActor(id=str(uuid4()), email="admin@neft.io"),
         request_id="req-1",
         trace_id="trace-1",
@@ -124,6 +129,7 @@ def test_create_export_redacts_payload_and_hashes_stably(db_session: Session, mo
         kind="EXPLAIN",
         case_id=case.id,
         payload=payload,
+        mastery_snapshot=None,
         actor=CaseEventActor(id=str(uuid4()), email="admin@neft.io"),
         request_id="req-2",
         trace_id="trace-2",
@@ -143,6 +149,7 @@ def test_create_export_emits_case_event(db_session: Session, monkeypatch: pytest
         kind="DIFF",
         case_id=case.id,
         payload={"diff": {"score": 1}},
+        mastery_snapshot=None,
         actor=CaseEventActor(id=str(uuid4()), email="ops@neft.io"),
         request_id="req-10",
         trace_id="trace-10",
@@ -170,6 +177,7 @@ def test_download_endpoint_returns_signed_url(
         kind="CASE",
         case_id=case.id,
         payload={"case": {"id": case.id}},
+        mastery_snapshot=None,
         actor=CaseEventActor(id=str(uuid4()), email="admin@neft.io"),
         request_id="req-20",
         trace_id="trace-20",

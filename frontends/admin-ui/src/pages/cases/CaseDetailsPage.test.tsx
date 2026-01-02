@@ -5,6 +5,8 @@ import React from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import CaseDetailsPage from "./CaseDetailsPage";
 import * as adminCasesApi from "../../api/adminCases";
+import * as adminExportsApi from "../../api/adminExports";
+import * as decisionMemoryApi from "../../api/decisionMemory";
 import * as masteryEvents from "../../mastery/events";
 
 vi.mock("../../api/adminCases", () => ({
@@ -13,6 +15,16 @@ vi.mock("../../api/adminCases", () => ({
   closeAdminCase: vi.fn(),
   updateAdminCaseStatus: vi.fn(),
   isNotAvailableError: vi.fn(() => false),
+}));
+
+vi.mock("../../api/adminExports", () => ({
+  listCaseExports: vi.fn(),
+  downloadCaseExport: vi.fn(),
+  verifyCaseExport: vi.fn(),
+}));
+
+vi.mock("../../api/decisionMemory", () => ({
+  listDecisionMemory: vi.fn(),
 }));
 
 vi.mock("../../mastery/events", () => ({
@@ -61,6 +73,8 @@ describe("CaseDetailsPage", () => {
       snapshots: [explainSnapshot],
     });
     (adminCasesApi.listCaseEvents as unknown as Mock).mockResolvedValue({ items: [] });
+    (adminExportsApi.listCaseExports as unknown as Mock).mockResolvedValue({ items: [] });
+    (decisionMemoryApi.listDecisionMemory as unknown as Mock).mockResolvedValue({ items: [] });
     (adminCasesApi.closeAdminCase as unknown as Mock).mockResolvedValue({
       ...baseCase,
       status: "CLOSED",
@@ -136,7 +150,7 @@ describe("CaseDetailsPage", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("Audit timeline")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Audit timeline" })).toBeInTheDocument());
     const timeline = screen.getByTestId("audit-timeline");
     expect(within(timeline).getByText("Status changed")).toBeInTheDocument();
     expect(within(timeline).getByText("status")).toBeInTheDocument();
@@ -158,7 +172,7 @@ describe("CaseDetailsPage", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("Audit timeline")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Audit timeline" })).toBeInTheDocument());
     const timeline = screen.getByTestId("audit-timeline");
     expect(within(timeline).getByText("Case created")).toBeInTheDocument();
   });

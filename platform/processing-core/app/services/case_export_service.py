@@ -12,9 +12,11 @@ from app.db.types import new_uuid_str
 from app.models.case_exports import CaseExport, CaseExportKind
 from app.models.cases import CaseEventType
 from app.services.audit_retention_service import compute_export_retention_until
+from app.services.audit_signing import AuditSignature, AuditSigningService
 from app.services.case_event_hashing import canonical_json
 from app.services.case_event_redaction import redact_deep
 from app.services.case_events_service import CaseEventActor, CaseEventArtifact, emit_case_event
+from app.services.decision_memory.records import _extract_score_snapshot, record_decision_memory
 from app.services.export_storage import ExportStorage
 
 logger = get_logger(__name__)
@@ -26,6 +28,16 @@ EXPORT_ARTIFACT_KIND = {
     CaseExportKind.DIFF: "diff_export",
     CaseExportKind.CASE: "case_export",
 }
+
+
+def _normalize_user_id(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+    return str(value)
 
 
 def _normalize_prefix(prefix: str) -> str:
@@ -54,6 +66,7 @@ def create_export(
     kind: Literal["EXPLAIN", "DIFF", "CASE"],
     case_id: UUID | str | None,
     payload: dict[str, Any],
+    mastery_snapshot: dict[str, Any] | None,
     actor: CaseEventActor | None,
     request_id: str | None,
     trace_id: str | None,
@@ -64,6 +77,8 @@ def create_export(
     redacted_payload = _redact_export(payload)
     content_bytes = _serialize_payload(redacted_payload)
     content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+    signing_service = AuditSigningService()
+    signature: AuditSignature | None = signing_service.sign(bytes.fromhex(content_sha256))
     object_key = _build_object_key(export_id, case_id=case_id, kind=export_kind, now=now)
 
     storage = ExportStorage()
@@ -78,16 +93,20 @@ def create_export(
             object_key=object_key,
             content_type="application/json",
             content_sha256=content_sha256,
+            artifact_signature=signature.signature if signature else None,
+            artifact_signature_alg=signature.alg if signature else None,
+            artifact_signing_key_id=signature.key_id if signature else None,
+            artifact_signed_at=signature.signed_at if signature else None,
             size_bytes=len(content_bytes),
             created_at=now,
-            created_by_user_id=actor.id if actor else None,
+            created_by_user_id=_normalize_user_id(actor.id) if actor else None,
             request_id=request_id,
             trace_id=trace_id,
             retention_until=retention_until,
         )
         db.add(export)
         if case_id:
-            emit_case_event(
+            event = emit_case_event(
                 db,
                 case_id=str(case_id),
                 event_type=CaseEventType.EXPORT_CREATED,
@@ -99,7 +118,26 @@ def create_export(
                     id=export_id,
                     url=None,
                 ),
-                extra_payload={"content_sha256": content_sha256},
+                extra_payload={
+                    "content_sha256": content_sha256,
+                    "artifact_signature": signature.signature if signature else None,
+                    "artifact_signature_alg": signature.alg if signature else None,
+                    "artifact_signing_key_id": signature.key_id if signature else None,
+                    "artifact_signed_at": signature.signed_at.isoformat() if signature else None,
+                },
+            )
+            record_decision_memory(
+                db,
+                case_id=str(case_id),
+                decision_type="action",
+                decision_ref_id=export_id,
+                decision_at=now,
+                decided_by_user_id=actor.id if actor else None,
+                context_snapshot=redacted_payload,
+                rationale="Export created",
+                score_snapshot=_extract_score_snapshot(payload),
+                mastery_snapshot=mastery_snapshot,
+                audit_event_id=event.id,
             )
         return export
     except Exception:

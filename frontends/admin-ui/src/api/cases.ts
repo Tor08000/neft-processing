@@ -70,6 +70,7 @@ export interface CaseCreatePayload {
   explain?: unknown | null;
   diff?: unknown | null;
   selected_actions?: { code: string; what_if?: unknown | null }[] | null;
+  mastery_snapshot?: Record<string, unknown> | null;
 }
 
 export interface CaseUpdatePayload {

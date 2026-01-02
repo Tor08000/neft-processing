@@ -103,6 +103,8 @@ class CaseCloseRequest(BaseModel):
 
     resolution_note: str | None = None
     resolution_code: str | None = None
+    score_snapshot: dict[str, Any] | None = None
+    mastery_snapshot: dict[str, Any] | None = None
 
 
 class CaseWithEventResponse(BaseModel):

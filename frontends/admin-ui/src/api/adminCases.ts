@@ -76,6 +76,8 @@ export type CaseDetailsResponse = {
 export type CaseClosePayload = {
   resolution_note: string;
   resolution_code?: string | null;
+  score_snapshot?: Record<string, unknown> | null;
+  mastery_snapshot?: Record<string, unknown> | null;
 };
 
 export type CaseEventsResponse = {

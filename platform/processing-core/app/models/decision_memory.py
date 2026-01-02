@@ -2,7 +2,20 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, Date, DateTime, Float, Index, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -51,6 +64,27 @@ class DecisionOutcome(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class DecisionMemoryRecord(Base):
+    __tablename__ = "decision_memory"
+    __table_args__ = (
+        Index("ix_decision_memory_case_at", "case_id", "decision_at"),
+        Index("ix_decision_memory_audit_event", "audit_event_id"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    case_id = Column(GUID(), nullable=True, index=True)
+    decision_type = Column(String(32), nullable=False)
+    decision_ref_id = Column(GUID(), nullable=False)
+    decision_at = Column(DateTime(timezone=True), nullable=False)
+    decided_by_user_id = Column(GUID(), nullable=True)
+    context_snapshot = Column(JSON, nullable=False)
+    rationale = Column(Text, nullable=True)
+    score_snapshot = Column(JSON, nullable=True)
+    mastery_snapshot = Column(JSON, nullable=True)
+    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class DecisionActionStatsDaily(Base):
     __tablename__ = "decision_action_stats_daily"
     __table_args__ = (
@@ -85,6 +119,7 @@ class DecisionActionStatsDaily(Base):
 __all__ = [
     "DecisionMemoryEntityType",
     "DecisionMemoryEffectLabel",
+    "DecisionMemoryRecord",
     "DecisionOutcome",
     "DecisionActionStatsDaily",
 ]

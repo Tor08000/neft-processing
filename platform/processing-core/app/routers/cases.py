@@ -114,6 +114,7 @@ def create_case_endpoint(
         explain=payload.explain,
         diff=payload.diff,
         selected_actions=payload.selected_actions,
+        mastery_snapshot=payload.mastery_snapshot,
         created_by=actor,
         request_id=request.headers.get("x-request-id"),
         trace_id=request.headers.get("x-trace-id"),
