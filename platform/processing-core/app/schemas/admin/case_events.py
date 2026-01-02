@@ -37,6 +37,7 @@ class CaseEventMeta(BaseModel):
     changes: list[CaseEventChange] | None = None
     reason: Any | None = None
     export_ref: CaseEventArtifact | None = None
+    content_sha256: str | None = None
 
 
 class CaseEventOut(BaseModel):

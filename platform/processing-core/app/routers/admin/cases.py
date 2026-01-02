@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.cases import Case, CaseEvent, CaseStatus
+from app.models.case_exports import CaseExport
+from app.schemas.admin.case_exports import CaseExportListResponse, CaseExportOut
 from app.schemas.admin.case_events import (
     CaseCloseRequest,
     CaseEventsResponse,
@@ -57,15 +59,17 @@ def _event_to_schema(event: CaseEvent) -> CaseEventOut:
     payload = event.payload_redacted or {}
     changes = payload.get("changes")
     export_ref = payload.get("artifact")
+    content_sha256 = payload.get("content_sha256")
     actor = None
     if event.actor_user_id or event.actor_email:
         actor = CaseEventActor(id=event.actor_user_id, email=event.actor_email)
     meta = None
-    if changes or payload.get("reason") is not None or export_ref:
+    if changes or payload.get("reason") is not None or export_ref or content_sha256:
         meta = CaseEventMeta(
             changes=[CaseEventChange.model_validate(item) for item in changes] if changes else None,
             reason=payload.get("reason"),
             export_ref=CaseEventArtifact.model_validate(export_ref) if export_ref else None,
+            content_sha256=content_sha256,
         )
     return CaseEventOut(
         id=event.id,
@@ -97,6 +101,20 @@ def _latest_case_event(db: Session, case_id: str) -> CaseEvent | None:
         .filter(CaseEvent.case_id == case_id)
         .order_by(CaseEvent.seq.desc())
         .first()
+    )
+
+
+def _export_to_schema(export: CaseExport) -> CaseExportOut:
+    return CaseExportOut(
+        id=str(export.id),
+        kind=export.kind,
+        case_id=str(export.case_id) if export.case_id else None,
+        content_type=export.content_type,
+        content_sha256=export.content_sha256,
+        size_bytes=export.size_bytes,
+        created_at=export.created_at,
+        deleted_at=export.deleted_at,
+        delete_reason=export.delete_reason,
     )
 
 
@@ -166,6 +184,21 @@ def update_case_status_endpoint(
     db.commit()
     db.refresh(updated)
     return _case_with_event(updated, _latest_case_event(db, case_id))
+
+
+@router.get("/{case_id}/exports", response_model=CaseExportListResponse)
+def list_case_exports_endpoint(
+    case_id: str,
+    db: Session = Depends(get_db),
+) -> CaseExportListResponse:
+    _get_case(db, case_id)
+    exports = (
+        db.query(CaseExport)
+        .filter(CaseExport.case_id == case_id)
+        .order_by(CaseExport.created_at.desc())
+        .all()
+    )
+    return CaseExportListResponse(items=[_export_to_schema(export) for export in exports])
 
 
 @router.post("/{case_id}/close", response_model=CaseWithEventResponse)

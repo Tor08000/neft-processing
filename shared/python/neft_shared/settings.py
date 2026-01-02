@@ -126,9 +126,14 @@ class Settings:
     }
     DOCUMENT_SERVICE_URL: str = os.getenv("DOCUMENT_SERVICE_URL", "http://document-service:8000")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+    S3_ENDPOINT: str = os.getenv("S3_ENDPOINT", os.getenv("S3_ENDPOINT_URL", "http://minio:9000"))
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", _DEFAULT_MINIO_PASSWORD)
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    S3_USE_SSL: bool = os.getenv("S3_USE_SSL", "false").lower() in {"1", "true", "yes"}
+    S3_BUCKET_EXPORTS: str = os.getenv("S3_BUCKET_EXPORTS", "case-exports")
+    S3_SIGNED_URL_TTL_SECONDS: int = int(os.getenv("S3_SIGNED_URL_TTL_SECONDS", "120"))
+    S3_EXPORTS_PREFIX: str = os.getenv("S3_EXPORTS_PREFIX", "exports/")
     LEGAL_GOST_VERIFY_ENABLED: bool = os.getenv("LEGAL_GOST_VERIFY_ENABLED", "false").lower() in {
         "1",
         "true",

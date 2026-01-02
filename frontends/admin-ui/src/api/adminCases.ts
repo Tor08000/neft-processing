@@ -55,6 +55,7 @@ export type CaseEvent = {
       id: string;
       url?: string | null;
     } | null;
+    content_sha256?: string | null;
     selected_actions_count?: number | null;
   } | null;
 };
@@ -227,14 +228,16 @@ const normalizeCaseEvent = (value: unknown, index: number): CaseEvent | null => 
   const changes = normalizeChanges(rawMeta?.changes);
   const exportRef = normalizeExportRef(rawMeta?.export_ref ?? rawMeta?.exportRef);
   const reason = normalizeString(rawMeta?.reason ?? value.note);
+  const contentSha = normalizeString(rawMeta?.content_sha256 ?? rawMeta?.contentSha256);
   const selectedActionsCount =
     typeof rawMeta?.selected_actions_count === "number" ? rawMeta.selected_actions_count : null;
   const meta =
-    changes || exportRef || reason || selectedActionsCount !== null
+    changes || exportRef || reason || contentSha || selectedActionsCount !== null
       ? {
           changes,
           reason,
           export_ref: exportRef,
+          content_sha256: contentSha ?? undefined,
           selected_actions_count: selectedActionsCount,
         }
       : null;

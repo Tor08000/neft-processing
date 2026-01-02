@@ -14,6 +14,7 @@ import {
   type CaseEventType,
   type CaseFieldChange,
 } from "../../api/adminCases";
+import { downloadCaseExport, listCaseExports, type CaseExportItem } from "../../api/adminExports";
 import { UnauthorizedError } from "../../api/client";
 import { computeExplainScore } from "../../gamification/score";
 import type { ExplainV2Response } from "../../types/explainV2";
@@ -277,6 +278,8 @@ export function CaseDetailsPage() {
   const [optimisticEvents, setOptimisticEvents] = useState<CaseEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEventsLoading, setIsEventsLoading] = useState(false);
+  const [exports, setExports] = useState<CaseExportItem[]>([]);
+  const [isExportsLoading, setIsExportsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
   const [notAvailable, setNotAvailable] = useState(false);
@@ -331,10 +334,25 @@ export function CaseDetailsPage() {
       .finally(() => setIsEventsLoading(false));
   }, [id]);
 
+  const loadExports = useCallback(() => {
+    if (!id) return;
+    setIsExportsLoading(true);
+    listCaseExports(id)
+      .then((data) => {
+        setExports(data.items ?? []);
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load exports", err);
+        setExports([]);
+      })
+      .finally(() => setIsExportsLoading(false));
+  }, [id]);
+
   useEffect(() => {
     loadDetails();
     loadEvents();
-  }, [loadDetails, loadEvents]);
+    loadExports();
+  }, [loadDetails, loadEvents, loadExports]);
 
   const snapshotsSorted = useMemo(() => sortSnapshots(payload?.snapshots), [payload?.snapshots]);
   const firstSnapshot = snapshotsSorted[0];
@@ -439,6 +457,30 @@ export function CaseDetailsPage() {
     void navigator.clipboard.writeText(window.location.href);
     showToast("success", "Link copied");
   }, [showToast]);
+
+  const handleDownloadExport = useCallback(
+    async (exportItem: CaseExportItem) => {
+      try {
+        const response = await downloadCaseExport(exportItem.id);
+        window.open(response.url, "_blank", "noopener,noreferrer");
+      } catch (err) {
+        showToast("error", (err as Error).message);
+      }
+    },
+    [showToast],
+  );
+
+  const handleOpenExportRef = useCallback(
+    async (exportId: string) => {
+      try {
+        const response = await downloadCaseExport(exportId);
+        window.open(response.url, "_blank", "noopener,noreferrer");
+      } catch (err) {
+        showToast("error", (err as Error).message);
+      }
+    },
+    [showToast],
+  );
 
   const handleMarkInProgress = async () => {
     if (!id || !payload) return;
@@ -696,6 +738,56 @@ export function CaseDetailsPage() {
       </section>
 
       <section className="card">
+        <div className="card__header">
+          <h3>Exports</h3>
+        </div>
+        {isExportsLoading ? (
+          <div className="muted">Loading exports...</div>
+        ) : exports.length === 0 ? (
+          <div className="muted">No exports recorded</div>
+        ) : (
+          <table className="neft-table">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Created</th>
+                <th>SHA256</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {exports.map((exportItem) => {
+                const isDeleted = Boolean(exportItem.deleted_at);
+                return (
+                  <tr key={exportItem.id}>
+                    <td>
+                      <span className="badge">{exportItem.kind}</span>
+                      {isDeleted ? <span className="pill pill--outline">Deleted</span> : null}
+                    </td>
+                    <td>{formatTimestamp(exportItem.created_at)}</td>
+                    <td title={exportItem.content_sha256}>{shortenHash(exportItem.content_sha256)}</td>
+                    <td>
+                      <div className="stack-inline">
+                        <button
+                          type="button"
+                          className="neft-btn-secondary"
+                          onClick={() => void handleDownloadExport(exportItem)}
+                          disabled={isDeleted}
+                        >
+                          Download
+                        </button>
+                        <CopyChip label="Export ID" value={exportItem.id} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card">
         <div className="audit-header">
           <div>
             <h3>Audit timeline</h3>
@@ -844,8 +936,20 @@ export function CaseDetailsPage() {
                               Open export
                             </a>
                           ) : (
-                            <CopyChip label="Export ID" value={exportRef.id} />
+                            <>
+                              <button
+                                type="button"
+                                className="neft-btn-secondary"
+                                onClick={() => void handleOpenExportRef(exportRef.id)}
+                              >
+                                Open export
+                              </button>
+                              <CopyChip label="Export ID" value={exportRef.id} />
+                            </>
                           )}
+                          {event.meta?.content_sha256 ? (
+                            <CopyChip label="SHA256" value={event.meta.content_sha256} />
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
