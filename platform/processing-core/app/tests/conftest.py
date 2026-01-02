@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from sqlalchemy.engine.url import make_url
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends
@@ -29,6 +30,8 @@ def _prepend_path(path: Path) -> None:
 for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
     _prepend_path(path)
 
+if os.getenv("DATABASE_URL_TEST"):
+    os.environ["DATABASE_URL"] = os.environ["DATABASE_URL_TEST"]
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
 os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -45,6 +48,19 @@ except Exception:
 
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
+
+
+def _log_database_url() -> None:
+    raw_url = os.getenv("DATABASE_URL") or ""
+    try:
+        parsed = make_url(raw_url)
+        safe_url = parsed._replace(password="***").render_as_string(hide_password=False)
+    except Exception:
+        safe_url = raw_url
+    print(f"pytest database url: {safe_url}")
+
+
+_log_database_url()
 
 
 @pytest.fixture(autouse=True)
