@@ -66,10 +66,11 @@ def list_legal_holds_endpoint(
 @router.get("/signing/keys", response_model=AuditSigningKeysResponse)
 def list_audit_signing_keys_endpoint(
     token: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
 ) -> AuditSigningKeysResponse:
     _ = token
     service = AuditSigningService()
-    keys = [AuditSigningKeyOut.model_validate(item) for item in service.list_keys()]
+    keys = [AuditSigningKeyOut.model_validate(item) for item in service.list_keys(db=db)]
     return AuditSigningKeysResponse(keys=keys)
 
 

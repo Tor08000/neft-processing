@@ -720,6 +720,13 @@ flowchart LR
 
 ---
 
+### 3.7.x Infra hardening status (AS-IS)
+
+* **AWS KMS audit/artifact signing:** ✅ реализовано через `AUDIT_SIGNING_MODE=aws_kms`, единый `AuditSigner`.
+* **Vault Transit audit/artifact signing:** ✅ реализовано через `AUDIT_SIGNING_MODE=vault_transit`.
+* **S3/MinIO Object Lock для экспортов:** ✅ управляется флагами `S3_OBJECT_LOCK_*`, purge учитывает `locked_until`.
+* **CI trust gates (migrations/WORM/verify/redaction):** ✅ добавлены быстрые проверки в отдельном workflow.
+
 ## 3.8 Readiness matrix (AS-IS)
 
 | Блок | Готовность | Комментарий |

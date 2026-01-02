@@ -56,7 +56,7 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 class _StubExportStorage:
-    def put_bytes(self, key: str, content: bytes, *, content_type: str) -> None:
+    def put_bytes(self, key: str, content: bytes, *, content_type: str, retain_until=None) -> None:
         return None
 
     def delete(self, key: str) -> None:

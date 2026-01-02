@@ -38,6 +38,7 @@ class CaseExport(Base):
     request_id = Column(String(128), nullable=True)
     trace_id = Column(String(128), nullable=True)
     retention_until = Column(DateTime(timezone=True), nullable=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     delete_reason = Column(Text, nullable=True)
 

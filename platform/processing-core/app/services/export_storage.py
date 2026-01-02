@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 try:
@@ -36,8 +37,26 @@ class ExportStorage:
             use_ssl=use_ssl,
         )
 
-    def put_bytes(self, key: str, content: bytes, *, content_type: str) -> None:
-        self._client.put_object(Bucket=self.bucket, Key=key, Body=content, ContentType=content_type)
+    def put_bytes(
+        self,
+        key: str,
+        content: bytes,
+        *,
+        content_type: str,
+        retain_until: datetime | None = None,
+    ) -> None:
+        params: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "Key": key,
+            "Body": content,
+            "ContentType": content_type,
+        }
+        if settings.S3_OBJECT_LOCK_ENABLED and retain_until:
+            params["ObjectLockMode"] = settings.S3_OBJECT_LOCK_MODE
+            params["ObjectLockRetainUntilDate"] = retain_until
+            if settings.S3_OBJECT_LOCK_LEGAL_HOLD:
+                params["ObjectLockLegalHoldStatus"] = "ON"
+        self._client.put_object(**params)
 
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self.bucket, Key=key)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
 
 from neft_shared.settings import get_settings
@@ -52,6 +53,12 @@ def purge_expired_exports(
         .order_by(CaseExport.retention_until.asc())
         .all()
     )
+    if settings.S3_OBJECT_LOCK_ENABLED:
+        exports = [
+            export
+            for export in exports
+            if export.locked_until is not None and export.locked_until < resolved_now
+        ]
 
     eligible: list[CaseExport] = []
     skipped_hold = 0
@@ -75,7 +82,18 @@ def purge_expired_exports(
     storage = ExportStorage()
     purged = 0
     for export in eligible:
-        storage.delete(export.object_key)
+        try:
+            storage.delete(export.object_key)
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code")
+            if error_code == "AccessDenied" and settings.S3_OBJECT_LOCK_ENABLED:
+                head = storage.head(export.object_key) or {}
+                retain_until = head.get("ObjectLockRetainUntilDate")
+                if retain_until:
+                    export.locked_until = retain_until
+                    db.add(export)
+                continue
+            raise
         export.deleted_at = resolved_now
         export.delete_reason = "retention"
         db.add(export)

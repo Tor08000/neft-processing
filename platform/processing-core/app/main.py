@@ -40,6 +40,7 @@ from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
+from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
@@ -151,6 +152,8 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str = "ok"
+    audit_signing: str | None = None
+    audit_signing_mode: str | None = None
 
 
 class CeleryPingResponse(BaseModel):
@@ -337,6 +340,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         db.close()
     register_shadow_hook()
+    signing_service = AuditSigningService()
+    signing_status = "ok"
+    if signing_service.required:
+        signing_status = "ok" if signing_service.self_check() else "fail"
+        if signing_status == "fail":
+            set_audit_signing_health("fail")
+            raise RuntimeError("Audit signing self-check failed")
+    set_audit_signing_health(signing_status)
     logger.info("core-api startup complete")
     yield
 
@@ -935,7 +946,12 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 @app.get("/health", response_model=HealthResponse)
 @app.get(f"{API_PREFIX_CORE}/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return HealthResponse(status="ok")
+    signing_service = AuditSigningService()
+    return HealthResponse(
+        status="ok",
+        audit_signing=get_audit_signing_health(),
+        audit_signing_mode=signing_service.mode,
+    )
 
 
 @app.get("/health/db", response_model=HealthResponse)
