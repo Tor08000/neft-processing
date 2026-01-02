@@ -12,6 +12,7 @@ from app.db.types import new_uuid_str
 from app.models.cases import Case, CaseEvent, CaseEventType
 from app.services.case_event_hashing import canonical_json, strip_redaction_hash
 from app.services.case_event_redaction import redact_for_audit
+from app.services.audit_signing import AuditSignature, AuditSigningError, AuditSigningService
 
 GENESIS_HASH = "GENESIS"
 
@@ -37,11 +38,20 @@ class CaseEventArtifact:
 
 
 @dataclass(frozen=True)
-class CaseEventIntegrityResult:
+class CaseEventChainIntegrityResult:
     verified: bool
+    count: int
     broken_index: int | None = None
     expected_hash: str | None = None
     actual_hash: str | None = None
+    tail_hash: str | None = None
+
+
+@dataclass(frozen=True)
+class CaseEventSignatureIntegrityResult:
+    verified: bool
+    broken_index: int | None = None
+    key_id: str | None = None
 
 
 def _lock_case(db: Session, case_id: str) -> None:
@@ -155,6 +165,12 @@ def emit_case_event(
         reason=reason,
     )
     event_hash = _compute_hash(prev_hash, payload_redacted)
+    signature: AuditSignature | None = None
+    signing_service = AuditSigningService()
+    try:
+        signature = signing_service.sign(bytes.fromhex(event_hash))
+    except AuditSigningError:
+        raise
     event = CaseEvent(
         id=event_id,
         case_id=case_id,
@@ -168,6 +184,10 @@ def emit_case_event(
         payload_redacted=payload_redacted,
         prev_hash=prev_hash,
         hash=event_hash,
+        signature=signature.signature if signature else None,
+        signature_alg=signature.alg if signature else None,
+        signing_key_id=signature.key_id if signature else None,
+        signed_at=signature.signed_at if signature else None,
     )
     db.add(event)
     return event
@@ -184,7 +204,7 @@ def list_case_events(db: Session, *, case_id: str, limit: int = 200, offset: int
     )
 
 
-def verify_case_event_chain(db: Session, *, case_id: str) -> CaseEventIntegrityResult:
+def verify_case_event_chain(db: Session, *, case_id: str) -> CaseEventChainIntegrityResult:
     events = (
         db.query(CaseEvent)
         .filter(CaseEvent.case_id == case_id)
@@ -196,11 +216,54 @@ def verify_case_event_chain(db: Session, *, case_id: str) -> CaseEventIntegrityR
         payload = event.payload_redacted or {}
         expected_hash = _compute_hash(prev_hash, payload)
         if event.prev_hash != prev_hash or event.hash != expected_hash:
-            return CaseEventIntegrityResult(
+            return CaseEventChainIntegrityResult(
                 verified=False,
+                count=len(events),
                 broken_index=index,
                 expected_hash=expected_hash,
                 actual_hash=event.hash,
+                tail_hash=event.hash,
             )
         prev_hash = event.hash
-    return CaseEventIntegrityResult(verified=True)
+    return CaseEventChainIntegrityResult(
+        verified=True,
+        count=len(events),
+        tail_hash=prev_hash if events else GENESIS_HASH,
+    )
+
+
+def verify_case_event_signatures(db: Session, *, case_id: str) -> CaseEventSignatureIntegrityResult:
+    events = (
+        db.query(CaseEvent)
+        .filter(CaseEvent.case_id == case_id)
+        .order_by(CaseEvent.seq.asc())
+        .all()
+    )
+    signing_service = AuditSigningService()
+    for index, event in enumerate(events):
+        if not event.signature or not event.signature_alg or not event.signing_key_id:
+            return CaseEventSignatureIntegrityResult(
+                verified=False,
+                broken_index=index,
+                key_id=event.signing_key_id,
+            )
+        try:
+            message = bytes.fromhex(event.hash)
+        except ValueError:
+            return CaseEventSignatureIntegrityResult(
+                verified=False,
+                broken_index=index,
+                key_id=event.signing_key_id,
+            )
+        if not signing_service.verify(
+            message=message,
+            signature_b64=event.signature,
+            alg=event.signature_alg,
+            key_id=event.signing_key_id,
+        ):
+            return CaseEventSignatureIntegrityResult(
+                verified=False,
+                broken_index=index,
+                key_id=event.signing_key_id,
+            )
+    return CaseEventSignatureIntegrityResult(verified=True)

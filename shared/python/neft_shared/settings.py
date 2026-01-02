@@ -57,6 +57,16 @@ class Settings:
     AUDIT_ATTACHMENT_RETENTION_DAYS: int = int(os.getenv("AUDIT_ATTACHMENT_RETENTION_DAYS", "365"))
     AUDIT_DEBUG_RETENTION_DAYS: int = int(os.getenv("AUDIT_DEBUG_RETENTION_DAYS", "30"))
     AUDIT_CACHE_RETENTION_DAYS: int = int(os.getenv("AUDIT_CACHE_RETENTION_DAYS", "7"))
+    AUDIT_SIGNING_MODE: str = os.getenv("AUDIT_SIGNING_MODE", "local")
+    AUDIT_SIGNING_REQUIRED: bool = os.getenv("AUDIT_SIGNING_REQUIRED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    AUDIT_SIGNING_ALG: str = os.getenv("AUDIT_SIGNING_ALG", "ed25519")
+    AUDIT_SIGNING_KEY_ID: str = os.getenv("AUDIT_SIGNING_KEY_ID", "local-dev-key-v1")
+    AUDIT_SIGNING_PRIVATE_KEY_B64: str = os.getenv("AUDIT_SIGNING_PRIVATE_KEY_B64", "")
+    AUDIT_SIGNING_PUBLIC_KEYS_JSON: str = os.getenv("AUDIT_SIGNING_PUBLIC_KEYS_JSON", "")
 
     # Billing & clearing configuration
     NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))

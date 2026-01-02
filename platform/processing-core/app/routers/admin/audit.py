@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.audit_retention import AuditLegalHoldScope
 from app.schemas.admin.audit_retention import AuditLegalHoldCreate, AuditLegalHoldOut
+from app.schemas.admin.audit_signing import AuditSigningKeyOut, AuditSigningKeysResponse
 from app.services.admin_auth import require_admin
 from app.services.audit_retention_service import create_legal_hold, disable_legal_hold, list_legal_holds
+from app.services.audit_signing import AuditSigningService
 
 router = APIRouter(prefix="/audit", tags=["admin-audit"])
 
@@ -58,6 +60,16 @@ def list_legal_holds_endpoint(
 ) -> list[AuditLegalHoldOut]:
     holds = list_legal_holds(db, case_id=case_id, active_only=active_only)
     return [AuditLegalHoldOut.model_validate(item) for item in holds]
+
+
+@router.get("/signing/keys", response_model=AuditSigningKeysResponse)
+def list_audit_signing_keys_endpoint(
+    token: dict = Depends(require_admin),
+) -> AuditSigningKeysResponse:
+    _ = token
+    service = AuditSigningService()
+    keys = [AuditSigningKeyOut.model_validate(item) for item in service.list_keys()]
+    return AuditSigningKeysResponse(keys=keys)
 
 
 __all__ = ["router"]

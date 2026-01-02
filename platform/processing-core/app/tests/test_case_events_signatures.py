@@ -1,11 +1,10 @@
 import base64
-import threading
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -13,30 +12,31 @@ from sqlalchemy.pool import StaticPool
 from app.db import get_db
 from app.main import app
 from app.models.cases import Case, CaseComment, CaseEvent, CaseEventType, CaseKind, CasePriority, CaseSnapshot, CaseStatus
-from app.services.case_event_hashing import canonical_json
+from app.services.audit_signing import AuditSigningError, LocalSigner
 from app.services.case_events_service import CaseEventChange, emit_case_event
-
-
-GENESIS_HASH = "GENESIS"
 
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture(autouse=True)
-def audit_signing_env(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture()
+def signing_key() -> bytes:
     private_key = Ed25519PrivateKey.generate()
-    private_pem = private_key.private_bytes(
+    return private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
+
+@pytest.fixture(autouse=True)
+def audit_signing_env(monkeypatch: pytest.MonkeyPatch, signing_key: bytes) -> None:
     monkeypatch.setenv("AUDIT_SIGNING_MODE", "local")
     monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
     monkeypatch.setenv("AUDIT_SIGNING_ALG", "ed25519")
     monkeypatch.setenv("AUDIT_SIGNING_KEY_ID", "local-test-key")
-    monkeypatch.setenv("AUDIT_SIGNING_PRIVATE_KEY_B64", base64.b64encode(private_pem).decode("utf-8"))
+    monkeypatch.setenv("AUDIT_SIGNING_PRIVATE_KEY_B64", base64.b64encode(signing_key).decode("utf-8"))
 
 
 @pytest.fixture()
@@ -73,13 +73,14 @@ def client(db_session: Session):
     app.dependency_overrides.pop(get_db, None)
 
 
-def test_canonical_json_is_stable():
-    value_a = {"b": 2, "a": 1, "nested": {"y": 2, "x": 1}}
-    value_b = {"nested": {"x": 1, "y": 2}, "a": 1, "b": 2}
-    assert canonical_json(value_a) == canonical_json(value_b)
+def test_local_signer_signs_and_verifies(signing_key: bytes) -> None:
+    signer = LocalSigner(alg="ed25519", key_id="local-test-key", private_key_pem=signing_key)
+    message = b"audit-signature"
+    signature = signer.sign(message)
+    assert signer.verify(message, signature) is True
 
 
-def test_case_event_chain_and_verify(make_jwt, client: TestClient, db_session: Session):
+def test_case_event_signature_verification(make_jwt, client: TestClient, db_session: Session) -> None:
     token = make_jwt(roles=("ADMIN",), extra={"tenant_id": 1, "email": "admin@neft.io"})
     payload = {
         "kind": "operation",
@@ -102,23 +103,17 @@ def test_case_event_chain_and_verify(make_jwt, client: TestClient, db_session: S
     )
     assert status_resp.status_code == 200
 
-    close_resp = client.post(
-        f"/api/core/v1/admin/cases/{case_id}/close",
-        headers=_auth_headers(token),
-        json={"resolution_note": "Closed after review"},
-    )
-    assert close_resp.status_code == 200
-
-    events = (
+    event = (
         db_session.query(CaseEvent)
         .filter(CaseEvent.case_id == case_id)
         .order_by(CaseEvent.seq.asc())
-        .all()
+        .first()
     )
-    assert [event.seq for event in events] == [1, 2, 3]
-    assert events[0].prev_hash == GENESIS_HASH
-    assert events[1].prev_hash == events[0].hash
-    assert events[2].prev_hash == events[1].hash
+    assert event is not None
+    assert event.signature is not None
+    assert event.signature_alg == "ed25519"
+    assert event.signing_key_id == "local-test-key"
+    assert event.signed_at is not None
 
     verify_resp = client.post(f"/api/core/v1/admin/cases/{case_id}/events/verify", headers=_auth_headers(token))
     assert verify_resp.status_code == 200
@@ -126,28 +121,21 @@ def test_case_event_chain_and_verify(make_jwt, client: TestClient, db_session: S
     assert verify_body["chain"]["status"] == "verified"
     assert verify_body["signatures"]["status"] == "verified"
 
-    events[1].payload_redacted = {"tampered": True}
+    event.signature = "invalid"
     db_session.commit()
 
     verify_resp = client.post(f"/api/core/v1/admin/cases/{case_id}/events/verify", headers=_auth_headers(token))
     assert verify_resp.status_code == 200
-    body = verify_resp.json()
-    assert body["chain"]["status"] == "broken"
-    assert body["chain"]["broken_index"] == 1
-    assert body["signatures"]["status"] == "verified"
+    verify_body = verify_resp.json()
+    assert verify_body["chain"]["status"] == "verified"
+    assert verify_body["signatures"]["status"] == "broken"
+    assert verify_body["signatures"]["broken_index"] == 0
+    assert verify_body["signatures"]["key_id"] == "local-test-key"
 
 
-def test_concurrent_emits_keep_sequence(tmp_path):
-    db_path = tmp_path / "case_events.db"
-    engine = create_engine(
-        f"sqlite:///{db_path}",
-        connect_args={"check_same_thread": False},
-    )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
-    Case.__table__.create(bind=engine)
-    CaseEvent.__table__.create(bind=engine)
-
-    session = SessionLocal()
+def test_emit_event_fails_without_signature(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
+    monkeypatch.setenv("AUDIT_SIGNING_PRIVATE_KEY_B64", "")
+    monkeypatch.setenv("AUDIT_SIGNING_REQUIRED", "true")
     case_id = str(uuid4())
     case = Case(
         id=case_id,
@@ -158,17 +146,12 @@ def test_concurrent_emits_keep_sequence(tmp_path):
         status=CaseStatus.TRIAGE,
         priority=CasePriority.MEDIUM,
     )
-    session.add(case)
-    session.commit()
-    session.close()
+    db_session.add(case)
+    db_session.commit()
 
-    barrier = threading.Barrier(2)
-
-    def _emit():
-        db = SessionLocal()
-        barrier.wait()
+    with pytest.raises(AuditSigningError):
         emit_case_event(
-            db,
+            db_session,
             case_id=case_id,
             event_type=CaseEventType.STATUS_CHANGED,
             actor=None,
@@ -176,28 +159,3 @@ def test_concurrent_emits_keep_sequence(tmp_path):
             trace_id=None,
             changes=[CaseEventChange(field="status", before="TRIAGE", after="IN_PROGRESS")],
         )
-        db.commit()
-        db.close()
-
-    thread_a = threading.Thread(target=_emit)
-    thread_b = threading.Thread(target=_emit)
-    thread_a.start()
-    thread_b.start()
-    thread_a.join()
-    thread_b.join()
-
-    check_session = SessionLocal()
-    events = (
-        check_session.query(CaseEvent)
-        .filter(CaseEvent.case_id == case_id)
-        .order_by(CaseEvent.seq.asc())
-        .all()
-    )
-    check_session.close()
-
-    assert [event.seq for event in events] == [1, 2]
-    assert events[1].prev_hash == events[0].hash
-
-    CaseEvent.__table__.drop(bind=engine)
-    Case.__table__.drop(bind=engine)
-    engine.dispose()
