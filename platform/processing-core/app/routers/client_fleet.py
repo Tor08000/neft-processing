@@ -26,8 +26,12 @@ from app.schemas.client_fleet import (
     FleetLimitOut,
     FleetLimitRevokeIn,
     FleetLimitSetIn,
+    FleetAlertIgnoreIn,
+    FleetAlertListResponse,
+    FleetAlertOut,
     FleetSpendSummaryOut,
     FleetSpendSummaryRow,
+    FleetSpendSummaryTotals,
     FleetTransactionListResponse,
     FleetTransactionOut,
     FleetTransactionsExportOut,
@@ -117,9 +121,13 @@ def _transaction_to_schema(tx) -> FleetTransactionOut:
         volume_liters=tx.volume_liters,
         category=tx.category,
         merchant_name=tx.merchant_name,
+        merchant_key=tx.merchant_key,
         station_id=tx.station_external_id,
         location=tx.location,
         external_ref=tx.external_ref,
+        provider_code=tx.provider_code,
+        provider_tx_id=tx.provider_tx_id,
+        limit_check_status=tx.limit_check_status.value if tx.limit_check_status else None,
         created_at=tx.created_at,
     )
 
@@ -471,6 +479,7 @@ def revoke_limit(
 def list_transactions(
     card_id: str | None = Query(None),
     group_id: str | None = Query(None),
+    merchant: str | None = Query(None),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
@@ -485,6 +494,7 @@ def list_transactions(
         principal=principal,
         card_id=card_id,
         group_id=group_id,
+        merchant=merchant,
         date_from=date_from,
         date_to=date_to,
         limit=limit,
@@ -520,7 +530,31 @@ def spend_summary(
     )
     return FleetSpendSummaryOut(
         group_by=group_by,
-        rows=[FleetSpendSummaryRow(key=row.key, amount=row.amount) for row in rows],
+        totals=FleetSpendSummaryTotals(amount=rows.totals.amount, volume_liters=rows.totals.volume_liters),
+        rows=[
+            FleetSpendSummaryRow(
+                key=row.key,
+                amount=row.amount,
+                volume_liters=row.volume_liters,
+            )
+            for row in rows.rows
+        ],
+        top_merchants=[
+            FleetSpendSummaryRow(
+                key=row.key,
+                amount=row.amount,
+                volume_liters=row.volume_liters,
+            )
+            for row in rows.top_merchants
+        ],
+        top_categories=[
+            FleetSpendSummaryRow(
+                key=row.key,
+                amount=row.amount,
+                volume_liters=row.volume_liters,
+            )
+            for row in rows.top_categories
+        ],
     )
 
 
@@ -532,23 +566,143 @@ def spend_summary(
 def export_transactions(
     card_id: str | None = Query(None),
     group_id: str | None = Query(None),
+    summary_group_by: str | None = Query(None),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
     db: Session = Depends(get_db),
 ) -> FleetTransactionsExportOut:
     client_id = _ensure_client_context(principal)
-    export_id, url, expires_in = fleet_service.export_transactions(
+    export_id, url, expires_in, metadata = fleet_service.export_transactions(
         db,
         client_id=client_id,
         principal=principal,
         card_id=card_id,
         group_id=group_id,
+        summary_group_by=summary_group_by,
         date_from=date_from,
         date_to=date_to,
     )
     db.commit()
-    return FleetTransactionsExportOut(export_id=export_id, url=url, expires_in=expires_in)
+    return FleetTransactionsExportOut(
+        export_id=export_id,
+        url=url,
+        expires_in=expires_in,
+        content_sha256=metadata.get("content_sha256"),
+        artifact_signature=metadata.get("artifact_signature"),
+        artifact_signature_alg=metadata.get("artifact_signature_alg"),
+        artifact_signing_key_id=metadata.get("artifact_signing_key_id"),
+    )
+
+
+@router.get(
+    "/alerts",
+    response_model=FleetAlertListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def list_alerts(
+    status: str | None = Query(None),
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetAlertListResponse:
+    client_id = _ensure_client_context(principal)
+    alerts = fleet_service.list_alerts(db, client_id=client_id, principal=principal, status=status)
+    return FleetAlertListResponse(
+        items=[
+            FleetAlertOut(
+                id=str(alert.id),
+                status=alert.status,
+                scope_type=str(alert.scope_type),
+                scope_id=str(alert.scope_id),
+                period=alert.period,
+                breach_type=str(alert.breach_type),
+                threshold=alert.threshold,
+                observed=alert.observed,
+                delta=alert.delta,
+                occurred_at=alert.occurred_at,
+                tx_id=str(alert.tx_id) if alert.tx_id else None,
+                limit_id=str(alert.limit_id),
+            )
+            for alert in alerts
+        ]
+    )
+
+
+@router.post(
+    "/alerts/{alert_id}/ack",
+    response_model=FleetAlertOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def ack_alert(
+    alert_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetAlertOut:
+    request_id, trace_id = _request_ids(request)
+    alert = fleet_service.update_alert_status(
+        db,
+        alert_id=alert_id,
+        status="ACKED",
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        reason=None,
+    )
+    db.commit()
+    return FleetAlertOut(
+        id=str(alert.id),
+        status=alert.status,
+        scope_type=str(alert.scope_type),
+        scope_id=str(alert.scope_id),
+        period=alert.period,
+        breach_type=str(alert.breach_type),
+        threshold=alert.threshold,
+        observed=alert.observed,
+        delta=alert.delta,
+        occurred_at=alert.occurred_at,
+        tx_id=str(alert.tx_id) if alert.tx_id else None,
+        limit_id=str(alert.limit_id),
+    )
+
+
+@router.post(
+    "/alerts/{alert_id}/ignore",
+    response_model=FleetAlertOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def ignore_alert(
+    alert_id: str,
+    payload: FleetAlertIgnoreIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetAlertOut:
+    request_id, trace_id = _request_ids(request)
+    alert = fleet_service.update_alert_status(
+        db,
+        alert_id=alert_id,
+        status="IGNORED",
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        reason=payload.reason,
+    )
+    db.commit()
+    return FleetAlertOut(
+        id=str(alert.id),
+        status=alert.status,
+        scope_type=str(alert.scope_type),
+        scope_id=str(alert.scope_id),
+        period=alert.period,
+        breach_type=str(alert.breach_type),
+        threshold=alert.threshold,
+        observed=alert.observed,
+        delta=alert.delta,
+        occurred_at=alert.occurred_at,
+        tx_id=str(alert.tx_id) if alert.tx_id else None,
+        limit_id=str(alert.limit_id),
+    )
 
 
 @router.get(

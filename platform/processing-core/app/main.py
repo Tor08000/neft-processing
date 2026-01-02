@@ -38,6 +38,7 @@ from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
+from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
 from app.services.limits import (
@@ -784,6 +785,22 @@ def _cases_metrics() -> list[str]:
     ]
 
 
+
+def _fleet_metrics() -> list[str]:
+    lines: list[str] = []
+    if fleet_metrics.ingest_jobs_total:
+        for (status, provider), count in fleet_metrics.ingest_jobs_total.items():
+            lines.append(f'core_api_fleet_ingest_jobs_total{{status="{status}",provider="{provider}"}} {count}')
+    if fleet_metrics.ingest_items_total:
+        for result, count in fleet_metrics.ingest_items_total.items():
+            lines.append(f'core_api_fleet_ingest_items_total{{result="{result}"}} {count}')
+    if fleet_metrics.limit_breaches_total:
+        for (breach_type, scope), count in fleet_metrics.limit_breaches_total.items():
+            lines.append(f'core_api_fleet_limit_breaches_total{{type="{breach_type}",scope="{scope}"}} {count}')
+    lines.append(f"core_api_fleet_transactions_total {fleet_metrics.transactions_total}")
+    lines.append(f"core_api_fleet_export_requests_total {fleet_metrics.export_requests_total}")
+    return lines
+
 def _accounting_export_metrics() -> list[str]:
     return [
         "# HELP core_api_accounting_export_overdue_total Accounting export batches overdue for generation.",
@@ -875,6 +892,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_audit_metrics())
     lines.extend(_cases_metrics())
     lines.extend(_accounting_export_metrics())
+    lines.extend(_fleet_metrics())
     lines.extend(_bi_metrics())
     lines.extend(_reconciliation_metrics())
     return "\n".join(lines) + "\n"

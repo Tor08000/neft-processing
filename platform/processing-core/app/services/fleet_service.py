@@ -24,6 +24,8 @@ from app.models.fuel import (
     FuelCardGroupStatus,
     FuelCardStatus,
     FuelLimit,
+    FuelLimitBreach,
+    FuelLimitBreachStatus,
     FuelLimitPeriod,
     FuelLimitScopeType,
     FuelLimitType,
@@ -39,6 +41,7 @@ from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.case_export_service import create_export
 from app.services.decision_memory.records import record_decision_memory
 from app.services.export_storage import ExportStorage
+from app.services.fleet_metrics import metrics as fleet_metrics
 from neft_shared.settings import get_settings
 
 settings = get_settings()
@@ -52,6 +55,22 @@ class FleetServiceError(Exception):
 class SpendSummaryRow:
     key: str
     amount: Decimal
+    volume_liters: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class SpendSummaryTotals:
+    amount: Decimal
+    volume_liters: Decimal
+
+
+@dataclass(frozen=True)
+class SpendSummaryResult:
+    group_by: str
+    totals: SpendSummaryTotals
+    rows: list[SpendSummaryRow]
+    top_merchants: list[SpendSummaryRow]
+    top_categories: list[SpendSummaryRow]
 
 
 def _now() -> datetime:
@@ -964,6 +983,7 @@ def list_transactions(
     principal: Principal,
     card_id: str | None = None,
     group_id: str | None = None,
+    merchant: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     limit: int = 50,
@@ -991,6 +1011,14 @@ def list_transactions(
         if not accessible_ids:
             return []
         query = query.filter(FuelTransaction.card_id.in_(accessible_ids))
+    if merchant:
+        merchant_value = merchant.lower()
+        query = query.filter(
+            or_(
+                func.lower(FuelTransaction.merchant_key).contains(merchant_value),
+                func.lower(FuelTransaction.merchant_name).contains(merchant_value),
+            )
+        )
     if date_from:
         query = query.filter(FuelTransaction.occurred_at >= date_from)
     if date_to:
@@ -1013,7 +1041,7 @@ def spend_summary(
     group_id: str | None,
     date_from: datetime | None,
     date_to: datetime | None,
-) -> list[SpendSummaryRow]:
+) -> SpendSummaryResult:
     _ensure_client_access(principal, client_id)
     query = db.query(FuelTransaction).filter(FuelTransaction.client_id == client_id)
     if card_id:
@@ -1039,21 +1067,93 @@ def spend_summary(
         group_expr = FuelTransaction.category
     elif group_by == "card":
         group_expr = FuelTransaction.card_id
+    elif group_by == "merchant":
+        group_expr = FuelTransaction.merchant_key
+    elif group_by == "group":
+        query = query.join(
+            FuelCardGroupMember,
+            and_(
+                FuelCardGroupMember.card_id == FuelTransaction.card_id,
+                FuelCardGroupMember.removed_at.is_(None),
+            ),
+        )
+        group_expr = FuelCardGroupMember.group_id
     else:
         group_expr = func.date(FuelTransaction.occurred_at)
     rows = (
-        query.with_entities(group_expr, func.coalesce(func.sum(FuelTransaction.amount), 0))
+        query.with_entities(
+            group_expr,
+            func.coalesce(func.sum(FuelTransaction.amount), 0),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0),
+        )
         .group_by(group_expr)
         .order_by(group_expr)
         .all()
     )
-    return [
+    totals_amount, totals_volume = query.with_entities(
+        func.coalesce(func.sum(FuelTransaction.amount), 0),
+        func.coalesce(func.sum(FuelTransaction.volume_liters), 0),
+    ).one()
+    rows_out = [
         SpendSummaryRow(
             key=str(key),
             amount=Decimal(str(amount)).quantize(Decimal("0.01")),
+            volume_liters=Decimal(str(volume)).quantize(Decimal("0.01"))
+            if volume is not None
+            else None,
         )
-        for key, amount in rows
+        for key, amount, volume in rows
     ]
+    top_merchants = (
+        query.with_entities(
+            FuelTransaction.merchant_key,
+            func.coalesce(func.sum(FuelTransaction.amount), 0),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0),
+        )
+        .group_by(FuelTransaction.merchant_key)
+        .order_by(func.coalesce(func.sum(FuelTransaction.amount), 0).desc())
+        .limit(5)
+        .all()
+    )
+    top_categories = (
+        query.with_entities(
+            FuelTransaction.category,
+            func.coalesce(func.sum(FuelTransaction.amount), 0),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0),
+        )
+        .group_by(FuelTransaction.category)
+        .order_by(func.coalesce(func.sum(FuelTransaction.amount), 0).desc())
+        .limit(5)
+        .all()
+    )
+    return SpendSummaryResult(
+        group_by=group_by,
+        totals=SpendSummaryTotals(
+            amount=Decimal(str(totals_amount)).quantize(Decimal("0.01")),
+            volume_liters=Decimal(str(totals_volume)).quantize(Decimal("0.01")),
+        ),
+        rows=rows_out,
+        top_merchants=[
+            SpendSummaryRow(
+                key=str(key),
+                amount=Decimal(str(amount)).quantize(Decimal("0.01")),
+                volume_liters=Decimal(str(volume)).quantize(Decimal("0.01"))
+                if volume is not None
+                else None,
+            )
+            for key, amount, volume in top_merchants
+        ],
+        top_categories=[
+            SpendSummaryRow(
+                key=str(key),
+                amount=Decimal(str(amount)).quantize(Decimal("0.01")),
+                volume_liters=Decimal(str(volume)).quantize(Decimal("0.01"))
+                if volume is not None
+                else None,
+            )
+            for key, amount, volume in top_categories
+        ],
+    )
 
 
 def export_transactions(
@@ -1063,39 +1163,75 @@ def export_transactions(
     principal: Principal,
     card_id: str | None,
     group_id: str | None,
+    summary_group_by: str | None,
     date_from: datetime | None,
     date_to: datetime | None,
-) -> tuple[str, str, int]:
-    transactions = list_transactions(
-        db,
-        client_id=client_id,
-        principal=principal,
-        card_id=card_id,
-        group_id=group_id,
-        date_from=date_from,
-        date_to=date_to,
-        limit=5000,
-        offset=0,
-    )
-    payload = {
-        "client_id": client_id,
-        "transactions": [
-            {
-                "id": str(tx.id),
-                "card_id": str(tx.card_id),
-                "occurred_at": tx.occurred_at.isoformat() if tx.occurred_at else None,
-                "amount": str(tx.amount) if tx.amount is not None else None,
-                "currency": tx.currency,
-                "volume_liters": str(tx.volume_liters) if tx.volume_liters is not None else None,
-                "category": tx.category,
-                "merchant_name": tx.merchant_name,
-                "station_id": tx.station_external_id,
-                "location": tx.location,
-                "external_ref": tx.external_ref,
-            }
-            for tx in transactions
-        ],
-    }
+) -> tuple[str, str, int, dict[str, Any]]:
+    payload: dict[str, Any]
+    if summary_group_by:
+        summary = spend_summary(
+            db,
+            client_id=client_id,
+            principal=principal,
+            group_by=summary_group_by,
+            card_id=card_id,
+            group_id=group_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        payload = {
+            "client_id": client_id,
+            "summary": {
+                "group_by": summary.group_by,
+                "totals": {
+                    "amount": str(summary.totals.amount),
+                    "volume_liters": str(summary.totals.volume_liters),
+                },
+                "rows": [
+                    {"key": row.key, "amount": str(row.amount), "volume_liters": str(row.volume_liters or 0)}
+                    for row in summary.rows
+                ],
+                "top_merchants": [
+                    {"key": row.key, "amount": str(row.amount), "volume_liters": str(row.volume_liters or 0)}
+                    for row in summary.top_merchants
+                ],
+                "top_categories": [
+                    {"key": row.key, "amount": str(row.amount), "volume_liters": str(row.volume_liters or 0)}
+                    for row in summary.top_categories
+                ],
+            },
+        }
+    else:
+        transactions = list_transactions(
+            db,
+            client_id=client_id,
+            principal=principal,
+            card_id=card_id,
+            group_id=group_id,
+            date_from=date_from,
+            date_to=date_to,
+            limit=5000,
+            offset=0,
+        )
+        payload = {
+            "client_id": client_id,
+            "transactions": [
+                {
+                    "id": str(tx.id),
+                    "card_id": str(tx.card_id),
+                    "occurred_at": tx.occurred_at.isoformat() if tx.occurred_at else None,
+                    "amount": str(tx.amount) if tx.amount is not None else None,
+                    "currency": tx.currency,
+                    "volume_liters": str(tx.volume_liters) if tx.volume_liters is not None else None,
+                    "category": tx.category,
+                    "merchant_name": tx.merchant_name,
+                    "station_id": tx.station_external_id,
+                    "location": tx.location,
+                    "external_ref": tx.external_ref,
+                }
+                for tx in transactions
+            ],
+        }
     case = _get_or_create_fleet_case(
         db,
         client_id=client_id,
@@ -1116,11 +1252,67 @@ def export_transactions(
     )
     storage = ExportStorage()
     url = storage.presign_get(export.object_key, ttl_seconds=settings.S3_SIGNED_URL_TTL_SECONDS)
-    return str(export.id), url, settings.S3_SIGNED_URL_TTL_SECONDS
+    fleet_metrics.mark_export_request()
+    metadata = {
+        "content_sha256": export.content_sha256,
+        "artifact_signature": export.artifact_signature,
+        "artifact_signature_alg": export.artifact_signature_alg,
+        "artifact_signing_key_id": export.artifact_signing_key_id,
+    }
+    return str(export.id), url, settings.S3_SIGNED_URL_TTL_SECONDS, metadata
+
+
+def list_alerts(
+    db: Session,
+    *,
+    client_id: str,
+    principal: Principal,
+    status: str | None,
+) -> list[FuelLimitBreach]:
+    _ensure_client_access(principal, client_id)
+    query = db.query(FuelLimitBreach).filter(FuelLimitBreach.client_id == client_id)
+    if status:
+        try:
+            normalized = FuelLimitBreachStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid_status")
+        query = query.filter(FuelLimitBreach.status == normalized)
+    return query.order_by(FuelLimitBreach.occurred_at.desc()).all()
+
+
+def update_alert_status(
+    db: Session,
+    *,
+    alert_id: str,
+    status: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+    reason: str | None,
+) -> FuelLimitBreach:
+    alert = db.query(FuelLimitBreach).filter(FuelLimitBreach.id == alert_id).one_or_none()
+    if not alert:
+        raise HTTPException(status_code=404, detail="alert_not_found")
+    _ensure_client_access(principal, alert.client_id)
+    if status not in {FuelLimitBreachStatus.ACKED.value, FuelLimitBreachStatus.IGNORED.value}:
+        raise HTTPException(status_code=400, detail="invalid_status")
+    alert.status = FuelLimitBreachStatus(status)
+    alert.audit_event_id = _emit_event(
+        db,
+        client_id=alert.client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_ALERT_STATUS_UPDATED,
+        payload={"alert_id": str(alert.id), "status": status, "reason": reason},
+    )
+    return alert
 
 
 __all__ = [
+    "SpendSummaryResult",
     "SpendSummaryRow",
+    "SpendSummaryTotals",
     "add_card_to_group",
     "create_card",
     "create_group",
@@ -1134,6 +1326,7 @@ __all__ = [
     "list_group_access",
     "list_groups",
     "list_limits",
+    "list_alerts",
     "list_transactions",
     "remove_card_from_group",
     "revoke_group_access",
@@ -1141,6 +1334,7 @@ __all__ = [
     "set_card_status",
     "set_limit",
     "spend_summary",
+    "update_alert_status",
     "invite_employee",
     "require_group_role",
 ]
