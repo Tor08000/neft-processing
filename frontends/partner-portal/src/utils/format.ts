@@ -1,8 +1,8 @@
-export const formatCurrency = (value: number | null | undefined): string => {
+export const formatCurrency = (value: number | null | undefined, currency = "RUB"): string => {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
-  return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(value);
+  return new Intl.NumberFormat("ru-RU", { style: "currency", currency }).format(value);
 };
 
 export const formatNumber = (value: number | null | undefined): string => {

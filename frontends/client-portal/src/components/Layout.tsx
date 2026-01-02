@@ -54,6 +54,8 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
       ]
     : [
         { to: "/dashboard", label: t("nav.dashboard"), icon: <LayoutDashboard size={18} /> },
+        { to: "/invoices", label: t("nav.invoices"), icon: <FileText size={18} /> },
+        { to: "/contracts", label: t("nav.contracts"), icon: <ClipboardCheck size={18} /> },
         { to: "/subscription", label: t("nav.subscription"), icon: <LayoutDashboard size={18} /> },
         { to: "/analytics", label: t("nav.analytics"), icon: <LineChart size={18} /> },
         {

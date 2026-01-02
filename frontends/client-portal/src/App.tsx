@@ -14,6 +14,8 @@ import { BalancesPage } from "./pages/BalancesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
 import { ClientInvoiceDetailsPage } from "./pages/ClientInvoiceDetailsPage";
+import { ClientContractsPage } from "./pages/ClientContractsPage";
+import { ClientContractDetailsPage } from "./pages/ClientContractDetailsPage";
 import { FinanceExportsPage } from "./pages/FinanceExportsPage";
 import { FinanceExportDetailsPage } from "./pages/FinanceExportDetailsPage";
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
@@ -98,6 +100,10 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/actions" element={<ActionsPage />} />
                 <Route path="/cards" element={<ClientCardsPage />} />
                 <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
+                <Route path="/invoices" element={<ClientInvoicesPage />} />
+                <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
+                <Route path="/contracts" element={<ClientContractsPage />} />
+                <Route path="/contracts/:id" element={<ClientContractDetailsPage />} />
                 <Route path="/finance/invoices" element={<ClientInvoicesPage />} />
                 <Route path="/finance/invoices/:id" element={<ClientInvoiceDetailsPage />} />
                 <Route path="/finance/invoices/:id/messages" element={<ClientInvoiceDetailsPage />} />

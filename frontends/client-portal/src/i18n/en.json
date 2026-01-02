@@ -9,6 +9,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "invoices": "Invoices",
+    "contracts": "Contracts",
     "operations": "Operations",
     "explainInsights": "Explain Insights",
     "orders": "Orders",

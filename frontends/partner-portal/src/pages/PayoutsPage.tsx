@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchSettlements, type SettlementListItem } from "../api/partner";
+import { fetchPartnerSettlements } from "../api/portal";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
-import { formatCurrency, formatDate, formatNumber } from "../utils/format";
+import { formatCurrency, formatDate } from "../utils/format";
+import type { PartnerSettlementSummary } from "../types/portal";
+import { ErrorState, LoadingState } from "../components/states";
 
 export function PayoutsPage() {
   const { user } = useAuth();
-  const [settlements, setSettlements] = useState<SettlementListItem[]>([]);
+  const [settlements, setSettlements] = useState<PartnerSettlementSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +17,7 @@ export function PayoutsPage() {
     let active = true;
     if (!user) return;
     setIsLoading(true);
-    fetchSettlements(user.token)
+    fetchPartnerSettlements(user)
       .then((data) => {
         if (active) {
           setSettlements(data.items ?? []);
@@ -47,14 +49,9 @@ export function PayoutsPage() {
           </Link>
         </div>
         {isLoading ? (
-          <div className="skeleton-stack" aria-busy="true">
-            <div className="skeleton-line" />
-            <div className="skeleton-line" />
-          </div>
+          <LoadingState />
         ) : error ? (
-          <div className="error" role="alert">
-            {error}
-          </div>
+          <ErrorState description={error} />
         ) : settlements.length === 0 ? (
           <div className="empty-state">
             <strong>Выплаты не найдены</strong>
@@ -66,26 +63,28 @@ export function PayoutsPage() {
               <tr>
                 <th>Период</th>
                 <th>Gross</th>
+                <th>Fees</th>
+                <th>Refunds</th>
                 <th>Net</th>
                 <th>Статус</th>
-                <th>Операции</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {settlements.map((settlement) => (
-                <tr key={settlement.id}>
+                <tr key={settlement.settlement_ref}>
                   <td>
-                    {formatDate(settlement.periodStart)} — {formatDate(settlement.periodEnd)}
+                    {formatDate(settlement.period_start)} — {formatDate(settlement.period_end)}
                   </td>
-                  <td>{formatCurrency(settlement.grossAmount)}</td>
-                  <td>{formatCurrency(settlement.netAmount)}</td>
+                  <td>{formatCurrency(settlement.gross, settlement.currency)}</td>
+                  <td>{formatCurrency(settlement.fees, settlement.currency)}</td>
+                  <td>{formatCurrency(settlement.refunds, settlement.currency)}</td>
+                  <td>{formatCurrency(settlement.net_amount, settlement.currency)}</td>
                   <td>
                     <StatusBadge status={settlement.status} />
                   </td>
-                  <td>{formatNumber(settlement.transactionsCount ?? null)}</td>
                   <td>
-                    <Link className="ghost" to={`/payouts/${settlement.id}`}>
+                    <Link className="ghost" to={`/payouts/${settlement.settlement_ref}`}>
                       details
                     </Link>
                   </td>

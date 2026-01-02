@@ -15,6 +15,8 @@ const toneMap: Record<string, StatusBadgeProps["tone"]> = {
   confirmed: "success",
   confirmed_by_partner: "success",
   approved: "success",
+  calculated: "pending",
+  paid: "success",
   signed: "success",
   ok: "success",
   sent: "pending",

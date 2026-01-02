@@ -1,8 +1,8 @@
-import { AUTH_API_BASE, CORE_API_BASE } from "./base";
+import { AUTH_API_BASE, CORE_API_BASE, CORE_ROOT_API_BASE } from "./base";
 
 export { AUTH_API_BASE, CORE_API_BASE };
 
-type ApiBase = "core" | "auth";
+type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
@@ -77,7 +77,7 @@ export async function request<T>(
   }
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
-  const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
+  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const response = await fetch(`${apiBase}${path}`, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
@@ -126,7 +126,7 @@ export async function requestWithMeta<T>(
   }
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
-  const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
+  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const response = await fetch(`${apiBase}${path}`, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
@@ -170,7 +170,7 @@ export async function requestFormData<T>(
   }
 
   const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
-  const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
+  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const response = await fetch(`${apiBase}${path}`, { method: "POST", body: data, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 

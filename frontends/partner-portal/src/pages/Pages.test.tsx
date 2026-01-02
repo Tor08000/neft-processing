@@ -14,6 +14,18 @@ const session: AuthSession = {
 };
 
 const mockFetch = (url: string) => {
+  if (url.includes("/partner/dashboard")) {
+    return new Response(
+      JSON.stringify({
+        active_contracts: 2,
+        current_settlement_period: "2024-03-01 — 2024-03-31",
+        upcoming_payout: 120000,
+        sla_score: null,
+        sla: { status: "OK", violations: 0 },
+      }),
+      { status: 200 },
+    );
+  }
   if (url.includes("/partner/prices/versions/") && url.includes("/items")) {
     return new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 });
   }
@@ -95,16 +107,17 @@ const mockFetch = (url: string) => {
   if (url.includes("/partner/settlements/") && !url.endsWith("/settlements")) {
     return new Response(
       JSON.stringify({
-        id: "set-1",
-        periodStart: new Date().toISOString(),
-        periodEnd: new Date().toISOString(),
-        grossAmount: 10000,
-        netAmount: 9000,
-        status: "sent",
-        breakdowns: [],
-        commissions: [],
-        payoutBatches: [],
-        documents: [],
+        settlement_ref: "set-1",
+        period_start: new Date().toISOString(),
+        period_end: new Date().toISOString(),
+        gross: 10000,
+        fees: 500,
+        refunds: 500,
+        net_amount: 9000,
+        status: "SENT",
+        currency: "RUB",
+        items_summary: [],
+        payout_status: "SENT",
       }),
       { status: 200 },
     );

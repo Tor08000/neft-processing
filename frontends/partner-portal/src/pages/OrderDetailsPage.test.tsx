@@ -91,16 +91,17 @@ const mockFetch = (url: string) => {
       JSON.stringify({
         items: [
           {
-            id: "set-1",
-            status: "sent",
-            periodStart: new Date().toISOString(),
-            periodEnd: new Date().toISOString(),
-            payoutBatchId: "batch-1",
+            settlement_ref: "set-1",
+            status: "SENT",
+            period_start: new Date().toISOString(),
+            period_end: new Date().toISOString(),
+            gross: 1000,
+            fees: 100,
+            refunds: 50,
+            net_amount: 850,
+            currency: "RUB",
           },
         ],
-        page: 1,
-        pageSize: 10,
-        total: 1,
       }),
       { status: 200 },
     );

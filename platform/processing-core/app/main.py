@@ -23,6 +23,7 @@ from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
+from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
 from app.routers.subscriptions_v1 import router as subscriptions_router
@@ -397,6 +398,10 @@ app.include_router(client_router)
 app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+app.include_router(portal_client_router, prefix=LEGACY_API_PREFIX)
+app.include_router(portal_client_router, prefix=API_PREFIX_CORE)
+app.include_router(portal_partner_router, prefix=LEGACY_API_PREFIX)
+app.include_router(portal_partner_router, prefix=API_PREFIX_CORE)
 app.include_router(client_documents_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
