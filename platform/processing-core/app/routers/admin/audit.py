@@ -10,8 +10,9 @@ from app.schemas.admin.audit_signing import AuditSigningKeyOut, AuditSigningKeys
 from app.services.admin_auth import require_admin
 from app.services.audit_retention_service import create_legal_hold, disable_legal_hold, list_legal_holds
 from app.services.audit_signing import AuditSigningService
+from app.security.rbac.guard import require_permission
 
-router = APIRouter(prefix="/audit", tags=["admin-audit"])
+router = APIRouter(prefix="/audit", tags=["admin-audit"], dependencies=[Depends(require_permission("admin:audit:*"))])
 
 
 @router.post("/holds", response_model=AuditLegalHoldOut)

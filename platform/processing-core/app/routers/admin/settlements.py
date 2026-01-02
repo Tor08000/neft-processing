@@ -17,8 +17,9 @@ from app.services.settlements import (
     partner_balances,
     send_payout,
 )
+from app.security.rbac.guard import require_permission
 
-router = APIRouter(tags=["admin-settlements"])
+router = APIRouter(tags=["admin-settlements"], dependencies=[Depends(require_permission("admin:settlement:*"))])
 
 
 @router.post("/settlements/generate", response_model=list[SettlementOut])

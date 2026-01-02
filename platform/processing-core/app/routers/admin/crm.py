@@ -40,6 +40,7 @@ from app.schemas.crm import (
     CRMTariffOut,
     CRMTariffUpdate,
 )
+from app.security.rbac.guard import require_permission
 from app.services.audit_service import request_context_from_request
 from app.services.crm import clients, contracts, decision_context, events, repository, settings, subscriptions, sync, tariffs
 from app.services.crm.subscription_cfo_explain import build_subscription_cfo_explain
@@ -58,7 +59,7 @@ def require_control_plane_version(
 router = APIRouter(
     prefix="/crm",
     tags=["admin", "crm"],
-    dependencies=[Depends(require_control_plane_version)],
+    dependencies=[Depends(require_control_plane_version), Depends(require_permission("admin:contracts:*"))],
 )
 
 

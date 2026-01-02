@@ -9,8 +9,6 @@ from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.client import client_portal_user
-from app.api.dependencies.partner import partner_portal_user
 from app.db import get_db
 from app.models.audit_log import AuditVisibility
 from app.models.finance import CreditNote, InvoicePayment
@@ -40,23 +38,34 @@ from app.schemas.portal import (
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.s3_storage import S3Storage
+from app.security.rbac.guard import require_permission
+from app.security.rbac.ownership import (
+    require_client_owns_contract,
+    require_client_owns_invoice,
+    require_partner_owns_settlement,
+)
+from app.security.rbac.principal import Principal
 
 client_router = APIRouter(prefix="/client", tags=["client-portal-v1"])
 partner_router = APIRouter(prefix="/partner", tags=["partner-portal-v1"])
 
 
-def _ensure_client_context(token: dict) -> str:
-    client_id = token.get("client_id")
-    if not client_id:
-        raise HTTPException(status_code=403, detail="Missing client context")
-    return str(client_id)
+def _ensure_client_context(principal: Principal) -> str:
+    if principal.client_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "reason": "missing_ownership_context", "resource": "client"},
+        )
+    return str(principal.client_id)
 
 
-def _ensure_partner_context(token: dict) -> str:
-    partner_id = token.get("partner_id")
-    if not partner_id:
-        raise HTTPException(status_code=403, detail="Missing partner context")
-    return str(partner_id)
+def _ensure_partner_context(principal: Principal) -> str:
+    if principal.partner_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "reason": "missing_ownership_context", "resource": "partner"},
+        )
+    return str(principal.partner_id)
 
 
 def _public_invoice_number(invoice: Invoice) -> str:
@@ -67,16 +76,13 @@ def _public_invoice_number(invoice: Invoice) -> str:
     return "UNASSIGNED"
 
 
-def _resolve_invoice(db: Session, *, invoice_ref: str, client_id: str) -> Invoice | None:
+def _resolve_invoice(db: Session, *, invoice_ref: str) -> Invoice | None:
     invoice = db.query(Invoice).filter(Invoice.id == invoice_ref).one_or_none()
-    if invoice and invoice.client_id == client_id:
+    if invoice:
         return invoice
     return (
         db.query(Invoice)
-        .filter(
-            Invoice.client_id == client_id,
-            (Invoice.number == invoice_ref) | (Invoice.external_number == invoice_ref),
-        )
+        .filter((Invoice.number == invoice_ref) | (Invoice.external_number == invoice_ref))
         .one_or_none()
     )
 
@@ -90,18 +96,11 @@ def _contract_query(db: Session, *, party_id: str) -> list[Contract]:
     )
 
 
-def _resolve_contract(db: Session, *, contract_ref: str, party_id: str) -> Contract | None:
+def _resolve_contract(db: Session, *, contract_ref: str) -> Contract | None:
     contract = db.query(Contract).filter(Contract.id == contract_ref).one_or_none()
-    if contract and (str(contract.party_a_id) == party_id or str(contract.party_b_id) == party_id):
+    if contract:
         return contract
-    return (
-        db.query(Contract)
-        .filter(
-            Contract.contract_number == contract_ref,
-            (Contract.party_a_id == UUID(party_id)) | (Contract.party_b_id == UUID(party_id)),
-        )
-        .one_or_none()
-    )
+    return db.query(Contract).filter(Contract.contract_number == contract_ref).one_or_none()
 
 
 def _sla_summary(db: Session, *, contract_ids: list[str]) -> PortalSlaSummary:
@@ -120,10 +119,10 @@ def _contract_sla_stats(db: Session, *, contract_id: str) -> tuple[int, str]:
 
 @client_router.get("/dashboard", response_model=ClientDashboardResponse)
 def client_dashboard(
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:dashboard:view")),
     db: Session = Depends(get_db),
 ) -> ClientDashboardResponse:
-    client_id = _ensure_client_context(token)
+    client_id = _ensure_client_context(principal)
     active_contracts = db.query(Contract).filter(
         (Contract.party_a_id == UUID(client_id)) | (Contract.party_b_id == UUID(client_id)),
         Contract.status == ContractStatus.ACTIVE.value,
@@ -164,10 +163,10 @@ def list_client_invoices(
     status: list[InvoiceStatus] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:invoices:list")),
     db: Session = Depends(get_db),
 ) -> ClientInvoiceListResponse:
-    client_id = _ensure_client_context(token)
+    client_id = _ensure_client_context(principal)
     query = db.query(Invoice).filter(Invoice.client_id == client_id)
     if date_from:
         query = query.filter(Invoice.period_from >= date_from)
@@ -203,13 +202,13 @@ def list_client_invoices(
 def get_client_invoice_details(
     invoice_ref: str,
     request: Request,
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:invoices:view")),
     db: Session = Depends(get_db),
 ) -> ClientInvoiceDetails:
-    client_id = _ensure_client_context(token)
-    invoice = _resolve_invoice(db, invoice_ref=invoice_ref, client_id=client_id)
+    invoice = _resolve_invoice(db, invoice_ref=invoice_ref)
     if invoice is None:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    require_client_owns_invoice(principal, invoice)
 
     payments = (
         db.query(InvoicePayment)
@@ -230,7 +229,7 @@ def get_client_invoice_details(
         entity_id=str(invoice.id),
         action="VIEW",
         visibility=AuditVisibility.INTERNAL,
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
     )
 
     return ClientInvoiceDetails(
@@ -277,13 +276,13 @@ def get_client_invoice_details(
 def download_client_invoice(
     invoice_ref: str,
     request: Request,
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:invoices:download")),
     db: Session = Depends(get_db),
 ) -> Response:
-    client_id = _ensure_client_context(token)
-    invoice = _resolve_invoice(db, invoice_ref=invoice_ref, client_id=client_id)
+    invoice = _resolve_invoice(db, invoice_ref=invoice_ref)
     if invoice is None:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+    require_client_owns_invoice(principal, invoice)
     if not invoice.pdf_object_key:
         raise HTTPException(status_code=404, detail="invoice_pdf_not_found")
 
@@ -296,7 +295,7 @@ def download_client_invoice(
         entity_id=str(invoice.id),
         action="DOWNLOAD",
         visibility=AuditVisibility.INTERNAL,
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
     )
 
     filename = f"{_public_invoice_number(invoice)}.pdf"
@@ -309,10 +308,10 @@ def download_client_invoice(
 
 @client_router.get("/contracts", response_model=ClientContractsResponse)
 def list_client_contracts(
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:contracts:list")),
     db: Session = Depends(get_db),
 ) -> ClientContractsResponse:
-    client_id = _ensure_client_context(token)
+    client_id = _ensure_client_context(principal)
     contracts = _contract_query(db, party_id=client_id)
     items = []
     for contract in contracts:
@@ -334,13 +333,13 @@ def list_client_contracts(
 @client_router.get("/contracts/{contract_ref}", response_model=ClientContractDetails)
 def get_client_contract_details(
     contract_ref: str,
-    token: dict = Depends(client_portal_user),
+    principal: Principal = Depends(require_permission("client:contracts:view")),
     db: Session = Depends(get_db),
 ) -> ClientContractDetails:
-    client_id = _ensure_client_context(token)
-    contract = _resolve_contract(db, contract_ref=contract_ref, party_id=client_id)
+    contract = _resolve_contract(db, contract_ref=contract_ref)
     if contract is None:
         raise HTTPException(status_code=404, detail="contract_not_found")
+    require_client_owns_contract(principal, contract)
     contract_id = str(contract.id)
 
     obligations = (
@@ -397,10 +396,10 @@ def get_client_contract_details(
 
 @partner_router.get("/dashboard", response_model=PartnerDashboardResponse)
 def partner_dashboard(
-    token: dict = Depends(partner_portal_user),
+    principal: Principal = Depends(require_permission("partner:dashboard:view")),
     db: Session = Depends(get_db),
 ) -> PartnerDashboardResponse:
-    partner_id = _ensure_partner_context(token)
+    partner_id = _ensure_partner_context(principal)
     contracts = _contract_query(db, party_id=partner_id)
     active_contracts = sum(1 for contract in contracts if contract.status == ContractStatus.ACTIVE.value)
 
@@ -437,10 +436,10 @@ def partner_dashboard(
 
 @partner_router.get("/contracts", response_model=PartnerContractsResponse)
 def list_partner_contracts(
-    token: dict = Depends(partner_portal_user),
+    principal: Principal = Depends(require_permission("partner:contracts:list")),
     db: Session = Depends(get_db),
 ) -> PartnerContractsResponse:
-    partner_id = _ensure_partner_context(token)
+    partner_id = _ensure_partner_context(principal)
     contracts = _contract_query(db, party_id=partner_id)
     items = []
     for contract in contracts:
@@ -461,10 +460,10 @@ def list_partner_contracts(
 
 @partner_router.get("/settlements", response_model=PartnerSettlementListResponse)
 def list_partner_settlements(
-    token: dict = Depends(partner_portal_user),
+    principal: Principal = Depends(require_permission("partner:settlements:list")),
     db: Session = Depends(get_db),
 ) -> PartnerSettlementListResponse:
-    partner_id = _ensure_partner_context(token)
+    partner_id = _ensure_partner_context(principal)
     settlements = (
         db.query(SettlementPeriod)
         .filter(SettlementPeriod.partner_id == UUID(partner_id))
@@ -491,15 +490,13 @@ def list_partner_settlements(
 @partner_router.get("/settlements/{settlement_id}", response_model=PartnerSettlementDetails)
 def get_partner_settlement_details(
     settlement_id: str,
-    token: dict = Depends(partner_portal_user),
+    principal: Principal = Depends(require_permission("partner:settlements:view")),
     db: Session = Depends(get_db),
 ) -> PartnerSettlementDetails:
-    partner_id = _ensure_partner_context(token)
     settlement = db.query(SettlementPeriod).filter(SettlementPeriod.id == settlement_id).one_or_none()
     if settlement is None:
         raise HTTPException(status_code=404, detail="settlement_not_found")
-    if str(settlement.partner_id) != partner_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    require_partner_owns_settlement(principal, settlement)
 
     items = (
         db.query(
@@ -546,15 +543,13 @@ def get_partner_settlement_details(
 def confirm_partner_settlement(
     settlement_id: str,
     request: Request,
-    token: dict = Depends(partner_portal_user),
+    principal: Principal = Depends(require_permission("partner:payouts:confirm")),
     db: Session = Depends(get_db),
 ) -> dict:
-    partner_id = _ensure_partner_context(token)
     settlement = db.query(SettlementPeriod).filter(SettlementPeriod.id == settlement_id).one_or_none()
     if settlement is None:
         raise HTTPException(status_code=404, detail="settlement_not_found")
-    if str(settlement.partner_id) != partner_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    require_partner_owns_settlement(principal, settlement)
 
     AuditService(db).audit(
         event_type="PARTNER_CONFIRMED_PAYOUT",
@@ -562,7 +557,7 @@ def confirm_partner_settlement(
         entity_id=settlement_id,
         action="CONFIRM_PAYOUT",
         visibility=AuditVisibility.INTERNAL,
-        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
         reason="partner_portal_stub",
     )
     return {"status": "queued"}

@@ -24,9 +24,14 @@ from app.services.settlement_service import (
     execute_payout,
 )
 from app.api.dependencies.admin import require_admin_user
+from app.security.rbac.guard import require_permission
 
 
-router = APIRouter(prefix="/settlement", tags=["admin", "settlement"])
+router = APIRouter(
+    prefix="/settlement",
+    tags=["admin", "settlement"],
+    dependencies=[Depends(require_permission("admin:settlement:*"))],
+)
 
 
 def _period_out(period: SettlementPeriod, *, items: list[SettlementItem] | None = None) -> SettlementPeriodOut:

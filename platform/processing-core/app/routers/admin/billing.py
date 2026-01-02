@@ -38,6 +38,7 @@ from app.schemas.admin.billing import (
     TariffPriceRead,
     BillingJobRunListResponse,
 )
+from app.security.rbac.guard import require_permission
 from app.schemas.reports import BillingSummaryItem
 from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.models.billing_summary import BillingSummary
@@ -78,7 +79,7 @@ from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/billing", tags=["admin"])
+router = APIRouter(prefix="/billing", tags=["admin"], dependencies=[Depends(require_permission("admin:billing:*"))])
 
 
 @router.get("/settlement-summary", response_model=SettlementSummaryResponse)
