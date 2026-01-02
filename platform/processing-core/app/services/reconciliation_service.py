@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import case, func
@@ -24,6 +25,9 @@ from app.models.reconciliation import (
     ReconciliationDiscrepancy,
     ReconciliationDiscrepancyStatus,
     ReconciliationDiscrepancyType,
+    ReconciliationLink,
+    ReconciliationLinkDirection,
+    ReconciliationLinkStatus,
     ReconciliationRun,
     ReconciliationRunStatus,
     ReconciliationScope,
@@ -36,6 +40,7 @@ from app.services.reconciliation_metrics import metrics
 logger = get_logger(__name__)
 
 EPSILON = Decimal("0.0001")
+MATCH_WINDOW = timedelta(hours=72)
 
 
 def _safe_decimal(value: object | None) -> Decimal | None:
@@ -62,6 +67,61 @@ def _canonical_json(data: object) -> str:
 
 def _hash_payload(data: object) -> str:
     return hashlib.sha256(_canonical_json(data).encode("utf-8")).hexdigest()
+
+
+def _parse_line_timestamp(line: dict[str, object]) -> datetime | None:
+    for key in ("timestamp", "at", "created_at", "date"):
+        value = line.get(key)
+        if not value:
+            continue
+        if isinstance(value, datetime):
+            return value
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    return None
+
+
+def _parse_line_amount(line: dict[str, object]) -> Decimal | None:
+    value = line.get("amount")
+    if value is None:
+        return None
+    amount = Decimal(str(value))
+    if amount < 0:
+        return abs(amount)
+    return amount
+
+
+def _parse_line_direction(line: dict[str, object], amount: Decimal | None) -> ReconciliationLinkDirection | None:
+    raw = line.get("direction") or line.get("type")
+    if raw:
+        raw_value = str(raw).upper()
+        if raw_value == ReconciliationLinkDirection.IN.value:
+            return ReconciliationLinkDirection.IN
+        if raw_value == ReconciliationLinkDirection.OUT.value:
+            return ReconciliationLinkDirection.OUT
+    raw_amount = line.get("amount")
+    if raw_amount is not None:
+        try:
+            raw_decimal = Decimal(str(raw_amount))
+        except Exception:  # noqa: BLE001
+            raw_decimal = None
+        if raw_decimal is not None:
+            if raw_decimal < 0:
+                return ReconciliationLinkDirection.OUT
+            if raw_decimal > 0:
+                return ReconciliationLinkDirection.IN
+    if amount is None:
+        return None
+    if amount < 0:
+        return ReconciliationLinkDirection.OUT
+    if amount > 0:
+        return ReconciliationLinkDirection.IN
+    return None
 
 
 def _compute_account_balances(
@@ -255,6 +315,8 @@ def upload_external_statement(
         "external statement uploaded",
         extra={"statement_id": str(statement.id), "provider": provider},
     )
+    if os.getenv("AUTO_RECONCILE_ON_STATEMENT_UPLOAD", "false").lower() in {"1", "true", "yes"}:
+        run_external_reconciliation(db, statement_id=str(statement.id), created_by=created_by)
     return statement
 
 
@@ -283,6 +345,9 @@ def run_external_reconciliation(
 
     discrepancies_created = 0
     total_delta_abs = Decimal("0")
+    links_matched = 0
+    links_mismatched = 0
+    links_pending = 0
     try:
         debit_sum = func.coalesce(
             func.sum(
@@ -342,69 +407,151 @@ def run_external_reconciliation(
         if statement.closing_balance is not None:
             _maybe_add_balance_discrepancy("closing_balance", internal_balance, Decimal(statement.closing_balance))
 
-        line_refs = set()
+        line_payloads: list[dict[str, object]] = []
         if isinstance(statement.lines, list):
             for line in statement.lines:
                 if not isinstance(line, dict):
                     continue
-                ref = line.get("ref") or line.get("id")
-                if ref:
-                    line_refs.add(str(ref))
+                line_payloads.append(line)
 
-        internal_refs = set()
-        tx_rows = (
-            db.query(InternalLedgerEntry.ledger_transaction_id, InternalLedgerEntry.currency)
-            .filter(InternalLedgerEntry.currency == statement.currency)
-            .filter(InternalLedgerEntry.created_at >= statement.period_start)
-            .filter(InternalLedgerEntry.created_at <= statement.period_end)
-            .distinct()
+        pending_links = (
+            db.query(ReconciliationLink)
+            .filter(ReconciliationLink.provider == statement.provider)
+            .filter(ReconciliationLink.currency == statement.currency)
+            .filter(ReconciliationLink.status == ReconciliationLinkStatus.PENDING)
+            .filter(ReconciliationLink.expected_at >= statement.period_start)
+            .filter(ReconciliationLink.expected_at <= statement.period_end)
             .all()
         )
-        for row in tx_rows:
-            internal_refs.add(str(row.ledger_transaction_id))
+        links_by_match_key = {
+            link.match_key: link for link in pending_links if link.match_key is not None
+        }
+        matched_link_ids: set[str] = set()
 
-        unmatched_external = [ref for ref in line_refs if ref not in internal_refs]
-        for ref in unmatched_external:
-            discrepancy = ReconciliationDiscrepancy(
-                run_id=run.id,
-                ledger_account_id=None,
-                currency=statement.currency,
-                discrepancy_type=ReconciliationDiscrepancyType.UNMATCHED_EXTERNAL,
-                internal_amount=None,
-                external_amount=None,
-                delta=None,
-                details={"ref": ref, "statement_id": str(statement.id)},
-                status=ReconciliationDiscrepancyStatus.OPEN,
-            )
-            db.add(discrepancy)
-            discrepancies_created += 1
-            metrics.mark_discrepancy(discrepancy.discrepancy_type.value, discrepancy.status.value)
+        for line in line_payloads:
+            line_ref = line.get("ref") or line.get("id") or line.get("match_key")
+            line_key = str(line_ref) if line_ref else None
+            line_amount = _parse_line_amount(line)
+            direction = _parse_line_direction(line, line_amount)
+            timestamp = _parse_line_timestamp(line)
 
-        unmatched_internal = [ref for ref in internal_refs if line_refs and ref not in line_refs]
-        for ref in unmatched_internal:
+            link = None
+            if line_key and line_key in links_by_match_key:
+                link = links_by_match_key[line_key]
+                if str(link.id) in matched_link_ids:
+                    link = None
+            else:
+                for candidate in pending_links:
+                    if str(candidate.id) in matched_link_ids:
+                        continue
+                    if line_amount is None or direction is None:
+                        continue
+                    if Decimal(candidate.expected_amount) != line_amount:
+                        continue
+                    if candidate.direction != direction:
+                        continue
+                    if timestamp:
+                        delta = abs(candidate.expected_at - timestamp)
+                        if delta > MATCH_WINDOW:
+                            continue
+                    link = candidate
+                    break
+
+            if link is None:
+                if line_key:
+                    discrepancy = ReconciliationDiscrepancy(
+                        run_id=run.id,
+                        ledger_account_id=None,
+                        currency=statement.currency,
+                        discrepancy_type=ReconciliationDiscrepancyType.UNMATCHED_EXTERNAL,
+                        internal_amount=None,
+                        external_amount=None,
+                        delta=None,
+                        details={"ref": line_key, "statement_id": str(statement.id)},
+                        status=ReconciliationDiscrepancyStatus.OPEN,
+                    )
+                    db.add(discrepancy)
+                    discrepancies_created += 1
+                    metrics.mark_discrepancy(discrepancy.discrepancy_type.value, discrepancy.status.value)
+                continue
+
+            matched_link_ids.add(str(link.id))
+            if line_amount is not None and Decimal(link.expected_amount) != line_amount:
+                discrepancy = ReconciliationDiscrepancy(
+                    run_id=run.id,
+                    ledger_account_id=None,
+                    currency=statement.currency,
+                    discrepancy_type=ReconciliationDiscrepancyType.MISMATCHED_AMOUNT,
+                    internal_amount=Decimal(link.expected_amount),
+                    external_amount=line_amount,
+                    delta=_delta(Decimal(link.expected_amount), line_amount),
+                    details={
+                        "entity_type": link.entity_type,
+                        "entity_id": str(link.entity_id),
+                        "statement_id": str(statement.id),
+                    },
+                    status=ReconciliationDiscrepancyStatus.OPEN,
+                )
+                db.add(discrepancy)
+                discrepancies_created += 1
+                metrics.mark_discrepancy(discrepancy.discrepancy_type.value, discrepancy.status.value)
+                link.status = ReconciliationLinkStatus.MISMATCHED
+                link.run_id = run.id
+                links_mismatched += 1
+            else:
+                link.status = ReconciliationLinkStatus.MATCHED
+                link.run_id = run.id
+                links_matched += 1
+
+        for link in pending_links:
+            if str(link.id) in matched_link_ids:
+                continue
+            link.status = ReconciliationLinkStatus.MISMATCHED
+            link.run_id = run.id
+            links_mismatched += 1
             discrepancy = ReconciliationDiscrepancy(
                 run_id=run.id,
                 ledger_account_id=None,
                 currency=statement.currency,
                 discrepancy_type=ReconciliationDiscrepancyType.UNMATCHED_INTERNAL,
-                internal_amount=None,
+                internal_amount=Decimal(link.expected_amount),
                 external_amount=None,
                 delta=None,
-                details={"ref": ref, "statement_id": str(statement.id)},
+                details={
+                    "entity_type": link.entity_type,
+                    "entity_id": str(link.entity_id),
+                    "statement_id": str(statement.id),
+                },
                 status=ReconciliationDiscrepancyStatus.OPEN,
             )
             db.add(discrepancy)
             discrepancies_created += 1
             metrics.mark_discrepancy(discrepancy.discrepancy_type.value, discrepancy.status.value)
 
+        links_pending = len(pending_links) - links_matched - links_mismatched
+        metrics.mark_link(status=ReconciliationLinkStatus.MATCHED.value, count=links_matched)
+        metrics.mark_link(status=ReconciliationLinkStatus.MISMATCHED.value, count=links_mismatched)
+        metrics.mark_link(status=ReconciliationLinkStatus.PENDING.value, count=max(links_pending, 0))
+
         summary = {
             "mismatches_found": discrepancies_created,
             "total_delta_abs": str(total_delta_abs),
+            "links_matched": links_matched,
+            "links_mismatched": links_mismatched,
+            "links_pending": max(links_pending, 0),
         }
         run.summary = summary
         run.status = ReconciliationRunStatus.COMPLETED
         audit = AuditService(db).audit(
             event_type="RECONCILIATION_RUN_COMPLETED",
+            entity_type="reconciliation_run",
+            entity_id=str(run.id),
+            action="completed",
+            after={"run_id": str(run.id), "summary": summary, "statement_id": str(statement.id)},
+            request_ctx=_audit_actor(created_by),
+        )
+        AuditService(db).audit(
+            event_type="EXTERNAL_RECONCILIATION_COMPLETED",
             entity_type="reconciliation_run",
             entity_id=str(run.id),
             action="completed",

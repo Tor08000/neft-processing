@@ -1,407 +1,612 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List
+from uuid import uuid4
 
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.db import get_sessionmaker
-from app.models.client import Client
-from app.models.operation import OperationType, ProductType
-from app.models.invoice import Invoice, InvoiceStatus
-from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
-from app.models.billing_summary import BillingSummary
-from app.models.billing_period import BillingPeriodStatus, BillingPeriodType
-from app.models.operation import Operation, OperationStatus
-from app.services.pricing_service import PriceQuote, get_effective_price
-from app.services.billing_periods import BillingPeriodConflict, BillingPeriodService, period_bounds_for_dates
+from app.db.types import new_uuid_str
+from app.models.billing_flow import (
+    BillingInvoice,
+    BillingInvoiceStatus,
+    BillingPayment,
+    BillingPaymentStatus,
+    BillingRefund,
+    BillingRefundStatus,
+)
+from app.models.cases import CaseEventType, CaseKind, CasePriority
+from app.models.internal_ledger import (
+    InternalLedgerAccountType,
+    InternalLedgerEntryDirection,
+    InternalLedgerTransactionType,
+)
+from app.models.reconciliation import (
+    ReconciliationLink,
+    ReconciliationLinkDirection,
+    ReconciliationLinkStatus,
+)
 from app.services.billing_metrics import metrics as billing_metrics
-from neft_shared.logging_setup import get_logger
+from app.services.case_events_service import CaseEventActor, emit_case_event
+from app.services.cases_service import create_case
+from app.services.decision_memory.records import record_decision_memory
+from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 
 
-logger = get_logger(__name__)
+LEDGER_REF_INVOICE = "BILLING_INVOICE"
+LEDGER_REF_PAYMENT = "BILLING_PAYMENT"
+LEDGER_REF_REFUND = "BILLING_REFUND"
 
 
-@dataclass
-class OperationCharge:
-    """Calculated billing line for a single operation."""
-
-    operation_id: str
-    tariff_id: str
-    product_id: str | None
-    partner_id: str | None
-    azs_id: str | None
-    currency: str
-    quantity: Decimal
-    client_price_per_liter: Decimal
-    cost_price_per_liter: Decimal | None
-    charge_amount: Decimal
-    cost_amount: Decimal | None
-    margin_amount: Decimal | None
-    tariff_price_id: int
+@dataclass(frozen=True)
+class BillingInvoiceResult:
+    invoice: BillingInvoice
+    is_replay: bool
 
 
-@dataclass
-class BillingTotals:
-    """Aggregated billing totals per currency."""
-
-    charge_amount: Decimal
-    cost_amount: Decimal | None
-    margin_amount: Decimal | None
+@dataclass(frozen=True)
+class BillingPaymentResult:
+    payment: BillingPayment
+    invoice: BillingInvoice
+    is_replay: bool
 
 
-@dataclass
-class BillingCalculationResult:
-    """Result of billing calculation for a client within a period."""
-
-    client_id: str
-    totals_by_currency: Dict[str, BillingTotals]
-    items: List[OperationCharge]
-
-
-def _decimalize(value: Decimal | float | int) -> Decimal:
-    return value if isinstance(value, Decimal) else Decimal(str(value))
+@dataclass(frozen=True)
+class BillingRefundResult:
+    refund: BillingRefund
+    payment: BillingPayment
+    invoice: BillingInvoice
+    is_replay: bool
 
 
-BILLABLE_STATUSES = {
-    OperationStatus.POSTED,
-    OperationStatus.COMPLETED,
-    OperationStatus.REFUNDED,
-    OperationStatus.REVERSED,
-}
+def _normalize_currency(value: str) -> str:
+    if not value:
+        raise ValueError("currency_required")
+    return value.upper()
 
 
-def calculate_client_charges(
+def _require_positive_amount(amount: Decimal) -> None:
+    if amount <= 0:
+        raise ValueError("amount_must_be_positive")
+    if amount != amount.to_integral_value():
+        raise ValueError("amount_must_be_integer")
+
+
+def _amount_to_int(amount: Decimal) -> int:
+    _require_positive_amount(amount)
+    return int(amount)
+
+
+def _invoice_number() -> str:
+    return f"INV-{uuid4().hex[:12].upper()}"
+
+
+def _update_invoice_status(
     db: Session,
     *,
-    client_id: str,
-    date_from: datetime,
-    date_to: datetime,
-) -> BillingCalculationResult:
-    """Calculate billing amounts for client operations within the period."""
-
-    operations = (
-        db.query(Operation)
-        .filter(Operation.client_id == client_id)
-        .filter(Operation.created_at >= date_from)
-        .filter(Operation.created_at <= date_to)
-        .filter(Operation.status.in_(BILLABLE_STATUSES))
-        .all()
+    invoice: BillingInvoice,
+    actor: CaseEventActor | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> None:
+    paid_total = (
+        db.query(func.coalesce(func.sum(BillingPayment.amount), 0))
+        .filter(BillingPayment.invoice_id == invoice.id)
+        .filter(BillingPayment.status != BillingPaymentStatus.FAILED)
+        .scalar()
     )
+    refunded_total = (
+        db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
+        .join(BillingPayment, BillingRefund.payment_id == BillingPayment.id)
+        .filter(BillingPayment.invoice_id == invoice.id)
+        .filter(BillingRefund.status != BillingRefundStatus.FAILED)
+        .scalar()
+    )
+    paid = Decimal(paid_total or 0) - Decimal(refunded_total or 0)
+    new_status = BillingInvoiceStatus.ISSUED
+    if paid <= 0:
+        new_status = BillingInvoiceStatus.ISSUED
+    elif paid < Decimal(invoice.amount_total):
+        new_status = BillingInvoiceStatus.PARTIALLY_PAID
+    else:
+        new_status = BillingInvoiceStatus.PAID
 
-    items: list[OperationCharge] = []
-    totals: dict[str, dict[str, Decimal | bool]] = {}
+    status_changed = invoice.status != new_status or Decimal(invoice.amount_paid or 0) != paid
+    if not status_changed:
+        return
 
-    for operation in operations:
-        if not operation.tariff_id:
-            raise ValueError(f"Tariff is not set for operation {operation.id}")
+    previous_status = invoice.status
+    previous_paid = invoice.amount_paid
+    invoice.status = new_status
+    invoice.amount_paid = paid
 
-        product_id = operation.product_id or (
-            operation.product_type.value if operation.product_type else None
-        )
-        if not product_id:
-            raise ValueError(f"Product is not set for operation {operation.id}")
-        if operation.quantity is None:
-            raise ValueError(f"Quantity is not set for operation {operation.id}")
-
-        quantity = _decimalize(operation.quantity)
-        sign = (
-            Decimal("-1")
-            if operation.status in {OperationStatus.REFUNDED, OperationStatus.REVERSED}
-            or operation.operation_type in {OperationType.REFUND, OperationType.REVERSE}
-            else Decimal("1")
-        )
-
-        price_quote: PriceQuote = get_effective_price(
+    if invoice.case_id:
+        emit_case_event(
             db,
-            tariff_id=operation.tariff_id,
-            product_id=product_id,
-            partner_id=operation.merchant_id,
-            azs_id=operation.terminal_id,
-            occurred_at=operation.created_at,
+            case_id=str(invoice.case_id),
+            event_type=CaseEventType.INVOICE_STATUS_CHANGED,
+            actor=actor,
+            request_id=request_id,
+            trace_id=trace_id,
+            changes=None,
+            extra_payload={
+                "invoice_id": str(invoice.id),
+                "previous_status": previous_status.value if previous_status else None,
+                "new_status": new_status.value,
+                "previous_amount_paid": str(previous_paid) if previous_paid is not None else None,
+                "amount_paid": str(paid),
+            },
         )
 
-        charge_amount = price_quote.client_price_per_liter * quantity * sign
-        cost_amount = (
-            price_quote.cost_price_per_liter * quantity * sign
-            if price_quote.cost_price_per_liter is not None
-            else None
-        )
-        margin_amount = charge_amount - cost_amount if cost_amount is not None else None
 
-        items.append(
-            OperationCharge(
-                operation_id=str(operation.id),
-                tariff_id=operation.tariff_id,
-                product_id=product_id,
-                partner_id=operation.merchant_id,
-                azs_id=operation.terminal_id,
-                currency=price_quote.currency,
-                quantity=quantity * sign,
-                client_price_per_liter=price_quote.client_price_per_liter,
-                cost_price_per_liter=price_quote.cost_price_per_liter,
-                charge_amount=charge_amount,
-                cost_amount=cost_amount,
-                margin_amount=margin_amount,
-                tariff_price_id=price_quote.tariff_price.id,
-            )
-        )
-
-        totals_entry = totals.setdefault(
-            price_quote.currency,
-            {"charge": Decimal("0"), "cost": Decimal("0"), "margin": Decimal("0"), "has_cost": True},
-        )
-        totals_entry["charge"] += charge_amount
-        if cost_amount is not None and margin_amount is not None:
-            totals_entry["cost"] += cost_amount
-            totals_entry["margin"] += margin_amount
-        else:
-            totals_entry["has_cost"] = False
-
-    totals_by_currency: Dict[str, BillingTotals] = {}
-    for currency, data in totals.items():
-        totals_by_currency[currency] = BillingTotals(
-            charge_amount=data["charge"],
-            cost_amount=data["cost"] if data.get("has_cost", False) else None,
-            margin_amount=data["margin"] if data.get("has_cost", False) else None,
-        )
-
-    return BillingCalculationResult(
-        client_id=client_id,
-        totals_by_currency=totals_by_currency,
-        items=items,
-    )
-
-
-async def build_billing_summary_for_date(billing_date: date) -> None:
-    """
-    Aggregate operations for the given date and upsert billing summaries.
-
-    The aggregation groups by client, merchant, product type and currency
-    and calculates totals for amounts, quantities, operation counts and
-    commission (1% of the total amount).
-    """
-
-    from app.services.billing import run_billing_daily  # local import to avoid circular deps
-
-    run_billing_daily(billing_date)
-
-
-def get_billing_summaries(
+def _resolve_case_id(
     db: Session,
     *,
-    date_from: date,
-    date_to: date,
-    client_id: str | None = None,
-    merchant_id: str | None = None,
-    product_type: ProductType | None = None,
-    currency: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> tuple[list[BillingSummary], int]:
-    query = (
-        db.query(BillingSummary)
-        .filter(BillingSummary.billing_date >= date_from)
-        .filter(BillingSummary.billing_date <= date_to)
+    tenant_id: int,
+    case_id: str | None,
+    invoice_number: str,
+    actor: CaseEventActor | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> str:
+    if case_id:
+        return case_id
+    case = create_case(
+        db,
+        tenant_id=tenant_id,
+        kind=CaseKind.INVOICE,
+        entity_id=invoice_number,
+        kpi_key=None,
+        window_days=None,
+        title=f"Billing invoice {invoice_number}",
+        priority=CasePriority.MEDIUM,
+        note=None,
+        explain=None,
+        diff=None,
+        selected_actions=None,
+        mastery_snapshot=None,
+        created_by=actor.id if actor else None,
+        request_id=request_id,
+        trace_id=trace_id,
     )
-
-    if client_id:
-        query = query.filter(BillingSummary.client_id == client_id)
-    if merchant_id:
-        query = query.filter(BillingSummary.merchant_id == merchant_id)
-    if product_type:
-        query = query.filter(BillingSummary.product_type == product_type)
-    if currency:
-        query = query.filter(BillingSummary.currency == currency)
-
-    total = query.count()
-
-    items = (
-        query.order_by(
-            BillingSummary.billing_date,
-            BillingSummary.client_id,
-            BillingSummary.merchant_id,
-        )
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-
-    return items, total
+    return str(case.id)
 
 
-def build_invoice_data_for_client(
+def issue_invoice(
     db: Session,
     *,
+    tenant_id: int,
     client_id: str,
-    period_from: date,
-    period_to: date,
-    options: dict | None = None,
-) -> BillingInvoiceData | None:
-    """Aggregate operations for a client and convert them to invoice data."""
+    case_id: str | None,
+    currency: str,
+    amount_total: Decimal,
+    due_at: datetime | None,
+    idempotency_key: str,
+    actor: CaseEventActor | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> BillingInvoiceResult:
+    currency_code = _normalize_currency(currency)
+    _require_positive_amount(amount_total)
 
-    start_ts = datetime.combine(period_from, datetime.min.time())
-    end_ts = datetime.combine(period_to, datetime.max.time())
+    existing = (
+        db.query(BillingInvoice).filter(BillingInvoice.idempotency_key == idempotency_key).one_or_none()
+    )
+    if existing:
+        if existing.currency != currency_code or Decimal(existing.amount_total) != amount_total:
+            raise ValueError("idempotency_conflict")
+        return BillingInvoiceResult(invoice=existing, is_replay=True)
 
-    operations = (
-        db.query(Operation)
-        .filter(Operation.client_id == client_id)
-        .filter(Operation.created_at >= start_ts)
-        .filter(Operation.created_at <= end_ts)
-        .filter(Operation.status == OperationStatus.COMPLETED)
-        .all()
+    invoice_id = new_uuid_str()
+    number = _invoice_number()
+    resolved_case_id = _resolve_case_id(
+        db,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        invoice_number=number,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    issued_at = datetime.now(timezone.utc)
+
+    ledger_service = InternalLedgerService(db)
+    amount_int = _amount_to_int(amount_total)
+    ledger_result = ledger_service.post_transaction(
+        tenant_id=tenant_id,
+        transaction_type=InternalLedgerTransactionType.INVOICE_ISSUED,
+        external_ref_type=LEDGER_REF_INVOICE,
+        external_ref_id=invoice_id,
+        idempotency_key=f"billing:invoice:{idempotency_key}",
+        posted_at=issued_at,
+        meta={"billing_invoice_id": invoice_id},
+        entries=[
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.CLIENT_AR,
+                client_id=client_id,
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_invoice_id": invoice_id},
+            ),
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PLATFORM_REVENUE,
+                client_id=None,
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_invoice_id": invoice_id},
+            ),
+        ],
     )
 
-    if not operations:
-        return None
+    link = ReconciliationLink(
+        entity_type="invoice",
+        entity_id=invoice_id,
+        provider="internal",
+        currency=currency_code,
+        expected_amount=amount_total,
+        direction=ReconciliationLinkDirection.IN,
+        expected_at=due_at or issued_at,
+        match_key=number,
+        status=ReconciliationLinkStatus.PENDING,
+    )
+    db.add(link)
+    db.flush()
 
-    tax_rate = Decimal(str((options or {}).get("tax_rate", 0)))
-
-    lines: list[BillingLineData] = []
-    currency = None
-    for op in operations:
-        currency = currency or op.currency
-        amount = int(op.amount or 0)
-        tax_amount = int((Decimal(amount) * tax_rate).to_integral_value()) if tax_rate else 0
-
-        lines.append(
-            BillingLineData(
-                product_id=op.product_id or "unknown",
-                liters=op.quantity,
-                unit_price=op.unit_price,
-                line_amount=amount,
-                tax_amount=tax_amount,
-                operation_id=str(op.id),
-                card_id=op.card_id,
-            )
-        )
-
-    return BillingInvoiceData(
-        client_id=str(client_id),
-        period_from=period_from,
-        period_to=period_to,
-        currency=currency or "RUB",
-        lines=lines,
-        status=(options or {}).get("status", InvoiceStatus.DRAFT),
+    event = emit_case_event(
+        db,
+        case_id=resolved_case_id,
+        event_type=CaseEventType.INVOICE_ISSUED,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+        extra_payload={
+            "invoice_id": invoice_id,
+            "invoice_number": number,
+            "client_id": client_id,
+            "amount_total": str(amount_total),
+            "currency": currency_code,
+            "ledger_tx_id": str(ledger_result.transaction.id),
+            "reconciliation_link_id": str(link.id),
+        },
     )
 
+    invoice = BillingInvoice(
+        id=invoice_id,
+        invoice_number=number,
+        client_id=client_id,
+        case_id=resolved_case_id,
+        currency=currency_code,
+        amount_total=amount_total,
+        amount_paid=Decimal("0"),
+        status=BillingInvoiceStatus.ISSUED,
+        issued_at=issued_at,
+        due_at=due_at,
+        idempotency_key=idempotency_key,
+        ledger_tx_id=ledger_result.transaction.id,
+        audit_event_id=event.id,
+    )
+    db.add(invoice)
 
-def generate_invoices_for_period(
+    record_decision_memory(
+        db,
+        case_id=resolved_case_id,
+        decision_type="billing_invoice",
+        decision_ref_id=invoice_id,
+        decision_at=issued_at,
+        decided_by_user_id=actor.id if actor else None,
+        context_snapshot={"amount_total": str(amount_total), "currency": currency_code},
+        rationale=None,
+        score_snapshot=None,
+        mastery_snapshot=None,
+        audit_event_id=str(event.id),
+    )
+
+    billing_metrics.mark_invoice_issued()
+    return BillingInvoiceResult(invoice=invoice, is_replay=False)
+
+
+def capture_payment(
     db: Session,
     *,
-    period_from: date,
-    period_to: date,
-    status: InvoiceStatus = InvoiceStatus.DRAFT,
-    options: dict | None = None,
-) -> list[Invoice]:
-    """Generate invoices for all active clients with tariffs for the given period."""
+    tenant_id: int,
+    invoice_id: str,
+    provider: str,
+    provider_payment_id: str | None,
+    amount: Decimal,
+    currency: str,
+    idempotency_key: str,
+    actor: CaseEventActor | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> BillingPaymentResult:
+    currency_code = _normalize_currency(currency)
+    _require_positive_amount(amount)
 
-    billing_metrics.start_run(str(period_from), str(period_to))
-    period_service = BillingPeriodService(db)
-    period_start, period_end = period_bounds_for_dates(
-        date_from=period_from,
-        date_to=period_to,
-        tz=settings.NEFT_BILLING_TZ,
+    existing = (
+        db.query(BillingPayment).filter(BillingPayment.idempotency_key == idempotency_key).one_or_none()
     )
-    period = period_service.get_or_create(
-        period_type=BillingPeriodType.ADHOC,
-        start_at=period_start,
-        end_at=period_end,
-        tz=settings.NEFT_BILLING_TZ,
+    if existing:
+        if existing.currency != currency_code or Decimal(existing.amount) != amount:
+            raise ValueError("idempotency_conflict")
+        invoice = db.query(BillingInvoice).filter(BillingInvoice.id == existing.invoice_id).one()
+        return BillingPaymentResult(payment=existing, invoice=invoice, is_replay=True)
+
+    invoice = db.query(BillingInvoice).filter(BillingInvoice.id == invoice_id).one_or_none()
+    if invoice is None:
+        raise ValueError("invoice_not_found")
+    if invoice.currency != currency_code:
+        raise ValueError("currency_mismatch")
+
+    payment_id = new_uuid_str()
+    captured_at = datetime.now(timezone.utc)
+
+    ledger_service = InternalLedgerService(db)
+    amount_int = _amount_to_int(amount)
+    ledger_result = ledger_service.post_transaction(
+        tenant_id=tenant_id,
+        transaction_type=InternalLedgerTransactionType.PAYMENT_APPLIED,
+        external_ref_type=LEDGER_REF_PAYMENT,
+        external_ref_id=payment_id,
+        idempotency_key=f"billing:payment:{idempotency_key}",
+        posted_at=captured_at,
+        meta={"billing_payment_id": payment_id, "invoice_id": invoice_id, "provider": provider},
+        entries=[
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+                client_id=provider,
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_payment_id": payment_id, "invoice_id": invoice_id},
+            ),
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.CLIENT_AR,
+                client_id=str(invoice.client_id),
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_payment_id": payment_id, "invoice_id": invoice_id},
+            ),
+        ],
     )
-    if period.status != BillingPeriodStatus.OPEN:
-        raise BillingPeriodConflict(f"Billing period {period.id} is {period.status.value}")
-    repo = BillingRepository(db)
-    clients = (
-        db.query(Client)
-        .filter(Client.status == "ACTIVE")
-        .filter(Client.tariff_plan.isnot(None))
-        .all()
+
+    link = ReconciliationLink(
+        entity_type="payment",
+        entity_id=payment_id,
+        provider=provider,
+        currency=currency_code,
+        expected_amount=amount,
+        direction=ReconciliationLinkDirection.IN,
+        expected_at=captured_at,
+        match_key=provider_payment_id,
+        status=ReconciliationLinkStatus.PENDING,
+    )
+    db.add(link)
+    db.flush()
+
+    event = emit_case_event(
+        db,
+        case_id=str(invoice.case_id),
+        event_type=CaseEventType.PAYMENT_CAPTURED,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+        extra_payload={
+            "invoice_id": invoice_id,
+            "payment_id": payment_id,
+            "amount": str(amount),
+            "currency": currency_code,
+            "provider": provider,
+            "provider_payment_id": provider_payment_id,
+            "ledger_tx_id": str(ledger_result.transaction.id),
+            "reconciliation_link_id": str(link.id),
+        },
     )
 
-    created: list[Invoice] = []
-    period_key = f"{period_from}:{period_to}"
+    payment = BillingPayment(
+        id=payment_id,
+        invoice_id=invoice_id,
+        provider=provider,
+        provider_payment_id=provider_payment_id,
+        currency=currency_code,
+        amount=amount,
+        captured_at=captured_at,
+        status=BillingPaymentStatus.CAPTURED,
+        idempotency_key=idempotency_key,
+        ledger_tx_id=ledger_result.transaction.id,
+        external_statement_line_id=None,
+        audit_event_id=event.id,
+    )
+    db.add(payment)
 
-    for client in clients:
-        try:
-            existing = (
-                db.query(Invoice)
-                .filter(Invoice.client_id == str(client.id))
-                .filter(Invoice.period_from == period_from)
-                .filter(Invoice.period_to == period_to)
-                .filter(Invoice.status != InvoiceStatus.CANCELLED)
-                .first()
-            )
-            if existing:
-                continue
+    record_decision_memory(
+        db,
+        case_id=str(invoice.case_id),
+        decision_type="billing_payment",
+        decision_ref_id=payment_id,
+        decision_at=captured_at,
+        decided_by_user_id=actor.id if actor else None,
+        context_snapshot={"amount": str(amount), "currency": currency_code, "provider": provider},
+        rationale=None,
+        score_snapshot=None,
+        mastery_snapshot=None,
+        audit_event_id=str(event.id),
+    )
 
-            invoice_data = build_invoice_data_for_client(
-                db,
-                client_id=str(client.id),
-                period_from=period_from,
-                period_to=period_to,
-                options={**(options or {}), "status": status},
-            )
+    _update_invoice_status(
+        db,
+        invoice=invoice,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
 
-            if invoice_data is None:
-                continue
-            invoice_data.billing_period_id = str(period.id)
-
-            invoice = repo.create_invoice(invoice_data, auto_commit=True)
-            billing_metrics.mark_generated()
-            billing_metrics.observe_billed_amount(
-                invoice.total_with_tax or invoice.total_amount or 0, period_key=period_key
-            )
-            logger.info(
-                "billing.invoice_generated",
-                extra={
-                    "client_id": str(client.id),
-                    "period_from": str(period_from),
-                    "period_to": str(period_to),
-                    "status": invoice.status,
-                    "total_with_tax": invoice.total_with_tax,
-                },
-            )
-            created.append(invoice)
-        except Exception:
-            billing_metrics.mark_error()
-            logger.exception(
-                "billing.invoice_generation_failed",
-                extra={
-                    "client_id": str(client.id),
-                    "period_from": str(period_from),
-                    "period_to": str(period_to),
-                },
-            )
-
-    return created
+    billing_metrics.mark_payment_captured()
+    return BillingPaymentResult(payment=payment, invoice=invoice, is_replay=False)
 
 
-try:
-    from app.celery_client import celery_client
-except Exception:  # pragma: no cover - optional celery integration
-    celery_client = None
+def refund_payment(
+    db: Session,
+    *,
+    tenant_id: int,
+    payment_id: str,
+    provider_refund_id: str | None,
+    amount: Decimal,
+    currency: str,
+    idempotency_key: str,
+    actor: CaseEventActor | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> BillingRefundResult:
+    currency_code = _normalize_currency(currency)
+    _require_positive_amount(amount)
+
+    existing = (
+        db.query(BillingRefund).filter(BillingRefund.idempotency_key == idempotency_key).one_or_none()
+    )
+    if existing:
+        if existing.currency != currency_code or Decimal(existing.amount) != amount:
+            raise ValueError("idempotency_conflict")
+        payment = db.query(BillingPayment).filter(BillingPayment.id == existing.payment_id).one()
+        invoice = db.query(BillingInvoice).filter(BillingInvoice.id == payment.invoice_id).one()
+        return BillingRefundResult(refund=existing, payment=payment, invoice=invoice, is_replay=True)
+
+    payment = db.query(BillingPayment).filter(BillingPayment.id == payment_id).one_or_none()
+    if payment is None:
+        raise ValueError("payment_not_found")
+    if payment.currency != currency_code:
+        raise ValueError("currency_mismatch")
+
+    invoice = db.query(BillingInvoice).filter(BillingInvoice.id == payment.invoice_id).one()
+
+    refund_id = new_uuid_str()
+    refunded_at = datetime.now(timezone.utc)
+
+    ledger_service = InternalLedgerService(db)
+    amount_int = _amount_to_int(amount)
+    ledger_result = ledger_service.post_transaction(
+        tenant_id=tenant_id,
+        transaction_type=InternalLedgerTransactionType.REFUND_APPLIED,
+        external_ref_type=LEDGER_REF_REFUND,
+        external_ref_id=refund_id,
+        idempotency_key=f"billing:refund:{idempotency_key}",
+        posted_at=refunded_at,
+        meta={"billing_refund_id": refund_id, "payment_id": payment_id, "provider": payment.provider},
+        entries=[
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.CLIENT_AR,
+                client_id=str(invoice.client_id),
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_refund_id": refund_id, "payment_id": payment_id},
+            ),
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PROVIDER_PAYABLE,
+                client_id=payment.provider,
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount_int,
+                currency=currency_code,
+                meta={"billing_refund_id": refund_id, "payment_id": payment_id},
+            ),
+        ],
+    )
+
+    link = ReconciliationLink(
+        entity_type="refund",
+        entity_id=refund_id,
+        provider=payment.provider,
+        currency=currency_code,
+        expected_amount=amount,
+        direction=ReconciliationLinkDirection.OUT,
+        expected_at=refunded_at,
+        match_key=provider_refund_id,
+        status=ReconciliationLinkStatus.PENDING,
+    )
+    db.add(link)
+    db.flush()
+
+    event = emit_case_event(
+        db,
+        case_id=str(invoice.case_id),
+        event_type=CaseEventType.PAYMENT_REFUNDED,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+        extra_payload={
+            "invoice_id": str(invoice.id),
+            "payment_id": payment_id,
+            "refund_id": refund_id,
+            "amount": str(amount),
+            "currency": currency_code,
+            "provider": payment.provider,
+            "provider_refund_id": provider_refund_id,
+            "ledger_tx_id": str(ledger_result.transaction.id),
+            "reconciliation_link_id": str(link.id),
+        },
+    )
+
+    refund = BillingRefund(
+        id=refund_id,
+        payment_id=payment_id,
+        provider_refund_id=provider_refund_id,
+        currency=currency_code,
+        amount=amount,
+        refunded_at=refunded_at,
+        status=BillingRefundStatus.REFUNDED,
+        idempotency_key=idempotency_key,
+        ledger_tx_id=ledger_result.transaction.id,
+        external_statement_line_id=None,
+        audit_event_id=event.id,
+    )
+    db.add(refund)
+
+    record_decision_memory(
+        db,
+        case_id=str(invoice.case_id),
+        decision_type="billing_refund",
+        decision_ref_id=refund_id,
+        decision_at=refunded_at,
+        decided_by_user_id=actor.id if actor else None,
+        context_snapshot={"amount": str(amount), "currency": currency_code, "provider": payment.provider},
+        rationale=None,
+        score_snapshot=None,
+        mastery_snapshot=None,
+        audit_event_id=str(event.id),
+    )
+
+    payment_refunded = (
+        db.query(func.coalesce(func.sum(BillingRefund.amount), 0))
+        .filter(BillingRefund.payment_id == payment_id)
+        .filter(BillingRefund.status != BillingRefundStatus.FAILED)
+        .scalar()
+    )
+    if Decimal(payment_refunded or 0) >= Decimal(payment.amount):
+        payment.status = BillingPaymentStatus.REFUNDED_FULL
+    else:
+        payment.status = BillingPaymentStatus.REFUNDED_PARTIAL
+
+    _update_invoice_status(
+        db,
+        invoice=invoice,
+        actor=actor,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+    billing_metrics.mark_refund()
+    return BillingRefundResult(refund=refund, payment=payment, invoice=invoice, is_replay=False)
 
 
-if celery_client:
-    @celery_client.task(name="billing.generate_monthly_invoices")
-    def billing_generate_monthly_invoices(period_from: str, period_to: str) -> list[str]:
-        """Celery entrypoint to generate invoices for a period."""
-
-        from datetime import date as _date
-
-        start = _date.fromisoformat(period_from)
-        end = _date.fromisoformat(period_to)
-
-        session = get_sessionmaker()()
-        try:
-            invoices = generate_invoices_for_period(
-                session, period_from=start, period_to=end, status=InvoiceStatus.ISSUED
-            )
-            return [invoice.id for invoice in invoices]
-        finally:
-            session.close()
+__all__ = [
+    "BillingInvoiceResult",
+    "BillingPaymentResult",
+    "BillingRefundResult",
+    "capture_payment",
+    "issue_invoice",
+    "refund_payment",
+]

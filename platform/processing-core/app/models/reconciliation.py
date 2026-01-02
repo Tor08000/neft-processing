@@ -28,6 +28,7 @@ class ReconciliationDiscrepancyType(str, Enum):
     UNMATCHED_EXTERNAL = "unmatched_external"
     UNMATCHED_INTERNAL = "unmatched_internal"
     FX_NOT_SUPPORTED = "fx_not_supported"
+    MISMATCHED_AMOUNT = "mismatched_amount"
 
 
 class ReconciliationDiscrepancyStatus(str, Enum):
@@ -111,11 +112,46 @@ class ExternalStatement(Base):
     audit_event_id = Column(GUID(), nullable=True)
 
 
+class ReconciliationLinkDirection(str, Enum):
+    IN = "IN"
+    OUT = "OUT"
+
+
+class ReconciliationLinkStatus(str, Enum):
+    PENDING = "pending"
+    MATCHED = "matched"
+    MISMATCHED = "mismatched"
+
+
+class ReconciliationLink(Base):
+    __tablename__ = "reconciliation_links"
+    __table_args__ = (
+        sa.UniqueConstraint("entity_type", "entity_id", name="uq_reconciliation_link_entity"),
+        Index("ix_reconciliation_links_provider_status_expected", "provider", "status", "expected_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    entity_type = Column(String(32), nullable=False)
+    entity_id = Column(GUID(), nullable=False)
+    provider = Column(String(64), nullable=False)
+    currency = Column(String(8), nullable=False)
+    expected_amount = Column(sa.Numeric(18, 4), nullable=False)
+    direction = Column(ExistingEnum(ReconciliationLinkDirection, name="reconciliation_link_direction"), nullable=False)
+    expected_at = Column(DateTime(timezone=True), nullable=False)
+    match_key = Column(String(128), nullable=True)
+    status = Column(ExistingEnum(ReconciliationLinkStatus, name="reconciliation_link_status"), nullable=False)
+    run_id = Column(GUID(), ForeignKey("reconciliation_runs.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "ExternalStatement",
     "ReconciliationDiscrepancy",
     "ReconciliationDiscrepancyStatus",
     "ReconciliationDiscrepancyType",
+    "ReconciliationLink",
+    "ReconciliationLinkDirection",
+    "ReconciliationLinkStatus",
     "ReconciliationRun",
     "ReconciliationRunStatus",
     "ReconciliationScope",

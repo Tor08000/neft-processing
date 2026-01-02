@@ -5,6 +5,7 @@ from app.routers.admin import (
     accounting_exports,
     accounts,
     billing,
+    billing_flows,
     closing_packages,
     client_actions,
     clearing,
@@ -51,6 +52,7 @@ router.include_router(merchants.router)
 router.include_router(clearing.router)
 router.include_router(accounting_exports.router)
 router.include_router(billing.router)
+router.include_router(billing_flows.router)
 router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
 router.include_router(risk_v5.router)
