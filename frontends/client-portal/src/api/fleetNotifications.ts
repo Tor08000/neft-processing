@@ -4,6 +4,8 @@ import type {
   FleetNotificationChannel,
   FleetNotificationPolicy,
   FleetPushSubscription,
+  FleetTelegramBinding,
+  FleetTelegramLink,
 } from "../types/fleetNotifications";
 
 export interface FleetNotificationsListResponse<T> {
@@ -179,6 +181,53 @@ export async function testChannel(
   try {
     const item = await request<{ outbox_id: string; status: string }>(
       `/client/fleet/notifications/channels/${id}/test`,
+      { method: "POST" },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function createTelegramLink(
+  token: string,
+  payload: { scope_type: string; scope_id?: string | null },
+): Promise<FleetNotificationsEntityResponse<FleetTelegramLink>> {
+  try {
+    const item = await request<FleetTelegramLink>(
+      "/client/fleet/notifications/telegram/link",
+      { method: "POST", body: JSON.stringify(payload) },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function listTelegramBindings(
+  token: string,
+): Promise<FleetNotificationsListResponse<FleetTelegramBinding>> {
+  try {
+    const response = await request<{ items: FleetTelegramBinding[] }>(
+      "/client/fleet/notifications/telegram/bindings",
+      { method: "GET" },
+      { token },
+    );
+    return { items: response.items ?? [] };
+  } catch (error) {
+    return handleAvailability(error, { items: [], unavailable: true });
+  }
+}
+
+export async function disableTelegramBinding(
+  token: string,
+  id: string,
+): Promise<FleetNotificationsEntityResponse<FleetTelegramBinding>> {
+  try {
+    const item = await request<FleetTelegramBinding>(
+      `/client/fleet/notifications/telegram/bindings/${id}/disable`,
       { method: "POST" },
       { token },
     );

@@ -42,6 +42,10 @@ from app.schemas.client_fleet import (
     FleetNotificationPolicyListResponse,
     FleetNotificationPolicyOut,
     FleetNotificationTestOut,
+    FleetTelegramBindingListResponse,
+    FleetTelegramBindingOut,
+    FleetTelegramLinkIn,
+    FleetTelegramLinkOut,
     FleetPushSubscriptionIn,
     FleetPushSubscriptionLookupIn,
     FleetPushSubscriptionOut,
@@ -61,6 +65,7 @@ from app.security.rbac.permissions import Permission
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_notification
+from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/api/client/fleet", tags=["client-fleet"])
 
@@ -880,6 +885,97 @@ def test_notification_channel(
     outbox = dispatch_outbox_item(db, outbox_id=str(outbox.id))
     db.commit()
     return FleetNotificationTestOut(outbox_id=str(outbox.id), status=outbox.status.value)
+
+
+@router.post(
+    "/notifications/telegram/link",
+    response_model=FleetTelegramLinkOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def create_telegram_link(
+    payload: FleetTelegramLinkIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetTelegramLinkOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    token = fleet_service.issue_telegram_link_token(
+        db,
+        client_id=client_id,
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    settings = get_settings()
+    bot_username = settings.TELEGRAM_BOT_USERNAME
+    deep_link = f"https://t.me/{bot_username}?start={token.token}" if bot_username else f"https://t.me/?start={token.token}"
+    return FleetTelegramLinkOut(token=token.token, expires_at=token.expires_at, deep_link=deep_link)
+
+
+@router.get(
+    "/notifications/telegram/bindings",
+    response_model=FleetTelegramBindingListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def list_telegram_bindings(
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetTelegramBindingListResponse:
+    client_id = _ensure_client_context(principal)
+    bindings = fleet_service.list_telegram_bindings(db, client_id=client_id, principal=principal)
+    return FleetTelegramBindingListResponse(
+        items=[
+            FleetTelegramBindingOut(
+                id=str(binding.id),
+                scope_type=binding.scope_type,
+                scope_id=str(binding.scope_id) if binding.scope_id else None,
+                chat_title=binding.chat_title,
+                chat_type=binding.chat_type,
+                status=binding.status,
+                created_at=binding.created_at,
+                verified_at=binding.verified_at,
+            )
+            for binding in bindings
+        ]
+    )
+
+
+@router.post(
+    "/notifications/telegram/bindings/{binding_id}/disable",
+    response_model=FleetTelegramBindingOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def disable_telegram_binding(
+    binding_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetTelegramBindingOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    binding = fleet_service.disable_telegram_binding(
+        db,
+        binding_id=binding_id,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetTelegramBindingOut(
+        id=str(binding.id),
+        scope_type=binding.scope_type,
+        scope_id=str(binding.scope_id) if binding.scope_id else None,
+        chat_title=binding.chat_title,
+        chat_type=binding.chat_type,
+        status=binding.status,
+        created_at=binding.created_at,
+        verified_at=binding.verified_at,
+    )
 
 
 @router.get(

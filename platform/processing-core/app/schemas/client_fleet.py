@@ -21,6 +21,9 @@ from app.models.fuel import (
     FleetNotificationEventType,
     FleetNotificationPolicyScopeType,
     FleetNotificationSeverity,
+    FleetTelegramBindingScopeType,
+    FleetTelegramBindingStatus,
+    FleetTelegramChatType,
     FuelAnomalyStatus,
     FuelAnomalyType,
 )
@@ -305,6 +308,32 @@ class FleetNotificationPolicyOut(BaseModel):
 
 class FleetNotificationPolicyListResponse(BaseModel):
     items: list[FleetNotificationPolicyOut]
+
+
+class FleetTelegramLinkIn(BaseModel):
+    scope_type: FleetTelegramBindingScopeType
+    scope_id: str | None = None
+
+
+class FleetTelegramLinkOut(BaseModel):
+    token: str
+    expires_at: datetime
+    deep_link: str
+
+
+class FleetTelegramBindingOut(BaseModel):
+    id: str
+    scope_type: FleetTelegramBindingScopeType
+    scope_id: str | None
+    chat_title: str | None
+    chat_type: FleetTelegramChatType
+    status: FleetTelegramBindingStatus
+    created_at: datetime
+    verified_at: datetime | None
+
+
+class FleetTelegramBindingListResponse(BaseModel):
+    items: list[FleetTelegramBindingOut]
 
 
 class FleetActionPolicyIn(BaseModel):

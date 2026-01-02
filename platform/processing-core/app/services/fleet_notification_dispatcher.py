@@ -24,6 +24,11 @@ from app.models.fuel import (
     FleetNotificationPolicyScopeType,
     FleetNotificationSeverity,
     FleetPushSubscription,
+    FleetTelegramBinding,
+    FleetTelegramBindingScopeType,
+    FleetTelegramBindingStatus,
+    FuelCard,
+    FuelCardGroup,
     FuelAnomaly,
     FuelLimitBreach,
 )
@@ -33,6 +38,8 @@ from app.services.case_event_redaction import redact_deep
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.notifications.email_sender import ConsoleEmailSender, EmailSender, SmtpEmailSender
 from app.services.notifications.email_templates import render_notification_email
+from app.services.notifications.telegram_sender import TelegramSendError, send_message
+from app.services.notifications.telegram_templates import render_telegram_message
 from app.services.notifications.webpush_sender import WebPushSender
 
 logger = logging.getLogger(__name__)
@@ -67,6 +74,10 @@ def _dedupe_key(client_id: str, event_type: str, event_ref_id: str, severity: st
 def _next_attempt(attempts: int) -> datetime:
     delay = BACKOFF_SECONDS[min(attempts, len(BACKOFF_SECONDS) - 1)]
     return _now() + timedelta(seconds=delay)
+
+
+def _telegram_dedupe_key(client_id: str, event_ref_id: str, binding_id: str) -> str:
+    return f"client:{client_id}:evt:{event_ref_id}:tg:{binding_id}"
 
 
 def canonical_json(payload: dict[str, Any]) -> str:
@@ -241,6 +252,33 @@ def _send_push(db: Session, sender: WebPushSender, client_id: str, payload: dict
     return last_status, last_body
 
 
+def _parse_telegram_binding_id(channel: FleetNotificationChannel) -> str | None:
+    if not channel.target.startswith("telegram:"):
+        return None
+    return channel.target.split("telegram:", 1)[-1] or None
+
+
+def _sent_telegram_bindings(entries: list[Any]) -> set[str]:
+    sent: set[str] = set()
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("channel") == FleetNotificationChannelType.TELEGRAM.value:
+            if entry.get("status") == "sent" and entry.get("binding_id"):
+                sent.add(str(entry["binding_id"]))
+    return sent
+
+
+def _attempted_channel_names(entries: list[Any]) -> list[str]:
+    names: list[str] = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            channel = entry.get("channel")
+            if channel:
+                names.append(str(channel))
+        elif isinstance(entry, str):
+            names.append(entry)
+    return names
+
+
 def dispatch_pending_outbox(
     db: Session,
     *,
@@ -299,7 +337,9 @@ def _dispatch_outbox_item(
     event_type = FleetNotificationEventType(outbox.event_type)
     severity = FleetNotificationSeverity(outbox.severity)
     channels = _resolve_channels(db, client_id=outbox.client_id, event_type=event_type, severity=severity, payload=payload)
-    attempted: list[str] = []
+    existing_attempts = outbox.channels_attempted or []
+    attempted: list[Any] = list(existing_attempts) if isinstance(existing_attempts, list) else []
+    sent_telegram = _sent_telegram_bindings(attempted)
     error: str | None = None
     start = _now()
     try:
@@ -313,6 +353,52 @@ def _dispatch_outbox_item(
             if channel.channel_type == FleetNotificationChannelType.PUSH and _severity_rank(severity) < _severity_rank(
                 FleetNotificationSeverity.HIGH
             ):
+                continue
+            if channel.channel_type == FleetNotificationChannelType.TELEGRAM:
+                binding_id = _parse_telegram_binding_id(channel)
+                if not binding_id or binding_id in sent_telegram:
+                    continue
+                binding = db.query(FleetTelegramBinding).filter(FleetTelegramBinding.id == binding_id).one_or_none()
+                if not binding or binding.status != FleetTelegramBindingStatus.ACTIVE:
+                    continue
+                if binding.scope_type == FleetTelegramBindingScopeType.GROUP and (
+                    not payload.get("group_id") or str(binding.scope_id) != str(payload.get("group_id"))
+                ):
+                    continue
+                message = render_telegram_message(payload)
+                try:
+                    result = send_message(binding.chat_id, message)
+                except TelegramSendError as exc:
+                    outbox.last_response_status = exc.status_code
+                    outbox.last_response_body = exc.body
+                    if exc.is_permanent:
+                        binding.status = FleetTelegramBindingStatus.DISABLED
+                        channel.status = FleetNotificationChannelStatus.DISABLED
+                        binding.audit_event_id = fleet_service._emit_event(
+                            db,
+                            client_id=outbox.client_id,
+                            principal=None,
+                            request_id=None,
+                            trace_id=None,
+                            event_type=CaseEventType.FLEET_TELEGRAM_SEND_FAILED,
+                            payload={
+                                "binding_id": str(binding.id),
+                                "chat_id": binding.chat_id,
+                                "status_code": exc.status_code,
+                            },
+                        )
+                    raise
+                attempted.append(
+                    {
+                        "channel": FleetNotificationChannelType.TELEGRAM.value,
+                        "binding_id": binding_id,
+                        "status": "sent",
+                        "dedupe_key": _telegram_dedupe_key(outbox.client_id, str(outbox.event_ref_id), binding_id),
+                    }
+                )
+                sent_telegram.add(binding_id)
+                if result.message_id:
+                    outbox.delivery_message_id = result.message_id
                 continue
             attempted.append(channel.channel_type.value)
             if channel.channel_type == FleetNotificationChannelType.WEBHOOK:
@@ -351,12 +437,16 @@ def _dispatch_outbox_item(
             outbox.status = FleetNotificationOutboxStatus.DEAD
         else:
             outbox.status = FleetNotificationOutboxStatus.FAILED
-            outbox.next_attempt_at = _next_attempt(outbox.attempts)
+            if isinstance(exc, TelegramSendError) and exc.retry_after:
+                outbox.next_attempt_at = _now() + timedelta(seconds=exc.retry_after)
+            else:
+                outbox.next_attempt_at = _next_attempt(outbox.attempts)
         fleet_metrics.mark_notification_outbox(outbox.status.value, outbox.event_type)
     finally:
         elapsed = (_now() - start).total_seconds()
-        if attempted:
-            fleet_metrics.observe_notification_delivery("+".join(attempted), elapsed)
+        attempted_channels = _attempted_channel_names(attempted)
+        if attempted_channels:
+            fleet_metrics.observe_notification_delivery("+".join(attempted_channels), elapsed)
     return outbox
 
 
@@ -368,13 +458,32 @@ def enqueue_anomaly_notification(
     request_id: str | None,
     trace_id: str | None,
 ) -> FleetNotificationOutbox:
+    card_alias = None
+    group_id = anomaly.group_id
+    group_name = None
+    link_id = None
+    if anomaly.card_id:
+        card = db.query(FuelCard).filter(FuelCard.id == anomaly.card_id).one_or_none()
+        if card:
+            card_alias = card.card_alias
+            link_id = str(card.id)
+            if not group_id:
+                group_id = card.card_group_id
+    if group_id:
+        group = db.query(FuelCardGroup).filter(FuelCardGroup.id == group_id).one_or_none()
+        if group:
+            group_name = group.name
     payload = {
         "client_id": anomaly.client_id,
         "event_type": FleetNotificationEventType.ANOMALY.value,
         "severity": anomaly.severity.value,
         "card_id": str(anomaly.card_id) if anomaly.card_id else None,
-        "group_id": str(anomaly.group_id) if anomaly.group_id else None,
+        "group_id": str(group_id) if group_id else None,
+        "alias": card_alias,
+        "group_label": group_name,
         "tx_id": str(anomaly.tx_id) if anomaly.tx_id else None,
+        "link_type": "card" if link_id else None,
+        "link_id": link_id,
         "route": "/client/fleet/notifications/alerts",
         "summary": {
             "anomaly_type": anomaly.anomaly_type.value,
@@ -416,12 +525,32 @@ def enqueue_breach_notification(
     trace_id: str | None,
 ) -> FleetNotificationOutbox:
     severity = _breach_severity(breach)
+    card_alias = None
+    group_id = None
+    group_name = None
+    link_id = None
+    if breach.scope_type.value == "card":
+        card = db.query(FuelCard).filter(FuelCard.id == breach.scope_id).one_or_none()
+        if card:
+            card_alias = card.card_alias
+            link_id = str(card.id)
+            group_id = card.card_group_id
+    if breach.scope_type.value == "group":
+        group_id = breach.scope_id
+    if group_id:
+        group = db.query(FuelCardGroup).filter(FuelCardGroup.id == group_id).one_or_none()
+        if group:
+            group_name = group.name
     payload = {
         "client_id": breach.client_id,
         "event_type": FleetNotificationEventType.LIMIT_BREACH.value,
         "severity": severity.value,
         "card_id": str(breach.scope_id) if breach.scope_type.value == "card" else None,
-        "group_id": str(breach.scope_id) if breach.scope_type.value == "group" else None,
+        "group_id": str(group_id) if group_id else None,
+        "alias": card_alias,
+        "group_label": group_name,
+        "link_type": "card" if link_id else None,
+        "link_id": link_id,
         "tx_id": str(breach.tx_id) if breach.tx_id else None,
         "route": "/client/fleet/notifications/alerts",
         "amount": str(breach.observed),
@@ -429,6 +558,8 @@ def enqueue_breach_notification(
             "breach_type": breach.breach_type.value,
             "threshold": str(breach.threshold),
             "observed": str(breach.observed),
+            "delta": str(breach.delta),
+            "period": breach.period.value,
             "occurred_at": breach.occurred_at.isoformat(),
         },
     }

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import secrets
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID
@@ -29,6 +30,12 @@ from app.models.fuel import (
     FleetNotificationChannelType,
     FleetNotificationPolicy,
     FleetNotificationSeverity,
+    FleetTelegramBinding,
+    FleetTelegramBindingScopeType,
+    FleetTelegramBindingStatus,
+    FleetTelegramChatType,
+    FleetTelegramLinkToken,
+    FleetTelegramLinkTokenStatus,
     FleetPushSubscription,
     FuelCard,
     FuelCardGroup,
@@ -1543,6 +1550,8 @@ def create_notification_channel(
     _ensure_client_access(principal, client_id)
     if channel_type == FleetNotificationChannelType.PUSH and not target:
         target = "browser"
+    if channel_type == FleetNotificationChannelType.TELEGRAM:
+        raise HTTPException(status_code=400, detail="telegram_binding_required")
     channel = FleetNotificationChannel(
         client_id=client_id,
         channel_type=channel_type,
@@ -1680,6 +1689,238 @@ def disable_notification_policy(
     )
     return policy
 
+
+def issue_telegram_link_token(
+    db: Session,
+    *,
+    client_id: str,
+    scope_type: FleetTelegramBindingScopeType,
+    scope_id: str | None,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetTelegramLinkToken:
+    _ensure_client_access(principal, client_id)
+    if scope_type == FleetTelegramBindingScopeType.CLIENT:
+        if not _is_client_admin(principal):
+            raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "client_admin_required"})
+    if scope_type == FleetTelegramBindingScopeType.GROUP:
+        if not scope_id:
+            raise HTTPException(status_code=400, detail="missing_scope_id")
+        require_group_role(db, principal=principal, group_id=scope_id, min_role=FuelGroupRole.ADMIN)
+        group_client_id = db.query(FuelCardGroup.client_id).filter(FuelCardGroup.id == scope_id).scalar()
+        if group_client_id and str(group_client_id) != str(client_id):
+            raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "group_mismatch"})
+
+    token_value = secrets.token_urlsafe(24)[:32]
+    while (
+        db.query(FleetTelegramLinkToken.id).filter(FleetTelegramLinkToken.token == token_value).one_or_none()
+        is not None
+    ):
+        token_value = secrets.token_urlsafe(24)[:32]
+    expires_at = _now() + timedelta(minutes=15)
+    token = FleetTelegramLinkToken(
+        client_id=client_id,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        token=token_value,
+        expires_at=expires_at,
+        status=FleetTelegramLinkTokenStatus.ISSUED,
+        issued_by_user_id=str(principal.user_id) if principal.user_id else None,
+    )
+    db.add(token)
+    db.flush()
+    token.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_TELEGRAM_LINK_TOKEN_ISSUED,
+        payload={"token_id": str(token.id), "scope_type": scope_type.value, "scope_id": scope_id},
+    )
+    return token
+
+
+def list_telegram_bindings(
+    db: Session,
+    *,
+    client_id: str,
+    principal: Principal,
+) -> list[FleetTelegramBinding]:
+    _ensure_client_access(principal, client_id)
+    if _is_client_admin(principal):
+        return (
+            db.query(FleetTelegramBinding)
+            .filter(FleetTelegramBinding.client_id == client_id)
+            .order_by(FleetTelegramBinding.created_at.desc())
+            .all()
+        )
+    group_ids = _accessible_group_ids(db, principal=principal, client_id=client_id)
+    if not group_ids:
+        return []
+    return (
+        db.query(FleetTelegramBinding)
+        .filter(FleetTelegramBinding.client_id == client_id)
+        .filter(FleetTelegramBinding.scope_type == FleetTelegramBindingScopeType.GROUP)
+        .filter(FleetTelegramBinding.scope_id.in_(group_ids))
+        .order_by(FleetTelegramBinding.created_at.desc())
+        .all()
+    )
+
+
+def disable_telegram_binding(
+    db: Session,
+    *,
+    binding_id: str,
+    client_id: str,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetTelegramBinding:
+    _ensure_client_access(principal, client_id)
+    binding = (
+        db.query(FleetTelegramBinding)
+        .filter(FleetTelegramBinding.id == binding_id)
+        .filter(FleetTelegramBinding.client_id == client_id)
+        .one_or_none()
+    )
+    if not binding:
+        raise HTTPException(status_code=404, detail="binding_not_found")
+    if binding.scope_type == FleetTelegramBindingScopeType.CLIENT:
+        if not _is_client_admin(principal):
+            raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "client_admin_required"})
+    if binding.scope_type == FleetTelegramBindingScopeType.GROUP and binding.scope_id:
+        require_group_role(db, principal=principal, group_id=str(binding.scope_id), min_role=FuelGroupRole.ADMIN)
+    binding.status = FleetTelegramBindingStatus.DISABLED
+    binding.audit_event_id = _emit_event(
+        db,
+        client_id=client_id,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+        event_type=CaseEventType.FLEET_TELEGRAM_UNBOUND,
+        payload={"binding_id": str(binding.id), "chat_id": binding.chat_id},
+    )
+    _disable_telegram_channel(db, client_id=client_id, binding_id=str(binding.id))
+    return binding
+
+
+def bind_telegram_chat(
+    db: Session,
+    *,
+    token_value: str,
+    chat_id: int,
+    chat_title: str | None,
+    chat_type: FleetTelegramChatType,
+) -> FleetTelegramBinding:
+    token = (
+        db.query(FleetTelegramLinkToken)
+        .filter(FleetTelegramLinkToken.token == token_value)
+        .one_or_none()
+    )
+    if not token:
+        raise HTTPException(status_code=404, detail="token_not_found")
+    if token.expires_at <= _now():
+        token.status = FleetTelegramLinkTokenStatus.EXPIRED
+        raise HTTPException(status_code=410, detail="token_expired")
+    if token.status != FleetTelegramLinkTokenStatus.ISSUED:
+        raise HTTPException(status_code=409, detail="token_used")
+
+    binding = (
+        db.query(FleetTelegramBinding)
+        .filter(FleetTelegramBinding.client_id == token.client_id)
+        .filter(FleetTelegramBinding.chat_id == chat_id)
+        .filter(FleetTelegramBinding.scope_type == token.scope_type)
+        .filter(FleetTelegramBinding.scope_id == token.scope_id)
+        .one_or_none()
+    )
+    if binding:
+        binding.status = FleetTelegramBindingStatus.ACTIVE
+        binding.chat_title = chat_title
+        binding.chat_type = chat_type
+        binding.verified_at = _now()
+    else:
+        binding = FleetTelegramBinding(
+            client_id=token.client_id,
+            scope_type=token.scope_type,
+            scope_id=token.scope_id,
+            chat_id=chat_id,
+            chat_title=chat_title,
+            chat_type=chat_type,
+            status=FleetTelegramBindingStatus.ACTIVE,
+            verified_at=_now(),
+        )
+        db.add(binding)
+    db.flush()
+    token.status = FleetTelegramLinkTokenStatus.USED
+    token.used_by_chat_id = chat_id
+    binding.audit_event_id = _emit_event(
+        db,
+        client_id=token.client_id,
+        principal=None,
+        request_id=None,
+        trace_id=None,
+        event_type=CaseEventType.FLEET_TELEGRAM_BOUND,
+        payload={"binding_id": str(binding.id), "chat_id": chat_id, "scope_type": token.scope_type.value},
+    )
+    _ensure_telegram_channel(db, client_id=token.client_id, binding_id=str(binding.id))
+    return binding
+
+
+def unbind_telegram_chat(db: Session, *, chat_id: int) -> FleetTelegramBinding:
+    binding = db.query(FleetTelegramBinding).filter(FleetTelegramBinding.chat_id == chat_id).one_or_none()
+    if not binding:
+        raise HTTPException(status_code=404, detail="binding_not_found")
+    binding.status = FleetTelegramBindingStatus.DISABLED
+    binding.audit_event_id = _emit_event(
+        db,
+        client_id=binding.client_id,
+        principal=None,
+        request_id=None,
+        trace_id=None,
+        event_type=CaseEventType.FLEET_TELEGRAM_UNBOUND,
+        payload={"binding_id": str(binding.id), "chat_id": chat_id},
+    )
+    _disable_telegram_channel(db, client_id=binding.client_id, binding_id=str(binding.id))
+    return binding
+
+
+def _ensure_telegram_channel(db: Session, *, client_id: str, binding_id: str) -> FleetNotificationChannel:
+    target = f"telegram:{binding_id}"
+    channel = (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .filter(FleetNotificationChannel.channel_type == FleetNotificationChannelType.TELEGRAM)
+        .filter(FleetNotificationChannel.target == target)
+        .one_or_none()
+    )
+    if channel:
+        if channel.status != FleetNotificationChannelStatus.ACTIVE:
+            channel.status = FleetNotificationChannelStatus.ACTIVE
+        return channel
+    channel = FleetNotificationChannel(
+        client_id=client_id,
+        channel_type=FleetNotificationChannelType.TELEGRAM,
+        target=target,
+        status=FleetNotificationChannelStatus.ACTIVE,
+    )
+    db.add(channel)
+    db.flush()
+    return channel
+
+
+def _disable_telegram_channel(db: Session, *, client_id: str, binding_id: str) -> None:
+    target = f"telegram:{binding_id}"
+    channel = (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .filter(FleetNotificationChannel.channel_type == FleetNotificationChannelType.TELEGRAM)
+        .filter(FleetNotificationChannel.target == target)
+        .one_or_none()
+    )
+    if channel:
+        channel.status = FleetNotificationChannelStatus.DISABLED
 
 def upsert_push_subscription(
     db: Session,
@@ -1939,6 +2180,11 @@ __all__ = [
     "list_notification_policies",
     "create_notification_policy",
     "disable_notification_policy",
+    "issue_telegram_link_token",
+    "list_telegram_bindings",
+    "disable_telegram_binding",
+    "bind_telegram_chat",
+    "unbind_telegram_chat",
     "upsert_push_subscription",
     "disable_push_subscription",
     "get_push_subscription",

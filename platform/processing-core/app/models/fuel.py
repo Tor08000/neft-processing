@@ -133,11 +133,37 @@ class FleetNotificationChannelType(str, Enum):
     WEBHOOK = "WEBHOOK"
     EMAIL = "EMAIL"
     PUSH = "PUSH"
+    TELEGRAM = "TELEGRAM"
 
 
 class FleetNotificationChannelStatus(str, Enum):
     ACTIVE = "ACTIVE"
     DISABLED = "DISABLED"
+
+
+class FleetTelegramBindingScopeType(str, Enum):
+    CLIENT = "client"
+    GROUP = "group"
+
+
+class FleetTelegramChatType(str, Enum):
+    PRIVATE = "private"
+    GROUP = "group"
+    SUPERGROUP = "supergroup"
+    CHANNEL = "channel"
+
+
+class FleetTelegramBindingStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+    PENDING = "PENDING"
+
+
+class FleetTelegramLinkTokenStatus(str, Enum):
+    ISSUED = "ISSUED"
+    USED = "USED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
 
 
 class FleetNotificationPolicyScopeType(str, Enum):
@@ -447,6 +473,50 @@ class FleetNotificationChannel(Base):
         ExistingEnum(FleetNotificationChannelStatus, name="fleet_notification_channel_status"), nullable=False
     )
     secret_ref = Column(String(256), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetTelegramBinding(Base):
+    __tablename__ = "fleet_telegram_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id",
+            "chat_id",
+            "scope_type",
+            "scope_id",
+            name="uq_fleet_telegram_bindings_client_chat_scope",
+        ),
+        Index("ix_fleet_telegram_bindings_client_status", "client_id", "status"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    scope_type = Column(ExistingEnum(FleetTelegramBindingScopeType, name="fleet_telegram_scope_type"), nullable=False)
+    scope_id = Column(GUID(), nullable=True)
+    chat_id = Column(BigInteger, nullable=False)
+    chat_title = Column(Text, nullable=True)
+    chat_type = Column(ExistingEnum(FleetTelegramChatType, name="fleet_telegram_chat_type"), nullable=False)
+    status = Column(ExistingEnum(FleetTelegramBindingStatus, name="fleet_telegram_binding_status"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by_user_id = Column(GUID(), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetTelegramLinkToken(Base):
+    __tablename__ = "fleet_telegram_link_tokens"
+    __table_args__ = (Index("ix_fleet_telegram_link_tokens_client_status", "client_id", "status"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    scope_type = Column(ExistingEnum(FleetTelegramBindingScopeType, name="fleet_telegram_scope_type"), nullable=False)
+    scope_id = Column(GUID(), nullable=True)
+    token = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(ExistingEnum(FleetTelegramLinkTokenStatus, name="fleet_telegram_link_token_status"), nullable=False)
+    issued_by_user_id = Column(GUID(), nullable=True)
+    used_by_chat_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     audit_event_id = Column(GUID(), nullable=True)
 

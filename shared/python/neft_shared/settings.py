@@ -148,6 +148,14 @@ class Settings:
     CLICKHOUSE_URL: str = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123")
     CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "default")
 
+    # Telegram notifications
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "")
+    TELEGRAM_WEBHOOK_SECRET: str = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    TELEGRAM_WEBHOOK_PATH: str = os.getenv("TELEGRAM_WEBHOOK_PATH", "/api/internal/telegram/webhook")
+    TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN: int = int(os.getenv("TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN", "60"))
+    TELEGRAM_MAX_RETRY: int = int(os.getenv("TELEGRAM_MAX_RETRY", "10"))
+
     @property
     def redis_dsn(self) -> str:
         """Совместимость с более старым кодом, ожидающим REDIS_DSN."""
