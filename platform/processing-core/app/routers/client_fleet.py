@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
@@ -12,6 +12,8 @@ from app.models.fuel import (
     FuelCardStatus,
     FuelLimitScopeType,
 )
+from app.integrations.fuel.jobs import poll_provider
+from app.integrations.fuel.models import FuelProviderConnection, FuelProviderConnectionStatus
 from app.schemas.client_fleet import (
     FleetAccessGrantIn,
     FleetAccessListResponse,
@@ -59,11 +61,20 @@ from app.schemas.client_fleet import (
     FleetTransactionOut,
     FleetTransactionsExportOut,
 )
+from app.schemas.fuel_providers import (
+    FuelProviderConnectionCreateIn,
+    FuelProviderConnectionListResponse,
+    FuelProviderConnectionOut,
+    FuelProviderDisableIn,
+    FuelProviderStatusOut,
+    FuelProviderSyncNowOut,
+)
 from app.models.fuel import FleetNotificationEventType, FleetNotificationSeverity
 from app.security.rbac.guard import require_permission
 from app.security.rbac.permissions import Permission
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
+from app.services.audit_service import AuditService, request_context_from_request
 from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_notification
 from neft_shared.settings import get_settings
 
@@ -155,6 +166,19 @@ def _transaction_to_schema(tx) -> FleetTransactionOut:
         provider_tx_id=tx.provider_tx_id,
         limit_check_status=tx.limit_check_status.value if tx.limit_check_status else None,
         created_at=tx.created_at,
+    )
+
+
+def _provider_connection_to_schema(conn: FuelProviderConnection) -> FuelProviderConnectionOut:
+    return FuelProviderConnectionOut(
+        id=str(conn.id),
+        client_id=conn.client_id,
+        provider_code=conn.provider_code,
+        status=conn.status,
+        auth_type=conn.auth_type,
+        config=conn.config,
+        last_sync_at=conn.last_sync_at,
+        created_at=conn.created_at,
     )
 
 
@@ -1380,6 +1404,177 @@ def disable_employee(
     )
     db.commit()
     return _employee_to_schema(employee)
+
+
+@router.get(
+    "/providers",
+    response_model=FuelProviderConnectionListResponse,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value))],
+)
+def list_provider_connections(
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FuelProviderConnectionListResponse:
+    client_id = _ensure_client_context(principal)
+    connections = (
+        db.query(FuelProviderConnection)
+        .filter(FuelProviderConnection.client_id == client_id)
+        .order_by(FuelProviderConnection.created_at.desc())
+        .all()
+    )
+    return FuelProviderConnectionListResponse(items=[_provider_connection_to_schema(item) for item in connections])
+
+
+@router.post(
+    "/providers/connect",
+    response_model=FuelProviderConnectionOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value))],
+)
+def connect_provider(
+    payload: FuelProviderConnectionCreateIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FuelProviderConnectionOut:
+    client_id = _ensure_client_context(principal)
+    existing = (
+        db.query(FuelProviderConnection)
+        .filter(FuelProviderConnection.client_id == client_id)
+        .filter(FuelProviderConnection.provider_code == payload.provider_code)
+        .one_or_none()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="provider_connection_exists")
+    connection = FuelProviderConnection(
+        client_id=client_id,
+        provider_code=payload.provider_code,
+        status=FuelProviderConnectionStatus.ACTIVE,
+        auth_type=payload.auth_type,
+        secret_ref=payload.secret_ref,
+        config=payload.config,
+    )
+    db.add(connection)
+    db.flush()
+    audit = AuditService(db).audit(
+        event_type="FUEL_PROVIDER_CONNECTION_CREATED",
+        entity_type="fuel_provider_connection",
+        entity_id=str(connection.id),
+        action="create",
+        request_ctx=request_context_from_request(request, token=principal.raw_claims if principal else None),
+        after={
+            "client_id": client_id,
+            "provider_code": payload.provider_code,
+            "status": connection.status.value,
+        },
+    )
+    connection.audit_event_id = audit.id
+    db.commit()
+    db.refresh(connection)
+    return _provider_connection_to_schema(connection)
+
+
+@router.post(
+    "/providers/{connection_id}/disable",
+    response_model=FuelProviderConnectionOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value))],
+)
+def disable_provider_connection(
+    connection_id: str,
+    payload: FuelProviderDisableIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FuelProviderConnectionOut:
+    client_id = _ensure_client_context(principal)
+    connection = (
+        db.query(FuelProviderConnection)
+        .filter(FuelProviderConnection.id == connection_id)
+        .filter(FuelProviderConnection.client_id == client_id)
+        .one_or_none()
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="provider_connection_not_found")
+    before = {"status": connection.status.value}
+    connection.status = FuelProviderConnectionStatus.DISABLED
+    audit = AuditService(db).audit(
+        event_type="FUEL_PROVIDER_CONNECTION_DISABLED",
+        entity_type="fuel_provider_connection",
+        entity_id=str(connection.id),
+        action="disable",
+        request_ctx=request_context_from_request(request, token=principal.raw_claims if principal else None),
+        before=before,
+        after={"status": connection.status.value},
+        reason=payload.reason,
+    )
+    connection.audit_event_id = audit.id
+    db.commit()
+    db.refresh(connection)
+    return _provider_connection_to_schema(connection)
+
+
+@router.get(
+    "/providers/{connection_id}/status",
+    response_model=FuelProviderStatusOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value))],
+)
+def get_provider_status(
+    connection_id: str,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FuelProviderStatusOut:
+    client_id = _ensure_client_context(principal)
+    connection = (
+        db.query(FuelProviderConnection)
+        .filter(FuelProviderConnection.id == connection_id)
+        .filter(FuelProviderConnection.client_id == client_id)
+        .one_or_none()
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="provider_connection_not_found")
+    return FuelProviderStatusOut(
+        id=str(connection.id),
+        status=connection.status,
+        last_sync_at=connection.last_sync_at,
+        last_sync_cursor=connection.last_sync_cursor,
+    )
+
+
+@router.post(
+    "/providers/{connection_id}/sync-now",
+    response_model=FuelProviderSyncNowOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value))],
+)
+def sync_provider_now(
+    connection_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FuelProviderSyncNowOut:
+    client_id = _ensure_client_context(principal)
+    connection = (
+        db.query(FuelProviderConnection)
+        .filter(FuelProviderConnection.id == connection_id)
+        .filter(FuelProviderConnection.client_id == client_id)
+        .one_or_none()
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="provider_connection_not_found")
+    now = datetime.now(timezone.utc)
+    since = connection.last_sync_at or (now - timedelta(hours=1))
+    job = poll_provider(
+        db,
+        connection=connection,
+        since=since,
+        until=now,
+        request_id=request.headers.get("x-request-id"),
+        trace_id=request.headers.get("x-trace-id"),
+    )
+    db.commit()
+    return FuelProviderSyncNowOut(
+        job_id=str(job.id) if job else None,
+        status="scheduled" if job else "no_data",
+    )
 
 
 __all__ = ["router"]

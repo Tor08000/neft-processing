@@ -20,6 +20,7 @@ from app.routers.admin import (
     fleet_intelligence,
     fleet_policies,
     fuel,
+    fuel_providers,
     what_if,
     integration_monitoring,
     logistics,
@@ -69,6 +70,7 @@ router.include_router(disputes.router)
 router.include_router(finance.router)
 router.include_router(ledger.router)
 router.include_router(fuel.router)
+router.include_router(fuel_providers.router)
 router.include_router(logistics.router)
 router.include_router(client_actions.router)
 router.include_router(documents.router)
