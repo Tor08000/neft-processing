@@ -32,6 +32,7 @@ class InternalLedgerTransactionType(str, Enum):
     ACCOUNTING_EXPORT_CONFIRMED = "ACCOUNTING_EXPORT_CONFIRMED"
     FUEL_SETTLEMENT = "FUEL_SETTLEMENT"
     FUEL_REVERSAL = "FUEL_REVERSAL"
+    ADJUSTMENT = "ADJUSTMENT"
 
 
 class InternalLedgerEntryDirection(str, Enum):

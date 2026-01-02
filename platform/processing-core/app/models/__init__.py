@@ -168,6 +168,15 @@ from .billing_reconciliation import (  # noqa: F401
     BillingReconciliationStatus,
     BillingReconciliationVerdict,
 )
+from .reconciliation import (  # noqa: F401
+    ExternalStatement,
+    ReconciliationDiscrepancy,
+    ReconciliationDiscrepancyStatus,
+    ReconciliationDiscrepancyType,
+    ReconciliationRun,
+    ReconciliationRunStatus,
+    ReconciliationScope,
+)
 from .documents import (  # noqa: F401
     ClosingPackage,
     ClosingPackageStatus,
