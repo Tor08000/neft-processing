@@ -17,6 +17,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import synonym
 from sqlalchemy.types import BigInteger, JSON
 
 from app.db import Base
@@ -25,6 +26,9 @@ from app.db import Base
 class SubscriptionStatus(str, Enum):
     FREE = "FREE"
     ACTIVE = "ACTIVE"
+    PAST_DUE = "PAST_DUE"
+    SUSPENDED = "SUSPENDED"
+    PENDING = "PENDING"
     PAUSED = "PAUSED"
     GRACE = "GRACE"
     EXPIRED = "EXPIRED"
@@ -83,10 +87,15 @@ class ClientSubscription(Base):
     status = Column(SAEnum(SubscriptionStatus, name="subscription_status"), nullable=False, index=True)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=True)
+    billing_account_id = Column(String(64), nullable=True)
+    audit_event_id = Column(String(64), nullable=True)
     auto_renew = Column(Boolean, nullable=False, server_default="true")
     grace_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    started_at = synonym("start_at")
+    ends_at = synonym("end_at")
 
 
 class RoleEntitlement(Base):

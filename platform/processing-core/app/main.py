@@ -24,6 +24,7 @@ from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_portal import router as client_portal_router
+from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
 from app.routers.internal.telegram import router as internal_telegram_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
@@ -411,6 +412,7 @@ app.include_router(portal_partner_router, prefix=API_PREFIX_CORE)
 app.include_router(client_documents_router)
 app.include_router(internal_fleet_router)
 app.include_router(internal_telegram_router)
+app.include_router(commercial_layer_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -456,6 +458,7 @@ core_prefixed_router.include_router(client_portal_router)
 core_prefixed_router.include_router(client_documents_router)
 core_prefixed_router.include_router(internal_fleet_router)
 core_prefixed_router.include_router(internal_telegram_router)
+core_prefixed_router.include_router(commercial_layer_router)
 
 
 # -----------------------------------------------------------------------------
