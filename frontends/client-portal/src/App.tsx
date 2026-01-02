@@ -51,6 +51,8 @@ import { FleetSpendPage } from "./pages/FleetSpendPage";
 import { FleetNotificationsPage } from "./pages/FleetNotificationsPage";
 import { FleetNotificationPoliciesPage } from "./pages/FleetNotificationPoliciesPage";
 import { FleetNotificationChannelsPage } from "./pages/FleetNotificationChannelsPage";
+import { FleetPoliciesPage } from "./pages/FleetPoliciesPage";
+import { FleetPolicyExecutionsPage } from "./pages/FleetPolicyExecutionsPage";
 import { isPwaMode } from "./pwa/mode";
 
 interface AppProps {
@@ -145,6 +147,8 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/fleet/notifications" element={<FleetNotificationsPage />} />
                 <Route path="/fleet/notifications/policies" element={<FleetNotificationPoliciesPage />} />
                 <Route path="/fleet/notifications/channels" element={<FleetNotificationChannelsPage />} />
+                <Route path="/fleet/policies" element={<FleetPoliciesPage />} />
+                <Route path="/fleet/policies/executions" element={<FleetPolicyExecutionsPage />} />
               </>
             )}
           </Route>
