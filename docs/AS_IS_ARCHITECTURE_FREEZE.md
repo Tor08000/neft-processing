@@ -154,6 +154,14 @@ Checks / smoke:
   * `pytest platform/processing-core/app/tests/test_case_exports_storage.py`
   * `pytest platform/processing-core/app/tests/test_decision_memory_audit.py`
 
+Pytest runbook (docker/local):
+
+* Docker compose (use service network + DATABASE_URL_TEST):
+  * `docker compose run --rm core-api env DATABASE_URL_TEST=postgresql+psycopg://neft:neft@postgres:5432/neft pytest platform/processing-core/app/tests/test_settlement_v1.py -q`
+* Local (override test DB):
+  * `export DATABASE_URL_TEST=postgresql+psycopg://neft:neft@127.0.0.1:5432/neft_test`
+  * `pytest platform/processing-core/app/tests/test_settlement_v1.py -q`
+
 ## 11. Readiness / Stage Completion
 
 | Domain | Target | AS-IS | Gaps | Next actions |

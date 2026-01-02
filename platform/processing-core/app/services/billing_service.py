@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -17,12 +17,15 @@ from app.models.billing_flow import (
     BillingRefund,
     BillingRefundStatus,
 )
+from app.models.billing_summary import BillingSummary
 from app.models.cases import CaseEventType, CaseKind, CasePriority
 from app.models.internal_ledger import (
     InternalLedgerAccountType,
     InternalLedgerEntryDirection,
     InternalLedgerTransactionType,
 )
+from app.models.invoice import Invoice, InvoiceStatus
+from app.models.operation import ProductType
 from app.models.reconciliation import (
     ReconciliationLink,
     ReconciliationLinkDirection,
@@ -31,6 +34,7 @@ from app.models.reconciliation import (
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.cases_service import create_case
+from app.services.billing_periods import BillingPeriodConflict
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 
@@ -81,6 +85,55 @@ def _amount_to_int(amount: Decimal) -> int:
 
 def _invoice_number() -> str:
     return f"INV-{uuid4().hex[:12].upper()}"
+
+
+def get_billing_summaries(
+    db: Session,
+    *,
+    date_from: date | None,
+    date_to: date | None,
+    client_id: str | None,
+    merchant_id: str | None,
+    product_type: ProductType | None,
+    currency: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[BillingSummary], int]:
+    query = db.query(BillingSummary)
+    if date_from:
+        query = query.filter(BillingSummary.date >= date_from)
+    if date_to:
+        query = query.filter(BillingSummary.date <= date_to)
+    if client_id:
+        query = query.filter(BillingSummary.client_id == client_id)
+    if merchant_id:
+        query = query.filter(BillingSummary.merchant_id == merchant_id)
+    if product_type:
+        query = query.filter(BillingSummary.product_type == product_type)
+    if currency:
+        query = query.filter(BillingSummary.currency == currency)
+    total = query.count()
+    items = query.order_by(BillingSummary.date.desc()).offset(offset).limit(limit).all()
+    return items, total
+
+
+def generate_invoices_for_period(
+    db: Session,
+    *,
+    period_from: date,
+    period_to: date,
+    status: InvoiceStatus,
+) -> list[Invoice]:
+    if period_from > period_to:
+        raise BillingPeriodConflict("period_from must be before period_to")
+    query = (
+        db.query(Invoice)
+        .filter(Invoice.period_from >= period_from)
+        .filter(Invoice.period_to <= period_to)
+    )
+    if status:
+        query = query.filter(Invoice.status == status)
+    return query.order_by(Invoice.created_at.desc()).all()
 
 
 def _update_invoice_status(

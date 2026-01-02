@@ -8,6 +8,13 @@ _DEFAULT_MINIO_USER = _MINIO_ROOT_USER or "change-me"
 _DEFAULT_MINIO_PASSWORD = _MINIO_ROOT_PASSWORD or "change-me"
 
 
+def _resolve_database_url() -> str:
+    test_url = os.getenv("DATABASE_URL_TEST")
+    if test_url and os.getenv("PYTEST_CURRENT_TEST"):
+        return test_url
+    return os.getenv("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
+
+
 @dataclass
 class Settings:
     """Базовые настройки, читаемые из окружения.
@@ -18,9 +25,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "plain")
 
-    database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft"
-    )
+    database_url: str = _resolve_database_url()
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/2")
 
     jwt_secret: str = os.getenv("JWT_SECRET", "dev-secret")

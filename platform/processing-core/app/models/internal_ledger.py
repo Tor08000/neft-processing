@@ -16,6 +16,8 @@ class InternalLedgerAccountType(str, Enum):
     TAX_VAT = "TAX_VAT"
     PROVIDER_PAYABLE = "PROVIDER_PAYABLE"
     SUSPENSE = "SUSPENSE"
+    SETTLEMENT_CLEARING = "SETTLEMENT_CLEARING"
+    PARTNER_SETTLEMENT = "PARTNER_SETTLEMENT"
 
 
 class InternalLedgerAccountStatus(str, Enum):
@@ -33,6 +35,7 @@ class InternalLedgerTransactionType(str, Enum):
     FUEL_SETTLEMENT = "FUEL_SETTLEMENT"
     FUEL_REVERSAL = "FUEL_REVERSAL"
     ADJUSTMENT = "ADJUSTMENT"
+    PARTNER_PAYOUT = "PARTNER_PAYOUT"
 
 
 class InternalLedgerEntryDirection(str, Enum):

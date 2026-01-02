@@ -33,6 +33,7 @@ from app.routers.admin import (
     cases,
     risk_rules,
     risk_v5,
+    settlement_v1,
     settlements,
     legal_integrations,
     fraud,
@@ -57,6 +58,7 @@ router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
 router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
+router.include_router(settlement_v1.router)
 router.include_router(settlements.router)
 router.include_router(refunds.router)
 router.include_router(reversals.router)
