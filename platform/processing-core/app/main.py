@@ -807,6 +807,10 @@ def _fleet_metrics() -> list[str]:
         for channel, values in fleet_metrics.notifications_delivery_seconds.items():
             p95 = _percentile(values, 95) or 0
             lines.append(f'core_api_fleet_notifications_delivery_seconds{{channel="{channel}"}} {p95}')
+    if fleet_metrics.webhook_responses_total:
+        for status_bucket, count in fleet_metrics.webhook_responses_total.items():
+            lines.append(f'core_api_fleet_webhook_responses_total{{status_bucket="{status_bucket}"}} {count}')
+    lines.append(f"core_api_fleet_push_subscriptions_gauge {fleet_metrics.push_subscriptions_gauge}")
     if fleet_metrics.auto_actions_total:
         for (action, status), count in fleet_metrics.auto_actions_total.items():
             lines.append(f'core_api_fleet_auto_actions_total{{action="{action}",status="{status}"}} {count}')

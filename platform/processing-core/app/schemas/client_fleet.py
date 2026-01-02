@@ -236,7 +236,10 @@ class FleetAlertIgnoreIn(BaseModel):
 class FleetNotificationChannelIn(BaseModel):
     channel_type: FleetNotificationChannelType
     target: str
-    secret_ref: str | None = None
+    secret_ref: str | None = Field(default=None, alias="secret")
+
+    class Config:
+        populate_by_name = True
 
 
 class FleetNotificationChannelOut(BaseModel):
@@ -249,6 +252,30 @@ class FleetNotificationChannelOut(BaseModel):
 
 class FleetNotificationChannelListResponse(BaseModel):
     items: list[FleetNotificationChannelOut]
+
+
+class FleetPushSubscriptionIn(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+    user_agent: str | None = None
+
+
+class FleetPushSubscriptionOut(BaseModel):
+    id: str
+    endpoint: str
+    active: bool
+    created_at: datetime
+    last_sent_at: datetime | None = None
+
+
+class FleetPushSubscriptionLookupIn(BaseModel):
+    endpoint: str
+
+
+class FleetNotificationTestOut(BaseModel):
+    outbox_id: str
+    status: str
 
 
 class FleetNotificationPolicyIn(BaseModel):

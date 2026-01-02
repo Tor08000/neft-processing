@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib import error as url_error
 from urllib import request
 
 from sqlalchemy.orm import Session
@@ -22,6 +23,7 @@ from app.models.fuel import (
     FleetNotificationPolicy,
     FleetNotificationPolicyScopeType,
     FleetNotificationSeverity,
+    FleetPushSubscription,
     FuelAnomaly,
     FuelLimitBreach,
 )
@@ -29,6 +31,9 @@ from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.case_event_redaction import redact_deep
 from app.services.fleet_metrics import metrics as fleet_metrics
+from app.services.notifications.email_sender import ConsoleEmailSender, EmailSender, SmtpEmailSender
+from app.services.notifications.email_templates import render_notification_email
+from app.services.notifications.webpush_sender import WebPushSender
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +45,6 @@ MAX_ATTEMPTS = 10
 class DeliveryTarget:
     channel: FleetNotificationChannel
     payload: dict[str, Any]
-
-
-class EmailSender:
-    def send(self, *, to_address: str, subject: str, body: str) -> None:
-        raise NotImplementedError
-
-
-class ConsoleEmailSender(EmailSender):
-    def send(self, *, to_address: str, subject: str, body: str) -> None:
-        logger.info("Email to %s: %s\n%s", to_address, subject, body)
 
 
 def _now() -> datetime:
@@ -74,9 +69,14 @@ def _next_attempt(attempts: int) -> datetime:
     return _now() + timedelta(seconds=delay)
 
 
-def sign_webhook_payload(payload: dict[str, Any], secret: str) -> str:
-    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+def canonical_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+
+
+def sign_webhook_payload(payload: dict[str, Any], secret: str, *, timestamp: str) -> str:
+    body = canonical_json(payload)
+    signature_payload = f"{timestamp}.{body}".encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), signature_payload, hashlib.sha256).hexdigest()
     return signature
 
 
@@ -144,6 +144,15 @@ def _resolve_channels(
     severity: FleetNotificationSeverity,
     payload: dict[str, Any],
 ) -> list[FleetNotificationChannel]:
+    override_channels = payload.get("channels_override")
+    if override_channels:
+        return (
+            db.query(FleetNotificationChannel)
+            .filter(FleetNotificationChannel.client_id == client_id)
+            .filter(FleetNotificationChannel.status == FleetNotificationChannelStatus.ACTIVE)
+            .filter(FleetNotificationChannel.channel_type.in_(override_channels))
+            .all()
+        )
     policies = (
         db.query(FleetNotificationPolicy)
         .filter(FleetNotificationPolicy.client_id == client_id)
@@ -170,10 +179,17 @@ def _resolve_channels(
     )
 
 
-def _send_webhook(channel: FleetNotificationChannel, payload: dict[str, Any], *, event_id: str, event_type: str) -> None:
+def _send_webhook(
+    channel: FleetNotificationChannel,
+    payload: dict[str, Any],
+    *,
+    event_id: str,
+    event_type: str,
+) -> tuple[int | None, str | None]:
     secret = channel.secret_ref or ""
-    signature = sign_webhook_payload(payload, secret)
-    body = json.dumps(payload).encode("utf-8")
+    timestamp = str(int(_now().timestamp()))
+    signature = sign_webhook_payload(payload, secret, timestamp=timestamp)
+    body = canonical_json(payload).encode("utf-8")
     req = request.Request(
         channel.target,
         data=body,
@@ -181,22 +197,58 @@ def _send_webhook(channel: FleetNotificationChannel, payload: dict[str, Any], *,
         headers={
             "Content-Type": "application/json",
             "X-NEFT-Signature": f"sha256={signature}",
+            "X-NEFT-Signature-Timestamp": timestamp,
             "X-NEFT-Event-Id": event_id,
             "X-NEFT-Event-Type": event_type,
         },
     )
-    with request.urlopen(req, timeout=5):
-        return None
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            body_text = response.read().decode("utf-8")[:500]
+            return response.status, body_text
+    except url_error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8")[:500] if exc.fp else None
+        return exc.code, body_text
 
 
-def _send_email(sender: EmailSender, channel: FleetNotificationChannel, payload: dict[str, Any]) -> None:
-    subject = f"[NEFT] Fleet alert: {payload.get('event_type')} {payload.get('severity')}"
-    body = payload.get("summary") or "Fleet alert notification."
-    sender.send(to_address=channel.target, subject=subject, body=body)
+def _send_email(sender: EmailSender, channel: FleetNotificationChannel, payload: dict[str, Any]) -> str | None:
+    subject, html_body, text_body = render_notification_email(payload)
+    return sender.send(to=channel.target, subject=subject, html=html_body, text=text_body, headers=None)
 
 
-def dispatch_pending_outbox(db: Session, *, sender: EmailSender | None = None) -> list[FleetNotificationOutbox]:
-    sender = sender or ConsoleEmailSender()
+def _send_push(db: Session, sender: WebPushSender, client_id: str, payload: dict[str, Any]) -> tuple[int | None, str | None]:
+    subscriptions = (
+        db.query(FleetPushSubscription)
+        .filter(FleetPushSubscription.client_id == client_id)
+        .filter(FleetPushSubscription.active.is_(True))
+        .all()
+    )
+    if not subscriptions:
+        raise RuntimeError("no_push_subscriptions")
+    last_status = None
+    last_body = None
+    for subscription in subscriptions:
+        response = sender.send(
+            {
+                "endpoint": subscription.endpoint,
+                "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+            },
+            payload,
+        )
+        subscription.last_sent_at = _now()
+        last_status = response.status_code
+        last_body = response.body
+    return last_status, last_body
+
+
+def dispatch_pending_outbox(
+    db: Session,
+    *,
+    sender: EmailSender | None = None,
+    webpush_sender: WebPushSender | None = None,
+) -> list[FleetNotificationOutbox]:
+    sender = sender or _default_email_sender()
+    webpush_sender = webpush_sender or WebPushSender()
     ready = (
         db.query(FleetNotificationOutbox)
         .filter(FleetNotificationOutbox.status == FleetNotificationOutboxStatus.PENDING)
@@ -205,43 +257,107 @@ def dispatch_pending_outbox(db: Session, *, sender: EmailSender | None = None) -
     )
     processed: list[FleetNotificationOutbox] = []
     for outbox in ready:
-        payload = outbox.payload_redacted or {}
-        event_type = FleetNotificationEventType(outbox.event_type)
-        severity = FleetNotificationSeverity(outbox.severity)
-        channels = _resolve_channels(db, client_id=outbox.client_id, event_type=event_type, severity=severity, payload=payload)
-        attempted: list[str] = []
-        error: str | None = None
-        start = _now()
-        try:
-            if not channels:
-                raise RuntimeError("no_active_channels")
-            for channel in channels:
-                attempted.append(channel.channel_type.value)
-                if channel.channel_type == FleetNotificationChannelType.WEBHOOK:
-                    _send_webhook(channel, payload, event_id=str(outbox.id), event_type=outbox.event_type)
-                elif channel.channel_type == FleetNotificationChannelType.EMAIL:
-                    _send_email(sender, channel, payload)
-            outbox.status = FleetNotificationOutboxStatus.SENT
-            outbox.last_error = None
-            outbox.channels_attempted = attempted
-            fleet_metrics.mark_notification_outbox(outbox.status.value, outbox.event_type)
-        except Exception as exc:  # pragma: no cover - defensive
-            error = str(exc)[:500]
-            outbox.attempts += 1
-            outbox.last_error = error
-            outbox.channels_attempted = attempted
-            if outbox.attempts >= MAX_ATTEMPTS:
-                outbox.status = FleetNotificationOutboxStatus.DEAD
-            else:
-                outbox.status = FleetNotificationOutboxStatus.FAILED
-                outbox.next_attempt_at = _next_attempt(outbox.attempts)
-            fleet_metrics.mark_notification_outbox(outbox.status.value, outbox.event_type)
-        finally:
-            elapsed = (_now() - start).total_seconds()
-            if attempted:
-                fleet_metrics.observe_notification_delivery("+".join(attempted), elapsed)
-        processed.append(outbox)
+        processed.append(
+            _dispatch_outbox_item(db, outbox, sender=sender, webpush_sender=webpush_sender),
+        )
     return processed
+
+
+def dispatch_outbox_item(
+    db: Session,
+    *,
+    outbox_id: str,
+    sender: EmailSender | None = None,
+    webpush_sender: WebPushSender | None = None,
+) -> FleetNotificationOutbox:
+    sender = sender or _default_email_sender()
+    webpush_sender = webpush_sender or WebPushSender()
+    outbox = db.query(FleetNotificationOutbox).filter(FleetNotificationOutbox.id == outbox_id).one_or_none()
+    if not outbox:
+        raise RuntimeError("outbox_not_found")
+    return _dispatch_outbox_item(db, outbox, sender=sender, webpush_sender=webpush_sender)
+
+
+def _default_email_sender() -> EmailSender:
+    if _smtp_enabled():
+        return SmtpEmailSender()
+    return ConsoleEmailSender()
+
+
+def _smtp_enabled() -> bool:
+    return bool(SmtpEmailSender().host)
+
+
+def _dispatch_outbox_item(
+    db: Session,
+    outbox: FleetNotificationOutbox,
+    *,
+    sender: EmailSender,
+    webpush_sender: WebPushSender,
+) -> FleetNotificationOutbox:
+    payload = outbox.payload_redacted or {}
+    event_type = FleetNotificationEventType(outbox.event_type)
+    severity = FleetNotificationSeverity(outbox.severity)
+    channels = _resolve_channels(db, client_id=outbox.client_id, event_type=event_type, severity=severity, payload=payload)
+    attempted: list[str] = []
+    error: str | None = None
+    start = _now()
+    try:
+        if not channels:
+            raise RuntimeError("no_active_channels")
+        for channel in channels:
+            if channel.channel_type == FleetNotificationChannelType.EMAIL and _severity_rank(severity) < _severity_rank(
+                FleetNotificationSeverity.HIGH
+            ):
+                continue
+            if channel.channel_type == FleetNotificationChannelType.PUSH and _severity_rank(severity) < _severity_rank(
+                FleetNotificationSeverity.HIGH
+            ):
+                continue
+            attempted.append(channel.channel_type.value)
+            if channel.channel_type == FleetNotificationChannelType.WEBHOOK:
+                status_code, response_body = _send_webhook(
+                    channel,
+                    payload,
+                    event_id=str(outbox.id),
+                    event_type=outbox.event_type,
+                )
+                outbox.last_response_status = status_code
+                outbox.last_response_body = response_body
+                if status_code:
+                    fleet_metrics.mark_webhook_response(f"{status_code // 100}xx")
+                if status_code and status_code >= 400:
+                    raise RuntimeError(f"webhook_status_{status_code}")
+            elif channel.channel_type == FleetNotificationChannelType.EMAIL:
+                outbox.delivery_message_id = _send_email(sender, channel, payload)
+            elif channel.channel_type == FleetNotificationChannelType.PUSH:
+                status_code, response_body = _send_push(db, webpush_sender, outbox.client_id, payload)
+                outbox.last_response_status = status_code
+                outbox.last_response_body = response_body[:500] if response_body else None
+                if status_code and status_code >= 400:
+                    raise RuntimeError(f"webpush_status_{status_code}")
+        outbox.status = FleetNotificationOutboxStatus.SENT
+        outbox.last_status = "sent"
+        outbox.last_error = None
+        outbox.channels_attempted = attempted
+        fleet_metrics.mark_notification_outbox(outbox.status.value, outbox.event_type)
+    except Exception as exc:  # pragma: no cover - defensive
+        error = str(exc)[:500]
+        outbox.attempts += 1
+        outbox.last_error = error
+        outbox.channels_attempted = attempted
+        outbox.last_status = "failed"
+        if outbox.attempts >= MAX_ATTEMPTS:
+            outbox.status = FleetNotificationOutboxStatus.DEAD
+        else:
+            outbox.status = FleetNotificationOutboxStatus.FAILED
+            outbox.next_attempt_at = _next_attempt(outbox.attempts)
+        fleet_metrics.mark_notification_outbox(outbox.status.value, outbox.event_type)
+    finally:
+        elapsed = (_now() - start).total_seconds()
+        if attempted:
+            fleet_metrics.observe_notification_delivery("+".join(attempted), elapsed)
+    return outbox
 
 
 def enqueue_anomaly_notification(
@@ -259,6 +375,7 @@ def enqueue_anomaly_notification(
         "card_id": str(anomaly.card_id) if anomaly.card_id else None,
         "group_id": str(anomaly.group_id) if anomaly.group_id else None,
         "tx_id": str(anomaly.tx_id) if anomaly.tx_id else None,
+        "route": "/client/fleet/notifications/alerts",
         "summary": {
             "anomaly_type": anomaly.anomaly_type.value,
             "occurred_at": anomaly.occurred_at.isoformat(),
@@ -306,6 +423,8 @@ def enqueue_breach_notification(
         "card_id": str(breach.scope_id) if breach.scope_type.value == "card" else None,
         "group_id": str(breach.scope_id) if breach.scope_type.value == "group" else None,
         "tx_id": str(breach.tx_id) if breach.tx_id else None,
+        "route": "/client/fleet/notifications/alerts",
+        "amount": str(breach.observed),
         "summary": {
             "breach_type": breach.breach_type.value,
             "threshold": str(breach.threshold),
@@ -341,6 +460,7 @@ def enqueue_ingest_failed_notification(
         "client_id": client_id,
         "event_type": FleetNotificationEventType.INGEST_FAILED.value,
         "severity": FleetNotificationSeverity.HIGH.value,
+        "route": "/client/fleet/notifications/alerts",
         "summary": {"job_id": job_id, "error": error},
     }
     return enqueue_notification(
@@ -358,12 +478,12 @@ def enqueue_ingest_failed_notification(
 
 
 __all__ = [
-    "ConsoleEmailSender",
-    "EmailSender",
+    "dispatch_outbox_item",
     "dispatch_pending_outbox",
     "enqueue_anomaly_notification",
     "enqueue_breach_notification",
     "enqueue_ingest_failed_notification",
     "enqueue_notification",
+    "canonical_json",
     "sign_webhook_payload",
 ]

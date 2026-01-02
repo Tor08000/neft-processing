@@ -15,6 +15,7 @@ from app.routers.admin import (
     documents,
     decision_memory,
     explain,
+    fleet_notifications,
     fleet_control,
     fleet_intelligence,
     fleet_policies,
@@ -79,6 +80,7 @@ router.include_router(crm.router)
 router.include_router(fraud.router)
 router.include_router(money_flow.router)
 router.include_router(explain.router)
+router.include_router(fleet_notifications.router)
 router.include_router(fleet_control.router)
 router.include_router(fleet_intelligence.router)
 router.include_router(fleet_policies.router)

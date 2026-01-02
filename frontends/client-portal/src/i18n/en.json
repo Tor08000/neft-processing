@@ -175,6 +175,7 @@
       "type": "Type",
       "webhook": "Webhook",
       "email": "Email",
+      "push": "Push",
       "url": "Webhook URL",
       "secret": "Secret (optional)",
       "secretPlaceholder": "Leave empty to auto-generate",
@@ -183,6 +184,7 @@
       "statusDisabled": "Disabled",
       "createdAt": "Created at {value}",
       "disable": "Disable",
+      "sendTest": "Send test",
       "disableTitle": "Disable channel",
       "disableDescription": "Are you sure you want to disable this channel?",
       "disableConfirm": "Disable channel",
@@ -190,9 +192,25 @@
       "emptyDescription": "Create a channel to receive alerts.",
       "created": "Channel created",
       "disabled": "Channel disabled",
+      "testSent": "Test notification sent",
       "validationTarget": "Provide a target.",
       "validationUrl": "Enter a valid URL.",
       "validationEmail": "Enter a valid email."
+    },
+    "push": {
+      "deviceLabel": "This device",
+      "enabledStatus": "Enabled",
+      "disabledStatus": "Disabled",
+      "enable": "Enable push",
+      "disable": "Disable push",
+      "sendTest": "Send test push",
+      "enabled": "Push enabled",
+      "disabled": "Push disabled",
+      "testSent": "Test push sent",
+      "lastSent": "Last sent {value}",
+      "neverSent": "No pushes sent yet",
+      "permissionDenied": "Push permission denied",
+      "notSupported": "Push is not supported on this device"
     }
   },
   "states": {

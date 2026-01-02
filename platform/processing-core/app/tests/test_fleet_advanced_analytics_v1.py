@@ -346,8 +346,8 @@ def test_outbox_dedupe(db_session: Session) -> None:
 
 def test_webhook_signature() -> None:
     payload = {"client_id": "client-1", "event_type": "ANOMALY", "severity": "HIGH"}
-    signature = sign_webhook_payload(payload, "secret")
-    assert signature == "36cec63deb7d15c81f10c76a504136e754fca319a2ad69b49ff82689f86b7f41"
+    signature = sign_webhook_payload(payload, "secret", timestamp="1700000000")
+    assert signature == "4f8c232de9e289017064d7a96726beab55cb2f914cc7a3c90703b50b5a3a911f"
 
 
 def test_ack_ignore_alerts_are_audited(make_jwt, client: TestClient, db_session: Session) -> None:

@@ -12,6 +12,8 @@ class FleetMetrics:
     anomalies_total: Dict[tuple[str, str], int] = field(default_factory=dict)
     notifications_outbox_total: Dict[tuple[str, str], int] = field(default_factory=dict)
     notifications_delivery_seconds: Dict[str, list[float]] = field(default_factory=dict)
+    webhook_responses_total: Dict[str, int] = field(default_factory=dict)
+    push_subscriptions_gauge: int = 0
     auto_actions_total: Dict[tuple[str, str], int] = field(default_factory=dict)
     policy_actions_total: Dict[tuple[str, str], int] = field(default_factory=dict)
     auto_block_total: Dict[str, int] = field(default_factory=dict)
@@ -42,6 +44,12 @@ class FleetMetrics:
 
     def observe_notification_delivery(self, channel: str, seconds: float) -> None:
         self.notifications_delivery_seconds.setdefault(channel, []).append(seconds)
+
+    def mark_webhook_response(self, status_bucket: str) -> None:
+        self.webhook_responses_total[status_bucket] = self.webhook_responses_total.get(status_bucket, 0) + 1
+
+    def adjust_push_subscriptions(self, delta: int) -> None:
+        self.push_subscriptions_gauge = max(0, self.push_subscriptions_gauge + delta)
 
     def mark_auto_action(self, action: str, status: str) -> None:
         key = (action, status)
@@ -76,6 +84,8 @@ class FleetMetrics:
         self.anomalies_total.clear()
         self.notifications_outbox_total.clear()
         self.notifications_delivery_seconds.clear()
+        self.webhook_responses_total.clear()
+        self.push_subscriptions_gauge = 0
         self.auto_actions_total.clear()
         self.policy_actions_total.clear()
         self.auto_block_total.clear()

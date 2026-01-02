@@ -29,6 +29,7 @@ from app.models.fuel import (
     FleetNotificationChannelType,
     FleetNotificationPolicy,
     FleetNotificationSeverity,
+    FleetPushSubscription,
     FuelCard,
     FuelCardGroup,
     FuelCardGroupStatus,
@@ -1540,6 +1541,8 @@ def create_notification_channel(
     trace_id: str | None,
 ) -> FleetNotificationChannel:
     _ensure_client_access(principal, client_id)
+    if channel_type == FleetNotificationChannelType.PUSH and not target:
+        target = "browser"
     channel = FleetNotificationChannel(
         client_id=client_id,
         channel_type=channel_type,
@@ -1676,6 +1679,113 @@ def disable_notification_policy(
         payload={"policy_id": str(policy.id)},
     )
     return policy
+
+
+def upsert_push_subscription(
+    db: Session,
+    *,
+    client_id: str,
+    employee_id: str | None,
+    endpoint: str,
+    p256dh: str,
+    auth: str,
+    user_agent: str | None,
+    principal: Principal,
+    request_id: str | None,
+    trace_id: str | None,
+) -> FleetPushSubscription:
+    _ensure_client_access(principal, client_id)
+    subscription = (
+        db.query(FleetPushSubscription)
+        .filter(FleetPushSubscription.client_id == client_id)
+        .filter(FleetPushSubscription.endpoint == endpoint)
+        .one_or_none()
+    )
+    if subscription:
+        was_active = subscription.active
+        subscription.p256dh = p256dh
+        subscription.auth = auth
+        subscription.user_agent = user_agent
+        subscription.employee_id = employee_id
+        subscription.active = True
+        if not was_active:
+            fleet_metrics.adjust_push_subscriptions(1)
+    else:
+        subscription = FleetPushSubscription(
+            client_id=client_id,
+            employee_id=employee_id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            user_agent=user_agent,
+            active=True,
+        )
+        db.add(subscription)
+        db.flush()
+        fleet_metrics.adjust_push_subscriptions(1)
+    channel = (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .filter(FleetNotificationChannel.channel_type == FleetNotificationChannelType.PUSH)
+        .one_or_none()
+    )
+    if not channel:
+        channel = FleetNotificationChannel(
+            client_id=client_id,
+            channel_type=FleetNotificationChannelType.PUSH,
+            target="browser",
+            status=FleetNotificationChannelStatus.ACTIVE,
+        )
+        db.add(channel)
+        db.flush()
+        channel.audit_event_id = _emit_event(
+            db,
+            client_id=client_id,
+            principal=principal,
+            request_id=request_id,
+            trace_id=trace_id,
+            event_type=CaseEventType.FLEET_NOTIFICATION_CHANNEL_CREATED,
+            payload={"channel_id": str(channel.id), "channel_type": channel.channel_type.value, "target": channel.target},
+        )
+    return subscription
+
+
+def disable_push_subscription(
+    db: Session,
+    *,
+    client_id: str,
+    endpoint: str,
+    principal: Principal,
+) -> FleetPushSubscription:
+    _ensure_client_access(principal, client_id)
+    subscription = (
+        db.query(FleetPushSubscription)
+        .filter(FleetPushSubscription.client_id == client_id)
+        .filter(FleetPushSubscription.endpoint == endpoint)
+        .one_or_none()
+    )
+    if not subscription:
+        raise HTTPException(status_code=404, detail="push_subscription_not_found")
+    if subscription.active:
+        subscription.active = False
+        fleet_metrics.adjust_push_subscriptions(-1)
+    return subscription
+
+
+def get_push_subscription(
+    db: Session,
+    *,
+    client_id: str,
+    endpoint: str,
+    principal: Principal,
+) -> FleetPushSubscription | None:
+    _ensure_client_access(principal, client_id)
+    return (
+        db.query(FleetPushSubscription)
+        .filter(FleetPushSubscription.client_id == client_id)
+        .filter(FleetPushSubscription.endpoint == endpoint)
+        .one_or_none()
+    )
 
 
 def list_action_policies(
@@ -1829,6 +1939,9 @@ __all__ = [
     "list_notification_policies",
     "create_notification_policy",
     "disable_notification_policy",
+    "upsert_push_subscription",
+    "disable_push_subscription",
+    "get_push_subscription",
     "list_action_policies",
     "create_action_policy",
     "disable_action_policy",

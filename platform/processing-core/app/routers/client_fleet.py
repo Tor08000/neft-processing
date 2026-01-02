@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.fuel import FuelCardStatus, FuelLimitScopeType
+from app.models.fuel import (
+    FleetNotificationChannel,
+    FleetNotificationChannelType,
+    FuelCardStatus,
+    FuelLimitScopeType,
+)
 from app.schemas.client_fleet import (
     FleetAccessGrantIn,
     FleetAccessListResponse,
@@ -36,6 +41,10 @@ from app.schemas.client_fleet import (
     FleetNotificationPolicyIn,
     FleetNotificationPolicyListResponse,
     FleetNotificationPolicyOut,
+    FleetNotificationTestOut,
+    FleetPushSubscriptionIn,
+    FleetPushSubscriptionLookupIn,
+    FleetPushSubscriptionOut,
     FleetActionPolicyIn,
     FleetActionPolicyListResponse,
     FleetActionPolicyOut,
@@ -46,10 +55,12 @@ from app.schemas.client_fleet import (
     FleetTransactionOut,
     FleetTransactionsExportOut,
 )
+from app.models.fuel import FleetNotificationEventType, FleetNotificationSeverity
 from app.security.rbac.guard import require_permission
 from app.security.rbac.permissions import Permission
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
+from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_notification
 
 router = APIRouter(prefix="/api/client/fleet", tags=["client-fleet"])
 
@@ -825,6 +836,52 @@ def disable_notification_channel(
     )
 
 
+@router.post(
+    "/notifications/channels/{channel_id}/test",
+    response_model=FleetNotificationTestOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value))],
+)
+def test_notification_channel(
+    channel_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationTestOut:
+    client_id = _ensure_client_context(principal)
+    channel = (
+        db.query(FleetNotificationChannel)
+        .filter(FleetNotificationChannel.id == channel_id)
+        .filter(FleetNotificationChannel.client_id == client_id)
+        .one_or_none()
+    )
+    if not channel:
+        raise HTTPException(status_code=404, detail="channel_not_found")
+    request_id, trace_id = _request_ids(request)
+    payload = {
+        "client_id": client_id,
+        "event_type": FleetNotificationEventType.TEST.value,
+        "severity": FleetNotificationSeverity.HIGH.value,
+        "summary": {"message": "Test notification"},
+        "channels_override": [channel.channel_type.value],
+        "route": "/client/fleet/notifications/alerts",
+    }
+    outbox = enqueue_notification(
+        db,
+        client_id=client_id,
+        event_type=FleetNotificationEventType.TEST,
+        severity=FleetNotificationSeverity.HIGH,
+        event_ref_type="notification_channel",
+        event_ref_id=str(channel_id),
+        payload=payload,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    outbox = dispatch_outbox_item(db, outbox_id=str(outbox.id))
+    db.commit()
+    return FleetNotificationTestOut(outbox_id=str(outbox.id), status=outbox.status.value)
+
+
 @router.get(
     "/notifications/policies",
     response_model=FleetNotificationPolicyListResponse,
@@ -931,6 +988,136 @@ def disable_notification_policy(
         hard_breach_only=policy.hard_breach_only,
         created_at=policy.created_at,
     )
+
+
+@router.post(
+    "/notifications/push/subscribe",
+    response_model=FleetPushSubscriptionOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def subscribe_push_notifications(
+    payload: FleetPushSubscriptionIn,
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetPushSubscriptionOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    subscription = fleet_service.upsert_push_subscription(
+        db,
+        client_id=client_id,
+        employee_id=str(principal.user_id) if principal.user_id else None,
+        endpoint=payload.endpoint,
+        p256dh=payload.p256dh,
+        auth=payload.auth,
+        user_agent=payload.user_agent,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    db.commit()
+    return FleetPushSubscriptionOut(
+        id=str(subscription.id),
+        endpoint=subscription.endpoint,
+        active=subscription.active,
+        created_at=subscription.created_at,
+        last_sent_at=subscription.last_sent_at,
+    )
+
+
+@router.post(
+    "/notifications/push/unsubscribe",
+    response_model=FleetPushSubscriptionOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def unsubscribe_push_notifications(
+    payload: FleetPushSubscriptionLookupIn,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetPushSubscriptionOut:
+    client_id = _ensure_client_context(principal)
+    subscription = fleet_service.disable_push_subscription(
+        db,
+        client_id=client_id,
+        endpoint=payload.endpoint,
+        principal=principal,
+    )
+    db.commit()
+    return FleetPushSubscriptionOut(
+        id=str(subscription.id),
+        endpoint=subscription.endpoint,
+        active=subscription.active,
+        created_at=subscription.created_at,
+        last_sent_at=subscription.last_sent_at,
+    )
+
+
+@router.post(
+    "/notifications/push/status",
+    response_model=FleetPushSubscriptionOut | None,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def get_push_subscription_status(
+    payload: FleetPushSubscriptionLookupIn,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetPushSubscriptionOut | None:
+    client_id = _ensure_client_context(principal)
+    subscription = fleet_service.get_push_subscription(
+        db,
+        client_id=client_id,
+        endpoint=payload.endpoint,
+        principal=principal,
+    )
+    if not subscription:
+        return None
+    return FleetPushSubscriptionOut(
+        id=str(subscription.id),
+        endpoint=subscription.endpoint,
+        active=subscription.active,
+        created_at=subscription.created_at,
+        last_sent_at=subscription.last_sent_at,
+    )
+
+
+@router.post(
+    "/notifications/push/test",
+    response_model=FleetNotificationTestOut,
+    dependencies=[Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value))],
+)
+def send_test_push_notification(
+    request: Request,
+    principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_SPEND_VIEW.value)),
+    db: Session = Depends(get_db),
+) -> FleetNotificationTestOut:
+    client_id = _ensure_client_context(principal)
+    request_id, trace_id = _request_ids(request)
+    payload = {
+        "client_id": client_id,
+        "event_type": FleetNotificationEventType.TEST.value,
+        "severity": FleetNotificationSeverity.HIGH.value,
+        "summary": {"message": "Test push notification"},
+        "channels_override": [FleetNotificationChannelType.PUSH.value],
+        "route": "/client/fleet/notifications/alerts",
+        "title": "NEFT Test Push",
+        "body": "Push notifications are enabled on this device.",
+        "url": "/client/fleet/notifications/alerts",
+    }
+    outbox = enqueue_notification(
+        db,
+        client_id=client_id,
+        event_type=FleetNotificationEventType.TEST,
+        severity=FleetNotificationSeverity.HIGH,
+        event_ref_type="push_test",
+        event_ref_id=str(principal.user_id) if principal.user_id else client_id,
+        payload=payload,
+        principal=principal,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    outbox = dispatch_outbox_item(db, outbox_id=str(outbox.id))
+    db.commit()
+    return FleetNotificationTestOut(outbox_id=str(outbox.id), status=outbox.status.value)
 
 
 @router.get(

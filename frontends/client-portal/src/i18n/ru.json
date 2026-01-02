@@ -175,6 +175,7 @@
       "type": "Тип",
       "webhook": "Webhook",
       "email": "Email",
+      "push": "Push",
       "url": "Webhook URL",
       "secret": "Секрет (необязательно)",
       "secretPlaceholder": "Оставьте пустым для автогенерации",
@@ -183,6 +184,7 @@
       "statusDisabled": "Отключен",
       "createdAt": "Создан {value}",
       "disable": "Отключить",
+      "sendTest": "Отправить тест",
       "disableTitle": "Отключить канал",
       "disableDescription": "Отключить выбранный канал?",
       "disableConfirm": "Отключить",
@@ -190,9 +192,25 @@
       "emptyDescription": "Создайте канал для получения алертов.",
       "created": "Канал создан",
       "disabled": "Канал отключен",
+      "testSent": "Тестовое уведомление отправлено",
       "validationTarget": "Укажите target.",
       "validationUrl": "Введите корректный URL.",
       "validationEmail": "Введите корректный email."
+    },
+    "push": {
+      "deviceLabel": "Это устройство",
+      "enabledStatus": "Включен",
+      "disabledStatus": "Отключен",
+      "enable": "Включить push",
+      "disable": "Отключить push",
+      "sendTest": "Отправить тест push",
+      "enabled": "Push включен",
+      "disabled": "Push отключен",
+      "testSent": "Тестовый push отправлен",
+      "lastSent": "Последняя отправка {value}",
+      "neverSent": "Пока нет отправок",
+      "permissionDenied": "Разрешение на push отклонено",
+      "notSupported": "Push не поддерживается на этом устройстве"
     }
   },
   "states": {

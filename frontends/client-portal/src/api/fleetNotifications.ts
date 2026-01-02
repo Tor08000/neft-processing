@@ -1,5 +1,10 @@
 import { ApiError, request } from "./http";
-import type { FleetAlert, FleetNotificationChannel, FleetNotificationPolicy } from "../types/fleetNotifications";
+import type {
+  FleetAlert,
+  FleetNotificationChannel,
+  FleetNotificationPolicy,
+  FleetPushSubscription,
+} from "../types/fleetNotifications";
 
 export interface FleetNotificationsListResponse<T> {
   items: T[];
@@ -158,6 +163,85 @@ export async function disablePolicy(
   try {
     const item = await request<FleetNotificationPolicy>(
       `/client/fleet/notifications/policies/${id}/disable`,
+      { method: "POST" },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function testChannel(
+  token: string,
+  id: string,
+): Promise<FleetNotificationsEntityResponse<{ outbox_id: string; status: string }>> {
+  try {
+    const item = await request<{ outbox_id: string; status: string }>(
+      `/client/fleet/notifications/channels/${id}/test`,
+      { method: "POST" },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function subscribePush(
+  token: string,
+  payload: { endpoint: string; p256dh: string; auth: string; user_agent?: string },
+): Promise<FleetNotificationsEntityResponse<FleetPushSubscription>> {
+  try {
+    const item = await request<FleetPushSubscription>(
+      "/client/fleet/notifications/push/subscribe",
+      { method: "POST", body: JSON.stringify(payload) },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function unsubscribePush(
+  token: string,
+  endpoint: string,
+): Promise<FleetNotificationsEntityResponse<FleetPushSubscription>> {
+  try {
+    const item = await request<FleetPushSubscription>(
+      "/client/fleet/notifications/push/unsubscribe",
+      { method: "POST", body: JSON.stringify({ endpoint }) },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function getPushStatus(
+  token: string,
+  endpoint: string,
+): Promise<FleetNotificationsEntityResponse<FleetPushSubscription | null>> {
+  try {
+    const item = await request<FleetPushSubscription | null>(
+      "/client/fleet/notifications/push/status",
+      { method: "POST", body: JSON.stringify({ endpoint }) },
+      { token },
+    );
+    return { item };
+  } catch (error) {
+    return handleAvailability(error, { unavailable: true });
+  }
+}
+
+export async function sendTestPush(
+  token: string,
+): Promise<FleetNotificationsEntityResponse<{ outbox_id: string; status: string }>> {
+  try {
+    const item = await request<{ outbox_id: string; status: string }>(
+      "/client/fleet/notifications/push/test",
       { method: "POST" },
       { token },
     );

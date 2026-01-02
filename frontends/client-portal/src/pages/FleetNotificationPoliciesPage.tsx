@@ -135,6 +135,8 @@ export function FleetNotificationPoliciesPage() {
                   ? t("fleetNotifications.channels.webhook")
                   : channel.channel_type === "EMAIL"
                     ? t("fleetNotifications.channels.email")
+                    : channel.channel_type === "PUSH"
+                      ? t("fleetNotifications.channels.push")
                     : channel.channel_type ?? t("common.notAvailable")}
               </span>
             ))}
@@ -396,6 +398,8 @@ export function FleetNotificationPoliciesPage() {
                           ? t("fleetNotifications.channels.webhook")
                           : channel.channel_type === "EMAIL"
                             ? t("fleetNotifications.channels.email")
+                            : channel.channel_type === "PUSH"
+                              ? t("fleetNotifications.channels.push")
                             : channel.channel_type ?? t("common.notAvailable")}
                         {" · "}
                         {channel.target ?? t("common.notAvailable")}
