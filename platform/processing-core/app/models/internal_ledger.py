@@ -79,6 +79,8 @@ class InternalLedgerTransaction(Base):
     external_ref_type = Column(String(64), nullable=False)
     external_ref_id = Column(String(64), nullable=False)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    total_amount = Column(BigInteger, nullable=True)
+    currency = Column(String(3), nullable=True)
     posted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     meta = Column(JSON, nullable=True)

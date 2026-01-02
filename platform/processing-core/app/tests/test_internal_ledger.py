@@ -3,11 +3,16 @@ from datetime import date
 import pytest
 
 from app.db import Base, SessionLocal, engine
-from app.models.internal_ledger import InternalLedgerEntry, InternalLedgerEntryDirection
+from app.models.internal_ledger import (
+    InternalLedgerAccountType,
+    InternalLedgerEntry,
+    InternalLedgerEntryDirection,
+    InternalLedgerTransactionType,
+)
 from app.models.invoice import InvoicePdfStatus, InvoiceStatus
 from app.repositories.billing_repository import BillingInvoiceData, BillingLineData, BillingRepository
 from app.services.finance import FinanceService
-from app.services.internal_ledger import InternalLedgerService
+from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 
 
 @pytest.fixture(autouse=True)
@@ -120,3 +125,63 @@ def test_payment_applied_is_idempotent(db_session):
         "currency": sample.currency,
     }
     assert sample.entry_hash == InternalLedgerService.entry_hash_for_payload(payload)
+
+
+def test_custom_transaction_currency_isolation(db_session):
+    service = InternalLedgerService(db_session)
+    with pytest.raises(ValueError, match="mixed currencies"):
+        service.post_transaction(
+            tenant_id=1,
+            transaction_type=InternalLedgerTransactionType.ACCOUNTING_EXPORT_CONFIRMED,
+            external_ref_type="TEST",
+            external_ref_id="ref-1",
+            idempotency_key="tx:currency",
+            posted_at=None,
+            meta=None,
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id="client-1",
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=100,
+                    currency="RUB",
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_CASH,
+                    client_id="client-1",
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=100,
+                    currency="USD",
+                ),
+            ],
+        )
+
+
+def test_custom_transaction_double_entry(db_session):
+    service = InternalLedgerService(db_session)
+    with pytest.raises(ValueError, match="unbalanced"):
+        service.post_transaction(
+            tenant_id=1,
+            transaction_type=InternalLedgerTransactionType.ACCOUNTING_EXPORT_CONFIRMED,
+            external_ref_type="TEST",
+            external_ref_id="ref-2",
+            idempotency_key="tx:unbalanced",
+            posted_at=None,
+            meta=None,
+            entries=[
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_AR,
+                    client_id="client-1",
+                    direction=InternalLedgerEntryDirection.DEBIT,
+                    amount=100,
+                    currency="RUB",
+                ),
+                InternalLedgerLine(
+                    account_type=InternalLedgerAccountType.CLIENT_CASH,
+                    client_id="client-1",
+                    direction=InternalLedgerEntryDirection.CREDIT,
+                    amount=50,
+                    currency="RUB",
+                ),
+            ],
+        )
