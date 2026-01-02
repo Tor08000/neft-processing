@@ -30,6 +30,7 @@ import type {
 import type { FleetGroup } from "../types/fleet";
 import { canAdminFleetNotifications } from "../utils/fleetPermissions";
 import { formatDateTime } from "../utils/format";
+import { PolicyCenterTabs } from "../components/PolicyCenterTabs";
 
 const generateSecret = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -385,8 +386,9 @@ export function FleetNotificationChannelsPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetNotifications.channels.title")}</h1>
+          <h1>{t("policyCenter.channelsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
         <div className="card state">{t("common.loading")}</div>
       </div>
     );
@@ -400,8 +402,9 @@ export function FleetNotificationChannelsPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetNotifications.channels.title")}</h1>
+          <h1>{t("policyCenter.channelsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
         <AppErrorState message={error} onRetry={() => void loadChannels()} />
       </div>
     );
@@ -416,7 +419,7 @@ export function FleetNotificationChannelsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>{t("fleetNotifications.channels.title")}</h1>
+        <h1>{t("policyCenter.channelsTitle")}</h1>
         <div className="actions">
           <button type="button" className="primary" onClick={() => { resetForm(); setShowCreateModal(true); }}>
             {t("fleetNotifications.channels.create")}
@@ -426,6 +429,7 @@ export function FleetNotificationChannelsPage() {
           </button>
         </div>
       </div>
+      <PolicyCenterTabs />
       {!channels.length ? (
         <div className="card state">
           <h2>{t("fleetNotifications.channels.emptyTitle")}</h2>

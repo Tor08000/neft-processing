@@ -20,6 +20,8 @@ import { hasAnyRole } from "../utils/roles";
 import { isGroupRoleAtLeast, normalizeGroupRole } from "../utils/fleetPermissions";
 import type { FleetPolicyRole } from "../utils/fleetPolicyPermissions";
 import { canManagePolicies } from "../utils/fleetPolicyPermissions";
+import { PolicyCenterTabs } from "../components/PolicyCenterTabs";
+import { PolicyCenterRulesTabs } from "../components/PolicyCenterRulesTabs";
 
 const getPolicyRole = (user: ReturnType<typeof useAuth>["user"], groups: FleetGroup[]): FleetPolicyRole => {
   if (hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"])) return "admin";
@@ -332,8 +334,10 @@ export function FleetPoliciesPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetPolicies.title")}</h1>
+          <h1>{t("policyCenter.actionsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
+        <PolicyCenterRulesTabs />
         <div className="card state">{t("common.loading")}</div>
       </div>
     );
@@ -351,8 +355,10 @@ export function FleetPoliciesPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetPolicies.title")}</h1>
+          <h1>{t("policyCenter.actionsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
+        <PolicyCenterRulesTabs />
         <AppErrorState message={error} onRetry={() => void loadPolicies()} />
       </div>
     );
@@ -361,9 +367,9 @@ export function FleetPoliciesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>{t("fleetPolicies.title")}</h1>
+        <h1>{t("policyCenter.actionsTitle")}</h1>
         <div className="actions">
-          <Link to="/fleet/policies/executions" className="secondary">
+          <Link to="/fleet/policy-center/executions" className="secondary">
             {t("fleetPolicies.executionsLink")}
           </Link>
           {canCreateAny ? (
@@ -383,6 +389,8 @@ export function FleetPoliciesPage() {
           </button>
         </div>
       </div>
+      <PolicyCenterTabs />
+      <PolicyCenterRulesTabs />
       <div className="card filters">
         <label className="filter">
           <span>{t("fleetPolicies.scope")}</span>

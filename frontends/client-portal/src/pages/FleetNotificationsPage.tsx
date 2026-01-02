@@ -317,7 +317,7 @@ export function FleetNotificationsPage() {
           }
           action={
             channelsCount === 0 && canAdmin ? (
-              <Link className="primary" to="/fleet/notifications/channels">
+              <Link className="primary" to="/fleet/policy-center/channels">
                 {t("fleetNotifications.alerts.emptyChannelsAction")}
               </Link>
             ) : null

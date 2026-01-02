@@ -61,6 +61,38 @@
     "confirmReceived": "Подтвердить получение",
     "resetFilters": "Сбросить фильтры"
   },
+  "policyCenter": {
+    "title": "Fleet · Центр политик",
+    "actionsTitle": "Центр политик · Действия",
+    "notificationsTitle": "Центр политик · Уведомления",
+    "channelsTitle": "Центр политик · Каналы",
+    "executionsTitle": "Центр политик · Исполнения",
+    "cta": {
+      "createRule": "Создать правило",
+      "connectChannel": "Подключить канал"
+    },
+    "tabs": {
+      "rules": "Правила",
+      "channels": "Каналы",
+      "executions": "Исполнения"
+    },
+    "rulesTabs": {
+      "actions": "Действия",
+      "notifications": "Уведомления"
+    },
+    "summary": {
+      "activePolicies": "Активные политики",
+      "channelsConnected": "Подключенные каналы",
+      "autoBlocks": "Автоблокировки (7 дн.)",
+      "messagesSent": "Отправлено сообщений (7 дн.)",
+      "failures": "Сбоев (7 дн.)",
+      "notAvailable": "—"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить сводку политик",
+      "noPermission": "Недостаточно прав"
+    }
+  },
   "fleetNotifications": {
     "errors": {
       "loadFailed": "Не удалось загрузить уведомления",

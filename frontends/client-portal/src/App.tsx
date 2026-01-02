@@ -53,6 +53,7 @@ import { FleetNotificationPoliciesPage } from "./pages/FleetNotificationPolicies
 import { FleetNotificationChannelsPage } from "./pages/FleetNotificationChannelsPage";
 import { FleetPoliciesPage } from "./pages/FleetPoliciesPage";
 import { FleetPolicyExecutionsPage } from "./pages/FleetPolicyExecutionsPage";
+import { FleetPolicyCenterOverviewPage } from "./pages/FleetPolicyCenterOverviewPage";
 import { isPwaMode } from "./pwa/mode";
 
 interface AppProps {
@@ -145,10 +146,15 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
                 <Route path="/fleet/spend" element={<FleetSpendPage />} />
                 <Route path="/fleet/notifications" element={<FleetNotificationsPage />} />
-                <Route path="/fleet/notifications/policies" element={<FleetNotificationPoliciesPage />} />
-                <Route path="/fleet/notifications/channels" element={<FleetNotificationChannelsPage />} />
-                <Route path="/fleet/policies" element={<FleetPoliciesPage />} />
-                <Route path="/fleet/policies/executions" element={<FleetPolicyExecutionsPage />} />
+                <Route path="/fleet/policy-center" element={<FleetPolicyCenterOverviewPage />} />
+                <Route path="/fleet/policy-center/actions" element={<FleetPoliciesPage />} />
+                <Route path="/fleet/policy-center/notifications" element={<FleetNotificationPoliciesPage />} />
+                <Route path="/fleet/policy-center/channels" element={<FleetNotificationChannelsPage />} />
+                <Route path="/fleet/policy-center/executions" element={<FleetPolicyExecutionsPage />} />
+                <Route path="/fleet/notifications/policies" element={<Navigate to="/fleet/policy-center/notifications" replace />} />
+                <Route path="/fleet/notifications/channels" element={<Navigate to="/fleet/policy-center/channels" replace />} />
+                <Route path="/fleet/policies" element={<Navigate to="/fleet/policy-center/actions" replace />} />
+                <Route path="/fleet/policies/executions" element={<Navigate to="/fleet/policy-center/executions" replace />} />
               </>
             )}
           </Route>
