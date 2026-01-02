@@ -137,7 +137,9 @@ export function FleetNotificationPoliciesPage() {
                     ? t("fleetNotifications.channels.email")
                     : channel.channel_type === "PUSH"
                       ? t("fleetNotifications.channels.push")
-                    : channel.channel_type ?? t("common.notAvailable")}
+                      : channel.channel_type === "TELEGRAM"
+                        ? t("fleetNotifications.channels.telegram")
+                        : channel.channel_type ?? t("common.notAvailable")}
               </span>
             ))}
           </div>
@@ -400,7 +402,9 @@ export function FleetNotificationPoliciesPage() {
                             ? t("fleetNotifications.channels.email")
                             : channel.channel_type === "PUSH"
                               ? t("fleetNotifications.channels.push")
-                            : channel.channel_type ?? t("common.notAvailable")}
+                              : channel.channel_type === "TELEGRAM"
+                                ? t("fleetNotifications.channels.telegram")
+                                : channel.channel_type ?? t("common.notAvailable")}
                         {" · "}
                         {channel.target ?? t("common.notAvailable")}
                       </span>

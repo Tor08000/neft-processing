@@ -23,7 +23,7 @@ export interface FleetAlert {
   category?: string | null;
 }
 
-export type FleetChannelType = "WEBHOOK" | "EMAIL" | "PUSH" | string;
+export type FleetChannelType = "WEBHOOK" | "EMAIL" | "PUSH" | "TELEGRAM" | string;
 
 export interface FleetNotificationChannel {
   id: string;
@@ -31,6 +31,25 @@ export interface FleetNotificationChannel {
   target?: string | null;
   status?: "ACTIVE" | "DISABLED" | string | null;
   created_at?: string | null;
+}
+
+export type FleetTelegramScopeType = "client" | "group" | string;
+
+export interface FleetTelegramLink {
+  token: string;
+  expires_at: string;
+  deep_link: string;
+}
+
+export interface FleetTelegramBinding {
+  id: string;
+  scope_type: FleetTelegramScopeType;
+  scope_id?: string | null;
+  chat_title?: string | null;
+  chat_type?: "private" | "group" | "supergroup" | "channel" | string;
+  status?: "ACTIVE" | "DISABLED" | "PENDING" | string | null;
+  created_at?: string | null;
+  verified_at?: string | null;
 }
 
 export interface FleetPushSubscription {

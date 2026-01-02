@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
@@ -9,15 +9,25 @@ import { FleetUnavailableState } from "../components/FleetUnavailableState";
 import { ApiError } from "../api/http";
 import {
   createChannel,
+  createTelegramLink,
   disableChannel,
+  disableTelegramBinding,
   listChannels,
+  listTelegramBindings,
   testChannel,
   subscribePush,
   unsubscribePush,
   getPushStatus,
   sendTestPush,
 } from "../api/fleetNotifications";
-import type { FleetNotificationChannel, FleetPushSubscription } from "../types/fleetNotifications";
+import { listGroups } from "../api/fleet";
+import type {
+  FleetNotificationChannel,
+  FleetPushSubscription,
+  FleetTelegramBinding,
+  FleetTelegramLink,
+} from "../types/fleetNotifications";
+import type { FleetGroup } from "../types/fleet";
 import { canAdminFleetNotifications } from "../utils/fleetPermissions";
 import { formatDateTime } from "../utils/format";
 
@@ -57,9 +67,20 @@ export function FleetNotificationChannelsPage() {
   const [pushStatus, setPushStatus] = useState<FleetPushSubscription | null>(null);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [telegramBindings, setTelegramBindings] = useState<FleetTelegramBinding[]>([]);
+  const [telegramLink, setTelegramLink] = useState<FleetTelegramLink | null>(null);
+  const [telegramScope, setTelegramScope] = useState("client");
+  const [telegramGroupId, setTelegramGroupId] = useState("");
+  const [telegramGroups, setTelegramGroups] = useState<FleetGroup[]>([]);
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramError, setTelegramError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
   const vapidKey = import.meta.env.VITE_PUSH_PUBLIC_KEY;
   const supportsPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   const pushAvailable = supportsPush && Boolean(vapidKey);
+  const groupNameById = useMemo(() => {
+    return new Map(telegramGroups.map((group) => [group.id, group.name]));
+  }, [telegramGroups]);
 
   const canAdmin = canAdminFleetNotifications(user);
 
@@ -86,10 +107,38 @@ export function FleetNotificationChannelsPage() {
     }
   }, [t, user?.token]);
 
+  const loadTelegram = useCallback(async () => {
+    if (!user?.token) return;
+    setTelegramLoading(true);
+    setTelegramError(null);
+    try {
+      const [bindingsResponse, groupsResponse] = await Promise.all([
+        listTelegramBindings(user.token),
+        listGroups(user.token),
+      ]);
+      if (bindingsResponse.unavailable || groupsResponse.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      setTelegramBindings(bindingsResponse.items);
+      setTelegramGroups(groupsResponse.items ?? []);
+    } catch (err) {
+      setTelegramError(err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed"));
+    } finally {
+      setTelegramLoading(false);
+    }
+  }, [t, user?.token]);
+
   useEffect(() => {
     if (!canAdmin) return;
     void loadChannels();
-  }, [canAdmin, loadChannels]);
+    void loadTelegram();
+  }, [canAdmin, loadChannels, loadTelegram]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!user?.token || !supportsPush) return;
@@ -110,6 +159,10 @@ export function FleetNotificationChannelsPage() {
       })
       .catch(() => setPushStatus(null));
   }, [supportsPush, user?.token]);
+
+  useEffect(() => {
+    setTelegramLink(null);
+  }, [telegramScope, telegramGroupId]);
 
   const resetForm = () => {
     setChannelType("WEBHOOK");
@@ -276,6 +329,50 @@ export function FleetNotificationChannelsPage() {
     }
   };
 
+  const handleCreateTelegramLink = async () => {
+    if (!user?.token) return;
+    if (telegramScope === "group" && !telegramGroupId) {
+      setTelegramError(t("fleetNotifications.telegram.missingGroup"));
+      return;
+    }
+    setTelegramLoading(true);
+    setTelegramError(null);
+    try {
+      const response = await createTelegramLink(user.token, {
+        scope_type: telegramScope,
+        scope_id: telegramScope === "group" ? telegramGroupId : null,
+      });
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      if (response.item) {
+        setTelegramLink(response.item);
+        showToast({ kind: "success", text: t("fleetNotifications.telegram.linkCreated") });
+      }
+    } catch (err) {
+      setTelegramError(err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed"));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleDisableTelegramBinding = async (binding: FleetTelegramBinding) => {
+    if (!user?.token) return;
+    try {
+      const response = await disableTelegramBinding(user.token, binding.id);
+      if (response.unavailable) {
+        setUnavailable(true);
+        return;
+      }
+      const updated = response.item ?? { ...binding, status: "DISABLED" };
+      setTelegramBindings((prev) => prev.map((item) => (item.id === binding.id ? { ...item, ...updated } : item)));
+      showToast({ kind: "success", text: t("fleetNotifications.telegram.bindingDisabled") });
+    } catch (err) {
+      showToast({ kind: "error", text: err instanceof Error ? err.message : t("fleetNotifications.errors.actionFailed") });
+    }
+  };
+
   if (!canAdmin) {
     return <AppForbiddenState message={t("fleetNotifications.errors.adminOnly")} />;
   }
@@ -305,6 +402,12 @@ export function FleetNotificationChannelsPage() {
       </div>
     );
   }
+
+  const telegramExpiresInSeconds = telegramLink
+    ? Math.max(0, Math.floor((Date.parse(telegramLink.expires_at) - now) / 1000))
+    : null;
+  const telegramExpiresInMinutes =
+    telegramExpiresInSeconds !== null ? Math.ceil(telegramExpiresInSeconds / 60) : null;
 
   return (
     <div className="page">
@@ -337,7 +440,9 @@ export function FleetNotificationChannelsPage() {
                         ? t("fleetNotifications.channels.email")
                         : channel.channel_type === "PUSH"
                           ? t("fleetNotifications.channels.push")
-                        : channel.channel_type ?? t("common.notAvailable")}
+                          : channel.channel_type === "TELEGRAM"
+                            ? t("fleetNotifications.channels.telegram")
+                            : channel.channel_type ?? t("common.notAvailable")}
                   </span>
                   <div className="channel-card__target">{channel.target ?? t("common.notAvailable")}</div>
                 </div>
@@ -374,6 +479,105 @@ export function FleetNotificationChannelsPage() {
           ))}
         </div>
       )}
+      <div className="card telegram-card">
+        <div className="channel-card__header">
+          <div>
+            <span className="badge badge-info">{t("fleetNotifications.telegram.title")}</span>
+            <div className="channel-card__target">{t("fleetNotifications.telegram.subtitle")}</div>
+          </div>
+          <span className={telegramBindings.some((binding) => binding.status === "ACTIVE") ? "badge badge-success" : "badge badge-muted"}>
+            {telegramBindings.some((binding) => binding.status === "ACTIVE")
+              ? t("fleetNotifications.telegram.statusActive")
+              : t("fleetNotifications.telegram.statusInactive")}
+          </span>
+        </div>
+        <div className="channel-card__meta">
+          <span className="muted">{t("fleetNotifications.telegram.description")}</span>
+          {telegramLoading ? <span className="muted">{t("common.loading")}</span> : null}
+        </div>
+        {telegramError ? <div className="error-text">{telegramError}</div> : null}
+        <div className="form-grid">
+          <label className="form-field">
+            <span>{t("fleetNotifications.telegram.scopeType")}</span>
+            <select value={telegramScope} onChange={(event) => setTelegramScope(event.target.value)}>
+              <option value="client">{t("fleetNotifications.telegram.scopeClient")}</option>
+              <option value="group">{t("fleetNotifications.telegram.scopeGroup")}</option>
+            </select>
+          </label>
+          {telegramScope === "group" ? (
+            <label className="form-field">
+              <span>{t("fleetNotifications.telegram.group")}</span>
+              <select value={telegramGroupId} onChange={(event) => setTelegramGroupId(event.target.value)}>
+                <option value="">{t("fleetNotifications.telegram.groupSelect")}</option>
+                {telegramGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        <div className="actions">
+          <button type="button" className="primary" onClick={() => void handleCreateTelegramLink()} disabled={telegramLoading}>
+            {t("fleetNotifications.telegram.connect")}
+          </button>
+        </div>
+        {telegramLink ? (
+          <div className="channel-card__headers">
+            <span className="muted">{t("fleetNotifications.telegram.linkReady")}</span>
+            <div className="actions">
+              <a className="ghost" href={telegramLink.deep_link} target="_blank" rel="noreferrer">
+                {t("fleetNotifications.telegram.openTelegram")}
+              </a>
+              {telegramExpiresInMinutes !== null ? (
+                <span className="muted">{t("fleetNotifications.telegram.expiresIn", { minutes: telegramExpiresInMinutes })}</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {telegramBindings.length ? (
+        <div className="channel-list">
+          {telegramBindings.map((binding) => (
+            <div key={binding.id} className="card channel-card">
+              <div className="channel-card__header">
+                <div>
+                  <span className="badge badge-info">{t("fleetNotifications.telegram.chat")}</span>
+                  <div className="channel-card__target">{binding.chat_title ?? t("fleetNotifications.telegram.chatFallback")}</div>
+                </div>
+                <span className={binding.status === "DISABLED" ? "badge badge-muted" : "badge badge-success"}>
+                  {binding.status === "DISABLED"
+                    ? t("fleetNotifications.telegram.statusDisabled")
+                    : t("fleetNotifications.telegram.statusEnabled")}
+                </span>
+              </div>
+              <div className="channel-card__meta">
+                <span>
+                  {binding.scope_type === "client"
+                    ? t("fleetNotifications.telegram.scopeClient")
+                    : t("fleetNotifications.telegram.scopeGroupLabel", {
+                        name: binding.scope_id ? groupNameById.get(binding.scope_id) ?? binding.scope_id : t("fleetNotifications.telegram.scopeGroup"),
+                      })}
+                </span>
+                {binding.created_at ? (
+                  <span>{t("fleetNotifications.telegram.createdAt", { value: formatDateTime(binding.created_at) })}</span>
+                ) : null}
+              </div>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void handleDisableTelegramBinding(binding)}
+                  disabled={binding.status === "DISABLED"}
+                >
+                  {t("fleetNotifications.telegram.disable")}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="card push-card">
         <div className="channel-card__header">
           <div>

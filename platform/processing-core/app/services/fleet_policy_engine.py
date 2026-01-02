@@ -238,6 +238,28 @@ def _notify_policy_action(
     )
 
 
+def _augment_policy_payload(
+    db: Session,
+    *,
+    payload: dict[str, str | None],
+    card_id: str | None,
+    group_ids: list[str],
+    breach_kind: FleetActionBreachKind | None,
+) -> dict[str, str | None]:
+    group_id = group_ids[0] if group_ids else None
+    payload.setdefault("card_id", card_id)
+    payload.setdefault("group_id", group_id)
+    if card_id:
+        payload.setdefault("alias", _resolve_card_alias(db, card_id))
+        payload.setdefault("link_type", "card")
+        payload.setdefault("link_id", card_id)
+    if group_id:
+        payload.setdefault("group_label", _resolve_group_name(db, group_id))
+    if breach_kind:
+        payload.setdefault("breach_kind", breach_kind.value)
+    return payload
+
+
 def _create_escalation_case(
     db: Session,
     *,
@@ -459,7 +481,19 @@ def _apply_policy_action(
             "action": policy.action.value,
             "severity": severity.value,
         }
-        _notify_policy_action(db, client_id=client_id, severity=severity, event_ref_id=event_id, payload=payload)
+        _notify_policy_action(
+            db,
+            client_id=client_id,
+            severity=severity,
+            event_ref_id=event_id,
+            payload=_augment_policy_payload(
+                db,
+                payload=payload,
+                card_id=card_id,
+                group_ids=group_ids,
+                breach_kind=breach_kind,
+            ),
+        )
         audit_event_id = _emit_policy_audit_event(
             db,
             client_id=client_id,
@@ -524,14 +558,20 @@ def _apply_policy_action(
                 client_id=client_id,
                 severity=severity,
                 event_ref_id=event_id,
-                payload={
-                    "event_type": event_type,
-                    "event_id": event_id,
-                    "policy_id": str(policy.id),
-                    "action": policy.action.value,
-                    "status": "FAILED",
-                    "reason": "missing_card_id",
-                },
+                payload=_augment_policy_payload(
+                    db,
+                    payload={
+                        "event_type": event_type,
+                        "event_id": event_id,
+                        "policy_id": str(policy.id),
+                        "action": policy.action.value,
+                        "status": "FAILED",
+                        "reason": "missing_card_id",
+                    },
+                    card_id=card_id,
+                    group_ids=group_ids,
+                    breach_kind=breach_kind,
+                ),
             )
             fleet_metrics.mark_policy_action(policy.action.value, "FAILED")
             return _write_execution(
@@ -577,13 +617,20 @@ def _apply_policy_action(
                 client_id=client_id,
                 severity=severity,
                 event_ref_id=event_id,
-                payload={
-                    "event_type": event_type,
-                    "event_id": event_id,
-                    "policy_id": str(policy.id),
-                    "action": policy.action.value,
-                    "status": "APPLIED",
-                },
+                payload=_augment_policy_payload(
+                    db,
+                    payload={
+                        "event_type": event_type,
+                        "event_id": event_id,
+                        "policy_id": str(policy.id),
+                        "action": policy.action.value,
+                        "status": "APPLIED",
+                        "status_after": FuelCardStatus.BLOCKED.value,
+                    },
+                    card_id=card_id,
+                    group_ids=group_ids,
+                    breach_kind=breach_kind,
+                ),
             )
             fleet_metrics.mark_auto_block("APPLIED")
             fleet_metrics.mark_policy_action(policy.action.value, "APPLIED")
@@ -629,14 +676,20 @@ def _apply_policy_action(
                 client_id=client_id,
                 severity=severity,
                 event_ref_id=event_id,
-                payload={
-                    "event_type": event_type,
-                    "event_id": event_id,
-                    "policy_id": str(policy.id),
-                    "action": policy.action.value,
-                    "status": "FAILED",
-                    "reason": str(exc)[:200],
-                },
+                payload=_augment_policy_payload(
+                    db,
+                    payload={
+                        "event_type": event_type,
+                        "event_id": event_id,
+                        "policy_id": str(policy.id),
+                        "action": policy.action.value,
+                        "status": "FAILED",
+                        "reason": str(exc)[:200],
+                    },
+                    card_id=card_id,
+                    group_ids=group_ids,
+                    breach_kind=breach_kind,
+                ),
             )
             fleet_metrics.mark_auto_block("FAILED")
             fleet_metrics.mark_policy_action(policy.action.value, "FAILED")
@@ -690,13 +743,19 @@ def _apply_policy_action(
                 client_id=client_id,
                 severity=severity,
                 event_ref_id=event_id,
-                payload={
-                    "event_type": event_type,
-                    "event_id": event_id,
-                    "policy_id": str(policy.id),
-                    "action": policy.action.value,
-                    "status": "APPLIED",
-                },
+                payload=_augment_policy_payload(
+                    db,
+                    payload={
+                        "event_type": event_type,
+                        "event_id": event_id,
+                        "policy_id": str(policy.id),
+                        "action": policy.action.value,
+                        "status": "APPLIED",
+                    },
+                    card_id=card_id,
+                    group_ids=group_ids,
+                    breach_kind=breach_kind,
+                ),
             )
             fleet_metrics.mark_escalation("APPLIED")
             fleet_metrics.mark_policy_action(policy.action.value, "APPLIED")
@@ -742,14 +801,20 @@ def _apply_policy_action(
                 client_id=client_id,
                 severity=severity,
                 event_ref_id=event_id,
-                payload={
-                    "event_type": event_type,
-                    "event_id": event_id,
-                    "policy_id": str(policy.id),
-                    "action": policy.action.value,
-                    "status": "FAILED",
-                    "reason": str(exc)[:200],
-                },
+                payload=_augment_policy_payload(
+                    db,
+                    payload={
+                        "event_type": event_type,
+                        "event_id": event_id,
+                        "policy_id": str(policy.id),
+                        "action": policy.action.value,
+                        "status": "FAILED",
+                        "reason": str(exc)[:200],
+                    },
+                    card_id=card_id,
+                    group_ids=group_ids,
+                    breach_kind=breach_kind,
+                ),
             )
             fleet_metrics.mark_escalation("FAILED")
             fleet_metrics.mark_policy_action(policy.action.value, "FAILED")
@@ -790,14 +855,20 @@ def _apply_policy_action(
         client_id=client_id,
         severity=severity,
         event_ref_id=event_id,
-        payload={
-            "event_type": event_type,
-            "event_id": event_id,
-            "policy_id": str(policy.id),
-            "action": policy.action.value,
-            "status": "FAILED",
-            "reason": "unsupported_action",
-        },
+        payload=_augment_policy_payload(
+            db,
+            payload={
+                "event_type": event_type,
+                "event_id": event_id,
+                "policy_id": str(policy.id),
+                "action": policy.action.value,
+                "status": "FAILED",
+                "reason": "unsupported_action",
+            },
+            card_id=card_id,
+            group_ids=group_ids,
+            breach_kind=breach_kind,
+        ),
     )
     fleet_metrics.mark_policy_action(policy.action.value, "FAILED")
     return _write_execution(
