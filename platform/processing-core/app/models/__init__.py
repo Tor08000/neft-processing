@@ -151,6 +151,15 @@ from .cases import (  # noqa: F401
 )
 from .case_exports import CaseExport, CaseExportKind  # noqa: F401
 from .audit_retention import AuditLegalHold, AuditLegalHoldScope, AuditPurgeLog  # noqa: F401
+from .marketplace_contracts import (  # noqa: F401
+    Contract,
+    ContractEvent,
+    ContractImmutableError,
+    ContractObligation,
+    ContractStatus,
+    ContractVersion,
+    SLAResult,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -452,6 +461,13 @@ __all__ = [
     "AuditLog",
     "ActorType",
     "AuditVisibility",
+    "Contract",
+    "ContractEvent",
+    "ContractImmutableError",
+    "ContractObligation",
+    "ContractStatus",
+    "ContractVersion",
+    "SLAResult",
     "DecisionResult",
     "RefundRequest",
     "RefundRequestStatus",
