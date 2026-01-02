@@ -28,6 +28,7 @@ from app.routers.admin import (
     refunds,
     finance,
     reversals,
+    reconciliation,
     cases,
     risk_rules,
     risk_v5,
@@ -78,5 +79,6 @@ router.include_router(what_if.router)
 router.include_router(ops.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
+router.include_router(reconciliation.router)
 
 __all__ = ["router"]

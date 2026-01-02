@@ -36,6 +36,7 @@ from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
 from app.services.cases_metrics import metrics as cases_metrics
+from app.services.reconciliation_metrics import metrics as reconciliation_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveResult,
@@ -630,6 +631,42 @@ def _bi_metrics() -> list[str]:
     ]
 
 
+def _reconciliation_metrics() -> list[str]:
+    lines = [
+        "# HELP core_api_reconciliation_runs_total Total reconciliation runs by scope/status.",
+        "# TYPE core_api_reconciliation_runs_total counter",
+    ]
+    if reconciliation_metrics.runs_total:
+        for key, count in reconciliation_metrics.runs_total.items():
+            scope, status = key.split(":", maxsplit=1)
+            lines.append(f'core_api_reconciliation_runs_total{{scope=\"{scope}\",status=\"{status}\"}} {count}')
+    else:
+        lines.append('core_api_reconciliation_runs_total{scope="unset",status="unset"} 0')
+
+    lines.append("# HELP core_api_reconciliation_discrepancies_total Total discrepancies by type/status.")
+    lines.append("# TYPE core_api_reconciliation_discrepancies_total counter")
+    if reconciliation_metrics.discrepancies_total:
+        for key, count in reconciliation_metrics.discrepancies_total.items():
+            dtype, status = key.split(":", maxsplit=1)
+            lines.append(
+                f'core_api_reconciliation_discrepancies_total{{type=\"{dtype}\",status=\"{status}\"}} {count}'
+            )
+    else:
+        lines.append('core_api_reconciliation_discrepancies_total{type="unset",status="unset"} 0')
+
+    lines.extend(
+        [
+            "# HELP core_api_reconciliation_resolved_total Total resolved discrepancies.",
+            "# TYPE core_api_reconciliation_resolved_total counter",
+            f"core_api_reconciliation_resolved_total {reconciliation_metrics.resolved_total}",
+            "# HELP core_api_reconciliation_total_delta_abs Total absolute delta across discrepancies.",
+            "# TYPE core_api_reconciliation_total_delta_abs gauge",
+            f"core_api_reconciliation_total_delta_abs {reconciliation_metrics.total_delta_abs}",
+        ]
+    )
+    return lines
+
+
 def _posting_metrics() -> list[str]:
     latency_p99 = _percentile(posting_metrics.latencies_ms, 99) or 0
     status_lines = [
@@ -827,6 +864,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_cases_metrics())
     lines.extend(_accounting_export_metrics())
     lines.extend(_bi_metrics())
+    lines.extend(_reconciliation_metrics())
     return "\n".join(lines) + "\n"
 
 
