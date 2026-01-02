@@ -254,6 +254,10 @@ export function FleetNotificationChannelsPage() {
       setPushError(t("fleetNotifications.push.notSupported"));
       return;
     }
+    if (!vapidKey) {
+      setPushError(t("fleetNotifications.push.notSupported"));
+      return;
+    }
     setPushLoading(true);
     setPushError(null);
     try {

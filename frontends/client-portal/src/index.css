@@ -1436,6 +1436,67 @@ textarea:focus-visible {
   margin-top: 0.5rem;
 }
 
+.policy-trigger {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.policy-links {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.policy-reason {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.policy-explain {
+  margin-top: 0.25rem;
+}
+
+.policy-explain summary {
+  cursor: pointer;
+  color: var(--neft-accent);
+  font-size: 0.85rem;
+}
+
+.policy-explain__body {
+  margin-top: 0.35rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.08);
+  font-size: 0.85rem;
+}
+
+.policy-explain__body ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.policy-advanced {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.policy-advanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--neft-text-muted);
+}
+
+.policy-advanced__content {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.policy-advanced__row {
+  display: grid;
+  gap: 0.25rem;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
