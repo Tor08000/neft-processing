@@ -22,6 +22,7 @@ from sqlalchemy import (
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
+from app.integrations.fuel.models import FuelIngestMode
 
 
 class FuelCardStatus(str, Enum):
@@ -432,6 +433,10 @@ class FuelIngestJob(Base):
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     status = Column(ExistingEnum(FuelIngestJobStatus, name="fuel_ingest_job_status"), nullable=False)
+    mode = Column(ExistingEnum(FuelIngestMode, name="fuel_ingest_mode"), nullable=True)
+    cursor = Column(String(256), nullable=True)
+    window_start = Column(DateTime(timezone=True), nullable=True)
+    window_end = Column(DateTime(timezone=True), nullable=True)
     total_count = Column(Integer, nullable=False, default=0)
     inserted_count = Column(Integer, nullable=False, default=0)
     deduped_count = Column(Integer, nullable=False, default=0)

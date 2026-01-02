@@ -287,6 +287,14 @@ from .fuel import (  # noqa: F401
     FuelTransactionStatus,
     FuelType,
 )
+from app.integrations.fuel.models import (  # noqa: F401
+    FuelIngestMode,
+    FuelProviderAuthType,
+    FuelProviderCardMap,
+    FuelProviderConnection,
+    FuelProviderConnectionStatus,
+    FuelProviderRawEvent,
+)
 from .ops import (  # noqa: F401
     OpsEscalation,
     OpsEscalationPriority,
@@ -631,6 +639,12 @@ __all__ = [
     "FuelTransaction",
     "FuelTransactionStatus",
     "FuelType",
+    "FuelIngestMode",
+    "FuelProviderAuthType",
+    "FuelProviderCardMap",
+    "FuelProviderConnection",
+    "FuelProviderConnectionStatus",
+    "FuelProviderRawEvent",
     "LogisticsOrder",
     "LogisticsOrderStatus",
     "LogisticsOrderType",
