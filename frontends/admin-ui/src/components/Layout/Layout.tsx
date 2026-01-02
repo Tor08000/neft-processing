@@ -9,6 +9,7 @@ const baseNavItems = [
   { to: "/accounts", label: "Balances" },
   { to: "/operations", label: "Operations" },
   { to: "/billing", label: "Billing" },
+  { to: "/reconciliation", label: "Reconciliation" },
   { to: "/payouts", label: "Payouts" },
   { to: "/integration", label: "Integration Monitoring" },
   { to: "/analytics/risk", label: "Risk analytics" },

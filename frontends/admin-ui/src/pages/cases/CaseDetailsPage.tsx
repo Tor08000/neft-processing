@@ -24,6 +24,7 @@ import {
 import { listDecisionMemory, type DecisionMemoryEntry } from "../../api/decisionMemory";
 import { UnauthorizedError } from "../../api/client";
 import { computeExplainScore } from "../../gamification/score";
+import { loadStreakState } from "../../gamification/streak";
 import type { ExplainV2Response } from "../../types/explainV2";
 import { recordActionApplied, recordCaseClosed } from "../../mastery/events";
 import { buildMasterySnapshot } from "../../mastery/levels";
@@ -440,6 +441,7 @@ export function CaseDetailsPage() {
       buildMasterySnapshot({
         events: masteryEvents,
         state: loadMasteryState(),
+        streakCount: loadStreakState().count,
       }),
     [masteryEvents],
   );

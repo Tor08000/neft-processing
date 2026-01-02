@@ -38,6 +38,9 @@ import MoneyReplayPage from "./pages/money/MoneyReplayPage";
 import InvoiceCfoExplainPage from "./pages/money/InvoiceCfoExplainPage";
 import CasesListPage from "./pages/support/CasesListPage";
 import CaseDetailsPage from "./pages/support/CaseDetailsPage";
+import ReconciliationRunsPage from "./pages/reconciliation/ReconciliationRunsPage";
+import ReconciliationRunDetailsPage from "./pages/reconciliation/ReconciliationRunDetailsPage";
+import ReconciliationStatementsPage from "./pages/reconciliation/ReconciliationStatementsPage";
 
 export function App() {
   return (
@@ -82,6 +85,9 @@ export function App() {
             <Route path="/money/invoices/:id/cfo-explain" element={<InvoiceCfoExplainPage />} />
             <Route path="/support/cases" element={<CasesListPage />} />
             <Route path="/support/cases/:id" element={<CaseDetailsPage />} />
+            <Route path="/reconciliation" element={<ReconciliationRunsPage />} />
+            <Route path="/reconciliation/runs/:id" element={<ReconciliationRunDetailsPage />} />
+            <Route path="/reconciliation/statements" element={<ReconciliationStatementsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
