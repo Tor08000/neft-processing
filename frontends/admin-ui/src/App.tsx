@@ -3,10 +3,13 @@ import { AuthProvider } from "./auth/AuthContext";
 import { Layout } from "./components/Layout/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import BillingDashboardPage from "./pages/BillingDashboardPage";
-import TariffsPage from "./pages/TariffsPage";
-import InvoicesListPage from "./pages/InvoicesListPage";
-import InvoiceDetailsPage from "./pages/InvoiceDetailsPage";
+import BillingOverviewPage from "./pages/billing/BillingOverviewPage";
+import BillingInvoicesPage from "./pages/billing/BillingInvoicesPage";
+import BillingInvoiceDetailsPage from "./pages/billing/BillingInvoiceDetailsPage";
+import BillingPaymentsPage from "./pages/billing/BillingPaymentsPage";
+import BillingPaymentDetailsPage from "./pages/billing/BillingPaymentDetailsPage";
+import BillingRefundsPage from "./pages/billing/BillingRefundsPage";
+import BillingLinksPage from "./pages/billing/BillingLinksPage";
 import { UsersPage } from "./pages/UsersPage";
 import { CreateUserPage } from "./pages/CreateUserPage";
 import { EditUserPage } from "./pages/EditUserPage";
@@ -51,10 +54,15 @@ export function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/users" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/billing" element={<BillingDashboardPage />} />
-            <Route path="/billing/tariffs" element={<TariffsPage />} />
-            <Route path="/billing/invoices" element={<InvoicesListPage />} />
-            <Route path="/billing/invoices/:id" element={<InvoiceDetailsPage />} />
+            <Route path="/billing" element={<BillingOverviewPage />}>
+              <Route index element={<Navigate to="/billing/invoices" replace />} />
+              <Route path="invoices" element={<BillingInvoicesPage />} />
+              <Route path="payments" element={<BillingPaymentsPage />} />
+              <Route path="refunds" element={<BillingRefundsPage />} />
+              <Route path="links" element={<BillingLinksPage />} />
+            </Route>
+            <Route path="/billing/invoices/:id" element={<BillingInvoiceDetailsPage />} />
+            <Route path="/billing/payments/:id" element={<BillingPaymentDetailsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/users/new" element={<CreateUserPage />} />
             <Route path="/users/:id" element={<EditUserPage />} />
