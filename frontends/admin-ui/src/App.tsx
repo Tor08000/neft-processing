@@ -44,6 +44,11 @@ import CaseDetailsPage from "./pages/support/CaseDetailsPage";
 import ReconciliationRunsPage from "./pages/reconciliation/ReconciliationRunsPage";
 import ReconciliationRunDetailsPage from "./pages/reconciliation/ReconciliationRunDetailsPage";
 import ReconciliationStatementsPage from "./pages/reconciliation/ReconciliationStatementsPage";
+import FleetCardsPage from "./pages/fleet/FleetCardsPage";
+import FleetGroupsPage from "./pages/fleet/FleetGroupsPage";
+import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
+import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
+import FleetSpendPage from "./pages/fleet/FleetSpendPage";
 
 export function App() {
   return (
@@ -96,6 +101,11 @@ export function App() {
             <Route path="/reconciliation" element={<ReconciliationRunsPage />} />
             <Route path="/reconciliation/runs/:id" element={<ReconciliationRunDetailsPage />} />
             <Route path="/reconciliation/statements" element={<ReconciliationStatementsPage />} />
+            <Route path="/fleet/cards" element={<FleetCardsPage />} />
+            <Route path="/fleet/groups" element={<FleetGroupsPage />} />
+            <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
+            <Route path="/fleet/limits" element={<FleetLimitsPage />} />
+            <Route path="/fleet/spend" element={<FleetSpendPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
