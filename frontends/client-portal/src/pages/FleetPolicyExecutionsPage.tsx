@@ -13,6 +13,7 @@ import { CopyButton } from "../components/CopyButton";
 import { formatDateTime } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
 import { canViewExecutions, type FleetPolicyRole } from "../utils/fleetPolicyPermissions";
+import { PolicyCenterTabs } from "../components/PolicyCenterTabs";
 
 const getExecutionStatusClass = (status?: string | null) => {
   if (status === "APPLIED") return "badge badge-success";
@@ -290,8 +291,9 @@ export function FleetPolicyExecutionsPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetPolicies.executions.title")}</h1>
+          <h1>{t("policyCenter.executionsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
         <div className="card state">{t("common.loading")}</div>
       </div>
     );
@@ -309,8 +311,9 @@ export function FleetPolicyExecutionsPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetPolicies.executions.title")}</h1>
+          <h1>{t("policyCenter.executionsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
         <AppErrorState message={error} onRetry={() => void loadExecutions()} />
       </div>
     );
@@ -319,9 +322,9 @@ export function FleetPolicyExecutionsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>{t("fleetPolicies.executions.title")}</h1>
+        <h1>{t("policyCenter.executionsTitle")}</h1>
         <div className="actions">
-          <Link to="/fleet/policies" className="secondary">
+          <Link to="/fleet/policy-center/actions" className="secondary">
             {t("fleetPolicies.executions.backToPolicies")}
           </Link>
           <button type="button" className="secondary" onClick={() => void loadExecutions()}>
@@ -329,6 +332,7 @@ export function FleetPolicyExecutionsPage() {
           </button>
         </div>
       </div>
+      <PolicyCenterTabs />
       <div className="card filters">
         <label className="filter">
           <span>{t("fleetPolicies.executions.dateFrom")}</span>

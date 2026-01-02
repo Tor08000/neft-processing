@@ -19,6 +19,8 @@ import { listCards, listGroups } from "../api/fleet";
 import type { FleetNotificationChannel, FleetNotificationPolicy } from "../types/fleetNotifications";
 import type { FleetCard, FleetGroup } from "../types/fleet";
 import { canAdminFleetNotifications } from "../utils/fleetPermissions";
+import { PolicyCenterTabs } from "../components/PolicyCenterTabs";
+import { PolicyCenterRulesTabs } from "../components/PolicyCenterRulesTabs";
 
 const policyChannelsFromIds = (
   policy: FleetNotificationPolicy,
@@ -274,8 +276,10 @@ export function FleetNotificationPoliciesPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetNotifications.policies.title")}</h1>
+          <h1>{t("policyCenter.notificationsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
+        <PolicyCenterRulesTabs />
         <div className="card state">{t("common.loading")}</div>
       </div>
     );
@@ -289,8 +293,10 @@ export function FleetNotificationPoliciesPage() {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>{t("fleetNotifications.policies.title")}</h1>
+          <h1>{t("policyCenter.notificationsTitle")}</h1>
         </div>
+        <PolicyCenterTabs />
+        <PolicyCenterRulesTabs />
         <AppErrorState message={error} onRetry={() => void loadPolicies()} />
       </div>
     );
@@ -299,7 +305,7 @@ export function FleetNotificationPoliciesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>{t("fleetNotifications.policies.title")}</h1>
+        <h1>{t("policyCenter.notificationsTitle")}</h1>
         <div className="actions">
           <button type="button" className="primary" onClick={() => { resetForm(); setShowCreateModal(true); }}>
             {t("fleetNotifications.policies.create")}
@@ -309,6 +315,8 @@ export function FleetNotificationPoliciesPage() {
           </button>
         </div>
       </div>
+      <PolicyCenterTabs />
+      <PolicyCenterRulesTabs />
       <Table
         columns={columns}
         data={policies}

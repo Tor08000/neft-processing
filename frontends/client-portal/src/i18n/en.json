@@ -61,6 +61,38 @@
     "confirmReceived": "Confirm received",
     "resetFilters": "Reset filters"
   },
+  "policyCenter": {
+    "title": "Fleet · Policy Center",
+    "actionsTitle": "Policy Center · Actions",
+    "notificationsTitle": "Policy Center · Notifications",
+    "channelsTitle": "Policy Center · Channels",
+    "executionsTitle": "Policy Center · Executions",
+    "cta": {
+      "createRule": "Create rule",
+      "connectChannel": "Connect channel"
+    },
+    "tabs": {
+      "rules": "Rules",
+      "channels": "Channels",
+      "executions": "Executions"
+    },
+    "rulesTabs": {
+      "actions": "Actions",
+      "notifications": "Notifications"
+    },
+    "summary": {
+      "activePolicies": "Active policies",
+      "channelsConnected": "Channels connected",
+      "autoBlocks": "Auto-blocks (last 7d)",
+      "messagesSent": "Messages sent (last 7d)",
+      "failures": "Failures (last 7d)",
+      "notAvailable": "—"
+    },
+    "errors": {
+      "loadFailed": "Unable to load policy summary",
+      "noPermission": "Insufficient permissions"
+    }
+  },
   "fleetNotifications": {
     "errors": {
       "loadFailed": "Unable to load notifications",
