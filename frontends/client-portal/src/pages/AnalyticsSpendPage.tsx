@@ -27,7 +27,7 @@ export function AnalyticsSpendPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AnalyticsErrorState | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const hasData = Boolean(summary);
+  const hasData = (summary?.total_spend ?? 0) > 0;
 
   const canAccess = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER", "CLIENT_USER"]);
 
@@ -118,7 +118,7 @@ export function AnalyticsSpendPage() {
         <AppEmptyState title={t("analytics.empty.title")} description={t("analytics.empty.description")} />
       ) : null}
 
-      {!isLoading && !error && summary ? (
+      {!isLoading && !error && hasData && summary ? (
         <section className="grid analytics-kpi-grid">
           <AnalyticsKpiCard
             label={t("analytics.spend.kpi.total")}
@@ -132,7 +132,7 @@ export function AnalyticsSpendPage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && summary ? (
+      {!isLoading && !error && hasData && summary ? (
         <AnalyticsChartPanel
           title={t("analytics.spend.trend.title")}
           subtitle={t("analytics.spend.trend.subtitle")}
@@ -171,7 +171,7 @@ export function AnalyticsSpendPage() {
         </AnalyticsChartPanel>
       ) : null}
 
-      {!isLoading && !error && summary ? (
+      {!isLoading && !error && hasData && summary ? (
         <section className="grid two">
           <AnalyticsChartPanel title={t("analytics.spend.topStations")}>
             {summary.top_stations.length ? (
@@ -221,7 +221,7 @@ export function AnalyticsSpendPage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && summary ? (
+      {!isLoading && !error && hasData && summary ? (
         <section className="grid two">
           <AnalyticsChartPanel title={t("analytics.spend.topCards")}>
             {summary.top_cards.length ? (
@@ -271,7 +271,7 @@ export function AnalyticsSpendPage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && summary ? (
+      {!isLoading && !error && hasData && summary ? (
         <AnalyticsChartPanel title={t("analytics.spend.productBreakdown")}>
           {summary.product_breakdown.length ? (
             <ul className="bars">

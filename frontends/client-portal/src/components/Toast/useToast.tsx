@@ -10,8 +10,12 @@ export type ToastMessage = {
 export function useToast() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const showToast = useCallback((kind: ToastKind, text: string) => {
-    setToast({ kind, text });
+  const showToast = useCallback((kind: ToastKind | ToastMessage, text?: string) => {
+    if (typeof kind === "string") {
+      setToast({ kind, text: text ?? "" });
+      return;
+    }
+    setToast(kind);
   }, []);
 
   useEffect(() => {

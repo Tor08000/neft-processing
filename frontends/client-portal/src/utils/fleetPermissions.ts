@@ -3,12 +3,16 @@ import { hasAnyRole } from "./roles";
 import type { FleetGroupRole } from "../types/fleet";
 
 const manageRoles = ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"] as const;
+const viewRoles = ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER", "CLIENT_USER", "CLIENT_ACCOUNTANT"] as const;
 
 export const canManageFleetCards = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
 export const canManageFleetGroups = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
 export const canManageFleetEmployees = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
 export const canManageFleetLimits = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
 export const canViewFleetSpend = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
+export const canViewFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, [...viewRoles]);
+export const canAckFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
+export const canAdminFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, ["CLIENT_OWNER"]);
 
 const roleOrder: FleetGroupRole[] = ["viewer", "manager", "admin"];
 
