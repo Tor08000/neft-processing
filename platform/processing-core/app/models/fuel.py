@@ -41,12 +41,47 @@ class FuelNetworkStatus(str, Enum):
     INACTIVE = "INACTIVE"
 
 
+class FuelProviderStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+
+
 class FuelTransactionStatus(str, Enum):
     AUTHORIZED = "AUTHORIZED"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     DECLINED = "DECLINED"
     REVERSED = "REVERSED"
     SETTLED = "SETTLED"
+
+
+class FuelIngestJobStatus(str, Enum):
+    RECEIVED = "RECEIVED"
+    PROCESSED = "PROCESSED"
+    FAILED = "FAILED"
+
+
+class FuelLimitCheckStatus(str, Enum):
+    OK = "OK"
+    SOFT_BREACH = "SOFT_BREACH"
+    HARD_BREACH = "HARD_BREACH"
+
+
+class FuelLimitBreachStatus(str, Enum):
+    OPEN = "OPEN"
+    ACKED = "ACKED"
+    IGNORED = "IGNORED"
+
+
+class FuelLimitBreachType(str, Enum):
+    AMOUNT = "AMOUNT"
+    VOLUME = "VOLUME"
+    CATEGORY = "CATEGORY"
+    STATION = "STATION"
+
+
+class FuelLimitBreachScopeType(str, Enum):
+    CARD = "card"
+    GROUP = "group"
 
 
 class FuelLimitScopeType(str, Enum):
@@ -145,6 +180,28 @@ class FuelNetwork(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FuelProvider(Base):
+    __tablename__ = "fuel_providers"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(128), nullable=False)
+    status = Column(ExistingEnum(FuelProviderStatus, name="fuel_provider_status"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelMerchant(Base):
+    __tablename__ = "fuel_merchants"
+    __table_args__ = (UniqueConstraint("provider_code", "merchant_key", name="uq_fuel_merchants_provider_key"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider_code = Column(String(64), nullable=False, index=True)
+    merchant_key = Column(String(256), nullable=False, index=True)
+    display_name = Column(String(256), nullable=False)
+    category_default = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class FuelStationNetwork(Base):
     __tablename__ = "fuel_station_networks"
 
@@ -188,6 +245,9 @@ class FuelTransaction(Base):
         Index("ix_fuel_transactions_vehicle_time", "vehicle_id", "occurred_at"),
         Index("ix_fuel_transactions_status_time", "status", "occurred_at"),
         Index("ix_fuel_transactions_external_ref", "external_ref"),
+        Index("ix_fuel_transactions_provider_tx", "provider_code", "provider_tx_id"),
+        UniqueConstraint("provider_code", "provider_tx_id", name="uq_fuel_transactions_provider_tx"),
+        UniqueConstraint("provider_code", "external_ref", name="uq_fuel_transactions_provider_external_ref"),
         UniqueConstraint(
             "tenant_id",
             "network_id",
@@ -216,6 +276,9 @@ class FuelTransaction(Base):
     ledger_transaction_id = Column(
         GUID(), ForeignKey("internal_ledger_transactions.id"), nullable=True
     )
+    provider_code = Column(String(64), nullable=True, index=True)
+    provider_tx_id = Column(String(128), nullable=True, index=True)
+    merchant_key = Column(String(256), nullable=True, index=True)
     external_ref = Column(String(128), nullable=True)
     external_settlement_ref = Column(String(128), nullable=True)
     external_reverse_ref = Column(String(128), nullable=True)
@@ -227,7 +290,49 @@ class FuelTransaction(Base):
     location = Column(String(256), nullable=True)
     raw_payload_redacted = Column(JSON, nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
+    limit_check_status = Column(
+        ExistingEnum(FuelLimitCheckStatus, name="fuel_limit_check_status"), nullable=True
+    )
+    limit_check_details = Column(JSON, nullable=True)
     meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelIngestJob(Base):
+    __tablename__ = "fuel_ingest_jobs"
+    __table_args__ = (Index("ix_fuel_ingest_jobs_provider_received", "provider_code", "received_at"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider_code = Column(String(64), nullable=False, index=True)
+    client_id = Column(String(64), nullable=True, index=True)
+    batch_ref = Column(String(128), nullable=True)
+    idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    status = Column(ExistingEnum(FuelIngestJobStatus, name="fuel_ingest_job_status"), nullable=False)
+    total_count = Column(Integer, nullable=False, default=0)
+    inserted_count = Column(Integer, nullable=False, default=0)
+    deduped_count = Column(Integer, nullable=False, default=0)
+    error = Column(String(512), nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
+
+
+class FuelLimitBreach(Base):
+    __tablename__ = "fuel_limit_breaches"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    scope_type = Column(ExistingEnum(FuelLimitBreachScopeType, name="fuel_limit_breach_scope_type"), nullable=False)
+    scope_id = Column(GUID(), nullable=False, index=True)
+    period = Column(ExistingEnum(FuelLimitPeriod, name="fuel_limit_period"), nullable=False)
+    limit_id = Column(GUID(), nullable=False, index=True)
+    breach_type = Column(ExistingEnum(FuelLimitBreachType, name="fuel_limit_breach_type"), nullable=False)
+    threshold = Column(Numeric, nullable=False)
+    observed = Column(Numeric, nullable=False)
+    delta = Column(Numeric, nullable=False)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=True, index=True)
+    status = Column(ExistingEnum(FuelLimitBreachStatus, name="fuel_limit_breach_status"), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -385,12 +490,22 @@ __all__ = [
     "FuelCardGroup",
     "FuelCardGroupStatus",
     "FuelCardStatus",
+    "FuelIngestJob",
+    "FuelIngestJobStatus",
     "FuelLimit",
+    "FuelLimitBreach",
+    "FuelLimitBreachScopeType",
+    "FuelLimitBreachStatus",
+    "FuelLimitBreachType",
     "FuelLimitPeriod",
+    "FuelLimitCheckStatus",
     "FuelLimitScopeType",
     "FuelLimitType",
+    "FuelMerchant",
     "FuelNetwork",
     "FuelNetworkStatus",
+    "FuelProvider",
+    "FuelProviderStatus",
     "FuelStationNetwork",
     "FuelStation",
     "FuelStationStatus",

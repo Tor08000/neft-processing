@@ -7,7 +7,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.fleet import EmployeeStatus, FuelGroupRole
-from app.models.fuel import FuelCardStatus, FuelLimitPeriod, FuelLimitScopeType
+from app.models.fuel import (
+    FuelCardStatus,
+    FuelLimitBreachStatus,
+    FuelLimitPeriod,
+    FuelLimitScopeType,
+)
 
 
 class FleetCardCreateIn(BaseModel):
@@ -153,9 +158,13 @@ class FleetTransactionOut(BaseModel):
     volume_liters: Decimal | None = None
     category: str | None = None
     merchant_name: str | None = None
+    merchant_key: str | None = None
     station_id: str | None = None
     location: str | None = None
     external_ref: str | None = None
+    provider_code: str | None = None
+    provider_tx_id: str | None = None
+    limit_check_status: str | None = None
     created_at: datetime
 
 
@@ -166,14 +175,50 @@ class FleetTransactionListResponse(BaseModel):
 class FleetSpendSummaryRow(BaseModel):
     key: str
     amount: Decimal = Field(..., decimal_places=2)
+    volume_liters: Decimal | None = None
+
+
+class FleetSpendSummaryTotals(BaseModel):
+    amount: Decimal = Field(..., decimal_places=2)
+    volume_liters: Decimal = Field(..., decimal_places=2)
 
 
 class FleetSpendSummaryOut(BaseModel):
     group_by: str
+    totals: FleetSpendSummaryTotals
     rows: list[FleetSpendSummaryRow]
+    top_merchants: list[FleetSpendSummaryRow] = Field(default_factory=list)
+    top_categories: list[FleetSpendSummaryRow] = Field(default_factory=list)
+
+
+class FleetAlertOut(BaseModel):
+    id: str
+    status: FuelLimitBreachStatus
+    scope_type: str
+    scope_id: str
+    period: FuelLimitPeriod
+    breach_type: str
+    threshold: Decimal
+    observed: Decimal
+    delta: Decimal
+    occurred_at: datetime
+    tx_id: str | None = None
+    limit_id: str
+
+
+class FleetAlertListResponse(BaseModel):
+    items: list[FleetAlertOut]
+
+
+class FleetAlertIgnoreIn(BaseModel):
+    reason: str | None = None
 
 
 class FleetTransactionsExportOut(BaseModel):
     export_id: str
     url: str
     expires_in: int
+    content_sha256: str | None = None
+    artifact_signature: str | None = None
+    artifact_signature_alg: str | None = None
+    artifact_signing_key_id: str | None = None

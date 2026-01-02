@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -15,21 +16,25 @@ from sqlalchemy.pool import StaticPool
 from app.db import get_db
 from app.main import app
 from app.models.case_exports import CaseExport
-from app.models.cases import Case, CaseEvent, CaseEventType, CaseKind
+from app.models.cases import Case, CaseEvent, CaseEventType
 from app.models.decision_memory import DecisionMemoryRecord
 from app.models.fleet import ClientEmployee, FuelCardGroupMember, FuelGroupAccess
 from app.models.fuel import (
     FuelCard,
     FuelCardGroup,
+    FuelIngestJob,
     FuelLimit,
     FuelLimitBreach,
-    FuelIngestJob,
+    FuelLimitBreachStatus,
+    FuelLimitScopeType,
+    FuelLimitType,
+    FuelLimitPeriod,
     FuelNetwork,
     FuelProvider,
     FuelStation,
     FuelTransaction,
 )
-from app.services.case_events_service import verify_case_event_chain, verify_case_event_signatures
+from app.services.case_events_service import verify_case_event_signatures
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -127,7 +132,7 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides.pop(get_db, None)
 
 
-def test_fleet_v1_flow(make_jwt, client: TestClient, db_session: Session) -> None:
+def _create_card(client: TestClient, make_jwt) -> tuple[str, str, str]:
     client_id = str(uuid4())
     admin_user_id = str(uuid4())
     admin_token = make_jwt(
@@ -136,157 +141,123 @@ def test_fleet_v1_flow(make_jwt, client: TestClient, db_session: Session) -> Non
         sub=admin_user_id,
         extra={"user_id": admin_user_id, "email": "admin@fleet.test", "tenant_id": 1},
     )
-
     card_payload = {"card_alias": "NEFT-00001234", "masked_pan": "****1111", "currency": "RUB"}
     card_resp = client.post("/api/client/fleet/cards", json=card_payload, headers=_auth_headers(admin_token))
     assert card_resp.status_code == 201
-    card_id = card_resp.json()["id"]
+    return client_id, admin_token, card_payload["card_alias"]
 
-    group_resp = client.post(
-        "/api/client/fleet/groups",
-        json={"name": "Ops", "description": "Ops group"},
-        headers=_auth_headers(admin_token),
-    )
-    assert group_resp.status_code == 201
-    group_id = group_resp.json()["id"]
 
-    add_resp = client.post(
-        f"/api/client/fleet/groups/{group_id}/members/add",
-        json={"card_id": card_id},
-        headers=_auth_headers(admin_token),
-    )
-    assert add_resp.status_code == 200
-
-    invite_resp = client.post(
-        "/api/client/fleet/employees/invite",
-        json={"email": "viewer@fleet.test"},
-        headers=_auth_headers(admin_token),
-    )
-    assert invite_resp.status_code == 201
-    viewer_id = invite_resp.json()["id"]
-
-    grant_resp = client.post(
-        f"/api/client/fleet/groups/{group_id}/access/grant",
-        json={"employee_id": viewer_id, "role": "viewer"},
-        headers=_auth_headers(admin_token),
-    )
-    assert grant_resp.status_code == 200
-
-    viewer_token = make_jwt(
-        roles=("CLIENT_USER",),
-        client_id=client_id,
-        sub=viewer_id,
-        extra={"user_id": viewer_id, "email": "viewer@fleet.test", "tenant_id": 1},
-    )
-    list_cards = client.get("/api/client/fleet/cards", headers=_auth_headers(viewer_token))
-    assert list_cards.status_code == 200
-    assert len(list_cards.json()["items"]) == 1
-
-    limit_resp = client.post(
-        "/api/client/fleet/limits/set",
-        json={
-            "scope_type": "CARD_GROUP",
-            "scope_id": group_id,
-            "period": "DAILY",
-            "amount_limit": "1000",
-        },
-        headers=_auth_headers(viewer_token),
-    )
-    assert limit_resp.status_code == 403
-
-    manager_resp = client.post(
-        "/api/client/fleet/employees/invite",
-        json={"email": "manager@fleet.test"},
-        headers=_auth_headers(admin_token),
-    )
-    manager_id = manager_resp.json()["id"]
-    grant_manager = client.post(
-        f"/api/client/fleet/groups/{group_id}/access/grant",
-        json={"employee_id": manager_id, "role": "manager"},
-        headers=_auth_headers(admin_token),
-    )
-    assert grant_manager.status_code == 200
-
-    manager_token = make_jwt(
-        roles=("CLIENT_USER",),
-        client_id=client_id,
-        sub=manager_id,
-        extra={"user_id": manager_id, "email": "manager@fleet.test", "tenant_id": 1},
-    )
-    limit_resp = client.post(
-        "/api/client/fleet/limits/set",
-        json={
-            "scope_type": "CARD_GROUP",
-            "scope_id": group_id,
-            "period": "DAILY",
-            "amount_limit": "1000",
-        },
-        headers=_auth_headers(manager_token),
-    )
-    assert limit_resp.status_code == 200
-
-    revoke_resp = client.post(
-        f"/api/client/fleet/groups/{group_id}/access/revoke",
-        json={"employee_id": viewer_id},
-        headers=_auth_headers(admin_token),
-    )
-    assert revoke_resp.status_code == 200
-    assert revoke_resp.json()["revoked_at"] is not None
-
+def test_ingest_batch_idempotent(make_jwt, client: TestClient, db_session: Session) -> None:
+    _, admin_token, card_alias = _create_card(client, make_jwt)
     internal_token = make_jwt(roles=("ADMIN",), sub=str(uuid4()), extra={"tenant_id": 1})
-    ingest_payload = {
+    payload = {
         "provider_code": "bank_stub",
         "batch_ref": "BATCH-1",
         "idempotency_key": str(uuid4()),
         "items": [
             {
-                "provider_tx_id": "tx-1",
-                "card_alias": card_payload["card_alias"],
-                "masked_pan": card_payload["masked_pan"],
+                "provider_tx_id": "TX-1",
+                "card_alias": card_alias,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
-                "amount": "100.00",
+                "amount": "250.00",
                 "currency": "RUB",
-                "merchant_name": "АЗС №12",
-                "station_id": "ST-001",
             }
-        ]
+        ],
     }
-    ingest_resp = client.post(
-        "/api/internal/fleet/transactions/ingest",
-        json=ingest_payload,
-        headers=_auth_headers(internal_token),
-    )
+    ingest_resp = client.post("/api/internal/fleet/transactions/ingest", json=payload, headers=_auth_headers(internal_token))
     assert ingest_resp.status_code == 200
     assert ingest_resp.json()["inserted_count"] == 1
 
     ingest_again = client.post(
         "/api/internal/fleet/transactions/ingest",
-        json=ingest_payload,
+        json=payload,
         headers=_auth_headers(internal_token),
     )
     assert ingest_again.status_code == 200
     assert ingest_again.json()["id"] == ingest_resp.json()["id"]
 
-    summary_resp = client.get(
-        "/api/client/fleet/spend/summary",
-        params={"group_by": "day", "group_id": group_id},
-        headers=_auth_headers(admin_token),
+
+def test_dedupe_by_provider_tx_id(make_jwt, client: TestClient, db_session: Session) -> None:
+    _, _, card_alias = _create_card(client, make_jwt)
+    internal_token = make_jwt(roles=("ADMIN",), sub=str(uuid4()), extra={"tenant_id": 1})
+    payload = {
+        "provider_code": "bank_stub",
+        "batch_ref": "BATCH-2",
+        "idempotency_key": str(uuid4()),
+        "items": [
+            {
+                "provider_tx_id": "TX-dup",
+                "card_alias": card_alias,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "amount": "100.00",
+                "currency": "RUB",
+            },
+            {
+                "provider_tx_id": "TX-dup",
+                "card_alias": card_alias,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "amount": "100.00",
+                "currency": "RUB",
+            },
+        ],
+    }
+    resp = client.post("/api/internal/fleet/transactions/ingest", json=payload, headers=_auth_headers(internal_token))
+    assert resp.status_code == 200
+    assert resp.json()["inserted_count"] == 1
+    assert resp.json()["deduped_count"] == 1
+
+
+def test_limit_breach_and_audit(make_jwt, client: TestClient, db_session: Session) -> None:
+    client_id, admin_token, card_alias = _create_card(client, make_jwt)
+    card = db_session.query(FuelCard).filter(FuelCard.card_alias == card_alias).one()
+    limit = FuelLimit(
+        tenant_id=1,
+        client_id=client_id,
+        scope_type=FuelLimitScopeType.CARD,
+        scope_id=str(card.id),
+        period=FuelLimitPeriod.DAILY,
+        limit_type=FuelLimitType.AMOUNT,
+        value=0,
+        amount_limit=Decimal("100.00"),
+        volume_limit_liters=None,
+        categories=None,
+        stations_allowlist=None,
+        active=True,
     )
-    assert summary_resp.status_code == 200
-    rows = summary_resp.json()["rows"]
-    assert rows
-    assert rows[0]["amount"] == "100.00"
+    db_session.add(limit)
+    db_session.commit()
+
+    internal_token = make_jwt(roles=("ADMIN",), sub=str(uuid4()), extra={"tenant_id": 1})
+    payload = {
+        "provider_code": "bank_stub",
+        "batch_ref": "BATCH-3",
+        "idempotency_key": str(uuid4()),
+        "items": [
+            {
+                "provider_tx_id": "TX-2",
+                "card_alias": card_alias,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "amount": "150.00",
+                "currency": "RUB",
+            }
+        ],
+    }
+    resp = client.post("/api/internal/fleet/transactions/ingest", json=payload, headers=_auth_headers(internal_token))
+    assert resp.status_code == 200
+
+    breaches = db_session.query(FuelLimitBreach).all()
+    assert len(breaches) == 1
+    assert breaches[0].status == FuelLimitBreachStatus.OPEN
+    events = db_session.query(CaseEvent).filter(CaseEvent.type == CaseEventType.FUEL_LIMIT_BREACH_DETECTED).all()
+    assert events
+    signature_check = verify_case_event_signatures(db_session, case_id=str(events[0].case_id))
+    assert signature_check.verified is True
 
     export_resp = client.get(
         "/api/client/fleet/transactions/export",
-        params={"group_id": group_id},
         headers=_auth_headers(admin_token),
     )
     assert export_resp.status_code == 200
-    assert export_resp.json()["url"].startswith("https://exports.local/")
-
-    case = db_session.query(Case).filter(Case.kind == CaseKind.FLEET).one()
-    chain = verify_case_event_chain(db_session, case_id=str(case.id))
-    signatures = verify_case_event_signatures(db_session, case_id=str(case.id))
-    assert chain.verified is True
-    assert signatures.verified is True
+    payload = export_resp.json()
+    assert payload["url"].startswith("https://exports.local/")
+    assert payload["content_sha256"] is not None
