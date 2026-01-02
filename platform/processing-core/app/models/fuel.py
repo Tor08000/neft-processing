@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    Numeric,
     String,
     Time,
     UniqueConstraint,
@@ -27,6 +28,7 @@ class FuelCardStatus(str, Enum):
     BLOCKED = "BLOCKED"
     LOST = "LOST"
     EXPIRED = "EXPIRED"
+    CLOSED = "CLOSED"
 
 
 class FuelStationStatus(str, Enum):
@@ -91,12 +93,17 @@ class FuelCard(Base):
     __tablename__ = "fuel_cards"
     __table_args__ = (
         UniqueConstraint("tenant_id", "card_token", name="uq_fuel_cards_tenant_token"),
+        UniqueConstraint("card_alias", name="uq_fuel_cards_card_alias"),
+        Index("ix_fuel_cards_client_status", "client_id", "status"),
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     client_id = Column(String(64), nullable=False, index=True)
     card_token = Column(String(128), nullable=False, index=True)
+    card_alias = Column(String(128), nullable=True, index=True)
+    masked_pan = Column(String(32), nullable=True)
+    token_ref = Column(String(128), nullable=True)
     status = Column(ExistingEnum(FuelCardStatus, name="fuel_card_status"), nullable=False)
     card_group_id = Column(GUID(), ForeignKey("fuel_card_groups.id"), nullable=True, index=True)
     vehicle_id = Column(GUID(), ForeignKey("fleet_vehicles.id"), nullable=True, index=True)
@@ -104,6 +111,8 @@ class FuelCard(Base):
     issued_at = Column(DateTime(timezone=True), nullable=True)
     blocked_at = Column(DateTime(timezone=True), nullable=True)
     meta = Column(JSON, nullable=True)
+    currency = Column(String(3), nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -114,12 +123,15 @@ class FuelCardGroupStatus(str, Enum):
 
 class FuelCardGroup(Base):
     __tablename__ = "fuel_card_groups"
+    __table_args__ = (UniqueConstraint("client_id", "name", name="uq_fuel_card_groups_client_name"),)
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     tenant_id = Column(Integer, nullable=False, index=True)
     client_id = Column(String(64), nullable=False, index=True)
     name = Column(String(128), nullable=False)
+    description = Column(String(256), nullable=True)
     status = Column(ExistingEnum(FuelCardGroupStatus, name="fuel_card_group_status"), nullable=False)
+    audit_event_id = Column(GUID(), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -207,6 +219,14 @@ class FuelTransaction(Base):
     external_ref = Column(String(128), nullable=True)
     external_settlement_ref = Column(String(128), nullable=True)
     external_reverse_ref = Column(String(128), nullable=True)
+    amount = Column(Numeric, nullable=True)
+    volume_liters = Column(Numeric, nullable=True)
+    category = Column(String(128), nullable=True)
+    merchant_name = Column(String(256), nullable=True)
+    station_external_id = Column(String(128), nullable=True)
+    location = Column(String(256), nullable=True)
+    raw_payload_redacted = Column(JSON, nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
     meta = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -235,9 +255,15 @@ class FuelLimit(Base):
     period = Column(ExistingEnum(FuelLimitPeriod, name="fuel_limit_period"), nullable=False)
     value = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=True)
+    amount_limit = Column(Numeric, nullable=True)
+    volume_limit_liters = Column(Numeric, nullable=True)
+    categories = Column(JSON, nullable=True)
+    stations_allowlist = Column(JSON, nullable=True)
     priority = Column(Integer, nullable=False, default=100)
     meta = Column(JSON, nullable=True)
     active = Column(Boolean, nullable=False, default=True, server_default="true")
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    audit_event_id = Column(GUID(), nullable=True)
     valid_from = Column(DateTime(timezone=True), nullable=True)
     valid_to = Column(DateTime(timezone=True), nullable=True)
     time_window_start = Column(Time, nullable=True)
