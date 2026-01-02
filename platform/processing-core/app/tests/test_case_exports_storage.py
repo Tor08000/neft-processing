@@ -27,7 +27,7 @@ class FakeExportStorage:
     def __init__(self, *args, **kwargs) -> None:
         pass
 
-    def put_bytes(self, key: str, content: bytes, *, content_type: str) -> None:
+    def put_bytes(self, key: str, content: bytes, *, content_type: str, retain_until=None) -> None:
         self.objects[key] = (content, content_type)
 
     def delete(self, key: str) -> None:

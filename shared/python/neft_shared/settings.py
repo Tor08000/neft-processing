@@ -72,6 +72,18 @@ class Settings:
     AUDIT_SIGNING_KEY_ID: str = os.getenv("AUDIT_SIGNING_KEY_ID", "local-dev-key-v1")
     AUDIT_SIGNING_PRIVATE_KEY_B64: str = os.getenv("AUDIT_SIGNING_PRIVATE_KEY_B64", "")
     AUDIT_SIGNING_PUBLIC_KEYS_JSON: str = os.getenv("AUDIT_SIGNING_PUBLIC_KEYS_JSON", "")
+    AUDIT_SIGNING_PUBLIC_KEYS_CACHE_SECONDS: int = int(os.getenv("AUDIT_SIGNING_PUBLIC_KEYS_CACHE_SECONDS", "3600"))
+    AWS_REGION: str | None = os.getenv("AWS_REGION")
+    AWS_ACCESS_KEY_ID: str | None = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_KMS_ENDPOINT: str | None = os.getenv("AWS_KMS_ENDPOINT")
+    AWS_KMS_VERIFY_MODE: str = os.getenv("AWS_KMS_VERIFY_MODE", "local")
+    VAULT_ADDR: str | None = os.getenv("VAULT_ADDR")
+    VAULT_TOKEN: str | None = os.getenv("VAULT_TOKEN")
+    VAULT_NAMESPACE: str | None = os.getenv("VAULT_NAMESPACE")
+    VAULT_TRANSIT_MOUNT: str = os.getenv("VAULT_TRANSIT_MOUNT", "transit")
+    VAULT_TRANSIT_KEY: str | None = os.getenv("VAULT_TRANSIT_KEY")
+    VAULT_VERIFY_MODE: str = os.getenv("VAULT_VERIFY_MODE", "vault")
 
     # Billing & clearing configuration
     NEFT_COMMISSION_RATE: float = float(os.getenv("NEFT_COMMISSION_RATE", "0.01"))
@@ -139,6 +151,16 @@ class Settings:
     S3_BUCKET_EXPORTS: str = os.getenv("S3_BUCKET_EXPORTS", "case-exports")
     S3_SIGNED_URL_TTL_SECONDS: int = int(os.getenv("S3_SIGNED_URL_TTL_SECONDS", "120"))
     S3_EXPORTS_PREFIX: str = os.getenv("S3_EXPORTS_PREFIX", "exports/")
+    S3_OBJECT_LOCK_ENABLED: bool = os.getenv("S3_OBJECT_LOCK_ENABLED", "false").lower() in {"1", "true", "yes"}
+    S3_OBJECT_LOCK_MODE: str = os.getenv("S3_OBJECT_LOCK_MODE", "GOVERNANCE")
+    S3_OBJECT_LOCK_RETENTION_DAYS: int = int(
+        os.getenv("S3_OBJECT_LOCK_RETENTION_DAYS", str(int(os.getenv("AUDIT_EXPORT_RETENTION_DAYS", "180"))))
+    )
+    S3_OBJECT_LOCK_LEGAL_HOLD: bool = os.getenv("S3_OBJECT_LOCK_LEGAL_HOLD", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     LEGAL_GOST_VERIFY_ENABLED: bool = os.getenv("LEGAL_GOST_VERIFY_ENABLED", "false").lower() in {
         "1",
         "true",

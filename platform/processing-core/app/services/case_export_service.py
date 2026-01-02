@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -60,6 +60,15 @@ def _serialize_payload(payload: dict[str, Any]) -> bytes:
     return canonical_json(payload).encode("utf-8")
 
 
+def _compute_locked_until(now: datetime) -> datetime | None:
+    if not settings.S3_OBJECT_LOCK_ENABLED:
+        return None
+    retention_days = settings.S3_OBJECT_LOCK_RETENTION_DAYS
+    if retention_days <= 0:
+        return None
+    return now + timedelta(days=retention_days)
+
+
 def create_export(
     db,
     *,
@@ -74,6 +83,7 @@ def create_export(
     export_kind = CaseExportKind(kind)
     export_id = new_uuid_str()
     now = datetime.now(timezone.utc)
+    locked_until = _compute_locked_until(now)
     redacted_payload = _redact_export(payload)
     content_bytes = _serialize_payload(redacted_payload)
     content_sha256 = hashlib.sha256(content_bytes).hexdigest()
@@ -82,7 +92,12 @@ def create_export(
     object_key = _build_object_key(export_id, case_id=case_id, kind=export_kind, now=now)
 
     storage = ExportStorage()
-    storage.put_bytes(object_key, content_bytes, content_type="application/json")
+    storage.put_bytes(
+        object_key,
+        content_bytes,
+        content_type="application/json",
+        retain_until=locked_until,
+    )
 
     try:
         retention_until = compute_export_retention_until(now=now)
@@ -103,6 +118,7 @@ def create_export(
             request_id=request_id,
             trace_id=trace_id,
             retention_until=retention_until,
+            locked_until=locked_until,
         )
         db.add(export)
         if case_id:

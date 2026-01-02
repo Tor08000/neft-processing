@@ -160,6 +160,7 @@ from .cases import (  # noqa: F401
     CaseStatus,
 )
 from .case_exports import CaseExport, CaseExportKind  # noqa: F401
+from .audit_signing_keys import AuditSigningKeyRecord  # noqa: F401
 from .audit_retention import AuditLegalHold, AuditLegalHoldScope, AuditPurgeLog  # noqa: F401
 from .marketplace_contracts import (  # noqa: F401
     Contract,

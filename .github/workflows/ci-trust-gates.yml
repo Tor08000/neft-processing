@@ -1,0 +1,93 @@
+name: ci-trust-gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff lint
+        run: ruff check platform/processing-core/app
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Fast unit tests
+        run: pytest platform/processing-core/app/tests/test_audit_signing_kms.py platform/processing-core/app/tests/test_audit_signing_vault.py platform/processing-core/app/tests/test_audit_signing_health.py platform/processing-core/app/tests/test_redaction_regression.py
+
+  kms-signer:
+    runs-on: ubuntu-latest
+    env:
+      AUDIT_SIGNING_MODE: aws_kms
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: AWS KMS signer tests
+        run: pytest platform/processing-core/app/tests/test_audit_signing_kms.py
+
+  vault-signer:
+    runs-on: ubuntu-latest
+    env:
+      AUDIT_SIGNING_MODE: vault_transit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Vault transit signer tests
+        run: pytest platform/processing-core/app/tests/test_audit_signing_vault.py
+
+  trust-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r platform/processing-core/requirements.txt
+      - name: Migration discipline
+        run: python scripts/ci/check_migrations.py
+      - name: WORM triggers present
+        run: |
+          docker compose -f docker-compose.test.yml --profile test up -d postgres
+          docker compose -f docker-compose.test.yml --profile test run --rm core-api alembic upgrade head
+          docker compose -f docker-compose.test.yml --profile test exec -T postgres psql -U neft -d neft -f scripts/ci/check_worm_triggers.sql
+      - name: Verify smoke
+        env:
+          AUDIT_SIGNING_REQUIRED: "true"
+          AUDIT_SIGNING_MODE: "local"
+        run: |
+          docker compose -f docker-compose.smoke.yml --profile smoke up -d postgres auth-host core-api minio minio-init
+          bash scripts/ci/smoke_verify.sh
+      - name: Redaction regression
+        run: pytest platform/processing-core/app/tests/test_redaction_regression.py
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build core-api image
+        run: docker build -t neft/core-api -f platform/processing-core/Dockerfile .
