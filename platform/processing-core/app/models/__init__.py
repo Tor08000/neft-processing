@@ -238,7 +238,17 @@ from .legal_integrations import (  # noqa: F401
     SignatureType,
 )
 from .immutability import ImmutableRecordError  # noqa: F401
-from .fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus  # noqa: F401
+from .fleet import (  # noqa: F401
+    ClientEmployee,
+    EmployeeStatus,
+    FleetDriver,
+    FleetDriverStatus,
+    FleetVehicle,
+    FleetVehicleStatus,
+    FuelCardGroupMember,
+    FuelGroupAccess,
+    FuelGroupRole,
+)
 from .fuel import (  # noqa: F401
     FuelAnomalyEvent,
     FuelAnalyticsEvent,
@@ -549,6 +559,11 @@ __all__ = [
     "FleetDriverStatus",
     "FleetVehicle",
     "FleetVehicleStatus",
+    "FuelCardGroupMember",
+    "FuelGroupAccess",
+    "FuelGroupRole",
+    "ClientEmployee",
+    "EmployeeStatus",
     "DriverBehaviorLevel",
     "StationTrustLevel",
     "FIDriverDaily",
