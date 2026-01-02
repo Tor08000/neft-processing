@@ -162,7 +162,15 @@ Pytest runbook (docker/local):
   * `export DATABASE_URL_TEST=postgresql+psycopg://neft:neft@127.0.0.1:5432/neft_test`
   * `pytest platform/processing-core/app/tests/test_settlement_v1.py -q`
 
-## 11. Readiness / Stage Completion
+## 11. Operational Readiness AS-IS
+
+**Scope:** Billing / Reconciliation / Settlement.
+
+* Alerts: planned (spec defined, wiring pending).
+* SLO: defined in `docs/ops/operational_readiness_finance.md`.
+* Runbooks: available in `docs/runbooks/` (billing/reconciliation/settlement).
+
+## 12. Readiness / Stage Completion
 
 | Domain | Target | AS-IS | Gaps | Next actions |
 | --- | --- | --- | --- | --- |
@@ -172,7 +180,7 @@ Pytest runbook (docker/local):
 | Monitoring | Integrity/retention alerts | 🟡 Partial (verify endpoints, purge logs) | Alerts for verify/purge failures | Wire metrics + alerting |
 | Documentation/Compliance | Enterprise artifacts | ✅ Whitepaper + Security Summary | — | Keep in sync with release notes |
 
-## 12. Current Stage / What’s next
+## 13. Current Stage / What’s next
 
 **Current stage:** Enterprise-audit core готов (Explain → Case → Audit → Retention → Exports → Signatures → Decision Memory контур закрыт).
 
