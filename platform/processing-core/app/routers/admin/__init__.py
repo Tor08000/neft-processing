@@ -39,6 +39,7 @@ from app.routers.admin import (
     fraud,
     money_flow,
     ops,
+    marketplace_contracts,
     audit,
     exports,
 )
@@ -81,6 +82,7 @@ router.include_router(fleet_control.router)
 router.include_router(fleet_intelligence.router)
 router.include_router(what_if.router)
 router.include_router(ops.router)
+router.include_router(marketplace_contracts.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(reconciliation.router)
