@@ -306,6 +306,61 @@ def test_decision_memory_worm_guard_blocks_update_and_delete() -> None:
             )
         assert "decision_memory is WORM" in str(exc_info.value)
 
+
+@pytest.mark.skipif(engine.dialect.name != "postgresql", reason="WORM guard requires Postgres")
+def test_internal_ledger_worm_guard_blocks_update_and_delete() -> None:
+    db_url = get_database_url()
+    engine = ensure_connectable(db_url)
+    alembic_cfg = _make_alembic_config(db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    schema = DB_SCHEMA
+    account_id = str(uuid4())
+    transaction_id = str(uuid4())
+    entry_id = str(uuid4())
+    schema_prefix = f'"{schema}".' if schema else ""
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f'SET search_path TO "{schema}"')
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}internal_ledger_accounts
+                (id, tenant_id, client_id, account_type, currency, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (account_id, 1, "client-1", "CLIENT_AR", "RUB", "ACTIVE"),
+        )
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}internal_ledger_transactions
+                (id, tenant_id, transaction_type, external_ref_type, external_ref_id, idempotency_key, total_amount, currency)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (transaction_id, 1, "INVOICE_ISSUED", "TEST", "ref-1", "ledger-test-1", 100, "RUB"),
+        )
+        connection.exec_driver_sql(
+            f"""
+            INSERT INTO {schema_prefix}internal_ledger_entries
+                (id, tenant_id, ledger_transaction_id, account_id, direction, amount, currency, entry_hash)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (entry_id, 1, transaction_id, account_id, "DEBIT", 100, "RUB", "hash"),
+        )
+
+        with pytest.raises(sa.exc.DBAPIError) as exc_info:
+            connection.exec_driver_sql(
+                f"UPDATE {schema_prefix}internal_ledger_entries SET amount = %s WHERE id = %s",
+                (200, entry_id),
+            )
+        assert "internal_ledger_entries is WORM" in str(exc_info.value)
+
+        with pytest.raises(sa.exc.DBAPIError) as exc_info:
+            connection.exec_driver_sql(
+                f"DELETE FROM {schema_prefix}internal_ledger_transactions WHERE id = %s",
+                (transaction_id,),
+            )
+        assert "internal_ledger_transactions is WORM" in str(exc_info.value)
+
         with pytest.raises(sa.exc.DBAPIError) as exc_info:
             connection.exec_driver_sql(
                 f"DELETE FROM {schema_prefix}case_events WHERE id = %s",

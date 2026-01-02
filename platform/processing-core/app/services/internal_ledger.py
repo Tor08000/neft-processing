@@ -10,6 +10,7 @@ from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.audit_log import ActorType
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.internal_ledger import (
     InternalLedgerAccount,
@@ -20,12 +21,29 @@ from app.models.internal_ledger import (
     InternalLedgerTransactionType,
 )
 from app.models.invoice import Invoice, InvoiceStatus
+from app.services.audit_service import AuditService, RequestContext
 
 
 @dataclass(frozen=True)
 class InternalLedgerHealth:
     broken_transactions_count: int
     missing_postings_count: int
+
+
+@dataclass(frozen=True)
+class InternalLedgerLine:
+    account_type: InternalLedgerAccountType
+    client_id: str | None
+    direction: InternalLedgerEntryDirection
+    amount: int
+    currency: str
+    meta: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class InternalLedgerTransactionResult:
+    transaction: InternalLedgerTransaction
+    is_replay: bool
 
 
 class InternalLedgerService:
@@ -92,6 +110,8 @@ class InternalLedgerService:
         external_ref_type: str,
         external_ref_id: str,
         idempotency_key: str,
+        total_amount: int | None,
+        currency: str | None,
         posted_at: datetime | None,
         meta: dict[str, object] | None = None,
     ) -> tuple[InternalLedgerTransaction, bool]:
@@ -101,6 +121,10 @@ class InternalLedgerService:
             .one_or_none()
         )
         if existing:
+            if currency and existing.currency and existing.currency != currency:
+                raise ValueError("ledger transaction currency mismatch")
+            if total_amount is not None and existing.total_amount is not None and existing.total_amount != total_amount:
+                raise ValueError("ledger transaction amount mismatch")
             return existing, True
 
         txn = InternalLedgerTransaction(
@@ -109,6 +133,8 @@ class InternalLedgerService:
             external_ref_type=external_ref_type,
             external_ref_id=external_ref_id,
             idempotency_key=idempotency_key,
+            total_amount=total_amount,
+            currency=currency,
             posted_at=posted_at,
             meta=meta,
         )
@@ -158,14 +184,134 @@ class InternalLedgerService:
             meta=meta,
         )
 
-    def _post_entries(self, entries: Iterable[InternalLedgerEntry]) -> None:
+    def _post_entries(
+        self,
+        *,
+        transaction: InternalLedgerTransaction,
+        entries: Iterable[InternalLedgerEntry],
+        expected_currency: str | None = None,
+    ) -> None:
         entries_list = list(entries)
+        if not entries_list:
+            raise ValueError("ledger transaction requires entries")
+        currency_set = {entry.currency for entry in entries_list}
+        if len(currency_set) != 1:
+            raise ValueError("ledger transaction has mixed currencies")
+        currency = next(iter(currency_set))
+        if expected_currency and currency != expected_currency:
+            raise ValueError("ledger transaction currency mismatch")
+        if transaction.currency and transaction.currency != currency:
+            raise ValueError("ledger transaction currency mismatch")
         debit_sum = sum(entry.amount for entry in entries_list if entry.direction == InternalLedgerEntryDirection.DEBIT)
         credit_sum = sum(entry.amount for entry in entries_list if entry.direction == InternalLedgerEntryDirection.CREDIT)
         if debit_sum != credit_sum:
             raise ValueError("ledger transaction is unbalanced")
         for entry in entries_list:
             self.db.add(entry)
+        self._emit_audit_event(transaction=transaction, entries=entries_list, currency=currency, total_amount=debit_sum)
+
+    def _emit_audit_event(
+        self,
+        *,
+        transaction: InternalLedgerTransaction,
+        entries: list[InternalLedgerEntry],
+        currency: str,
+        total_amount: int,
+    ) -> None:
+        audit = AuditService(self.db)
+        entry_payload = [
+            {
+                "account_id": str(entry.account_id),
+                "direction": entry.direction.value,
+                "amount": entry.amount,
+                "currency": entry.currency,
+                "entry_hash": entry.entry_hash,
+                "meta": entry.meta,
+            }
+            for entry in entries
+        ]
+        audit.audit(
+            event_type="ledger_transaction",
+            entity_type="internal_ledger_transaction",
+            entity_id=str(transaction.id),
+            action=transaction.transaction_type.value,
+            after={
+                "ledger_transaction_id": str(transaction.id),
+                "transaction_type": transaction.transaction_type.value,
+                "external_ref_type": transaction.external_ref_type,
+                "external_ref_id": transaction.external_ref_id,
+                "currency": currency,
+                "total_amount": total_amount,
+                "entries": entry_payload,
+            },
+            external_refs={
+                "external_ref_type": transaction.external_ref_type,
+                "external_ref_id": transaction.external_ref_id,
+                "ledger_transaction_id": str(transaction.id),
+            },
+            request_ctx=RequestContext(actor_type=ActorType.SYSTEM, tenant_id=transaction.tenant_id),
+        )
+
+    def post_transaction(
+        self,
+        *,
+        tenant_id: int,
+        transaction_type: InternalLedgerTransactionType,
+        external_ref_type: str,
+        external_ref_id: str,
+        idempotency_key: str,
+        posted_at: datetime | None,
+        meta: dict[str, object] | None,
+        entries: Iterable[InternalLedgerLine],
+    ) -> InternalLedgerTransactionResult:
+        entries_list = list(entries)
+        if not entries_list:
+            raise ValueError("ledger transaction requires entries")
+        currency_set = {entry.currency for entry in entries_list}
+        if len(currency_set) != 1:
+            raise ValueError("ledger transaction has mixed currencies")
+        currency = next(iter(currency_set))
+        debit_sum = sum(entry.amount for entry in entries_list if entry.direction == InternalLedgerEntryDirection.DEBIT)
+        credit_sum = sum(entry.amount for entry in entries_list if entry.direction == InternalLedgerEntryDirection.CREDIT)
+        if debit_sum != credit_sum:
+            raise ValueError("ledger transaction is unbalanced")
+
+        transaction, is_replay = self._get_or_create_transaction(
+            tenant_id=tenant_id,
+            transaction_type=transaction_type,
+            external_ref_type=external_ref_type,
+            external_ref_id=external_ref_id,
+            idempotency_key=idempotency_key,
+            total_amount=debit_sum,
+            currency=currency,
+            posted_at=posted_at,
+            meta=meta,
+        )
+        if is_replay:
+            return InternalLedgerTransactionResult(transaction=transaction, is_replay=True)
+
+        built_entries = []
+        for entry in entries_list:
+            account = self._ensure_account(
+                tenant_id=tenant_id,
+                client_id=entry.client_id,
+                account_type=entry.account_type,
+                currency=entry.currency,
+            )
+            built_entries.append(
+                self._build_entry(
+                    tenant_id=tenant_id,
+                    transaction=transaction,
+                    account=account,
+                    direction=entry.direction,
+                    amount=entry.amount,
+                    currency=entry.currency,
+                    meta=entry.meta,
+                )
+            )
+
+        self._post_entries(transaction=transaction, entries=built_entries, expected_currency=currency)
+        return InternalLedgerTransactionResult(transaction=transaction, is_replay=False)
 
     def post_invoice_issued(self, *, invoice: Invoice, tenant_id: int) -> None:
         if invoice.status not in {
@@ -188,6 +334,8 @@ class InternalLedgerService:
             external_ref_type="INVOICE",
             external_ref_id=invoice.id,
             idempotency_key=f"invoice:{invoice.id}:issued:v1",
+            total_amount=total_due,
+            currency=currency,
             posted_at=posted_at,
             meta={"invoice_id": invoice.id},
         )
@@ -247,7 +395,7 @@ class InternalLedgerService:
                 )
             )
 
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
     def post_fuel_settlement(
         self,
@@ -265,6 +413,8 @@ class InternalLedgerService:
             external_ref_type="FUEL_TRANSACTION",
             external_ref_id=fuel_transaction_id,
             idempotency_key=f"fuel_tx:{fuel_transaction_id}:settlement:v1",
+            total_amount=amount,
+            currency=currency,
             posted_at=posted_at,
             meta={"fuel_transaction_id": fuel_transaction_id},
         )
@@ -303,7 +453,7 @@ class InternalLedgerService:
                 meta={"fuel_transaction_id": fuel_transaction_id},
             ),
         ]
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
         return transaction
 
     def post_fuel_reversal(
@@ -322,6 +472,8 @@ class InternalLedgerService:
             external_ref_type="FUEL_TRANSACTION",
             external_ref_id=fuel_transaction_id,
             idempotency_key=f"fuel_tx:{fuel_transaction_id}:reversal:v1",
+            total_amount=amount,
+            currency=currency,
             posted_at=posted_at,
             meta={"fuel_transaction_id": fuel_transaction_id},
         )
@@ -360,7 +512,7 @@ class InternalLedgerService:
                 meta={"fuel_transaction_id": fuel_transaction_id},
             ),
         ]
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
         return transaction
 
     def post_payment_applied(
@@ -376,6 +528,8 @@ class InternalLedgerService:
             external_ref_type="PAYMENT",
             external_ref_id=str(payment.id),
             idempotency_key=f"payment:{payment.id}:applied:v1",
+            total_amount=amount,
+            currency=currency,
             posted_at=payment.created_at,
             meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
         )
@@ -418,7 +572,7 @@ class InternalLedgerService:
                 meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
             ),
         ]
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
     def post_credit_note_applied(
         self,
@@ -433,6 +587,8 @@ class InternalLedgerService:
             external_ref_type="CREDIT_NOTE",
             external_ref_id=str(credit_note.id),
             idempotency_key=f"credit_note:{credit_note.id}:applied:v1",
+            total_amount=amount,
+            currency=currency,
             posted_at=credit_note.created_at,
             meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
         )
@@ -475,7 +631,7 @@ class InternalLedgerService:
                 meta={"invoice_id": invoice.id, "credit_note_id": str(credit_note.id)},
             ),
         ]
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
     def post_refund_applied(
         self,
@@ -490,6 +646,8 @@ class InternalLedgerService:
             external_ref_type="REFUND",
             external_ref_id=str(refund.id),
             idempotency_key=f"refund:{refund.id}:applied:v1",
+            total_amount=amount,
+            currency=currency,
             posted_at=refund.created_at,
             meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
         )
@@ -532,7 +690,7 @@ class InternalLedgerService:
                 meta={"invoice_id": invoice.id, "refund_id": str(refund.id)},
             ),
         ]
-        self._post_entries(entries)
+        self._post_entries(transaction=transaction, entries=entries, expected_currency=currency)
 
 
 class InternalLedgerHealthService:
@@ -609,5 +767,7 @@ class InternalLedgerHealthService:
 __all__ = [
     "InternalLedgerHealth",
     "InternalLedgerHealthService",
+    "InternalLedgerLine",
     "InternalLedgerService",
+    "InternalLedgerTransactionResult",
 ]

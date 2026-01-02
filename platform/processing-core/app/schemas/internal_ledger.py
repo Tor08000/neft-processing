@@ -2,29 +2,33 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.internal_ledger import (
-    InternalLedgerAccountStatus,
     InternalLedgerAccountType,
     InternalLedgerEntryDirection,
     InternalLedgerTransactionType,
 )
 
 
-class InternalLedgerHealthResponse(BaseModel):
-    broken_transactions_count: int
-    missing_postings_count: int
-
-
-class InternalLedgerAccountResponse(BaseModel):
-    id: str
-    tenant_id: int
-    client_id: str | None
+class InternalLedgerEntryInput(BaseModel):
     account_type: InternalLedgerAccountType
-    currency: str
-    status: InternalLedgerAccountStatus
-    created_at: datetime
+    client_id: str | None = None
+    direction: InternalLedgerEntryDirection
+    amount: int = Field(..., gt=0)
+    currency: str = Field(..., min_length=3, max_length=3)
+    meta: dict[str, object] | None = None
+
+
+class InternalLedgerTransactionRequest(BaseModel):
+    tenant_id: int = Field(..., ge=0)
+    transaction_type: InternalLedgerTransactionType
+    external_ref_type: str
+    external_ref_id: str
+    idempotency_key: str
+    posted_at: datetime | None = None
+    meta: dict[str, object] | None = None
+    entries: list[InternalLedgerEntryInput]
 
 
 class InternalLedgerEntryResponse(BaseModel):
@@ -37,17 +41,10 @@ class InternalLedgerEntryResponse(BaseModel):
     entry_hash: str
     created_at: datetime
     meta: dict[str, object] | None = None
-    balance_after: int | None = None
-
-
-class InternalLedgerAccountEntriesResponse(BaseModel):
-    account: InternalLedgerAccountResponse
-    entries: list[InternalLedgerEntryResponse]
 
 
 class InternalLedgerTransactionResponse(BaseModel):
-    id: str
-    tenant_id: int
+    transaction_id: str
     transaction_type: InternalLedgerTransactionType
     external_ref_type: str
     external_ref_id: str
@@ -56,5 +53,5 @@ class InternalLedgerTransactionResponse(BaseModel):
     currency: str | None = None
     posted_at: datetime | None = None
     created_at: datetime
-    meta: dict[str, object] | None = None
+    is_replay: bool
     entries: list[InternalLedgerEntryResponse]
