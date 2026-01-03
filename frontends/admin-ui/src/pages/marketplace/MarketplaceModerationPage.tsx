@@ -7,6 +7,7 @@ import { Pagination } from "../../components/Pagination/Pagination";
 import { formatDateTime } from "../../utils/format";
 import { Loader } from "../../components/Loader/Loader";
 import { useToast } from "../../components/Toast/useToast";
+import { Toast } from "../../components/Toast/Toast";
 
 interface RejectModalProps {
   open: boolean;
@@ -164,7 +165,7 @@ export const MarketplaceModerationPage: React.FC = () => {
         {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
       </div>
 
-      {toast}
+      {toast ? <Toast toast={toast} /> : null}
 
       <div className="filters">
         <div className="filter">

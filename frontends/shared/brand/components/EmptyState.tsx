@@ -1,13 +1,13 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { AppLogo } from "./AppLogo";
 
 export type EmptyStateProps = {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
 };
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ title, description, action }) => {
+export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
     <div className="empty-state">
       <AppLogo size={48} className="empty-state__logo" />
@@ -16,6 +16,6 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ title, description, acti
       {action ? <div className="empty-state__action">{action}</div> : null}
     </div>
   );
-};
+}
 
 export default EmptyState;

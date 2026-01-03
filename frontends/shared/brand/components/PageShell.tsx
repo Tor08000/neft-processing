@@ -1,12 +1,12 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 export type PageShellProps = {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 };
 
-export const PageShell: React.FC<PageShellProps> = ({ children, className }) => {
+export function PageShell({ children, className }: PageShellProps) {
   return <div className={`brand-page-shell${className ? ` ${className}` : ""}`}>{children}</div>;
-};
+}
 
 export default PageShell;
