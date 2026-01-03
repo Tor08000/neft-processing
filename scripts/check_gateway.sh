@@ -11,5 +11,7 @@ run() {
 
 run "Root redirect" curl -i http://gateway/
 run "Admin UI" curl -i http://gateway/admin/
+run "Partner UI" curl -i http://gateway/partner/
+run "Partner UI deep link" curl -i http://gateway/partner/orders/123
 run "Core API health" curl -i http://gateway/api/v1/health
 run "Metrics" curl -i http://gateway/metrics
