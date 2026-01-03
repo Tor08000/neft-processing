@@ -5,6 +5,7 @@ WORKDIR /app/frontends/client-portal
 
 COPY frontends/client-portal/package*.json ./
 RUN npm ci
+RUN mkdir -p /app/frontends && ln -sf /app/frontends/client-portal/node_modules /app/frontends/node_modules
 
 COPY frontends/client-portal/ ./
 COPY frontends/shared/ /app/frontends/shared/
