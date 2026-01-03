@@ -103,13 +103,6 @@ def upgrade() -> None:
     )
     create_index_if_not_exists(
         bind,
-        "ix_marketplace_order_events_client",
-        "marketplace_order_events",
-        ["client_id", "occurred_at"],
-        schema=DB_SCHEMA,
-    )
-    create_index_if_not_exists(
-        bind,
         "ix_marketplace_order_events_partner",
         "marketplace_order_events",
         ["partner_id", "occurred_at"],
