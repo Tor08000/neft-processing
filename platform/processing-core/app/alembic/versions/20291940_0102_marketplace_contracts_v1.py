@@ -54,20 +54,34 @@ def _create_worm_trigger(table_name: str) -> None:
     op.execute(
         sa.text(
             f"""
-            DROP TRIGGER IF EXISTS {table_name}_worm_update ON {_schema_prefix()}{table_name};
-            CREATE TRIGGER {table_name}_worm_update
-            BEFORE UPDATE ON {_schema_prefix()}{table_name}
-            FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}{table_name}_worm_guard();
+            DROP TRIGGER IF EXISTS {table_name}_worm_update
+            ON {_schema_prefix()}{table_name}
             """
         )
     )
     op.execute(
         sa.text(
             f"""
-            DROP TRIGGER IF EXISTS {table_name}_worm_delete ON {_schema_prefix()}{table_name};
+            CREATE TRIGGER {table_name}_worm_update
+            BEFORE UPDATE ON {_schema_prefix()}{table_name}
+            FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}{table_name}_worm_guard()
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            f"""
+            DROP TRIGGER IF EXISTS {table_name}_worm_delete
+            ON {_schema_prefix()}{table_name}
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            f"""
             CREATE TRIGGER {table_name}_worm_delete
             BEFORE DELETE ON {_schema_prefix()}{table_name}
-            FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}{table_name}_worm_guard();
+            FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}{table_name}_worm_guard()
             """
         )
     )

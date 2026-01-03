@@ -185,20 +185,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS external_statements_worm_update ON {_schema_prefix()}external_statements;
-                CREATE TRIGGER external_statements_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}external_statements
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}external_statements_worm_guard();
+                DROP TRIGGER IF EXISTS external_statements_worm_update
+                ON {_schema_prefix()}external_statements
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS external_statements_worm_delete ON {_schema_prefix()}external_statements;
+                CREATE TRIGGER external_statements_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}external_statements
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}external_statements_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS external_statements_worm_delete
+                ON {_schema_prefix()}external_statements
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER external_statements_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}external_statements
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}external_statements_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}external_statements_worm_guard()
                 """
             )
         )
@@ -227,10 +241,17 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS reconciliation_runs_worm_update ON {_schema_prefix()}reconciliation_runs;
+                DROP TRIGGER IF EXISTS reconciliation_runs_worm_update
+                ON {_schema_prefix()}reconciliation_runs
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER reconciliation_runs_worm_update
                 BEFORE UPDATE ON {_schema_prefix()}reconciliation_runs
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}reconciliation_runs_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}reconciliation_runs_worm_guard()
                 """
             )
         )
@@ -263,10 +284,16 @@ def upgrade() -> None:
             sa.text(
                 f"""
                 DROP TRIGGER IF EXISTS reconciliation_discrepancies_worm_update
-                ON {_schema_prefix()}reconciliation_discrepancies;
+                ON {_schema_prefix()}reconciliation_discrepancies
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER reconciliation_discrepancies_worm_update
                 BEFORE UPDATE ON {_schema_prefix()}reconciliation_discrepancies
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}reconciliation_discrepancies_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}reconciliation_discrepancies_worm_guard()
                 """
             )
         )

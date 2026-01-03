@@ -96,20 +96,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS decision_memory_worm_update ON {_schema_prefix()}decision_memory;
-                CREATE TRIGGER decision_memory_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}decision_memory
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}decision_memory_worm_guard();
+                DROP TRIGGER IF EXISTS decision_memory_worm_update
+                ON {_schema_prefix()}decision_memory
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS decision_memory_worm_delete ON {_schema_prefix()}decision_memory;
+                CREATE TRIGGER decision_memory_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}decision_memory
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}decision_memory_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS decision_memory_worm_delete
+                ON {_schema_prefix()}decision_memory
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER decision_memory_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}decision_memory
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}decision_memory_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}decision_memory_worm_guard()
                 """
             )
         )

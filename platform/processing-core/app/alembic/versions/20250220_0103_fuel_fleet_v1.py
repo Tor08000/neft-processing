@@ -277,20 +277,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_transactions_worm_update ON {_schema_prefix()}fuel_transactions;
-                CREATE TRIGGER fuel_transactions_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}fuel_transactions
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_transactions_worm_guard();
+                DROP TRIGGER IF EXISTS fuel_transactions_worm_update
+                ON {_schema_prefix()}fuel_transactions
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_transactions_worm_delete ON {_schema_prefix()}fuel_transactions;
+                CREATE TRIGGER fuel_transactions_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}fuel_transactions
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_transactions_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS fuel_transactions_worm_delete
+                ON {_schema_prefix()}fuel_transactions
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER fuel_transactions_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}fuel_transactions
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_transactions_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_transactions_worm_guard()
                 """
             )
         )
@@ -333,20 +347,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_cards_worm_update ON {_schema_prefix()}fuel_cards;
-                CREATE TRIGGER fuel_cards_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}fuel_cards
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_cards_worm_guard();
+                DROP TRIGGER IF EXISTS fuel_cards_worm_update
+                ON {_schema_prefix()}fuel_cards
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_cards_worm_delete ON {_schema_prefix()}fuel_cards;
+                CREATE TRIGGER fuel_cards_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}fuel_cards
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_cards_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS fuel_cards_worm_delete
+                ON {_schema_prefix()}fuel_cards
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER fuel_cards_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}fuel_cards
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_cards_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_cards_worm_guard()
                 """
             )
         )
@@ -399,20 +427,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_limits_worm_update ON {_schema_prefix()}fuel_limits;
-                CREATE TRIGGER fuel_limits_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}fuel_limits
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_limits_worm_guard();
+                DROP TRIGGER IF EXISTS fuel_limits_worm_update
+                ON {_schema_prefix()}fuel_limits
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_limits_worm_delete ON {_schema_prefix()}fuel_limits;
+                CREATE TRIGGER fuel_limits_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}fuel_limits
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_limits_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS fuel_limits_worm_delete
+                ON {_schema_prefix()}fuel_limits
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER fuel_limits_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}fuel_limits
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_limits_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_limits_worm_guard()
                 """
             )
         )
@@ -446,20 +488,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_group_access_worm_update ON {_schema_prefix()}fuel_group_access;
-                CREATE TRIGGER fuel_group_access_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}fuel_group_access
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_group_access_worm_guard();
+                DROP TRIGGER IF EXISTS fuel_group_access_worm_update
+                ON {_schema_prefix()}fuel_group_access
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_group_access_worm_delete ON {_schema_prefix()}fuel_group_access;
+                CREATE TRIGGER fuel_group_access_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}fuel_group_access
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_group_access_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS fuel_group_access_worm_delete
+                ON {_schema_prefix()}fuel_group_access
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER fuel_group_access_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}fuel_group_access
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_group_access_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_group_access_worm_guard()
                 """
             )
         )
@@ -491,20 +547,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_card_group_members_worm_update ON {_schema_prefix()}fuel_card_group_members;
-                CREATE TRIGGER fuel_card_group_members_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}fuel_card_group_members
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_card_group_members_worm_guard();
+                DROP TRIGGER IF EXISTS fuel_card_group_members_worm_update
+                ON {_schema_prefix()}fuel_card_group_members
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS fuel_card_group_members_worm_delete ON {_schema_prefix()}fuel_card_group_members;
+                CREATE TRIGGER fuel_card_group_members_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}fuel_card_group_members
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_card_group_members_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS fuel_card_group_members_worm_delete
+                ON {_schema_prefix()}fuel_card_group_members
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER fuel_card_group_members_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}fuel_card_group_members
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_card_group_members_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}fuel_card_group_members_worm_guard()
                 """
             )
         )
