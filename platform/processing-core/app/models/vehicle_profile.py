@@ -61,10 +61,13 @@ class VehicleProfile(Base):
 
     brand = Column(String(64), nullable=True)
     model = Column(String(64), nullable=True)
+    generation = Column(String(64), nullable=True)
     year = Column(Integer, nullable=True)
     engine_type = Column(ExistingEnum(VehicleEngineType, name="vehicle_engine_type"), nullable=True)
     engine_volume = Column(Numeric, nullable=True)
     fuel_type = Column(String(32), nullable=True)
+    transmission = Column(String(16), nullable=True)
+    drive_type = Column(String(16), nullable=True)
     vin = Column(String(64), nullable=True)
     plate_number = Column(String(32), nullable=True)
 

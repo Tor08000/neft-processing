@@ -227,6 +227,24 @@ from .marketplace_recommendations import (  # noqa: F401
     ProductAttributes,
     ProductTaxonomy,
 )
+from .service_bookings import (  # noqa: F401
+    BookingPaymentStatus,
+    BookingSlotLock,
+    PartnerResource,
+    PartnerResourceStatus,
+    PartnerResourceType,
+    PartnerService,
+    PartnerServiceCalendar,
+    PartnerServiceStatus,
+    ServiceAvailabilityRule,
+    ServiceBooking,
+    ServiceBookingActorType,
+    ServiceBookingEvent,
+    ServiceBookingEventType,
+    ServiceBookingImmutableError,
+    ServiceBookingStatus,
+    VehicleServiceRecord,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -450,16 +468,13 @@ from .vehicle_profile import (  # noqa: F401
     VehicleServiceType,
     VehicleUsageType,
 )
-from .service_completion_proofs import (  # noqa: F401
-    ServiceCompletionProof,
-    ServiceCompletionProofStatus,
-    ServiceProofActorType,
-    ServiceProofAttachment,
-    ServiceProofAttachmentKind,
-    ServiceProofConfirmation,
-    ServiceProofDecision,
-    ServiceProofEvent,
-    ServiceProofEventType,
+from .vehicle_maintenance import (  # noqa: F401
+    MaintenanceItem,
+    MaintenanceModifier,
+    MaintenanceRule,
+    VehicleMaintenanceDismissal,
+    VehicleServiceRecord,
+    VehicleUsageProfile,
 )
 from .subscriptions_v1 import (  # noqa: F401
     Achievement,
