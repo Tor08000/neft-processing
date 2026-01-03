@@ -155,6 +155,7 @@ class CouponBatch(Base):
     redeemed_count = Column(Numeric(18, 0), nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
+
 class MarketplaceCouponBatch(Base):
     __tablename__ = "marketplace_coupon_batches"
 
@@ -184,6 +185,7 @@ class Coupon(Base):
     issued_at = Column(DateTime(timezone=True), nullable=True)
     redeemed_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
+
 
 class MarketplaceCoupon(Base):
     __tablename__ = "marketplace_coupons"
