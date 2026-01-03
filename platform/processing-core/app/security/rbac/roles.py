@@ -50,6 +50,10 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_FLEET_LIMITS_MANAGE.value,
         Permission.CLIENT_FLEET_SPEND_VIEW.value,
         Permission.CLIENT_MARKETPLACE_VIEW.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_LIST.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_VIEW.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_CREATE.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_CANCEL.value,
     },
     "partner_user": {
         Permission.PARTNER_DASHBOARD_VIEW.value,
@@ -59,6 +63,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_SETTLEMENTS_VIEW.value,
         Permission.PARTNER_PAYOUTS_LIST.value,
         Permission.PARTNER_CATALOG_ALL.value,
+        Permission.PARTNER_MARKETPLACE_ORDERS_ALL.value,
     },
     "client_admin": {
         Permission.CLIENT_DASHBOARD_VIEW.value,
@@ -77,6 +82,10 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_FLEET_SPEND_VIEW.value,
         Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value,
         Permission.CLIENT_MARKETPLACE_VIEW.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_LIST.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_VIEW.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_CREATE.value,
+        Permission.CLIENT_MARKETPLACE_ORDERS_CANCEL.value,
     },
     "partner_admin": {
         Permission.PARTNER_DASHBOARD_VIEW.value,
@@ -87,6 +96,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_PAYOUTS_LIST.value,
         Permission.PARTNER_PAYOUTS_CONFIRM.value,
         Permission.PARTNER_CATALOG_ALL.value,
+        Permission.PARTNER_MARKETPLACE_ORDERS_ALL.value,
     },
 }
 
