@@ -12,6 +12,7 @@ from app.alembic.helpers import (
     DB_SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,
+    ensure_pg_enum,
     ensure_pg_enum_value,
     safe_enum,
 )
@@ -23,9 +24,19 @@ down_revision = "20291960_0104_fleet_notifications_v2"
 branch_labels = None
 depends_on = None
 
+FLEET_TELEGRAM_SCOPE_TYPE = ["client", "group"]
+FLEET_TELEGRAM_CHAT_TYPE = ["private", "group", "supergroup", "channel"]
+FLEET_TELEGRAM_BINDING_STATUS = ["ACTIVE", "DISABLED", "PENDING"]
+FLEET_TELEGRAM_LINK_TOKEN_STATUS = ["ISSUED", "USED", "EXPIRED", "REVOKED"]
+
 
 def upgrade() -> None:
     bind = op.get_bind()
+
+    ensure_pg_enum(bind, "fleet_telegram_scope_type", FLEET_TELEGRAM_SCOPE_TYPE, schema=DB_SCHEMA)
+    ensure_pg_enum(bind, "fleet_telegram_chat_type", FLEET_TELEGRAM_CHAT_TYPE, schema=DB_SCHEMA)
+    ensure_pg_enum(bind, "fleet_telegram_binding_status", FLEET_TELEGRAM_BINDING_STATUS, schema=DB_SCHEMA)
+    ensure_pg_enum(bind, "fleet_telegram_link_token_status", FLEET_TELEGRAM_LINK_TOKEN_STATUS, schema=DB_SCHEMA)
 
     ensure_pg_enum_value(bind, "fleet_notification_channel_type", "TELEGRAM", schema=DB_SCHEMA)
     ensure_pg_enum_value(bind, "case_event_type", "FLEET_TELEGRAM_LINK_TOKEN_ISSUED", schema=DB_SCHEMA)
@@ -40,7 +51,7 @@ def upgrade() -> None:
         sa.Column("client_id", sa.String(64), nullable=False),
         sa.Column(
             "scope_type",
-            safe_enum(bind, "fleet_telegram_scope_type", ["client", "group"], schema=DB_SCHEMA),
+            safe_enum(bind, "fleet_telegram_scope_type", FLEET_TELEGRAM_SCOPE_TYPE, schema=DB_SCHEMA),
             nullable=False,
         ),
         sa.Column("scope_id", sa.String(36), nullable=True),
@@ -51,7 +62,7 @@ def upgrade() -> None:
             safe_enum(
                 bind,
                 "fleet_telegram_chat_type",
-                ["private", "group", "supergroup", "channel"],
+                FLEET_TELEGRAM_CHAT_TYPE,
                 schema=DB_SCHEMA,
             ),
             nullable=False,
@@ -61,7 +72,7 @@ def upgrade() -> None:
             safe_enum(
                 bind,
                 "fleet_telegram_binding_status",
-                ["ACTIVE", "DISABLED", "PENDING"],
+                FLEET_TELEGRAM_BINDING_STATUS,
                 schema=DB_SCHEMA,
             ),
             nullable=False,
@@ -95,7 +106,7 @@ def upgrade() -> None:
         sa.Column("client_id", sa.String(64), nullable=False),
         sa.Column(
             "scope_type",
-            safe_enum(bind, "fleet_telegram_scope_type", ["client", "group"], schema=DB_SCHEMA),
+            safe_enum(bind, "fleet_telegram_scope_type", FLEET_TELEGRAM_SCOPE_TYPE, schema=DB_SCHEMA),
             nullable=False,
         ),
         sa.Column("scope_id", sa.String(36), nullable=True),
@@ -106,7 +117,7 @@ def upgrade() -> None:
             safe_enum(
                 bind,
                 "fleet_telegram_link_token_status",
-                ["ISSUED", "USED", "EXPIRED", "REVOKED"],
+                FLEET_TELEGRAM_LINK_TOKEN_STATUS,
                 schema=DB_SCHEMA,
             ),
             nullable=False,
