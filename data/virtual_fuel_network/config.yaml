@@ -1,0 +1,47 @@
+seed: 7
+deterministic: true
+stations:
+  - station_id: "VN-0001"
+    name: "Virtual Station Center"
+    brand: "VirtualFuel"
+    geo:
+      lat: "55.7558"
+      lon: "37.6176"
+    region: "Moscow"
+    city: "Moscow"
+    services:
+      wash: true
+      cafe: true
+    terminals: 4
+prices:
+  VN-0001:
+    AI92: "55.10"
+    AI95: "60.20"
+    DT: "62.00"
+    GAS: "32.50"
+cards:
+  - provider_card_id: "VN-CARD-001"
+    card_alias: "NEFT-00001234"
+    status: "ACTIVE"
+anomalies:
+  - type: "VELOCITY_BURST"
+    probability: 0.0
+    window_minutes: 10
+  - type: "OFF_HOURS"
+    probability: 0.0
+  - type: "GEO_JUMP"
+    probability: 0.0
+  - type: "DUPLICATE_TXN"
+    probability: 0.0
+  - type: "AMOUNT_SPIKE"
+    probability: 0.0
+  - type: "LITERS_SPIKE"
+    probability: 0.0
+  - type: "PRICE_MISMATCH"
+    probability: 0.0
+  - type: "STATION_SUSPECT"
+    probability: 0.0
+delays:
+  min_ms: 0
+  max_ms: 0
+  timeout_rate: 0.0

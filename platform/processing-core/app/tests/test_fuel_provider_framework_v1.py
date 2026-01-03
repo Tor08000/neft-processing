@@ -12,6 +12,7 @@ def test_registry_loads_default_providers() -> None:
     providers = list(list_providers())
     assert "stub_provider" in providers
     assert "http_provider_template" in providers
+    assert "virtual_fuel_network" in providers
 
 
 def test_stub_provider_maps_transaction() -> None:
