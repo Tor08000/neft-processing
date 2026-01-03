@@ -10,7 +10,11 @@ export type ToastMessage = {
 export function useToast() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const showToast = useCallback((kind: ToastKind | ToastMessage, text?: string) => {
+  const showToast = useCallback((kind: ToastKind | ToastMessage | null, text?: string) => {
+    if (kind === null) {
+      setToast(null);
+      return;
+    }
     if (typeof kind === "string") {
       setToast({ kind, text: text ?? "" });
       return;

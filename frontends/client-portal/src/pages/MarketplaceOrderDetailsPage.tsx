@@ -79,6 +79,8 @@ export function MarketplaceOrderDetailsPage() {
   const [consequencesError, setConsequencesError] = useState<OrderErrorState | null>(null);
   const [invoicesError, setInvoicesError] = useState<OrderErrorState | null>(null);
   const [incidentsError, setIncidentsError] = useState<OrderErrorState | null>(null);
+  const resolvedAmount = order ? resolveAmount(order) : null;
+  const resolvedCurrency = order ? resolveCurrency(order) : "RUB";
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailsTab>("timeline");
 
@@ -278,8 +280,8 @@ export function MarketplaceOrderDetailsPage() {
             <div className="card muted-card">
               <div className="muted small">{t("marketplaceOrderDetails.fields.amount")}</div>
               <div>
-                {resolveAmount(order) !== null && resolveAmount(order) !== undefined
-                  ? <MoneyValue amount={resolveAmount(order)} currency={resolveCurrency(order)} />
+                {resolvedAmount !== null && resolvedAmount !== undefined
+                  ? <MoneyValue amount={resolvedAmount} currency={resolvedCurrency} />
                   : "—"}
               </div>
               <div className="muted small">{t("marketplaceOrderDetails.fields.updated")}</div>

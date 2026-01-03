@@ -358,10 +358,13 @@ export function MarketplaceOrdersPage() {
                 key: "amount",
                 title: t("marketplaceOrders.table.amount"),
                 className: "neft-num",
-                render: (order) =>
-                  resolveAmount(order) !== undefined && resolveAmount(order) !== null
-                    ? <MoneyValue amount={resolveAmount(order)} currency={resolveCurrency(order)} />
-                    : t("common.notAvailable"),
+                render: (order) => {
+                  const amount = resolveAmount(order);
+                  if (amount === undefined || amount === null) {
+                    return t("common.notAvailable");
+                  }
+                  return <MoneyValue amount={amount} currency={resolveCurrency(order)} />;
+                },
               },
               {
                 key: "status",
