@@ -42,6 +42,11 @@ class Settings:
     webhook_request_timeout_seconds: int = int(os.getenv("WEBHOOK_REQUEST_TIMEOUT_SECONDS", "10"))
     webhook_sla_seconds: int = int(os.getenv("WEBHOOK_SLA_SECONDS", "300"))
     webhook_alert_failure_threshold: int = int(os.getenv("WEBHOOK_ALERT_FAILURE_THRESHOLD", "10"))
+    webhook_intake_secret: str = os.getenv("WEBHOOK_INTAKE_SECRET", "change-me")
+    webhook_allow_unsigned: bool = os.getenv("WEBHOOK_ALLOW_UNSIGNED", "true").lower() == "true"
+
+    edo_stub_delivered_after_seconds: int = int(os.getenv("EDO_STUB_DELIVERED_AFTER_SECONDS", "20"))
+    edo_stub_signed_after_seconds: int = int(os.getenv("EDO_STUB_SIGNED_AFTER_SECONDS", "60"))
 
 
 _settings: Settings | None = None

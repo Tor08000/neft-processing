@@ -1,0 +1,74 @@
+{
+  "uid": "neft-logs-overview",
+  "title": "Logs Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timepicker": {
+    "time_options": ["15m", "1h", "24h"],
+    "refresh_intervals": ["10s", "30s", "1m", "5m"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Loki",
+        "definition": "label_values(service)",
+        "query": "label_values(service)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Errors only (15m)",
+      "type": "link",
+      "url": "?viewPanel=2&from=now-15m&to=now&var-service=$service"
+    },
+    {
+      "title": "Last 15m",
+      "type": "link",
+      "url": "?viewPanel=1&from=now-15m&to=now&var-service=$service"
+    },
+    {
+      "title": "Last 1h",
+      "type": "link",
+      "url": "?viewPanel=1&from=now-1h&to=now&var-service=$service"
+    },
+    {
+      "title": "Last 24h",
+      "type": "link",
+      "url": "?viewPanel=1&from=now-24h&to=now&var-service=$service"
+    }
+  ],
+  "panels": [
+    {
+      "type": "logs",
+      "title": "All logs",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=~\"$service\"}"
+        }
+      ],
+      "id": 1
+    },
+    {
+      "type": "logs",
+      "title": "Errors only",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=~\"$service\"} |= \"error\""
+        }
+      ],
+      "id": 2
+    }
+  ]
+}
