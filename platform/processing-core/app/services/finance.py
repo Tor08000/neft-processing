@@ -442,10 +442,12 @@ class FinanceService:
             total = int(invoice.total_with_tax or invoice.total_amount or 0)
             outstanding_before = total - current_paid - current_credits + current_refunded
 
-            if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID}:
+            if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE}:
                 self.db.rollback()
                 billing_metrics.mark_payment_error()
-                raise InvalidTransitionError(f"payments allowed only from sent/partial, got {invoice.status}")
+                raise InvalidTransitionError(
+                    f"payments allowed only from sent/partial/overdue, got {invoice.status}"
+                )
 
             try:
                 target_status = InvoiceStatus.PARTIALLY_PAID
