@@ -180,6 +180,19 @@ from .marketplace_catalog import (  # noqa: F401
     PartnerProfile,
     PartnerVerificationStatus,
 )
+from .marketplace_order_sla import (  # noqa: F401
+    MarketplaceOrderContractLink,
+    MarketplaceOrderEvent,
+    MarketplaceOrderSlaImmutableError,
+    MarketplaceSlaNotificationOutbox,
+    MarketplaceSlaNotificationStatus,
+    OrderSlaConsequence,
+    OrderSlaConsequenceStatus,
+    OrderSlaConsequenceType,
+    OrderSlaEvaluation,
+    OrderSlaSeverity,
+    OrderSlaStatus,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -675,8 +688,19 @@ __all__ = [
     "MarketplaceProduct",
     "MarketplaceProductStatus",
     "MarketplaceProductType",
+    "MarketplaceOrderContractLink",
+    "MarketplaceOrderEvent",
+    "MarketplaceOrderSlaImmutableError",
+    "MarketplaceSlaNotificationOutbox",
+    "MarketplaceSlaNotificationStatus",
     "PartnerProfile",
     "PartnerVerificationStatus",
+    "OrderSlaConsequence",
+    "OrderSlaConsequenceStatus",
+    "OrderSlaConsequenceType",
+    "OrderSlaEvaluation",
+    "OrderSlaSeverity",
+    "OrderSlaStatus",
     "CRMClient",
     "CRMClientStatus",
     "CRMContract",
