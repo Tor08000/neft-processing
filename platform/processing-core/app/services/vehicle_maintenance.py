@@ -11,10 +11,10 @@ from app.models.vehicle_maintenance import (
     MaintenanceModifier,
     MaintenanceRule,
     VehicleMaintenanceDismissal,
-    VehicleServiceRecord,
     VehicleUsageProfile,
 )
 from app.models.vehicle_profile import VehicleProfile
+from app.models.vehicle_service_records import VehicleServiceRecord
 
 
 _STATUS_OK = "OK"

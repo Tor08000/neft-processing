@@ -14,7 +14,8 @@ from app.models.vehicle_profile import (
     VehicleRecommendation,
     VehicleRecommendationStatus,
 )
-from app.models.vehicle_maintenance import VehicleMaintenanceDismissal, VehicleServiceRecord, VehicleUsageProfile
+from app.models.vehicle_maintenance import VehicleMaintenanceDismissal, VehicleUsageProfile
+from app.models.vehicle_service_records import VehicleServiceRecord
 from app.schemas.vehicle_profile import (
     VehicleCreate,
     VehicleListResponse,

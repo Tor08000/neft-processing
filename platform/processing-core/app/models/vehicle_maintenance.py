@@ -67,21 +67,6 @@ class VehicleUsageProfile(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
-class VehicleServiceRecord(Base):
-    __tablename__ = "vehicle_service_records"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    vehicle_id = Column(GUID(), ForeignKey("vehicles.id"), nullable=False, index=True)
-    item_code = Column(String(64), ForeignKey("maintenance_items.code"), nullable=False)
-    service_at_km = Column(Numeric, nullable=True)
-    service_at = Column(DateTime(timezone=True), nullable=True)
-    partner_id = Column(GUID(), ForeignKey("partners.id"), nullable=True)
-    order_id = Column(GUID(), nullable=True)
-    note = Column(Text, nullable=True)
-    source = Column(String(32), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
 class VehicleMaintenanceDismissal(Base):
     __tablename__ = "vehicle_maintenance_dismissals"
 
@@ -96,6 +81,5 @@ __all__ = [
     "MaintenanceModifier",
     "MaintenanceRule",
     "VehicleMaintenanceDismissal",
-    "VehicleServiceRecord",
     "VehicleUsageProfile",
 ]

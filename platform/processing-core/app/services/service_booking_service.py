@@ -30,8 +30,8 @@ from app.models.service_bookings import (
     ServiceBookingEvent,
     ServiceBookingEventType,
     ServiceBookingStatus,
-    VehicleServiceRecord,
 )
+from app.models.vehicle_service_records import VehicleServiceRecord
 from app.services.audit_service import RequestContext
 from app.services.case_event_redaction import redact_deep
 from app.services.case_events_service import CaseEventActor, emit_case_event
