@@ -1,5 +1,9 @@
 NEFT Processing — локальная среда: Postgres, Redis, Core API, Auth Host, AI Service, Workers, Nginx.
 
+## AS-IS документация
+
+* Master doc: `docs/as-is/NEFT_PLATFORM_AS_IS_MASTER.md`
+
 ## Как поднять систему локально
 
 1. Скопируйте переменные окружения:
