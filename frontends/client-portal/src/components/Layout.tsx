@@ -1,23 +1,17 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import {
-  ClipboardCheck,
-  FileSpreadsheet,
-  FileText,
-  LayoutDashboard,
-  LineChart,
   MessageCircle,
   Package,
-  Settings,
   ShoppingCart,
-  Workflow,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { CLIENT_BASE_PATH } from "../api/base";
-import { hasAnyRole } from "../utils/roles";
 import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
+import { BrandHeader, BrandSidebar, PageShell } from "../../../shared/brand/components";
 
 interface LayoutProps {
   pwaMode?: boolean;
@@ -26,7 +20,7 @@ interface LayoutProps {
 type NavItem = {
   to: string;
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   isHidden?: boolean;
 };
 
@@ -47,46 +41,14 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
-  const navItems: NavItem[] = pwaMode
-    ? [
-        { to: "/marketplace", label: t("nav.marketplaceBrowse"), icon: <ShoppingCart size={18} /> },
-        { to: "/marketplace/orders", label: t("nav.marketplaceOrders"), icon: <ShoppingCart size={18} /> },
-        { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} /> },
-      ]
-    : [
-        { to: "/dashboard", label: t("nav.dashboard"), icon: <LayoutDashboard size={18} /> },
-        { to: "/invoices", label: t("nav.invoices"), icon: <FileText size={18} /> },
-        { to: "/contracts", label: t("nav.contracts"), icon: <ClipboardCheck size={18} /> },
-        { to: "/subscription", label: t("nav.subscription"), icon: <LayoutDashboard size={18} /> },
-        { to: "/analytics", label: t("nav.analytics"), icon: <LineChart size={18} /> },
-        {
-          to: "/operations",
-          label: t("nav.operations"),
-          icon: <Workflow size={18} />,
-          isHidden: !(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER"]) || !user),
-        },
-        { to: "/explain/insights", label: t("nav.explainInsights"), icon: <LineChart size={18} /> },
-        { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} /> },
-        {
-          to: "/exports",
-          label: t("nav.exports"),
-          icon: <FileSpreadsheet size={18} />,
-          isHidden: !(hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ACCOUNTANT"]) || !user),
-        },
-        { to: "/fleet/cards", label: t("nav.fleetCards"), icon: <Package size={18} /> },
-        { to: "/fleet/groups", label: t("nav.fleetGroups"), icon: <Package size={18} /> },
-        { to: "/fleet/spend", label: t("nav.fleetSpend"), icon: <Package size={18} /> },
-        { to: "/fleet/policy-center", label: t("nav.fleetPolicies"), icon: <Package size={18} /> },
-        { to: "/fleet/incidents", label: t("nav.fleetIncidents"), icon: <MessageCircle size={18} /> },
-        { to: "/fleet/employees", label: t("nav.fleetEmployees"), icon: <Package size={18} /> },
-        { to: "/marketplace", label: t("nav.marketplaceBrowse"), icon: <ShoppingCart size={18} /> },
-        { to: "/marketplace/orders", label: t("nav.marketplaceOrders"), icon: <ShoppingCart size={18} /> },
-        { to: "/actions", label: t("nav.actions"), icon: <ClipboardCheck size={18} /> },
-        { to: "/support/requests", label: t("nav.supportRequests"), icon: <MessageCircle size={18} /> },
-        { to: "/cases", label: t("nav.cases"), icon: <MessageCircle size={18} /> },
-        { to: "/settings", label: t("nav.settings"), icon: <Settings size={18} /> },
-        { to: "/settings/management", label: t("nav.management"), icon: <Settings size={18} /> },
-      ];
+  const navItems: NavItem[] = [
+    { to: "/vehicles", label: "Vehicles", icon: <Package size={18} /> },
+    { to: "/cards", label: "Cards", icon: <Package size={18} /> },
+    { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} /> },
+    { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} /> },
+    { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },
+    { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} /> },
+  ];
 
   const visibleNavItems = navItems.filter((item) => !item.isHidden);
   const activeItem = visibleNavItems.find(
@@ -97,14 +59,9 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   if (isApiBaseMissing) {
     return (
-      <div className="app-shell neft-page">
-        <header className="topbar">
-          <div className="topbar__meta">
-            <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
-            <div className="topbar__title">{t("app.title")}</div>
-          </div>
-        </header>
-        <main className="main-area">
+      <div className="brand-shell neft-page">
+        <main className="brand-main">
+          <BrandHeader title={t("app.title")} />
           <div className="card state">
             <h2>{t("app.configMissingTitle")}</h2>
             <div className="muted">{t("app.configMissingDescription")}</div>
@@ -117,14 +74,9 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   if (configError) {
     return (
-      <div className="app-shell neft-page">
-        <header className="topbar">
-          <div className="topbar__meta">
-            <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
-            <div className="topbar__title">{t("app.title")}</div>
-          </div>
-        </header>
-        <main className="main-area">
+      <div className="brand-shell neft-page">
+        <main className="brand-main">
+          <BrandHeader title={t("app.title")} />
           <AppErrorState message={configError} />
         </main>
       </div>
@@ -132,45 +84,33 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   }
 
   return (
-    <div className="app-shell neft-page">
-      <header className="topbar">
-        <div className="topbar__meta">
-          <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
-          <div className="topbar__titles">
-            <div className="topbar__title">{sectionTitle}</div>
-            <div className="topbar__context">{contextLabel}</div>
-          </div>
-          <div className="muted">
-            {user?.clientId ? t("app.clientLabel", { id: user.clientId }) : t("app.clientFallback")}
-          </div>
-        </div>
-        <div className="topbar__meta topbar__meta--user">
-          <div>
-            <div className="muted">{t("app.signedInAs")}</div>
-            <strong>{user?.email}</strong>
-            <div className="roles">{user?.roles.join(", ")}</div>
-          </div>
-          <button className="ghost neft-btn-secondary" onClick={logout} type="button">
-            {t("actions.logout")}
-          </button>
-        </div>
-      </header>
-
-      <div className="sidebar-layout">
-        <nav className="sidebar">
-          {visibleNavItems.map((item) => (
-            <NavLink key={item.to} to={item.to} title={item.label}>
-              {item.icon}
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <main className="main-area">
+    <div className="brand-shell neft-page">
+      <BrandSidebar items={visibleNavItems} title="Client" />
+      <main className="brand-main">
+        <BrandHeader
+          title={sectionTitle}
+          subtitle={contextLabel}
+          meta={user?.clientId ? t("app.clientLabel", { id: user.clientId }) : t("app.clientFallback")}
+          userSlot={
+            <>
+              <div>
+                <div className="muted">{t("app.signedInAs")}</div>
+                <strong>{user?.email}</strong>
+                <div className="roles">{user?.roles.join(", ")}</div>
+              </div>
+              <button className="ghost neft-btn-secondary" onClick={logout} type="button">
+                {t("actions.logout")}
+              </button>
+            </>
+          }
+        />
+        <div className="brand-content">
           {pwaMode ? <PwaNotificationsPrompt /> : null}
-          <Outlet />
-        </main>
-      </div>
+          <PageShell key={location.pathname}>
+            <Outlet />
+          </PageShell>
+        </div>
+      </main>
     </div>
   );
 }

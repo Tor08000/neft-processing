@@ -65,7 +65,7 @@ interface AppProps {
 function IndexRedirect() {
   const { user } = useAuth();
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/vehicles" replace />;
   }
   return <Navigate to="/login" replace />;
 }
@@ -97,6 +97,16 @@ export function App({ initialSession = null }: AppProps) {
               <>
                 <Route index element={<IndexRedirect />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/vehicles" element={<FleetGroupsPage />} />
+                <Route path="/vehicles/:id" element={<FleetGroupDetailsPage />} />
+                <Route path="/cards" element={<ClientCardsPage />} />
+                <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
+                <Route path="/orders" element={<MarketplaceOrdersPage />} />
+                <Route path="/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
+                <Route path="/billing" element={<ClientInvoicesPage />} />
+                <Route path="/billing/:id" element={<ClientInvoiceDetailsPage />} />
+                <Route path="/support" element={<SupportRequestsPage />} />
+                <Route path="/support/:id" element={<SupportRequestDetailsPage />} />
                 <Route path="/analytics" element={<AnalyticsDashboardPage />} />
                 <Route path="/analytics/spend" element={<AnalyticsSpendPage />} />
                 <Route path="/analytics/declines" element={<AnalyticsDeclinesPage />} />
@@ -112,8 +122,6 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/exports" element={<FinanceExportsPage />} />
                 <Route path="/exports/:id" element={<FinanceExportDetailsPage />} />
                 <Route path="/actions" element={<ActionsPage />} />
-                <Route path="/cards" element={<ClientCardsPage />} />
-                <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
                 <Route path="/invoices" element={<ClientInvoicesPage />} />
                 <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
                 <Route path="/contracts" element={<ClientContractsPage />} />

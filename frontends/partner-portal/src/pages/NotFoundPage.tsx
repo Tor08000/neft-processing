@@ -1,15 +1,16 @@
 import { Link } from "react-router-dom";
+import { EmptyState } from "../../../shared/brand/components";
 
 export function NotFoundPage() {
   return (
-    <div className="empty-state empty-state--full">
-      <h1>Страница не найдена</h1>
-      <p className="muted">Проверьте адрес или вернитесь в кабинет партнёра.</p>
-      <div className="actions">
-        <Link className="ghost" to="/">
-          На дашборд
+    <EmptyState
+      title="Страница не найдена"
+      description="Проверьте адрес или вернитесь в кабинет партнёра."
+      action={
+        <Link className="ghost neft-btn-secondary" to="/products">
+          К продуктам
         </Link>
-      </div>
-    </div>
+      }
+    />
   );
 }

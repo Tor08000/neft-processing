@@ -14,7 +14,7 @@
     "strict": true,
     "types": ["vite/client", "./types/vitest"]
   },
-  "include": ["src", "types"],
+  "include": ["src", "types", "../shared/brand"],
   "exclude": [
     "**/*.test.ts",
     "**/*.test.tsx",

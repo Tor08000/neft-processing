@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 
 export default defineConfig(() => {
   return {
@@ -8,6 +9,9 @@ export default defineConfig(() => {
     server: {
       host: true,
       port: 8080,
+      fs: {
+        allow: [resolve(__dirname), resolve(__dirname, "../shared")],
+      },
     },
     preview: {
       host: true,

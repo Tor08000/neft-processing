@@ -4,12 +4,13 @@ import { useAuth } from "../auth/AuthContext";
 import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { AppLogo } from "../../../shared/brand/components";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/finance/invoices", [searchParams]);
+  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/vehicles", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,7 +53,10 @@ export function LoginPage() {
   return (
     <div className="login-wrapper neft-page">
       <form className="card login-card neft-card" onSubmit={handleSubmit}>
-        <h1>Вход в клиентский кабинет</h1>
+        <div className="login-brand">
+          <AppLogo variant="full" size={72} />
+        </div>
+        <h1>NEFT Platform</h1>
         <p>Используйте демо-учётные данные, чтобы продолжить работу.</p>
         <div className="login-demo">
           <CopyChip label="Demo" value="client@neft.local" onCopy={() => showToast("success", "Скопировано")} />

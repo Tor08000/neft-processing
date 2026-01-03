@@ -7,6 +7,7 @@ import { I18nProvider } from "./i18n";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
 import "./styles/neft-theme.css";
+import "../../shared/brand/brand.css";
 
 const base = import.meta.env.BASE_URL || "/client/";
 

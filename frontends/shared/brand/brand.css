@@ -1,0 +1,462 @@
+:root {
+  --neft-bg: #0B0F14;
+  --neft-bg2: #0F1621;
+  --neft-surface: #121B27;
+  --neft-surface2: #162235;
+  --neft-border: #243247;
+  --neft-border2: #2E3F5C;
+  --neft-text: #EAF0F8;
+  --neft-text-muted: #A9B4C4;
+  --neft-text-faint: #7B879A;
+  --neft-accent: #B6FF3B;
+  --neft-accent-hover: #A6F72A;
+  --neft-accent-soft: rgba(182, 255, 59, 0.14);
+  --neft-accent-glow: rgba(182, 255, 59, 0.28);
+  --neft-success: #2FEA9B;
+  --neft-warning: #FFB020;
+  --neft-danger: #FF4D4D;
+  --neft-info: #4DA3FF;
+  --neft-neutral: #94A3B8;
+  --neft-radius-card: 16px;
+  --neft-radius-control: 12px;
+  --neft-radius-pill: 999px;
+  --neft-shadow-sm: 0 1px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.25);
+  --neft-shadow-md: 0 2px 0 rgba(0,0,0,0.35), 0 14px 28px rgba(0,0,0,0.32);
+  --neft-shadow-lg: 0 3px 0 rgba(0,0,0,0.40), 0 20px 42px rgba(0,0,0,0.40);
+  --neft-focus-ring: 0 0 0 3px var(--neft-accent-soft), 0 0 0 1px var(--neft-accent);
+  --neft-font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  --neft-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --neft-header-height: 64px;
+}
+
+html, body {
+  background: var(--neft-bg);
+  color: var(--neft-text);
+  font-family: var(--neft-font-sans);
+}
+
+.neft-page {
+  background: radial-gradient(1200px 600px at 15% 10%, rgba(182,255,59,0.06), transparent 55%),
+              radial-gradient(900px 500px at 85% 0%, rgba(77,163,255,0.06), transparent 50%),
+              var(--neft-bg);
+  min-height: 100vh;
+}
+
+.neft-card {
+  background: var(--neft-surface);
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-card);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.neft-input,
+.neft-select {
+  background: var(--neft-surface2);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+  padding: 10px 12px;
+  outline: none;
+  border-radius: var(--neft-radius-control);
+  min-height: 44px;
+}
+
+.neft-input:focus,
+.neft-select:focus {
+  border-color: var(--neft-accent);
+  box-shadow: var(--neft-focus-ring);
+}
+
+.neft-input:hover,
+.neft-select:hover {
+  border-color: var(--neft-border2);
+}
+
+.neft-input::placeholder,
+.neft-select::placeholder {
+  color: var(--neft-text-faint);
+}
+
+.neft-btn-primary {
+  background: var(--neft-accent);
+  color: #0B0F14;
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  font-weight: 650;
+  cursor: pointer;
+  border-radius: var(--neft-radius-control);
+}
+
+.neft-btn-primary:hover {
+  background: var(--neft-accent-hover);
+}
+
+.neft-btn-secondary {
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  border: 1px solid var(--neft-border);
+  padding: 10px 14px;
+  cursor: pointer;
+  border-radius: var(--neft-radius-control);
+}
+
+.neft-btn-secondary:hover {
+  background: var(--neft-surface2);
+  border-color: var(--neft-border2);
+}
+
+.neft-focus-ring:focus-visible {
+  box-shadow: var(--neft-focus-ring);
+}
+
+.neft-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--neft-radius-control);
+  border: 1px solid transparent;
+  background: var(--neft-accent);
+  color: #0b0f14;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.neft-button:hover:not(:disabled) {
+  background: var(--neft-accent-hover);
+}
+
+.neft-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.neft-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.muted {
+  color: var(--neft-text-muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.roles {
+  font-size: 0.85rem;
+  color: var(--neft-text-faint);
+}
+
+.ghost {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--neft-radius-control);
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  cursor: pointer;
+}
+
+.brand-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.brand-sidebar {
+  background: var(--neft-bg2);
+  color: var(--neft-text);
+  padding: 20px 16px;
+  border-right: 1px solid var(--neft-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand-sidebar__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.brand-sidebar__logo {
+  width: 28px;
+  height: 28px;
+}
+
+.brand-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand-sidebar__footer {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.brand-nav-link {
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--neft-text-muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-nav-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-nav-link:hover {
+  color: var(--neft-text);
+  background: rgba(22, 34, 53, 0.45);
+}
+
+.brand-nav-link.is-active {
+  color: #0b0f14;
+  background: var(--neft-accent);
+}
+
+.brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--neft-header-height);
+  padding: 0 24px;
+  background: rgba(18, 27, 39, 0.82);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--neft-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.brand-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-header__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.brand-header__subtitle {
+  font-size: 12px;
+  color: var(--neft-text-muted);
+}
+
+.brand-header__tag {
+  color: var(--neft-text-muted);
+  font-size: 12px;
+}
+
+.brand-header__user {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.brand-main {
+  display: grid;
+  grid-template-rows: var(--neft-header-height) 1fr;
+}
+
+.brand-content {
+  padding: 24px;
+  padding-top: var(--neft-header-height);
+}
+
+.brand-page-shell {
+  animation: brand-fade-in 240ms ease;
+}
+
+@keyframes brand-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-backdrop {
+  animation: brand-fade-in 200ms ease;
+}
+
+.modal,
+.modal-card {
+  animation: brand-slide-up 240ms ease;
+}
+
+@keyframes brand-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.neft-skeleton {
+  background: linear-gradient(90deg, rgba(22, 34, 53, 0.35) 25%, rgba(36, 50, 71, 0.55) 37%, rgba(22, 34, 53, 0.35) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.2s ease infinite;
+  border-radius: 12px;
+  min-height: 12px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: var(--neft-radius-pill);
+  border: 1px solid var(--neft-border);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--neft-text-muted);
+}
+
+.status-pill--success {
+  background: rgba(47, 234, 155, 0.12);
+  color: var(--neft-success);
+  border-color: rgba(47, 234, 155, 0.35);
+}
+
+.status-pill--warning {
+  background: rgba(255, 176, 32, 0.16);
+  color: var(--neft-warning);
+  border-color: rgba(255, 176, 32, 0.35);
+}
+
+.status-pill--error {
+  background: rgba(255, 77, 77, 0.16);
+  color: var(--neft-danger);
+  border-color: rgba(255, 77, 77, 0.35);
+}
+
+.status-pill--info {
+  background: rgba(77, 163, 255, 0.16);
+  color: var(--neft-info);
+  border-color: rgba(77, 163, 255, 0.35);
+}
+
+.status-pill--neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--neft-neutral);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.empty-state {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+  align-items: center;
+  justify-items: center;
+  padding: 24px;
+  background: var(--neft-surface);
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-card);
+  box-shadow: var(--neft-shadow-sm);
+}
+
+.empty-state__title {
+  margin: 0;
+}
+
+.empty-state__description {
+  margin: 0;
+  color: var(--neft-text-muted);
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #0b0f14;
+  font-weight: 700;
+  z-index: 50;
+  box-shadow: var(--neft-shadow-lg);
+}
+
+.toast.success {
+  background: var(--neft-success);
+}
+
+.toast.error {
+  background: var(--neft-danger);
+}
+
+.toast.info {
+  background: var(--neft-info);
+}
+
+.login-wrapper {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.login-brand {
+  display: flex;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-page-shell,
+  .modal-backdrop,
+  .modal,
+  .modal-card,
+  .neft-skeleton {
+    animation: none !important;
+  }
+}

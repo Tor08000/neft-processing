@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { AppLogo } from "../../../shared/brand/components";
 
 export const LoginPage: React.FC = () => {
   const { login, error, user } = useAuth();
@@ -17,7 +18,7 @@ export const LoginPage: React.FC = () => {
   const errorRef = useRef<HTMLDivElement | null>(null);
 
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/users" replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -48,7 +49,10 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="login-page neft-page">
       <div className="login-card neft-card">
-        <h1>Админка NEFT</h1>
+        <div className="login-brand">
+          <AppLogo variant="full" size={72} />
+        </div>
+        <h1>NEFT Platform</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
         <div className="login-demo">
           <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />

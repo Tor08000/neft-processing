@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
@@ -43,7 +43,14 @@ export function App({ initialSession = null }: AppProps) {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<Navigate to="/products" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/products" element={<MarketplaceProductsPage />} />
+            <Route path="/products/:id" element={<MarketplaceProductsPage />} />
+            <Route path="/bookings" element={<ServicesCatalogPage />} />
+            <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
+            <Route path="/promotions" element={<MarketplaceProfilePage />} />
+            <Route path="/analytics" element={<PriceAnalyticsPage />} />
             <Route path="/contracts" element={<PartnerContractsPage />} />
             <Route path="/stations" element={<StationsPage />} />
             <Route path="/stations/:id" element={<StationDetailsPage />} />
