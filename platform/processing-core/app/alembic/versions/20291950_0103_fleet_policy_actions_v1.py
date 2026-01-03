@@ -58,6 +58,17 @@ def upgrade() -> None:
     for value in CASE_EVENT_VALUES:
         ensure_pg_enum_value(bind, "case_event_type", value, schema=DB_SCHEMA)
 
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            CREATE TYPE {DB_SCHEMA}.fleet_notification_event_type AS ENUM ('POLICY_ACTION');
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$
+        """
+    )
+
     for value in FLEET_NOTIFICATION_EVENT_VALUES:
         ensure_pg_enum_value(bind, "fleet_notification_event_type", value, schema=DB_SCHEMA)
 
