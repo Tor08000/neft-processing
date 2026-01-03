@@ -347,41 +347,6 @@ from .fleet import (  # noqa: F401
     FuelGroupAccess,
     FuelGroupRole,
 )
-from .fuel import (  # noqa: F401
-    FuelAnomalyEvent,
-    FuelAnalyticsEvent,
-    FuelCard,
-    FuelCardGroup,
-    FuelCardGroupStatus,
-    FuelCardStatus,
-    FuelLimit,
-    FuelLimitPeriod,
-    FuelLimitScopeType,
-    FuelLimitType,
-    FuelFraudSignal,
-    FuelFraudSignalType,
-    FuelMisuseSignal,
-    FuelNetwork,
-    FuelNetworkStatus,
-    FuelRiskProfile,
-    FuelRiskShadowEvent,
-    FuelStationNetwork,
-    FuelStationOutlier,
-    FuelStation,
-    FuelStationStatus,
-    StationReputationDaily,
-    FuelTransaction,
-    FuelTransactionStatus,
-    FuelType,
-)
-from app.integrations.fuel.models import (  # noqa: F401
-    FuelIngestMode,
-    FuelProviderAuthType,
-    FuelProviderCardMap,
-    FuelProviderConnection,
-    FuelProviderConnectionStatus,
-    FuelProviderRawEvent,
-)
 from .ops import (  # noqa: F401
     OpsEscalation,
     OpsEscalationPriority,
@@ -496,6 +461,56 @@ from .subscriptions_v1 import (  # noqa: F401
     SubscriptionPlanModule,
     SubscriptionStatus,
 )
+
+_FUEL_EXPORTS = {
+    "FuelAnomalyEvent",
+    "FuelAnalyticsEvent",
+    "FuelCard",
+    "FuelCardGroup",
+    "FuelCardGroupStatus",
+    "FuelCardStatus",
+    "FuelLimit",
+    "FuelLimitPeriod",
+    "FuelLimitScopeType",
+    "FuelLimitType",
+    "FuelFraudSignal",
+    "FuelFraudSignalType",
+    "FuelMisuseSignal",
+    "FuelNetwork",
+    "FuelNetworkStatus",
+    "FuelRiskProfile",
+    "FuelRiskShadowEvent",
+    "FuelStationNetwork",
+    "FuelStationOutlier",
+    "FuelStation",
+    "FuelStationStatus",
+    "StationReputationDaily",
+    "FuelTransaction",
+    "FuelTransactionStatus",
+    "FuelType",
+}
+
+_FUEL_INTEGRATION_EXPORTS = {
+    "FuelIngestMode",
+    "FuelProviderAuthType",
+    "FuelProviderCardMap",
+    "FuelProviderConnection",
+    "FuelProviderConnectionStatus",
+    "FuelProviderRawEvent",
+}
+
+
+def __getattr__(name: str):
+    if name in _FUEL_EXPORTS:
+        from . import fuel
+
+        return getattr(fuel, name)
+    if name in _FUEL_INTEGRATION_EXPORTS:
+        from app.integrations.fuel import models as fuel_models
+
+        return getattr(fuel_models, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "Client",
