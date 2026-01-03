@@ -18,6 +18,14 @@ from .sla import (  # noqa: F401
     OrderSlaEvaluationOut,
     OrderSlaEvaluationsResponse,
 )
+from .recommendations import (  # noqa: F401
+    MarketplaceEventCreate,
+    MarketplaceEventOut,
+    RecommendationItem,
+    RecommendationReason,
+    RecommendationResponse,
+    RelatedProductsResponse,
+)
 
 __all__ = [
     "PartnerProfileCreate",
@@ -36,4 +44,10 @@ __all__ = [
     "OrderSlaConsequencesResponse",
     "OrderSlaEvaluationOut",
     "OrderSlaEvaluationsResponse",
+    "MarketplaceEventCreate",
+    "MarketplaceEventOut",
+    "RecommendationItem",
+    "RecommendationReason",
+    "RecommendationResponse",
+    "RelatedProductsResponse",
 ]
