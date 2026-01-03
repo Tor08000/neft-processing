@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.marketplace_catalog import MarketplaceProductType
 from app.schemas.marketplace.catalog import ProductListOut, ProductListResponse, ProductOut
+from app.schemas.marketplace.recommendations import (
+    MarketplaceEventCreate,
+    MarketplaceEventOut,
+    RecommendationResponse,
+    RelatedProductsResponse,
+)
 from app.security.client_auth import require_client_user
+from app.services.audit_service import request_context_from_request
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
+from app.services.marketplace_recommendation_service import MarketplaceRecommendationService
 
 router = APIRouter(prefix="/client/marketplace", tags=["client-portal-v1"])
 
@@ -43,6 +53,27 @@ def _product_list_out(product) -> ProductListOut:
         status=product.status.value if hasattr(product.status, "value") else product.status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+    )
+
+
+def _promotion_out(promotion) -> PromotionOut:
+    return PromotionOut(
+        id=str(promotion.id),
+        tenant_id=int(promotion.tenant_id),
+        partner_id=str(promotion.partner_id),
+        promo_type=promotion.promo_type.value if hasattr(promotion.promo_type, "value") else promotion.promo_type,
+        status=promotion.status.value if hasattr(promotion.status, "value") else promotion.status,
+        title=promotion.title,
+        description=promotion.description,
+        scope=promotion.scope,
+        eligibility=promotion.eligibility,
+        rules=promotion.rules,
+        budget=promotion.budget,
+        limits=promotion.limits,
+        schedule=promotion.schedule,
+        created_at=promotion.created_at,
+        updated_at=promotion.updated_at,
+        audit_event_id=str(promotion.audit_event_id) if promotion.audit_event_id else None,
     )
 
 
@@ -87,3 +118,67 @@ def get_published_product(
     if not product:
         raise HTTPException(status_code=404, detail="product_not_found")
     return _product_out(product)
+
+
+@router.get("/recommendations", response_model=RecommendationResponse)
+def list_recommendations(
+    limit: int = Query(20, ge=1, le=50),
+    placement: str | None = Query(None),
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> RecommendationResponse:
+    if not token.get("client_id"):
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceRecommendationService(db)
+    items = service.list_recommendations(
+        tenant_id=token.get("tenant_id"),
+        client_id=token["client_id"],
+        limit=limit,
+    )
+    return RecommendationResponse(
+        items=items,
+        generated_at=datetime.now(timezone.utc),
+        model="offer_engine_v1",
+    )
+
+
+@router.post("/events", response_model=MarketplaceEventOut, status_code=201)
+def record_marketplace_event(
+    payload: MarketplaceEventCreate,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> MarketplaceEventOut:
+    if not token.get("client_id"):
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceRecommendationService(db)
+    event = service.log_event(
+        tenant_id=token.get("tenant_id"),
+        client_id=token["client_id"],
+        user_id=token.get("user_id"),
+        payload=payload,
+    )
+    return MarketplaceEventOut(
+        id=str(event.id),
+        client_id=str(event.client_id),
+        user_id=str(event.user_id) if event.user_id else None,
+        partner_id=str(event.partner_id) if event.partner_id else None,
+        product_id=str(event.product_id) if event.product_id else None,
+        event_type=event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
+        event_ts=event.event_ts,
+        context=event.context,
+        meta=event.meta,
+    )
+
+
+@router.get("/products/{product_id}/related", response_model=RelatedProductsResponse)
+def list_related_products(
+    product_id: str,
+    limit: int = Query(12, ge=1, le=50),
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> RelatedProductsResponse:
+    if not token.get("client_id"):
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceRecommendationService(db)
+    items = service.list_related_products(product_id=product_id, limit=limit)
+    return RelatedProductsResponse(items=[_product_list_out(item) for item in items])

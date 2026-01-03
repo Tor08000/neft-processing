@@ -209,6 +209,14 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from .marketplace_recommendations import (  # noqa: F401
+    ClientBehaviorProfile,
+    MarketplaceEvent,
+    MarketplaceEventType,
+    OfferCandidate,
+    ProductAttributes,
+    ProductTaxonomy,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401

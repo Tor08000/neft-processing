@@ -37,8 +37,8 @@ class OrderCreateRequest(BaseModel):
     quantity: Decimal = Field(..., gt=0)
     note: str | None = None
     external_ref: str | None = Field(default=None, alias="idempotency_key")
+    promotion_id: str | None = None
     coupon_code: str | None = None
-    pricing_mode: str | None = None
 
     class Config:
         allow_population_by_field_name = True

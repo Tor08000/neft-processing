@@ -29,26 +29,13 @@ from .sla import (  # noqa: F401
     OrderSlaEvaluationOut,
     OrderSlaEvaluationsResponse,
 )
-from .promotions import (  # noqa: F401
-    PromotionCreate,
-    PromotionListResponse,
-    PromotionOut,
-    PromotionUpdate,
-)
-from .coupons import (  # noqa: F401
-    CouponBatchCreate,
-    CouponBatchListResponse,
-    CouponBatchOut,
-    CouponIssueRequest,
-    CouponIssueResponse,
-    CouponOut,
-)
-from .pricing import (  # noqa: F401
-    DealListResponse,
-    DealPromotionOut,
-    QuoteItem,
-    QuoteRequest,
-    QuoteResponse,
+from .recommendations import (  # noqa: F401
+    MarketplaceEventCreate,
+    MarketplaceEventOut,
+    RecommendationItem,
+    RecommendationReason,
+    RecommendationResponse,
+    RelatedProductsResponse,
 )
 
 __all__ = [
