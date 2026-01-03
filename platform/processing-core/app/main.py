@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import PlainTextResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -368,10 +369,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+def _generate_unique_id(route: APIRoute) -> str:
+    methods = "-".join(sorted(route.methods or []))
+    module = route.endpoint.__module__
+    return f"{module}.{route.name}:{methods}:{route.path_format}"
+
+
 app = FastAPI(
     title="NEFT Core API",
     version="0.1.0",
     lifespan=lifespan,
+    generate_unique_id_function=_generate_unique_id,
 )
 
 
