@@ -25,6 +25,7 @@ from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.client_marketplace import router as client_marketplace_router
 from app.routers.client_marketplace_orders import router as client_marketplace_orders_router
+from app.routers.client_marketplace_deals import router as client_marketplace_deals_router
 from app.routers.client_portal import router as client_portal_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
@@ -33,7 +34,8 @@ from app.routers.portal import client_router as portal_client_router, partner_ro
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
 from app.routers.partner.marketplace_catalog import router as partner_marketplace_router
 from app.routers.partner.marketplace_orders import router as partner_marketplace_orders_router
-from app.routers.partner.marketplace_sponsored import router as partner_marketplace_sponsored_router
+from app.routers.partner.marketplace_promotions import router as partner_marketplace_promotions_router
+from app.routers.partner.marketplace_coupons import router as partner_marketplace_coupons_router
 from app.routers.partner.marketplace_subscriptions import router as partner_marketplace_subscriptions_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
@@ -431,8 +433,10 @@ app.include_router(partner_marketplace_router, prefix=LEGACY_API_PREFIX)
 app.include_router(partner_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
 app.include_router(partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_sponsored_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_sponsored_router, prefix=API_PREFIX_CORE)
+app.include_router(partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
+app.include_router(partner_marketplace_promotions_router, prefix=API_PREFIX_CORE)
+app.include_router(partner_marketplace_coupons_router, prefix=LEGACY_API_PREFIX)
+app.include_router(partner_marketplace_coupons_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_analytics_router, prefix=LEGACY_API_PREFIX)
 app.include_router(partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_subscriptions_router, prefix=LEGACY_API_PREFIX)
@@ -441,6 +445,8 @@ app.include_router(client_marketplace_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_marketplace_orders_router, prefix=API_PREFIX_CORE)
+app.include_router(client_marketplace_deals_router, prefix=LEGACY_API_PREFIX)
+app.include_router(client_marketplace_deals_router, prefix=API_PREFIX_CORE)
 app.include_router(client_documents_router)
 app.include_router(internal_fleet_router)
 app.include_router(internal_telegram_router)

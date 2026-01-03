@@ -180,6 +180,16 @@ from .marketplace_catalog import (  # noqa: F401
     PartnerProfile,
     PartnerVerificationStatus,
 )
+from .marketplace_promotions import (  # noqa: F401
+    MarketplaceCoupon,
+    MarketplaceCouponBatch,
+    MarketplaceCouponBatchType,
+    MarketplaceCouponStatus,
+    MarketplacePromotion,
+    MarketplacePromotionApplication,
+    MarketplacePromotionStatus,
+    MarketplacePromotionType,
+)
 from .partner_subscriptions import (  # noqa: F401
     PartnerBillingCycle,
     PartnerPlan,
@@ -712,6 +722,14 @@ __all__ = [
     "MarketplaceProduct",
     "MarketplaceProductStatus",
     "MarketplaceProductType",
+    "MarketplacePromotion",
+    "MarketplacePromotionStatus",
+    "MarketplacePromotionType",
+    "MarketplacePromotionApplication",
+    "MarketplaceCouponBatch",
+    "MarketplaceCouponBatchType",
+    "MarketplaceCoupon",
+    "MarketplaceCouponStatus",
     "MarketplaceOrderContractLink",
     "MarketplaceOrderEvent",
     "MarketplaceOrderSlaImmutableError",

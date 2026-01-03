@@ -16,6 +16,7 @@ from app.schemas.marketplace.recommendations import (
 )
 from app.schemas.marketplace.sponsored import SponsoredEventCreate, SponsoredEventOut
 from app.security.client_auth import require_client_user
+from app.services.audit_service import request_context_from_request
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
 from app.services.marketplace_recommendation_service import MarketplaceRecommendationService
 from app.services.marketplace_sponsored_service import MarketplaceSponsoredService
@@ -75,6 +76,27 @@ def _sponsored_product_out(product, *, sponsored: bool, sponsored_badge: str | N
         sponsored=sponsored,
         sponsored_badge=sponsored_badge,
         sponsored_campaign_id=sponsored_campaign_id,
+    )
+
+
+def _promotion_out(promotion) -> PromotionOut:
+    return PromotionOut(
+        id=str(promotion.id),
+        tenant_id=int(promotion.tenant_id),
+        partner_id=str(promotion.partner_id),
+        promo_type=promotion.promo_type.value if hasattr(promotion.promo_type, "value") else promotion.promo_type,
+        status=promotion.status.value if hasattr(promotion.status, "value") else promotion.status,
+        title=promotion.title,
+        description=promotion.description,
+        scope=promotion.scope,
+        eligibility=promotion.eligibility,
+        rules=promotion.rules,
+        budget=promotion.budget,
+        limits=promotion.limits,
+        schedule=promotion.schedule,
+        created_at=promotion.created_at,
+        updated_at=promotion.updated_at,
+        audit_event_id=str(promotion.audit_event_id) if promotion.audit_event_id else None,
     )
 
 
