@@ -27,6 +27,7 @@ class Permission(str, Enum):
     PARTNER_SETTLEMENTS_VIEW = "partner:settlements:view"
     PARTNER_PAYOUTS_LIST = "partner:payouts:list"
     PARTNER_PAYOUTS_CONFIRM = "partner:payouts:confirm"
+    PARTNER_CATALOG_ALL = "partner:catalog:*"
 
     ADMIN_CONTRACTS_ALL = "admin:contracts:*"
     ADMIN_BILLING_ALL = "admin:billing:*"

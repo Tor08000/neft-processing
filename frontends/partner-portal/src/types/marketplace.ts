@@ -1,3 +1,68 @@
+export type MarketplaceProductType = "SERVICE" | "PRODUCT";
+export type MarketplacePriceModel = "FIXED" | "PER_UNIT" | "TIERED";
+export type MarketplaceProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type MarketplaceVerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
+
+export type MarketplacePriceConfig =
+  | { amount: number; currency: "RUB" }
+  | { unit: "liter" | "item" | "hour"; amount_per_unit: number; currency: "RUB" }
+  | { currency: "RUB"; tiers: Array<{ from: number; to?: number | null; amount: number }> };
+
+export interface MarketplacePartnerProfile {
+  id: string;
+  partner_id: string;
+  company_name: string;
+  description?: string | null;
+  verification_status: MarketplaceVerificationStatus;
+  rating?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface MarketplaceProductSummary {
+  id: string;
+  partner_id: string;
+  type: MarketplaceProductType;
+  title: string;
+  category: string;
+  price_model: MarketplacePriceModel;
+  price_config: MarketplacePriceConfig;
+  status: MarketplaceProductStatus;
+  updated_at?: string | null;
+  published_at?: string | null;
+}
+
+export interface MarketplaceProduct extends MarketplaceProductSummary {
+  description: string;
+  created_at: string;
+  archived_at?: string | null;
+}
+
+export interface MarketplaceProductInput {
+  type: MarketplaceProductType;
+  title: string;
+  description: string;
+  category: string;
+  price_model: MarketplacePriceModel;
+  price_config: MarketplacePriceConfig;
+}
+
+export interface MarketplaceProductUpdate {
+  type?: MarketplaceProductType;
+  title?: string;
+  description?: string;
+  category?: string;
+  price_model?: MarketplacePriceModel;
+  price_config?: MarketplacePriceConfig;
+}
+
+export interface MarketplaceProductListResponse {
+  items: MarketplaceProductSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export type CatalogItemKind = "SERVICE" | "PRODUCT";
 export type CatalogItemStatus = "DRAFT" | "ACTIVE" | "DISABLED" | "ARCHIVED";
 

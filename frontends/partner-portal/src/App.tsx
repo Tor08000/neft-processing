@@ -29,6 +29,8 @@ import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SupportRequestsPage } from "./pages/SupportRequestsPage";
 import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
+import { MarketplaceProfilePage } from "./pages/MarketplaceProfilePage";
+import { MarketplaceProductsPage } from "./pages/MarketplaceProductsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -61,6 +63,8 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/refunds/:id" element={<RefundDetailsPage />} />
             <Route path="/services" element={<ServicesCatalogPage />} />
             <Route path="/services/:id" element={<ServiceDetailsPage />} />
+            <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
+            <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
             <Route path="/integrations" element={<IntegrationsPage />} />
             <Route path="/support/requests" element={<SupportRequestsPage />} />
             <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />

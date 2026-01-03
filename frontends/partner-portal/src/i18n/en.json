@@ -17,6 +17,9 @@
     "documents": "Documents",
     "services": "Services",
     "integrations": "Integrations",
+    "marketplace": "Marketplace",
+    "marketplaceProfile": "My profile",
+    "marketplaceProducts": "My products",
     "supportRequests": "Requests",
     "settings": "Settings"
   },
@@ -135,6 +138,101 @@
       "DELIVERED": "Delivered",
       "FAILED": "Error",
       "DEAD": "Stopped"
+    },
+    "marketplace": {
+      "PENDING": "Pending",
+      "VERIFIED": "Verified",
+      "REJECTED": "Rejected",
+      "PUBLISHED": "Published",
+      "ARCHIVED": "Archived"
+    }
+  },
+  "marketplace": {
+    "profile": {
+      "title": "Marketplace profile",
+      "subtitle": "Partner profile is shown to clients when you publish products.",
+      "fields": {
+        "companyName": "Company name",
+        "companyNamePlaceholder": "ООО \"Компания\"",
+        "description": "Description",
+        "descriptionPlaceholder": "What services or products you provide"
+      },
+      "verificationInfo": "Verification is handled by an admin.",
+      "loadError": "Unable to load partner profile",
+      "saveError": "Unable to save profile",
+      "saved": "Profile saved",
+      "saving": "Saving..."
+    },
+    "products": {
+      "title": "Marketplace products",
+      "subtitle": "Create draft products and publish when ready.",
+      "filters": {
+        "status": "Status",
+        "type": "Type",
+        "search": "Search",
+        "searchPlaceholder": "Title or description"
+      },
+      "table": {
+        "title": "Title",
+        "type": "Type",
+        "category": "Category",
+        "price": "Price",
+        "updated": "Updated"
+      },
+      "types": {
+        "SERVICE": "Service",
+        "PRODUCT": "Product"
+      },
+      "statuses": {
+        "DRAFT": "Draft",
+        "PUBLISHED": "Published",
+        "ARCHIVED": "Archived"
+      },
+      "priceModels": {
+        "FIXED": "Fixed",
+        "PER_UNIT": "Per unit",
+        "TIERED": "Tiered"
+      },
+      "units": {
+        "item": "item",
+        "liter": "liter",
+        "hour": "hour"
+      },
+      "fields": {
+        "type": "Type",
+        "title": "Title",
+        "description": "Description",
+        "category": "Category",
+        "priceModel": "Pricing model",
+        "amount": "Amount (RUB)",
+        "unit": "Unit",
+        "amountPerUnit": "Amount per unit (RUB)",
+        "tiers": "Price tiers",
+        "tierFrom": "From",
+        "tierTo": "To",
+        "tierAmount": "Amount"
+      },
+      "actions": {
+        "createDraft": "Save as draft",
+        "saveChanges": "Save changes",
+        "archive": "Archive",
+        "addTier": "Add tier"
+      },
+      "emptyTitle": "No products yet",
+      "emptyDescription": "Create your first draft to build the marketplace catalog.",
+      "createTitle": "Create product",
+      "editTitle": "Edit product",
+      "cancelEdit": "Cancel edit",
+      "confirmPublish": "Publish this product? It will become visible to clients.",
+      "confirmArchive": "Archive this product? Clients will no longer see it.",
+      "loadError": "Unable to load products",
+      "saveError": "Unable to save product",
+      "publishError": "Unable to publish product",
+      "archiveError": "Unable to archive product",
+      "validationError": "Check the highlighted fields",
+      "validation": {
+        "amount": "Enter a valid amount"
+      }
     }
   },
   "pricesPage": {
