@@ -175,6 +175,7 @@ from .marketplace_catalog import (  # noqa: F401
     MarketplaceCatalogImmutableError,
     MarketplacePriceModel,
     MarketplaceProduct,
+    MarketplaceProductModerationStatus,
     MarketplaceProductStatus,
     MarketplaceProductType,
     PartnerProfile,

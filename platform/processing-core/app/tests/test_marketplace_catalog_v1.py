@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,13 +17,14 @@ from app.models.cases import CaseEvent
 from app.models.decision_memory import DecisionMemoryRecord
 from app.models.marketplace_catalog import MarketplaceProduct, PartnerProfile
 from app.routers.admin.marketplace_catalog import router as admin_router
+from app.routers.admin.marketplace_moderation import router as moderation_router
 from app.routers.client_marketplace import router as client_router
 from app.routers.partner.marketplace_catalog import router as partner_router
 from app.security.client_auth import require_client_user
 from app.security.rbac.principal import Principal, get_principal
 
 CURRENT_PRINCIPAL: Principal | None = None
-CURRENT_ADMIN_TOKEN: dict = {"user_id": str(uuid4()), "roles": ["admin"]}
+CURRENT_ADMIN_TOKEN: dict | None = {"user_id": str(uuid4()), "roles": ["admin"]}
 CURRENT_CLIENT_TOKEN: dict = {"client_id": str(uuid4())}
 
 
@@ -58,6 +59,7 @@ def api_client() -> tuple[TestClient, sessionmaker]:
     app.include_router(partner_router, prefix="/api")
     app.include_router(client_router, prefix="/api")
     app.include_router(admin_router, prefix="/api/admin")
+    app.include_router(moderation_router, prefix="/api/admin")
 
     def override_get_db():
         db = SessionLocal()
@@ -73,7 +75,12 @@ def api_client() -> tuple[TestClient, sessionmaker]:
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_principal] = override_get_principal
-    app.dependency_overrides[require_admin_user] = lambda: CURRENT_ADMIN_TOKEN
+    def override_admin_user() -> dict:
+        if CURRENT_ADMIN_TOKEN is None:
+            raise HTTPException(status_code=403, detail="forbidden")
+        return CURRENT_ADMIN_TOKEN
+
+    app.dependency_overrides[require_admin_user] = override_admin_user
     app.dependency_overrides[require_client_user] = lambda: CURRENT_CLIENT_TOKEN
 
     with TestClient(app) as client:
@@ -139,7 +146,7 @@ def test_product_create_update(api_client: tuple[TestClient, sessionmaker]):
         assert audit_records
 
 
-def test_publish_visible_in_client_list(api_client: tuple[TestClient, sessionmaker]):
+def test_submit_review_requires_approval_for_visibility(api_client: tuple[TestClient, sessionmaker]):
     client, _ = api_client
     partner_id = str(uuid4())
     global CURRENT_PRINCIPAL
@@ -148,13 +155,72 @@ def test_publish_visible_in_client_list(api_client: tuple[TestClient, sessionmak
     response = client.post("/api/partner/products", json=_create_product_payload())
     product_id = response.json()["id"]
 
-    publish_response = client.post(f"/api/partner/products/{product_id}/publish")
-    assert publish_response.status_code == 200
+    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
+    assert submit_response.status_code == 200
+    assert submit_response.json()["moderation_status"] == "PENDING_REVIEW"
 
     client_list_response = client.get("/api/client/marketplace/products")
     assert client_list_response.status_code == 200
     items = client_list_response.json()["items"]
-    assert any(item["id"] == product_id for item in items)
+    assert not any(item["id"] == product_id for item in items)
+
+    approve_response = client.post(f"/api/admin/marketplace/moderation/{product_id}/approve")
+    assert approve_response.status_code == 200
+    assert approve_response.json()["moderation_status"] == "APPROVED"
+
+    approved_list_response = client.get("/api/client/marketplace/products")
+    approved_items = approved_list_response.json()["items"]
+    assert any(item["id"] == product_id for item in approved_items)
+
+
+def test_admin_reject_hides_product_and_exposes_reason_to_partner(api_client: tuple[TestClient, sessionmaker]):
+    client, _ = api_client
+    partner_id = str(uuid4())
+    global CURRENT_PRINCIPAL
+    CURRENT_PRINCIPAL = _build_principal(partner_id)
+
+    response = client.post("/api/partner/products", json=_create_product_payload())
+    product_id = response.json()["id"]
+
+    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
+    assert submit_response.status_code == 200
+
+    reject_response = client.post(
+        f"/api/admin/marketplace/moderation/{product_id}/reject",
+        json={"reason": "policy"},
+    )
+    assert reject_response.status_code == 200
+    assert reject_response.json()["moderation_status"] == "REJECTED"
+
+    client_list_response = client.get("/api/client/marketplace/products")
+    assert client_list_response.status_code == 200
+    items = client_list_response.json()["items"]
+    assert not any(item["id"] == product_id for item in items)
+
+    partner_response = client.get(f"/api/partner/products/{product_id}")
+    assert partner_response.status_code == 200
+    assert partner_response.json()["moderation_reason"] == "policy"
+
+
+def test_partner_cannot_moderate(api_client: tuple[TestClient, sessionmaker]):
+    client, _ = api_client
+    partner_id = str(uuid4())
+    global CURRENT_PRINCIPAL, CURRENT_ADMIN_TOKEN
+    CURRENT_PRINCIPAL = _build_principal(partner_id)
+
+    response = client.post("/api/partner/products", json=_create_product_payload())
+    product_id = response.json()["id"]
+
+    submit_response = client.post(f"/api/partner/products/{product_id}/submit-review")
+    assert submit_response.status_code == 200
+
+    previous_admin = CURRENT_ADMIN_TOKEN
+    CURRENT_ADMIN_TOKEN = None
+    try:
+        approve_response = client.post(f"/api/admin/marketplace/moderation/{product_id}/approve")
+        assert approve_response.status_code == 403
+    finally:
+        CURRENT_ADMIN_TOKEN = previous_admin
 
 
 def test_partner_cannot_update_foreign_product(api_client: tuple[TestClient, sessionmaker]):

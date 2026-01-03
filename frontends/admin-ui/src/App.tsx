@@ -49,6 +49,7 @@ import FleetGroupsPage from "./pages/fleet/FleetGroupsPage";
 import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
 import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
 import FleetSpendPage from "./pages/fleet/FleetSpendPage";
+import MarketplaceModerationPage from "./pages/marketplace/MarketplaceModerationPage";
 
 export function App() {
   return (
@@ -67,7 +68,7 @@ export function App() {
             <Route path="/finance/links" element={<BillingLinksPage />} />
             <Route path="/risk" element={<Navigate to="/analytics/risk" replace />} />
             <Route path="/policies" element={<Navigate to="/risk/rules" replace />} />
-            <Route path="/marketplace" element={<Navigate to="/crm/clients" replace />} />
+            <Route path="/marketplace" element={<Navigate to="/marketplace/moderation" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/billing" element={<BillingOverviewPage />}>
               <Route index element={<Navigate to="/billing/invoices" replace />} />
@@ -116,6 +117,7 @@ export function App() {
             <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
             <Route path="/fleet/limits" element={<FleetLimitsPage />} />
             <Route path="/fleet/spend" element={<FleetSpendPage />} />
+            <Route path="/marketplace/moderation" element={<MarketplaceModerationPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
