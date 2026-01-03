@@ -35,6 +35,12 @@ def _product_out(product) -> ProductOut:
         price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
         price_config=product.price_config,
         status=product.status.value if hasattr(product.status, "value") else product.status,
+        moderation_status=product.moderation_status.value
+        if hasattr(product.moderation_status, "value")
+        else product.moderation_status,
+        moderation_reason=product.moderation_reason,
+        moderated_by=str(product.moderated_by) if product.moderated_by else None,
+        moderated_at=product.moderated_at,
         published_at=product.published_at,
         archived_at=product.archived_at,
         created_at=product.created_at,
@@ -53,8 +59,12 @@ def _product_list_out(product) -> ProductListOut:
         price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
         price_config=product.price_config,
         status=product.status.value if hasattr(product.status, "value") else product.status,
+        moderation_status=product.moderation_status.value
+        if hasattr(product.moderation_status, "value")
+        else product.moderation_status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+        created_at=product.created_at,
         sponsored=False,
         sponsored_badge=None,
         sponsored_campaign_id=None,
@@ -71,8 +81,12 @@ def _sponsored_product_out(product, *, sponsored: bool, sponsored_badge: str | N
         price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
         price_config=product.price_config,
         status=product.status.value if hasattr(product.status, "value") else product.status,
+        moderation_status=product.moderation_status.value
+        if hasattr(product.moderation_status, "value")
+        else product.moderation_status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+        created_at=product.created_at,
         sponsored=sponsored,
         sponsored_badge=sponsored_badge,
         sponsored_campaign_id=sponsored_campaign_id,

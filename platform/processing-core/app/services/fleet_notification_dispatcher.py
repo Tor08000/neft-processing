@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib import error as url_error
 from urllib import request
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from app.models.fuel import (
     FuelCardGroup,
     FuelAnomaly,
     FuelLimitBreach,
+    WebhookDeliveryAttempt,
 )
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
@@ -40,6 +41,8 @@ from app.services.notifications.email_sender import ConsoleEmailSender, EmailSen
 from app.services.notifications.email_templates import render_notification_email
 from app.services.notifications.telegram_sender import TelegramSendError, send_message
 from app.services.notifications.telegram_templates import render_telegram_message
+from app.services.notifications.stub_sender import process_stub_delivery_outcomes, send_stub_message
+from app.services.notifications.webhook_signature import build_signature_headers, sign_webhook_v1
 from app.services.notifications.webpush_sender import WebPushSender
 
 logger = logging.getLogger(__name__)
@@ -84,11 +87,16 @@ def canonical_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
 
 
-def sign_webhook_payload(payload: dict[str, Any], secret: str, *, timestamp: str) -> str:
-    body = canonical_json(payload)
-    signature_payload = f"{timestamp}.{body}".encode("utf-8")
-    signature = hmac.new(secret.encode("utf-8"), signature_payload, hashlib.sha256).hexdigest()
-    return signature
+def sign_webhook_payload(
+    payload: dict[str, Any],
+    secret: str,
+    *,
+    timestamp: str,
+    nonce: str,
+    event_id: str,
+) -> str:
+    body = canonical_json(payload).encode("utf-8")
+    return sign_webhook_v1(secret=secret, timestamp=timestamp, nonce=nonce, event_id=event_id, body=body)
 
 
 def enqueue_notification(
@@ -195,31 +203,29 @@ def _send_webhook(
     payload: dict[str, Any],
     *,
     event_id: str,
-    event_type: str,
-) -> tuple[int | None, str | None]:
+) -> tuple[int | None, str | None, str, str]:
     secret = channel.secret_ref or ""
     timestamp = str(int(_now().timestamp()))
-    signature = sign_webhook_payload(payload, secret, timestamp=timestamp)
+    nonce = str(uuid4())
     body = canonical_json(payload).encode("utf-8")
+    signature = sign_webhook_payload(payload, secret, timestamp=timestamp, nonce=nonce, event_id=event_id)
+    headers = {
+        "Content-Type": "application/json",
+        **build_signature_headers(event_id=event_id, timestamp=timestamp, nonce=nonce, signature=signature),
+    }
     req = request.Request(
         channel.target,
         data=body,
         method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-NEFT-Signature": f"sha256={signature}",
-            "X-NEFT-Signature-Timestamp": timestamp,
-            "X-NEFT-Event-Id": event_id,
-            "X-NEFT-Event-Type": event_type,
-        },
+        headers=headers,
     )
     try:
         with request.urlopen(req, timeout=5) as response:
             body_text = response.read().decode("utf-8")[:500]
-            return response.status, body_text
+            return response.status, body_text, nonce, timestamp
     except url_error.HTTPError as exc:
         body_text = exc.read().decode("utf-8")[:500] if exc.fp else None
-        return exc.code, body_text
+        return exc.code, body_text, nonce, timestamp
 
 
 def _send_email(sender: EmailSender, channel: FleetNotificationChannel, payload: dict[str, Any]) -> str | None:
@@ -252,6 +258,49 @@ def _send_push(db: Session, sender: WebPushSender, client_id: str, payload: dict
     return last_status, last_body
 
 
+def _send_stub_notification(
+    db: Session,
+    *,
+    outbox: FleetNotificationOutbox,
+    channel: FleetNotificationChannel,
+    payload: dict[str, Any],
+    provider: str,
+) -> str:
+    if provider not in {"sms_stub", "voice_stub"}:
+        raise RuntimeError("unsupported_stub_provider")
+    tenant_id = payload.get("tenant_id")
+    result = send_stub_message(
+        db,
+        tenant_id=str(tenant_id) if tenant_id else None,
+        channel=channel.channel_type.value,
+        provider=provider,
+        recipient=channel.target,
+        payload=payload,
+    )
+    return result.message_id
+
+
+def _process_stub_delivery_outcomes(db: Session) -> None:
+    sms_delay = int(os.getenv("SMS_STUB_DELIVERY_DELAY_MS", "1000"))
+    sms_fail_rate = float(os.getenv("SMS_STUB_FAIL_RATE", "0.0"))
+    voice_delay = int(os.getenv("VOICE_STUB_DELIVERY_DELAY_MS", "1000"))
+    voice_fail_rate = float(os.getenv("VOICE_STUB_FAIL_RATE", "0.0"))
+    process_stub_delivery_outcomes(
+        db,
+        provider="sms_stub",
+        channel=FleetNotificationChannelType.SMS.value,
+        delay_ms=sms_delay,
+        fail_rate=sms_fail_rate,
+    )
+    process_stub_delivery_outcomes(
+        db,
+        provider="voice_stub",
+        channel=FleetNotificationChannelType.VOICE.value,
+        delay_ms=voice_delay,
+        fail_rate=voice_fail_rate,
+    )
+
+
 def _parse_telegram_binding_id(channel: FleetNotificationChannel) -> str | None:
     if not channel.target.startswith("telegram:"):
         return None
@@ -279,6 +328,32 @@ def _attempted_channel_names(entries: list[Any]) -> list[str]:
     return names
 
 
+def _log_webhook_attempt(
+    db: Session,
+    *,
+    endpoint_id: str,
+    event_id: str,
+    attempt_no: int,
+    status: str,
+    http_status: int | None,
+    response_body: str | None,
+    next_retry_at: datetime | None,
+) -> WebhookDeliveryAttempt:
+    attempt = WebhookDeliveryAttempt(
+        event_id=event_id,
+        endpoint_id=endpoint_id,
+        attempt_no=attempt_no,
+        status=status,
+        http_status=http_status,
+        response_body_snippet=response_body[:500] if response_body else None,
+        next_retry_at=next_retry_at,
+        dedupe_key=f\"{endpoint_id}:{event_id}\",
+    )
+    db.add(attempt)
+    db.flush()
+    return attempt
+
+
 def dispatch_pending_outbox(
     db: Session,
     *,
@@ -298,6 +373,7 @@ def dispatch_pending_outbox(
         processed.append(
             _dispatch_outbox_item(db, outbox, sender=sender, webpush_sender=webpush_sender),
         )
+    _process_stub_delivery_outcomes(db)
     return processed
 
 
@@ -313,7 +389,9 @@ def dispatch_outbox_item(
     outbox = db.query(FleetNotificationOutbox).filter(FleetNotificationOutbox.id == outbox_id).one_or_none()
     if not outbox:
         raise RuntimeError("outbox_not_found")
-    return _dispatch_outbox_item(db, outbox, sender=sender, webpush_sender=webpush_sender)
+    dispatched = _dispatch_outbox_item(db, outbox, sender=sender, webpush_sender=webpush_sender)
+    _process_stub_delivery_outcomes(db)
+    return dispatched
 
 
 def _default_email_sender() -> EmailSender:
@@ -402,18 +480,39 @@ def _dispatch_outbox_item(
                 continue
             attempted.append(channel.channel_type.value)
             if channel.channel_type == FleetNotificationChannelType.WEBHOOK:
-                status_code, response_body = _send_webhook(
-                    channel,
-                    payload,
-                    event_id=str(outbox.id),
-                    event_type=outbox.event_type,
-                )
-                outbox.last_response_status = status_code
-                outbox.last_response_body = response_body
-                if status_code:
-                    fleet_metrics.mark_webhook_response(f"{status_code // 100}xx")
-                if status_code and status_code >= 400:
-                    raise RuntimeError(f"webhook_status_{status_code}")
+                attempt_no = outbox.attempts + 1
+                next_retry_at: datetime | None = None
+                status_code = None
+                response_body = None
+                delivery_status = "SENT"
+                try:
+                    status_code, response_body, _, _ = _send_webhook(
+                        channel,
+                        payload,
+                        event_id=str(outbox.id),
+                    )
+                    outbox.last_response_status = status_code
+                    outbox.last_response_body = response_body
+                    if status_code:
+                        fleet_metrics.mark_webhook_response(f"{status_code // 100}xx")
+                    if status_code and status_code >= 400:
+                        delivery_status = "FAILED"
+                        raise RuntimeError(f"webhook_status_{status_code}")
+                except Exception:
+                    delivery_status = "FAILED"
+                    next_retry_at = _next_attempt(attempt_no)
+                    raise
+                finally:
+                    _log_webhook_attempt(
+                        db,
+                        endpoint_id=str(channel.id),
+                        event_id=str(outbox.id),
+                        attempt_no=attempt_no,
+                        status=delivery_status,
+                        http_status=status_code,
+                        response_body=response_body,
+                        next_retry_at=next_retry_at,
+                    )
             elif channel.channel_type == FleetNotificationChannelType.EMAIL:
                 outbox.delivery_message_id = _send_email(sender, channel, payload)
             elif channel.channel_type == FleetNotificationChannelType.PUSH:
@@ -422,6 +521,22 @@ def _dispatch_outbox_item(
                 outbox.last_response_body = response_body[:500] if response_body else None
                 if status_code and status_code >= 400:
                     raise RuntimeError(f"webpush_status_{status_code}")
+            elif channel.channel_type == FleetNotificationChannelType.SMS:
+                outbox.delivery_message_id = _send_stub_notification(
+                    db,
+                    outbox=outbox,
+                    channel=channel,
+                    payload=payload,
+                    provider=os.getenv(\"SMS_PROVIDER\", \"sms_stub\"),
+                )
+            elif channel.channel_type == FleetNotificationChannelType.VOICE:
+                outbox.delivery_message_id = _send_stub_notification(
+                    db,
+                    outbox=outbox,
+                    channel=channel,
+                    payload=payload,
+                    provider=os.getenv(\"VOICE_PROVIDER\", \"voice_stub\"),
+                )
         outbox.status = FleetNotificationOutboxStatus.SENT
         outbox.last_status = "sent"
         outbox.last_error = None

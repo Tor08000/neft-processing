@@ -108,6 +108,16 @@ class Settings:
     ).lower() in {"1", "true", "yes"}
     NEFT_INVOICE_MONTHLY_AT: str = os.getenv("NEFT_INVOICE_MONTHLY_AT", "03:00")
 
+    # Stub providers (local demos)
+    BANK_STUB_ENABLED: bool = os.getenv("BANK_STUB_ENABLED", "false").lower() in {"1", "true", "yes"}
+    BANK_STUB_IMMEDIATE_SETTLE: bool = os.getenv("BANK_STUB_IMMEDIATE_SETTLE", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    ERP_STUB_ENABLED: bool = os.getenv("ERP_STUB_ENABLED", "false").lower() in {"1", "true", "yes"}
+    ERP_STUB_AUTO_ACK: bool = os.getenv("ERP_STUB_AUTO_ACK", "true").lower() in {"1", "true", "yes"}
+
     # Invoice PDFs / storage
     NEFT_INVOICE_PDF_BUCKET: str = os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
     NEFT_S3_BUCKET_INVOICES: str = os.getenv(
@@ -177,6 +187,14 @@ class Settings:
     TELEGRAM_WEBHOOK_PATH: str = os.getenv("TELEGRAM_WEBHOOK_PATH", "/api/internal/telegram/webhook")
     TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN: int = int(os.getenv("TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN", "60"))
     TELEGRAM_MAX_RETRY: int = int(os.getenv("TELEGRAM_MAX_RETRY", "10"))
+
+    # SMS/Voice notifications (stub providers)
+    SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "sms_stub")
+    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "voice_stub")
+    SMS_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("SMS_STUB_DELIVERY_DELAY_MS", "1000"))
+    SMS_STUB_FAIL_RATE: float = float(os.getenv("SMS_STUB_FAIL_RATE", "0.0"))
+    VOICE_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("VOICE_STUB_DELIVERY_DELAY_MS", "1000"))
+    VOICE_STUB_FAIL_RATE: float = float(os.getenv("VOICE_STUB_FAIL_RATE", "0.0"))
 
     @property
     def redis_dsn(self) -> str:

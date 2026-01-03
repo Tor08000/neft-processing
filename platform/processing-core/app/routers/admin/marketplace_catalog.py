@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.marketplace_catalog import MarketplaceProductStatus, PartnerVerificationStatus
+from app.models.marketplace_catalog import (
+    MarketplaceProductModerationStatus,
+    MarketplaceProductStatus,
+    PartnerVerificationStatus,
+)
 from app.schemas.marketplace.catalog import (
     PartnerProfileListResponse,
     PartnerProfileOut,
@@ -48,6 +52,12 @@ def _product_out(product) -> ProductOut:
         price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
         price_config=product.price_config,
         status=product.status.value if hasattr(product.status, "value") else product.status,
+        moderation_status=product.moderation_status.value
+        if hasattr(product.moderation_status, "value")
+        else product.moderation_status,
+        moderation_reason=product.moderation_reason,
+        moderated_by=str(product.moderated_by) if product.moderated_by else None,
+        moderated_at=product.moderated_at,
         published_at=product.published_at,
         archived_at=product.archived_at,
         created_at=product.created_at,
@@ -66,8 +76,12 @@ def _product_list_out(product) -> ProductListOut:
         price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
         price_config=product.price_config,
         status=product.status.value if hasattr(product.status, "value") else product.status,
+        moderation_status=product.moderation_status.value
+        if hasattr(product.moderation_status, "value")
+        else product.moderation_status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+        created_at=product.created_at,
         sponsored=False,
         sponsored_badge=None,
         sponsored_campaign_id=None,
@@ -126,6 +140,7 @@ def verify_partner(
 def list_products(
     request: Request,
     status: MarketplaceProductStatus | None = Query(None),
+    moderation_status: MarketplaceProductModerationStatus | None = Query(None),
     partner_id: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -135,7 +150,13 @@ def list_products(
     service = MarketplaceCatalogService(
         db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))
     )
-    items, total = service.list_admin_products(status=status, partner_id=partner_id, limit=limit, offset=offset)
+    items, total = service.list_admin_products(
+        status=status,
+        moderation_status=moderation_status,
+        partner_id=partner_id,
+        limit=limit,
+        offset=offset,
+    )
     return ProductListResponse(
         items=[_product_list_out(item) for item in items],
         total=total,

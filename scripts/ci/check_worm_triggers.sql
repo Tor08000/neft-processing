@@ -2,8 +2,28 @@ DO $$
 DECLARE
     table_name text;
     missing text := '';
+    worm_tables text[] := ARRAY[
+        'case_events',
+        'decision_memory',
+        'fuel_transactions',
+        'internal_ledger_entries',
+        'billing_invoices',
+        'billing_payments',
+        'billing_refunds',
+        'marketplace_order_events'
+    ];
 BEGIN
-    FOREACH table_name IN ARRAY ARRAY['case_events', 'decision_memory', 'fuel_transactions']
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE c.relname = 'audit_log'
+          AND t.tgname = 'trg_audit_log_immutable'
+    ) THEN
+        missing := missing || 'audit_log:trg_audit_log_immutable;';
+    END IF;
+
+    FOREACH table_name IN ARRAY worm_tables
     LOOP
         IF NOT EXISTS (
             SELECT 1

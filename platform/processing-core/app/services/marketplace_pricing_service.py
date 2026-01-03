@@ -9,7 +9,12 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.models.marketplace_catalog import MarketplacePriceModel, MarketplaceProduct, MarketplaceProductStatus
+from app.models.marketplace_catalog import (
+    MarketplacePriceModel,
+    MarketplaceProduct,
+    MarketplaceProductModerationStatus,
+    MarketplaceProductStatus,
+)
 from app.models.marketplace_orders import MarketplaceOrder
 from app.models.marketplace_promotions import (
     MarketplaceCoupon,
@@ -101,6 +106,8 @@ class MarketplacePricingService:
         for product in product_map.values():
             if product.status != MarketplaceProductStatus.PUBLISHED:
                 raise MarketplacePricingServiceError("product_not_published")
+            if product.moderation_status != MarketplaceProductModerationStatus.APPROVED:
+                raise MarketplacePricingServiceError("product_not_approved")
         return product_map
 
     def _promotion_in_schedule(self, promotion: MarketplacePromotion) -> bool:

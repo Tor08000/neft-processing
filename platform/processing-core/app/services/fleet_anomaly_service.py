@@ -24,6 +24,16 @@ from app.services.case_event_redaction import redact_deep
 from app.services.decision_memory.records import record_decision_memory
 from app.services.fleet_metrics import metrics as fleet_metrics
 
+INJECTED_ANOMALY_MAP = {
+    "VELOCITY_BURST": FuelAnomalyType.FREQUENCY_BURST,
+    "GEO_JUMP": FuelAnomalyType.GEO_DISTANCE,
+    "AMOUNT_SPIKE": FuelAnomalyType.SPIKE_AMOUNT,
+    "LITERS_SPIKE": FuelAnomalyType.SPIKE_VOLUME,
+    "OFF_HOURS": FuelAnomalyType.TIME_OF_DAY,
+    "PRICE_MISMATCH": FuelAnomalyType.MERCHANT_OUTLIER,
+    "STATION_SUSPECT": FuelAnomalyType.MERCHANT_OUTLIER,
+}
+
 
 @dataclass(frozen=True)
 class BaselineSnapshot:
@@ -199,6 +209,33 @@ def detect_anomalies_for_transaction(
                 )
             )
 
+    if transaction.volume_liters is not None and baseline.count >= 3 and baseline.volumes:
+        avg = sum(baseline.volumes) / Decimal(len(baseline.volumes))
+        try:
+            stddev = Decimal(str(statistics.pstdev([float(volume) for volume in baseline.volumes])))
+        except statistics.StatisticsError:
+            stddev = Decimal("0")
+        p95 = _percentile(baseline.volumes, 95) or avg
+        threshold = max(p95 * Decimal("1.3"), avg + (stddev * Decimal("3")))
+        volume = Decimal(str(transaction.volume_liters))
+        if threshold > 0 and volume > threshold:
+            ratio = volume / threshold
+            severity = _severity_from_ratio(ratio)
+            anomalies.append(
+                _record_anomaly(
+                    db,
+                    tx=transaction,
+                    anomaly_type=FuelAnomalyType.SPIKE_VOLUME,
+                    severity=severity,
+                    score=_score_from_ratio(ratio),
+                    baseline={"avg": str(avg), "p95": str(p95), "stddev": str(stddev)},
+                    details={"reason": "volume_spike", "threshold": str(threshold), "volume": str(volume)},
+                    principal=principal,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            )
+
     if transaction.merchant_key and baseline.merchants and transaction.merchant_key not in baseline.merchants:
         anomalies.append(
             _record_anomaly(
@@ -261,6 +298,54 @@ def detect_anomalies_for_transaction(
                 )
             )
 
+    return anomalies
+
+
+def detect_injected_anomalies(
+    db: Session,
+    *,
+    transaction: FuelTransaction,
+    raw_payload: dict[str, Any] | None,
+    principal: Principal | None,
+    request_id: str | None,
+    trace_id: str | None,
+) -> list[FuelAnomaly]:
+    if not raw_payload:
+        return []
+    injected = raw_payload.get("virtual_anomalies") or raw_payload.get("anomalies") or []
+    anomalies: list[FuelAnomaly] = []
+    for entry in injected:
+        if not entry:
+            continue
+        if isinstance(entry, dict):
+            name = str(entry.get("type") or entry.get("name") or "").upper()
+            severity = entry.get("severity")
+        else:
+            name = str(entry).upper()
+            severity = None
+        anomaly_type = INJECTED_ANOMALY_MAP.get(name)
+        if not anomaly_type:
+            try:
+                anomaly_type = FuelAnomalyType(name)
+            except ValueError:
+                continue
+        severity_value = FleetNotificationSeverity(severity) if severity else FleetNotificationSeverity.MEDIUM
+        anomalies.append(
+            _record_synthetic_anomaly(
+                db,
+                client_id=transaction.client_id,
+                card_id=str(transaction.card_id),
+                group_id=None,
+                anomaly_type=anomaly_type,
+                severity=severity_value,
+                score=Decimal("0.7"),
+                occurred_at=transaction.occurred_at,
+                details={"source": "virtual_network", "injected_type": name},
+                principal=principal,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+        )
     return anomalies
 
 
@@ -382,4 +467,4 @@ def detect_repeated_breach_anomaly(
     )
 
 
-__all__ = ["detect_anomalies_for_transaction", "detect_repeated_breach_anomaly"]
+__all__ = ["detect_anomalies_for_transaction", "detect_injected_anomalies", "detect_repeated_breach_anomaly"]

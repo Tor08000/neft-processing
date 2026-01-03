@@ -522,6 +522,8 @@ class InternalLedgerService:
         payment: InvoicePayment,
         tenant_id: int,
     ) -> None:
+        currency = payment.currency
+        amount = int(payment.amount)
         transaction, is_replay = self._get_or_create_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.PAYMENT_APPLIED,
@@ -535,9 +537,6 @@ class InternalLedgerService:
         )
         if is_replay:
             return
-
-        currency = payment.currency
-        amount = int(payment.amount)
 
         account_cash = self._ensure_account(
             tenant_id=tenant_id,
@@ -581,6 +580,8 @@ class InternalLedgerService:
         credit_note: CreditNote,
         tenant_id: int,
     ) -> None:
+        currency = credit_note.currency
+        amount = int(credit_note.amount)
         transaction, is_replay = self._get_or_create_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.CREDIT_NOTE_APPLIED,
@@ -594,9 +595,6 @@ class InternalLedgerService:
         )
         if is_replay:
             return
-
-        currency = credit_note.currency
-        amount = int(credit_note.amount)
 
         account_revenue = self._ensure_account(
             tenant_id=tenant_id,
@@ -640,6 +638,8 @@ class InternalLedgerService:
         refund: CreditNote,
         tenant_id: int,
     ) -> None:
+        currency = refund.currency
+        amount = int(refund.amount)
         transaction, is_replay = self._get_or_create_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.REFUND_APPLIED,
@@ -653,9 +653,6 @@ class InternalLedgerService:
         )
         if is_replay:
             return
-
-        currency = refund.currency
-        amount = int(refund.amount)
 
         account_ar = self._ensure_account(
             tenant_id=tenant_id,

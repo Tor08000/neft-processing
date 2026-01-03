@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, root_validator
 ProductType = Literal["SERVICE", "PRODUCT"]
 PriceModel = Literal["FIXED", "PER_UNIT", "TIERED"]
 ProductStatus = Literal["DRAFT", "PUBLISHED", "ARCHIVED"]
+ModerationStatus = Literal["DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED"]
 VerificationStatus = Literal["PENDING", "VERIFIED", "REJECTED"]
 
 
@@ -137,6 +138,10 @@ class ProductOut(BaseModel):
     price_model: PriceModel
     price_config: dict
     status: ProductStatus
+    moderation_status: ModerationStatus
+    moderation_reason: str | None = None
+    moderated_by: str | None = None
+    moderated_at: datetime | None = None
     published_at: datetime | None = None
     archived_at: datetime | None = None
     created_at: datetime
@@ -153,8 +158,10 @@ class ProductListOut(BaseModel):
     price_model: PriceModel
     price_config: dict
     status: ProductStatus
+    moderation_status: ModerationStatus
     updated_at: datetime | None = None
     published_at: datetime | None = None
+    created_at: datetime | None = None
     sponsored: bool = False
     sponsored_badge: str | None = None
     sponsored_campaign_id: str | None = None
@@ -170,3 +177,7 @@ class ProductListResponse(BaseModel):
 class ProductStatusUpdateRequest(BaseModel):
     status: ProductStatus
     reason: str | None = None
+
+
+class ProductModerationRejectRequest(BaseModel):
+    reason: str

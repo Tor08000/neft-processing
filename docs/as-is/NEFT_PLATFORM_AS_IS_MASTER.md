@@ -14,7 +14,7 @@
 - Fuel cards, limits, ingestion, anomaly detection, notifications, and policies exist; provider framework is present but real providers are stubs/templates only. (See `platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/services/fleet_ingestion_service.py`, `platform/processing-core/app/services/fleet_anomaly_service.py`, `platform/processing-core/app/integrations/fuel/providers/stub_provider.py`, `platform/processing-core/app/integrations/fuel/providers/http_provider_template/client.py`.)
 
 **Marketplace — PARTIAL**
-- Marketplace catalog, orders, promotions, sponsored offers, analytics, SLA/penalties and booking flows are implemented; moderation workflows are **NOT IMPLEMENTED** (no moderation-specific models/routers found). (See `platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/routers/client_marketplace_orders.py`.)
+- Marketplace catalog, orders, promotions, sponsored offers, analytics, SLA/penalties and booking flows are implemented; light moderation is implemented with status fields + admin review queue. (See `platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`, `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/routers/client_marketplace_orders.py`.)
 
 **Policy/Response — PARTIAL**
 - Policy engine for finance/documents and fleet policy engine/escalations exist; unified policy governance UI is partial in client/admin portals. (See `platform/processing-core/app/services/policy/engine.py`, `platform/processing-core/app/services/fleet_policy_engine.py`, `platform/processing-core/app/services/ops/escalations.py`, `frontends/client-portal/src/App.tsx`, `frontends/admin-ui/src/router/index.tsx`.)
@@ -351,7 +351,56 @@ Top-level map (selected):
 - SLA consequences flow to billing/ledger. (`platform/processing-core/app/services/order_sla_consequence_service.py`, `platform/processing-core/app/services/settlement_service.py`)
 
 **Moderation**
-- **NOT IMPLEMENTED** (no moderation models/routers found).
+- Light moderation workflow with statuses, admin queue, and audit events is implemented. (`platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/services/marketplace_catalog_service.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`)
+
+---
+
+## 2.9.1 Marketplace M1–M5 Execution Map
+
+### M1 — Partner Profiles & Catalog
+- **Definition (UPAS):** Partner profile onboarding + catalog creation/management.
+- **What is implemented (AS-IS):** Partner profiles, catalog CRUD, and moderation workflow for governance.
+- **Code references:** `platform/processing-core/app/models/marketplace_catalog.py` (PartnerProfile, MarketplaceProduct, MarketplaceProductModerationStatus), `platform/processing-core/app/services/marketplace_catalog_service.py`.
+- **API references:** `platform/processing-core/app/routers/partner/marketplace_catalog.py` (profile, products, submit-review), `platform/processing-core/app/routers/admin/marketplace_catalog.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`.
+- **UI references:** `frontends/partner-portal/src/pages/MarketplaceProfilePage.tsx`, `frontends/partner-portal/src/pages/MarketplaceProductsPage.tsx`, `frontends/admin-ui/src/pages/marketplace/MarketplaceModerationPage.tsx`.
+- **Events / tables:** `partner_profiles`, `marketplace_products`, `audit_log` (PRODUCT_SUBMITTED_FOR_REVIEW, PRODUCT_APPROVED, PRODUCT_REJECTED).
+- **Acceptance notes:** **COMPLETE**. Moderation workflow (UPAS governance) implemented in admin moderation router + catalog service.
+
+### M2 — Client Marketplace (Browse)
+- **Definition (UPAS):** Client browse/search, product details, discovery.
+- **What is implemented (AS-IS):** Client marketplace browse, details, and recommendation tracking.
+- **Code references:** `platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/services/marketplace_catalog_service.py`, `platform/processing-core/app/services/marketplace_recommendation_service.py`.
+- **API references:** `platform/processing-core/app/routers/client_marketplace.py`.
+- **UI references:** `frontends/client-portal/src/pages/MarketplaceCatalogPage.tsx`, `frontends/client-portal/src/pages/MarketplaceProductDetailsPage.tsx`.
+- **Events / tables:** `marketplace_products`, `marketplace_events`, `offer_candidates`.
+- **Acceptance notes:** **COMPLETE** (browse/details and recommendations implemented; client sees approved products).
+
+### M3 — Orders & Lifecycle
+- **Definition (UPAS):** Order placement + lifecycle state machine + event trail.
+- **What is implemented (AS-IS):** Marketplace orders model, events, state machine, audit-bound transitions.
+- **Code references:** `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/services/marketplace_order_service.py`.
+- **API references:** `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/routers/partner/marketplace_orders.py`.
+- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrdersPage.tsx`, `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx`, `frontends/partner-portal/src/pages/OrdersPage.tsx`, `frontends/partner-portal/src/pages/OrderDetailsPage.tsx`.
+- **Events / tables:** `marketplace_orders`, `marketplace_order_events`, `audit_log`.
+- **Acceptance notes:** **COMPLETE** (append-only events + lifecycle enforced).
+
+### M4 — SLA & Billing Coupling
+- **Definition (UPAS):** SLA evaluation, penalties/credits, settlement coupling.
+- **What is implemented (AS-IS):** SLA evaluation + consequences, settlement adjustments, and SLA-related audit trails.
+- **Code references:** `platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/services/order_sla_service.py`, `platform/processing-core/app/services/order_sla_consequence_service.py`, `platform/processing-core/app/services/settlement_service.py`.
+- **API references:** `platform/processing-core/app/routers/admin/marketplace_order_sla.py`.
+- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx` (SLA tab).
+- **Events / tables:** `marketplace_order_sla`, `marketplace_sla_notification_outbox`.
+- **Acceptance notes:** **COMPLETE** (SLA results feed billing/settlement paths).
+
+### M5 — Full UX
+- **Definition (UPAS):** End-to-end UX for timeline, incidents, invoices, partner progress and payouts visibility.
+- **What is implemented (AS-IS):** Client order timeline + SLA + invoices + incidents; partner order management and progress flows.
+- **Code references:** `platform/processing-core/app/services/marketplace_order_service.py`, `platform/processing-core/app/services/explain_v2_service.py`.
+- **API references:** `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/routers/client_service_completion_proofs.py`.
+- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx` (timeline/SLA/incidents/invoices), `frontends/partner-portal/src/pages/OrderDetailsPage.tsx`, `frontends/partner-portal/src/pages/OrderTimelinePanel.tsx`.
+- **Events / tables:** `marketplace_order_events`, `service_completion_proofs`.
+- **Acceptance notes:** **COMPLETE** (full UX implemented in client + partner portals).
 
 ---
 
@@ -452,6 +501,8 @@ Top-level map (selected):
 
 ## 2.15 Feature Flags / Options (крайние опции)
 
+Подробная матрица флагов: [Feature Flags Matrix](../product/feature_flags_matrix.md).
+
 | Feature flag / option | Default | Where configured | Effect |
 | --- | --- | --- | --- |
 | `FEATURE_FLAGS` | `ai_scorer:on,ai_anomaly:off` | `.env.example` | Frontend/global feature flag string (parsed by UI/clients). |
@@ -467,19 +518,13 @@ Top-level map (selected):
 
 ## 2.16 Known Issues / Technical Debt (фактическое)
 
-1) **Partner portal container missing in compose**
-- Evidence: gateway routes to `partner-web`, but `docker-compose.yml` has no `partner-web` service. (`gateway/nginx.conf`, `docker-compose.yml`)
-- **Status:** OPEN
-- **Workaround:** Run partner portal separately (build `frontends/partner-portal`) or add service to compose.
-- **Pilot risk:** Partner UI not reachable via gateway on default stack.
-
-2) **Integration Hub deployed (stub mode)**
-- Evidence: Integration Hub compose service with stub webhooks/EDO. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
+1) **Integration Hub not deployed**
+- Evidence: Integration Hub code exists but no compose service. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
 - **Status:** OPEN
 - **Workaround:** Run it manually if needed; otherwise webhooks/EDO in hub are unavailable.
 - **Pilot risk:** Webhook/EDO flows not runnable by default.
 
-3) **Loki/log aggregation absent**
+2) **Loki/log aggregation absent**
 - Evidence: No Loki services in compose. (`docker-compose.yml`)
 - **Status:** OPEN
 - **Workaround:** Use container logs or extend observability stack.
