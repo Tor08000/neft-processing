@@ -37,6 +37,8 @@ class OrderCreateRequest(BaseModel):
     quantity: Decimal = Field(..., gt=0)
     note: str | None = None
     external_ref: str | None = Field(default=None, alias="idempotency_key")
+    coupon_code: str | None = None
+    pricing_mode: str | None = None
 
     class Config:
         allow_population_by_field_name = True
@@ -90,6 +92,10 @@ class OrderOut(BaseModel):
     product_id: str
     quantity: Decimal
     price_snapshot: dict
+    price_snapshot_json: dict | None = None
+    pricing_version: str | None = None
+    applied_promotions_json: dict | None = None
+    coupon_code_used: str | None = None
     status: OrderStatus
     created_at: datetime
     updated_at: datetime | None = None

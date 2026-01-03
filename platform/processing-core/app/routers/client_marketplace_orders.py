@@ -14,10 +14,13 @@ from app.schemas.marketplace.orders import (
     OrderEventOut,
     OrderOut,
 )
+from app.schemas.marketplace.pricing import QuoteRequest, QuoteResponse
 from app.security.rbac.guard import require_permission
 from app.security.rbac.principal import Principal
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_order_service import MarketplaceOrderService, MarketplaceOrderServiceError
+from app.services.marketplace_pricing_service import MarketplacePricingService, MarketplacePricingServiceError
+from app.models.marketplace_catalog import MarketplaceProduct
 
 router = APIRouter(prefix="/client/marketplace/orders", tags=["client-portal-v1"])
 
@@ -39,6 +42,10 @@ def _order_out(order) -> OrderOut:
         product_id=str(order.product_id),
         quantity=order.quantity,
         price_snapshot=order.price_snapshot,
+        price_snapshot_json=order.price_snapshot_json,
+        pricing_version=order.pricing_version,
+        applied_promotions_json=order.applied_promotions_json,
+        coupon_code_used=order.coupon_code_used,
         status=order.status.value if hasattr(order.status, "value") else order.status,
         created_at=order.created_at,
         updated_at=order.updated_at,
@@ -73,6 +80,16 @@ def _handle_service_error(exc: MarketplaceOrderServiceError) -> None:
             status_code=409,
             detail={"error": "invalid_transition", "reason": exc.detail.get("event"), "from": exc.detail.get("from")},
         ) from exc
+    raise HTTPException(status_code=400, detail=exc.code) from exc
+
+
+def _handle_pricing_error(exc: MarketplacePricingServiceError) -> None:
+    if exc.code in {"product_not_found"}:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    if exc.code in {"product_not_published"}:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+    if exc.code in {"partner_mismatch", "currency_mismatch", "items_required"}:
+        raise HTTPException(status_code=400, detail=exc.code) from exc
     raise HTTPException(status_code=400, detail=exc.code) from exc
 
 
@@ -120,12 +137,52 @@ def create_client_order(
             quantity=payload.quantity,
             note=payload.note,
             external_ref=payload.external_ref,
+            coupon_code=payload.coupon_code,
+            pricing_mode=payload.pricing_mode,
             actor=MarketplaceOrderActorType.CLIENT,
         )
     except MarketplaceOrderServiceError as exc:
         _handle_service_error(exc)
     db.commit()
     return _order_out(order)
+
+
+@router.post("/quote", response_model=QuoteResponse)
+def quote_client_order(
+    payload: QuoteRequest,
+    request: Request,
+    principal: Principal = Depends(require_permission("client:marketplace:orders:create")),
+    db: Session = Depends(get_db),
+) -> QuoteResponse:
+    client_id = _ensure_client_context(principal)
+    pricing_service = MarketplacePricingService(
+        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
+    )
+    items = [{"product_id": item.product_id, "quantity": item.quantity} for item in payload.items]
+    if not items:
+        raise HTTPException(status_code=400, detail="items_required")
+    product_ids = [item["product_id"] for item in items]
+    products = db.query(MarketplaceProduct).filter(MarketplaceProduct.id.in_(product_ids)).all()
+    if not products:
+        raise HTTPException(status_code=404, detail="product_not_found")
+    partner_ids = {str(product.partner_id) for product in products}
+    if len(partner_ids) != 1:
+        raise HTTPException(status_code=400, detail="partner_mismatch")
+    partner_id = partner_ids.pop()
+    try:
+        pricing = pricing_service.quote(
+            partner_id=partner_id,
+            client_id=client_id,
+            items=items,
+            coupon_code=payload.coupon_code,
+        )
+    except MarketplacePricingServiceError as exc:
+        _handle_pricing_error(exc)
+    return QuoteResponse(
+        price_snapshot=pricing.price_snapshot,
+        applied_promotions=pricing.applied_promotions_json,
+        coupon_code=payload.coupon_code,
+    )
 
 
 @router.get("/{order_id}", response_model=OrderDetailOut)
