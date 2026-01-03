@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, type NavLinkProps } from "react-router-dom";
 import { AppLogo } from "./AppLogo";
 
 export type BrandNavItem = {
@@ -16,10 +16,10 @@ export type BrandSidebarProps = {
 };
 
 type NavLinkClassNameState = {
-  isActive: boolean;
+  isActive?: boolean;
 };
 
-const navLinkClassName = ({ isActive }: NavLinkClassNameState) =>
+const navLinkClassName: NavLinkProps["className"] = ({ isActive = false }: NavLinkClassNameState) =>
   `brand-nav-link${isActive ? " is-active" : ""}`;
 
 export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebarProps) {

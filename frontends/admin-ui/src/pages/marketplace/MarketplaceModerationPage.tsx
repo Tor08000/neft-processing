@@ -165,7 +165,7 @@ export const MarketplaceModerationPage: React.FC = () => {
         {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
       </div>
 
-      {toast ? <Toast toast={toast} /> : null}
+      <Toast toast={toast} />
 
       <div className="filters">
         <div className="filter">
