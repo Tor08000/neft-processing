@@ -382,7 +382,7 @@ services:
     image: danihodovic/celery-exporter:latest
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
-    command: ["--broker=redis://redis:6379/0", "--port=9808"]
+    command: ["--broker-url=redis://redis:6379/0", "--port=9808"]
     depends_on:
       redis:
         condition: service_healthy

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from jinja2 import Environment, StrictUndefined
-from weasyprint import HTML
 
 
 @dataclass
@@ -19,6 +18,12 @@ class HtmlRenderer:
     def render(self, template_html: str, data: dict) -> HtmlRenderResult:
         template = self._env.from_string(template_html)
         rendered_html = template.render(**data)
+        try:
+            from weasyprint import HTML
+        except (ImportError, OSError) as exc:
+            raise RuntimeError(
+                "PDF rendering unavailable: WeasyPrint is not installed or missing system dependencies."
+            ) from exc
         pdf_bytes = HTML(string=rendered_html).write_pdf()
         return HtmlRenderResult(html=rendered_html, pdf_bytes=pdf_bytes)
 
