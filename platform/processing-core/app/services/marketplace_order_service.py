@@ -266,19 +266,48 @@ class MarketplaceOrderService:
             price_config=product.price_config,
             quantity=quantity,
         )
+        price_snapshot = {
+            "price_model": price_model,
+            "price_config": product.price_config,
+        }
+        pricing_snapshot = None
+        applied_promotions = None
+        discount_amount = Decimal("0")
+        final_price = price_amount
+        pricing_result = None
+        if pricing_mode == "promo_v1" or coupon_code:
+            from app.services.marketplace_pricing_service import MarketplacePricingService
+            from app.services.marketplace_pricing_service import MarketplacePricingServiceError
+
+            pricing_service = MarketplacePricingService(self.db, request_ctx=self.request_ctx)
+            try:
+                pricing_result = pricing_service.quote(
+                    partner_id=str(product.partner_id),
+                    client_id=client_id,
+                    items=[{"product_id": product_id, "quantity": quantity}],
+                    coupon_code=coupon_code,
+                )
+            except MarketplacePricingServiceError as exc:
+                raise MarketplaceOrderServiceError(exc.code, detail=exc.detail) from exc
+            pricing_snapshot = pricing_result.price_snapshot
+            applied_promotions = pricing_result.applied_promotions_json
+            discount_amount = pricing_result.discount_amount
+            final_price = pricing_result.final_total
+            price_snapshot = pricing_snapshot
         order = MarketplaceOrder(
             id=new_uuid_str(),
             client_id=client_id,
             partner_id=str(product.partner_id),
             product_id=str(product.id),
             quantity=quantity,
-            price_snapshot={
-                "price_model": price_model,
-                "price_config": product.price_config,
-            },
+            price_snapshot=price_snapshot,
+            price_snapshot_json=pricing_snapshot,
+            pricing_version="promo_v1" if pricing_mode == "promo_v1" or coupon_code else None,
+            applied_promotions_json=applied_promotions,
+            coupon_code_used=coupon_code,
             price=price_amount,
-            discount=Decimal("0"),
-            final_price=price_amount,
+            discount=discount_amount,
+            final_price=final_price,
             commission=Decimal("0"),
             status=MarketplaceOrderStatus.CREATED.value,
             external_ref=external_ref,
@@ -298,6 +327,17 @@ class MarketplaceOrderService:
             raise MarketplaceOrderServiceError("promotion_invalid", detail={"reason": exc.code}) from exc
         order.price_snapshot = pricing.price_snapshot
         self.db.flush()
+
+        if pricing_snapshot and pricing_result:
+            from app.services.marketplace_pricing_service import MarketplacePricingService
+
+            pricing_service = MarketplacePricingService(self.db, request_ctx=self.request_ctx)
+            pricing_service.apply_pricing_to_order(
+                order=order,
+                pricing=pricing_result,
+                client_id=client_id,
+                partner_id=str(product.partner_id),
+            )
 
         event = self._emit_order_event(
             order=order,
