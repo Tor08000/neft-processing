@@ -83,10 +83,10 @@ def create_external_run(
 
 @router.post("/run", response_model=ReconciliationRunResponse, status_code=201)
 def run_stubbed_external(
+    request: Request,
     source: str = Query(...),
     period_from: datetime = Query(...),
     period_to: datetime = Query(...),
-    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(require_admin_user),
 ) -> ReconciliationRunResponse:
