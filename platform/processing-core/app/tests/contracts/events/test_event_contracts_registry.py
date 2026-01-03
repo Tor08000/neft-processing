@@ -30,6 +30,8 @@ def _sample_value(schema: dict) -> object:
     if schema_type == "string":
         if schema.get("format") == "uuid":
             return "00000000-0000-0000-0000-000000000000"
+        if schema.get("format") == "date-time":
+            return "2025-01-01T00:00:00Z"
         return "sample"
     if schema_type == "integer":
         return 1

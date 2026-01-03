@@ -5,7 +5,10 @@ from pathlib import Path
 from sqlalchemy.engine.url import make_url
 from datetime import datetime, timedelta, timezone
 
+from alembic import command
+from alembic.config import Config
 from fastapi import Depends
+from sqlalchemy import create_engine, inspect, text
 
 import pytest
 from jose import jwt
@@ -33,6 +36,7 @@ for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
 if os.getenv("DATABASE_URL_TEST"):
     os.environ["DATABASE_URL"] = os.environ["DATABASE_URL_TEST"]
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
+os.environ.setdefault("NEFT_DB_SCHEMA", "processing_core")
 os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
@@ -61,6 +65,82 @@ def _log_database_url() -> None:
 
 
 _log_database_url()
+
+
+def _uses_postgres(database_url: str) -> bool:
+    try:
+        return make_url(database_url).drivername.startswith("postgresql")
+    except Exception:
+        return False
+
+
+def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
+    markexpr = (config.getoption("-m") or "").strip()
+    if not markexpr:
+        return False
+    if "unit" in markexpr and all(mark not in markexpr for mark in ("integration", "smoke", "contracts")):
+        return True
+    return False
+
+
+def _run_alembic_upgrade(database_url: str) -> None:
+    alembic_ini = PROCESSING_APP_ROOT / "app" / "alembic.ini"
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("sqlalchemy.url", database_url)
+    command.upgrade(cfg, "head")
+
+
+def _ensure_schema(database_url: str, schema: str) -> None:
+    engine = create_engine(
+        database_url,
+        future=True,
+        connect_args={
+            "options": f"-c search_path={schema}",
+            "prepare_threshold": 0,
+        },
+    )
+    try:
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    finally:
+        engine.dispose()
+
+
+def _ensure_required_tables(database_url: str, schema: str) -> None:
+    engine = create_engine(
+        database_url,
+        future=True,
+        connect_args={
+            "options": f"-c search_path={schema}",
+            "prepare_threshold": 0,
+        },
+    )
+    try:
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names(schema=schema))
+    finally:
+        engine.dispose()
+
+    required_tables = {"operations", "cards"}
+    missing = required_tables - tables
+    if missing:
+        raise RuntimeError(f"Missing required tables after migrations: {', '.join(sorted(missing))}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_db_ready(request: pytest.FixtureRequest) -> None:
+    if _should_skip_db_bootstrap(request.config):
+        return
+
+    database_url = os.getenv("DATABASE_URL", "")
+    if not _uses_postgres(database_url):
+        pytest.skip("Postgres DATABASE_URL is required for full test suite")
+
+    schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
+    _ensure_schema(database_url, schema)
+    _run_alembic_upgrade(database_url)
+    _ensure_required_tables(database_url, schema)
 
 
 @pytest.fixture(autouse=True)
