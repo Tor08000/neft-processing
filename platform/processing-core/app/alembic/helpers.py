@@ -32,7 +32,15 @@ def is_sqlite(bind: Connection) -> bool:
 
 # Existence checks
 
+def _require_bind(bind: Connection, *, caller: str) -> None:
+    if not isinstance(bind, Connection):
+        bind_type = type(bind).__name__
+        raise TypeError(f"{caller} expected a SQLAlchemy Connection for bind; got {bind_type}.")
+
+
 def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> bool:
+    _require_bind(bind, caller="table_exists")
+
     if is_sqlite(bind):
         result = bind.execute(
             sa.text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name"),
@@ -275,6 +283,7 @@ def create_table_if_not_exists(
     create_fn=None,
     **kwargs,
 ) -> None:
+    _require_bind(bind, caller="create_table_if_not_exists")
     keyword_columns = columns
 
     if table_columns and keyword_columns is not None:

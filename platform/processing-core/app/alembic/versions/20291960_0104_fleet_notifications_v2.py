@@ -44,6 +44,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "fleet_push_subscriptions", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "fleet_push_subscriptions",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("client_id", sa.String(64), nullable=False),
@@ -58,12 +59,14 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fleet_push_subscriptions_client_active",
             "fleet_push_subscriptions",
             ["client_id", "active"],
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fleet_push_subscriptions_employee",
             "fleet_push_subscriptions",
             ["employee_id"],

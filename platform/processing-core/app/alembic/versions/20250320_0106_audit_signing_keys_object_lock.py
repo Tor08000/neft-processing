@@ -18,7 +18,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
     create_table_if_not_exists(
+        bind,
         "audit_signing_keys",
         sa.Column("key_id", sa.String(256), primary_key=True),
         sa.Column("alg", sa.String(64), nullable=False),
@@ -28,6 +31,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
+        bind,
         "audit_signing_keys_status",
         "audit_signing_keys",
         ["status"],
@@ -39,6 +43,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
+        bind,
         "ix_case_exports_locked_until",
         "case_exports",
         ["locked_until"],

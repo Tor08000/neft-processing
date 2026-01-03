@@ -34,6 +34,7 @@ def upgrade() -> None:
     ensure_pg_enum_value(bind, "case_event_type", "FLEET_TELEGRAM_SEND_FAILED", schema=DB_SCHEMA)
 
     create_table_if_not_exists(
+        bind,
         "fleet_telegram_bindings",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("client_id", sa.String(64), nullable=False),
@@ -72,6 +73,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
+        bind,
         "uq_fleet_telegram_bindings_client_chat_scope",
         "fleet_telegram_bindings",
         ["client_id", "chat_id", "scope_type", "scope_id"],
@@ -79,6 +81,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
+        bind,
         "ix_fleet_telegram_bindings_client_status",
         "fleet_telegram_bindings",
         ["client_id", "status"],
@@ -86,6 +89,7 @@ def upgrade() -> None:
     )
 
     create_table_if_not_exists(
+        bind,
         "fleet_telegram_link_tokens",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("client_id", sa.String(64), nullable=False),
@@ -114,6 +118,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
+        bind,
         "ix_fleet_telegram_link_tokens_client_status",
         "fleet_telegram_link_tokens",
         ["client_id", "status"],
