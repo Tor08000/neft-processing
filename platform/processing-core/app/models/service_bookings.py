@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, Text, event, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text, event, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import JSON
 
@@ -210,7 +210,7 @@ class ServiceBookingEvent(Base):
     )
     actor_id = Column(GUID(), nullable=True)
     payload = Column(JSON_TYPE, nullable=False)
-    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    audit_event_id = Column(String(36), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
