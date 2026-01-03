@@ -912,9 +912,18 @@ p {
 }
 
 .admin-sidebar__title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   font-weight: 800;
   font-size: 18px;
   margin-bottom: 24px;
+}
+
+.admin-sidebar__logo {
+  width: 32px;
+  height: 32px;
+  display: block;
 }
 
 .admin-sidebar__nav {
