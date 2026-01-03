@@ -13,6 +13,12 @@ export const canViewFleetSpend = (user: AuthSession | null): boolean => hasAnyRo
 export const canViewFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, [...viewRoles]);
 export const canAckFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, [...manageRoles]);
 export const canAdminFleetNotifications = (user: AuthSession | null): boolean => hasAnyRole(user, ["CLIENT_OWNER"]);
+export const canViewFleetIncidents = (user: AuthSession | null): boolean =>
+  hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER", "CLIENT_USER", "CLIENT_ACCOUNTANT", "CLIENT_ADMIN"]);
+export const canStartFleetIncidents = (user: AuthSession | null): boolean =>
+  hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_FLEET_MANAGER", "CLIENT_ADMIN"]);
+export const canCloseFleetIncidents = (user: AuthSession | null): boolean =>
+  hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
 
 const roleOrder: FleetGroupRole[] = ["viewer", "manager", "admin"];
 

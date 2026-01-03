@@ -32,7 +32,8 @@
     "fleetEmployees": "Fleet · Сотрудники",
     "fleetSpend": "Fleet · Расходы",
     "fleetNotifications": "Fleet · Уведомления",
-    "fleetPolicies": "Fleet · Центр политик"
+    "fleetPolicies": "Fleet · Центр политик",
+    "fleetIncidents": "Fleet · Инциденты"
   },
   "common": {
     "notAvailable": "—",
@@ -813,6 +814,139 @@
       "eventId": "ID события",
       "copyId": "Скопировать id политики",
       "copyEventId": "Скопировать id события"
+    }
+  },
+  "fleetIncidents": {
+    "title": "Fleet · Инциденты",
+    "errors": {
+      "loadFailed": "Не удалось загрузить инциденты",
+      "actionFailed": "Не удалось обновить инцидент",
+      "noPermission": "Недостаточно прав"
+    },
+    "summary": {
+      "open": "Открытые: {count}",
+      "inProgress": "В работе: {count}",
+      "closed": "Закрытые: {count}",
+      "autoBlocked": "Автоблок (7 дн.): {count}"
+    },
+    "filters": {
+      "status": "Статус",
+      "statusAll": "Все",
+      "severity": "Серьёзность",
+      "severityAll": "Все",
+      "scope": "Объект",
+      "scopeAll": "Все",
+      "scopeCard": "Карта",
+      "scopeGroup": "Группа",
+      "trigger": "Триггер",
+      "triggerAll": "Все",
+      "dateFrom": "С",
+      "dateTo": "По"
+    },
+    "status": {
+      "open": "Открыт",
+      "inProgress": "В работе",
+      "closed": "Закрыт"
+    },
+    "triggers": {
+      "limitBreach": "Превышение лимита",
+      "anomaly": "Аномалия"
+    },
+    "scope": {
+      "cardFallback": "Карта",
+      "groupFallback": "Группа",
+      "client": "Клиент"
+    },
+    "table": {
+      "status": "Статус",
+      "severity": "Серьёзность",
+      "title": "Название",
+      "scope": "Объект",
+      "trigger": "Триггер",
+      "openedAt": "Открыт",
+      "updatedAt": "Обновлён",
+      "actions": "Действия",
+      "open": "Открыть"
+    },
+    "emptyTitle": "Инцидентов нет 🎉",
+    "emptyDescription": "Всё спокойно.",
+    "details": {
+      "title": "Детали инцидента",
+      "notFound": "Инцидент не найден",
+      "notFoundHint": "Проверьте ссылку или идентификатор.",
+      "notFoundRetry": "Попробуйте обновить страницу.",
+      "caseId": "ID инцидента: {id}"
+    },
+    "actions": {
+      "start": "Взять в работу",
+      "close": "Закрыть инцидент",
+      "back": "К списку инцидентов"
+    },
+    "fields": {
+      "status": "Статус",
+      "severity": "Серьёзность",
+      "scope": "Объект",
+      "policyAction": "Действие политики",
+      "openedAt": "Открыт",
+      "updatedAt": "Обновлён",
+      "trigger": "Триггер",
+      "assigned": "Ответственный"
+    },
+    "explain": {
+      "title": "Почему это произошло",
+      "trigger": "Триггер",
+      "rule": "Правило",
+      "observed": "Наблюдаемое",
+      "threshold": "Лимит",
+      "baseline": "Базовый уровень",
+      "occurredAt": "Когда",
+      "policy": "Политика",
+      "cooldown": "Кулдаун",
+      "cooldownValue": "{value} сек"
+    },
+    "timeline": {
+      "title": "Хронология",
+      "emptyTitle": "История пуста",
+      "emptyDescription": "События появятся после обработки.",
+      "eventFallback": "Событие",
+      "link": "Открыть"
+    },
+    "resolution": {
+      "title": "Решение",
+      "summary": "Резолюция",
+      "reason": "Причина",
+      "actions": "Действия",
+      "closedBy": "Закрыл",
+      "closedAt": "Закрыт"
+    },
+    "audit": {
+      "title": "Аудит",
+      "eventId": "ID события аудита",
+      "decisionId": "ID decision memory",
+      "sourceRef": "Источник"
+    },
+    "start": {
+      "title": "Взять в работу",
+      "description": "Подтвердите, что берёте инцидент в работу.",
+      "confirm": "Взять в работу",
+      "cancel": "Отмена",
+      "note": "Комментарий (необязательно)",
+      "defaultNote": "Взято в работу через клиентский портал.",
+      "toast": "Инцидент в работе."
+    },
+    "close": {
+      "title": "Закрыть инцидент",
+      "description": "Укажите резолюцию и выполненные действия.",
+      "confirm": "Закрыть инцидент",
+      "cancel": "Отмена",
+      "summary": "Резолюция",
+      "summaryPlaceholder": "Инцидент закрыт после...",
+      "actions": "Действия",
+      "actionsPlaceholder": "Что было сделано",
+      "unblocked": "Разблокировали карту",
+      "unblockedReason": "Карта разблокирована",
+      "validation": "Заполните резолюцию.",
+      "toast": "Инцидент закрыт."
     }
   },
   "fleet": {
