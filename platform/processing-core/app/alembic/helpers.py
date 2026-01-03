@@ -185,32 +185,37 @@ def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = "public
     - value: enum label to ensure exists
     - schema: schema where enum type lives
     """
-    # 1) Check if enum label exists
-    exists_sql = text("""
-        SELECT 1
-        FROM pg_type t
-        JOIN pg_namespace n ON n.oid = t.typnamespace
-        JOIN pg_enum e ON e.enumtypid = t.oid
-        WHERE n.nspname = :schema
-          AND t.typname = :enum_name
-          AND e.enumlabel = :value
-        LIMIT 1
-    """)
-
-    exists = conn.execute(
-        exists_sql,
-        {"schema": schema, "enum_name": enum_name, "value": value},
-    ).scalar()
-
-    if exists:
+    if not is_postgres(conn):
         return
 
-    # 2) Add enum label (value must be inlined as a literal)
+    schema_name = schema or "public"
     value_literal = "'" + value.replace("'", "''") + "'"
 
-    # Postgres supports IF NOT EXISTS for ADD VALUE on modern versions.
+    type_exists = conn.execute(
+        text(
+            """
+            SELECT 1
+            FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE n.nspname = :schema AND t.typname = :enum_name
+            """
+        ),
+        {"schema": schema_name, "enum_name": enum_name},
+    ).scalar()
+
+    if not type_exists:
+        create_sql = text(
+            f'CREATE TYPE "{schema_name}"."{enum_name}" AS ENUM ({value_literal})'
+        )
+        try:
+            conn.execute(create_sql)
+        except sa.exc.DBAPIError as exc:
+            if getattr(getattr(exc, "orig", None), "pgcode", None) != "42710":
+                raise
+        return
+
     add_sql = text(
-        f'ALTER TYPE "{schema}"."{enum_name}" ADD VALUE IF NOT EXISTS {value_literal}'
+        f'ALTER TYPE "{schema_name}"."{enum_name}" ADD VALUE IF NOT EXISTS {value_literal}'
     )
     conn.execute(add_sql)
 
