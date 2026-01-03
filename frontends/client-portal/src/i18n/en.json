@@ -430,7 +430,12 @@
     "title": "My orders",
     "subtitle": "Marketplace order history and statuses.",
     "errors": {
-      "loadFailed": "Unable to load orders"
+      "loadFailed": "Unable to load orders",
+      "cancelFailed": "Unable to cancel the order"
+    },
+    "actions": {
+      "confirmCancel": "Cancel this order?",
+      "cancelSuccess": "Order cancelled"
     },
     "forbidden": {
       "noAccess": "You do not have access to orders.",
@@ -442,20 +447,110 @@
       "periodTo": "To",
       "status": "Status",
       "partner": "Partner",
-      "service": "Service"
+      "service": "Service",
+      "category": "Category",
+      "search": "Search"
     },
     "table": {
       "orderId": "Order ID",
       "service": "Service",
       "partner": "Partner",
       "date": "Date",
+      "updated": "Last update",
+      "sla": "SLA",
       "amount": "Amount",
       "status": "Status",
       "documents": "Documents"
     },
+    "slaStatus": {
+      "OK": "OK",
+      "VIOLATION": "Violation",
+      "UNKNOWN": "—"
+    },
     "pagination": {
       "page": "Page {current} of {total}"
     }
+  },
+  "marketplaceOrderDetails": {
+    "title": "Order details",
+    "subtitle": "Order status, SLA, incidents, and invoices.",
+    "partner": "Partner: {name}",
+    "tabs": {
+      "timeline": "Timeline",
+      "sla": "SLA",
+      "incidents": "Incidents",
+      "invoices": "Invoices & Credits"
+    },
+    "fields": {
+      "status": "Order status",
+      "created": "Created",
+      "updated": "Last update",
+      "amount": "Amount"
+    },
+    "actions": {
+      "contactSupport": "Contact support",
+      "downloadInvoice": "Download invoice",
+      "confirmCancel": "Cancel this order?",
+      "backToOrders": "Back to orders"
+    },
+    "timeline": {
+      "emptyTitle": "No events yet",
+      "emptyDescription": "Order timeline is still empty.",
+      "actor": "Actor: {actor}"
+    },
+    "sla": {
+      "emptyTitle": "SLA not configured",
+      "emptyDescription": "SLA obligations will appear after order activation.",
+      "table": {
+        "metric": "Obligation",
+        "threshold": "Threshold",
+        "measured": "Measured",
+        "status": "Status",
+        "penalty": "Penalty"
+      }
+    },
+    "incidents": {
+      "emptyTitle": "No incidents",
+      "emptyDescription": "No incidents have been registered for this order.",
+      "table": {
+        "id": "Case ID",
+        "title": "Title",
+        "status": "Status",
+        "updated": "Updated"
+      }
+    },
+    "invoices": {
+      "emptyTitle": "No invoices yet",
+      "emptyDescription": "Invoices will appear after billing is generated.",
+      "table": {
+        "number": "Invoice number",
+        "status": "Status",
+        "amount": "Amount"
+      },
+      "creditsTitle": "Credits and penalties",
+      "credits": {
+        "table": {
+          "type": "Type",
+          "amount": "Amount",
+          "reason": "Reason",
+          "date": "Date"
+        }
+      }
+    },
+    "errors": {
+      "loadFailed": "Unable to load order",
+      "eventsFailed": "Unable to load timeline",
+      "slaFailed": "Unable to load SLA",
+      "consequencesFailed": "Unable to load consequences",
+      "invoicesFailed": "Unable to load invoices",
+      "incidentsFailed": "Unable to load incidents",
+      "cancelFailed": "Unable to cancel the order"
+    },
+    "forbidden": {
+      "noAccess": "You do not have access to this order.",
+      "denied": "Viewing this order is forbidden."
+    },
+    "supportTitle": "Issue with order {id}"
   },
   "documentsPage": {
     "title": "Documents",
@@ -548,11 +643,13 @@
   "statuses": {
     "orders": {
       "CREATED": "Created",
+      "ACCEPTED": "Accepted",
       "PAID": "Paid",
       "CONFIRMED": "Confirmed by partner",
       "IN_PROGRESS": "In progress",
       "COMPLETED": "Completed",
       "CANCELLED": "Cancelled",
+      "FAILED": "Failed",
       "REFUNDED": "Refunded"
     },
     "documents": {

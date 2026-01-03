@@ -86,10 +86,16 @@ export interface MarketplaceOrderSummary {
   service_title?: string | null;
   partner_name?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   total_amount?: number | null;
   currency?: string | null;
   status?: string | null;
   documents_status?: string | null;
+  sla_status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
+  price_snapshot?: {
+    total_amount?: number | null;
+    currency?: string | null;
+  } | null;
 }
 
 export interface MarketplaceOrdersResponse {
@@ -107,7 +113,12 @@ export interface MarketplaceOrderDetails {
   total_amount?: number | null;
   currency?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   documents_status?: string | null;
+  price_snapshot?: {
+    total_amount?: number | null;
+    currency?: string | null;
+  } | null;
 }
 
 export interface MarketplaceOrderEvent {
@@ -115,6 +126,7 @@ export interface MarketplaceOrderEvent {
   type: string;
   status?: string | null;
   note?: string | null;
+  actor_type?: "client" | "partner" | "system" | string | null;
   created_at: string;
 }
 
@@ -136,6 +148,44 @@ export interface MarketplaceOrderDocument {
 
 export interface MarketplaceOrderDocumentsResponse {
   items: MarketplaceOrderDocument[];
+}
+
+export interface MarketplaceOrderSlaMetric {
+  metric: string;
+  threshold?: number | null;
+  comparison?: string | null;
+  window?: string | null;
+  measured_value?: number | null;
+  status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
+  deadline_at?: string | null;
+  reason?: string | null;
+  penalty?: string | null;
+}
+
+export interface MarketplaceOrderSlaResponse {
+  obligations?: MarketplaceOrderSlaMetric[] | null;
+}
+
+export interface MarketplaceOrderConsequence {
+  id: string;
+  type?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  reason?: string | null;
+  created_at?: string | null;
+}
+
+export interface MarketplaceOrderConsequencesResponse {
+  items?: MarketplaceOrderConsequence[] | null;
+}
+
+export interface MarketplaceOrderInvoice {
+  id: string;
+  invoice_number?: string | null;
+  status?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  url?: string | null;
 }
 
 export interface MarketplaceCreateOrderPayload {

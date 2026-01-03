@@ -6,6 +6,7 @@ import type {
   MarketplaceOrder,
   MarketplaceOrderActionResult,
   MarketplaceOrderEvent,
+  MarketplaceOrderSlaResponse,
   MarketplaceSettlementLink,
 } from "../types/marketplace";
 
@@ -18,6 +19,7 @@ export interface OrderFilters {
   offset?: string;
   station_id?: string;
   service_id?: string;
+  sla_risk?: string;
 }
 
 const toQuery = (filters: OrderFilters): string => {
@@ -73,9 +75,12 @@ export const fetchOrderSettlement = (token: string, orderId: string) =>
     token,
   );
 
-export const confirmOrder = async (token: string, id: string) => {
+export const fetchOrderSla = (token: string, id: string) =>
+  request<MarketplaceOrderSlaResponse>(`/partner/orders/${id}/sla`, {}, token);
+
+export const acceptOrder = async (token: string, id: string) => {
   const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
-    `/partner/orders/${id}/confirm`,
+    `/partner/orders/${id}/accept`,
     { method: "POST" },
     token,
   );
@@ -91,18 +96,36 @@ export const startOrder = async (token: string, id: string) => {
   return { ...data, correlationId };
 };
 
-export const completeOrder = async (token: string, id: string) => {
+export const rejectOrder = async (token: string, id: string, reason: string) => {
   const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
-    `/partner/orders/${id}/complete`,
-    { method: "POST" },
+    `/partner/orders/${id}/reject`,
+    { method: "POST", body: JSON.stringify({ reason }) },
     token,
   );
   return { ...data, correlationId };
 };
 
-export const cancelOrder = async (token: string, id: string, reason: string) => {
+export const progressOrder = async (token: string, id: string, payload: { percent: number; message?: string }) => {
   const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
-    `/partner/orders/${id}/cancel`,
+    `/partner/orders/${id}/progress`,
+    { method: "POST", body: JSON.stringify(payload) },
+    token,
+  );
+  return { ...data, correlationId };
+};
+
+export const completeOrder = async (token: string, id: string, payload?: { summary?: string }) => {
+  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
+    `/partner/orders/${id}/complete`,
+    { method: "POST", body: payload ? JSON.stringify(payload) : undefined },
+    token,
+  );
+  return { ...data, correlationId };
+};
+
+export const failOrder = async (token: string, id: string, reason: string) => {
+  const { data, correlationId } = await requestWithMeta<MarketplaceOrderActionResult>(
+    `/partner/orders/${id}/fail`,
     { method: "POST", body: JSON.stringify({ reason }) },
     token,
   );

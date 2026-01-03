@@ -14,32 +14,7 @@ const ownerSession: AuthSession = {
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
 
-const operatorSession: AuthSession = {
-  ...ownerSession,
-  email: "operator@demo.test",
-  roles: ["PARTNER_OPERATOR"],
-};
-
-const accountantSession: AuthSession = {
-  ...ownerSession,
-  email: "accountant@demo.test",
-  roles: ["PARTNER_ACCOUNTANT"],
-};
-
-const orderPayload = {
-  id: "order-1",
-  clientId: "client-1",
-  clientName: "Иван",
-  partnerId: "partner-1",
-  items: [{ offerId: "offer-1", title: "Мойка", qty: 1, unitPrice: 1000, amount: 1000 }],
-  status: "PAID",
-  paymentStatus: "PAID",
-  totalAmount: 1000,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
-const mockFetch = (url: string) => {
+const buildMockFetch = (orderPayload: Record<string, unknown>) => (url: string) => {
   if (url.includes("/partner/orders/order-1/events")) {
     return new Response(
       JSON.stringify([
@@ -52,36 +27,17 @@ const mockFetch = (url: string) => {
       { status: 200 },
     );
   }
-  if (url.includes("/partner/orders/order-1/documents")) {
-    return new Response(
-      JSON.stringify([
-        {
-          id: "doc-1",
-          type: "Invoice",
-          status: "SIGNED",
-          signatureStatus: "SIGNED",
-          edoStatus: "OK",
-          url: "https://example.com/doc.pdf",
-        },
-      ]),
-      { status: 200 },
-    );
-  }
-  if (url.includes("/partner/refunds")) {
+  if (url.includes("/partner/orders/order-1/sla")) {
     return new Response(
       JSON.stringify({
-        items: [
+        obligations: [
           {
-            id: "refund-1",
-            orderId: "order-1",
-            status: "OPEN",
-            amount: 200,
-            createdAt: new Date().toISOString(),
+            metric: "response_time",
+            remainingSeconds: 600,
+            totalSeconds: 3600,
+            status: "OK",
           },
         ],
-        page: 1,
-        pageSize: 20,
-        total: 1,
       }),
       { status: 200 },
     );
@@ -91,15 +47,11 @@ const mockFetch = (url: string) => {
       JSON.stringify({
         items: [
           {
-            settlement_ref: "set-1",
+            id: "set-1",
             status: "SENT",
-            period_start: new Date().toISOString(),
-            period_end: new Date().toISOString(),
-            gross: 1000,
-            fees: 100,
-            refunds: 50,
+            periodStart: new Date().toISOString(),
+            periodEnd: new Date().toISOString(),
             net_amount: 850,
-            currency: "RUB",
           },
         ],
       }),
@@ -113,7 +65,10 @@ const mockFetch = (url: string) => {
 };
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn((input: RequestInfo) => Promise.resolve(mockFetch(String(input)))) as unknown as typeof fetch);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: RequestInfo) => Promise.resolve(buildMockFetch(orderPayloadCreated)(String(input)))) as unknown as typeof fetch,
+  );
 });
 
 afterEach(() => {
@@ -121,8 +76,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const orderPayloadCreated = {
+  id: "order-1",
+  clientId: "client-1",
+  clientName: "Иван",
+  partnerId: "partner-1",
+  items: [{ offerId: "offer-1", title: "Мойка", qty: 1, unitPrice: 1000, amount: 1000 }],
+  status: "CREATED",
+  paymentStatus: "PAID",
+  totalAmount: 1000,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+const orderPayloadProgress = {
+  ...orderPayloadCreated,
+  status: "IN_PROGRESS",
+};
+
 describe("OrderDetailsPage", () => {
-  it("renders order details", async () => {
+  it("shows accept and reject on CREATED", async () => {
     render(
       <MemoryRouter initialEntries={["/orders/order-1"]}>
         <App initialSession={ownerSession} />
@@ -130,58 +103,34 @@ describe("OrderDetailsPage", () => {
     );
 
     expect(await screen.findByText(/Заказ order-1/)).toBeInTheDocument();
-    expect(await screen.findByText(/Позиции/)).toBeInTheDocument();
-    expect(screen.getByText("Мойка")).toBeInTheDocument();
+    const acceptButton = screen.getByRole("button", { name: "Принять" });
+    const rejectButton = screen.getByRole("button", { name: "Отклонить" });
+    expect(acceptButton).toBeEnabled();
+    expect(rejectButton).toBeEnabled();
   });
 
-  it("gates lifecycle actions by role", async () => {
-    const { unmount } = render(
-      <MemoryRouter initialEntries={["/orders/order-1"]}>
-        <App initialSession={ownerSession} />
-      </MemoryRouter>,
+  it("validates progress modal", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => Promise.resolve(buildMockFetch(orderPayloadProgress)(String(input)))) as unknown as typeof fetch,
     );
-
-    expect(await screen.findByRole("button", { name: "Подтвердить" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Отменить" })).toBeInTheDocument();
-
-    unmount();
-    const operatorRender = render(
-      <MemoryRouter initialEntries={["/orders/order-1"]}>
-        <App initialSession={operatorSession} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole("button", { name: "Подтвердить" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Отменить" })).not.toBeInTheDocument();
-
-    operatorRender.unmount();
-    render(
-      <MemoryRouter initialEntries={["/orders/order-1"]}>
-        <App initialSession={accountantSession} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText(/Действия недоступны/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Подтвердить" })).not.toBeInTheDocument();
-  });
-
-  it("requires reason to cancel", async () => {
     const user = userEvent.setup();
+
     render(
       <MemoryRouter initialEntries={["/orders/order-1"]}>
         <App initialSession={ownerSession} />
       </MemoryRouter>,
     );
 
-    const cancelButton = await screen.findByRole("button", { name: "Отменить" });
-    await user.click(cancelButton);
+    const progressButton = await screen.findByRole("button", { name: "Обновить прогресс" });
+    await user.click(progressButton);
 
     const dialog = await screen.findByRole("dialog");
     const confirmButton = within(dialog).getByRole("button", { name: "Подтвердить" });
     expect(confirmButton).toBeDisabled();
 
-    const reasonInput = within(dialog).getByPlaceholderText(/Опишите причину отмены/);
-    await user.type(reasonInput, "Нет возможности выполнить");
+    const percentInput = within(dialog).getByLabelText("Прогресс, %") as HTMLInputElement;
+    await user.type(percentInput, "50");
     expect(confirmButton).not.toBeDisabled();
   });
 });

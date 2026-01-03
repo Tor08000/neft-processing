@@ -117,9 +117,10 @@
     "orders": {
       "CREATED": "Created",
       "PAID": "Paid",
-      "CONFIRMED": "Confirmed by partner",
+      "ACCEPTED": "Accepted",
       "IN_PROGRESS": "In progress",
       "COMPLETED": "Completed",
+      "FAILED": "Failed",
       "CANCELLED": "Cancelled",
       "REFUNDED": "Refunded"
     },
@@ -592,19 +593,16 @@
       "station": "Station",
       "stationPlaceholder": "station_id",
       "service": "Service",
-      "servicePlaceholder": "service_id"
+      "servicePlaceholder": "service_id",
+      "slaRisk": "SLA risk",
+      "slaRiskNear": "Near deadline"
     },
     "actions": {
-      "saveFilters": "Save filters",
-      "quickConfirm": "Quick confirm"
+      "saveFilters": "Save filters"
     },
     "errors": {
       "loadFailed": "Unable to load orders",
-      "confirmFailed": "Unable to confirm order",
       "apiError": "HTTP {status}: {message}"
-    },
-    "notifications": {
-      "confirmed": "Order confirmed. Correlation ID: {id}"
     },
     "kpis": {
       "today": "Orders today",
@@ -613,16 +611,132 @@
       "total": "Total in selection"
     },
     "table": {
-      "createdAt": "Created",
       "orderId": "Order ID",
       "client": "Client",
-      "items": "Items",
+      "service": "Service",
+      "createdAt": "Created",
+      "sla": "SLA timer",
       "amount": "Amount",
-      "payment": "Payment",
-      "status": "Status",
-      "documents": "Documents"
+      "status": "Status"
     },
     "pagination": "Page {current} of {total}"
+  },
+  "orderDetails": {
+    "title": "Order {id}",
+    "subtitle": "Incoming marketplace order",
+    "loading": "Loading order...",
+    "fields": {
+      "status": "Order status",
+      "client": "Client",
+      "created": "Created",
+      "amount": "Amount",
+      "responseDue": "Response due in",
+      "completionDue": "Completion due in"
+    },
+    "actions": {
+      "support": "Contact support",
+      "back": "Back to list",
+      "accept": "Accept",
+      "reject": "Reject",
+      "start": "Start",
+      "progress": "Update progress",
+      "complete": "Complete",
+      "fail": "Fail"
+    },
+    "lifecycle": {
+      "title": "Order lifecycle",
+      "deniedTitle": "Actions unavailable",
+      "deniedDescription": "Your role cannot manage this order."
+    },
+    "tabs": {
+      "timeline": "Timeline",
+      "sla": "SLA",
+      "payouts": "Payouts"
+    },
+    "sla": {
+      "loading": "Loading SLA...",
+      "emptyTitle": "No SLA obligations",
+      "emptyDescription": "SLA obligations will appear after activation.",
+      "errorTitle": "Unable to load SLA",
+      "table": {
+        "metric": "Obligation",
+        "deadline": "Deadline",
+        "remaining": "Remaining",
+        "status": "Status",
+        "penalty": "Penalty"
+      }
+    },
+    "payouts": {
+      "loading": "Loading payout impact...",
+      "emptyTitle": "No settlement yet",
+      "emptyDescription": "Will appear in the next settlement period.",
+      "errorTitle": "Unable to load payout data",
+      "fields": {
+        "settlementId": "Settlement ID",
+        "status": "Status",
+        "period": "Period",
+        "netAmount": "Net amount"
+      },
+      "actions": {
+        "open": "Open settlement"
+      }
+    },
+    "notifications": {
+      "accepted": "Order accepted. Correlation ID: {id}",
+      "rejected": "Order rejected. Correlation ID: {id}",
+      "started": "Order started. Correlation ID: {id}",
+      "progressed": "Progress updated. Correlation ID: {id}",
+      "completed": "Order completed. Correlation ID: {id}",
+      "failed": "Order failed. Correlation ID: {id}"
+    },
+    "errors": {
+      "loadTitle": "Unable to load order",
+      "loadFailed": "Unable to load order",
+      "notFound": "Order not found",
+      "timelineFailed": "Unable to load timeline",
+      "slaFailed": "Unable to load SLA",
+      "payoutFailed": "Unable to load payout data",
+      "actionFailed": "Action failed"
+    },
+    "supportTitle": "Issue with order {id}",
+    "modals": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "accept": {
+        "title": "Accept order",
+        "description": "Confirm that you are ready to handle this order."
+      },
+      "reject": {
+        "title": "Reject order",
+        "description": "Provide a reason for rejection.",
+        "reason": "Reason",
+        "placeholder": "Describe the reason"
+      },
+      "start": {
+        "title": "Start order",
+        "description": "Start working on the order."
+      },
+      "progress": {
+        "title": "Update progress",
+        "description": "Share progress with the client.",
+        "percent": "Progress, %",
+        "message": "Message",
+        "placeholder": "Progress update"
+      },
+      "complete": {
+        "title": "Complete order",
+        "description": "Provide a completion summary.",
+        "summary": "Summary",
+        "placeholder": "Completion summary"
+      },
+      "fail": {
+        "title": "Fail order",
+        "description": "Provide a failure reason.",
+        "reason": "Reason",
+        "placeholder": "Describe the issue"
+      }
+    }
   },
   "servicesCatalogPage": {
     "title": "Services and products catalog",

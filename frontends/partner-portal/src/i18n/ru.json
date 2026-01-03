@@ -117,9 +117,10 @@
     "orders": {
       "CREATED": "Создан",
       "PAID": "Оплачен",
-      "CONFIRMED": "Подтверждён партнёром",
+      "ACCEPTED": "Принят",
       "IN_PROGRESS": "В работе",
       "COMPLETED": "Завершён",
+      "FAILED": "Завершён с ошибкой",
       "CANCELLED": "Отменён",
       "REFUNDED": "Возвращён"
     },
@@ -592,19 +593,16 @@
       "station": "Станция",
       "stationPlaceholder": "station_id",
       "service": "Сервис",
-      "servicePlaceholder": "service_id"
+      "servicePlaceholder": "service_id",
+      "slaRisk": "SLA риск",
+      "slaRiskNear": "Близко к дедлайну"
     },
     "actions": {
-      "saveFilters": "Сохранить фильтры",
-      "quickConfirm": "Быстро подтвердить"
+      "saveFilters": "Сохранить фильтры"
     },
     "errors": {
       "loadFailed": "Не удалось загрузить заказы",
-      "confirmFailed": "Не удалось подтвердить заказ",
       "apiError": "HTTP {status}: {message}"
-    },
-    "notifications": {
-      "confirmed": "Заказ подтверждён. Correlation ID: {id}"
     },
     "kpis": {
       "today": "Заказы сегодня",
@@ -613,16 +611,132 @@
       "total": "Всего в выборке"
     },
     "table": {
-      "createdAt": "Создан",
       "orderId": "Order ID",
       "client": "Клиент",
-      "items": "Позиций",
+      "service": "Услуга",
+      "createdAt": "Создан",
+      "sla": "SLA таймер",
       "amount": "Сумма",
-      "payment": "Оплата",
-      "status": "Статус",
-      "documents": "Документы"
+      "status": "Статус"
     },
     "pagination": "Страница {current} из {total}"
+  },
+  "orderDetails": {
+    "title": "Заказ {id}",
+    "subtitle": "Входящий заказ маркетплейса",
+    "loading": "Загружаем заказ...",
+    "fields": {
+      "status": "Статус заказа",
+      "client": "Клиент",
+      "created": "Создан",
+      "amount": "Сумма",
+      "responseDue": "Ответ до",
+      "completionDue": "Завершение до"
+    },
+    "actions": {
+      "support": "Связаться с поддержкой",
+      "back": "Назад к списку",
+      "accept": "Принять",
+      "reject": "Отклонить",
+      "start": "Начать",
+      "progress": "Обновить прогресс",
+      "complete": "Завершить",
+      "fail": "Не выполнено"
+    },
+    "lifecycle": {
+      "title": "Жизненный цикл заказа",
+      "deniedTitle": "Действия недоступны",
+      "deniedDescription": "У вашей роли нет доступа к изменениям заказа."
+    },
+    "tabs": {
+      "timeline": "Таймлайн",
+      "sla": "SLA",
+      "payouts": "Выплаты"
+    },
+    "sla": {
+      "loading": "Загружаем SLA...",
+      "emptyTitle": "SLA отсутствует",
+      "emptyDescription": "Обязательства появятся после активации.",
+      "errorTitle": "Не удалось загрузить SLA",
+      "table": {
+        "metric": "Обязательство",
+        "deadline": "Дедлайн",
+        "remaining": "Осталось",
+        "status": "Статус",
+        "penalty": "Штраф"
+      }
+    },
+    "payouts": {
+      "loading": "Загружаем влияние на выплаты...",
+      "emptyTitle": "Выплата не найдена",
+      "emptyDescription": "Появится в ближайшем settlement периоде.",
+      "errorTitle": "Не удалось загрузить выплаты",
+      "fields": {
+        "settlementId": "Settlement ID",
+        "status": "Статус",
+        "period": "Период",
+        "netAmount": "К выплате"
+      },
+      "actions": {
+        "open": "Открыть выплату"
+      }
+    },
+    "notifications": {
+      "accepted": "Заказ принят. Correlation ID: {id}",
+      "rejected": "Заказ отклонён. Correlation ID: {id}",
+      "started": "Заказ в работе. Correlation ID: {id}",
+      "progressed": "Прогресс обновлён. Correlation ID: {id}",
+      "completed": "Заказ завершён. Correlation ID: {id}",
+      "failed": "Заказ завершён с ошибкой. Correlation ID: {id}"
+    },
+    "errors": {
+      "loadTitle": "Не удалось загрузить заказ",
+      "loadFailed": "Не удалось загрузить заказ",
+      "notFound": "Заказ не найден",
+      "timelineFailed": "Не удалось загрузить таймлайн",
+      "slaFailed": "Не удалось загрузить SLA",
+      "payoutFailed": "Не удалось загрузить выплаты",
+      "actionFailed": "Действие не выполнено"
+    },
+    "supportTitle": "Проблема с заказом {id}",
+    "modals": {
+      "close": "Закрыть",
+      "cancel": "Отмена",
+      "confirm": "Подтвердить",
+      "accept": {
+        "title": "Принять заказ",
+        "description": "Подтвердите готовность принять заказ."
+      },
+      "reject": {
+        "title": "Отклонить заказ",
+        "description": "Укажите причину отказа.",
+        "reason": "Причина",
+        "placeholder": "Опишите причину"
+      },
+      "start": {
+        "title": "Начать выполнение",
+        "description": "Начните выполнение заказа."
+      },
+      "progress": {
+        "title": "Обновить прогресс",
+        "description": "Сообщите клиенту о статусе.",
+        "percent": "Прогресс, %",
+        "message": "Сообщение",
+        "placeholder": "Комментарий"
+      },
+      "complete": {
+        "title": "Завершить заказ",
+        "description": "Добавьте итог выполнения.",
+        "summary": "Итог",
+        "placeholder": "Результат"
+      },
+      "fail": {
+        "title": "Заказ не выполнен",
+        "description": "Укажите причину.",
+        "reason": "Причина",
+        "placeholder": "Опишите проблему"
+      }
+    }
   },
   "servicesCatalogPage": {
     "title": "Каталог услуг и товаров",

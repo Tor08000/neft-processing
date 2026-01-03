@@ -1,6 +1,6 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { fetchMarketplaceOrders } from "../api/marketplace";
+import { cancelMarketplaceOrder, fetchMarketplaceOrders } from "../api/marketplace";
 import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AppErrorState, AppForbiddenState } from "../components/states";
@@ -11,6 +11,7 @@ import { useToast } from "../components/Toast/useToast";
 import type { MarketplaceOrderSummary } from "../types/marketplace";
 import { formatDate, formatDateTime } from "../utils/format";
 import { getMarketplaceDocumentStatusLabel, getOrderStatusLabel } from "../utils/status";
+import { canCancelMarketplaceOrder } from "../utils/marketplacePermissions";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
 
@@ -49,6 +50,8 @@ const DEFAULT_FILTERS = {
   status: "",
   partner: "",
   service: "",
+  category: "",
+  q: "",
 };
 
 export function MarketplaceOrdersPage() {
@@ -65,6 +68,7 @@ export function MarketplaceOrdersPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [pagination, setPagination] = useState({ limit: isPwaMode ? 20 : 10, offset: 0 });
   const [total, setTotal] = useState(0);
+  const canCancel = canCancelMarketplaceOrder(user);
 
   useEffect(() => {
     if (filters.preset !== "custom") {
@@ -80,7 +84,9 @@ export function MarketplaceOrdersPage() {
     const status = params.get("status") ?? "";
     const partner = params.get("partner") ?? "";
     const service = params.get("service") ?? "";
-    if (from || to || status || partner || service) {
+    const category = params.get("category") ?? "";
+    const q = params.get("q") ?? "";
+    if (from || to || status || partner || service || category || q) {
       setFilters((prev) => ({
         ...prev,
         from,
@@ -88,6 +94,8 @@ export function MarketplaceOrdersPage() {
         status,
         partner,
         service,
+        category,
+        q,
         preset: "custom",
       }));
       setPagination((prev) => ({ ...prev, offset: 0 }));
@@ -114,6 +122,8 @@ export function MarketplaceOrdersPage() {
       status: filters.status || undefined,
       partner: filters.partner || undefined,
       service: filters.service || undefined,
+      category: filters.category || undefined,
+      q: filters.q || undefined,
       limit: pagination.limit,
       offset: pagination.offset,
     })
@@ -182,12 +192,54 @@ export function MarketplaceOrdersPage() {
     filters.status !== "" ||
     filters.partner !== "" ||
     filters.service !== "" ||
+    filters.category !== "" ||
+    filters.q !== "" ||
     filters.from !== "" ||
     filters.to !== "";
 
   const handleResetFilters = () => {
     setFilters(DEFAULT_FILTERS);
     setPagination((prev) => ({ ...prev, offset: 0 }));
+  };
+
+  const statusOptions = [
+    { value: "", label: t("common.all") },
+    { value: "CREATED", label: t("statuses.orders.CREATED") },
+    { value: "ACCEPTED", label: t("statuses.orders.ACCEPTED") },
+    { value: "IN_PROGRESS", label: t("statuses.orders.IN_PROGRESS") },
+    { value: "COMPLETED", label: t("statuses.orders.COMPLETED") },
+    { value: "FAILED", label: t("statuses.orders.FAILED") },
+    { value: "CANCELLED", label: t("statuses.orders.CANCELLED") },
+  ];
+
+  const resolveAmount = (order: MarketplaceOrderSummary) =>
+    order.price_snapshot?.total_amount ?? order.total_amount ?? null;
+
+  const resolveCurrency = (order: MarketplaceOrderSummary) =>
+    order.price_snapshot?.currency ?? order.currency ?? "RUB";
+
+  const renderSlaStatus = (order: MarketplaceOrderSummary) => {
+    if (!order.sla_status) {
+      return <span className="neft-badge warning">—</span>;
+    }
+    const normalized = order.sla_status.toUpperCase();
+    const tone = normalized === "VIOLATION" ? "error" : normalized === "OK" ? "success" : "warning";
+    return <span className={`neft-badge ${tone}`}>{t(`marketplaceOrders.slaStatus.${normalized}`)}</span>;
+  };
+
+  const handleCancel = async (orderId: string) => {
+    if (!user) return;
+    const confirmed = window.confirm(t("marketplaceOrders.actions.confirmCancel"));
+    if (!confirmed) return;
+    try {
+      await cancelMarketplaceOrder(user, orderId);
+      showToast("success", t("marketplaceOrders.actions.cancelSuccess"));
+      loadOrders();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : t("marketplaceOrders.errors.cancelFailed");
+      showToast("error", message);
+    }
   };
 
   return (
@@ -224,15 +276,29 @@ export function MarketplaceOrdersPage() {
           </div>
           <div className="filter">
             <label htmlFor="status">{t("marketplaceOrders.filters.status")}</label>
-            <input id="status" name="status" value={filters.status} onChange={handleFilterChange} />
+            <select id="status" name="status" value={filters.status} onChange={handleFilterChange}>
+              {statusOptions.map((status) => (
+                <option key={status.value || "all"} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="filter">
             <label htmlFor="partner">{t("marketplaceOrders.filters.partner")}</label>
             <input id="partner" name="partner" value={filters.partner} onChange={handleFilterChange} />
           </div>
           <div className="filter">
+            <label htmlFor="category">{t("marketplaceOrders.filters.category")}</label>
+            <input id="category" name="category" value={filters.category} onChange={handleFilterChange} />
+          </div>
+          <div className="filter">
             <label htmlFor="service">{t("marketplaceOrders.filters.service")}</label>
             <input id="service" name="service" value={filters.service} onChange={handleFilterChange} />
+          </div>
+          <div className="filter">
+            <label htmlFor="q">{t("marketplaceOrders.filters.search")}</label>
+            <input id="q" name="q" value={filters.q} onChange={handleFilterChange} />
           </div>
           <div className="filter">
             <button
@@ -279,12 +345,22 @@ export function MarketplaceOrdersPage() {
                 render: (order) => (order.created_at ? formatDate(order.created_at) : t("common.notAvailable")),
               },
               {
+                key: "updated",
+                title: t("marketplaceOrders.table.updated"),
+                render: (order) => (order.updated_at ? formatDateTime(order.updated_at) : t("common.notAvailable")),
+              },
+              {
+                key: "sla",
+                title: t("marketplaceOrders.table.sla"),
+                render: (order) => renderSlaStatus(order),
+              },
+              {
                 key: "amount",
                 title: t("marketplaceOrders.table.amount"),
                 className: "neft-num",
                 render: (order) =>
-                  order.total_amount !== undefined && order.total_amount !== null
-                    ? <MoneyValue amount={order.total_amount} currency={order.currency ?? "RUB"} />
+                  resolveAmount(order) !== undefined && resolveAmount(order) !== null
+                    ? <MoneyValue amount={resolveAmount(order)} currency={resolveCurrency(order)} />
                     : t("common.notAvailable"),
               },
               {
@@ -305,9 +381,16 @@ export function MarketplaceOrdersPage() {
                 key: "actions",
                 title: "",
                 render: (order) => (
-                  <Link to={`/marketplace/orders/${order.id}`} className="link-button">
-                    {t("common.open")}
-                  </Link>
+                  <div className="stack-inline">
+                    <Link to={`/marketplace/orders/${order.id}`} className="link-button">
+                      {t("common.open")}
+                    </Link>
+                    {canCancel && order.status === "CREATED" ? (
+                      <button type="button" className="link-button" onClick={() => handleCancel(order.id)}>
+                        {t("actions.cancel")}
+                      </button>
+                    ) : null}
+                  </div>
                 ),
               },
             ]}

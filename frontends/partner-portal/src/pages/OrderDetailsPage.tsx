@@ -2,38 +2,38 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/http";
 import {
-  cancelOrder,
-  completeOrder,
-  confirmOrder,
+  acceptOrder,
+  failOrder,
   fetchOrder,
-  fetchOrderDocuments,
   fetchOrderEvents,
   fetchOrderSettlement,
+  fetchOrderSla,
+  progressOrder,
+  rejectOrder,
   startOrder,
+  completeOrder,
 } from "../api/orders";
-import { fetchRefunds } from "../api/refunds";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { SupportRequestModal } from "../components/SupportRequestModal";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/states";
-import type { MarketplaceDocumentDetails, MarketplaceOrder, MarketplaceOrderEvent, MarketplaceSettlementLink, RefundRequest } from "../types/marketplace";
+import type {
+  MarketplaceOrder,
+  MarketplaceOrderEvent,
+  MarketplaceOrderSlaMetric,
+  MarketplaceSettlementLink,
+} from "../types/marketplace";
 import { formatCurrency, formatDateTime } from "../utils/format";
-import { canCancelOrders, canManageOrderLifecycle, canReadOrders, canReadRefunds } from "../utils/roles";
-import { OrderDocumentsPanel } from "./OrderDocumentsPanel";
+import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
 import { OrderTimelinePanel } from "./OrderTimelinePanel";
+import { useI18n } from "../i18n";
 
-const lifecycleActionLabels: Record<string, string> = {
-  confirm: "Подтвердить заказ",
-  start: "Начать выполнение",
-  complete: "Завершить заказ",
-  cancel: "Отменить заказ",
-};
-
-const canConfirmStatus = (status: string) => ["CREATED", "PAID", "AUTHORIZED"].includes(status);
-const canStartStatus = (status: string) => ["CONFIRMED", "CONFIRMED_BY_PARTNER"].includes(status);
+const canAcceptStatus = (status: string) => ["CREATED"].includes(status);
+const canStartStatus = (status: string) => ["ACCEPTED"].includes(status);
+const canProgressStatus = (status: string) => ["IN_PROGRESS"].includes(status);
 const canCompleteStatus = (status: string) => ["IN_PROGRESS"].includes(status);
-const canCancelStatus = (status: string) =>
-  ["CREATED", "PAID", "AUTHORIZED", "CONFIRMED", "CONFIRMED_BY_PARTNER", "IN_PROGRESS"].includes(status);
+const canFailStatus = (status: string) => ["IN_PROGRESS"].includes(status);
+const canRejectStatus = (status: string) => ["CREATED"].includes(status);
 
 const describeError = (err: unknown, fallback: string) => {
   if (err instanceof ApiError) {
@@ -45,9 +45,31 @@ const describeError = (err: unknown, fallback: string) => {
   return { message: fallback, correlationId: null };
 };
 
+type ActionModal = "accept" | "reject" | "start" | "progress" | "complete" | "fail" | null;
+
+const formatCountdown = (seconds: number | null) => {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return "—";
+  const clamped = Math.max(0, seconds);
+  const hours = Math.floor(clamped / 3600);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  const secs = clamped % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+};
+
+const resolveSlaTone = (metric: MarketplaceOrderSlaMetric) => {
+  const total = metric.totalSeconds ?? null;
+  const remaining = metric.remainingSeconds ?? null;
+  if (!total || remaining === null) return "neutral";
+  const ratio = remaining / total;
+  if (ratio <= 0.1) return "error";
+  if (ratio <= 0.25) return "pending";
+  return "success";
+};
+
 export function OrderDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { t } = useI18n();
   const [order, setOrder] = useState<MarketplaceOrder | null>(null);
   const [orderLoading, setOrderLoading] = useState(true);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -58,32 +80,30 @@ export function OrderDetailsPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [eventsCorrelationId, setEventsCorrelationId] = useState<string | null>(null);
 
-  const [documents, setDocuments] = useState<MarketplaceDocumentDetails[]>([]);
-  const [documentsLoading, setDocumentsLoading] = useState(true);
-  const [documentsError, setDocumentsError] = useState<string | null>(null);
-  const [documentsCorrelationId, setDocumentsCorrelationId] = useState<string | null>(null);
-
-  const [refunds, setRefunds] = useState<RefundRequest[]>([]);
-  const [refundsLoading, setRefundsLoading] = useState(true);
-  const [refundsError, setRefundsError] = useState<string | null>(null);
-  const [refundsCorrelationId, setRefundsCorrelationId] = useState<string | null>(null);
+  const [sla, setSla] = useState<MarketplaceOrderSlaMetric[]>([]);
+  const [slaLoading, setSlaLoading] = useState(true);
+  const [slaError, setSlaError] = useState<string | null>(null);
+  const [slaCorrelationId, setSlaCorrelationId] = useState<string | null>(null);
 
   const [settlement, setSettlement] = useState<MarketplaceSettlementLink | null>(null);
   const [settlementLoading, setSettlementLoading] = useState(true);
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [settlementCorrelationId, setSettlementCorrelationId] = useState<string | null>(null);
 
-  const [actionModal, setActionModal] = useState<"confirm" | "start" | "complete" | "cancel" | null>(null);
+  const [actionModal, setActionModal] = useState<ActionModal>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionCorrelationId, setActionCorrelationId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [failReason, setFailReason] = useState("");
+  const [progressPercent, setProgressPercent] = useState("");
+  const [progressMessage, setProgressMessage] = useState("");
+  const [completeSummary, setCompleteSummary] = useState("");
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"timeline" | "sla" | "payouts">("timeline");
 
   const canRead = canReadOrders(user?.roles);
   const canManage = canManageOrderLifecycle(user?.roles);
-  const canCancel = canCancelOrders(user?.roles);
-  const canSeeRefunds = canReadRefunds(user?.roles);
 
   const orderId = id ?? "";
 
@@ -98,14 +118,14 @@ export function OrderDetailsPage() {
       })
       .catch((err) => {
         console.error(err);
-        const { message, correlationId } = describeError(err, "Не удалось загрузить заказ");
+        const { message, correlationId } = describeError(err, t("orderDetails.errors.loadFailed"));
         setOrderError(message);
         setOrderCorrelationId(correlationId);
       })
       .finally(() => {
         setOrderLoading(false);
       });
-  }, [user, orderId]);
+  }, [user, orderId, t]);
 
   const loadEvents = useCallback(() => {
     if (!user || !orderId) return;
@@ -116,44 +136,28 @@ export function OrderDetailsPage() {
       .then((data) => setEvents(data))
       .catch((err) => {
         console.error(err);
-        const { message, correlationId } = describeError(err, "Не удалось загрузить таймлайн");
+        const { message, correlationId } = describeError(err, t("orderDetails.errors.timelineFailed"));
         setEventsError(message);
         setEventsCorrelationId(correlationId);
       })
       .finally(() => setEventsLoading(false));
-  }, [user, orderId]);
+  }, [user, orderId, t]);
 
-  const loadDocuments = useCallback(() => {
+  const loadSla = useCallback(() => {
     if (!user || !orderId) return;
-    setDocumentsLoading(true);
-    setDocumentsError(null);
-    setDocumentsCorrelationId(null);
-    fetchOrderDocuments(user.token, orderId)
-      .then((data) => setDocuments(data))
+    setSlaLoading(true);
+    setSlaError(null);
+    setSlaCorrelationId(null);
+    fetchOrderSla(user.token, orderId)
+      .then((data) => setSla(data.obligations ?? []))
       .catch((err) => {
         console.error(err);
-        const { message, correlationId } = describeError(err, "Не удалось загрузить документы");
-        setDocumentsError(message);
-        setDocumentsCorrelationId(correlationId);
+        const { message, correlationId } = describeError(err, t("orderDetails.errors.slaFailed"));
+        setSlaError(message);
+        setSlaCorrelationId(correlationId);
       })
-      .finally(() => setDocumentsLoading(false));
-  }, [user, orderId]);
-
-  const loadRefunds = useCallback(() => {
-    if (!user || !orderId || !canSeeRefunds) return;
-    setRefundsLoading(true);
-    setRefundsError(null);
-    setRefundsCorrelationId(null);
-    fetchRefunds(user.token, { order_id: orderId })
-      .then((data) => setRefunds(data.items ?? []))
-      .catch((err) => {
-        console.error(err);
-        const { message, correlationId } = describeError(err, "Не удалось загрузить возвраты");
-        setRefundsError(message);
-        setRefundsCorrelationId(correlationId);
-      })
-      .finally(() => setRefundsLoading(false));
-  }, [user, orderId, canSeeRefunds]);
+      .finally(() => setSlaLoading(false));
+  }, [user, orderId, t]);
 
   const loadSettlement = useCallback(() => {
     if (!user || !orderId) return;
@@ -164,92 +168,102 @@ export function OrderDetailsPage() {
       .then((data) => setSettlement(data.items?.[0] ?? null))
       .catch((err) => {
         console.error(err);
-        const { message, correlationId } = describeError(err, "Не удалось загрузить связь с выплатой");
+        const { message, correlationId } = describeError(err, t("orderDetails.errors.payoutFailed"));
         setSettlementError(message);
         setSettlementCorrelationId(correlationId);
       })
       .finally(() => setSettlementLoading(false));
-  }, [user, orderId]);
+  }, [user, orderId, t]);
 
   useEffect(() => {
     if (!canRead) return;
     loadOrder();
     loadEvents();
-    loadDocuments();
-    loadRefunds();
+    loadSla();
     loadSettlement();
-  }, [canRead, loadOrder, loadEvents, loadDocuments, loadRefunds, loadSettlement]);
+  }, [canRead, loadOrder, loadEvents, loadSla, loadSettlement]);
 
   const handleAction = async () => {
-    if (!user || !order) return;
+    if (!user || !order || !actionModal) return;
     setActionError(null);
     setActionMessage(null);
     setActionCorrelationId(null);
     try {
-      if (actionModal === "confirm") {
-        const result = await confirmOrder(user.token, order.id);
-        setActionMessage(`Заказ подтверждён. Correlation ID: ${result.correlationId ?? "—"}`);
+      if (actionModal === "accept") {
+        const result = await acceptOrder(user.token, order.id);
+        setActionMessage(t("orderDetails.notifications.accepted", { id: result.correlationId ?? "—" }));
+        setActionCorrelationId(result.correlationId ?? null);
+      }
+      if (actionModal === "reject") {
+        const result = await rejectOrder(user.token, order.id, rejectReason.trim());
+        setActionMessage(t("orderDetails.notifications.rejected", { id: result.correlationId ?? "—" }));
         setActionCorrelationId(result.correlationId ?? null);
       }
       if (actionModal === "start") {
         const result = await startOrder(user.token, order.id);
-        setActionMessage(`Заказ принят в работу. Correlation ID: ${result.correlationId ?? "—"}`);
+        setActionMessage(t("orderDetails.notifications.started", { id: result.correlationId ?? "—" }));
+        setActionCorrelationId(result.correlationId ?? null);
+      }
+      if (actionModal === "progress") {
+        const result = await progressOrder(user.token, order.id, {
+          percent: Number(progressPercent),
+          message: progressMessage.trim() || undefined,
+        });
+        setActionMessage(t("orderDetails.notifications.progressed", { id: result.correlationId ?? "—" }));
         setActionCorrelationId(result.correlationId ?? null);
       }
       if (actionModal === "complete") {
-        const result = await completeOrder(user.token, order.id);
-        setActionMessage(`Заказ завершён. Correlation ID: ${result.correlationId ?? "—"}`);
+        const result = await completeOrder(user.token, order.id, { summary: completeSummary.trim() || undefined });
+        setActionMessage(t("orderDetails.notifications.completed", { id: result.correlationId ?? "—" }));
         setActionCorrelationId(result.correlationId ?? null);
       }
-      if (actionModal === "cancel") {
-        const result = await cancelOrder(user.token, order.id, cancelReason);
-        setActionMessage(`Заказ отменён. Correlation ID: ${result.correlationId ?? "—"}`);
+      if (actionModal === "fail") {
+        const result = await failOrder(user.token, order.id, failReason.trim());
+        setActionMessage(t("orderDetails.notifications.failed", { id: result.correlationId ?? "—" }));
         setActionCorrelationId(result.correlationId ?? null);
       }
       setActionModal(null);
-      setCancelReason("");
+      setRejectReason("");
+      setFailReason("");
+      setProgressPercent("");
+      setProgressMessage("");
+      setCompleteSummary("");
       loadOrder();
       loadEvents();
+      loadSla();
     } catch (err) {
       console.error(err);
-      const { message, correlationId } = describeError(err, "Действие не выполнено");
+      const { message, correlationId } = describeError(err, t("orderDetails.errors.actionFailed"));
       setActionError(message);
       setActionCorrelationId(correlationId);
     }
   };
 
-  const shouldShowCancelReason = actionModal === "cancel";
-  const cancelDisabled = shouldShowCancelReason && cancelReason.trim().length === 0;
+  const responseSla = useMemo(() => sla.find((item) => item.metric?.toLowerCase().includes("response")) ?? null, [sla]);
+  const completionSla = useMemo(() => sla.find((item) => item.metric?.toLowerCase().includes("completion")) ?? null, [sla]);
 
-  const summary = useMemo(() => {
-    if (!order) return [];
-    return [
-      { label: "Клиент", value: order.clientName ?? order.clientId },
-      { label: "Телефон", value: order.clientPhone },
-      { label: "Email", value: order.clientEmail },
-      { label: "Станция", value: order.stationName },
-      { label: "Локация", value: order.locationName },
-      { label: "Сервис", value: order.serviceTitle },
-    ].filter((item) => item.value);
-  }, [order]);
+  const disableReject = rejectReason.trim().length === 0;
+  const disableFail = failReason.trim().length === 0;
+  const disableProgress = !progressPercent || Number(progressPercent) < 0 || Number(progressPercent) > 100;
+  const disableComplete = completeSummary.trim().length === 0;
 
   if (!canRead) {
     return <ForbiddenState />;
   }
 
   if (orderLoading) {
-    return <LoadingState label="Загружаем заказ..." />;
+    return <LoadingState label={t("orderDetails.loading")} />;
   }
 
   if (orderError || !order) {
     return (
       <ErrorState
-        title="Не удалось загрузить заказ"
-        description={orderError ?? "Заказ не найден"}
+        title={t("orderDetails.errors.loadTitle")}
+        description={orderError ?? t("orderDetails.errors.notFound")}
         correlationId={orderCorrelationId}
         action={
           <button type="button" className="secondary" onClick={loadOrder}>
-            Повторить
+            {t("errors.retry")}
           </button>
         }
       />
@@ -261,164 +275,238 @@ export function OrderDetailsPage() {
       <section className="card">
         <div className="section-title">
           <div>
-            <h2>Заказ {order.id}</h2>
+            <h2>{t("orderDetails.title", { id: order.id })}</h2>
+            <p className="muted">{order.serviceTitle ?? t("orderDetails.subtitle")}</p>
           </div>
           <div className="actions">
             <button type="button" className="secondary" onClick={() => setIsSupportOpen(true)}>
-              Создать обращение
+              {t("orderDetails.actions.support")}
             </button>
             <Link to="/orders" className="ghost">
-              Назад к списку
+              {t("orderDetails.actions.back")}
             </Link>
           </div>
         </div>
         <div className="meta-grid">
           <div>
-            <div className="label">Статус заказа</div>
+            <div className="label">{t("orderDetails.fields.status")}</div>
             <StatusBadge status={order.status} />
           </div>
           <div>
-            <div className="label">Статус оплаты</div>
-            <StatusBadge status={order.paymentStatus ?? "—"} />
+            <div className="label">{t("orderDetails.fields.client")}</div>
+            <div>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</div>
           </div>
           <div>
-            <div className="label">Создан</div>
+            <div className="label">{t("orderDetails.fields.created")}</div>
             <div>{formatDateTime(order.createdAt)}</div>
           </div>
           <div>
-            <div className="label">Correlation ID</div>
-            <div className="mono">{order.correlationId ?? "—"}</div>
+            <div className="label">{t("orderDetails.fields.amount")}</div>
+            <div>{formatCurrency(order.totalAmount ?? null, order.currency ?? "RUB")}</div>
           </div>
         </div>
-        {summary.length > 0 ? (
-          <div className="card__section">
-            <div className="meta-grid">
-              {summary.map((item) => (
-                <div key={item.label}>
-                  <div className="label">{item.label}</div>
-                  <div>{item.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
         <div className="card__section">
           <div className="meta-grid">
             <div>
-              <div className="label">Сумма</div>
-              <div>{formatCurrency(order.totalAmount ?? null)}</div>
+              <div className="label">{t("orderDetails.fields.responseDue")}</div>
+              <div className={`badge ${responseSla ? resolveSlaTone(responseSla) : "neutral"}`}>
+                {responseSla ? formatCountdown(responseSla.remainingSeconds ?? null) : "—"}
+              </div>
             </div>
             <div>
-              <div className="label">НДС</div>
-              <div>{formatCurrency(order.vatAmount ?? null)}</div>
-            </div>
-            <div>
-              <div className="label">Оплата (ref)</div>
-              <div className="mono">{order.paymentRef ?? "—"}</div>
+              <div className="label">{t("orderDetails.fields.completionDue")}</div>
+              <div className={`badge ${completionSla ? resolveSlaTone(completionSla) : "neutral"}`}>
+                {completionSla ? formatCountdown(completionSla.remainingSeconds ?? null) : "—"}
+              </div>
             </div>
           </div>
         </div>
-      </section>
-
-      <section className="card">
-        <div className="section-title">
-          <h3>Позиции</h3>
-        </div>
-        {order.items.length === 0 ? (
-          <EmptyState title="Нет позиций" description="В этом заказе нет позиций." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Название</th>
-                <th>Кол-во</th>
-                <th>Цена</th>
-                <th>Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((item, index) => (
-                <tr key={`${item.offerId}-${index}`}>
-                  <td>{item.title ?? item.offerId}</td>
-                  <td>{item.qty}</td>
-                  <td>{formatCurrency(item.unitPrice)}</td>
-                  <td>{formatCurrency(item.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="section-title">
-          <h3>Управление жизненным циклом</h3>
-          <span className="muted">Все действия логируются в audit.</span>
-        </div>
-        {!canManage && !canCancel ? (
-          <EmptyState title="Действия недоступны" description="У вашей роли нет доступа к изменениям заказа." />
-        ) : (
-          <div className="actions">
-            {canManage ? (
-              <>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setActionModal("confirm")}
-                  disabled={!canConfirmStatus(order.status)}
-                >
-                  Подтвердить
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setActionModal("start")}
-                  disabled={!canStartStatus(order.status)}
-                >
-                  Начать
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setActionModal("complete")}
-                  disabled={!canCompleteStatus(order.status)}
-                >
-                  Завершить
-                </button>
-              </>
-            ) : null}
-            {canCancel ? (
+        <div className="card__section">
+          <div className="section-title">
+            <h3>{t("orderDetails.lifecycle.title")}</h3>
+          </div>
+          {!canManage ? (
+            <EmptyState title={t("orderDetails.lifecycle.deniedTitle")} description={t("orderDetails.lifecycle.deniedDescription")} />
+          ) : (
+            <div className="actions">
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setActionModal("cancel")}
-                disabled={!canCancelStatus(order.status)}
+                onClick={() => setActionModal("accept")}
+                disabled={!canAcceptStatus(order.status)}
               >
-                Отменить
+                {t("orderDetails.actions.accept")}
               </button>
-            ) : null}
-          </div>
-        )}
-        {actionMessage ? <div className="notice">{actionMessage}</div> : null}
-        {actionError ? (
-          <div className="notice error">
-            {actionError}
-            {actionCorrelationId ? <div className="muted small">Correlation ID: {actionCorrelationId}</div> : null}
-          </div>
-        ) : null}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setActionModal("reject")}
+                disabled={!canRejectStatus(order.status)}
+              >
+                {t("orderDetails.actions.reject")}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setActionModal("start")}
+                disabled={!canStartStatus(order.status)}
+              >
+                {t("orderDetails.actions.start")}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setActionModal("progress")}
+                disabled={!canProgressStatus(order.status)}
+              >
+                {t("orderDetails.actions.progress")}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setActionModal("complete")}
+                disabled={!canCompleteStatus(order.status)}
+              >
+                {t("orderDetails.actions.complete")}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setActionModal("fail")}
+                disabled={!canFailStatus(order.status)}
+              >
+                {t("orderDetails.actions.fail")}
+              </button>
+            </div>
+          )}
+          {actionMessage ? <div className="notice">{actionMessage}</div> : null}
+          {actionError ? (
+            <div className="notice error">
+              {actionError}
+              {actionCorrelationId ? <div className="muted small">Correlation ID: {actionCorrelationId}</div> : null}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="card">
-        <div className="section-title">
-          <h3>Таймлайн заказа</h3>
+        <div className="tabs">
+          <button type="button" className={activeTab === "timeline" ? "secondary" : "ghost"} onClick={() => setActiveTab("timeline")}>
+            {t("orderDetails.tabs.timeline")}
+          </button>
+          <button type="button" className={activeTab === "sla" ? "secondary" : "ghost"} onClick={() => setActiveTab("sla")}>
+            {t("orderDetails.tabs.sla")}
+          </button>
+          <button type="button" className={activeTab === "payouts" ? "secondary" : "ghost"} onClick={() => setActiveTab("payouts")}>
+            {t("orderDetails.tabs.payouts")}
+          </button>
         </div>
-        <OrderTimelinePanel
-          events={events}
-          isLoading={eventsLoading}
-          error={eventsError}
-          correlationId={eventsCorrelationId}
-          onRetry={loadEvents}
-        />
+
+        {activeTab === "timeline" ? (
+          <OrderTimelinePanel
+            events={events}
+            isLoading={eventsLoading}
+            error={eventsError}
+            correlationId={eventsCorrelationId}
+            onRetry={loadEvents}
+          />
+        ) : null}
+
+        {activeTab === "sla" ? (
+          <div>
+            {slaLoading ? (
+              <LoadingState label={t("orderDetails.sla.loading")} />
+            ) : slaError ? (
+              <ErrorState
+                title={t("orderDetails.sla.errorTitle")}
+                description={slaError}
+                correlationId={slaCorrelationId}
+                action={
+                  <button type="button" className="secondary" onClick={loadSla}>
+                    {t("errors.retry")}
+                  </button>
+                }
+              />
+            ) : sla.length === 0 ? (
+              <EmptyState title={t("orderDetails.sla.emptyTitle")} description={t("orderDetails.sla.emptyDescription")} />
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>{t("orderDetails.sla.table.metric")}</th>
+                    <th>{t("orderDetails.sla.table.deadline")}</th>
+                    <th>{t("orderDetails.sla.table.remaining")}</th>
+                    <th>{t("orderDetails.sla.table.status")}</th>
+                    <th>{t("orderDetails.sla.table.penalty")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sla.map((metric) => (
+                    <tr key={`${metric.metric}-${metric.deadlineAt ?? ""}`}>
+                      <td>{metric.metric}</td>
+                      <td>{metric.deadlineAt ? formatDateTime(metric.deadlineAt) : "—"}</td>
+                      <td>
+                        <span className={`badge ${resolveSlaTone(metric)}`}>{formatCountdown(metric.remainingSeconds ?? null)}</span>
+                      </td>
+                      <td>{metric.status ?? "—"}</td>
+                      <td>{metric.penalty ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === "payouts" ? (
+          <div>
+            {settlementLoading ? (
+              <LoadingState label={t("orderDetails.payouts.loading")} />
+            ) : settlementError ? (
+              <ErrorState
+                title={t("orderDetails.payouts.errorTitle")}
+                description={settlementError}
+                correlationId={settlementCorrelationId}
+                action={
+                  <button type="button" className="secondary" onClick={loadSettlement}>
+                    {t("errors.retry")}
+                  </button>
+                }
+              />
+            ) : settlement ? (
+              <div className="meta-grid">
+                <div>
+                  <div className="label">{t("orderDetails.payouts.fields.settlementId")}</div>
+                  <div className="mono">{settlement.id ?? (settlement as { settlement_ref?: string }).settlement_ref ?? "—"}</div>
+                </div>
+                <div>
+                  <div className="label">{t("orderDetails.payouts.fields.status")}</div>
+                  <StatusBadge status={settlement.status} />
+                </div>
+                <div>
+                  <div className="label">{t("orderDetails.payouts.fields.period")}</div>
+                  <div>
+                    {settlement.periodStart ? formatDateTime(settlement.periodStart) : "—"} — {settlement.periodEnd ? formatDateTime(settlement.periodEnd) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">{t("orderDetails.payouts.fields.netAmount")}</div>
+                  <div>{formatCurrency((settlement as { net_amount?: number }).net_amount ?? null)}</div>
+                </div>
+                <div>
+                  <Link
+                    className="link-button"
+                    to={`/payouts/${settlement.id ?? (settlement as { settlement_ref?: string }).settlement_ref ?? ""}`}
+                  >
+                    {t("orderDetails.payouts.actions.open")}
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <EmptyState title={t("orderDetails.payouts.emptyTitle")} description={t("orderDetails.payouts.emptyDescription")} />
+            )}
+          </div>
+        ) : null}
       </section>
 
       <SupportRequestModal
@@ -427,154 +515,91 @@ export function OrderDetailsPage() {
         subjectType="ORDER"
         subjectId={order.id}
         correlationId={order.correlationId ?? undefined}
-        defaultTitle={`Проблема с заказом ${order.id}`}
+        defaultTitle={t("orderDetails.supportTitle", { id: order.id })}
       />
-
-      <section className="card">
-        <div className="section-title">
-          <h3>Документы</h3>
-        </div>
-        <OrderDocumentsPanel
-          documents={documents}
-          isLoading={documentsLoading}
-          error={documentsError}
-          correlationId={documentsCorrelationId}
-          canManage={canManage}
-          onRefresh={loadDocuments}
-        />
-      </section>
-
-      <section className="card">
-        <div className="section-title">
-          <h3>Возвраты</h3>
-          <Link className="ghost" to="/refunds">
-            Все возвраты
-          </Link>
-        </div>
-        {!canSeeRefunds ? (
-          <EmptyState title="Возвраты недоступны" description="У вашей роли нет доступа к возвратам." />
-        ) : refundsLoading ? (
-          <LoadingState label="Загружаем возвраты..." />
-        ) : refundsError ? (
-          <ErrorState
-            title="Не удалось загрузить возвраты"
-            description={refundsError}
-            correlationId={refundsCorrelationId}
-            action={
-              <button type="button" className="secondary" onClick={loadRefunds}>
-                Повторить
-              </button>
-            }
-          />
-        ) : refunds.length === 0 ? (
-          <EmptyState title="Нет возвратов" description="Возвраты по этому заказу отсутствуют." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Refund ID</th>
-                <th>Статус</th>
-                <th>Сумма</th>
-                <th>Причина</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {refunds.map((refund) => (
-                <tr key={refund.id}>
-                  <td>{refund.id}</td>
-                  <td>
-                    <StatusBadge status={refund.status} />
-                  </td>
-                  <td>{formatCurrency(refund.amount)}</td>
-                  <td>{refund.reason ?? "—"}</td>
-                  <td>
-                    <Link className="link-button" to={`/refunds/${refund.id}`}>
-                      Открыть
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="section-title">
-          <h3>Связь с выплатой</h3>
-        </div>
-        {settlementLoading ? (
-          <LoadingState label="Загружаем данные по выплате..." />
-        ) : settlementError ? (
-          <ErrorState
-            title="Не удалось загрузить данные по выплате"
-            description={settlementError}
-            correlationId={settlementCorrelationId}
-            action={
-              <button type="button" className="secondary" onClick={loadSettlement}>
-                Повторить
-              </button>
-            }
-          />
-        ) : settlement ? (
-          <div className="meta-grid">
-            <div>
-              <div className="label">Settlement ID</div>
-              <div className="mono">{settlement.id}</div>
-            </div>
-            <div>
-              <div className="label">Статус</div>
-              <StatusBadge status={settlement.status} />
-            </div>
-            <div>
-              <div className="label">Период</div>
-              <div>
-                {settlement.periodStart ? formatDateTime(settlement.periodStart) : "—"} — {settlement.periodEnd ? formatDateTime(settlement.periodEnd) : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="label">Payout batch</div>
-              <div className="mono">{settlement.payoutBatchId ?? "—"}</div>
-            </div>
-            <div>
-              <Link className="link-button" to={`/payouts/${settlement.id}`}>
-                Перейти к выплате
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <EmptyState title="Выплата не найдена" description="Связь с выплатой пока не сформирована." />
-        )}
-      </section>
 
       {actionModal ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <div className="section-title">
-              <h3>{lifecycleActionLabels[actionModal]}</h3>
+              <h3>{t(`orderDetails.modals.${actionModal}.title`)}</h3>
               <button type="button" className="ghost" onClick={() => setActionModal(null)}>
-                Закрыть
+                {t("orderDetails.modals.close")}
               </button>
             </div>
-            <div>Вы уверены, что хотите выполнить действие? Результат будет зафиксирован в аудите.</div>
-            {shouldShowCancelReason ? (
+            <div>{t(`orderDetails.modals.${actionModal}.description`)}</div>
+            {actionModal === "reject" ? (
               <label className="form-field">
-                Причина отмены
+                {t("orderDetails.modals.reject.reason")}
                 <textarea
                   className="textarea"
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  placeholder="Опишите причину отмены"
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  placeholder={t("orderDetails.modals.reject.placeholder")}
+                />
+              </label>
+            ) : null}
+            {actionModal === "progress" ? (
+              <div className="stack">
+                <label className="form-field">
+                  {t("orderDetails.modals.progress.percent")}
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={progressPercent}
+                    onChange={(event) => setProgressPercent(event.target.value)}
+                  />
+                </label>
+                <label className="form-field">
+                  {t("orderDetails.modals.progress.message")}
+                  <textarea
+                    className="textarea"
+                    value={progressMessage}
+                    onChange={(event) => setProgressMessage(event.target.value)}
+                    placeholder={t("orderDetails.modals.progress.placeholder")}
+                  />
+                </label>
+              </div>
+            ) : null}
+            {actionModal === "complete" ? (
+              <label className="form-field">
+                {t("orderDetails.modals.complete.summary")}
+                <textarea
+                  className="textarea"
+                  value={completeSummary}
+                  onChange={(event) => setCompleteSummary(event.target.value)}
+                  placeholder={t("orderDetails.modals.complete.placeholder")}
+                />
+              </label>
+            ) : null}
+            {actionModal === "fail" ? (
+              <label className="form-field">
+                {t("orderDetails.modals.fail.reason")}
+                <textarea
+                  className="textarea"
+                  value={failReason}
+                  onChange={(event) => setFailReason(event.target.value)}
+                  placeholder={t("orderDetails.modals.fail.placeholder")}
                 />
               </label>
             ) : null}
             <div className="actions">
               <button type="button" className="secondary" onClick={() => setActionModal(null)}>
-                Отмена
+                {t("orderDetails.modals.cancel")}
               </button>
-              <button type="button" className="primary" onClick={handleAction} disabled={cancelDisabled}>
-                Подтвердить
+              <button
+                type="button"
+                className="primary"
+                onClick={handleAction}
+                disabled={
+                  (actionModal === "reject" && disableReject) ||
+                  (actionModal === "fail" && disableFail) ||
+                  (actionModal === "progress" && disableProgress) ||
+                  (actionModal === "complete" && disableComplete)
+                }
+              >
+                {t("orderDetails.modals.confirm")}
               </button>
             </div>
           </div>

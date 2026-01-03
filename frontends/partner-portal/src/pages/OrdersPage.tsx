@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Package } from "../components/icons";
 import { ApiError } from "../api/http";
-import { fetchOrders, type OrderFilters, confirmOrder } from "../api/orders";
+import { fetchOrders, type OrderFilters } from "../api/orders";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import type { MarketplaceOrder } from "../types/marketplace";
 import { formatCurrency, formatDateTime, formatNumber } from "../utils/format";
-import { canManageOrderLifecycle, canReadOrders } from "../utils/roles";
+import { canReadOrders } from "../utils/roles";
 import { useI18n } from "../i18n";
 
 const STORAGE_KEY = "partner-orders-filters";
@@ -21,9 +21,10 @@ const statusOptions = [
   "",
   "CREATED",
   "PAID",
-  "CONFIRMED",
+  "ACCEPTED",
   "IN_PROGRESS",
   "COMPLETED",
+  "FAILED",
   "CANCELLED",
   "REFUNDED",
   "DISPUTED",
@@ -65,11 +66,53 @@ export function OrdersPage() {
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<OrderFilters>({});
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("7d");
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
   const canRead = canReadOrders(user?.roles);
-  const canManageLifecycle = canManageOrderLifecycle(user?.roles);
+  const getSlaDeadline = (order: MarketplaceOrder) => {
+    if (order.status === "CREATED") {
+      return order.slaResponseDueAt ?? null;
+    }
+    if (order.status === "IN_PROGRESS") {
+      return order.slaCompletionDueAt ?? null;
+    }
+    return null;
+  };
+
+  const getSlaRemainingSeconds = (order: MarketplaceOrder) => {
+    if (order.status === "CREATED") {
+      return order.slaResponseRemainingSeconds ?? null;
+    }
+    if (order.status === "IN_PROGRESS") {
+      return order.slaCompletionRemainingSeconds ?? null;
+    }
+    return null;
+  };
+
+  const formatCountdown = (seconds: number | null) => {
+    if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return "—";
+    const clamped = Math.max(0, seconds);
+    const hours = Math.floor(clamped / 3600);
+    const minutes = Math.floor((clamped % 3600) / 60);
+    const secs = clamped % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const resolveSlaTone = (order: MarketplaceOrder) => {
+    const remaining = getSlaRemainingSeconds(order);
+    const deadline = getSlaDeadline(order);
+    if (!deadline && remaining === null) return "neutral";
+    const totalSeconds = (() => {
+      if (!deadline) return null;
+      const created = new Date(order.createdAt).getTime();
+      const due = new Date(deadline).getTime();
+      if (Number.isNaN(created) || Number.isNaN(due)) return null;
+      return Math.max(1, Math.floor((due - created) / 1000));
+    })();
+    if (!totalSeconds || remaining === null) return "pending";
+    const ratio = remaining / totalSeconds;
+    if (ratio <= 0.1) return "error";
+    if (ratio <= 0.25) return "pending";
+    return "success";
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -170,31 +213,6 @@ export function OrdersPage() {
     );
   };
 
-  const handleQuickConfirm = async (orderId: string) => {
-    if (!user) return;
-    setActionError(null);
-    setActionMessage(null);
-    try {
-      const result = await confirmOrder(user.token, orderId);
-      setActionMessage(
-        t("ordersPage.notifications.confirmed", { id: result.correlationId ?? t("common.notAvailable") }),
-      );
-      const updated = await fetchOrders(user.token, { ...filters, offset: String((page - 1) * PAGE_SIZE), limit: String(PAGE_SIZE) });
-      setOrders(updated.items ?? []);
-      setTotal(updated.total ?? 0);
-    } catch (err) {
-      console.error(err);
-      const message =
-        err instanceof ApiError
-          ? t("ordersPage.errors.apiError", { status: err.status, message: err.message })
-          : t("ordersPage.errors.confirmFailed");
-      setActionError(message);
-      if (err instanceof ApiError) {
-        setCorrelationId(err.correlationId);
-      }
-    }
-  };
-
   if (!canRead) {
     return <ForbiddenState />;
   }
@@ -271,6 +289,16 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("service_id", event.target.value)}
             />
           </label>
+          <label className="filter">
+            {t("ordersPage.filters.slaRisk")}
+            <select
+              value={filters.sla_risk ?? ""}
+              onChange={(event) => handleFilterChange("sla_risk", event.target.value)}
+            >
+              <option value="">{t("common.all")}</option>
+              <option value="near">{t("ordersPage.filters.slaRiskNear")}</option>
+            </select>
+          </label>
         </div>
 
         <div className="stats-grid">
@@ -291,9 +319,6 @@ export function OrdersPage() {
             <div className="stat__value">{formatNumber(total)}</div>
           </div>
         </div>
-
-        {actionMessage ? <div className="notice">{actionMessage}</div> : null}
-        {actionError ? <div className="notice error">{actionError}</div> : null}
 
         {isLoading ? (
           <LoadingState />
@@ -318,45 +343,34 @@ export function OrdersPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t("ordersPage.table.createdAt")}</th>
                   <th>{t("ordersPage.table.orderId")}</th>
                   <th>{t("ordersPage.table.client")}</th>
-                  <th>{t("ordersPage.table.items")}</th>
+                  <th>{t("ordersPage.table.service")}</th>
+                  <th>{t("ordersPage.table.createdAt")}</th>
+                  <th>{t("ordersPage.table.sla")}</th>
                   <th>{t("ordersPage.table.amount")}</th>
-                  <th>{t("ordersPage.table.payment")}</th>
                   <th>{t("ordersPage.table.status")}</th>
-                  <th>{t("ordersPage.table.documents")}</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
-                    <td>{formatDateTime(order.createdAt)}</td>
                     <td>{shortId(order.id)}</td>
                     <td>{order.clientName ?? order.clientId ?? t("common.notAvailable")}</td>
-                    <td>{formatNumber(order.itemsCount ?? order.items?.length ?? null)}</td>
-                    <td>{formatCurrency(order.totalAmount ?? null)}</td>
+                    <td>{order.serviceTitle ?? t("common.notAvailable")}</td>
+                    <td>{formatDateTime(order.createdAt)}</td>
                     <td>
-                      <StatusBadge status={order.paymentStatus ?? t("common.notAvailable")} />
+                      <span className={`badge ${resolveSlaTone(order)}`}>{formatCountdown(getSlaRemainingSeconds(order))}</span>
                     </td>
+                    <td>{formatCurrency(order.totalAmount ?? null)}</td>
                     <td>
                       <StatusBadge status={order.status} />
                     </td>
                     <td>
-                      <StatusBadge status={order.documentsStatus ?? order.documents?.[0]?.status ?? t("common.notAvailable")} />
-                    </td>
-                    <td>
-                      <div className="stack-inline">
-                        <Link className="link-button" to={`/orders/${order.id}`}>
-                          {t("common.open")}
-                        </Link>
-                        {canManageLifecycle && ["CREATED", "PAID", "AUTHORIZED"].includes(order.status) ? (
-                          <button type="button" className="ghost" onClick={() => handleQuickConfirm(order.id)}>
-                            {t("ordersPage.actions.quickConfirm")}
-                          </button>
-                        ) : null}
-                      </div>
+                      <Link className="link-button" to={`/orders/${order.id}`}>
+                        {t("common.open")}
+                      </Link>
                     </td>
                   </tr>
                 ))}
