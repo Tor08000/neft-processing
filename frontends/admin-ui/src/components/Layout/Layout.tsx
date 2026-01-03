@@ -74,7 +74,13 @@ export const Layout: React.FC = () => {
   return (
     <div className="admin-layout neft-page">
       <aside className="admin-sidebar">
-        <div className="admin-sidebar__title">NEFT Admin</div>
+        <div className="admin-sidebar__title" aria-label="NEFT Platform">
+          <img
+            src="/admin/brand/neft-platform-mark.svg"
+            alt="NEFT Platform mark"
+            className="admin-sidebar__logo"
+          />
+        </div>
         <nav className="admin-sidebar__nav">
           {navItems.map((item) => {
             const isActive = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);

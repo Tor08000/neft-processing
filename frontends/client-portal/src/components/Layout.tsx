@@ -100,7 +100,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
       <div className="app-shell neft-page">
         <header className="topbar">
           <div className="topbar__meta">
-            <span className="logo">NEFT</span>
+            <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
             <div className="topbar__title">{t("app.title")}</div>
           </div>
         </header>
@@ -120,7 +120,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
       <div className="app-shell neft-page">
         <header className="topbar">
           <div className="topbar__meta">
-            <span className="logo">NEFT</span>
+            <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
             <div className="topbar__title">{t("app.title")}</div>
           </div>
         </header>
@@ -135,7 +135,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     <div className="app-shell neft-page">
       <header className="topbar">
         <div className="topbar__meta">
-          <span className="logo">NEFT</span>
+          <img className="logo" src="/client/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
           <div className="topbar__titles">
             <div className="topbar__title">{sectionTitle}</div>
             <div className="topbar__context">{contextLabel}</div>

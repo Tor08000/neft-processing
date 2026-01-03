@@ -24,7 +24,7 @@ export function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar__meta">
-          <span className="logo">NEFT</span>
+          <img className="logo" src="/partner/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
           <div className="topbar__title">{t("app.title")}</div>
           <div className="muted">
             {user?.partnerId ? t("app.partnerLabel", { id: user.partnerId }) : t("app.partnerFallback")}

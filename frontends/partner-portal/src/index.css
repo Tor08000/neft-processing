@@ -659,15 +659,9 @@ button.primary {
 }
 
 .logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  color: #0f172a;
-  border-radius: 0.5rem;
-  padding: 0.2rem 0.55rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
+  width: 32px;
+  height: 32px;
+  display: inline-block;
 }
 
 .error {

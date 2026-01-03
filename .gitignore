@@ -33,3 +33,5 @@ frontends/**/dist/
 frontends/**/build/
 frontends/**/coverage/
 frontends/**/.vite/
+frontends/**/public/brand/neft-platform-mark*.png
+frontends/**/public/favicon.ico
