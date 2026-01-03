@@ -1,21 +1,21 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { AppLogo } from "./AppLogo";
 
 export type BrandNavItem = {
   to: string;
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   end?: boolean;
 };
 
 export type BrandSidebarProps = {
   title?: string;
   items: BrandNavItem[];
-  footerSlot?: React.ReactNode;
+  footerSlot?: ReactNode;
 };
 
-export const BrandSidebar: React.FC<BrandSidebarProps> = ({ title = "NEFT", items, footerSlot }) => {
+export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebarProps) {
   return (
     <aside className="brand-sidebar">
       <div className="brand-sidebar__title" aria-label="NEFT Platform">
@@ -38,6 +38,6 @@ export const BrandSidebar: React.FC<BrandSidebarProps> = ({ title = "NEFT", item
       {footerSlot ? <div className="brand-sidebar__footer">{footerSlot}</div> : null}
     </aside>
   );
-};
+}
 
 export default BrandSidebar;

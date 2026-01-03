@@ -1,14 +1,14 @@
-import React from "react";
+import type { ReactNode } from "react";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 
 export type StatusPillProps = {
   tone?: StatusTone;
-  children: React.ReactNode;
+  children: ReactNode;
 };
 
-export const StatusPill: React.FC<StatusPillProps> = ({ tone = "neutral", children }) => {
+export function StatusPill({ tone = "neutral", children }: StatusPillProps) {
   return <span className={`status-pill status-pill--${tone}`}>{children}</span>;
-};
+}
 
 export default StatusPill;

@@ -1,14 +1,14 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { AppLogo } from "./AppLogo";
 
 export type BrandHeaderProps = {
-  title: string;
-  subtitle?: string;
-  meta?: React.ReactNode;
-  userSlot?: React.ReactNode;
+  title?: ReactNode;
+  subtitle?: ReactNode;
+  meta?: ReactNode;
+  userSlot?: ReactNode;
 };
 
-export const BrandHeader: React.FC<BrandHeaderProps> = ({ title, subtitle, meta, userSlot }) => {
+export function BrandHeader({ title, subtitle, meta, userSlot }: BrandHeaderProps) {
   return (
     <header className="brand-header">
       <div className="brand-header__meta">
@@ -22,6 +22,6 @@ export const BrandHeader: React.FC<BrandHeaderProps> = ({ title, subtitle, meta,
       {userSlot ? <div className="brand-header__user">{userSlot}</div> : null}
     </header>
   );
-};
+}
 
 export default BrandHeader;
