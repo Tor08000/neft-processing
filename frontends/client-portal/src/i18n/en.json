@@ -32,7 +32,8 @@
     "fleetEmployees": "Fleet · Employees",
     "fleetSpend": "Fleet · Spend",
     "fleetNotifications": "Fleet · Notifications",
-    "fleetPolicies": "Fleet · Policy Center"
+    "fleetPolicies": "Fleet · Policy Center",
+    "fleetIncidents": "Fleet · Incidents"
   },
   "common": {
     "notAvailable": "—",
@@ -813,6 +814,139 @@
       "eventId": "Event ID",
       "copyId": "Copy policy id",
       "copyEventId": "Copy event id"
+    }
+  },
+  "fleetIncidents": {
+    "title": "Fleet · Incidents",
+    "errors": {
+      "loadFailed": "Unable to load incidents",
+      "actionFailed": "Unable to update incident",
+      "noPermission": "Insufficient permissions"
+    },
+    "summary": {
+      "open": "Open: {count}",
+      "inProgress": "In progress: {count}",
+      "closed": "Closed: {count}",
+      "autoBlocked": "Auto-blocked (last 7d): {count}"
+    },
+    "filters": {
+      "status": "Status",
+      "statusAll": "All",
+      "severity": "Severity",
+      "severityAll": "All",
+      "scope": "Scope",
+      "scopeAll": "All",
+      "scopeCard": "Card",
+      "scopeGroup": "Group",
+      "trigger": "Trigger",
+      "triggerAll": "All",
+      "dateFrom": "From",
+      "dateTo": "To"
+    },
+    "status": {
+      "open": "Open",
+      "inProgress": "In progress",
+      "closed": "Closed"
+    },
+    "triggers": {
+      "limitBreach": "Limit breach",
+      "anomaly": "Anomaly"
+    },
+    "scope": {
+      "cardFallback": "Card",
+      "groupFallback": "Group",
+      "client": "Client"
+    },
+    "table": {
+      "status": "Status",
+      "severity": "Severity",
+      "title": "Title",
+      "scope": "Scope",
+      "trigger": "Trigger",
+      "openedAt": "Opened at",
+      "updatedAt": "Last update",
+      "actions": "Actions",
+      "open": "Open"
+    },
+    "emptyTitle": "No incidents 🎉",
+    "emptyDescription": "You're all caught up.",
+    "details": {
+      "title": "Incident details",
+      "notFound": "Incident not found",
+      "notFoundHint": "Check the link or case id.",
+      "notFoundRetry": "Try refreshing the page.",
+      "caseId": "Case ID: {id}"
+    },
+    "actions": {
+      "start": "Start work",
+      "close": "Close incident",
+      "back": "Back to incidents"
+    },
+    "fields": {
+      "status": "Status",
+      "severity": "Severity",
+      "scope": "Scope",
+      "policyAction": "Policy action",
+      "openedAt": "Opened at",
+      "updatedAt": "Last update",
+      "trigger": "Trigger",
+      "assigned": "Assigned to"
+    },
+    "explain": {
+      "title": "Why this happened",
+      "trigger": "Trigger",
+      "rule": "Rule name",
+      "observed": "Observed",
+      "threshold": "Limit",
+      "baseline": "Baseline",
+      "occurredAt": "Occurred at",
+      "policy": "Policy",
+      "cooldown": "Cooldown",
+      "cooldownValue": "{value} sec"
+    },
+    "timeline": {
+      "title": "Timeline",
+      "emptyTitle": "Timeline is empty",
+      "emptyDescription": "Events will appear after processing.",
+      "eventFallback": "Event",
+      "link": "Open link"
+    },
+    "resolution": {
+      "title": "Resolution",
+      "summary": "Resolution summary",
+      "reason": "Reason",
+      "actions": "Actions taken",
+      "closedBy": "Closed by",
+      "closedAt": "Closed at"
+    },
+    "audit": {
+      "title": "Audit",
+      "eventId": "Audit event ID",
+      "decisionId": "Decision memory ID",
+      "sourceRef": "Source ref"
+    },
+    "start": {
+      "title": "Start work",
+      "description": "Confirm you are taking this incident into work.",
+      "confirm": "Start work",
+      "cancel": "Cancel",
+      "note": "Optional note",
+      "defaultNote": "Started work in client portal.",
+      "toast": "Incident moved to in progress."
+    },
+    "close": {
+      "title": "Close incident",
+      "description": "Provide the resolution and actions taken.",
+      "confirm": "Close incident",
+      "cancel": "Cancel",
+      "summary": "Resolution summary",
+      "summaryPlaceholder": "Resolved after...",
+      "actions": "Actions taken",
+      "actionsPlaceholder": "What was done",
+      "unblocked": "Unblocked card",
+      "unblockedReason": "Card unblocked",
+      "validation": "Resolution summary is required.",
+      "toast": "Incident closed."
     }
   },
   "fleet": {
