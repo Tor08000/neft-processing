@@ -1,0 +1,52 @@
+{
+  "uid": "neft-core-incident-logs",
+  "title": "Core Incident Logs",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "logs",
+      "title": "Billing errors",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=\"core-api\"} |= \"billing\" |= \"error\""
+        }
+      ],
+      "id": 1
+    },
+    {
+      "type": "logs",
+      "title": "Ingestion errors",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=~\"core-api|workers|gateway\"} |= \"fleet_ingestion\" |= \"error\""
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "logs",
+      "title": "Notification errors",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=~\"core-api|workers\"} |= \"notification\" |= \"error\""
+        }
+      ],
+      "id": 3
+    },
+    {
+      "type": "logs",
+      "title": "Audit verification errors",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{service=\"core-api\"} |= \"audit\" |= \"verify\" |= \"failed\""
+        }
+      ],
+      "id": 4
+    }
+  ]
+}
