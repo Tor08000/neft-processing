@@ -446,8 +446,20 @@ from .vehicle_profile import (  # noqa: F401
     VehicleProfile,
     VehicleRecommendation,
     VehicleRecommendationStatus,
+    VehicleServiceRecord,
     VehicleServiceType,
     VehicleUsageType,
+)
+from .service_completion_proofs import (  # noqa: F401
+    ServiceCompletionProof,
+    ServiceCompletionProofStatus,
+    ServiceProofActorType,
+    ServiceProofAttachment,
+    ServiceProofAttachmentKind,
+    ServiceProofConfirmation,
+    ServiceProofDecision,
+    ServiceProofEvent,
+    ServiceProofEventType,
 )
 from .subscriptions_v1 import (  # noqa: F401
     Achievement,
