@@ -14,6 +14,7 @@ COPY frontends/partner-portal/ ./
 COPY frontends/shared/ /app/shared/
 
 # build
+RUN echo "PARTNER_PORTAL_DOCKERFILE_MARKER_777"
 RUN npm run build
 
 # ---------- Stage 2: nginx + static ----------
