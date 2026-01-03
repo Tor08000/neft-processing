@@ -20,6 +20,10 @@ class Permission(str, Enum):
     CLIENT_FLEET_SPEND_VIEW = "client:fleet:spend:view"
     CLIENT_FLEET_EMPLOYEES_MANAGE = "client:fleet:employees:manage"
     CLIENT_MARKETPLACE_VIEW = "client:marketplace:view"
+    CLIENT_MARKETPLACE_ORDERS_LIST = "client:marketplace:orders:list"
+    CLIENT_MARKETPLACE_ORDERS_VIEW = "client:marketplace:orders:view"
+    CLIENT_MARKETPLACE_ORDERS_CREATE = "client:marketplace:orders:create"
+    CLIENT_MARKETPLACE_ORDERS_CANCEL = "client:marketplace:orders:cancel"
 
     PARTNER_DASHBOARD_VIEW = "partner:dashboard:view"
     PARTNER_CONTRACTS_LIST = "partner:contracts:list"
@@ -29,6 +33,7 @@ class Permission(str, Enum):
     PARTNER_PAYOUTS_LIST = "partner:payouts:list"
     PARTNER_PAYOUTS_CONFIRM = "partner:payouts:confirm"
     PARTNER_CATALOG_ALL = "partner:catalog:*"
+    PARTNER_MARKETPLACE_ORDERS_ALL = "partner:marketplace:orders:*"
 
     ADMIN_CONTRACTS_ALL = "admin:contracts:*"
     ADMIN_BILLING_ALL = "admin:billing:*"

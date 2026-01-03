@@ -180,6 +180,14 @@ from .marketplace_catalog import (  # noqa: F401
     PartnerProfile,
     PartnerVerificationStatus,
 )
+from .marketplace_orders import (  # noqa: F401
+    MarketplaceOrder,
+    MarketplaceOrderActorType,
+    MarketplaceOrderEvent,
+    MarketplaceOrderEventType,
+    MarketplaceOrderImmutableError,
+    MarketplaceOrderStatus,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401

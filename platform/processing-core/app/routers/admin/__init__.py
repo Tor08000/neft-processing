@@ -44,6 +44,7 @@ from app.routers.admin import (
     ops,
     marketplace_contracts,
     marketplace_catalog,
+    marketplace_orders,
     audit,
     exports,
 )
@@ -91,6 +92,7 @@ router.include_router(what_if.router)
 router.include_router(ops.router)
 router.include_router(marketplace_contracts.router)
 router.include_router(marketplace_catalog.router)
+router.include_router(marketplace_orders.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(reconciliation.router)
