@@ -49,7 +49,7 @@ import FleetGroupsPage from "./pages/fleet/FleetGroupsPage";
 import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
 import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
 import FleetSpendPage from "./pages/fleet/FleetSpendPage";
-import MarketplaceModerationPage from "./pages/marketplace/MarketplaceModerationPage";
+import StubProvidersPage from "./pages/stubs/StubProvidersPage";
 
 export function App() {
   return (
@@ -117,7 +117,7 @@ export function App() {
             <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
             <Route path="/fleet/limits" element={<FleetLimitsPage />} />
             <Route path="/fleet/spend" element={<FleetSpendPage />} />
-            <Route path="/marketplace/moderation" element={<MarketplaceModerationPage />} />
+            <Route path="/stubs" element={<StubProvidersPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -6,6 +6,7 @@ import { BrandHeader, BrandSidebar, PageShell } from "../../../../shared/brand/c
 const baseNavItems = [
   { to: "/operations", label: "Ops" },
   { to: "/finance", label: "Finance" },
+  { to: "/stubs", label: "Stubs" },
   { to: "/risk", label: "Risk" },
   { to: "/policies", label: "Policies" },
   { to: "/marketplace", label: "Marketplace" },

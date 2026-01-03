@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
+from app.config import settings
 from app.db import get_db
 from app.models.reconciliation import ExternalStatement, ReconciliationDiscrepancy, ReconciliationRun
 from app.schemas.admin.reconciliation import (
@@ -19,6 +23,13 @@ from app.schemas.admin.reconciliation import (
     ReconciliationRunResponse,
     ResolveDiscrepancyRequest,
 )
+from app.services.bank_stub_service import (
+    BankStubServiceError,
+    build_external_hash,
+    build_external_statement_payload,
+    generate_statement,
+)
+from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.reconciliation_service import (
     ignore_discrepancy,
     resolve_discrepancy_with_adjustment,
@@ -64,6 +75,77 @@ def create_external_run(
         db,
         statement_id=payload.statement_id,
         created_by=token.get("user_id") or token.get("sub"),
+    )
+    db.commit()
+    run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).one()
+    return _serialize_run(run)
+
+
+@router.post("/run", response_model=ReconciliationRunResponse, status_code=201)
+def run_stubbed_external(
+    source: str = Query(...),
+    period_from: datetime = Query(...),
+    period_to: datetime = Query(...),
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> ReconciliationRunResponse:
+    if source != "bank_stub":
+        raise HTTPException(status_code=422, detail="invalid_source")
+    if not settings.BANK_STUB_ENABLED:
+        raise HTTPException(status_code=404, detail="bank_stub_disabled")
+    if period_from > period_to:
+        raise HTTPException(status_code=422, detail="invalid_period")
+
+    created_by = token.get("user_id") or token.get("sub")
+    actor = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    try:
+        statement = generate_statement(
+            db,
+            tenant_id=int(token.get("tenant_id") or 0),
+            period_from=period_from,
+            period_to=period_to,
+            actor=actor,
+        )
+    except BankStubServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    payload = build_external_statement_payload(statement)
+    currency = payload.get("currency") or "RUB"
+    total_in_raw = payload.get("total_in")
+    total_out_raw = payload.get("total_out")
+    closing_raw = payload.get("closing_balance")
+    total_in = Decimal(str(total_in_raw)) if total_in_raw is not None else None
+    total_out = Decimal(str(total_out_raw)) if total_out_raw is not None else None
+    closing_balance = Decimal(str(closing_raw)) if closing_raw is not None else None
+    try:
+        external = upload_external_statement(
+            db,
+            provider="bank_stub",
+            period_start=statement.period_from,
+            period_end=statement.period_to,
+            currency=currency,
+            total_in=total_in,
+            total_out=total_out,
+            closing_balance=closing_balance,
+            lines=payload.get("lines"),
+            created_by=created_by,
+        )
+    except ValueError as exc:
+        if str(exc) != "statement_already_uploaded":
+            raise
+        source_hash = build_external_hash(statement)
+        external = (
+            db.query(ExternalStatement)
+            .filter(ExternalStatement.provider == "bank_stub")
+            .filter(ExternalStatement.source_hash == source_hash)
+            .one()
+        )
+
+    run_id = run_external_reconciliation(
+        db,
+        statement_id=str(external.id),
+        created_by=created_by,
     )
     db.commit()
     run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).one()

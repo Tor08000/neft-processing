@@ -26,7 +26,11 @@ from app.schemas.fleet_ingestion import FleetIngestRequestIn
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.case_event_redaction import redact_deep
-from app.services.fleet_anomaly_service import detect_anomalies_for_transaction, detect_repeated_breach_anomaly
+from app.services.fleet_anomaly_service import (
+    detect_anomalies_for_transaction,
+    detect_injected_anomalies,
+    detect_repeated_breach_anomaly,
+)
 from app.services.fleet_policy_engine import evaluate_policies_for_anomaly, evaluate_policies_for_breach
 from app.services.fleet_limit_check import apply_limit_checks
 from app.services.fleet_metrics import metrics as fleet_metrics
@@ -345,6 +349,15 @@ def ingest_transactions(
                 request_id=request_id,
                 trace_id=trace_id,
             )
+            injected = detect_injected_anomalies(
+                db,
+                transaction=tx,
+                raw_payload=item.raw_payload if item.raw_payload else None,
+                principal=principal,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            anomalies.extend(injected)
             for anomaly in anomalies:
                 enqueue_anomaly_notification(
                     db,
