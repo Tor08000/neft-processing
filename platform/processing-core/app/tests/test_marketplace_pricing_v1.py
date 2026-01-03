@@ -59,6 +59,7 @@ def _create_product(db, partner_id: str, price: int = 1000) -> MarketplaceProduc
         price_model=MarketplacePriceModel.FIXED,
         price_config={"amount": price, "currency": "RUB"},
         status=MarketplaceProductStatus.PUBLISHED,
+        moderation_status="APPROVED",
     )
     db.add(product)
     db.commit()

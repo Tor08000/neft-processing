@@ -7,7 +7,11 @@ from typing import Iterable
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.models.marketplace_catalog import MarketplaceProduct, MarketplaceProductStatus
+from app.models.marketplace_catalog import (
+    MarketplaceProduct,
+    MarketplaceProductModerationStatus,
+    MarketplaceProductStatus,
+)
 from app.models.marketplace_recommendations import (
     MarketplaceEvent,
     MarketplaceEventType,
@@ -85,6 +89,7 @@ class MarketplaceRecommendationService:
             .filter(
                 MarketplaceProduct.id.in_(product_ids),
                 MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED,
+                MarketplaceProduct.moderation_status == MarketplaceProductModerationStatus.APPROVED,
             )
             .all()
         )
@@ -152,6 +157,7 @@ class MarketplaceRecommendationService:
                 .join(ProductAttributes, ProductAttributes.product_id == MarketplaceProduct.id)
                 .filter(
                     MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED,
+                    MarketplaceProduct.moderation_status == MarketplaceProductModerationStatus.APPROVED,
                     ProductAttributes.category_code == attributes.category_code,
                     MarketplaceProduct.id != product_id,
                 )
@@ -161,6 +167,7 @@ class MarketplaceRecommendationService:
                 self.db.query(MarketplaceProduct)
                 .filter(
                     MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED,
+                    MarketplaceProduct.moderation_status == MarketplaceProductModerationStatus.APPROVED,
                     MarketplaceProduct.category == product.category,
                     MarketplaceProduct.id != product_id,
                 )

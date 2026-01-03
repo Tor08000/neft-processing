@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
 from app.models.cases import Case, CaseEventType, CaseKind, CasePriority
-from app.models.marketplace_catalog import MarketplaceProduct, MarketplaceProductStatus
+from app.models.marketplace_catalog import (
+    MarketplaceProduct,
+    MarketplaceProductModerationStatus,
+    MarketplaceProductStatus,
+)
 from app.models.marketplace_orders import (
     MarketplaceOrder,
     MarketplaceOrderActorType,
@@ -229,6 +233,8 @@ class MarketplaceOrderService:
             raise MarketplaceOrderServiceError("product_not_found")
         if product.status != MarketplaceProductStatus.PUBLISHED:
             raise MarketplaceOrderServiceError("product_not_published")
+        if product.moderation_status != MarketplaceProductModerationStatus.APPROVED:
+            raise MarketplaceOrderServiceError("product_not_approved")
         return product
 
     def _resolve_order(self, *, order_id: str) -> MarketplaceOrder:

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.types import new_uuid_str
 from app.models.marketplace_catalog import (
     MarketplaceProduct,
+    MarketplaceProductModerationStatus,
     MarketplaceProductStatus,
     MarketplaceProductType,
     PartnerProfile,
@@ -174,6 +175,7 @@ class MarketplaceCatalogService:
         *,
         partner_id: str,
         status: MarketplaceProductStatus | None = None,
+        moderation_status: MarketplaceProductModerationStatus | None = None,
         product_type: MarketplaceProductType | None = None,
         category: str | None = None,
         query_text: str | None = None,
@@ -183,6 +185,8 @@ class MarketplaceCatalogService:
         query = self.db.query(MarketplaceProduct).filter(MarketplaceProduct.partner_id == partner_id)
         if status:
             query = query.filter(MarketplaceProduct.status == status)
+        if moderation_status:
+            query = query.filter(MarketplaceProduct.moderation_status == moderation_status)
         if product_type:
             query = query.filter(MarketplaceProduct.type == product_type)
         if category:
@@ -223,6 +227,7 @@ class MarketplaceCatalogService:
                 "category": payload["category"],
                 "price_model": payload["price_model"],
                 "status": MarketplaceProductStatus.DRAFT.value,
+                "moderation_status": MarketplaceProductModerationStatus.DRAFT.value,
             },
         )
         product = MarketplaceProduct(
@@ -235,6 +240,7 @@ class MarketplaceCatalogService:
             price_model=payload["price_model"],
             price_config=payload["price_config"],
             status=MarketplaceProductStatus.DRAFT.value,
+            moderation_status=MarketplaceProductModerationStatus.DRAFT.value,
             audit_event_id=audit.id,
         )
         self.db.add(product)
@@ -249,6 +255,11 @@ class MarketplaceCatalogService:
     ) -> MarketplaceProduct:
         if product.status == MarketplaceProductStatus.ARCHIVED:
             raise ValueError("product_archived")
+        if product.moderation_status not in {
+            MarketplaceProductModerationStatus.DRAFT,
+            MarketplaceProductModerationStatus.REJECTED,
+        }:
+            raise ValueError("product_not_editable")
         before = {
             "type": product.type.value,
             "title": product.title,
@@ -285,40 +296,43 @@ class MarketplaceCatalogService:
         self.db.flush()
         return product
 
-    def publish_product(self, *, product: MarketplaceProduct) -> MarketplaceProduct:
-        if product.status == MarketplaceProductStatus.PUBLISHED:
-            raise ValueError("product_already_published")
+    def submit_product_for_review(self, *, product: MarketplaceProduct) -> MarketplaceProduct:
         if product.status == MarketplaceProductStatus.ARCHIVED:
             raise ValueError("product_archived")
-        before = {"status": product.status.value}
+        if product.moderation_status not in {
+            MarketplaceProductModerationStatus.DRAFT,
+            MarketplaceProductModerationStatus.REJECTED,
+        }:
+            raise ValueError("product_invalid_moderation_state")
+        before = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+        }
         product.status = MarketplaceProductStatus.PUBLISHED
-        product.published_at = datetime.now(timezone.utc)
-        product.updated_at = product.published_at
-        after = {"status": product.status.value}
+        product.moderation_status = MarketplaceProductModerationStatus.PENDING_REVIEW
+        product.moderation_reason = None
+        product.moderated_by = None
+        product.moderated_at = None
+        product.published_at = None
+        product.updated_at = datetime.now(timezone.utc)
+        after = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+        }
         audit = self._audit(
-            event_type="PRODUCT_PUBLISHED",
+            event_type="PRODUCT_SUBMITTED_FOR_REVIEW",
             entity_type="marketplace_product",
             entity_id=str(product.id),
-            action="PRODUCT_PUBLISHED",
+            action="PRODUCT_SUBMITTED_FOR_REVIEW",
             before=before,
             after=after,
         )
         product.audit_event_id = audit.id
-        record_decision_memory(
-            self.db,
-            case_id=None,
-            decision_type="product_published",
-            decision_ref_id=str(product.id),
-            decision_at=datetime.now(timezone.utc),
-            decided_by_user_id=self.request_ctx.actor_id if self.request_ctx else None,
-            context_snapshot={"product_id": str(product.id), "status": product.status.value},
-            rationale="Product published",
-            score_snapshot=None,
-            mastery_snapshot=None,
-            audit_event_id=str(audit.id),
-        )
         self.db.flush()
         return product
+
+    def publish_product(self, *, product: MarketplaceProduct) -> MarketplaceProduct:
+        return self.submit_product_for_review(product=product)
 
     def archive_product(self, *, product: MarketplaceProduct) -> MarketplaceProduct:
         if product.status == MarketplaceProductStatus.ARCHIVED:
@@ -347,19 +361,27 @@ class MarketplaceCatalogService:
         status: MarketplaceProductStatus,
         reason: str | None = None,
     ) -> MarketplaceProduct:
-        before = {"status": product.status.value}
+        before = {"status": product.status.value, "moderation_status": product.moderation_status.value}
         now = datetime.now(timezone.utc)
         product.status = status
         if status == MarketplaceProductStatus.PUBLISHED:
             product.published_at = product.published_at or now
             product.archived_at = None
+            product.moderation_status = MarketplaceProductModerationStatus.APPROVED
+            product.moderated_at = now
+            product.moderated_by = self.request_ctx.actor_id if self.request_ctx else None
+            product.moderation_reason = None
         elif status == MarketplaceProductStatus.ARCHIVED:
             product.archived_at = now
         else:
             product.published_at = None
             product.archived_at = None
+            product.moderation_status = MarketplaceProductModerationStatus.DRAFT
+            product.moderated_at = None
+            product.moderated_by = None
+            product.moderation_reason = None
         product.updated_at = now
-        after = {"status": product.status.value}
+        after = {"status": product.status.value, "moderation_status": product.moderation_status.value}
         audit = self._audit(
             event_type="PRODUCT_MODERATED_STATUS_CHANGED",
             entity_type="marketplace_product",
@@ -387,6 +409,97 @@ class MarketplaceCatalogService:
         self.db.flush()
         return product
 
+    def approve_product(self, *, product: MarketplaceProduct) -> MarketplaceProduct:
+        if product.moderation_status != MarketplaceProductModerationStatus.PENDING_REVIEW:
+            raise ValueError("product_not_pending_review")
+        before = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+        }
+        now = datetime.now(timezone.utc)
+        product.status = MarketplaceProductStatus.PUBLISHED
+        product.moderation_status = MarketplaceProductModerationStatus.APPROVED
+        product.moderation_reason = None
+        product.moderated_by = self.request_ctx.actor_id if self.request_ctx else None
+        product.moderated_at = now
+        product.published_at = product.published_at or now
+        product.updated_at = now
+        after = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+        }
+        audit = self._audit(
+            event_type="PRODUCT_APPROVED",
+            entity_type="marketplace_product",
+            entity_id=str(product.id),
+            action="PRODUCT_APPROVED",
+            before=before,
+            after=after,
+        )
+        product.audit_event_id = audit.id
+        record_decision_memory(
+            self.db,
+            case_id=None,
+            decision_type="product_approved",
+            decision_ref_id=str(product.id),
+            decision_at=now,
+            decided_by_user_id=self.request_ctx.actor_id if self.request_ctx else None,
+            context_snapshot={"product_id": str(product.id), "status": product.status.value},
+            rationale="Product approved",
+            score_snapshot=None,
+            mastery_snapshot=None,
+            audit_event_id=str(audit.id),
+        )
+        self.db.flush()
+        return product
+
+    def reject_product(self, *, product: MarketplaceProduct, reason: str) -> MarketplaceProduct:
+        if product.moderation_status != MarketplaceProductModerationStatus.PENDING_REVIEW:
+            raise ValueError("product_not_pending_review")
+        if not reason:
+            raise ValueError("moderation_reason_required")
+        before = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+        }
+        now = datetime.now(timezone.utc)
+        product.moderation_status = MarketplaceProductModerationStatus.REJECTED
+        product.moderation_reason = reason
+        product.moderated_by = self.request_ctx.actor_id if self.request_ctx else None
+        product.moderated_at = now
+        product.published_at = None
+        product.updated_at = now
+        after = {
+            "status": product.status.value,
+            "moderation_status": product.moderation_status.value,
+            "moderation_reason": product.moderation_reason,
+        }
+        audit = self._audit(
+            event_type="PRODUCT_REJECTED",
+            entity_type="marketplace_product",
+            entity_id=str(product.id),
+            action="PRODUCT_REJECTED",
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        product.audit_event_id = audit.id
+        record_decision_memory(
+            self.db,
+            case_id=None,
+            decision_type="product_rejected",
+            decision_ref_id=str(product.id),
+            decision_at=now,
+            decided_by_user_id=self.request_ctx.actor_id if self.request_ctx else None,
+            context_snapshot={"product_id": str(product.id), "status": product.status.value},
+            rationale=reason,
+            score_snapshot=None,
+            mastery_snapshot=None,
+            audit_event_id=str(audit.id),
+        )
+        self.db.flush()
+        return product
+
     def list_published_products(
         self,
         *,
@@ -397,7 +510,8 @@ class MarketplaceCatalogService:
         offset: int = 0,
     ) -> tuple[list[MarketplaceProduct], int]:
         query = self.db.query(MarketplaceProduct).filter(
-            MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED
+            MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED,
+            MarketplaceProduct.moderation_status == MarketplaceProductModerationStatus.APPROVED,
         )
         if product_type:
             query = query.filter(MarketplaceProduct.type == product_type)
@@ -426,6 +540,7 @@ class MarketplaceCatalogService:
             .filter(
                 MarketplaceProduct.id == product_id,
                 MarketplaceProduct.status == MarketplaceProductStatus.PUBLISHED,
+                MarketplaceProduct.moderation_status == MarketplaceProductModerationStatus.APPROVED,
             )
             .one_or_none()
         )
@@ -437,6 +552,7 @@ class MarketplaceCatalogService:
         self,
         *,
         status: MarketplaceProductStatus | None = None,
+        moderation_status: MarketplaceProductModerationStatus | None = None,
         partner_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -444,8 +560,29 @@ class MarketplaceCatalogService:
         query = self.db.query(MarketplaceProduct)
         if status:
             query = query.filter(MarketplaceProduct.status == status)
+        if moderation_status:
+            query = query.filter(MarketplaceProduct.moderation_status == moderation_status)
         if partner_id:
             query = query.filter(MarketplaceProduct.partner_id == partner_id)
+        total = query.count()
+        items = (
+            query.order_by(MarketplaceProduct.updated_at.desc().nullslast(), MarketplaceProduct.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return items, total
+
+    def list_moderation_queue(
+        self,
+        *,
+        status: MarketplaceProductModerationStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[MarketplaceProduct], int]:
+        query = self.db.query(MarketplaceProduct)
+        if status:
+            query = query.filter(MarketplaceProduct.moderation_status == status)
         total = query.count()
         items = (
             query.order_by(MarketplaceProduct.updated_at.desc().nullslast(), MarketplaceProduct.created_at.desc())

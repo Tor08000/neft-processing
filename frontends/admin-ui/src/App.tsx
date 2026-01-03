@@ -68,7 +68,7 @@ export function App() {
             <Route path="/finance/links" element={<BillingLinksPage />} />
             <Route path="/risk" element={<Navigate to="/analytics/risk" replace />} />
             <Route path="/policies" element={<Navigate to="/risk/rules" replace />} />
-            <Route path="/marketplace" element={<Navigate to="/crm/clients" replace />} />
+            <Route path="/marketplace" element={<Navigate to="/marketplace/moderation" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/billing" element={<BillingOverviewPage />}>
               <Route index element={<Navigate to="/billing/invoices" replace />} />
