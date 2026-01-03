@@ -453,6 +453,8 @@ Top-level map (selected):
 
 ## 2.15 Feature Flags / Options (крайние опции)
 
+Подробная матрица флагов: [Feature Flags Matrix](../product/feature_flags_matrix.md).
+
 | Feature flag / option | Default | Where configured | Effect |
 | --- | --- | --- | --- |
 | `FEATURE_FLAGS` | `ai_scorer:on,ai_anomaly:off` | `.env.example` | Frontend/global feature flag string (parsed by UI/clients). |
@@ -468,19 +470,13 @@ Top-level map (selected):
 
 ## 2.16 Known Issues / Technical Debt (фактическое)
 
-1) **Partner portal container missing in compose**
-- Evidence: gateway routes to `partner-web`, but `docker-compose.yml` has no `partner-web` service. (`gateway/nginx.conf`, `docker-compose.yml`)
-- **Status:** OPEN
-- **Workaround:** Run partner portal separately (build `frontends/partner-portal`) or add service to compose.
-- **Pilot risk:** Partner UI not reachable via gateway on default stack.
-
-2) **Integration Hub not deployed**
+1) **Integration Hub not deployed**
 - Evidence: Integration Hub code exists but no compose service. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
 - **Status:** OPEN
 - **Workaround:** Run it manually if needed; otherwise webhooks/EDO in hub are unavailable.
 - **Pilot risk:** Webhook/EDO flows not runnable by default.
 
-3) **Loki/log aggregation absent**
+2) **Loki/log aggregation absent**
 - Evidence: No Loki services in compose. (`docker-compose.yml`)
 - **Status:** OPEN
 - **Workaround:** Use container logs or extend observability stack.
@@ -526,4 +522,3 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 
 ## 6) Проверить gateway routing /client/* refresh
 - Open `http://localhost/client/` and refresh; gateway SPA fallback should serve `client/index.html`. (`gateway/nginx.conf`)
-

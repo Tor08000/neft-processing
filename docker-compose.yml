@@ -114,6 +114,24 @@ services:
     ports:
       - "4174:80"
 
+  partner-web:
+    build:
+      context: .
+      dockerfile: frontends/partner-portal/Dockerfile
+    container_name: neft-processing-partner-web-1
+    environment:
+      SERVICE_NAME: partner-web
+      VITE_API_BASE_URL: /api
+    depends_on:
+      - gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "4175:80"
+
   auth-host:
     build:
       context: .
