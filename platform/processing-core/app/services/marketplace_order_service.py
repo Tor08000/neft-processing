@@ -21,6 +21,7 @@ from app.services.audit_service import RequestContext
 from app.services.case_event_redaction import redact_deep
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.decision_memory.records import record_decision_memory
+from app.services.marketplace_promotion_service import MarketplacePromotionService, MarketplacePromotionServiceError
 
 
 class MarketplaceOrderServiceError(ValueError):
@@ -244,6 +245,8 @@ class MarketplaceOrderService:
         quantity: Decimal,
         note: str | None = None,
         external_ref: str | None = None,
+        promotion_id: str | None = None,
+        coupon_code: str | None = None,
         actor: MarketplaceOrderActorType,
     ) -> MarketplaceOrder:
         if external_ref:
@@ -281,6 +284,19 @@ class MarketplaceOrderService:
             external_ref=external_ref,
         )
         self.db.add(order)
+        promotion_service = MarketplacePromotionService(self.db, request_ctx=self.request_ctx)
+        try:
+            pricing = promotion_service.apply_promotions_to_order(
+                order=order,
+                product=product,
+                quantity=quantity,
+                client_id=client_id,
+                promotion_id=promotion_id,
+                coupon_code=coupon_code,
+            )
+        except MarketplacePromotionServiceError as exc:
+            raise MarketplaceOrderServiceError("promotion_invalid", detail={"reason": exc.code}) from exc
+        order.price_snapshot = pricing.price_snapshot
         self.db.flush()
 
         event = self._emit_order_event(
