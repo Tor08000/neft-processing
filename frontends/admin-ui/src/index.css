@@ -508,6 +508,58 @@ p {
   color: var(--neft-text-muted);
 }
 
+.policy-center .page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.policy-detail .page-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.policy-detail__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.policy-summary {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin-bottom: 20px;
+}
+
+.policy-summary__actions {
+  grid-column: 1 / -1;
+}
+
+.policy-section {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.policy-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter--grow {
+  flex: 1;
+  min-width: 220px;
+}
+
 .form-grid {
   display: grid;
   gap: 10px;
