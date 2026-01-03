@@ -105,7 +105,7 @@ class ProductCreate(BaseModel):
     price_model: PriceModel
     price_config: dict
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_price_config(cls, values: dict) -> dict:
         validate_price_config(values.get("price_model"), values.get("price_config"))
         return values
@@ -119,7 +119,7 @@ class ProductUpdate(BaseModel):
     price_model: PriceModel | None = None
     price_config: dict | None = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_price_config(cls, values: dict) -> dict:
         price_model = values.get("price_model")
         price_config = values.get("price_config")

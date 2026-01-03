@@ -24,7 +24,7 @@ class SponsoredCampaignCreate(BaseModel):
     starts_at: datetime
     ends_at: datetime | None = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate_budget(cls, values: dict) -> dict:
         bid = values.get("bid")
         total_budget = values.get("total_budget")
@@ -48,7 +48,7 @@ class SponsoredCampaignUpdate(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate_budget(cls, values: dict) -> dict:
         bid = values.get("bid")
         if bid is not None and bid <= 0:
