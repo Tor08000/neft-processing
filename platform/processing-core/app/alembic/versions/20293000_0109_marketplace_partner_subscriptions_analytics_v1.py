@@ -121,8 +121,20 @@ def upgrade() -> None:
             ),
             schema=SCHEMA,
         )
-        create_index_if_not_exists(bind, "ix_partner_subscriptions_partner", "partner_subscriptions", ["partner_id"], SCHEMA)
-        create_index_if_not_exists(bind, "ix_partner_subscriptions_plan", "partner_subscriptions", ["plan_code"], SCHEMA)
+        create_index_if_not_exists(
+            bind,
+            "ix_partner_subscriptions_partner",
+            "partner_subscriptions",
+            ["partner_id"],
+            schema=SCHEMA,
+        )
+        create_index_if_not_exists(
+            bind,
+            "ix_partner_subscriptions_plan",
+            "partner_subscriptions",
+            ["plan_code"],
+            schema=SCHEMA,
+        )
 
     if table_exists(bind, "marketplace_orders", schema=SCHEMA):
         if not column_exists(bind, "marketplace_orders", "price", schema=SCHEMA):
