@@ -788,63 +788,49 @@ __all__ = [
     "MarketplacePromotionApplication",
     "MarketplaceCouponBatch",
     "MarketplaceCouponBatchType",
-    "MarketplaceCoupon",
     "MarketplaceCouponStatus",
-    "MarketplaceOrderContractLink",
-    "MarketplaceOrderEvent",
-    "MarketplaceOrderSlaImmutableError",
-    "MarketplaceSlaNotificationOutbox",
-    "MarketplaceSlaNotificationStatus",
-    "PartnerProfile",
-    "PartnerVerificationStatus",
-    "OrderSlaConsequence",
-    "OrderSlaConsequenceStatus",
-    "OrderSlaConsequenceType",
-    "OrderSlaEvaluation",
-    "OrderSlaSeverity",
-    "OrderSlaStatus",
-    "CRMClient",
-    "CRMClientStatus",
-    "CRMContract",
-    "CRMContractStatus",
-    "CRMFeatureFlag",
-    "CRMFeatureFlagType",
-    "CRMLimitProfile",
-    "CRMProfileStatus",
-    "CRMRiskProfile",
-    "CRMSubscription",
-    "CRMSubscriptionStatus",
-    "CRMSubscriptionCharge",
-    "CRMSubscriptionChargeType",
-    "CRMUsageCounter",
-    "CRMUsageMetric",
-    "CRMTariffPlan",
-    "CRMTariffStatus",
-    "CRMBillingMode",
-    "CRMBillingPeriod",
-    "CRMBillingCycle",
-    "SubscriptionStatus",
-    "SubscriptionModuleCode",
-    "SubscriptionPlan",
-    "SubscriptionPlanModule",
-    "ClientSubscription",
-    "RoleEntitlement",
-    "BonusRule",
-    "ClientBonusState",
-    "Achievement",
-    "AchievementCondition",
-    "Streak",
-    "Bonus",
-    "ClientProgress",
-    "ServiceInterval",
-    "VehicleCardLink",
-    "VehicleEngineType",
-    "VehicleMileageEvent",
-    "VehicleMileageSource",
-    "VehicleOdometerSource",
-    "VehicleProfile",
-    "VehicleRecommendation",
-    "VehicleRecommendationStatus",
-    "VehicleServiceType",
-    "VehicleUsageType",
+    "MarketplacePromotion",
+    "MarketplacePromotionApplication",
+    "MarketplacePromotionStatus",
+    "MarketplacePromotionType",
+    "MissionProgressStatus",
+    "PartnerBadge",
+    "PartnerBadgeAward",
+    "PartnerMission",
+    "PartnerMissionProgress",
+    "PartnerTier",
+    "PartnerTierState",
+    "PromoBudget",
+    "PromoBudgetModel",
+    "PromoBudgetStatus",
+    "Promotion",
+    "PromotionApplication",
+    "PromotionApplicationImmutableError",
+    "PromotionStatus",
+    "PromotionType",
+}
+
+__all__ = [
+    *sorted(_SIMPLE_EXPORTS.keys()),
+    "groups",
+    *sorted(_MARKETPLACE_PROMOTIONS_EXPORTS),
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in _SIMPLE_EXPORTS:
+        module = import_module(_SIMPLE_EXPORTS[name])
+        return getattr(module, name)
+
+    if name == "groups":
+        return import_module("app.models.groups")
+
+    if name in _MARKETPLACE_PROMOTIONS_EXPORTS:
+        module = import_module("app.models.marketplace_promotions")
+        return getattr(module, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(__all__))
