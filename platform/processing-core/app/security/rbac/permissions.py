@@ -24,6 +24,10 @@ class Permission(str, Enum):
     CLIENT_MARKETPLACE_ORDERS_VIEW = "client:marketplace:orders:view"
     CLIENT_MARKETPLACE_ORDERS_CREATE = "client:marketplace:orders:create"
     CLIENT_MARKETPLACE_ORDERS_CANCEL = "client:marketplace:orders:cancel"
+    CLIENT_BOOKINGS_LIST = "client:bookings:list"
+    CLIENT_BOOKINGS_VIEW = "client:bookings:view"
+    CLIENT_BOOKINGS_CREATE = "client:bookings:create"
+    CLIENT_BOOKINGS_CANCEL = "client:bookings:cancel"
 
     PARTNER_DASHBOARD_VIEW = "partner:dashboard:view"
     PARTNER_CONTRACTS_LIST = "partner:contracts:list"
@@ -36,6 +40,7 @@ class Permission(str, Enum):
     PARTNER_MARKETPLACE_ORDERS_ALL = "partner:marketplace:orders:*"
     PARTNER_MARKETPLACE_PROMOTIONS_ALL = "partner:marketplace:promotions:*"
     PARTNER_GAMIFICATION_ALL = "partner:gamification:*"
+    PARTNER_BOOKINGS_ALL = "partner:bookings:*"
 
     ADMIN_CONTRACTS_ALL = "admin:contracts:*"
     ADMIN_BILLING_ALL = "admin:billing:*"
@@ -43,6 +48,7 @@ class Permission(str, Enum):
     ADMIN_SETTLEMENT_ALL = "admin:settlement:*"
     ADMIN_AUDIT_ALL = "admin:audit:*"
     ADMIN_MARKETPLACE_SPONSORED_ALL = "admin:marketplace:sponsored:*"
+    ADMIN_BOOKINGS_ALL = "admin:bookings:*"
 
 
 ALL_PERMISSIONS = {permission.value for permission in Permission}

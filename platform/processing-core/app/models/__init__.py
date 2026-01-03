@@ -227,6 +227,24 @@ from .marketplace_recommendations import (  # noqa: F401
     ProductAttributes,
     ProductTaxonomy,
 )
+from .service_bookings import (  # noqa: F401
+    BookingPaymentStatus,
+    BookingSlotLock,
+    PartnerResource,
+    PartnerResourceStatus,
+    PartnerResourceType,
+    PartnerService,
+    PartnerServiceCalendar,
+    PartnerServiceStatus,
+    ServiceAvailabilityRule,
+    ServiceBooking,
+    ServiceBookingActorType,
+    ServiceBookingEvent,
+    ServiceBookingEventType,
+    ServiceBookingImmutableError,
+    ServiceBookingStatus,
+    VehicleServiceRecord,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
