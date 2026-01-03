@@ -449,6 +449,14 @@ from .vehicle_profile import (  # noqa: F401
     VehicleServiceType,
     VehicleUsageType,
 )
+from .vehicle_maintenance import (  # noqa: F401
+    MaintenanceItem,
+    MaintenanceModifier,
+    MaintenanceRule,
+    VehicleMaintenanceDismissal,
+    VehicleServiceRecord,
+    VehicleUsageProfile,
+)
 from .subscriptions_v1 import (  # noqa: F401
     Achievement,
     AchievementCondition,
