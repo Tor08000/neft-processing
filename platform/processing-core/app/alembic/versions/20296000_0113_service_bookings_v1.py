@@ -262,9 +262,9 @@ def upgrade() -> None:
         sa.Column("user_id", GUID(), nullable=True),
         sa.Column("partner_id", GUID(), nullable=False),
         sa.Column("service_id", GUID(), nullable=False),
-        sa.Column("vehicle_id", GUID(), nullable=True),
+        sa.Column("vehicle_id", sa.String(length=36), nullable=True),
         sa.Column("odometer_km", sa.Numeric(18, 4), nullable=True),
-        sa.Column("recommendation_id", GUID(), nullable=True),
+        sa.Column("recommendation_id", sa.String(length=36), nullable=True),
         sa.Column(
             "status",
             safe_enum(
@@ -449,9 +449,9 @@ def upgrade() -> None:
         "vehicle_service_records",
         sa.Column("id", GUID(), primary_key=True),
         sa.Column("tenant_id", sa.Integer(), nullable=False),
-        sa.Column("vehicle_id", GUID(), nullable=False),
+        sa.Column("vehicle_id", sa.String(length=36), nullable=False),
         sa.Column("booking_id", GUID(), nullable=False),
-        sa.Column("partner_id", GUID(), nullable=False),
+        sa.Column("partner_id", sa.String(length=64), nullable=False),
         sa.Column(
             "service_type",
             safe_enum(
