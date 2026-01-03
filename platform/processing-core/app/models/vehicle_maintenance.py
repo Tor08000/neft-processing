@@ -6,7 +6,7 @@ from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import GUID, new_uuid_str
-from app.models.vehicle_profile import VehicleServiceRecord
+from app.models.vehicle_service_records import VehicleServiceRecord
 
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
