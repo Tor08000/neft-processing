@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { AppLogo } from "../../../shared/brand/components";
+import { AppLogo } from "../../shared/brand/components";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
