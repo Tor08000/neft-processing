@@ -49,6 +49,7 @@ from app.routers.admin import (
     service_bookings,
     audit,
     exports,
+    policies,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -100,5 +101,6 @@ router.include_router(service_bookings.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(reconciliation.router)
+router.include_router(policies.router)
 
 __all__ = ["router"]
