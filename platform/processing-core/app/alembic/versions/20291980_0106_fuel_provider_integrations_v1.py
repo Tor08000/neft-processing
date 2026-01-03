@@ -48,6 +48,7 @@ def upgrade() -> None:
     )
 
     create_table_if_not_exists(
+        bind,
         "fuel_provider_connections",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("client_id", sa.String(64), nullable=False),
@@ -97,6 +98,7 @@ def upgrade() -> None:
     )
 
     create_table_if_not_exists(
+        bind,
         "fuel_provider_card_map",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("client_id", sa.String(64), nullable=False),
@@ -132,6 +134,7 @@ def upgrade() -> None:
     )
 
     create_table_if_not_exists(
+        bind,
         "fuel_provider_raw_events",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("client_id", sa.String(64), nullable=False),

@@ -32,6 +32,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "webhook_endpoints", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "webhook_endpoints",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("tenant_id", sa.String(36), nullable=True),
@@ -47,6 +48,7 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_webhook_endpoints_owner",
             "webhook_endpoints",
             ["owner_id", "owner_type"],
@@ -55,6 +57,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "webhook_delivery_attempts", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "webhook_delivery_attempts",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("event_id", sa.String(36), nullable=False),
@@ -70,12 +73,14 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_webhook_delivery_attempts_endpoint_event",
             "webhook_delivery_attempts",
             ["endpoint_id", "event_id"],
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_webhook_delivery_attempts_dedupe",
             "webhook_delivery_attempts",
             ["dedupe_key"],
@@ -84,6 +89,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "webhook_nonce_store", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "webhook_nonce_store",
             sa.Column("nonce", sa.String(64), primary_key=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -91,6 +97,7 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_webhook_nonce_store_expires",
             "webhook_nonce_store",
             ["expires_at"],
@@ -99,6 +106,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "notification_delivery_logs", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "notification_delivery_logs",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("tenant_id", sa.String(36), nullable=True),
@@ -114,6 +122,7 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_notification_delivery_logs_channel_status",
             "notification_delivery_logs",
             ["channel", "status"],

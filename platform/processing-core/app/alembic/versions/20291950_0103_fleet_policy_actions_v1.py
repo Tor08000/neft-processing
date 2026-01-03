@@ -77,6 +77,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "fleet_action_policies", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "fleet_action_policies",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("client_id", sa.String(64), nullable=False),
@@ -93,12 +94,14 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fleet_action_policies_client_trigger_active",
             "fleet_action_policies",
             ["client_id", "trigger_type", "active"],
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fleet_action_policies_scope_active",
             "fleet_action_policies",
             ["scope_type", "scope_id", "active"],
@@ -107,6 +110,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "fleet_policy_executions", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "fleet_policy_executions",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("client_id", sa.String(64), nullable=False),
@@ -122,6 +126,7 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fleet_policy_executions_client_created",
             "fleet_policy_executions",
             ["client_id", "created_at"],
@@ -130,6 +135,7 @@ def upgrade() -> None:
 
     if table_exists(bind, "fuel_card_status_events", schema=DB_SCHEMA) is False:
         create_table_if_not_exists(
+            bind,
             "fuel_card_status_events",
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("client_id", sa.String(64), nullable=False),
@@ -144,12 +150,14 @@ def upgrade() -> None:
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fuel_card_status_events_card_created",
             "fuel_card_status_events",
             ["card_id", "created_at"],
             schema=DB_SCHEMA,
         )
         create_index_if_not_exists(
+            bind,
             "ix_fuel_card_status_events_client_created",
             "fuel_card_status_events",
             ["client_id", "created_at"],
@@ -161,7 +169,11 @@ def upgrade() -> None:
     if column_exists(bind, "cases", "case_source_ref_id", schema=DB_SCHEMA) is False:
         op.add_column("cases", sa.Column("case_source_ref_id", sa.String(36), nullable=True), schema=DB_SCHEMA)
         create_index_if_not_exists(
-            "ix_cases_source_ref", "cases", ["case_source_ref_type", "case_source_ref_id"], schema=DB_SCHEMA
+            bind,
+            "ix_cases_source_ref",
+            "cases",
+            ["case_source_ref_type", "case_source_ref_id"],
+            schema=DB_SCHEMA,
         )
 
 
