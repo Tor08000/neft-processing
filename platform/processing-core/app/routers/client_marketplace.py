@@ -14,9 +14,11 @@ from app.schemas.marketplace.recommendations import (
     RecommendationResponse,
     RelatedProductsResponse,
 )
+from app.schemas.marketplace.sponsored import SponsoredEventCreate, SponsoredEventOut
 from app.security.client_auth import require_client_user
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
 from app.services.marketplace_recommendation_service import MarketplaceRecommendationService
+from app.services.marketplace_sponsored_service import MarketplaceSponsoredService
 
 router = APIRouter(prefix="/client/marketplace", tags=["client-portal-v1"])
 
@@ -52,6 +54,27 @@ def _product_list_out(product) -> ProductListOut:
         status=product.status.value if hasattr(product.status, "value") else product.status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+        sponsored=False,
+        sponsored_badge=None,
+        sponsored_campaign_id=None,
+    )
+
+
+def _sponsored_product_out(product, *, sponsored: bool, sponsored_badge: str | None, sponsored_campaign_id: str | None) -> ProductListOut:
+    return ProductListOut(
+        id=str(product.id),
+        partner_id=str(product.partner_id),
+        type=product.type.value if hasattr(product.type, "value") else product.type,
+        title=product.title,
+        category=product.category,
+        price_model=product.price_model.value if hasattr(product.price_model, "value") else product.price_model,
+        price_config=product.price_config,
+        status=product.status.value if hasattr(product.status, "value") else product.status,
+        updated_at=product.updated_at,
+        published_at=product.published_at,
+        sponsored=sponsored,
+        sponsored_badge=sponsored_badge,
+        sponsored_campaign_id=sponsored_campaign_id,
     )
 
 
@@ -60,6 +83,7 @@ def list_published_products(
     category: str | None = Query(None),
     q: str | None = Query(None),
     type: MarketplaceProductType | None = Query(None),
+    placement: str | None = Query("search"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     token: dict = Depends(require_client_user),
@@ -75,8 +99,27 @@ def list_published_products(
         limit=limit,
         offset=offset,
     )
+    sponsored_service = MarketplaceSponsoredService(db)
+    ranked = sponsored_service.apply_sponsored_ranking(
+        products=items,
+        tenant_id=token.get("tenant_id"),
+        placement=placement,
+        category=category,
+        context={"placement": placement, "query": q},
+        client_id=token.get("client_id"),
+        user_id=token.get("user_id"),
+    )
+    db.commit()
     return ProductListResponse(
-        items=[_product_list_out(item) for item in items],
+        items=[
+            _sponsored_product_out(
+                item["product"],
+                sponsored=item["sponsored"],
+                sponsored_badge=item["sponsored_badge"],
+                sponsored_campaign_id=item["sponsored_campaign_id"],
+            )
+            for item in ranked
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -140,6 +183,36 @@ def record_marketplace_event(
         client_id=str(event.client_id),
         user_id=str(event.user_id) if event.user_id else None,
         partner_id=str(event.partner_id) if event.partner_id else None,
+        product_id=str(event.product_id) if event.product_id else None,
+        event_type=event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
+        event_ts=event.event_ts,
+        context=event.context,
+        meta=event.meta,
+    )
+
+
+@router.post("/sponsored/events", response_model=SponsoredEventOut, status_code=201)
+def record_sponsored_event(
+    payload: SponsoredEventCreate,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> SponsoredEventOut:
+    if not token.get("client_id"):
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceSponsoredService(db)
+    event = service.log_event(
+        tenant_id=token.get("tenant_id"),
+        client_id=token.get("client_id"),
+        user_id=token.get("user_id"),
+        payload=payload.dict(),
+    )
+    db.commit()
+    return SponsoredEventOut(
+        id=str(event.id),
+        campaign_id=str(event.campaign_id),
+        partner_id=str(event.partner_id),
+        client_id=str(event.client_id) if event.client_id else None,
+        user_id=str(event.user_id) if event.user_id else None,
         product_id=str(event.product_id) if event.product_id else None,
         event_type=event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
         event_ts=event.event_ts,

@@ -34,12 +34,14 @@ class Permission(str, Enum):
     PARTNER_PAYOUTS_CONFIRM = "partner:payouts:confirm"
     PARTNER_CATALOG_ALL = "partner:catalog:*"
     PARTNER_MARKETPLACE_ORDERS_ALL = "partner:marketplace:orders:*"
+    PARTNER_MARKETPLACE_SPONSORED_ALL = "partner:marketplace:sponsored:*"
 
     ADMIN_CONTRACTS_ALL = "admin:contracts:*"
     ADMIN_BILLING_ALL = "admin:billing:*"
     ADMIN_RECONCILIATION_ALL = "admin:reconciliation:*"
     ADMIN_SETTLEMENT_ALL = "admin:settlement:*"
     ADMIN_AUDIT_ALL = "admin:audit:*"
+    ADMIN_MARKETPLACE_SPONSORED_ALL = "admin:marketplace:sponsored:*"
 
 
 ALL_PERMISSIONS = {permission.value for permission in Permission}

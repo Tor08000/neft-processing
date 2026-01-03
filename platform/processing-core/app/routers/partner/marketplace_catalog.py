@@ -78,6 +78,9 @@ def _product_list_out(product) -> ProductListOut:
         status=product.status.value if hasattr(product.status, "value") else product.status,
         updated_at=product.updated_at,
         published_at=product.published_at,
+        sponsored=False,
+        sponsored_badge=None,
+        sponsored_campaign_id=None,
     )
 
 
