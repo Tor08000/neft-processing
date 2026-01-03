@@ -5,7 +5,7 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
 import "./index.css";
-import "../../shared/brand/brand.css";
+import "../shared/brand/brand.css";
 
 const base = import.meta.env.BASE_URL || "/partner/";
 
