@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal
 from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Any
@@ -26,6 +27,8 @@ def _normalize_value(value: Any) -> Any:
         if math.isnan(value):
             return "NaN"
         return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, Decimal):
+        return str(value)
     if isinstance(value, dict):
         return {str(key): _normalize_value(value[key]) for key in sorted(value, key=lambda item: str(item))}
     if isinstance(value, (list, tuple)):
@@ -48,4 +51,3 @@ def strip_redaction_hash(value: Any) -> Any:
             return {key: item for key, item in value.items() if key != "hash"}
         return {key: strip_redaction_hash(item) for key, item in value.items()}
     return value
-

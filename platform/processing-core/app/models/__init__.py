@@ -464,6 +464,7 @@ from .vehicle_profile import (  # noqa: F401
     VehicleProfile,
     VehicleRecommendation,
     VehicleRecommendationStatus,
+    VehicleServiceRecord,
     VehicleServiceType,
     VehicleUsageType,
 )
