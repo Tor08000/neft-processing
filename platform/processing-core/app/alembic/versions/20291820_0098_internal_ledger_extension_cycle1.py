@@ -59,20 +59,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS internal_ledger_entries_worm_update ON {_schema_prefix()}internal_ledger_entries;
-                CREATE TRIGGER internal_ledger_entries_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}internal_ledger_entries
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_entries_worm_guard();
+                DROP TRIGGER IF EXISTS internal_ledger_entries_worm_update
+                ON {_schema_prefix()}internal_ledger_entries
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS internal_ledger_entries_worm_delete ON {_schema_prefix()}internal_ledger_entries;
+                CREATE TRIGGER internal_ledger_entries_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}internal_ledger_entries
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_entries_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS internal_ledger_entries_worm_delete
+                ON {_schema_prefix()}internal_ledger_entries
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER internal_ledger_entries_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}internal_ledger_entries
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_entries_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_entries_worm_guard()
                 """
             )
         )
@@ -94,10 +108,16 @@ def upgrade() -> None:
             sa.text(
                 f"""
                 DROP TRIGGER IF EXISTS internal_ledger_transactions_worm_update
-                ON {_schema_prefix()}internal_ledger_transactions;
+                ON {_schema_prefix()}internal_ledger_transactions
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER internal_ledger_transactions_worm_update
                 BEFORE UPDATE ON {_schema_prefix()}internal_ledger_transactions
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_transactions_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_transactions_worm_guard()
                 """
             )
         )
@@ -105,10 +125,16 @@ def upgrade() -> None:
             sa.text(
                 f"""
                 DROP TRIGGER IF EXISTS internal_ledger_transactions_worm_delete
-                ON {_schema_prefix()}internal_ledger_transactions;
+                ON {_schema_prefix()}internal_ledger_transactions
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER internal_ledger_transactions_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}internal_ledger_transactions
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_transactions_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}internal_ledger_transactions_worm_guard()
                 """
             )
         )

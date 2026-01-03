@@ -245,20 +245,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_invoices_worm_update ON {_schema_prefix()}billing_invoices;
-                CREATE TRIGGER billing_invoices_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}billing_invoices
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_invoices_worm_guard();
+                DROP TRIGGER IF EXISTS billing_invoices_worm_update
+                ON {_schema_prefix()}billing_invoices
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_invoices_worm_delete ON {_schema_prefix()}billing_invoices;
+                CREATE TRIGGER billing_invoices_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}billing_invoices
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_invoices_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS billing_invoices_worm_delete
+                ON {_schema_prefix()}billing_invoices
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER billing_invoices_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}billing_invoices
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_invoices_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_invoices_worm_guard()
                 """
             )
         )
@@ -295,20 +309,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_payments_worm_update ON {_schema_prefix()}billing_payments;
-                CREATE TRIGGER billing_payments_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}billing_payments
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_payments_worm_guard();
+                DROP TRIGGER IF EXISTS billing_payments_worm_update
+                ON {_schema_prefix()}billing_payments
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_payments_worm_delete ON {_schema_prefix()}billing_payments;
+                CREATE TRIGGER billing_payments_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}billing_payments
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_payments_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS billing_payments_worm_delete
+                ON {_schema_prefix()}billing_payments
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER billing_payments_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}billing_payments
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_payments_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_payments_worm_guard()
                 """
             )
         )
@@ -344,20 +372,34 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_refunds_worm_update ON {_schema_prefix()}billing_refunds;
-                CREATE TRIGGER billing_refunds_worm_update
-                BEFORE UPDATE ON {_schema_prefix()}billing_refunds
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_refunds_worm_guard();
+                DROP TRIGGER IF EXISTS billing_refunds_worm_update
+                ON {_schema_prefix()}billing_refunds
                 """
             )
         )
         op.execute(
             sa.text(
                 f"""
-                DROP TRIGGER IF EXISTS billing_refunds_worm_delete ON {_schema_prefix()}billing_refunds;
+                CREATE TRIGGER billing_refunds_worm_update
+                BEFORE UPDATE ON {_schema_prefix()}billing_refunds
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_refunds_worm_guard()
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
+                DROP TRIGGER IF EXISTS billing_refunds_worm_delete
+                ON {_schema_prefix()}billing_refunds
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER billing_refunds_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}billing_refunds
-                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_refunds_worm_guard();
+                FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}billing_refunds_worm_guard()
                 """
             )
         )
@@ -370,9 +412,23 @@ def downgrade() -> None:
             op.execute(
                 sa.text(
                     f"""
-                    DROP TRIGGER IF EXISTS {table_name}_worm_update ON {_schema_prefix()}{table_name};
-                    DROP TRIGGER IF EXISTS {table_name}_worm_delete ON {_schema_prefix()}{table_name};
-                    DROP FUNCTION IF EXISTS {_schema_prefix()}{table_name}_worm_guard();
+                    DROP TRIGGER IF EXISTS {table_name}_worm_update
+                    ON {_schema_prefix()}{table_name}
+                    """
+                )
+            )
+            op.execute(
+                sa.text(
+                    f"""
+                    DROP TRIGGER IF EXISTS {table_name}_worm_delete
+                    ON {_schema_prefix()}{table_name}
+                    """
+                )
+            )
+            op.execute(
+                sa.text(
+                    f"""
+                    DROP FUNCTION IF EXISTS {_schema_prefix()}{table_name}_worm_guard()
                     """
                 )
             )
