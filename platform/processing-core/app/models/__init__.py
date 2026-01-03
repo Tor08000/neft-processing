@@ -193,6 +193,26 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from .marketplace_promotions import (  # noqa: F401
+    Coupon,
+    CouponBatch,
+    CouponStatus,
+    MissionProgressStatus,
+    PartnerBadge,
+    PartnerBadgeAward,
+    PartnerMission,
+    PartnerMissionProgress,
+    PartnerTier,
+    PartnerTierState,
+    PromoBudget,
+    PromoBudgetModel,
+    PromoBudgetStatus,
+    Promotion,
+    PromotionApplication,
+    PromotionApplicationImmutableError,
+    PromotionStatus,
+    PromotionType,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401

@@ -120,6 +120,8 @@ def create_client_order(
             quantity=payload.quantity,
             note=payload.note,
             external_ref=payload.external_ref,
+            promotion_id=payload.promotion_id,
+            coupon_code=payload.coupon_code,
             actor=MarketplaceOrderActorType.CLIENT,
         )
     except MarketplaceOrderServiceError as exc:
