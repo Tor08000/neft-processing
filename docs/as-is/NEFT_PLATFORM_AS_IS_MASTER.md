@@ -26,7 +26,7 @@
 - Client portal contains analytics pages; BI ingestion and exports are implemented in core API, but no standalone analytics UI service exists. (See `frontends/client-portal/src/App.tsx`, `platform/processing-core/app/services/bi/metrics.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`.)
 
 **Integrations — PARTIAL**
-- Fuel provider framework is implemented with stub/template connectors; Integration Hub exists in code but is **NOT IMPLEMENTED** in docker-compose runtime. (See `platform/processing-core/app/integrations/fuel/base.py`, `platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`.)
+- Fuel provider framework is implemented with stub/template connectors; Integration Hub is deployed in compose with stub endpoints for webhooks/EDO. (See `platform/processing-core/app/integrations/fuel/base.py`, `platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`.)
 
 **Portals — COMPLETE**
 - Admin, Client, Partner portals implemented in React; admin/client are included in docker-compose; partner portal exists but container is **NOT IMPLEMENTED** in compose. (See `frontends/admin-ui/src/router/index.tsx`, `frontends/client-portal/src/App.tsx`, `frontends/partner-portal/src/App.tsx`, `docker-compose.yml`.)
@@ -51,7 +51,7 @@ Top-level map (selected):
   - `platform/logistics-service/` — Logistics ETA/deviation service. (`platform/logistics-service/neft_logistics_service/main.py`)
   - `platform/document-service/` — PDF render/sign/verify service. (`platform/document-service/app/main.py`)
   - `platform/crm-service/` — CRM stub service. (`platform/crm-service/app/main.py`)
-  - `platform/integration-hub/` — Integration Hub (webhooks + EDO) codebase; not wired in compose. (`platform/integration-hub/neft_integration_hub/main.py`)
+  - `platform/integration-hub/` — Integration Hub (webhooks + EDO) codebase; wired in compose in stub mode. (`platform/integration-hub/neft_integration_hub/main.py`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
 - `frontends/` — React SPAs for admin/client/partner portals. (`frontends/admin-ui`, `frontends/client-portal`, `frontends/partner-portal`)
 - `gateway/` — Nginx gateway image and routing config. (`gateway/nginx.conf`)
 - `infra/` — observability and infra configs (Prometheus, Grafana, OTel). (`infra/prometheus.yml`, `infra/otel-collector-config.yaml`)
@@ -158,7 +158,6 @@ Top-level map (selected):
 
 ### NOT IMPLEMENTED in compose
 - **partner-web** container is referenced in gateway but not defined in compose. (`gateway/nginx.conf`, `docker-compose.yml`)
-- **integration-hub** code exists but not wired as a container. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
 
 ---
 
@@ -443,7 +442,7 @@ Top-level map (selected):
 - Fleet ingestion jobs support idempotent ingestion and dedupe; replay is exposed in admin for notification outbox. (`platform/processing-core/app/services/fleet_ingestion_service.py`, `platform/processing-core/app/routers/admin/fleet_notifications.py`)
 
 **Webhook API contracts**
-- Integration Hub (webhooks/EDO) exists in code but not wired to runtime. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
+- Integration Hub (webhooks/EDO) is wired to runtime in stub mode. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
 
 **Exports**
 - Accounting export batches with S3 delivery; ERP reconciliation models exist. (`platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
@@ -474,8 +473,8 @@ Top-level map (selected):
 - **Workaround:** Run partner portal separately (build `frontends/partner-portal`) or add service to compose.
 - **Pilot risk:** Partner UI not reachable via gateway on default stack.
 
-2) **Integration Hub not deployed**
-- Evidence: Integration Hub code exists but no compose service. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
+2) **Integration Hub deployed (stub mode)**
+- Evidence: Integration Hub compose service with stub webhooks/EDO. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
 - **Status:** OPEN
 - **Workaround:** Run it manually if needed; otherwise webhooks/EDO in hub are unavailable.
 - **Pilot risk:** Webhook/EDO flows not runnable by default.
@@ -526,4 +525,3 @@ pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 
 ## 6) Проверить gateway routing /client/* refresh
 - Open `http://localhost/client/` and refresh; gateway SPA fallback should serve `client/index.html`. (`gateway/nginx.conf`)
-

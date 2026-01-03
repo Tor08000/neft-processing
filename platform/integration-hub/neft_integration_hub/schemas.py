@@ -44,6 +44,28 @@ class EdoDocumentResponse(BaseModel):
     last_error: str | None = None
 
 
+class EdoStubSendRequest(BaseModel):
+    doc_id: str
+    counterparty: dict
+    payload_ref: str
+    meta: dict | None = None
+
+
+class EdoStubSendResponse(BaseModel):
+    edo_doc_id: str
+    status: str
+
+
+class EdoStubStatusResponse(BaseModel):
+    edo_doc_id: str
+    status: str
+
+
+class EdoStubSimulateRequest(BaseModel):
+    status: str
+    note: str | None = None
+
+
 class WebhookOwner(BaseModel):
     type: str
     id: str
@@ -57,6 +79,20 @@ class WebhookEventEnvelope(BaseModel):
     correlation_id: str
     owner: WebhookOwner
     payload: dict
+
+
+class WebhookIntakeRequest(BaseModel):
+    event_type: str
+    payload: dict
+    event_id: str | None = None
+    occurred_at: str | None = None
+    correlation_id: str | None = None
+
+
+class WebhookIntakeResponse(BaseModel):
+    event_id: str | None = None
+    status: str
+    verified: bool
 
 
 class WebhookEndpointCreate(BaseModel):
@@ -121,6 +157,12 @@ class WebhookTestResponse(BaseModel):
     status: str
 
 
+class WebhookTestDeliveryRequest(BaseModel):
+    endpoint_id: str
+    event_type: str | None = None
+    payload: dict | None = None
+
+
 class WebhookRotateSecretResponse(BaseModel):
     endpoint_id: str
     secret: str
@@ -166,11 +208,17 @@ __all__ = [
     "DispatchRequest",
     "DispatchResponse",
     "EdoDocumentResponse",
+    "EdoStubSendRequest",
+    "EdoStubSendResponse",
+    "EdoStubSimulateRequest",
+    "EdoStubStatusResponse",
     "WebhookDeliveryResponse",
     "WebhookEndpointCreate",
     "WebhookEndpointResponse",
     "WebhookEndpointSecretResponse",
     "WebhookEventEnvelope",
+    "WebhookIntakeRequest",
+    "WebhookIntakeResponse",
     "WebhookAlertResponse",
     "WebhookOwner",
     "WebhookPauseRequest",
@@ -181,4 +229,5 @@ __all__ = [
     "WebhookSubscriptionCreate",
     "WebhookSubscriptionResponse",
     "WebhookTestResponse",
+    "WebhookTestDeliveryRequest",
 ]
