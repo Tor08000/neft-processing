@@ -36,6 +36,13 @@ class MarketplaceProductStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class MarketplaceProductModerationStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class MarketplaceCatalogImmutableError(ValueError):
     """Raised when WORM-protected marketplace records are mutated."""
 
@@ -74,6 +81,14 @@ class MarketplaceProduct(Base):
         nullable=False,
         default=MarketplaceProductStatus.DRAFT.value,
     )
+    moderation_status = Column(
+        ExistingEnum(MarketplaceProductModerationStatus, name="marketplace_product_moderation_status"),
+        nullable=False,
+        default=MarketplaceProductModerationStatus.DRAFT.value,
+    )
+    moderation_reason = Column(Text, nullable=True)
+    moderated_by = Column(GUID(), nullable=True)
+    moderated_at = Column(DateTime(timezone=True), nullable=True)
     published_at = Column(DateTime(timezone=True), nullable=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -91,6 +106,7 @@ __all__ = [
     "MarketplaceCatalogImmutableError",
     "MarketplacePriceModel",
     "MarketplaceProduct",
+    "MarketplaceProductModerationStatus",
     "MarketplaceProductStatus",
     "MarketplaceProductType",
     "PartnerProfile",

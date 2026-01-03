@@ -46,10 +46,12 @@ from app.routers.admin import (
     marketplace_catalog,
     marketplace_order_sla,
     marketplace_sponsored,
+    marketplace_moderation,
     service_bookings,
     audit,
     exports,
-    policies,
+    bank_stub,
+    erp_stub,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -95,12 +97,14 @@ router.include_router(what_if.router)
 router.include_router(ops.router)
 router.include_router(marketplace_contracts.router)
 router.include_router(marketplace_catalog.router)
+router.include_router(marketplace_moderation.router)
 router.include_router(marketplace_order_sla.router)
 router.include_router(marketplace_sponsored.router)
 router.include_router(service_bookings.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(reconciliation.router)
-router.include_router(policies.router)
+router.include_router(bank_stub.router)
+router.include_router(erp_stub.router)
 
 __all__ = ["router"]

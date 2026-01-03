@@ -26,11 +26,16 @@ class InvoiceInvariantError(RuntimeError):
 _ALLOWED_TRANSITIONS: Mapping[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.DRAFT: {InvoiceStatus.ISSUED},
     InvoiceStatus.ISSUED: {InvoiceStatus.SENT, InvoiceStatus.CANCELLED},
-    InvoiceStatus.SENT: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID, InvoiceStatus.CANCELLED},
+    InvoiceStatus.SENT: {
+        InvoiceStatus.PARTIALLY_PAID,
+        InvoiceStatus.PAID,
+        InvoiceStatus.CANCELLED,
+        InvoiceStatus.OVERDUE,
+    },
     InvoiceStatus.PARTIALLY_PAID: {InvoiceStatus.PAID, InvoiceStatus.SENT},
     InvoiceStatus.PAID: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.SENT},
     InvoiceStatus.CANCELLED: set(),
-    InvoiceStatus.OVERDUE: set(),
+    InvoiceStatus.OVERDUE: {InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.PAID},
     InvoiceStatus.CREDITED: set(),
 }
 
@@ -167,6 +172,15 @@ class InvoiceStateMachine:
             raise ValueError("reason is required")
 
         from_status = self.invoice.status
+        if (
+            to == from_status
+            and not metadata
+            and all(
+                amount is None or amount == 0
+                for amount in (payment_amount, credit_note_amount, refund_amount)
+            )
+        ):
+            return self.invoice
         if self.invoice.billing_period_id:
             period = (
                 self.db.query(BillingPeriod)

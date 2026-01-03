@@ -175,20 +175,31 @@ from .marketplace_catalog import (  # noqa: F401
     MarketplaceCatalogImmutableError,
     MarketplacePriceModel,
     MarketplaceProduct,
+    MarketplaceProductModerationStatus,
     MarketplaceProductStatus,
     MarketplaceProductType,
     PartnerProfile,
     PartnerVerificationStatus,
 )
 from .marketplace_promotions import (  # noqa: F401
-    MarketplaceCoupon,
-    MarketplaceCouponBatch,
-    MarketplaceCouponBatchType,
-    MarketplaceCouponStatus,
-    MarketplacePromotion,
-    MarketplacePromotionApplication,
-    MarketplacePromotionStatus,
-    MarketplacePromotionType,
+    Coupon,
+    CouponBatch,
+    CouponStatus,
+    MissionProgressStatus,
+    PartnerBadge,
+    PartnerBadgeAward,
+    PartnerMission,
+    PartnerMissionProgress,
+    PartnerTier,
+    PartnerTierState,
+    PromoBudget,
+    PromoBudgetModel,
+    PromoBudgetStatus,
+    Promotion,
+    PromotionApplication,
+    PromotionApplicationImmutableError,
+    PromotionStatus,
+    PromotionType,
 )
 from .partner_subscriptions import (  # noqa: F401
     PartnerBillingCycle,
@@ -226,24 +237,6 @@ from .marketplace_recommendations import (  # noqa: F401
     OfferCandidate,
     ProductAttributes,
     ProductTaxonomy,
-)
-from .service_bookings import (  # noqa: F401
-    BookingPaymentStatus,
-    BookingSlotLock,
-    PartnerResource,
-    PartnerResourceStatus,
-    PartnerResourceType,
-    PartnerService,
-    PartnerServiceCalendar,
-    PartnerServiceStatus,
-    ServiceAvailabilityRule,
-    ServiceBooking,
-    ServiceBookingActorType,
-    ServiceBookingEvent,
-    ServiceBookingEventType,
-    ServiceBookingImmutableError,
-    ServiceBookingStatus,
-    VehicleServiceRecord,
 )
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
@@ -292,6 +285,18 @@ from .reconciliation import (  # noqa: F401
     ReconciliationRun,
     ReconciliationRunStatus,
     ReconciliationScope,
+)
+from .bank_stub import (  # noqa: F401
+    BankStubPayment,
+    BankStubPaymentStatus,
+    BankStubStatement,
+    BankStubStatementLine,
+)
+from .erp_stub import (  # noqa: F401
+    ErpStubExport,
+    ErpStubExportItem,
+    ErpStubExportStatus,
+    ErpStubExportType,
 )
 from .documents import (  # noqa: F401
     ClosingPackage,
@@ -467,14 +472,6 @@ from .vehicle_profile import (  # noqa: F401
     VehicleServiceRecord,
     VehicleServiceType,
     VehicleUsageType,
-)
-from .vehicle_maintenance import (  # noqa: F401
-    MaintenanceItem,
-    MaintenanceModifier,
-    MaintenanceRule,
-    VehicleMaintenanceDismissal,
-    VehicleServiceRecord,
-    VehicleUsageProfile,
 )
 from .subscriptions_v1 import (  # noqa: F401
     Achievement,

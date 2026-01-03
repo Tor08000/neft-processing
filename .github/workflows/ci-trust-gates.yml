@@ -75,6 +75,10 @@ jobs:
           docker compose -f docker-compose.test.yml --profile test up -d postgres
           docker compose -f docker-compose.test.yml --profile test run --rm core-api alembic upgrade head
           docker compose -f docker-compose.test.yml --profile test exec -T postgres psql -U neft -d neft -f scripts/ci/check_worm_triggers.sql
+      - name: Trust gates tests
+        env:
+          DATABASE_URL_TEST: postgresql+psycopg://neft:neft@localhost:5432/neft
+        run: pytest platform/processing-core/app/tests/test_trust_gates.py
       - name: Verify smoke
         env:
           AUDIT_SIGNING_REQUIRED: "true"

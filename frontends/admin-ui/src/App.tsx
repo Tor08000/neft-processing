@@ -49,8 +49,7 @@ import FleetGroupsPage from "./pages/fleet/FleetGroupsPage";
 import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
 import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
 import FleetSpendPage from "./pages/fleet/FleetSpendPage";
-import PolicyCenterPage from "./pages/PolicyCenterPage";
-import PolicyCenterDetailPage from "./pages/PolicyCenterDetailPage";
+import StubProvidersPage from "./pages/stubs/StubProvidersPage";
 
 export function App() {
   return (
@@ -68,9 +67,8 @@ export function App() {
             <Route path="/finance/refunds" element={<BillingRefundsPage />} />
             <Route path="/finance/links" element={<BillingLinksPage />} />
             <Route path="/risk" element={<Navigate to="/analytics/risk" replace />} />
-            <Route path="/policies" element={<PolicyCenterPage />} />
-            <Route path="/policies/:type/:id" element={<PolicyCenterDetailPage />} />
-            <Route path="/marketplace" element={<Navigate to="/crm/clients" replace />} />
+            <Route path="/policies" element={<Navigate to="/risk/rules" replace />} />
+            <Route path="/marketplace" element={<Navigate to="/marketplace/moderation" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/billing" element={<BillingOverviewPage />}>
               <Route index element={<Navigate to="/billing/invoices" replace />} />
@@ -119,6 +117,7 @@ export function App() {
             <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
             <Route path="/fleet/limits" element={<FleetLimitsPage />} />
             <Route path="/fleet/spend" element={<FleetSpendPage />} />
+            <Route path="/stubs" element={<StubProvidersPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />

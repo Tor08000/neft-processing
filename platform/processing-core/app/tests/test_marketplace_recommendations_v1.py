@@ -65,6 +65,7 @@ def _create_product(db: Session, *, category: str, title: str) -> MarketplacePro
         price_model="FIXED",
         price_config={"amount": 1500, "currency": "RUB"},
         status="PUBLISHED",
+        moderation_status="APPROVED",
         published_at=datetime.now(timezone.utc),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),

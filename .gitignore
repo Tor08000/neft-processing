@@ -13,6 +13,8 @@ node_modules/
 copy
 logs/
 data/
+!data/virtual_fuel_network/
+!data/virtual_fuel_network/config.yaml
 .vscode/
 .idea/
 .DS_Store
