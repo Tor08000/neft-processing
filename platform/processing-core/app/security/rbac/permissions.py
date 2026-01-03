@@ -19,6 +19,7 @@ class Permission(str, Enum):
     CLIENT_FLEET_LIMITS_MANAGE = "client:fleet:limits:manage"
     CLIENT_FLEET_SPEND_VIEW = "client:fleet:spend:view"
     CLIENT_FLEET_EMPLOYEES_MANAGE = "client:fleet:employees:manage"
+    CLIENT_MARKETPLACE_VIEW = "client:marketplace:view"
 
     PARTNER_DASHBOARD_VIEW = "partner:dashboard:view"
     PARTNER_CONTRACTS_LIST = "partner:contracts:list"

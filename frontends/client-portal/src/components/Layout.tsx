@@ -49,7 +49,8 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   const navItems: NavItem[] = pwaMode
     ? [
-        { to: "/marketplace/orders", label: t("nav.orders"), icon: <ShoppingCart size={18} /> },
+        { to: "/marketplace", label: t("nav.marketplaceBrowse"), icon: <ShoppingCart size={18} /> },
+        { to: "/marketplace/orders", label: t("nav.marketplaceOrders"), icon: <ShoppingCart size={18} /> },
         { to: "/documents", label: t("nav.documents"), icon: <FileText size={18} /> },
       ]
     : [
@@ -78,7 +79,8 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
         { to: "/fleet/policy-center", label: t("nav.fleetPolicies"), icon: <Package size={18} /> },
         { to: "/fleet/incidents", label: t("nav.fleetIncidents"), icon: <MessageCircle size={18} /> },
         { to: "/fleet/employees", label: t("nav.fleetEmployees"), icon: <Package size={18} /> },
-        { to: "/marketplace", label: t("nav.marketplace"), icon: <ShoppingCart size={18} /> },
+        { to: "/marketplace", label: t("nav.marketplaceBrowse"), icon: <ShoppingCart size={18} /> },
+        { to: "/marketplace/orders", label: t("nav.marketplaceOrders"), icon: <ShoppingCart size={18} /> },
         { to: "/actions", label: t("nav.actions"), icon: <ClipboardCheck size={18} /> },
         { to: "/support/requests", label: t("nav.supportRequests"), icon: <MessageCircle size={18} /> },
         { to: "/cases", label: t("nav.cases"), icon: <MessageCircle size={18} /> },

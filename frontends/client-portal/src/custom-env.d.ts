@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_LOCALE?: string;
   readonly VITE_PWA_MODE?: string;
   readonly VITE_PUSH_PUBLIC_KEY?: string;
+  readonly VITE_MARKETPLACE_ORDERING?: string;
   readonly BASE_URL?: string;
 
   // Backward compatibility for legacy configuration variables

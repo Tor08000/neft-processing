@@ -11,6 +11,59 @@ class PortalSlaSummary(BaseModel):
     violations: int = 0
 
 
+class MarketplaceSlaObligationSummary(BaseModel):
+    metric: str
+    threshold: Decimal
+    comparison: str
+    window: str | None = None
+    penalty: str | None = None
+
+
+class MarketplaceSlaSummary(BaseModel):
+    obligations: list[MarketplaceSlaObligationSummary] = Field(default_factory=list)
+    penalties: str | None = None
+
+
+class MarketplacePartnerSummary(BaseModel):
+    id: str | None = None
+    company_name: str | None = None
+    profile_url: str | None = None
+    verified: bool | None = None
+
+
+class MarketplaceProductSummary(BaseModel):
+    id: str
+    type: str
+    title: str
+    short_description: str | None = None
+    category: str | None = None
+    price_model: str | None = None
+    price_summary: str | None = None
+    partner_name: str | None = None
+    partner_id: str | None = None
+    published_at: datetime | None = None
+
+
+class MarketplaceProductListResponse(BaseModel):
+    items: list[MarketplaceProductSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class MarketplaceProductDetails(BaseModel):
+    id: str
+    type: str
+    title: str
+    description: str | None = None
+    category: str | None = None
+    price_model: str | None = None
+    price_summary: str | None = None
+    price_config: dict | None = None
+    partner: MarketplacePartnerSummary | None = None
+    sla_summary: MarketplaceSlaSummary | None = None
+
+
 class ClientDashboardResponse(BaseModel):
     active_contracts: int
     invoices_due: int
@@ -162,4 +215,3 @@ class PartnerSettlementItemSummary(BaseModel):
 class PartnerSettlementDetails(PartnerSettlementSummary):
     items_summary: list[PartnerSettlementItemSummary] = Field(default_factory=list)
     payout_status: str | None = None
-

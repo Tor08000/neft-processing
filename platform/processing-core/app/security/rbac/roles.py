@@ -49,6 +49,7 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_FLEET_GROUPS_MANAGE.value,
         Permission.CLIENT_FLEET_LIMITS_MANAGE.value,
         Permission.CLIENT_FLEET_SPEND_VIEW.value,
+        Permission.CLIENT_MARKETPLACE_VIEW.value,
     },
     "partner_user": {
         Permission.PARTNER_DASHBOARD_VIEW.value,
@@ -75,6 +76,7 @@ ROLE_PERMISSIONS = {
         Permission.CLIENT_FLEET_LIMITS_MANAGE.value,
         Permission.CLIENT_FLEET_SPEND_VIEW.value,
         Permission.CLIENT_FLEET_EMPLOYEES_MANAGE.value,
+        Permission.CLIENT_MARKETPLACE_VIEW.value,
     },
     "partner_admin": {
         Permission.PARTNER_DASHBOARD_VIEW.value,

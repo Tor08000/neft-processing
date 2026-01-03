@@ -1,25 +1,28 @@
 import { request, requestWithMeta } from "./http";
 import type { AuthSession } from "./types";
 import type {
-  MarketplaceCatalogResponse,
   MarketplaceCreateOrderPayload,
   MarketplaceCreateOrderResponse,
   MarketplaceOrderDetails,
   MarketplaceOrderDocumentsResponse,
   MarketplaceOrderEvent,
   MarketplaceOrdersResponse,
-  MarketplaceServiceDetails,
+  MarketplaceProductDetails,
+  MarketplaceProductListResponse,
+  MarketplaceProductOrderPayload,
 } from "../types/marketplace";
 
 const withToken = (user: AuthSession | null): string | undefined => user?.token;
 
-interface MarketplaceCatalogFilters {
+interface MarketplaceProductFilters {
+  q?: string;
   category?: string;
-  partner?: string;
-  location?: string;
-  availability?: string;
-  priceFrom?: string;
-  priceTo?: string;
+  type?: string;
+  priceModel?: string;
+  partnerId?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
 }
 
 interface MarketplaceOrdersFilters {
@@ -32,27 +35,40 @@ interface MarketplaceOrdersFilters {
   offset?: number;
 }
 
-export function fetchMarketplaceCatalog(
+export function listMarketplaceProducts(
   user: AuthSession | null,
-  filters: MarketplaceCatalogFilters = {},
-): Promise<MarketplaceCatalogResponse> {
+  filters: MarketplaceProductFilters = {},
+): Promise<MarketplaceProductListResponse> {
   const search = new URLSearchParams();
+  if (filters.q) search.set("q", filters.q);
   if (filters.category) search.set("category", filters.category);
-  if (filters.partner) search.set("partner", filters.partner);
-  if (filters.location) search.set("location", filters.location);
-  if (filters.availability) search.set("availability", filters.availability);
-  if (filters.priceFrom) search.set("price_from", filters.priceFrom);
-  if (filters.priceTo) search.set("price_to", filters.priceTo);
+  if (filters.type) search.set("type", filters.type);
+  if (filters.priceModel) search.set("price_model", filters.priceModel);
+  if (filters.partnerId) search.set("partner_id", filters.partnerId);
+  if (filters.sort) search.set("sort", filters.sort);
+  if (filters.limit) search.set("limit", filters.limit.toString());
+  if (filters.offset) search.set("offset", filters.offset.toString());
   const query = search.toString();
-  const path = query ? `/marketplace/catalog?${query}` : "/marketplace/catalog";
-  return request<MarketplaceCatalogResponse>(path, { method: "GET" }, withToken(user));
+  const path = query ? `/client/marketplace/products?${query}` : "/client/marketplace/products";
+  return request<MarketplaceProductListResponse>(path, { method: "GET" }, withToken(user));
 }
 
-export function fetchMarketplaceService(
+export function getMarketplaceProduct(
   user: AuthSession | null,
-  serviceId: string,
-): Promise<MarketplaceServiceDetails> {
-  return request<MarketplaceServiceDetails>(`/marketplace/services/${serviceId}`, { method: "GET" }, withToken(user));
+  productId: string,
+): Promise<MarketplaceProductDetails> {
+  return request<MarketplaceProductDetails>(`/client/marketplace/products/${productId}`, { method: "GET" }, withToken(user));
+}
+
+export function createMarketplaceProductOrder(
+  user: AuthSession | null,
+  payload: MarketplaceProductOrderPayload,
+) {
+  return requestWithMeta<Record<string, never>>(
+    "/client/marketplace/orders",
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
 }
 
 export function createMarketplaceOrder(

@@ -20,6 +20,8 @@
     "documents": "Documents",
     "exports": "Exports / 1C",
     "marketplace": "Marketplace",
+    "marketplaceBrowse": "Marketplace · Browse",
+    "marketplaceOrders": "Marketplace · My orders",
     "actions": "Actions Center",
     "supportRequests": "Requests",
     "cases": "Cases",
@@ -296,8 +298,8 @@
   },
   "emptyStates": {
     "marketplaceCatalog": {
-      "title": "Services are not available yet",
-      "description": "Partners have not published services for your region yet."
+      "title": "Marketplace is empty",
+      "description": "No published products are available yet."
     },
     "marketplaceOrders": {
       "title": "No orders yet",
@@ -341,29 +343,88 @@
   },
   "marketplaceCatalog": {
     "title": "Marketplace",
-    "subtitle": "Choose partner services and place orders online.",
+    "subtitle": "Browse published partner products and services.",
     "errors": {
-      "loadFailed": "Unable to load services"
+      "loadFailed": "Unable to load products",
+      "unavailable": "Marketplace is unavailable in this environment."
     },
     "forbidden": {
-      "clientOnly": "Marketplace access is available to clients only.",
-      "catalogDenied": "Access to the services catalog is denied."
+      "clientOnly": "Marketplace access is available only to clients.",
+      "catalogDenied": "Access to the marketplace is forbidden."
+    },
+    "categories": {
+      "all": "All",
+      "more": "More…",
+      "less": "Less"
     },
     "filters": {
+      "search": "Search",
       "category": "Category",
+      "type": "Type",
+      "priceModel": "Price model",
       "partner": "Partner",
-      "location": "Station / Location",
-      "priceFrom": "Price from",
-      "priceTo": "Price to",
-      "availability": "Availability"
+      "sort": "Sort",
+      "all": "All"
+    },
+    "types": {
+      "service": "Service",
+      "product": "Product"
+    },
+    "priceModels": {
+      "fixed": "Fixed",
+      "perUnit": "Per unit",
+      "tiered": "Tiered"
+    },
+    "sort": {
+      "newest": "Newest",
+      "priceAsc": "Price: low to high",
+      "priceDesc": "Price: high to low"
     },
     "card": {
       "categoryFallback": "Category not specified",
-      "descriptionFallback": "Service description is not provided.",
-      "partner": "Partner: {name}",
-      "priceFrom": "Price from: {price}",
-      "availability": "Availability: {availability}"
+      "partnerFallback": "Partner not specified",
+      "descriptionFallback": "No description provided.",
+      "priceSummary": "Price: {price}",
+      "priceFallback": "Price on request",
+      "view": "View",
+      "order": "Order"
+    },
+    "empty": {
+      "filteredTitle": "No products match your filters",
+      "filteredDescription": "Try adjusting filters or reset search."
     }
+  },
+  "marketplaceProduct": {
+    "title": "Product details",
+    "subtitle": "Review the description, SLA, and pricing details.",
+    "errors": {
+      "loadFailed": "Unable to load product details"
+    },
+    "forbidden": {
+      "clientOnly": "Marketplace access is available only to clients.",
+      "productDenied": "Access to the product details is forbidden."
+    },
+    "backToMarketplace": "Back to marketplace",
+    "partnerFallback": "Partner not specified",
+    "categoryFallback": "Category not specified",
+    "verifiedBadge": "Verified",
+    "priceLabel": "Price summary",
+    "priceFallback": "Price on request",
+    "order": "Order",
+    "descriptionLabel": "Description",
+    "descriptionFallback": "No description provided.",
+    "sla": {
+      "title": "Service level",
+      "threshold": "{comparison} {threshold} per {window}",
+      "windowDefault": "period",
+      "penalties": "Penalties: {penalties}",
+      "fallback": "SLA will be provided on order confirmation."
+    },
+    "auditNote": "All orders and actions are auditable and signed.",
+    "orderingSoon": "Ordering is coming soon.",
+    "orderingEnabled": "Order flow is enabled.",
+    "notFoundTitle": "Product not found",
+    "notFoundDescription": "Try browsing the marketplace again."
   },
   "marketplaceOrders": {
     "title": "My orders",
