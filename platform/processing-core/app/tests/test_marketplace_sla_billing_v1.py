@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -24,6 +25,7 @@ from app.models.marketplace_order_sla import (
     OrderSlaConsequence,
     OrderSlaEvaluation,
 )
+from app.models.marketplace_orders import MarketplaceOrderActorType, MarketplaceOrderEventType
 from app.services.marketplace_contract_binding_service import bind_contract_for_order
 from app.services.order_sla_consequence_service import apply_sla_consequences
 from app.services.order_sla_service import evaluate_order_event
@@ -113,22 +115,28 @@ def test_marketplace_order_sla_breach_creates_consequence(db_session: Session) -
     db_session.add(obligation)
     db_session.commit()
 
-    order_id = "order-1"
+    order_id = str(uuid4())
     created_at = datetime.now(timezone.utc) - timedelta(hours=2)
     accepted_at = datetime.now(timezone.utc) - timedelta(hours=1)
     created_event = MarketplaceOrderEvent(
         order_id=order_id,
         client_id=str(contract.party_a_id),
         partner_id=str(contract.party_b_id),
-        event_type="MARKETPLACE_ORDER_CREATED",
+        event_type=MarketplaceOrderEventType.MARKETPLACE_ORDER_CREATED,
         occurred_at=created_at,
+        payload_redacted={},
+        actor_type=MarketplaceOrderActorType.SYSTEM,
+        audit_event_id=str(uuid4()),
     )
     accepted_event = MarketplaceOrderEvent(
         order_id=order_id,
         client_id=str(contract.party_a_id),
         partner_id=str(contract.party_b_id),
-        event_type="MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER",
+        event_type=MarketplaceOrderEventType.MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER,
         occurred_at=accepted_at,
+        payload_redacted={},
+        actor_type=MarketplaceOrderActorType.SYSTEM,
+        audit_event_id=str(uuid4()),
     )
     db_session.add_all([created_event, accepted_event])
     db_session.commit()

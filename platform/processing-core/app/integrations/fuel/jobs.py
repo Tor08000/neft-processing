@@ -93,6 +93,8 @@ def _store_raw_event(
         ingest_job_id=ingest_job_id,
     )
     db.add(record)
+    if provider_event_id:
+        db.flush()
     return record
 
 

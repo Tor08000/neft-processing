@@ -109,7 +109,7 @@ def get_client_billing_plan(
     features = get_plan_features(db, plan_id=str(plan.id))
     period_start, period_end = _month_bounds()
     usage_values = calculate_monthly_usage(db, client_id=client_id, period_start=period_start, period_end=period_end)
-    usage_values = {metric: usage_values.get(metric, Decimal(\"0\")) for metric in UsageMetric}
+    usage_values = {metric: usage_values.get(metric, Decimal("0")) for metric in UsageMetric}
     limits = build_limit_evaluations(plan_features=features, usage_values=usage_values)
 
     return BillingPlanSummary(
@@ -139,7 +139,7 @@ def get_client_billing_usage(
     period_start, period_end = _month_bounds()
 
     usage_values = calculate_monthly_usage(db, client_id=client_id, period_start=period_start, period_end=period_end)
-    usage_values = {metric: usage_values.get(metric, Decimal(\"0\")) for metric in UsageMetric}
+    usage_values = {metric: usage_values.get(metric, Decimal("0")) for metric in UsageMetric}
     subscription = get_active_subscription(db, client_id=client_id)
     if not subscription:
         raise HTTPException(status_code=404, detail="subscription_not_found")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -361,24 +362,47 @@ class VaultTransitSigner:
 class AuditSigningService:
     def __init__(self) -> None:
         settings = get_settings()
-        self.mode = (settings.AUDIT_SIGNING_MODE or "local").lower()
-        self.required = settings.AUDIT_SIGNING_REQUIRED
-        self.alg = settings.AUDIT_SIGNING_ALG
-        self.key_id = settings.AUDIT_SIGNING_KEY_ID
-        self._private_key_b64 = settings.AUDIT_SIGNING_PRIVATE_KEY_B64
-        self._public_keys_json = settings.AUDIT_SIGNING_PUBLIC_KEYS_JSON
-        self._public_key_cache_seconds = settings.AUDIT_SIGNING_PUBLIC_KEYS_CACHE_SECONDS
-        self._aws_region = settings.AWS_REGION
-        self._aws_access_key_id = settings.AWS_ACCESS_KEY_ID
-        self._aws_secret_access_key = settings.AWS_SECRET_ACCESS_KEY
-        self._aws_kms_endpoint = settings.AWS_KMS_ENDPOINT
-        self._aws_verify_mode = settings.AWS_KMS_VERIFY_MODE.lower()
-        self._vault_addr = settings.VAULT_ADDR
-        self._vault_token = settings.VAULT_TOKEN
-        self._vault_namespace = settings.VAULT_NAMESPACE
-        self._vault_mount = settings.VAULT_TRANSIT_MOUNT
-        self._vault_key = settings.VAULT_TRANSIT_KEY or settings.AUDIT_SIGNING_KEY_ID
-        self._vault_verify_mode = settings.VAULT_VERIFY_MODE.lower()
+        self.mode = (os.getenv("AUDIT_SIGNING_MODE") or settings.AUDIT_SIGNING_MODE or "local").lower()
+        required_env = os.getenv("AUDIT_SIGNING_REQUIRED")
+        if required_env is None:
+            self.required = settings.AUDIT_SIGNING_REQUIRED
+        else:
+            self.required = required_env.lower() in {"1", "true", "yes"}
+        self.alg = os.getenv("AUDIT_SIGNING_ALG", settings.AUDIT_SIGNING_ALG)
+        self.key_id = os.getenv("AUDIT_SIGNING_KEY_ID", settings.AUDIT_SIGNING_KEY_ID)
+        self._private_key_b64 = os.getenv(
+            "AUDIT_SIGNING_PRIVATE_KEY_B64",
+            settings.AUDIT_SIGNING_PRIVATE_KEY_B64,
+        )
+        self._public_keys_json = os.getenv(
+            "AUDIT_SIGNING_PUBLIC_KEYS_JSON",
+            settings.AUDIT_SIGNING_PUBLIC_KEYS_JSON,
+        )
+        cache_env = os.getenv("AUDIT_SIGNING_PUBLIC_KEYS_CACHE_SECONDS")
+        if cache_env is None:
+            self._public_key_cache_seconds = settings.AUDIT_SIGNING_PUBLIC_KEYS_CACHE_SECONDS
+        else:
+            self._public_key_cache_seconds = int(cache_env)
+        self._aws_region = os.getenv("AWS_REGION", settings.AWS_REGION or "")
+        self._aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", settings.AWS_ACCESS_KEY_ID or "")
+        self._aws_secret_access_key = os.getenv(
+            "AWS_SECRET_ACCESS_KEY",
+            settings.AWS_SECRET_ACCESS_KEY or "",
+        )
+        self._aws_kms_endpoint = os.getenv("AWS_KMS_ENDPOINT", settings.AWS_KMS_ENDPOINT or "")
+        self._aws_verify_mode = os.getenv(
+            "AWS_KMS_VERIFY_MODE",
+            settings.AWS_KMS_VERIFY_MODE,
+        ).lower()
+        self._vault_addr = os.getenv("VAULT_ADDR", settings.VAULT_ADDR or "")
+        self._vault_token = os.getenv("VAULT_TOKEN", settings.VAULT_TOKEN or "")
+        self._vault_namespace = os.getenv("VAULT_NAMESPACE", settings.VAULT_NAMESPACE or "")
+        self._vault_mount = os.getenv("VAULT_TRANSIT_MOUNT", settings.VAULT_TRANSIT_MOUNT)
+        self._vault_key = os.getenv(
+            "VAULT_TRANSIT_KEY",
+            settings.VAULT_TRANSIT_KEY or settings.AUDIT_SIGNING_KEY_ID,
+        )
+        self._vault_verify_mode = os.getenv("VAULT_VERIFY_MODE", settings.VAULT_VERIFY_MODE).lower()
         self._current_signer: AuditSigner | None = None
         self._public_verifiers: dict[str, AuditSigner] = {}
         self._load_local_verifiers()

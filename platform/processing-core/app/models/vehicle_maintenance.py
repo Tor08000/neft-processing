@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import GUID, new_uuid_str
+from app.models.vehicle_profile import VehicleServiceRecord
+
+
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 
 class MaintenanceItem(Base):
@@ -39,7 +44,7 @@ class MaintenanceRule(Base):
     interval_km = Column(Numeric, nullable=True)
     interval_months = Column(Integer, nullable=True)
 
-    conditions = Column(JSONB, nullable=True)
+    conditions = Column(JSON_TYPE, nullable=True)
     priority = Column(Integer, nullable=False, server_default="100")
     source = Column(String(32), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -71,7 +71,7 @@ class ServiceBookingImmutableError(ValueError):
     """Raised when WORM-protected booking records are mutated."""
 
 
-class PartnerService(Base):
+class PartnerService(ServiceBookingBase):
     __tablename__ = "partner_services"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -95,7 +95,7 @@ class PartnerService(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class PartnerServiceCalendar(Base):
+class PartnerServiceCalendar(ServiceBookingBase):
     __tablename__ = "partner_service_calendars"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -110,7 +110,7 @@ class PartnerServiceCalendar(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class PartnerResource(Base):
+class PartnerResource(ServiceBookingBase):
     __tablename__ = "partner_resources"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -130,7 +130,7 @@ class PartnerResource(Base):
     meta = Column(JSON_TYPE, nullable=True)
 
 
-class ServiceAvailabilityRule(Base):
+class ServiceAvailabilityRule(ServiceBookingBase):
     __tablename__ = "service_availability_rules"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -144,7 +144,7 @@ class ServiceAvailabilityRule(Base):
     meta = Column(JSON_TYPE, nullable=True)
 
 
-class BookingSlotLock(Base):
+class BookingSlotLock(ServiceBookingBase):
     __tablename__ = "booking_slot_locks"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -160,7 +160,7 @@ class BookingSlotLock(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class ServiceBooking(Base):
+class ServiceBooking(ServiceBookingBase):
     __tablename__ = "service_bookings"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -194,7 +194,7 @@ class ServiceBooking(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class ServiceBookingEvent(Base):
+class ServiceBookingEvent(ServiceBookingBase):
     __tablename__ = "service_booking_events"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)

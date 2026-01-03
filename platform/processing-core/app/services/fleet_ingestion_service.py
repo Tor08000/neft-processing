@@ -264,6 +264,23 @@ def ingest_transactions(
             if duplicate:
                 deduped_count += 1
                 fleet_metrics.mark_ingest_item("deduped")
+                injected = detect_injected_anomalies(
+                    db,
+                    transaction=duplicate,
+                    raw_payload=item.raw_payload if item.raw_payload else None,
+                    principal=principal,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                for anomaly in injected:
+                    enqueue_anomaly_notification(
+                        db,
+                        anomaly=anomaly,
+                        principal=principal,
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                    evaluate_policies_for_anomaly(db, str(anomaly.id))
                 continue
             station = _ensure_station(
                 db,

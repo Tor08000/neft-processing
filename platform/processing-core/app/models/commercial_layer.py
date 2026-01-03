@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
+from sqlalchemy.types import JSON
 
 from app.db import Base
 
@@ -44,6 +45,9 @@ class UsageMetric(str, Enum):
     EXPORTS = "exports"
 
 
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
+
+
 class CommercialPlan(Base):
     __tablename__ = "plans"
 
@@ -66,7 +70,7 @@ class PlanFeature(Base):
     plan_id = Column(UUID(as_uuid=True), ForeignKey("plans.id"), nullable=False, index=True)
     feature = Column(SAEnum(PlanFeatureCode, name="plan_feature_code"), nullable=False, index=True)
     enabled = Column(Boolean, nullable=False, server_default="true")
-    limits = Column(JSONB, nullable=True)
+    limits = Column(JSON_TYPE, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -103,6 +107,6 @@ class ClientOnboardingState(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, unique=True, index=True)
     current_step = Column(String(64), nullable=True)
-    completed_steps = Column(JSONB, nullable=True)
+    completed_steps = Column(JSON_TYPE, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
