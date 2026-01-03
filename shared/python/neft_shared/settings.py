@@ -188,6 +188,14 @@ class Settings:
     TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN: int = int(os.getenv("TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN", "60"))
     TELEGRAM_MAX_RETRY: int = int(os.getenv("TELEGRAM_MAX_RETRY", "10"))
 
+    # SMS/Voice notifications (stub providers)
+    SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "sms_stub")
+    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "voice_stub")
+    SMS_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("SMS_STUB_DELIVERY_DELAY_MS", "1000"))
+    SMS_STUB_FAIL_RATE: float = float(os.getenv("SMS_STUB_FAIL_RATE", "0.0"))
+    VOICE_STUB_DELIVERY_DELAY_MS: int = int(os.getenv("VOICE_STUB_DELIVERY_DELAY_MS", "1000"))
+    VOICE_STUB_FAIL_RATE: float = float(os.getenv("VOICE_STUB_FAIL_RATE", "0.0"))
+
     @property
     def redis_dsn(self) -> str:
         """Совместимость с более старым кодом, ожидающим REDIS_DSN."""

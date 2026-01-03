@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -48,7 +50,7 @@ from app.models.fuel import (
     FuelStation,
     FuelTransaction,
 )
-from app.services.fleet_notification_dispatcher import enqueue_notification, sign_webhook_payload
+from app.services.fleet_notification_dispatcher import canonical_json, enqueue_notification, sign_webhook_payload
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -346,8 +348,15 @@ def test_outbox_dedupe(db_session: Session) -> None:
 
 def test_webhook_signature() -> None:
     payload = {"client_id": "client-1", "event_type": "ANOMALY", "severity": "HIGH"}
-    signature = sign_webhook_payload(payload, "secret", timestamp="1700000000")
-    assert signature == "4f8c232de9e289017064d7a96726beab55cb2f914cc7a3c90703b50b5a3a911f"
+    timestamp = "1700000000"
+    nonce = "11111111-1111-1111-1111-111111111111"
+    event_id = "22222222-2222-2222-2222-222222222222"
+    signature = sign_webhook_payload(payload, "secret", timestamp=timestamp, nonce=nonce, event_id=event_id)
+    body = canonical_json(payload).encode("utf-8")
+    payload_hash = hashlib.sha256(body).hexdigest()
+    canonical = f"v1\n{timestamp}\n{nonce}\n{event_id}\n{payload_hash}"
+    expected = hmac.new(b"secret", canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    assert signature == expected
 
 
 def test_ack_ignore_alerts_are_audited(make_jwt, client: TestClient, db_session: Session) -> None:

@@ -135,6 +135,8 @@ class FleetNotificationChannelType(str, Enum):
     EMAIL = "EMAIL"
     PUSH = "PUSH"
     TELEGRAM = "TELEGRAM"
+    SMS = "SMS"
+    VOICE = "VOICE"
 
 
 class FleetNotificationChannelStatus(str, Enum):
@@ -652,6 +654,67 @@ class FleetNotificationOutbox(Base):
     audit_event_id = Column(GUID(), nullable=True)
 
 
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    tenant_id = Column(GUID(), nullable=True, index=True)
+    owner_type = Column(String(32), nullable=False)
+    owner_id = Column(GUID(), nullable=False, index=True)
+    url = Column(Text, nullable=False)
+    secret = Column(Text, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    allowed_events = Column(JSON, nullable=True)
+    retry_policy = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, onupdate=func.now())
+
+
+class WebhookDeliveryAttempt(Base):
+    __tablename__ = "webhook_delivery_attempts"
+    __table_args__ = (
+        Index("ix_webhook_delivery_attempts_endpoint_event", "endpoint_id", "event_id"),
+        Index("ix_webhook_delivery_attempts_dedupe", "dedupe_key"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    event_id = Column(GUID(), nullable=False, index=True)
+    endpoint_id = Column(GUID(), nullable=False, index=True)
+    attempt_no = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False)
+    http_status = Column(Integer, nullable=True)
+    response_body_snippet = Column(Text, nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    dedupe_key = Column(String(256), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, onupdate=func.now())
+
+
+class WebhookNonceRecord(Base):
+    __tablename__ = "webhook_nonce_store"
+
+    nonce = Column(String(64), primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class NotificationDeliveryLog(Base):
+    __tablename__ = "notification_delivery_logs"
+    __table_args__ = (Index("ix_notification_delivery_logs_channel_status", "channel", "status"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    tenant_id = Column(GUID(), nullable=True, index=True)
+    channel = Column(String(32), nullable=False)
+    provider = Column(String(64), nullable=False)
+    message_id = Column(String(128), nullable=False)
+    recipient = Column(String(256), nullable=False)
+    status = Column(String(32), nullable=False)
+    error_code = Column(String(64), nullable=True)
+    payload_hash = Column(String(128), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, onupdate=func.now())
+
+
 class FleetPushSubscription(Base):
     __tablename__ = "fleet_push_subscriptions"
 
@@ -894,6 +957,7 @@ __all__ = [
     "FleetNotificationPolicyScopeType",
     "FleetNotificationSeverity",
     "FleetPushSubscription",
+    "NotificationDeliveryLog",
     "FleetPolicyExecution",
     "FleetPolicyExecutionStatus",
     "FuelMerchant",
@@ -911,6 +975,9 @@ __all__ = [
     "FuelStationOutlier",
     "FuelFraudSignal",
     "FuelFraudSignalType",
+    "WebhookDeliveryAttempt",
+    "WebhookEndpoint",
+    "WebhookNonceRecord",
     "StationReputationDaily",
     "FuelTransaction",
     "FuelTransactionStatus",
