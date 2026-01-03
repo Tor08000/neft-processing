@@ -20,7 +20,7 @@
     "occurred_at": {"type": "string", "format": "date-time"},
     "correlation_id": {"type": "string"},
     "trace_id": {"type": "string"},
-    "schema_version": {"type": "string", "pattern": "^1\.0$"},
+    "schema_version": {"type": "string", "pattern": "^1\\.0$"},
     "event_type": {"const": "MARKETPLACE_ORDER_CREATED"},
     "actor": {
       "type": "object",

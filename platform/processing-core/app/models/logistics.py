@@ -55,6 +55,7 @@ class LogisticsETAMethod(str, Enum):
     PLANNED = "PLANNED"
     SIMPLE_SPEED = "SIMPLE_SPEED"
     LAST_KNOWN = "LAST_KNOWN"
+    HISTORICAL = "HISTORICAL"
 
 
 class LogisticsDeviationEventType(str, Enum):

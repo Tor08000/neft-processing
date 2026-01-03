@@ -15,7 +15,7 @@ from tests.smoke.utils import (
 
 
 def _extract_asset_href(html: str, base_prefix: str) -> str:
-    match = re.search(rf"{re.escape(base_prefix)}assets/[^\\"']+", html)
+    match = re.search(f'{re.escape(base_prefix)}assets/[^"\\\']+', html)
     if not match:
         raise AssertionError(f"No asset reference with prefix {base_prefix}assets/ found in html")
     return match.group(0)

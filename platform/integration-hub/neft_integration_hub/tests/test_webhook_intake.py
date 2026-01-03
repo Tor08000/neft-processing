@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+pytest.importorskip("neft_integration_hub")
 
 from neft_integration_hub.db import Base
 from neft_integration_hub.services.webhook_intake import compute_signature, record_intake_event, verify_signature

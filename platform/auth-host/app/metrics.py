@@ -4,18 +4,22 @@ import time
 from typing import Callable
 
 from fastapi import Request, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
-AUTH_HOST_UP = Gauge("auth_host_up", "Auth host service up")
+METRICS_REGISTRY = CollectorRegistry()
+
+AUTH_HOST_UP = Gauge("auth_host_up", "Auth host service up", registry=METRICS_REGISTRY)
 AUTH_HOST_HTTP_REQUESTS_TOTAL = Counter(
     "auth_host_http_requests_total",
     "Total HTTP requests handled by auth-host",
     ["method", "path", "status"],
+    registry=METRICS_REGISTRY,
 )
 AUTH_HOST_HTTP_REQUEST_DURATION_SECONDS = Histogram(
     "auth_host_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "path"],
+    registry=METRICS_REGISTRY,
 )
 
 AUTH_HOST_UP.set(1)
@@ -48,5 +52,5 @@ async def metrics_middleware(request: Request, call_next: Callable[[Request], Re
 
 
 def metrics_response() -> Response:
-    payload = generate_latest()
+    payload = generate_latest(METRICS_REGISTRY)
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)

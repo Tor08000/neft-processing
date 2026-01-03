@@ -31,12 +31,15 @@ from app.models.reconciliation import (
     ReconciliationLinkDirection,
     ReconciliationLinkStatus,
 )
+from app.models.operation import Operation, OperationType
+from app.models.contract_limits import TariffPrice
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.cases_service import create_case
 from app.services.billing_periods import BillingPeriodConflict
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
+from app.db import SessionLocal
 
 
 LEDGER_REF_INVOICE = "BILLING_INVOICE"
@@ -63,6 +66,34 @@ class BillingRefundResult:
     payment: BillingPayment
     invoice: BillingInvoice
     is_replay: bool
+
+
+@dataclass(frozen=True)
+class BillingChargeLine:
+    operation_id: str
+    tariff_id: str | None
+    product_id: str | None
+    merchant_id: str
+    terminal_id: str
+    quantity: Decimal
+    charge_amount: Decimal
+    cost_amount: Decimal
+    margin_amount: Decimal
+    currency: str
+
+
+@dataclass(frozen=True)
+class BillingTotals:
+    charge_amount: Decimal
+    cost_amount: Decimal
+    margin_amount: Decimal
+    currency: str
+
+
+@dataclass(frozen=True)
+class BillingCalculationResult:
+    items: list[BillingChargeLine]
+    totals_by_currency: dict[str, BillingTotals]
 
 
 def _normalize_currency(value: str) -> str:
@@ -655,10 +686,110 @@ def refund_payment(
     return BillingRefundResult(refund=refund, payment=payment, invoice=invoice, is_replay=False)
 
 
+def calculate_client_charges(
+    db: Session,
+    *,
+    client_id: str,
+    date_from: datetime,
+    date_to: datetime,
+) -> BillingCalculationResult:
+    operations = (
+        db.query(Operation)
+        .filter(Operation.client_id == client_id)
+        .filter(Operation.created_at >= date_from)
+        .filter(Operation.created_at <= date_to)
+        .all()
+    )
+
+    items: list[BillingChargeLine] = []
+    totals: dict[str, dict[str, Decimal]] = {}
+
+    for operation in operations:
+        if not operation.tariff_id or not operation.product_id:
+            continue
+
+        price = (
+            db.query(TariffPrice)
+            .filter(TariffPrice.tariff_id == operation.tariff_id)
+            .filter(TariffPrice.product_id == operation.product_id)
+            .filter(
+                (TariffPrice.partner_id.is_(None))
+                | (TariffPrice.partner_id == operation.merchant_id)
+            )
+            .order_by(TariffPrice.priority.asc())
+            .first()
+        )
+
+        if price is None:
+            continue
+
+        quantity = Decimal(operation.quantity or 0)
+        sign = Decimal("-1") if operation.operation_type in {OperationType.REFUND, OperationType.REVERSE} else Decimal("1")
+
+        charge_amount = (Decimal(price.price_per_liter) * quantity * sign).quantize(Decimal("0.001"))
+        cost_price = Decimal(price.cost_price_per_liter or 0)
+        cost_amount = (cost_price * quantity * sign).quantize(Decimal("0.001"))
+        margin_amount = charge_amount - cost_amount
+
+        currency = price.currency
+        totals.setdefault(
+            currency,
+            {
+                "charge_amount": Decimal("0"),
+                "cost_amount": Decimal("0"),
+                "margin_amount": Decimal("0"),
+            },
+        )
+        totals[currency]["charge_amount"] += charge_amount
+        totals[currency]["cost_amount"] += cost_amount
+        totals[currency]["margin_amount"] += margin_amount
+
+        items.append(
+            BillingChargeLine(
+                operation_id=str(operation.id),
+                tariff_id=operation.tariff_id,
+                product_id=operation.product_id,
+                merchant_id=operation.merchant_id,
+                terminal_id=operation.terminal_id,
+                quantity=quantity * sign,
+                charge_amount=charge_amount,
+                cost_amount=cost_amount,
+                margin_amount=margin_amount,
+                currency=currency,
+            )
+        )
+
+    totals_by_currency = {
+        currency: BillingTotals(
+            charge_amount=totals[currency]["charge_amount"],
+            cost_amount=totals[currency]["cost_amount"],
+            margin_amount=totals[currency]["margin_amount"],
+            currency=currency,
+        )
+        for currency in totals
+    }
+
+    return BillingCalculationResult(items=items, totals_by_currency=totals_by_currency)
+
+
+async def build_billing_summary_for_date(billing_date: date):
+    from app.services.reports_billing import build_billing_summary_for_date as build_summary
+
+    db = SessionLocal()
+    try:
+        return build_summary(db, date_from=billing_date, date_to=billing_date)
+    finally:
+        db.close()
+
+
 __all__ = [
+    "BillingCalculationResult",
+    "BillingChargeLine",
     "BillingInvoiceResult",
     "BillingPaymentResult",
     "BillingRefundResult",
+    "build_billing_summary_for_date",
+    "calculate_client_charges",
     "capture_payment",
     "issue_invoice",
     "refund_payment",

@@ -10,11 +10,17 @@ from fastapi.testclient import TestClient
 from app.db import get_db as app_get_db
 from app.deps.db import get_db as deps_get_db
 from app.main import app
+from app.api.v1.endpoints import fuel_transactions as fuel_endpoints
 from app.models.crm import CRMBillingCycle, CRMBillingPeriod, CRMSubscriptionStatus, CRMTariffStatus
 from app.models.fuel import FuelTransactionStatus, FuelType
 from app.models.logistics import LogisticsETAMethod, LogisticsNavigatorExplainType
 from app.models.ops import OpsEscalationPriority, OpsEscalationSource, OpsEscalationStatus, OpsEscalationTarget
 from app.models.unified_explain import PrimaryReason
+from app.routers.admin import crm as admin_crm
+from app.routers.admin import explain as admin_explain
+from app.routers.admin import logistics as admin_logistics
+from app.routers.admin import money_flow as admin_money_flow
+from app.routers.admin import ops as admin_ops
 from app.schemas.admin.unified_explain import UnifiedExplainIds, UnifiedExplainResponse, UnifiedExplainResult, UnifiedExplainSubject
 from app.schemas.fuel import FuelAuthorizeResponse, FuelTransactionOut
 from app.services.explain.actions.base import ActionItem
@@ -132,6 +138,7 @@ def test_fuel_authorize_contract(monkeypatch, admin_auth_headers):
         return AuthorizationResult(response=FuelAuthorizeResponse(status="ALLOW", transaction_id="fuel-1"))
 
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.authorize_fuel_tx", _authorize)
+    fuel_endpoints.authorize_fuel_transaction_endpoint.__globals__["authorize_fuel_tx"] = _authorize
 
     payload = {
         "card_token": "card-1",
@@ -158,6 +165,10 @@ def test_fuel_settle_contract(monkeypatch, admin_auth_headers):
 
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.settle_fuel_tx", _settle)
     monkeypatch.setattr("app.api.v1.endpoints.fuel_transactions.get_fuel_transaction", lambda *_args, **_kwargs: _fuel_transaction())
+    fuel_endpoints.settle_fuel_transaction_endpoint.__globals__["settle_fuel_tx"] = _settle
+    fuel_endpoints.settle_fuel_transaction_endpoint.__globals__["get_fuel_transaction"] = (
+        lambda *_args, **_kwargs: _fuel_transaction()
+    )
 
     _call_case(
         "/api/v1/fuel/transactions/{transaction_id}/settle",
@@ -168,7 +179,11 @@ def test_fuel_settle_contract(monkeypatch, admin_auth_headers):
 
 
 def test_unified_explain_contract(monkeypatch, admin_auth_headers):
-    monkeypatch.setattr("app.routers.admin.explain.build_unified_explain", lambda *_args, **_kwargs: _unified_explain_response())
+    def _build_unified_explain(*_args, **_kwargs):
+        return _unified_explain_response()
+
+    monkeypatch.setattr("app.routers.admin.explain.build_unified_explain", _build_unified_explain)
+    admin_explain.get_unified_explain.__globals__["build_unified_explain"] = _build_unified_explain
 
     _call_case(
         "/api/core/v1/admin/explain",
@@ -248,6 +263,10 @@ def test_money_flow_contracts(monkeypatch, admin_auth_headers):
     monkeypatch.setattr("app.routers.admin.money_flow.build_money_health", _money_health)
     monkeypatch.setattr("app.routers.admin.money_flow.build_cfo_explain", _cfo_explain)
     monkeypatch.setattr("app.routers.admin.money_flow.run_money_flow_replay", _replay)
+    admin_money_flow.explain_money_flow.__globals__["build_money_explain"] = _money_explain
+    admin_money_flow.money_health.__globals__["build_money_health"] = _money_health
+    admin_money_flow.cfo_explain.__globals__["build_cfo_explain"] = _cfo_explain
+    admin_money_flow.replay_money_flow.__globals__["run_money_flow_replay"] = _replay
 
     _call_case(
         "/api/core/v1/admin/money/health",
@@ -277,6 +296,18 @@ def test_money_flow_contracts(monkeypatch, admin_auth_headers):
 
 def test_crm_control_plane_contracts(monkeypatch, admin_auth_headers):
     now = NOW
+
+    def _create_tariff(*_args, **_kwargs):
+        return _tariff_stub()
+
+    def _get_tariff(*_args, **_kwargs):
+        return _tariff_stub()
+
+    def _update_tariff(*_args, **_kwargs):
+        return _tariff_stub()
+
+    def _create_subscription(*_args, **_kwargs):
+        return _subscription_stub()
 
     def _tariff_stub():
         return SimpleNamespace(
@@ -310,10 +341,14 @@ def test_crm_control_plane_contracts(monkeypatch, admin_auth_headers):
             updated_at=now,
         )
 
-    monkeypatch.setattr("app.routers.admin.crm.tariffs.create_tariff", lambda *_args, **_kwargs: _tariff_stub())
-    monkeypatch.setattr("app.routers.admin.crm.repository.get_tariff", lambda *_args, **_kwargs: _tariff_stub())
-    monkeypatch.setattr("app.routers.admin.crm.tariffs.update_tariff", lambda *_args, **_kwargs: _tariff_stub())
-    monkeypatch.setattr("app.routers.admin.crm.subscriptions.create_subscription", lambda *_args, **_kwargs: _subscription_stub())
+    monkeypatch.setattr("app.routers.admin.crm.tariffs.create_tariff", _create_tariff)
+    monkeypatch.setattr("app.routers.admin.crm.repository.get_tariff", _get_tariff)
+    monkeypatch.setattr("app.routers.admin.crm.tariffs.update_tariff", _update_tariff)
+    monkeypatch.setattr("app.routers.admin.crm.subscriptions.create_subscription", _create_subscription)
+    admin_crm.create_tariff_endpoint.__globals__["tariffs"].create_tariff = _create_tariff
+    admin_crm.update_tariff_endpoint.__globals__["repository"].get_tariff = _get_tariff
+    admin_crm.update_tariff_endpoint.__globals__["tariffs"].update_tariff = _update_tariff
+    admin_crm.create_subscription_endpoint.__globals__["subscriptions"].create_subscription = _create_subscription
 
     headers = {**admin_auth_headers, "X-CRM-Version": "1"}
 
@@ -356,9 +391,8 @@ def test_crm_control_plane_contracts(monkeypatch, admin_auth_headers):
 
 
 def test_logistics_contracts(monkeypatch, admin_auth_headers):
-    monkeypatch.setattr(
-        "app.routers.admin.logistics.eta.compute_eta_snapshot",
-        lambda *_args, **_kwargs: SimpleNamespace(
+    def _compute_eta_snapshot(*_args, **_kwargs):
+        return SimpleNamespace(
             id="eta-1",
             order_id="order-1",
             computed_at=NOW,
@@ -367,13 +401,13 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
             method=LogisticsETAMethod.HISTORICAL,
             inputs={"source": "contract"},
             created_at=NOW,
-        ),
-    )
+        )
 
-    monkeypatch.setattr("app.routers.admin.logistics.repository.get_route", lambda *_args, **_kwargs: SimpleNamespace(id="route-1"))
-    monkeypatch.setattr(
-        "app.routers.admin.logistics.repository.get_latest_route_snapshot",
-        lambda *_args, **_kwargs: SimpleNamespace(
+    def _get_route(*_args, **_kwargs):
+        return SimpleNamespace(id="route-1")
+
+    def _get_latest_route_snapshot(*_args, **_kwargs):
+        return SimpleNamespace(
             id="snapshot-1",
             order_id="order-1",
             route_id="route-1",
@@ -382,11 +416,10 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
             distance_km=10.5,
             eta_minutes=15,
             created_at=NOW,
-        ),
-    )
-    monkeypatch.setattr(
-        "app.routers.admin.logistics.repository.list_navigator_explains",
-        lambda *_args, **_kwargs: [
+        )
+
+    def _list_navigator_explains(*_args, **_kwargs):
+        return [
             SimpleNamespace(
                 id="explain-1",
                 route_snapshot_id="snapshot-1",
@@ -394,8 +427,28 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
                 payload={"note": "ok"},
                 created_at=NOW,
             )
-        ],
+        ]
+
+    monkeypatch.setattr(
+        "app.routers.admin.logistics.eta.compute_eta_snapshot",
+        _compute_eta_snapshot,
     )
+
+    monkeypatch.setattr("app.routers.admin.logistics.repository.get_route", _get_route)
+    monkeypatch.setattr(
+        "app.routers.admin.logistics.repository.get_latest_route_snapshot",
+        _get_latest_route_snapshot,
+    )
+    monkeypatch.setattr(
+        "app.routers.admin.logistics.repository.list_navigator_explains",
+        _list_navigator_explains,
+    )
+    admin_logistics.recompute_eta_endpoint.__globals__["eta"].compute_eta_snapshot = _compute_eta_snapshot
+    admin_logistics.get_route_navigator_snapshot.__globals__["repository"].get_route = _get_route
+    admin_logistics.get_route_navigator_snapshot.__globals__["repository"].get_latest_route_snapshot = _get_latest_route_snapshot
+    admin_logistics.list_route_navigator_explains.__globals__["repository"].get_route = _get_route
+    admin_logistics.list_route_navigator_explains.__globals__["repository"].get_latest_route_snapshot = _get_latest_route_snapshot
+    admin_logistics.list_route_navigator_explains.__globals__["repository"].list_navigator_explains = _list_navigator_explains
 
     _call_case(
         "/api/core/v1/admin/logistics/orders/{order_id}/eta/recompute",
@@ -420,9 +473,8 @@ def test_logistics_contracts(monkeypatch, admin_auth_headers):
 
 
 def test_ops_workflow_contracts(monkeypatch, admin_auth_headers):
-    monkeypatch.setattr(
-        "app.routers.admin.ops.list_escalations",
-        lambda *_args, **_kwargs: (
+    def _list_escalations(*_args, **_kwargs):
+        return (
             [
                 SimpleNamespace(
                     id="esc-1",
@@ -456,12 +508,10 @@ def test_ops_workflow_contracts(monkeypatch, admin_auth_headers):
                 )
             ],
             1,
-        ),
-    )
+        )
 
-    monkeypatch.setattr(
-        "app.routers.admin.ops.build_sla_report",
-        lambda *_args, **_kwargs: {
+    def _build_sla_report(*_args, **_kwargs):
+        return {
             "period": NOW.date().isoformat(),
             "total": 1,
             "closed_within_sla": 1,
@@ -472,8 +522,19 @@ def test_ops_workflow_contracts(monkeypatch, admin_auth_headers):
             "by_primary_reason": {PrimaryReason.LIMIT: {"total": 1, "overdue": 0, "sla_breaches": 0}},
             "by_team": {"CRM": {"total": 1, "overdue": 0, "sla_breaches": 0}},
             "by_client": {"client-1": {"total": 1, "overdue": 0, "sla_breaches": 0}},
-        },
+        }
+
+    monkeypatch.setattr(
+        "app.routers.admin.ops.list_escalations",
+        _list_escalations,
     )
+
+    monkeypatch.setattr(
+        "app.routers.admin.ops.build_sla_report",
+        _build_sla_report,
+    )
+    admin_ops.admin_list_escalations.__globals__["list_escalations"] = _list_escalations
+    admin_ops.admin_sla_report.__globals__["build_sla_report"] = _build_sla_report
 
     _call_case(
         "/api/core/v1/admin/ops/escalations",
