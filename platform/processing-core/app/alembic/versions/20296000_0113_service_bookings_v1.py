@@ -421,7 +421,7 @@ def upgrade() -> None:
         ),
         sa.Column("actor_id", GUID(), nullable=True),
         sa.Column("payload", JSON_TYPE, nullable=False),
-        sa.Column("audit_event_id", GUID(), nullable=False),
+        sa.Column("audit_event_id", sa.String(length=36), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(
             ["booking_id"],

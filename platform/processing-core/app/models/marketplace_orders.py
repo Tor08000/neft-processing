@@ -76,7 +76,7 @@ class MarketplaceOrder(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    audit_event_id = Column(GUID(), nullable=True)
+    audit_event_id = Column(String(36), nullable=True)
     external_ref = Column(Text, nullable=True)
 
 
@@ -97,7 +97,7 @@ class MarketplaceOrderEvent(Base):
         nullable=False,
     )
     actor_id = Column(GUID(), nullable=True)
-    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    audit_event_id = Column(String(36), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

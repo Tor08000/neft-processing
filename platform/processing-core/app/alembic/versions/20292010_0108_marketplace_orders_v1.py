@@ -154,7 +154,7 @@ def upgrade() -> None:
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("audit_event_id", GUID(), nullable=True),
+        sa.Column("audit_event_id", sa.String(length=36), nullable=True),
         sa.Column("external_ref", sa.Text(), nullable=True),
         schema=DB_SCHEMA,
     )
@@ -225,7 +225,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("actor_id", GUID(), nullable=True),
-        sa.Column("audit_event_id", GUID(), nullable=False),
+        sa.Column("audit_event_id", sa.String(length=36), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(
             ["order_id"],
