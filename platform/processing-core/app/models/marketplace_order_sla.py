@@ -8,6 +8,7 @@ from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
+from app.models.marketplace_orders import MarketplaceOrderEvent
 
 
 JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
@@ -50,20 +51,6 @@ class MarketplaceOrderContractLink(Base):
     sla_policy_version = Column(Integer, nullable=True)
     bound_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     audit_event_id = Column(GUID(), nullable=False)
-
-
-class MarketplaceOrderEvent(Base):
-    __tablename__ = "marketplace_order_events"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    order_id = Column(String(64), nullable=False, index=True)
-    client_id = Column(String(64), nullable=True, index=True)
-    partner_id = Column(String(64), nullable=True, index=True)
-    event_type = Column(String(64), nullable=False, index=True)
-    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    payload = Column(JSON_TYPE, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    audit_event_id = Column(GUID(), nullable=True)
 
 
 class OrderSlaEvaluation(Base):
