@@ -430,7 +430,12 @@
     "title": "Мои заказы",
     "subtitle": "История заказов и статусов по маркетплейсу.",
     "errors": {
-      "loadFailed": "Не удалось загрузить заказы"
+      "loadFailed": "Не удалось загрузить заказы",
+      "cancelFailed": "Не удалось отменить заказ"
+    },
+    "actions": {
+      "confirmCancel": "Отменить заказ?",
+      "cancelSuccess": "Заказ отменён"
     },
     "forbidden": {
       "noAccess": "Нет доступа к заказам.",
@@ -442,20 +447,110 @@
       "periodTo": "Период по",
       "status": "Статус",
       "partner": "Партнёр",
-      "service": "Услуга"
+      "service": "Услуга",
+      "category": "Категория",
+      "search": "Поиск"
     },
     "table": {
       "orderId": "Order ID",
       "service": "Услуга",
       "partner": "Партнёр",
       "date": "Дата",
+      "updated": "Последнее обновление",
+      "sla": "SLA",
       "amount": "Сумма",
       "status": "Статус",
       "documents": "Документы"
     },
+    "slaStatus": {
+      "OK": "OK",
+      "VIOLATION": "Нарушение",
+      "UNKNOWN": "—"
+    },
     "pagination": {
       "page": "Страница {current} из {total}"
     }
+  },
+  "marketplaceOrderDetails": {
+    "title": "Детали заказа",
+    "subtitle": "Статусы, SLA, инциденты и инвойсы по заказу.",
+    "partner": "Партнёр: {name}",
+    "tabs": {
+      "timeline": "Таймлайн",
+      "sla": "SLA",
+      "incidents": "Инциденты",
+      "invoices": "Инвойсы и кредиты"
+    },
+    "fields": {
+      "status": "Статус заказа",
+      "created": "Создан",
+      "updated": "Последнее обновление",
+      "amount": "Сумма"
+    },
+    "actions": {
+      "contactSupport": "Связаться с поддержкой",
+      "downloadInvoice": "Скачать инвойс",
+      "confirmCancel": "Отменить заказ?",
+      "backToOrders": "Назад к заказам"
+    },
+    "timeline": {
+      "emptyTitle": "События не найдены",
+      "emptyDescription": "История заказа пока не сформирована.",
+      "actor": "Источник: {actor}"
+    },
+    "sla": {
+      "emptyTitle": "SLA не настроен",
+      "emptyDescription": "Обязательства SLA появятся после активации заказа.",
+      "table": {
+        "metric": "Обязательство",
+        "threshold": "Порог",
+        "measured": "Факт",
+        "status": "Статус",
+        "penalty": "Штраф"
+      }
+    },
+    "incidents": {
+      "emptyTitle": "Инцидентов нет",
+      "emptyDescription": "Инциденты по заказу не зарегистрированы.",
+      "table": {
+        "id": "ID обращения",
+        "title": "Тема",
+        "status": "Статус",
+        "updated": "Обновлено"
+      }
+    },
+    "invoices": {
+      "emptyTitle": "Инвойсы отсутствуют",
+      "emptyDescription": "Инвойсы появятся после выставления биллинга.",
+      "table": {
+        "number": "Номер инвойса",
+        "status": "Статус",
+        "amount": "Сумма"
+      },
+      "creditsTitle": "Кредиты и штрафы",
+      "credits": {
+        "table": {
+          "type": "Тип",
+          "amount": "Сумма",
+          "reason": "Причина",
+          "date": "Дата"
+        }
+      }
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить заказ",
+      "eventsFailed": "Не удалось загрузить таймлайн",
+      "slaFailed": "Не удалось загрузить SLA",
+      "consequencesFailed": "Не удалось загрузить последствия",
+      "invoicesFailed": "Не удалось загрузить инвойсы",
+      "incidentsFailed": "Не удалось загрузить инциденты",
+      "cancelFailed": "Не удалось отменить заказ"
+    },
+    "forbidden": {
+      "noAccess": "Нет доступа к заказу.",
+      "denied": "Просмотр заказа запрещён."
+    },
+    "supportTitle": "Проблема с заказом {id}"
   },
   "documentsPage": {
     "title": "Документы",
@@ -548,11 +643,13 @@
   "statuses": {
     "orders": {
       "CREATED": "Создан",
+      "ACCEPTED": "Принят",
       "PAID": "Оплачен",
       "CONFIRMED": "Подтверждён партнёром",
       "IN_PROGRESS": "В работе",
       "COMPLETED": "Завершён",
       "CANCELLED": "Отменён",
+      "FAILED": "Завершён с ошибкой",
       "REFUNDED": "Возвращён"
     },
     "documents": {

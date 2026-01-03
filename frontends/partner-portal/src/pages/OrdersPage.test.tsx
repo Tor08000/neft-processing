@@ -26,9 +26,11 @@ const mockFetch = (url: string) => {
             items: [
               { offerId: "offer-1", title: "Мойка", qty: 1, unitPrice: 1000, amount: 1000 },
             ],
-            status: "PAID",
+            status: "CREATED",
             paymentStatus: "PAID",
             totalAmount: 1000,
+            serviceTitle: "Мойка",
+            slaResponseRemainingSeconds: 600,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           },
@@ -53,7 +55,7 @@ afterEach(() => {
 });
 
 describe("OrdersPage", () => {
-  it("renders orders list", async () => {
+  it("renders orders list with SLA timer", async () => {
     render(
       <MemoryRouter initialEntries={["/orders"]}>
         <App initialSession={session} />
@@ -62,5 +64,7 @@ describe("OrdersPage", () => {
 
     expect(await screen.findByText("order-1")).toBeInTheDocument();
     expect(screen.getByText("Иван")).toBeInTheDocument();
+    expect(screen.getByText("Мойка")).toBeInTheDocument();
+    expect(screen.getByText("00:10:00")).toBeInTheDocument();
   });
 });

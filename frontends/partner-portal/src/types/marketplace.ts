@@ -182,6 +182,10 @@ export interface MarketplaceOrder {
   documents?: OrderDocumentLink[] | null;
   documentsStatus?: string | null;
   correlationId?: string | null;
+  slaResponseDueAt?: string | null;
+  slaCompletionDueAt?: string | null;
+  slaResponseRemainingSeconds?: number | null;
+  slaCompletionRemainingSeconds?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -199,6 +203,28 @@ export interface MarketplaceOrderEvent {
   note?: string | null;
   actor?: string | null;
   createdAt: string;
+}
+
+export interface MarketplaceOrderSlaMetric {
+  metric: string;
+  threshold?: number | null;
+  measured?: number | null;
+  status?: "OK" | "VIOLATION" | "UNKNOWN" | null;
+  deadlineAt?: string | null;
+  remainingSeconds?: number | null;
+  totalSeconds?: number | null;
+  reason?: string | null;
+  penalty?: string | null;
+}
+
+export interface MarketplaceOrderSlaResponse {
+  obligations?: MarketplaceOrderSlaMetric[] | null;
+}
+
+export interface MarketplaceOrderPayoutImpact {
+  netAmount?: number | null;
+  penalties?: number | null;
+  currency?: string | null;
 }
 
 export type RefundStatus = "OPEN" | "UNDER_REVIEW" | "APPROVED" | "DENIED" | "COMPLETED";
