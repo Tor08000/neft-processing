@@ -32,6 +32,7 @@ FLEET_ACTION_BREACH_KIND = ["SOFT", "HARD", "ANY"]
 FLEET_ACTION_POLICY_ACTION = ["NONE", "NOTIFY_ONLY", "AUTO_BLOCK_CARD", "ESCALATE_CASE"]
 FLEET_POLICY_EXECUTION_STATUS = ["TRIGGERED", "APPLIED", "SKIPPED", "FAILED"]
 FUEL_CARD_STATUS_ACTOR_TYPE = ["system", "user"]
+FLEET_NOTIFICATION_SEVERITY = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
 CASE_EVENT_VALUES = [
     "FUEL_CARD_UNBLOCKED",
@@ -54,6 +55,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "fleet_action_policy_action", FLEET_ACTION_POLICY_ACTION, schema=DB_SCHEMA)
     ensure_pg_enum(bind, "fleet_policy_execution_status", FLEET_POLICY_EXECUTION_STATUS, schema=DB_SCHEMA)
     ensure_pg_enum(bind, "fuel_card_status_actor_type", FUEL_CARD_STATUS_ACTOR_TYPE, schema=DB_SCHEMA)
+    ensure_pg_enum(bind, "fleet_notification_severity", FLEET_NOTIFICATION_SEVERITY, schema=DB_SCHEMA)
 
     for value in CASE_EVENT_VALUES:
         ensure_pg_enum_value(bind, "case_event_type", value, schema=DB_SCHEMA)
@@ -84,7 +86,7 @@ def upgrade() -> None:
             sa.Column("scope_type", safe_enum(bind, "fleet_action_policy_scope_type", FLEET_ACTION_POLICY_SCOPE_TYPE, schema=DB_SCHEMA), nullable=False),
             sa.Column("scope_id", sa.String(36), nullable=True),
             sa.Column("trigger_type", safe_enum(bind, "fleet_action_trigger_type", FLEET_ACTION_TRIGGER_TYPE, schema=DB_SCHEMA), nullable=False),
-            sa.Column("trigger_severity_min", safe_enum(bind, "fleet_notification_severity", ["LOW", "MEDIUM", "HIGH", "CRITICAL"], schema=DB_SCHEMA), nullable=False),
+            sa.Column("trigger_severity_min", safe_enum(bind, "fleet_notification_severity", FLEET_NOTIFICATION_SEVERITY, schema=DB_SCHEMA), nullable=False),
             sa.Column("breach_kind", safe_enum(bind, "fleet_action_policy_breach_kind", FLEET_ACTION_BREACH_KIND, schema=DB_SCHEMA), nullable=True),
             sa.Column("action", safe_enum(bind, "fleet_action_policy_action", FLEET_ACTION_POLICY_ACTION, schema=DB_SCHEMA), nullable=False),
             sa.Column("cooldown_seconds", sa.Integer(), nullable=False, server_default="300"),
