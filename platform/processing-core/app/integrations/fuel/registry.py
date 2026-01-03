@@ -27,7 +27,7 @@ def list_providers() -> Iterable[str]:
 
 
 def load_default_providers() -> None:
-    from app.integrations.fuel.providers import http_provider_template, stub_provider  # noqa: F401
+    from app.integrations.fuel.providers import http_provider_template, stub_provider, virtual_network  # noqa: F401
 
 
 __all__ = ["get_connector", "list_providers", "load_default_providers", "register"]
