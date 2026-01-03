@@ -62,6 +62,49 @@ def _amount_from_minor(amount_minor: int) -> Decimal:
     return (Decimal(amount_minor) / Decimal("100")).quantize(Decimal("0.01"))
 
 
+def apply_order_penalty(
+    db: Session,
+    *,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    partner_id: str,
+    actor: RequestContext | None,
+    idempotency_key: str | None = None,
+) -> InternalLedgerTransaction:
+    if amount_minor <= 0:
+        raise SettlementServiceError("invalid_penalty_amount")
+    ledger_service = InternalLedgerService(db)
+    result = ledger_service.post_transaction(
+        tenant_id=actor.tenant_id if actor and actor.tenant_id is not None else 0,
+        transaction_type=InternalLedgerTransactionType.ADJUSTMENT,
+        external_ref_type="ORDER_PENALTY",
+        external_ref_id=order_id,
+        idempotency_key=idempotency_key or f"order_penalty:{order_id}",
+        posted_at=datetime.now(timezone.utc),
+        meta={"order_id": order_id, "adjustment_kind": "sla_penalty"},
+        entries=[
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PARTNER_SETTLEMENT,
+                client_id=partner_id,
+                direction=InternalLedgerEntryDirection.DEBIT,
+                amount=amount_minor,
+                currency=currency,
+                meta={"adjustment_kind": "sla_penalty"},
+            ),
+            InternalLedgerLine(
+                account_type=InternalLedgerAccountType.PLATFORM_FEES,
+                client_id=None,
+                direction=InternalLedgerEntryDirection.CREDIT,
+                amount=amount_minor,
+                currency=currency,
+                meta={"adjustment_kind": "sla_penalty"},
+            ),
+        ],
+    )
+    return result.transaction
+
+
 def _resolve_source(entry: InternalLedgerEntry, transaction: InternalLedgerTransaction) -> tuple[str, str]:
     meta = entry.meta or {}
     source_type = meta.get("source_type")

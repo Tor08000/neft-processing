@@ -14,6 +14,11 @@ from app.models.audit_log import AuditVisibility
 from app.models.finance import CreditNote, InvoicePayment
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.marketplace_contracts import Contract, ContractObligation, ContractStatus, SLAResult
+from app.models.marketplace_order_sla import (
+    MarketplaceOrderContractLink,
+    OrderSlaConsequence,
+    OrderSlaEvaluation,
+)
 from app.models.settlement_v1 import SettlementItem, SettlementPeriod, SettlementPayout
 from app.schemas.portal import (
     ClientContractDetails,
@@ -37,6 +42,12 @@ from app.schemas.portal import (
     PartnerSettlementSummary,
     PortalSlaSummary,
     SlaResultSummary,
+)
+from app.schemas.marketplace.sla import (
+    OrderSlaConsequenceOut,
+    OrderSlaConsequencesResponse,
+    OrderSlaEvaluationOut,
+    OrderSlaEvaluationsResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.s3_storage import S3Storage
@@ -103,6 +114,34 @@ def _resolve_contract(db: Session, *, contract_ref: str) -> Contract | None:
     if contract:
         return contract
     return db.query(Contract).filter(Contract.contract_number == contract_ref).one_or_none()
+
+
+def _resolve_order_contract(db: Session, *, order_id: str) -> Contract | None:
+    link = (
+        db.query(MarketplaceOrderContractLink)
+        .filter(MarketplaceOrderContractLink.order_id == order_id)
+        .one_or_none()
+    )
+    if not link:
+        return None
+    return db.query(Contract).filter(Contract.id == link.contract_id).one_or_none()
+
+
+def _assert_marketplace_order_access(
+    db: Session,
+    *,
+    order_id: str,
+    client_id: str | None = None,
+    partner_id: str | None = None,
+) -> Contract:
+    contract = _resolve_order_contract(db, order_id=order_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="order_not_found")
+    if client_id and str(contract.party_a_id) != client_id and str(contract.party_b_id) != client_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if partner_id and str(contract.party_a_id) != partner_id and str(contract.party_b_id) != partner_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return contract
 
 
 def _sla_summary(db: Session, *, contract_ids: list[str]) -> PortalSlaSummary:
@@ -224,6 +263,154 @@ def get_marketplace_product_details(
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail={"error": "not_found", "reason": "product_unavailable", "resource": product_id},
+    )
+
+
+@client_router.get("/marketplace/orders/{order_id}/sla", response_model=OrderSlaEvaluationsResponse)
+def get_client_order_sla(
+    order_id: str,
+    principal: Principal = Depends(require_permission("client:marketplace:view")),
+    db: Session = Depends(get_db),
+) -> OrderSlaEvaluationsResponse:
+    client_id = _ensure_client_context(principal)
+    _assert_marketplace_order_access(db, order_id=order_id, client_id=client_id)
+    evaluations = (
+        db.query(OrderSlaEvaluation)
+        .filter(OrderSlaEvaluation.order_id == order_id)
+        .order_by(OrderSlaEvaluation.created_at.desc())
+        .all()
+    )
+    if not evaluations:
+        raise HTTPException(status_code=404, detail="order_sla_not_found")
+    return OrderSlaEvaluationsResponse(
+        items=[
+            OrderSlaEvaluationOut(
+                id=str(item.id),
+                order_id=item.order_id,
+                contract_id=str(item.contract_id),
+                obligation_id=str(item.obligation_id),
+                period_start=item.period_start,
+                period_end=item.period_end,
+                measured_value=item.measured_value,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                breach_reason=item.breach_reason,
+                breach_severity=item.breach_severity.value if item.breach_severity else None,
+                created_at=item.created_at,
+            )
+            for item in evaluations
+        ]
+    )
+
+
+@client_router.get("/marketplace/orders/{order_id}/consequences", response_model=OrderSlaConsequencesResponse)
+def get_client_order_sla_consequences(
+    order_id: str,
+    principal: Principal = Depends(require_permission("client:marketplace:view")),
+    db: Session = Depends(get_db),
+) -> OrderSlaConsequencesResponse:
+    client_id = _ensure_client_context(principal)
+    _assert_marketplace_order_access(db, order_id=order_id, client_id=client_id)
+    consequences = (
+        db.query(OrderSlaConsequence)
+        .filter(OrderSlaConsequence.order_id == order_id)
+        .order_by(OrderSlaConsequence.created_at.desc())
+        .all()
+    )
+    if not consequences:
+        raise HTTPException(status_code=404, detail="order_sla_consequences_not_found")
+    return OrderSlaConsequencesResponse(
+        items=[
+            OrderSlaConsequenceOut(
+                id=str(item.id),
+                order_id=item.order_id,
+                evaluation_id=str(item.evaluation_id),
+                consequence_type=item.consequence_type.value
+                if hasattr(item.consequence_type, "value")
+                else str(item.consequence_type),
+                amount=item.amount,
+                currency=item.currency,
+                billing_invoice_id=str(item.billing_invoice_id) if item.billing_invoice_id else None,
+                billing_refund_id=str(item.billing_refund_id) if item.billing_refund_id else None,
+                ledger_tx_id=str(item.ledger_tx_id) if item.ledger_tx_id else None,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                created_at=item.created_at,
+            )
+            for item in consequences
+        ]
+    )
+
+
+@partner_router.get("/orders/{order_id}/sla", response_model=OrderSlaEvaluationsResponse)
+def get_partner_order_sla(
+    order_id: str,
+    principal: Principal = Depends(require_permission("partner:contracts:view")),
+    db: Session = Depends(get_db),
+) -> OrderSlaEvaluationsResponse:
+    partner_id = _ensure_partner_context(principal)
+    _assert_marketplace_order_access(db, order_id=order_id, partner_id=partner_id)
+    evaluations = (
+        db.query(OrderSlaEvaluation)
+        .filter(OrderSlaEvaluation.order_id == order_id)
+        .order_by(OrderSlaEvaluation.created_at.desc())
+        .all()
+    )
+    if not evaluations:
+        raise HTTPException(status_code=404, detail="order_sla_not_found")
+    return OrderSlaEvaluationsResponse(
+        items=[
+            OrderSlaEvaluationOut(
+                id=str(item.id),
+                order_id=item.order_id,
+                contract_id=str(item.contract_id),
+                obligation_id=str(item.obligation_id),
+                period_start=item.period_start,
+                period_end=item.period_end,
+                measured_value=item.measured_value,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                breach_reason=item.breach_reason,
+                breach_severity=item.breach_severity.value if item.breach_severity else None,
+                created_at=item.created_at,
+            )
+            for item in evaluations
+        ]
+    )
+
+
+@partner_router.get("/orders/{order_id}/consequences", response_model=OrderSlaConsequencesResponse)
+def get_partner_order_sla_consequences(
+    order_id: str,
+    principal: Principal = Depends(require_permission("partner:contracts:view")),
+    db: Session = Depends(get_db),
+) -> OrderSlaConsequencesResponse:
+    partner_id = _ensure_partner_context(principal)
+    _assert_marketplace_order_access(db, order_id=order_id, partner_id=partner_id)
+    consequences = (
+        db.query(OrderSlaConsequence)
+        .filter(OrderSlaConsequence.order_id == order_id)
+        .order_by(OrderSlaConsequence.created_at.desc())
+        .all()
+    )
+    if not consequences:
+        raise HTTPException(status_code=404, detail="order_sla_consequences_not_found")
+    return OrderSlaConsequencesResponse(
+        items=[
+            OrderSlaConsequenceOut(
+                id=str(item.id),
+                order_id=item.order_id,
+                evaluation_id=str(item.evaluation_id),
+                consequence_type=item.consequence_type.value
+                if hasattr(item.consequence_type, "value")
+                else str(item.consequence_type),
+                amount=item.amount,
+                currency=item.currency,
+                billing_invoice_id=str(item.billing_invoice_id) if item.billing_invoice_id else None,
+                billing_refund_id=str(item.billing_refund_id) if item.billing_refund_id else None,
+                ledger_tx_id=str(item.ledger_tx_id) if item.ledger_tx_id else None,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                created_at=item.created_at,
+            )
+            for item in consequences
+        ]
     )
 
 
