@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { EmptyState } from "../../../shared/brand/components";
+import { EmptyState } from "../../shared/brand/components";
 
 export function ForbiddenPage() {
   return (
