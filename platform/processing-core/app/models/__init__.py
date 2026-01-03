@@ -171,6 +171,15 @@ from .marketplace_contracts import (  # noqa: F401
     ContractVersion,
     SLAResult,
 )
+from .marketplace_catalog import (  # noqa: F401
+    MarketplaceCatalogImmutableError,
+    MarketplacePriceModel,
+    MarketplaceProduct,
+    MarketplaceProductStatus,
+    MarketplaceProductType,
+    PartnerProfile,
+    PartnerVerificationStatus,
+)
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401
 from .client_actions import (  # noqa: F401
@@ -661,6 +670,13 @@ __all__ = [
     "LogisticsETASnapshot",
     "LogisticsETAMethod",
     "UnifiedExplainSnapshot",
+    "MarketplaceCatalogImmutableError",
+    "MarketplacePriceModel",
+    "MarketplaceProduct",
+    "MarketplaceProductStatus",
+    "MarketplaceProductType",
+    "PartnerProfile",
+    "PartnerVerificationStatus",
     "CRMClient",
     "CRMClientStatus",
     "CRMContract",

@@ -84,6 +84,15 @@ export function Layout() {
             <Wrench size={18} />
             {t("nav.services")}
           </NavLink>
+          <div className="nav-section">{t("nav.marketplace")}</div>
+          <NavLink to="/marketplace/profile">
+            <FileText size={18} />
+            {t("nav.marketplaceProfile")}
+          </NavLink>
+          <NavLink to="/marketplace/products">
+            <Package size={18} />
+            {t("nav.marketplaceProducts")}
+          </NavLink>
           <NavLink to="/integrations">
             <LinkIcon size={18} />
             {t("nav.integrations")}

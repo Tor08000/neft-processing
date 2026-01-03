@@ -17,6 +17,9 @@
     "documents": "Документы",
     "services": "Сервисы",
     "integrations": "Интеграции",
+    "marketplace": "Маркетплейс",
+    "marketplaceProfile": "Мой профиль",
+    "marketplaceProducts": "Мои товары",
     "supportRequests": "Запросы",
     "settings": "Настройки"
   },
@@ -135,6 +138,101 @@
       "DELIVERED": "Доставлено",
       "FAILED": "Ошибка",
       "DEAD": "Остановлено"
+    },
+    "marketplace": {
+      "PENDING": "На проверке",
+      "VERIFIED": "Подтверждён",
+      "REJECTED": "Отклонён",
+      "PUBLISHED": "Опубликован",
+      "ARCHIVED": "Архив"
+    }
+  },
+  "marketplace": {
+    "profile": {
+      "title": "Профиль маркетплейса",
+      "subtitle": "Профиль партнёра виден клиентам после публикации.",
+      "fields": {
+        "companyName": "Название компании",
+        "companyNamePlaceholder": "ООО «Компания»",
+        "description": "Описание",
+        "descriptionPlaceholder": "Опишите услуги или товары"
+      },
+      "verificationInfo": "Верификацию выполняет администратор.",
+      "loadError": "Не удалось загрузить профиль",
+      "saveError": "Не удалось сохранить профиль",
+      "saved": "Профиль сохранён",
+      "saving": "Сохраняем..."
+    },
+    "products": {
+      "title": "Каталог маркетплейса",
+      "subtitle": "Создавайте черновики и публикуйте готовые позиции.",
+      "filters": {
+        "status": "Статус",
+        "type": "Тип",
+        "search": "Поиск",
+        "searchPlaceholder": "Название или описание"
+      },
+      "table": {
+        "title": "Название",
+        "type": "Тип",
+        "category": "Категория",
+        "price": "Цена",
+        "updated": "Обновлено"
+      },
+      "types": {
+        "SERVICE": "Услуга",
+        "PRODUCT": "Товар"
+      },
+      "statuses": {
+        "DRAFT": "Черновик",
+        "PUBLISHED": "Опубликован",
+        "ARCHIVED": "Архив"
+      },
+      "priceModels": {
+        "FIXED": "Фиксированная",
+        "PER_UNIT": "За единицу",
+        "TIERED": "По объёму"
+      },
+      "units": {
+        "item": "шт.",
+        "liter": "литр",
+        "hour": "час"
+      },
+      "fields": {
+        "type": "Тип",
+        "title": "Название",
+        "description": "Описание",
+        "category": "Категория",
+        "priceModel": "Модель цены",
+        "amount": "Сумма (₽)",
+        "unit": "Единица",
+        "amountPerUnit": "Сумма за единицу (₽)",
+        "tiers": "Диапазоны",
+        "tierFrom": "От",
+        "tierTo": "До",
+        "tierAmount": "Сумма"
+      },
+      "actions": {
+        "createDraft": "Сохранить черновик",
+        "saveChanges": "Сохранить изменения",
+        "archive": "Архивировать",
+        "addTier": "Добавить диапазон"
+      },
+      "emptyTitle": "Пока нет товаров",
+      "emptyDescription": "Создайте первый черновик и опубликуйте его для клиентов.",
+      "createTitle": "Создание позиции",
+      "editTitle": "Редактирование",
+      "cancelEdit": "Отменить",
+      "confirmPublish": "Опубликовать позицию? Она станет видна клиентам.",
+      "confirmArchive": "Архивировать позицию? Клиенты больше не увидят её.",
+      "loadError": "Не удалось загрузить позиции",
+      "saveError": "Не удалось сохранить позицию",
+      "publishError": "Не удалось опубликовать",
+      "archiveError": "Не удалось архивировать",
+      "validationError": "Проверьте подсвеченные поля",
+      "validation": {
+        "amount": "Введите корректную сумму"
+      }
     }
   },
   "pricesPage": {

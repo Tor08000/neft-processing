@@ -33,6 +33,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_SETTLEMENTS_VIEW.value,
         Permission.PARTNER_PAYOUTS_LIST.value,
         Permission.PARTNER_PAYOUTS_CONFIRM.value,
+        Permission.PARTNER_CATALOG_ALL.value,
     },
     "client_user": {
         Permission.CLIENT_DASHBOARD_VIEW.value,
@@ -56,6 +57,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_SETTLEMENTS_LIST.value,
         Permission.PARTNER_SETTLEMENTS_VIEW.value,
         Permission.PARTNER_PAYOUTS_LIST.value,
+        Permission.PARTNER_CATALOG_ALL.value,
     },
     "client_admin": {
         Permission.CLIENT_DASHBOARD_VIEW.value,
@@ -82,6 +84,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_SETTLEMENTS_VIEW.value,
         Permission.PARTNER_PAYOUTS_LIST.value,
         Permission.PARTNER_PAYOUTS_CONFIRM.value,
+        Permission.PARTNER_CATALOG_ALL.value,
     },
 }
 
