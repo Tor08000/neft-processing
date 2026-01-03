@@ -93,6 +93,31 @@ class MarketplaceOrderService:
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
 
+    @staticmethod
+    def _to_decimal(value: object) -> Decimal:
+        return Decimal(str(value))
+
+    def _calculate_price(self, *, price_model: str, price_config: dict, quantity: Decimal) -> Decimal:
+        if price_model == "FIXED":
+            return self._to_decimal(price_config.get("amount", 0))
+        if price_model == "PER_UNIT":
+            return self._to_decimal(price_config.get("amount_per_unit", 0)) * quantity
+        if price_model == "TIERED":
+            tiers = price_config.get("tiers") or []
+            if not tiers:
+                return Decimal("0")
+            selected = None
+            for tier in tiers:
+                tier_from = self._to_decimal(tier.get("from", 0))
+                tier_to = tier.get("to")
+                tier_to_value = self._to_decimal(tier_to) if tier_to is not None else None
+                if quantity >= tier_from and (tier_to_value is None or quantity <= tier_to_value):
+                    selected = tier
+            if selected is None:
+                selected = tiers[-1]
+            return self._to_decimal(selected.get("amount", 0)) * quantity
+        return Decimal("0")
+
     def _ensure_order_case(self, *, order: MarketplaceOrder) -> Case:
         existing = (
             self.db.query(Case)
@@ -235,13 +260,26 @@ class MarketplaceOrderService:
                 return existing
 
         product = self._get_product(product_id=product_id)
+        price_model = product.price_model.value if hasattr(product.price_model, "value") else product.price_model
+        price_amount = self._calculate_price(
+            price_model=price_model,
+            price_config=product.price_config,
+            quantity=quantity,
+        )
         order = MarketplaceOrder(
             id=new_uuid_str(),
             client_id=client_id,
             partner_id=str(product.partner_id),
             product_id=str(product.id),
             quantity=quantity,
-            price_snapshot={},
+            price_snapshot={
+                "price_model": price_model,
+                "price_config": product.price_config,
+            },
+            price=price_amount,
+            discount=Decimal("0"),
+            final_price=price_amount,
+            commission=Decimal("0"),
             status=MarketplaceOrderStatus.CREATED.value,
             external_ref=external_ref,
         )
@@ -482,6 +520,7 @@ class MarketplaceOrderService:
         if str(order.partner_id) != partner_id:
             raise MarketplaceOrderServiceError("forbidden")
         self._apply_transition(order, event_type=MarketplaceOrderEventType.ORDER_COMPLETED)
+        order.completed_at = self._now()
         event = self._emit_order_event(
             order=order,
             event_type=MarketplaceOrderEventType.ORDER_COMPLETED,

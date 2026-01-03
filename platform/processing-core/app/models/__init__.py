@@ -180,6 +180,12 @@ from .marketplace_catalog import (  # noqa: F401
     PartnerProfile,
     PartnerVerificationStatus,
 )
+from .partner_subscriptions import (  # noqa: F401
+    PartnerBillingCycle,
+    PartnerPlan,
+    PartnerSubscription,
+    PartnerSubscriptionStatus,
+)
 from .marketplace_order_sla import (  # noqa: F401
     MarketplaceOrderContractLink,
     MarketplaceOrderEvent,
@@ -193,25 +199,13 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
-from .marketplace_promotions import (  # noqa: F401
-    Coupon,
-    CouponBatch,
-    CouponStatus,
-    MissionProgressStatus,
-    PartnerBadge,
-    PartnerBadgeAward,
-    PartnerMission,
-    PartnerMissionProgress,
-    PartnerTier,
-    PartnerTierState,
-    PromoBudget,
-    PromoBudgetModel,
-    PromoBudgetStatus,
-    Promotion,
-    PromotionApplication,
-    PromotionApplicationImmutableError,
-    PromotionStatus,
-    PromotionType,
+from .marketplace_recommendations import (  # noqa: F401
+    ClientBehaviorProfile,
+    MarketplaceEvent,
+    MarketplaceEventType,
+    OfferCandidate,
+    ProductAttributes,
+    ProductTaxonomy,
 )
 from .reversal import Reversal, ReversalStatus  # noqa: F401
 from .dispute import Dispute, DisputeEvent, DisputeStatus, DisputeEventType  # noqa: F401

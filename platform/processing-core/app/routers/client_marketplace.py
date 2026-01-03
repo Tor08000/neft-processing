@@ -1,24 +1,23 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.marketplace_catalog import MarketplaceProductType
 from app.schemas.marketplace.catalog import ProductListOut, ProductListResponse, ProductOut
-from app.schemas.marketplace.promotions import (
-    CouponApplyRequest,
-    CouponApplyResponse,
-    PromotionListResponse,
-    PromotionOut,
+from app.schemas.marketplace.recommendations import (
+    MarketplaceEventCreate,
+    MarketplaceEventOut,
+    RecommendationResponse,
+    RelatedProductsResponse,
 )
 from app.security.client_auth import require_client_user
 from app.services.audit_service import request_context_from_request
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
-from app.services.marketplace_promotion_service import (
-    MarketplacePromotionService,
-    MarketplacePromotionServiceError,
-)
+from app.services.marketplace_recommendation_service import MarketplaceRecommendationService
 
 router = APIRouter(prefix="/client/marketplace", tags=["client-portal-v1"])
 
@@ -121,54 +120,65 @@ def get_published_product(
     return _product_out(product)
 
 
-@router.get("/deals", response_model=PromotionListResponse)
-def list_marketplace_deals(
-    request: Request,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+@router.get("/recommendations", response_model=RecommendationResponse)
+def list_recommendations(
+    limit: int = Query(20, ge=1, le=50),
+    placement: str | None = Query(None),
     token: dict = Depends(require_client_user),
     db: Session = Depends(get_db),
-) -> PromotionListResponse:
+) -> RecommendationResponse:
     if not token.get("client_id"):
         raise HTTPException(status_code=403, detail="forbidden")
-    service = MarketplacePromotionService(db, request_ctx=request_context_from_request(request, token=token))
-    items, total = service.list_active_deals(limit=limit, offset=offset)
-    return PromotionListResponse(
-        items=[_promotion_out(item) for item in items],
-        total=total,
+    service = MarketplaceRecommendationService(db)
+    items = service.list_recommendations(
+        tenant_id=token.get("tenant_id"),
+        client_id=token["client_id"],
         limit=limit,
-        offset=offset,
+    )
+    return RecommendationResponse(
+        items=items,
+        generated_at=datetime.now(timezone.utc),
+        model="offer_engine_v1",
     )
 
 
-@router.post("/coupons/apply", response_model=CouponApplyResponse)
-def apply_coupon_for_quote(
-    payload: CouponApplyRequest,
-    request: Request,
+@router.post("/events", response_model=MarketplaceEventOut, status_code=201)
+def record_marketplace_event(
+    payload: MarketplaceEventCreate,
     token: dict = Depends(require_client_user),
     db: Session = Depends(get_db),
-) -> CouponApplyResponse:
-    client_id = token.get("client_id")
-    if not client_id:
+) -> MarketplaceEventOut:
+    if not token.get("client_id"):
         raise HTTPException(status_code=403, detail="forbidden")
-    catalog_service = MarketplaceCatalogService(db)
-    product = catalog_service.get_published_product(product_id=payload.product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="product_not_found")
-    promotion_service = MarketplacePromotionService(db, request_ctx=request_context_from_request(request, token=token))
-    try:
-        result = promotion_service.evaluate_promotions_for_quote(
-            product=product,
-            quantity=payload.quantity,
-            client_id=str(client_id),
-            coupon_code=payload.coupon_code,
-        )
-    except MarketplacePromotionServiceError as exc:
-        raise HTTPException(status_code=400, detail=exc.code) from exc
-    return CouponApplyResponse(
-        base_price=result.base_price,
-        discount_total=result.discount_total,
-        final_price=result.final_price,
-        applied_promotions=[str(promo.id) for promo in result.applied_promotions],
-        price_snapshot=result.price_snapshot,
+    service = MarketplaceRecommendationService(db)
+    event = service.log_event(
+        tenant_id=token.get("tenant_id"),
+        client_id=token["client_id"],
+        user_id=token.get("user_id"),
+        payload=payload,
     )
+    return MarketplaceEventOut(
+        id=str(event.id),
+        client_id=str(event.client_id),
+        user_id=str(event.user_id) if event.user_id else None,
+        partner_id=str(event.partner_id) if event.partner_id else None,
+        product_id=str(event.product_id) if event.product_id else None,
+        event_type=event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
+        event_ts=event.event_ts,
+        context=event.context,
+        meta=event.meta,
+    )
+
+
+@router.get("/products/{product_id}/related", response_model=RelatedProductsResponse)
+def list_related_products(
+    product_id: str,
+    limit: int = Query(12, ge=1, le=50),
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> RelatedProductsResponse:
+    if not token.get("client_id"):
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceRecommendationService(db)
+    items = service.list_related_products(product_id=product_id, limit=limit)
+    return RelatedProductsResponse(items=[_product_list_out(item) for item in items])
