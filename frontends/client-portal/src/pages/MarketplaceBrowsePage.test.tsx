@@ -113,7 +113,9 @@ describe("Marketplace browse page", () => {
     await userEvent.selectOptions(categorySelect, "Fuel");
 
     await waitFor(() => {
-      expect(fetchMock.mock.calls.some((call) => call[0].toString().includes("category=Fuel"))).toBe(true);
+      expect(
+        fetchMock.mock.calls.some((call: [RequestInfo, RequestInit?]) => call[0].toString().includes("category=Fuel")),
+      ).toBe(true);
     });
   });
 });
