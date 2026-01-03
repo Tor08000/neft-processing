@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -58,7 +59,7 @@ def _ensure_client_context(token: dict) -> tuple[str, int]:
     return str(client_id), int(tenant_id)
 
 
-def _month_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+def _month_bounds(now: Optional[datetime] = None) -> Tuple[datetime, datetime]:
     now = now or datetime.now(timezone.utc)
     period_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
     if now.month == 12:
