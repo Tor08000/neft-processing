@@ -55,6 +55,10 @@ class MarketplaceOrder(Base):
     product_id = Column(GUID(), nullable=False, index=True)
     quantity = Column(Numeric(18, 4), nullable=False)
     price_snapshot = Column(JSON_TYPE, nullable=False)
+    price = Column(Numeric(18, 4), nullable=True)
+    discount = Column(Numeric(18, 4), nullable=True)
+    final_price = Column(Numeric(18, 4), nullable=True)
+    commission = Column(Numeric(18, 4), nullable=True)
     status = Column(
         ExistingEnum(MarketplaceOrderStatus, name="marketplace_order_status"),
         nullable=False,
@@ -62,6 +66,7 @@ class MarketplaceOrder(Base):
     )
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
     external_ref = Column(Text, nullable=True)
 
