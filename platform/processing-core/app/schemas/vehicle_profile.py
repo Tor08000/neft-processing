@@ -18,10 +18,13 @@ from app.models.vehicle_profile import (
 class VehicleBase(BaseModel):
     brand: str | None = None
     model: str | None = None
+    generation: str | None = None
     year: int | None = None
     engine_type: VehicleEngineType | None = None
     engine_volume: Decimal | None = None
     fuel_type: str | None = None
+    transmission: str | None = None
+    drive_type: str | None = None
     vin: str | None = None
     plate_number: str | None = None
     avg_consumption_l_per_100km: Decimal | None = None

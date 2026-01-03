@@ -14,6 +14,7 @@ from app.models.vehicle_profile import (
     VehicleRecommendation,
     VehicleRecommendationStatus,
 )
+from app.models.vehicle_maintenance import VehicleMaintenanceDismissal, VehicleServiceRecord, VehicleUsageProfile
 from app.schemas.vehicle_profile import (
     VehicleCreate,
     VehicleListResponse,
@@ -25,7 +26,17 @@ from app.schemas.vehicle_profile import (
     VehicleRecommendationsResponse,
     VehicleUpdate,
 )
+from app.schemas.vehicle_maintenance import (
+    MaintenanceRecommendationOut,
+    MaintenanceRecommendationsResponse,
+    VehicleServiceRecordCreate,
+    VehicleServiceRecordOut,
+    VehicleServiceRecordsResponse,
+    VehicleUsageProfileOut,
+    VehicleUsageProfileUpdate,
+)
 from app.security.client_auth import require_client_user
+from app.services.vehicle_maintenance import build_vehicle_maintenance_recommendations
 
 router = APIRouter(prefix="/client/api/v1/vehicles", tags=["client-vehicles"])
 
@@ -68,10 +79,13 @@ async def create_vehicle(
         client_id=client_id,
         brand=payload.brand,
         model=payload.model,
+        generation=payload.generation,
         year=payload.year,
         engine_type=payload.engine_type,
         engine_volume=payload.engine_volume,
         fuel_type=payload.fuel_type,
+        transmission=payload.transmission,
+        drive_type=payload.drive_type,
         vin=payload.vin,
         plate_number=payload.plate_number,
         start_odometer_km=start_odometer,
@@ -143,10 +157,13 @@ async def update_vehicle(
     for field in (
         "brand",
         "model",
+        "generation",
         "year",
         "engine_type",
         "engine_volume",
         "fuel_type",
+        "transmission",
+        "drive_type",
         "vin",
         "plate_number",
         "start_odometer_km",
@@ -272,3 +289,154 @@ async def dismiss_vehicle_recommendation(
         rec_id=rec_id,
         status=VehicleRecommendationStatus.DISMISSED,
     )
+
+
+@router.get("/{vehicle_id}/usage", response_model=VehicleUsageProfileOut)
+async def get_vehicle_usage_profile(
+    vehicle_id: str,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> VehicleUsageProfileOut:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    profile = (
+        db.query(VehicleUsageProfile)
+        .filter(VehicleUsageProfile.vehicle_id == vehicle.id)
+        .one_or_none()
+    )
+    if not profile:
+        profile = VehicleUsageProfile(vehicle_id=vehicle.id)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return VehicleUsageProfileOut.model_validate(profile)
+
+
+@router.patch("/{vehicle_id}/usage", response_model=VehicleUsageProfileOut)
+async def update_vehicle_usage_profile(
+    vehicle_id: str,
+    payload: VehicleUsageProfileUpdate,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> VehicleUsageProfileOut:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    profile = (
+        db.query(VehicleUsageProfile)
+        .filter(VehicleUsageProfile.vehicle_id == vehicle.id)
+        .one_or_none()
+    )
+    if not profile:
+        profile = VehicleUsageProfile(vehicle_id=vehicle.id)
+        db.add(profile)
+
+    for field in (
+        "usage_type",
+        "aggressiveness_score",
+        "heavy_load_flag",
+        "climate_zone",
+        "avg_monthly_km",
+        "avg_consumption_l_100",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(profile, field, value)
+
+    db.commit()
+    db.refresh(profile)
+    return VehicleUsageProfileOut.model_validate(profile)
+
+
+@router.get("/{vehicle_id}/service-records", response_model=VehicleServiceRecordsResponse)
+async def list_vehicle_service_records(
+    vehicle_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> VehicleServiceRecordsResponse:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    query = db.query(VehicleServiceRecord).filter(VehicleServiceRecord.vehicle_id == vehicle.id)
+    total = query.count()
+    records = (
+        query.order_by(VehicleServiceRecord.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    items = [VehicleServiceRecordOut.model_validate(record) for record in records]
+    return VehicleServiceRecordsResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.post("/{vehicle_id}/service-records", response_model=VehicleServiceRecordOut)
+async def create_vehicle_service_record(
+    vehicle_id: str,
+    payload: VehicleServiceRecordCreate,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> VehicleServiceRecordOut:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    record = VehicleServiceRecord(
+        vehicle_id=vehicle.id,
+        item_code=payload.item_code,
+        service_at_km=payload.service_at_km,
+        service_at=payload.service_at,
+        partner_id=payload.partner_id,
+        order_id=payload.order_id,
+        note=payload.note,
+        source=payload.source,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return VehicleServiceRecordOut.model_validate(record)
+
+
+@router.get("/{vehicle_id}/maintenance", response_model=MaintenanceRecommendationsResponse)
+async def list_vehicle_maintenance_recommendations(
+    vehicle_id: str,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> MaintenanceRecommendationsResponse:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    recommendations = build_vehicle_maintenance_recommendations(db, vehicle=vehicle)
+    items = [
+        MaintenanceRecommendationOut(
+            item_code=payload.item.code,
+            title=payload.item.title,
+            status=payload.status,
+            interval_km=payload.interval_km,
+            interval_months=payload.interval_months,
+            effective_interval_km=payload.effective_interval_km,
+            effective_interval_months=payload.effective_interval_months,
+            last_service_km=payload.last_service_km,
+            last_service_at=payload.last_service_at,
+            current_km=payload.current_km,
+            due_km=payload.due_km,
+            due_in_km=payload.due_in_km,
+            overdue_km=payload.overdue_km,
+            due_at=payload.due_at,
+            due_in_months=payload.due_in_months,
+            explain=payload.explain,
+        )
+        for payload in recommendations
+    ]
+    return MaintenanceRecommendationsResponse(items=items)
+
+
+@router.post("/{vehicle_id}/maintenance/{rec_id}/dismiss")
+async def dismiss_vehicle_maintenance_recommendation(
+    vehicle_id: str,
+    rec_id: str,
+    token: dict = Depends(require_client_user),
+    db: Session = Depends(get_db),
+) -> None:
+    client_id = _require_client_id(token)
+    vehicle = _get_vehicle(db, vehicle_id=vehicle_id, client_id=client_id)
+    dismissal = VehicleMaintenanceDismissal(vehicle_id=vehicle.id, item_code=rec_id)
+    db.add(dismissal)
+    db.commit()
+    return None
