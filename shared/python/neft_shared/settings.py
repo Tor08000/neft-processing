@@ -108,6 +108,16 @@ class Settings:
     ).lower() in {"1", "true", "yes"}
     NEFT_INVOICE_MONTHLY_AT: str = os.getenv("NEFT_INVOICE_MONTHLY_AT", "03:00")
 
+    # Stub providers (local demos)
+    BANK_STUB_ENABLED: bool = os.getenv("BANK_STUB_ENABLED", "false").lower() in {"1", "true", "yes"}
+    BANK_STUB_IMMEDIATE_SETTLE: bool = os.getenv("BANK_STUB_IMMEDIATE_SETTLE", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    ERP_STUB_ENABLED: bool = os.getenv("ERP_STUB_ENABLED", "false").lower() in {"1", "true", "yes"}
+    ERP_STUB_AUTO_ACK: bool = os.getenv("ERP_STUB_AUTO_ACK", "true").lower() in {"1", "true", "yes"}
+
     # Invoice PDFs / storage
     NEFT_INVOICE_PDF_BUCKET: str = os.getenv("NEFT_INVOICE_PDF_BUCKET", "neft-invoices")
     NEFT_S3_BUCKET_INVOICES: str = os.getenv(
