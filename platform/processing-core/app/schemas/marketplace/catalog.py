@@ -155,6 +155,9 @@ class ProductListOut(BaseModel):
     status: ProductStatus
     updated_at: datetime | None = None
     published_at: datetime | None = None
+    sponsored: bool = False
+    sponsored_badge: str | None = None
+    sponsored_campaign_id: str | None = None
 
 
 class ProductListResponse(BaseModel):

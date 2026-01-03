@@ -19,6 +19,7 @@ ROLE_PERMISSIONS = {
         Permission.ADMIN_RECONCILIATION_ALL.value,
         Permission.ADMIN_SETTLEMENT_ALL.value,
         Permission.ADMIN_AUDIT_ALL.value,
+        Permission.ADMIN_MARKETPLACE_SPONSORED_ALL.value,
         Permission.CLIENT_DASHBOARD_VIEW.value,
         Permission.CLIENT_INVOICES_LIST.value,
         Permission.CLIENT_INVOICES_VIEW.value,
@@ -64,6 +65,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_PAYOUTS_LIST.value,
         Permission.PARTNER_CATALOG_ALL.value,
         Permission.PARTNER_MARKETPLACE_ORDERS_ALL.value,
+        Permission.PARTNER_MARKETPLACE_SPONSORED_ALL.value,
     },
     "client_admin": {
         Permission.CLIENT_DASHBOARD_VIEW.value,
@@ -97,6 +99,7 @@ ROLE_PERMISSIONS = {
         Permission.PARTNER_PAYOUTS_CONFIRM.value,
         Permission.PARTNER_CATALOG_ALL.value,
         Permission.PARTNER_MARKETPLACE_ORDERS_ALL.value,
+        Permission.PARTNER_MARKETPLACE_SPONSORED_ALL.value,
     },
 }
 

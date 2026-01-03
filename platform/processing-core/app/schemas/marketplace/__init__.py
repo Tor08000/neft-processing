@@ -37,6 +37,19 @@ from .recommendations import (  # noqa: F401
     RecommendationResponse,
     RelatedProductsResponse,
 )
+from .sponsored import (  # noqa: F401
+    SponsoredCampaignCreate,
+    SponsoredCampaignListResponse,
+    SponsoredCampaignOut,
+    SponsoredCampaignStatsOut,
+    SponsoredCampaignStatusUpdate,
+    SponsoredCampaignUpdate,
+    SponsoredChargeRequest,
+    SponsoredEventCreate,
+    SponsoredEventOut,
+    SponsoredLedgerEntryOut,
+    SponsoredRefundRequest,
+)
 
 __all__ = [
     "PartnerProfileCreate",

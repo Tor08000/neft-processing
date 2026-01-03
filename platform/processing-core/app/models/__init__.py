@@ -209,6 +209,16 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from .marketplace_sponsored import (  # noqa: F401
+    SponsoredCampaign,
+    SponsoredCampaignObjective,
+    SponsoredCampaignStatus,
+    SponsoredEvent,
+    SponsoredEventType,
+    SponsoredSpendDirection,
+    SponsoredSpendLedger,
+    SponsoredSpendType,
+)
 from .marketplace_recommendations import (  # noqa: F401
     ClientBehaviorProfile,
     MarketplaceEvent,

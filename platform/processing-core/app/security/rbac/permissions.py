@@ -42,6 +42,7 @@ class Permission(str, Enum):
     ADMIN_RECONCILIATION_ALL = "admin:reconciliation:*"
     ADMIN_SETTLEMENT_ALL = "admin:settlement:*"
     ADMIN_AUDIT_ALL = "admin:audit:*"
+    ADMIN_MARKETPLACE_SPONSORED_ALL = "admin:marketplace:sponsored:*"
 
 
 ALL_PERMISSIONS = {permission.value for permission in Permission}
