@@ -1,572 +1,285 @@
-# NEFT Platform — AS-IS Master Documentation
+# NEFT Platform — AS-IS Master Documentation (Full System Map + Current Status Snapshot)
 
-> **Scope:** This document describes what is *actually implemented* in the repository at `/workspace/neft-processing` and how to run/check it. Any missing components are explicitly marked **NOT IMPLEMENTED**. All claims reference concrete files.
-
-## 2.1 Executive Snapshot
-
-**Core/Trust — COMPLETE**
-- Core API, auth-host, audit log with hash chain, audit signing backends, WORM protections, and admin/client/partner APIs are implemented in the `processing-core` and `auth-host` services. (See `platform/processing-core/app/main.py`, `platform/processing-core/app/services/audit_service.py`, `platform/processing-core/app/services/audit_signing.py`, `platform/processing-core/app/alembic/versions/0042_audit_log.py`, `platform/auth-host/app/main.py`.)
-
-**Finance — COMPLETE**
-- Billing flows, invoices/payments/refunds, internal ledger, posting engine, reconciliation, payouts, accounting exports, and SLA-based billing flows are implemented with idempotency and invariants. (See `platform/processing-core/app/services/finance.py`, `platform/processing-core/app/models/internal_ledger.py`, `platform/processing-core/app/services/ledger/posting_engine.py`, `platform/processing-core/app/services/finance_invariants/checker.py`, `platform/processing-core/app/alembic/versions/20291920_0100_billing_flows_v1.py`.)
-
-**Fuel/Fleet — PARTIAL**
-- Fuel cards, limits, ingestion, anomaly detection, notifications, and policies exist; provider framework is present but real providers are stubs/templates only. (See `platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/services/fleet_ingestion_service.py`, `platform/processing-core/app/services/fleet_anomaly_service.py`, `platform/processing-core/app/integrations/fuel/providers/stub_provider.py`, `platform/processing-core/app/integrations/fuel/providers/http_provider_template/client.py`.)
-
-**Marketplace — PARTIAL**
-- Marketplace catalog, orders, promotions, sponsored offers, analytics, SLA/penalties and booking flows are implemented; light moderation is implemented with status fields + admin review queue. (See `platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`, `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/routers/client_marketplace_orders.py`.)
-
-**Policy/Response — PARTIAL**
-- Policy engine for finance/documents and fleet policy engine/escalations exist; unified policy governance UI is partial in client/admin portals. (See `platform/processing-core/app/services/policy/engine.py`, `platform/processing-core/app/services/fleet_policy_engine.py`, `platform/processing-core/app/services/ops/escalations.py`, `frontends/client-portal/src/App.tsx`, `frontends/admin-ui/src/router/index.tsx`.)
-
-**Notifications — PARTIAL**
-- Email, Telegram, and Web Push channels implemented via fleet notification dispatcher and outbox; SMS/voice providers are **NOT IMPLEMENTED**. (See `platform/processing-core/app/services/fleet_notification_dispatcher.py`, `platform/processing-core/app/services/notifications/telegram_sender.py`, `platform/processing-core/app/services/notifications/webpush_sender.py`.)
-
-**Analytics UI — PARTIAL**
-- Client portal contains analytics pages; BI ingestion and exports are implemented in core API, but no standalone analytics UI service exists. (See `frontends/client-portal/src/App.tsx`, `platform/processing-core/app/services/bi/metrics.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`.)
-
-**Integrations — PARTIAL**
-- Fuel provider framework is implemented with stub/template connectors; Integration Hub is deployed in compose with stub endpoints for webhooks/EDO. (See `platform/processing-core/app/integrations/fuel/base.py`, `platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`.)
-
-**Portals — COMPLETE**
-- Admin, Client, Partner portals implemented in React; admin/client are included in docker-compose; partner portal exists but container is **NOT IMPLEMENTED** in compose. (See `frontends/admin-ui/src/router/index.tsx`, `frontends/client-portal/src/App.tsx`, `frontends/partner-portal/src/App.tsx`, `docker-compose.yml`.)
-
-**Gateway — COMPLETE**
-- Nginx gateway routes API namespaces and SPA paths for admin/client/partner. (See `gateway/nginx.conf`.)
-
-**Observability — PARTIAL**
-- Prometheus, Grafana, Jaeger, OTel Collector wired; Loki/log aggregation is **NOT IMPLEMENTED** in compose. (See `infra/prometheus.yml`, `infra/otel-collector-config.yaml`, `docker-compose.yml`.)
+> **Scope:** This document describes what is **actually implemented** in `/workspace/neft-processing` as of now. Any missing components are explicitly marked **NOT IMPLEMENTED**. No future work or assumptions are included.
 
 ---
 
-## 2.2 Repository Map (папки и назначение)
+## 4.1 Overview
 
-Top-level map (selected):
+**Назначение платформы (AS-IS):**
+- Мультисервисная платформа для финансовой обработки (billing, settlement), флота/топлива, маркетплейса, документов и аудита.
+- Основной API — `core-api` (`platform/processing-core/`) + вспомогательные сервисы `auth-host`, `integration-hub`, `ai-service`, `document-service`, `logistics-service`.
 
-- `platform/` — backend services and domain modules.
-  - `platform/processing-core/` — Core API (billing, fleet, marketplace, audit, etc.). (`platform/processing-core/app/main.py`)
-  - `platform/auth-host/` — auth service for JWT issuing/admin bootstrap. (`platform/auth-host/app/main.py`)
-  - `platform/ai-services/risk-scorer/` — AI risk scoring stub service. (`platform/ai-services/risk-scorer/app/main.py`)
-  - `platform/billing-clearing/` — Celery workers/beat for billing/clearing flows. (`platform/billing-clearing/Dockerfile`)
-  - `platform/logistics-service/` — Logistics ETA/deviation service. (`platform/logistics-service/neft_logistics_service/main.py`)
-  - `platform/document-service/` — PDF render/sign/verify service. (`platform/document-service/app/main.py`)
-  - `platform/crm-service/` — CRM stub service. (`platform/crm-service/app/main.py`)
-  - `platform/integration-hub/` — Integration Hub (webhooks + EDO) codebase; wired in compose in stub mode. (`platform/integration-hub/neft_integration_hub/main.py`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
-- `frontends/` — React SPAs for admin/client/partner portals. (`frontends/admin-ui`, `frontends/client-portal`, `frontends/partner-portal`)
-- `gateway/` — Nginx gateway image and routing config. (`gateway/nginx.conf`)
-- `infra/` — observability and infra configs (Prometheus, Grafana, OTel). (`infra/prometheus.yml`, `infra/otel-collector-config.yaml`)
-- `scripts/` — operational scripts; many Windows `.cmd` entrypoints. (e.g., `scripts/migrate.cmd`, `scripts/smoke_billing_v14.cmd`)
-- `docs/` — existing docs; this AS-IS file is under `docs/as-is/`. (`docs/`)
-- `docker-compose.yml` — main local stack definitions. (`docker-compose.yml`)
-- `db/` — database data/init/backup helper directories. (`db/`)
-- `nginx/` — additional nginx config assets outside the gateway image. (`nginx/`)
+**Основные контуры (по факту кода):**
+- Core/Trust & Audit
+- Billing & Finance
+- Fleet/Fuel
+- Marketplace & Partner Services
+- Documents & Exports
+- Decision Memory & What-If
+- Reconciliation/Internal Ledger
+- Integrations (Integration Hub + webhooks)
+- Observability (Prometheus/Grafana/Jaeger/Loki)
 
----
+**Карта ключевых директорий (AS-IS):**
 
-## 2.3 Services Catalog (все сервисы и их ответственность)
+```
+platform/
+  processing-core/        # Core API (billing, fleet, marketplace, audit)
+  auth-host/              # JWT/auth service
+  integration-hub/        # webhooks + EDO stub
+  ai-services/risk-scorer # AI scoring stub
+  billing-clearing/       # Celery workers/beat
+  document-service/       # PDF render/sign/verify
+  logistics-service/      # logistics ETA/deviation service
+  crm-service/            # CRM stub
+frontends/
+  admin-ui/
+  client-portal/
+  partner-portal/
+  shared/
+gateway/
+services/
+  flower/
+  ai-risk/                # auxiliary assets
+infra/
+  prometheus.yml, grafana/, otel-collector-config.yaml, loki/, promtail/
+shared/
+  python/                 # shared settings/logging
+  contracts/
+docs/
+  as-is/                  # текущий AS-IS пакет
+```
 
-> **Source of truth:** `docker-compose.yml`, service code entrypoints.
-
-### Core stack
-
-**gateway (nginx)**
-- **Container:** `gateway` (`docker-compose.yml`).
-- **Role:** API + SPA routing, request-id propagation. (`gateway/nginx.conf`)
-- **Ports:** 80→80.
-- **Health:** `GET /health` → `200 OK` text. (`gateway/nginx.conf`)
-- **Metrics:** `GET /metrics` returns `gateway_up 1`. (`gateway/nginx.conf`)
-- **Dependencies:** core-api, auth-host, ai-service (compose `depends_on`).
-- **Routes:** `/api/core/*`, `/api/auth/*`, `/api/ai/*`, `/api/logistics/*`, `/api/docs/*`, SPA paths `/admin/`, `/client/`, `/partner/`. (`gateway/nginx.conf`)
-
-**core-api (processing-core)**
-- **Container:** `core-api`. (`docker-compose.yml`)
-- **Role:** Core domain API (finance, fuel/fleet, marketplace, CRM, audit, policy). (`platform/processing-core/app/main.py`)
-- **Ports:** 8001→8000 (compose), internal 8000.
-- **Health:** `GET /api/core/health` or `GET /api/core/api/v1/health` (gateway routed). (`platform/processing-core/app/main.py`, `platform/processing-core/app/api/routes/health.py`, `gateway/nginx.conf`)
-- **Metrics:** `GET /metrics` (Prometheus text). (`platform/processing-core/app/main.py`)
-- **Key env:** `NEFT_DB_SCHEMA`, `NEFT_S3_*`, `DOCUMENT_SERVICE_ENABLED`, `LOGISTICS_SERVICE_ENABLED`, `NEFT_AUTH_ISSUER/AUDIENCE`, `BI_CLICKHOUSE_ENABLED`, `CLICKHOUSE_URL`. (`docker-compose.yml`, `shared/python/neft_shared/settings.py`)
-- **Dependencies:** Postgres, Redis, MinIO; optional ClickHouse/logistics/document service. (`docker-compose.yml`, `shared/python/neft_shared/settings.py`)
-- **Ownership:** Tables and migrations in `platform/processing-core/app/models` and `platform/processing-core/app/alembic/versions`.
-
-**auth-host**
-- **Container:** `auth-host`. (`docker-compose.yml`)
-- **Role:** Authentication, JWT issuance, admin bootstrap, user management. (`platform/auth-host/app/main.py`, `platform/auth-host/app/bootstrap.py`)
-- **Ports:** 8002→8000.
-- **Health:** `GET /api/auth/health`. (`platform/auth-host/app/api/routes/health.py`, `platform/auth-host/app/main.py`)
-- **Metrics:** `GET /api/v1/metrics`. (`platform/auth-host/app/main.py`)
-- **Key env:** `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`, `AUTH_KEY_DIR`, bootstrap envs. (`platform/auth-host/app/settings.py`, `.env.example`)
-- **Dependencies:** Postgres, Redis. (`docker-compose.yml`)
-
-**ai-service (risk scorer)**
-- **Container:** `ai-service`. (`docker-compose.yml`)
-- **Role:** Risk scoring API endpoints. (`platform/ai-services/risk-scorer/app/main.py`)
-- **Ports:** 8003→8000.
-- **Health:** `GET /api/ai/api/v1/health` via gateway or `/api/v1/health` direct. (`platform/ai-services/risk-scorer/app/api/v1/health.py`, `gateway/nginx.conf`)
-- **Metrics:** `GET /metrics` (simple). (`platform/ai-services/risk-scorer/app/main.py`)
-- **Key env:** `LOG_LEVEL`, `AI_MODEL_NAME`. (`platform/ai-services/risk-scorer/app/settings.py`)
-- **Dependencies:** Redis (compose). (`docker-compose.yml`)
-
-**workers / beat / flower**
-- **Containers:** `workers`, `beat`, `flower`. (`docker-compose.yml`)
-- **Role:** Celery workers and scheduler for billing/clearing/pdf jobs; Flower UI for monitoring. (`platform/billing-clearing/Dockerfile`, `services/flower/Dockerfile`)
-- **Ports:** Flower 5555→5555.
-- **Health:** workers/beat via Celery ping; Flower API check. (`docker-compose.yml`)
-- **Key env:** `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `NEFT_S3_*`, `BI_CLICKHOUSE_ENABLED`. (`docker-compose.yml`, `.env.example`)
-
-**celery-exporter**
-- **Container:** `celery-exporter`. (`docker-compose.yml`)
-- **Role:** Prometheus metrics for Celery. (`docker-compose.yml`)
-- **Ports:** 9808 (internal). Metrics `GET /metrics`. (`docker-compose.yml`)
-
-### Supporting services
-
-**postgres**
-- **Role:** Primary database. (`docker-compose.yml`)
-- **Port:** 5432.
-
-**redis**
-- **Role:** Cache + Celery broker/backend. (`docker-compose.yml`)
-- **Port:** 6379.
-
-**minio / minio-init / minio-health**
-- **Role:** Object storage for invoices, exports, documents, audit exports. (`docker-compose.yml`, `infra/minio-init.sh`)
-- **Ports:** 9000 (S3), 9001 (console).
-
-**clickhouse**
-- **Role:** Optional BI storage. (`docker-compose.yml`, `shared/python/neft_shared/settings.py`)
-- **Ports:** 8123, 9000→9002.
-
-### Peripheral services
-
-**logistics-service**
-- **Role:** ETA/deviation calculations, explainable results. (`platform/logistics-service/neft_logistics_service/main.py`)
-- **Health:** `/health`; **metrics** `/metrics`. (`platform/logistics-service/neft_logistics_service/main.py`)
-- **Note:** Used when `LOGISTICS_SERVICE_ENABLED=1`. (`shared/python/neft_shared/settings.py`)
-
-**document-service**
-- **Role:** Render HTML→PDF, sign/verify documents, presign storage. (`platform/document-service/app/main.py`)
-- **Health:** `/health`; **metrics** `/metrics`. (`platform/document-service/app/main.py`)
-
-**crm-service**
-- **Role:** Stub service with health/metrics only. (`platform/crm-service/app/main.py`)
-
-### Observability stack
-
-**otel-collector / jaeger / prometheus / grafana**
-- Config and routing in `infra/otel-collector-config.yaml` and `infra/prometheus.yml`. (`infra/otel-collector-config.yaml`, `infra/prometheus.yml`, `docker-compose.yml`)
-- Loki/log aggregation is **NOT IMPLEMENTED** in compose. (`docker-compose.yml`)
-
-### NOT IMPLEMENTED in compose
-- **partner-web** container is referenced in gateway but not defined in compose. (`gateway/nginx.conf`, `docker-compose.yml`)
+**Краткая карта сервисов (AS-IS):**
+- Gateway (nginx) → core-api, auth-host, ai-service, integration-hub, crm-service, logistics-service, document-service + SPA frontends. (`gateway/nginx.conf`)
+- Core API + Celery workers → Postgres, Redis, MinIO, optional ClickHouse. (`docker-compose.yml`, `shared/python/neft_shared/settings.py`)
 
 ---
 
-## 2.4 API Map (основные endpoints)
+## 4.2 Runtime Architecture (AS-IS)
 
-> **Base paths:**
-> - Gateway: `/api/core/*`, `/api/auth/*`, `/api/ai/*` (`gateway/nginx.conf`)
-> - Core API also serves `/api/v1/*` directly when called without gateway. (`platform/processing-core/app/main.py`)
+**Сервисы (по docker-compose):**
+- API: `core-api`, `auth-host`, `ai-service`, `integration-hub`, `crm-service`, `logistics-service`, `document-service`.
+- Frontends: `admin-web`, `client-web`, `partner-web`.
+- Infra: `postgres`, `redis`, `minio`, `clickhouse` (optional), `otel-collector`, `jaeger`, `prometheus`, `grafana`, `loki`, `promtail`.
+- Async: `workers`, `beat`, `flower`, `celery-exporter`.
 
-### Core / Trust
-- **Health & metrics:** `/api/core/health`, `/api/core/api/v1/health`, `/metrics`. (`platform/processing-core/app/api/routes/health.py`, `platform/processing-core/app/main.py`)
-- **Auth glue:** `/api/core/api/v1/auth/*` (proxy via auth-host). (`platform/processing-core/app/api/routes/auth.py`)
-- **Error format:** JSON error envelope `{error:{type,message}, meta:{correlation_id,path}}`. (`platform/processing-core/app/error_handlers.py`)
+**Основные связи (AS-IS):**
+- `gateway` → `/api/core/*` → `core-api` (`platform/processing-core/app/main.py`).
+- `gateway` → `/api/auth/*` → `auth-host` (`platform/auth-host/app/main.py`).
+- `gateway` → `/api/ai/*` → `ai-service` (`platform/ai-services/risk-scorer/app/main.py`).
+- `gateway` → `/api/int/*` или `/api/integrations/*` → `integration-hub` (`platform/integration-hub/neft_integration_hub/main.py`).
+- `gateway` → `/api/crm/*`, `/api/logistics/*`, `/api/docs/*` → `crm-service`, `logistics-service`, `document-service`.
+- `core-api` + `workers` + `beat` → `redis` (broker/backend), `postgres` (DB), `minio` (S3).
+- `core-api` (опционально) → `clickhouse` (BI), `document-service`, `logistics-service` (через флаги включения).
 
-### Finance
-- **Billing/Invoices/Payments/Refunds:** `/api/v1` billing endpoints and admin router `/api/v1/admin/billing/*`. (`platform/processing-core/app/api/v1/endpoints/billing_invoices.py`, `platform/processing-core/app/routers/admin/billing.py`)
-- **Ledger/Accounts:** `/api/v1/admin/ledger`, `/api/v1/admin/accounts`. (`platform/processing-core/app/routers/admin/ledger.py`, `platform/processing-core/app/routers/admin/accounts.py`)
-- **Clearing/Payouts/Settlement:** `/api/v1/admin/clearing`, `/api/v1/admin/settlement*`, `/api/v1/payouts`. (`platform/processing-core/app/routers/admin/clearing.py`, `platform/processing-core/app/routers/admin/settlement_v1.py`, `platform/processing-core/app/api/v1/endpoints/payouts.py`)
+**Базы/кэши/очереди:**
+- Postgres (основной storage) — `postgres:16`.
+- Redis (cache + Celery broker/backend) — `redis:7.4-alpine`.
+- MinIO (S3) — `quay.io/minio/minio`.
+- ClickHouse (BI) — `clickhouse/clickhouse-server:24.6` (по флагу `BI_CLICKHOUSE_ENABLED`).
 
-### Fuel / Fleet
-- **Client fleet API:** `/api/client/fleet/*` (cards, groups, employees, limits, notifications). (`platform/processing-core/app/routers/client_fleet.py`)
-- **Fleet ingestion (internal):** `/api/internal/fleet/*`. (`platform/processing-core/app/routers/internal/fleet.py`)
-- **Client portal shortcuts:** `/client/api/v1/*`. (`platform/processing-core/app/routers/client.py`, `platform/processing-core/app/routers/client_vehicles.py`)
-
-### Marketplace
-- **Client marketplace:** `/client/marketplace/*`, `/client/marketplace/orders/*`, `/client/marketplace/deals/*`. (`platform/processing-core/app/routers/client_marketplace.py`, `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/routers/client_marketplace_deals.py`)
-- **Partner marketplace:** `/partner/*` (catalog, orders, promotions, analytics, coupons, sponsored). (`platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/routers/partner/marketplace_orders.py`, `platform/processing-core/app/routers/partner/marketplace_promotions.py`, `platform/processing-core/app/routers/partner/marketplace_analytics.py`)
-
-### Policy / Response
-- **Cases:** `/api/core/cases` + admin cases. (`platform/processing-core/app/routers/cases.py`, `platform/processing-core/app/routers/admin/cases.py`)
-- **Ops escalations:** `/api/v1/admin/ops/*`. (`platform/processing-core/app/routers/admin/ops.py`)
-
-### Notifications
-- **Fleet notifications:** `/api/client/fleet/notifications/*`. (`platform/processing-core/app/routers/client_fleet.py`)
-- **Telegram webhook:** `/api/internal/telegram/webhook` (path configurable). (`platform/processing-core/app/routers/internal/telegram.py`, `shared/python/neft_shared/settings.py`)
-
-### Integrations
-- **Logistics service:** `/api/v1/logistics/*` (core) and `/api/logistics/*` (gateway). (`platform/processing-core/app/api/v1/endpoints/logistics.py`, `gateway/nginx.conf`)
-- **EDO intake:** `/api/v1/edo/*`. (`platform/processing-core/app/api/v1/endpoints/edo_events.py`)
-
-### Example request/response
-- **KPI:** `GET /api/core/kpi/summary?window_days=7` → KPI summary JSON. (`platform/processing-core/app/routers/kpi.py`, example in `README.md`)
-- **Errors:** `422` validation error returns `{error:{type:"validation_error",...}}`. (`platform/processing-core/app/error_handlers.py`)
-
-**Idempotency**
-- Many write endpoints accept `idempotency_key` in request body/query; enforced via DB unique constraints. (Examples: `platform/processing-core/app/api/v1/endpoints/billing_invoices.py`, `platform/processing-core/app/models/billing_flow.py`, `platform/processing-core/app/models/internal_ledger.py`.)
+**Observability:**
+- OTel Collector (OTLP 4317) + Jaeger UI 16686.
+- Prometheus + Grafana.
+- Loki + Promtail (лог-агрегация). (`infra/loki/`, `infra/promtail/`)
 
 ---
 
-## 2.5 Data Model Map (таблицы/миграции)
+## 4.3 Service Catalog (кратко)
 
-> **Source:** SQLAlchemy models in `platform/processing-core/app/models` and Alembic migrations in `platform/processing-core/app/alembic/versions`.
+Подробный каталог: **[docs/as-is/SERVICE_CATALOG.md](SERVICE_CATALOG.md)**
 
-### Core/Audit/Trust
-- `audit_log` + immutable trigger + hash chain. (`platform/processing-core/app/models/audit_log.py`, `platform/processing-core/app/alembic/versions/0042_audit_log.py`)
-- Audit signing keys registry: `audit_signing_keys`. (`platform/processing-core/app/models/audit_signing_keys.py`, `platform/processing-core/app/alembic/versions/20250320_0106_audit_signing_keys_object_lock.py`)
-- WORM retention tables: `audit_legal_holds`, `audit_purge_log`. (`platform/processing-core/app/models/audit_retention.py`, `platform/processing-core/app/alembic/versions/20291780_0095_audit_retention_worm.py`)
-
-### Finance/Ledger
-- Double-entry ledger: `internal_ledger_accounts`, `internal_ledger_transactions`, `internal_ledger_entries`. (`platform/processing-core/app/models/internal_ledger.py`, `platform/processing-core/app/alembic/versions/20291201_0056_internal_ledger_v1.py`)
-- Billing flows: `billing_invoices`, `billing_payments`, `billing_refunds`. (`platform/processing-core/app/models/billing_flow.py`, `platform/processing-core/app/alembic/versions/20291920_0100_billing_flows_v1.py`)
-- Billing periods/summary/job runs: `billing_periods`, `billing_summary`, `billing_job_runs`. (`platform/processing-core/app/models/billing_period.py`, `platform/processing-core/app/models/billing_summary.py`, `platform/processing-core/app/models/billing_job_run.py`)
-- Payouts/settlement: `payout_batches`, `settlement_*`. (`platform/processing-core/app/models/payout_batch.py`, `platform/processing-core/app/models/settlement_v1.py`)
-- Reconciliation: `reconciliation_runs`, `reconciliation_discrepancies`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/alembic/versions/20291910_0099_reconciliation_v1.py`)
-
-### Fuel/Fleet
-- `fuel_cards`, `fuel_transactions`, `fuel_limits`, `fuel_card_groups`, `fuel_group_access`, `fleet_notification_outbox`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/alembic/versions/20250220_0103_fuel_fleet_v1.py`, `platform/processing-core/app/alembic/versions/20291960_0104_fleet_notifications_v2.py`)
-- Ingestion jobs: `fuel_ingest_jobs`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/alembic/versions/20260201_0104_fleet_ingestion_v1.py`)
-
-### Marketplace
-- Catalog/orders/promotions: `marketplace_products`, `marketplace_orders`, `marketplace_order_events`, `marketplace_promotions`. (`platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/models/marketplace_promotions.py`)
-- SLA & penalties: `marketplace_order_sla`, `marketplace_sla_notification_outbox`. (`platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/alembic/versions/20292010_0108_marketplace_order_sla_v1.py`)
-- Contracts/sponsored: `marketplace_contracts`, `sponsored_spend_ledger`. (`platform/processing-core/app/models/marketplace_contracts.py`, `platform/processing-core/app/models/marketplace_sponsored.py`)
-
-### Policy/Response
-- Cases/escalations: `cases`, `case_events`, `ops_escalations`. (`platform/processing-core/app/models/cases.py`, `platform/processing-core/app/models/ops.py`, `platform/processing-core/app/alembic/versions/20291720_0089_cases_v1.py`, `platform/processing-core/app/alembic/versions/20291530_0075_ops_escalations.py`)
-- Risk policies/rules: `risk_policy`, `risk_rule`, `risk_threshold*`. (`platform/processing-core/app/models/risk_policy.py`, `platform/processing-core/app/models/risk_rule.py`)
-
-### CRM / Subscriptions
-- CRM core, contracts, feature flags, subscriptions: `crm_*`, `subscriptions_*`. (`platform/processing-core/app/models/crm.py`, `platform/processing-core/app/models/subscriptions_v1.py`)
-
-### Documents / Legal
-- Documents registry, signatures, legal graph: `documents`, `document_signatures`, `legal_graph_*`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/legal_graph.py`)
-
-### Append-only / WORM tables (examples)
-- `audit_log`, `case_events`, `decision_memory`, `internal_ledger_entries`, `billing_invoices/payments/refunds`, `marketplace_order_events`, `fuel_transactions` are protected with immutability triggers. (See migrations: `platform/processing-core/app/alembic/versions/0042_audit_log.py`, `20291780_0095_audit_retention_worm.py`, `20291820_0098_internal_ledger_extension_cycle1.py`, `20291920_0100_billing_flows_v1.py`, `20292010_0108_marketplace_orders_v1.py`, `20250220_0103_fuel_fleet_v1.py`.)
+| Service | Purpose | Port(s) | Health | Metrics |
+|---|---|---|---|---|
+| gateway | API + SPA routing | `80` | `/health` | `/metrics` |
+| core-api | Core domain API | `8001` | `/api/core/health` | `/metrics` |
+| auth-host | Auth/JWT | `8002` | `/api/auth/health` | `/api/v1/metrics` |
+| ai-service | Risk scoring API | `8003` | `/api/v1/health` | `/metrics` |
+| integration-hub | Webhooks + EDO | `8010` | `/health` | `/metrics` |
+| admin-web | Admin SPA | `4173` | `/health` | n/a |
+| client-web | Client SPA | `4174` | `/health` | n/a |
+| partner-web | Partner SPA | `4175` | `/health` | n/a |
+| workers/beat | Celery worker + scheduler | internal | compose healthchecks | n/a |
+| flower | Celery monitoring UI | `5555` | `/api/workers` | n/a |
 
 ---
 
-## 2.6 Trust Layer (подробно)
+## 4.4 Data Layer (AS-IS)
 
-**Audit chain (hash chain)**
-- Each audit log record includes a hash computed from canonical payload + previous hash (GENESIS for first). (`platform/processing-core/app/services/audit_service.py`)
-- Audit log is immutable via DB trigger `audit_log_immutable`. (`platform/processing-core/app/alembic/versions/0042_audit_log.py`)
+Подробная карта: **[docs/as-is/DB_SCHEMA_MAP.md](DB_SCHEMA_MAP.md)**
 
-**Signing backends**
-- Local signer, AWS KMS signer, and Vault Transit signer implemented. (`platform/processing-core/app/services/audit_signing.py`)
-- Configured via `AUDIT_SIGNING_MODE` and related env vars (AWS/Vault settings). (`shared/python/neft_shared/settings.py`, `.env.example`)
+**Схемы БД:**
+- `processing_core` — доменные данные core-api. (`platform/processing-core/app/db/schema.py`)
+- `public` (или `AUTH_DB_SCHEMA`) — auth-host. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
+- Integration Hub DB — SQLite по умолчанию, или Postgres по `INTEGRATION_HUB_DATABASE_URL`.
 
-**Key registry + rotation readiness**
-- Audit signing keys stored in `audit_signing_keys` table; listing endpoint available under admin audit. (`platform/processing-core/app/models/audit_signing_keys.py`, `platform/processing-core/app/routers/admin/audit.py`)
-
-**Redaction (PII safe)**
-- Audit payload masking and truncation performed by `audit_service` (`SENSITIVE_KEYS`, payload size limit). (`platform/processing-core/app/services/audit_service.py`)
-
-**WORM: DB triggers + S3 object lock**
-- WORM guards in migrations enforce immutability. (Examples: `platform/processing-core/app/alembic/versions/20291780_0095_audit_retention_worm.py`)
-- Object lock configuration is driven by `S3_OBJECT_LOCK_*` env vars. (`shared/python/neft_shared/settings.py`, `.env.example`)
-
-**Export verification: hash + signature**
-- Case export verification combines hash chain + signature verification. (`platform/processing-core/app/services/case_export_verification_service.py`)
-
-**CI trust gates**
-- No dedicated CI trust gate config found in repo (**NOT IMPLEMENTED**). (No files in `.github/workflows` referencing audit signing gates.)
-
-**Manual verification**
-- Use audit verification services (`case_export_verification_service`) and admin endpoints for audit keys. (`platform/processing-core/app/services/case_export_verification_service.py`, `platform/processing-core/app/routers/admin/audit.py`)
+**Alembic:**
+- Core API heads: `20261201_0017_accounts_and_ledger`, `20297100_0115_merge_heads`. (`platform/processing-core/app/alembic/versions/`)
+- Auth-host head: `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/`)
+- `alembic current` **NOT VERIFIED** (требует запущенной БД).
 
 ---
 
-## 2.7 Finance Layer (подробно)
+## 4.5 Eventing & Audit (AS-IS)
 
-**Internal ledger & invariants**
-- Double-entry enforcement + invariants check via `finance_invariants` + posting engine. (`platform/processing-core/app/services/finance_invariants/checker.py`, `platform/processing-core/app/services/ledger/posting_engine.py`)
+Подробный каталог: **[docs/as-is/EVENT_CATALOG.md](EVENT_CATALOG.md)**
 
-**Billing flows**
-- Invoices, payments, refunds stored in `billing_*` tables; idempotency enforced. (`platform/processing-core/app/models/billing_flow.py`, `platform/processing-core/app/alembic/versions/20291920_0100_billing_flows_v1.py`)
+**Audit log и hash-chain:**
+- `audit_log` хранит хэш-цепочку и метаданные запросов. (`platform/processing-core/app/models/audit_log.py`)
+- `case_events` также содержит `prev_hash/hash/signature` поля. (`platform/processing-core/app/models/cases.py`)
 
-**Reconciliation & settlement**
-- Reconciliation runs/discrepancies tables and admin endpoints. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/routers/admin/reconciliation.py`)
-- Settlement v1 & payouts through `settlement_v1` and payout models. (`platform/processing-core/app/models/settlement_v1.py`, `platform/processing-core/app/models/payout_batch.py`)
+**Signing mode (local) и варианты:**
+- `AUDIT_SIGNING_MODE` по умолчанию `local`. (`shared/python/neft_shared/settings.py`)
+- Поддерживаются `local`, `aws_kms`, `vault_transit` (реализации в `app/services/audit_signing.py`).
 
-**State machines**
-- Billing/invoice transitions in billing services and invariants. (`platform/processing-core/app/services/billing_service.py`, `platform/processing-core/app/services/finance.py`)
+**WORM / Object Lock:**
+- Конфигурация через `S3_OBJECT_LOCK_*` env. (`shared/python/neft_shared/settings.py`)
+- Требует поддержки object-lock на S3/MinIO — **NOT VERIFIED**.
 
-**Admin UI coverage**
-- Admin portal exposes billing, clearing, payouts, accounts/ledger, operations. (`frontends/admin-ui/src/router/index.tsx`)
-
-**Metrics/alerts/runbooks**
-- Metrics emitted from core `/metrics` include billing, payout, reconciliation gauges. (`platform/processing-core/app/main.py`)
-- Runbooks exist in `docs/runbooks` but no finance-specific runbook index binding (**PARTIAL**). (`docs/runbooks/`)
+**Метрики:**
+- `core-api` экспортирует Prometheus метрики (`/metrics`). (`platform/processing-core/app/main.py`)
+- Gateway метрика `gateway_up` на `/metrics`. (`gateway/nginx.conf`)
 
 ---
 
-## 2.8 Fuel Cards / Fleet (подробно)
+## 4.6 Core Business Modules (AS-IS)
 
-**Entities**
-- Cards, groups, employees, limits, transactions are modeled in `fuel.py`. (`platform/processing-core/app/models/fuel.py`)
+> Статусы: **READY / PARTIAL / NOT IMPLEMENTED**.
 
-**Limits revision-based**
-- Limits changes tracked with WORM protection (fuel limits) and audit events. (`platform/processing-core/app/alembic/versions/20250220_0103_fuel_fleet_v1.py`, `platform/processing-core/app/services/fleet_service.py`)
+### Billing & Finance — **READY**
+- **Модели/таблицы:** `billing_invoices`, `billing_payments`, `billing_refunds`, `invoices`, `invoice_lines`, `internal_ledger_*`, `posting_batches`, `settlements`, `payout_*`. (`platform/processing-core/app/models/*`)
+- **Сервисы/эндпоинты:** `app/services/billing_service.py`, `app/services/payouts_service.py`, `app/routers/admin/billing.py`, `app/api/v1/endpoints/billing_invoices.py`.
+- **Инварианты/стейт-машины:** invoice transitions + billing flow state в `invoice_transition_logs`, `billing_flow`. (`platform/processing-core/app/models/invoice.py`, `platform/processing-core/app/models/billing_flow.py`)
 
-**Transactions append-only**
-- `fuel_transactions` is WORM-protected. (`platform/processing-core/app/alembic/versions/20250220_0103_fuel_fleet_v1.py`)
+### Fleet / Fuel — **PARTIAL**
+- **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fleet_notification_*`, `fuel_anomaly_events`, `fleet_vehicles`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/models/fleet.py`)
+- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`.
+- **Инварианты:** блокировки/эскалации в `fleet_policy_engine.py`, `fleet_anomaly_service.py`.
+- **Почему PARTIAL:** реальные провайдеры топлива — stub/template (`platform/processing-core/app/integrations/fuel/providers/stub_provider.py`).
 
-**Ingestion pipeline**
-- Ingestion jobs with idempotency, provider/network normalization, dedupe, anomaly detection, policy evaluation. (`platform/processing-core/app/services/fleet_ingestion_service.py`)
+### Marketplace — **PARTIAL**
+- **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `service_bookings`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/service_bookings.py`)
+- **Сервисы/эндпоинты:** `app/routers/client_marketplace*.py`, `app/routers/partner/marketplace_*.py`, `app/services/marketplace_order_service.py`.
+- **Инварианты:** immutable event tables via ORM hooks. (`platform/processing-core/app/models/marketplace_orders.py`)
+- **Почему PARTIAL:** алгоритмы рекомендаций и спонсоринга реализованы как data-модели + API без внешнего ML сервиса. Отдельного рекомендационного сервиса **NOT IMPLEMENTED**.
 
-**Provider framework**
-- Provider interface and registry in `integrations/fuel`. Stub/template providers only. (`platform/processing-core/app/integrations/fuel/base.py`, `platform/processing-core/app/integrations/fuel/providers/stub_provider.py`, `platform/processing-core/app/integrations/fuel/providers/http_provider_template/client.py`)
+### Decision Memory + What-If — **PARTIAL**
+- **Модели/таблицы:** `decision_memory`, `decision_results`, `risk_*`. (`platform/processing-core/app/models/decision_memory.py`, `platform/processing-core/app/models/decision_result.py`)
+- **Сервисы/эндпоинты:** `app/services/what_if/simulator.py`, `app/routers/admin/what_if.py`.
+- **Инварианты:** deterministic what-if scoring tests. (`platform/processing-core/app/tests/test_what_if_simulator_*`)
 
-**Anomaly detection & auto-block**
-- Anomaly detection service + policy actions include auto-block. (`platform/processing-core/app/services/fleet_anomaly_service.py`, `platform/processing-core/app/services/fleet_policy_engine.py`)
+### Reconciliation / Internal Ledger — **READY**
+- **Модели/таблицы:** `reconciliation_*`, `billing_reconciliation_*`, `internal_ledger_*`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/models/internal_ledger.py`)
+- **Сервисы/эндпоинты:** `app/services/reconciliation_service.py`, `app/services/settlement_service.py`.
 
-**Escalation workflows + cases**
-- Policy actions can create cases/escalations. (`platform/processing-core/app/services/fleet_policy_engine.py`, `platform/processing-core/app/services/ops/escalations.py`)
-
-**Notifications**
-- Outbox with dedupe/retry, channels: email/telegram/webpush. (`platform/processing-core/app/services/fleet_notification_dispatcher.py`, `platform/processing-core/app/models/fuel.py`)
-
-**UX/портал клиента**
-- Fleet policies/notifications pages in client portal routes. (`frontends/client-portal/src/App.tsx`)
-
----
-
-## 2.9 Marketplace (подробно)
-
-**M1..M5 functionality (as implemented)**
-- Partner profile/catalog, client browse, orders lifecycle, SLA coupling all present. (See `platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/routers/client_marketplace.py`, `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/services/order_sla_consequence_service.py`.)
-
-**Orders state machine + append-only events**
-- Orders and order events are modeled, WORM protected. (`platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/alembic/versions/20292010_0108_marketplace_orders_v1.py`)
-
-**Partner portal functions**
-- Partner portal routes include products, orders, payouts, integrations. (`frontends/partner-portal/src/App.tsx`)
-
-**Client portal functions**
-- Marketplace browsing and orders in client portal. (`frontends/client-portal/src/App.tsx`)
-
-**SLA → billing → settlement**
-- SLA consequences flow to billing/ledger. (`platform/processing-core/app/services/order_sla_consequence_service.py`, `platform/processing-core/app/services/settlement_service.py`)
-
-**Moderation**
-- Light moderation workflow with statuses, admin queue, and audit events is implemented. (`platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/services/marketplace_catalog_service.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`)
+### Documents / Exports — **PARTIAL**
+- **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
+- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`.
+- **Почему PARTIAL:** EDO интеграции и внешние провайдеры — stub/мок режим (`platform/integration-hub/neft_integration_hub/services/edo_stub.py`).
 
 ---
 
-## 2.9.1 Marketplace M1–M5 Execution Map
+## 4.7 Frontends / Portals
 
-### M1 — Partner Profiles & Catalog
-- **Definition (UPAS):** Partner profile onboarding + catalog creation/management.
-- **What is implemented (AS-IS):** Partner profiles, catalog CRUD, and moderation workflow for governance.
-- **Code references:** `platform/processing-core/app/models/marketplace_catalog.py` (PartnerProfile, MarketplaceProduct, MarketplaceProductModerationStatus), `platform/processing-core/app/services/marketplace_catalog_service.py`.
-- **API references:** `platform/processing-core/app/routers/partner/marketplace_catalog.py` (profile, products, submit-review), `platform/processing-core/app/routers/admin/marketplace_catalog.py`, `platform/processing-core/app/routers/admin/marketplace_moderation.py`.
-- **UI references:** `frontends/partner-portal/src/pages/MarketplaceProfilePage.tsx`, `frontends/partner-portal/src/pages/MarketplaceProductsPage.tsx`, `frontends/admin-ui/src/pages/marketplace/MarketplaceModerationPage.tsx`.
-- **Events / tables:** `partner_profiles`, `marketplace_products`, `audit_log` (PRODUCT_SUBMITTED_FOR_REVIEW, PRODUCT_APPROVED, PRODUCT_REJECTED).
-- **Acceptance notes:** **COMPLETE**. Moderation workflow (UPAS governance) implemented in admin moderation router + catalog service.
+- **Admin Web:** `frontends/admin-ui/`, контейнер `admin-web`, gateway путь `/admin/`.
+- **Client Web:** `frontends/client-portal/`, контейнер `client-web`, gateway путь `/client/`.
+- **Partner Web:** `frontends/partner-portal/`, контейнер `partner-web`, gateway путь `/partner/`.
 
-### M2 — Client Marketplace (Browse)
-- **Definition (UPAS):** Client browse/search, product details, discovery.
-- **What is implemented (AS-IS):** Client marketplace browse, details, and recommendation tracking.
-- **Code references:** `platform/processing-core/app/models/marketplace_catalog.py`, `platform/processing-core/app/services/marketplace_catalog_service.py`, `platform/processing-core/app/services/marketplace_recommendation_service.py`.
-- **API references:** `platform/processing-core/app/routers/client_marketplace.py`.
-- **UI references:** `frontends/client-portal/src/pages/MarketplaceCatalogPage.tsx`, `frontends/client-portal/src/pages/MarketplaceProductDetailsPage.tsx`.
-- **Events / tables:** `marketplace_products`, `marketplace_events`, `offer_candidates`.
-- **Acceptance notes:** **COMPLETE** (browse/details and recommendations implemented; client sees approved products).
+**Gateway routing:** `gateway/nginx.conf` (upstreams `admin_web`, `client_web`, `partner_web`).
 
-### M3 — Orders & Lifecycle
-- **Definition (UPAS):** Order placement + lifecycle state machine + event trail.
-- **What is implemented (AS-IS):** Marketplace orders model, events, state machine, audit-bound transitions.
-- **Code references:** `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/services/marketplace_order_service.py`.
-- **API references:** `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/routers/partner/marketplace_orders.py`.
-- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrdersPage.tsx`, `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx`, `frontends/partner-portal/src/pages/OrdersPage.tsx`, `frontends/partner-portal/src/pages/OrderDetailsPage.tsx`.
-- **Events / tables:** `marketplace_orders`, `marketplace_order_events`, `audit_log`.
-- **Acceptance notes:** **COMPLETE** (append-only events + lifecycle enforced).
-
-### M4 — SLA & Billing Coupling
-- **Definition (UPAS):** SLA evaluation, penalties/credits, settlement coupling.
-- **What is implemented (AS-IS):** SLA evaluation + consequences, settlement adjustments, and SLA-related audit trails.
-- **Code references:** `platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/services/order_sla_service.py`, `platform/processing-core/app/services/order_sla_consequence_service.py`, `platform/processing-core/app/services/settlement_service.py`.
-- **API references:** `platform/processing-core/app/routers/admin/marketplace_order_sla.py`.
-- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx` (SLA tab).
-- **Events / tables:** `marketplace_order_sla`, `marketplace_sla_notification_outbox`.
-- **Acceptance notes:** **COMPLETE** (SLA results feed billing/settlement paths).
-
-### M5 — Full UX
-- **Definition (UPAS):** End-to-end UX for timeline, incidents, invoices, partner progress and payouts visibility.
-- **What is implemented (AS-IS):** Client order timeline + SLA + invoices + incidents; partner order management and progress flows.
-- **Code references:** `platform/processing-core/app/services/marketplace_order_service.py`, `platform/processing-core/app/services/explain_v2_service.py`.
-- **API references:** `platform/processing-core/app/routers/client_marketplace_orders.py`, `platform/processing-core/app/routers/client_service_completion_proofs.py`.
-- **UI references:** `frontends/client-portal/src/pages/MarketplaceOrderDetailsPage.tsx` (timeline/SLA/incidents/invoices), `frontends/partner-portal/src/pages/OrderDetailsPage.tsx`, `frontends/partner-portal/src/pages/OrderTimelinePanel.tsx`.
-- **Events / tables:** `marketplace_order_events`, `service_completion_proofs`.
-- **Acceptance notes:** **COMPLETE** (full UX implemented in client + partner portals).
+**Статус сборки/запуска (AS-IS):**
+- Все три контейнера определены в `docker-compose.yml`.
+- Факт запуска **NOT VERIFIED** (см. snapshot).
 
 ---
 
-## 2.10 Policy & Response (подробно)
+## 4.8 Operations
 
-**Unified Policy Center**
-- Policy engine implemented for finance/document operations; fleet policy engine for anomalies/breaches. (`platform/processing-core/app/services/policy/engine.py`, `platform/processing-core/app/services/fleet_policy_engine.py`)
+Подробный runbook: **[docs/as-is/RUNBOOK_LOCAL.md](RUNBOOK_LOCAL.md)**
 
-**Action/notification policies & executions**
-- Action policies + notification policies stored and evaluated for fleet. (`platform/processing-core/app/services/fleet_service.py`, `platform/processing-core/app/services/fleet_policy_engine.py`)
-
-**Explainable rules**
-- Explain v2 routes + unified explain services. (`platform/processing-core/app/routers/explain_v2.py`, `platform/processing-core/app/services/explain/unified.py`)
-
-**RBAC**
-- Permission guard and role mapping. (`platform/processing-core/app/security/rbac/guard.py`, `platform/processing-core/app/security/rbac/roles.py`)
-
-**Escalation cases UX**
-- Admin portal includes cases & ops escalations routes. (`frontends/admin-ui/src/router/index.tsx`)
-
----
-
-## 2.11 Notifications (подробно)
-
-**Channels/providers**
-- Email (SMTP or console), Telegram, Web Push. (`platform/processing-core/app/services/notifications/email_sender.py`, `platform/processing-core/app/services/notifications/telegram_sender.py`, `platform/processing-core/app/services/notifications/webpush_sender.py`)
-
-**Event schemas**
-- Fleet notification payloads include `summary`, `route`, `body`, and event type. (`platform/processing-core/app/services/fleet_notification_dispatcher.py`)
-
-**Outbox, retries, dedupe**
-- `fleet_notification_outbox` table with retry scheduling, dedupe keys per channel. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/services/fleet_notification_dispatcher.py`)
-
-**Security**
-- Webhook HMAC/replay protection is **NOT IMPLEMENTED** in core notifications (no HMAC handler found). (No matches in `platform/processing-core/app/services/notifications`.)
-
-**Runbooks**
-- General runbooks exist under `docs/runbooks`. (`docs/runbooks/`)
-
----
-
-## 2.12 Observability & Ops
-
-**Prometheus metrics + dashboards**
-- Prometheus scrapes gateway, core, auth, ai, logistics, document, crm, celery exporter. (`infra/prometheus.yml`)
-- Grafana dashboards provisioned in `infra/grafana/dashboards`. (`infra/grafana/dashboards`)
-
-**Loki/Logs**
-- **NOT IMPLEMENTED** in compose. (`docker-compose.yml`)
-
-**Tracing (OTel/Jaeger)**
-- OTel Collector receives OTLP gRPC on 4317 and exports to Jaeger. (`infra/otel-collector-config.yaml`, `docker-compose.yml`)
-
-**Runbooks index**
-- General runbooks are in `docs/runbooks` and `docs/ops`. (`docs/runbooks/`, `docs/ops/`)
-
-**Windows CMD commands (ops)**
-- Stack up: `docker compose up -d --build` (also in `README.md`).
-- Migrations: `scripts\migrate.cmd`. (`scripts/migrate.cmd`)
-- Seeds/demo: `scripts\smoke_billing_v14.cmd` or `scripts\smoke_billing_finance.cmd`. (`scripts/smoke_billing_v14.cmd`, `scripts/smoke_billing_finance.cmd`)
-- Diagnostics: `scripts\diag-db.cmd`, `scripts\check_migrations.cmd`. (`scripts/diag-db.cmd`, `scripts/check_migrations.cmd`)
-
----
-
-## 2.13 Deployment/Env/Config
-
-**docker-compose**
-- Local stack defined in `docker-compose.yml` (core services + observability). (`docker-compose.yml`)
-
-**Important env variables**
-- Base env list in `.env.example`; shared settings in `shared/python/neft_shared/settings.py`. (`.env.example`, `shared/python/neft_shared/settings.py`)
-- Auth bootstrap envs in `platform/auth-host/app/settings.py`. (`platform/auth-host/app/settings.py`)
-
-**Secrets**
-- JWT and signing keys are read from env or generated under `auth-keys` volume. (`platform/auth-host/app/settings.py`, `docker-compose.yml`)
-
----
-
-## 2.14 Terminals / Partners / Integrations
-
-**Terminal support**
-- Terminal/merchant/card APIs exist under `/api/v1` routes. (`platform/processing-core/app/api/routes/terminals.py`, `platform/processing-core/app/api/routes/merchants.py`, `platform/processing-core/app/api/routes/cards.py`)
-
-**Provider interface**
-- Fuel provider protocol with `health`, `list_cards`, `fetch_transactions`, `fetch_statements`, `map_*`. (`platform/processing-core/app/integrations/fuel/base.py`)
-
-**Polling/backfill/replay**
-- Fleet ingestion jobs support idempotent ingestion and dedupe; replay is exposed in admin for notification outbox. (`platform/processing-core/app/services/fleet_ingestion_service.py`, `platform/processing-core/app/routers/admin/fleet_notifications.py`)
-
-**Webhook API contracts**
-- Integration Hub (webhooks/EDO) is wired to runtime in stub mode. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`, `docs/integrations/ON_DEMAND_INTEGRATIONS_STATUS.md`)
-
-**Exports**
-- Accounting export batches with S3 delivery; ERP reconciliation models exist. (`platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
-- 1C/bank export specifics are **NOT IMPLEMENTED** (no 1C-specific code found).
-
----
-
-## 2.15 Feature Flags / Options (крайние опции)
-
-Подробная матрица флагов: [Feature Flags Matrix](../product/feature_flags_matrix.md).
-
-| Feature flag / option | Default | Where configured | Effect |
-| --- | --- | --- | --- |
-| `FEATURE_FLAGS` | `ai_scorer:on,ai_anomaly:off` | `.env.example` | Frontend/global feature flag string (parsed by UI/clients). |
-| `AI_RISK_ENABLED` | true | `shared/python/neft_shared/settings.py` | Enable AI risk scoring integration. |
-| `LOGISTICS_NAVIGATOR_ENABLED` | true | `shared/python/neft_shared/settings.py` | Enables logistics navigator features. |
-| `LOGISTICS_SERVICE_ENABLED` | false | `shared/python/neft_shared/settings.py` | Enables calls to logistics-service. |
-| `DOCUMENT_SERVICE_ENABLED` | false | `shared/python/neft_shared/settings.py` | Enables document-service integration. |
-| `BI_CLICKHOUSE_ENABLED` | false | `shared/python/neft_shared/settings.py` | Enables ClickHouse BI sync. |
-| `S3_OBJECT_LOCK_ENABLED` | false | `shared/python/neft_shared/settings.py` | Enables object lock/WORM on S3 exports. |
-| CRM feature flags (e.g., `SUBSCRIPTION_METER_FUEL_ENABLED`) | none | `crm_feature_flags` table | Feature gating by client/tenant. (`platform/processing-core/app/models/crm.py`, `platform/processing-core/app/alembic/versions/20291430_0073_crm_feature_flag_subscription_meter_fuel.py`) |
-
----
-
-## 2.16 Known Issues / Technical Debt (фактическое)
-
-1) **Integration Hub not deployed**
-- Evidence: Integration Hub code exists but no compose service. (`platform/integration-hub/neft_integration_hub/main.py`, `docker-compose.yml`)
-- **Status:** OPEN
-- **Workaround:** Run it manually if needed; otherwise webhooks/EDO in hub are unavailable.
-- **Pilot risk:** Webhook/EDO flows not runnable by default.
-
-2) **Loki/log aggregation absent**
-- Evidence: No Loki services in compose. (`docker-compose.yml`)
-- **Status:** OPEN
-- **Workaround:** Use container logs or extend observability stack.
-- **Pilot risk:** Limited centralized log search.
-
----
-
-# How to verify AS-IS
-
-> **All commands are Windows CMD compatible.**
-
-## 1) Поднять стек
-```bat
+**Запуск (Windows CMD):**
+```cmd
 docker compose up -d --build
 ```
 
-## 2) Проверить health
-```bat
-curl -f http://localhost/health
-curl -f http://localhost/api/core/health
-curl -f http://localhost/api/auth/health
-curl -f http://localhost/api/ai/api/v1/health
+**Проверка:**
+```cmd
+curl http://localhost/health
+curl http://localhost/api/core/health
+curl http://localhost/api/auth/health
+curl http://localhost/api/ai/health
+curl http://localhost/api/int/health
 ```
-(Health endpoints are routed by `gateway/nginx.conf` and implemented in `platform/processing-core/app/api/routes/health.py`, `platform/auth-host/app/api/routes/health.py`, `platform/ai-services/risk-scorer/app/api/v1/health.py`.)
 
-## 3) Проверить metrics
-```bat
-curl -f http://localhost/metrics
-curl -f http://localhost/api/auth/api/v1/metrics
+**Логи:**
+```cmd
+docker compose logs -f core-api
+docker compose logs -f auth-host
+docker compose logs -f gateway
 ```
-(Core metrics at `platform/processing-core/app/main.py`; auth metrics at `platform/auth-host/app/main.py`.)
 
-## 4) Зайти в порталы
-- Admin portal: `http://localhost/admin/` (routes in `gateway/nginx.conf`, UI in `frontends/admin-ui`).
-- Client portal: `http://localhost/client/` (routes in `gateway/nginx.conf`, UI in `frontends/client-portal`).
-- Partner portal: **NOT IMPLEMENTED** in compose; code exists in `frontends/partner-portal`.
+**Типовые ошибки (минимум 5):**
+1) **MinIO init не проходит** → проверьте `MINIO_ROOT_USER/PASSWORD` и `minio-init` логи. (`infra/minio-init.sh`)
+2) **Auth-host не стартует** → проверьте ключи и `AUTH_KEY_DIR` volume. (`docker-compose.yml`, `.env.example`)
+3) **502 от gateway** → убедитесь в `service_healthy` upstream. (`gateway/nginx.conf`, `docker-compose.yml`)
+4) **Celery workers unhealthy** → проверьте `CELERY_BROKER_URL` и Redis. (`docker-compose.yml`)
+5) **Нет метрик в Prometheus** → проверьте target в `infra/prometheus.yml`.
 
-## 5) Минимальные smoketests
-```bat
-pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
-```
-(See `README.md` for suggested smoke tests and `tests/` for scripts.)
+---
 
-## 6) Проверить gateway routing /client/* refresh
-- Open `http://localhost/client/` and refresh; gateway SPA fallback should serve `client/index.html`. (`gateway/nginx.conf`)
+## 4.9 Flags / Configuration Matrix
+
+> Только реальные env vars из compose и `.env.example`.
+
+### core-api
+- `NEFT_DB_SCHEMA` (schema), `NEFT_S3_*` (S3), `NEFT_PDF_AUTO_GENERATE`.
+- `BI_CLICKHOUSE_ENABLED`, `CLICKHOUSE_URL`.
+- `DOCUMENT_SERVICE_ENABLED`, `DOCUMENT_SERVICE_URL`.
+- `LOGISTICS_SERVICE_ENABLED`, `LOGISTICS_SERVICE_URL`.
+- `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`.
+
+### auth-host
+- `AUTH_KEY_DIR`, `AUTH_PRIVATE_KEY_PATH`, `AUTH_PUBLIC_KEY_PATH`.
+- `NEFT_BOOTSTRAP_ADMIN_*` (bootstrap admin).
+- `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`.
+
+### integration-hub
+- `INTEGRATION_HUB_DATABASE_URL`, `WEBHOOK_INTAKE_SECRET`, `WEBHOOK_ALLOW_UNSIGNED`.
+- `DIADOK_MODE`, `DIADOK_BASE_URL`, `DIADOK_API_TOKEN` (stub/real). (`platform/integration-hub/neft_integration_hub/settings.py`)
+
+### workers/beat
+- `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_DEFAULT_QUEUE`.
+- S3 + ClickHouse envs (same as core-api).
+
+### Observability
+- OTel collector config in `infra/otel-collector-config.yaml`.
+- Prometheus targets in `infra/prometheus.yml`.
+
+### Audit signing / security
+- `AUDIT_SIGNING_MODE`, `AUDIT_SIGNING_REQUIRED`, `AUDIT_SIGNING_ALG`.
+- `AUDIT_SIGNING_PRIVATE_KEY_B64`, `AUDIT_SIGNING_PUBLIC_KEYS_JSON`.
+- `S3_OBJECT_LOCK_*` for WORM/retention. (`shared/python/neft_shared/settings.py`, `.env.example`)
+
+### Feature flags
+- `FEATURE_FLAGS` присутствует в `.env.example`, но прямых ссылок в коде не найдено. **NOT IMPLEMENTED (runtime parsing)**.
+
+---
+
+## 4.10 Known Limitations
+
+- Kafka/RabbitMQ-based event bus **NOT IMPLEMENTED** (нет в compose/коде).
+- Schema registry **NOT IMPLEMENTED**.
+- Реальные провайдеры топлива — **stub/template** (см. `platform/processing-core/app/integrations/fuel/providers/*`).
+- SMS/Voice провайдеры уведомлений — **stub only** (`sms_stub`, `voice_stub` в `app/services/fleet_notification_dispatcher.py`).
+- Рекомендательный сервис как отдельный сервис **NOT IMPLEMENTED** (только модели/эндпоинты).
+- BI ClickHouse выключен по умолчанию (`BI_CLICKHOUSE_ENABLED=0`).
+- Object Lock/WORM требует внешней поддержки S3 — **NOT VERIFIED**.
+
+---
+
+## 4.11 Status Snapshot 2026-01-03
+
+Снимок статуса: **[docs/as-is/STATUS_SNAPSHOT_2026-01-03.md](STATUS_SNAPSHOT_2026-01-03.md)**
+
