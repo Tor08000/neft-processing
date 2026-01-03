@@ -140,20 +140,6 @@ class VehicleRecommendation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class VehicleServiceRecord(Base):
-    __tablename__ = "vehicle_service_records"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    vehicle_id = Column(GUID(), ForeignKey("vehicles.id"), nullable=False, index=True)
-    proof_id = Column(GUID(), ForeignKey("service_completion_proofs.id"), nullable=False, index=True)
-    work_summary = Column(String(512), nullable=False)
-    odometer_km = Column(Numeric, nullable=True)
-    performed_at = Column(DateTime(timezone=True), nullable=False)
-    verified = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
 __all__ = [
     "ServiceInterval",
     "VehicleCardLink",
@@ -164,7 +150,6 @@ __all__ = [
     "VehicleProfile",
     "VehicleRecommendation",
     "VehicleRecommendationStatus",
-    "VehicleServiceRecord",
     "VehicleServiceType",
     "VehicleUsageType",
 ]

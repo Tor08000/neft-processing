@@ -8,7 +8,6 @@ from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
-from app.models.vehicle_profile import VehicleServiceType
 
 
 JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
@@ -215,20 +214,6 @@ class ServiceBookingEvent(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class VehicleServiceRecord(Base):
-    __tablename__ = "vehicle_service_records"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    vehicle_id = Column(GUID(), ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False, index=True)
-    booking_id = Column(GUID(), ForeignKey("service_bookings.id", ondelete="RESTRICT"), nullable=False, index=True)
-    partner_id = Column(GUID(), ForeignKey("partners.id", ondelete="RESTRICT"), nullable=False, index=True)
-    service_type = Column(ExistingEnum(VehicleServiceType, name="vehicle_service_type"), nullable=False)
-    service_at_km = Column(Numeric(18, 4), nullable=False)
-    service_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
 @event.listens_for(ServiceBookingEvent, "before_update")
 @event.listens_for(ServiceBookingEvent, "before_delete")
 def _block_service_booking_event_mutation(mapper, connection, target: ServiceBookingEvent) -> None:
@@ -251,5 +236,4 @@ __all__ = [
     "ServiceBookingEventType",
     "ServiceBookingImmutableError",
     "ServiceBookingStatus",
-    "VehicleServiceRecord",
 ]
