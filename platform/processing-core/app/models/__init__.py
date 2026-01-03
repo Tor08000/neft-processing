@@ -285,6 +285,18 @@ from .reconciliation import (  # noqa: F401
     ReconciliationRunStatus,
     ReconciliationScope,
 )
+from .bank_stub import (  # noqa: F401
+    BankStubPayment,
+    BankStubPaymentStatus,
+    BankStubStatement,
+    BankStubStatementLine,
+)
+from .erp_stub import (  # noqa: F401
+    ErpStubExport,
+    ErpStubExportItem,
+    ErpStubExportStatus,
+    ErpStubExportType,
+)
 from .documents import (  # noqa: F401
     ClosingPackage,
     ClosingPackageStatus,
