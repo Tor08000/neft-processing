@@ -436,6 +436,19 @@ from .crm import (  # noqa: F401
     CRMBillingPeriod,
     CRMBillingCycle,
 )
+from .vehicle_profile import (  # noqa: F401
+    ServiceInterval,
+    VehicleCardLink,
+    VehicleEngineType,
+    VehicleMileageEvent,
+    VehicleMileageSource,
+    VehicleOdometerSource,
+    VehicleProfile,
+    VehicleRecommendation,
+    VehicleRecommendationStatus,
+    VehicleServiceType,
+    VehicleUsageType,
+)
 from .subscriptions_v1 import (  # noqa: F401
     Achievement,
     AchievementCondition,
@@ -776,4 +789,15 @@ __all__ = [
     "Streak",
     "Bonus",
     "ClientProgress",
+    "ServiceInterval",
+    "VehicleCardLink",
+    "VehicleEngineType",
+    "VehicleMileageEvent",
+    "VehicleMileageSource",
+    "VehicleOdometerSource",
+    "VehicleProfile",
+    "VehicleRecommendation",
+    "VehicleRecommendationStatus",
+    "VehicleServiceType",
+    "VehicleUsageType",
 ]

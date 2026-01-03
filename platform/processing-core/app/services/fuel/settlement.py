@@ -20,6 +20,7 @@ from app.services.fuel import events, repository
 from app.services.logistics import fuel_linker
 from app.services.internal_ledger import InternalLedgerService
 from app.services.money_flow.graph import MoneyFlowGraphBuilder, ensure_money_flow_links
+from app.services.vehicle_mileage import apply_fuel_transaction_mileage
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,7 @@ def settle_fuel_tx(
     transaction.ledger_transaction_id = ledger_tx.id
     transaction.external_settlement_ref = external_settlement_ref
     _write_money_flow_links(db, transaction=transaction, ledger_transaction_id=str(ledger_tx.id))
+    apply_fuel_transaction_mileage(db, transaction=transaction)
     db.commit()
     db.refresh(transaction)
 

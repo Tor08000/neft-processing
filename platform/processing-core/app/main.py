@@ -27,6 +27,7 @@ from app.routers.client_marketplace import router as client_marketplace_router
 from app.routers.client_marketplace_orders import router as client_marketplace_orders_router
 from app.routers.client_marketplace_deals import router as client_marketplace_deals_router
 from app.routers.client_portal import router as client_portal_router
+from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
 from app.routers.internal.telegram import router as internal_telegram_router
@@ -425,6 +426,8 @@ app.include_router(fleet_router)
 app.include_router(fleet_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+app.include_router(client_vehicles_router)
+app.include_router(client_vehicles_router, prefix=API_PREFIX_CORE)
 app.include_router(portal_client_router, prefix=LEGACY_API_PREFIX)
 app.include_router(portal_client_router, prefix=API_PREFIX_CORE)
 app.include_router(portal_partner_router, prefix=LEGACY_API_PREFIX)
@@ -493,6 +496,7 @@ core_prefixed_router.include_router(subscriptions_admin_router)
 core_prefixed_router.include_router(client_router)
 core_prefixed_router.include_router(fleet_router)
 core_prefixed_router.include_router(client_portal_router)
+core_prefixed_router.include_router(client_vehicles_router)
 core_prefixed_router.include_router(client_documents_router)
 core_prefixed_router.include_router(internal_fleet_router)
 core_prefixed_router.include_router(internal_telegram_router)
