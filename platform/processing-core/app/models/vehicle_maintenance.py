@@ -86,6 +86,5 @@ __all__ = [
     "MaintenanceModifier",
     "MaintenanceRule",
     "VehicleMaintenanceDismissal",
-    "VehicleServiceRecord",
     "VehicleUsageProfile",
 ]

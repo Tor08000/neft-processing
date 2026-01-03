@@ -130,8 +130,8 @@ def evaluate_order_event(
     contract_id = _resolve_contract_id(
         db,
         order_id=order_id,
-        client_id=event.client_id,
-        partner_id=event.partner_id,
+        client_id=getattr(event, "client_id", None),
+        partner_id=getattr(event, "partner_id", None),
         request_ctx=request_ctx,
     )
     if not contract_id:

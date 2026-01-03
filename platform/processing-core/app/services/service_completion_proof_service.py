@@ -21,7 +21,8 @@ from app.models.service_completion_proofs import (
     ServiceProofEventType,
 )
 from app.models.cases import Case, CaseKind, CasePriority
-from app.models.vehicle_profile import VehicleRecommendation, VehicleRecommendationStatus, VehicleServiceRecord
+from app.models.vehicle_profile import VehicleRecommendation, VehicleRecommendationStatus
+from app.models.vehicle_service_records import VehicleServiceRecord
 from app.services.audit_service import RequestContext
 from app.services.audit_signing import AuditSignature, AuditSigningError, AuditSigningService
 from app.services.case_event_hashing import canonical_json

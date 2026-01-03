@@ -8,16 +8,10 @@ from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
-from app.models.vehicle_profile import VehicleServiceRecord, VehicleServiceType
 
 
 JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
 RESOURCE_ID_ARRAY = postgresql.ARRAY(GUID()).with_variant(JSON(), "sqlite")
-
-
-class ServiceBookingBase(Base):
-    __abstract__ = True
-    __table_args__ = {"extend_existing": True}
 
 
 class PartnerServiceStatus(str, Enum):
@@ -242,5 +236,4 @@ __all__ = [
     "ServiceBookingEventType",
     "ServiceBookingImmutableError",
     "ServiceBookingStatus",
-    "VehicleServiceRecord",
 ]
