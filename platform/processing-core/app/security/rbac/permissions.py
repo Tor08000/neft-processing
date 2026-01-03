@@ -39,6 +39,7 @@ class Permission(str, Enum):
     PARTNER_CATALOG_ALL = "partner:catalog:*"
     PARTNER_MARKETPLACE_ORDERS_ALL = "partner:marketplace:orders:*"
     PARTNER_MARKETPLACE_PROMOTIONS_ALL = "partner:marketplace:promotions:*"
+    PARTNER_MARKETPLACE_SPONSORED_ALL = "partner:marketplace:sponsored:*"
     PARTNER_GAMIFICATION_ALL = "partner:gamification:*"
     PARTNER_BOOKINGS_ALL = "partner:bookings:*"
 
