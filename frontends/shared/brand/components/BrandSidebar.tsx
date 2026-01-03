@@ -15,6 +15,13 @@ export type BrandSidebarProps = {
   footerSlot?: ReactNode;
 };
 
+type NavLinkClassNameState = {
+  isActive: boolean;
+};
+
+const navLinkClassName = ({ isActive }: NavLinkClassNameState) =>
+  `brand-nav-link${isActive ? " is-active" : ""}`;
+
 export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebarProps) {
   return (
     <aside className="brand-sidebar">
@@ -23,12 +30,12 @@ export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebar
         <span>{title}</span>
       </div>
       <nav className="brand-sidebar__nav">
-        {items.map((item) => (
+        {items.map((item: BrandNavItem) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
-            className={({ isActive }) => `brand-nav-link${isActive ? " is-active" : ""}`}
+            className={navLinkClassName}
           >
             {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
             <span>{item.label}</span>
