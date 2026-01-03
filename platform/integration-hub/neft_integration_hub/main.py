@@ -16,16 +16,22 @@ from neft_integration_hub.metrics import (
     WEBHOOK_PAUSED_ENDPOINTS_TOTAL,
     WEBHOOK_REPLAY_SCHEDULED_TOTAL,
 )
-from neft_integration_hub.models import EdoDocument, WebhookAlert, WebhookAlertType, WebhookEndpoint
+from neft_integration_hub.models import EdoDocument, EdoStubStatus, WebhookAlert, WebhookAlertType, WebhookEndpoint
 from neft_integration_hub.schemas import (
     DispatchRequest,
     DispatchResponse,
     EdoDocumentResponse,
+    EdoStubSendRequest,
+    EdoStubSendResponse,
+    EdoStubSimulateRequest,
+    EdoStubStatusResponse,
     WebhookAlertResponse,
     WebhookDeliveryResponse,
     WebhookEndpointCreate,
     WebhookEndpointResponse,
     WebhookEndpointSecretResponse,
+    WebhookIntakeRequest,
+    WebhookIntakeResponse,
     WebhookOwner,
     WebhookPauseRequest,
     WebhookReplayRequest,
@@ -34,9 +40,12 @@ from neft_integration_hub.schemas import (
     WebhookSlaResponse,
     WebhookSubscriptionCreate,
     WebhookSubscriptionResponse,
+    WebhookTestDeliveryRequest,
     WebhookTestResponse,
 )
 from neft_integration_hub.services.edo_service import dispatch_request
+from neft_integration_hub.services.edo_stub import create_stub_document, get_stub_document, simulate_status
+from neft_integration_hub.services.webhook_intake import record_intake_event, verify_signature
 from neft_integration_hub.services.webhooks import (
     build_event_envelope,
     compute_sla,
@@ -98,6 +107,18 @@ def startup() -> None:
 
 
 @app.middleware("http")
+async def request_context_middleware(request: Request, call_next: Callable[[Request], Response]) -> Response:
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    trace_id = request.headers.get("X-Trace-ID") or request_id
+    request.state.request_id = request_id
+    request.state.trace_id = trace_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Trace-ID"] = trace_id
+    return response
+
+
+@app.middleware("http")
 async def metrics_middleware(request: Request, call_next: Callable[[Request], Response]) -> Response:
     try:
         response = await call_next(request)
@@ -128,6 +149,51 @@ def metrics() -> Response:
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 
 
+def _log_intake(source: str, payload: WebhookIntakeRequest, request: Request, verified: bool) -> None:
+    logger.info(
+        "webhook.intake",
+        extra={
+            "source": source,
+            "event_type": payload.event_type,
+            "event_id": payload.event_id,
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+            "verified": verified,
+        },
+    )
+
+
+async def _handle_webhook_intake(
+    source: str,
+    payload: WebhookIntakeRequest,
+    request: Request,
+    db: Session,
+) -> WebhookIntakeResponse:
+    raw_body = await request.body()
+    signature_header = request.headers.get("X-Webhook-Signature")
+    verified = False
+    if signature_header:
+        verified, _normalized = verify_signature(raw_body, signature_header, settings.webhook_intake_secret)
+        if not verified:
+            raise HTTPException(status_code=401, detail="invalid_signature")
+    elif not settings.webhook_allow_unsigned:
+        raise HTTPException(status_code=401, detail="signature_required")
+
+    record_intake_event(
+        db,
+        source=source,
+        event_type=payload.event_type,
+        payload=payload.payload,
+        event_id=payload.event_id,
+        signature=signature_header,
+        verified=verified,
+        request_id=getattr(request.state, "request_id", None),
+        trace_id=getattr(request.state, "trace_id", None),
+    )
+    _log_intake(source, payload, request, verified)
+    return WebhookIntakeResponse(event_id=payload.event_id, status="accepted", verified=verified)
+
+
 @app.post("/v1/edo/dispatch", response_model=DispatchResponse)
 def edo_dispatch(payload: DispatchRequest, db: Session = Depends(get_db)) -> DispatchResponse:
     record = dispatch_request(db, payload)
@@ -153,6 +219,89 @@ def edo_document_status(edo_document_id: str, db: Session = Depends(get_db)) -> 
         attempt=record.attempt,
         last_error=record.last_error,
     )
+
+
+@app.post("/v1/edo/send", response_model=EdoStubSendResponse)
+def edo_stub_send(payload: EdoStubSendRequest, request: Request, db: Session = Depends(get_db)) -> EdoStubSendResponse:
+    record = create_stub_document(
+        db,
+        document_id=payload.doc_id,
+        counterparty=payload.counterparty,
+        payload_ref=payload.payload_ref,
+        meta=payload.meta,
+    )
+    logger.info(
+        "edo.stub.send",
+        extra={
+            "edo_doc_id": record.id,
+            "document_id": record.document_id,
+            "status": record.status,
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+        },
+    )
+    return EdoStubSendResponse(edo_doc_id=record.id, status=record.status)
+
+
+@app.get("/v1/edo/{edo_doc_id}/status", response_model=EdoStubStatusResponse)
+def edo_stub_status(edo_doc_id: str, request: Request, db: Session = Depends(get_db)) -> EdoStubStatusResponse:
+    record = get_stub_document(db, edo_doc_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="edo_stub_document_not_found")
+    logger.info(
+        "edo.stub.status",
+        extra={
+            "edo_doc_id": record.id,
+            "status": record.status,
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+        },
+    )
+    return EdoStubStatusResponse(edo_doc_id=record.id, status=record.status)
+
+
+@app.post("/v1/edo/{edo_doc_id}/simulate", response_model=EdoStubStatusResponse)
+def edo_stub_simulate(
+    edo_doc_id: str,
+    payload: EdoStubSimulateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> EdoStubStatusResponse:
+    try:
+        status = EdoStubStatus(payload.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_status") from exc
+    record = simulate_status(db, edo_doc_id, status, note=payload.note)
+    if not record:
+        raise HTTPException(status_code=404, detail="edo_stub_document_not_found")
+    logger.info(
+        "edo.stub.simulate",
+        extra={
+            "edo_doc_id": record.id,
+            "status": record.status,
+            "request_id": getattr(request.state, "request_id", None),
+            "trace_id": getattr(request.state, "trace_id", None),
+        },
+    )
+    return EdoStubStatusResponse(edo_doc_id=record.id, status=record.status)
+
+
+@app.post("/v1/webhooks/client/events", response_model=WebhookIntakeResponse)
+async def webhook_client_events(
+    payload: WebhookIntakeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> WebhookIntakeResponse:
+    return await _handle_webhook_intake("client", payload, request, db)
+
+
+@app.post("/v1/webhooks/partner/events", response_model=WebhookIntakeResponse)
+async def webhook_partner_events(
+    payload: WebhookIntakeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> WebhookIntakeResponse:
+    return await _handle_webhook_intake("partner", payload, request, db)
 
 
 @app.post("/v1/webhooks/endpoints", response_model=WebhookEndpointSecretResponse)
@@ -217,6 +366,27 @@ def test_webhook_endpoint(endpoint_id: str, db: Session = Depends(get_db)) -> We
         correlation_id=event_id,
         owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
         payload={"message": "test"},
+    )
+    delivery = enqueue_delivery(db, endpoint=endpoint, envelope=envelope)
+    celery_app.send_task("webhook.deliver", args=[delivery.id])
+    return WebhookTestResponse(event_id=event_id, delivery_id=delivery.id, status=delivery.status)
+
+
+@app.post("/v1/webhooks/test-delivery", response_model=WebhookTestResponse)
+def test_webhook_delivery(
+    payload: WebhookTestDeliveryRequest,
+    db: Session = Depends(get_db),
+) -> WebhookTestResponse:
+    endpoint = db.query(WebhookEndpoint).filter(WebhookEndpoint.id == payload.endpoint_id).first()
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="endpoint_not_found")
+    event_id = str(uuid4())
+    envelope = build_event_envelope(
+        event_id=event_id,
+        event_type=payload.event_type or "webhook.test",
+        correlation_id=event_id,
+        owner=WebhookOwner(type=endpoint.owner_type, id=endpoint.owner_id),
+        payload=payload.payload or {"message": "test"},
     )
     delivery = enqueue_delivery(db, endpoint=endpoint, envelope=envelope)
     celery_app.send_task("webhook.deliver", args=[delivery.id])
