@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -321,7 +321,12 @@ def update_partner_resource(
     return _resource_out(resource)
 
 
-@router.delete("/resources/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/resources/{resource_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 def delete_partner_resource(
     resource_id: str,
     request: Request,

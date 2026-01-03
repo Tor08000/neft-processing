@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 
@@ -23,6 +24,7 @@ from app.models.marketplace_order_sla import (
     OrderSlaConsequence,
     OrderSlaEvaluation,
 )
+from app.models.marketplace_orders import MarketplaceOrderActorType, MarketplaceOrderEventType
 from app.services.audit_service import RequestContext
 from app.services.finance import FinanceService
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
@@ -333,22 +335,28 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     db_session.add(obligation)
     db_session.commit()
 
-    order_id = "order-sla-1"
+    order_id = str(uuid4())
     created_at = datetime.now(timezone.utc) - timedelta(minutes=33)
     accepted_at = datetime.now(timezone.utc)
     created_event = MarketplaceOrderEvent(
         order_id=order_id,
         client_id=client_id,
         partner_id=partner_id,
-        event_type="MARKETPLACE_ORDER_CREATED",
+        event_type=MarketplaceOrderEventType.MARKETPLACE_ORDER_CREATED,
         occurred_at=created_at,
+        payload_redacted={},
+        actor_type=MarketplaceOrderActorType.SYSTEM,
+        audit_event_id=str(uuid4()),
     )
     accepted_event = MarketplaceOrderEvent(
         order_id=order_id,
         client_id=client_id,
         partner_id=partner_id,
-        event_type="MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER",
+        event_type=MarketplaceOrderEventType.MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER,
         occurred_at=accepted_at,
+        payload_redacted={},
+        actor_type=MarketplaceOrderActorType.SYSTEM,
+        audit_event_id=str(uuid4()),
     )
     db_session.add_all([created_event, accepted_event])
     db_session.commit()

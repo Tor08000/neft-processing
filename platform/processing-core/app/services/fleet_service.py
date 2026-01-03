@@ -291,7 +291,8 @@ def _get_or_create_fleet_case(
         db.query(Case)
         .filter(Case.kind == CaseKind.FLEET)
         .filter(Case.entity_id == client_id)
-        .one_or_none()
+        .order_by(Case.created_at.desc())
+        .first()
     )
     if case:
         return case

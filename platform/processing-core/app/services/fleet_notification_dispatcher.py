@@ -347,7 +347,7 @@ def _log_webhook_attempt(
         http_status=http_status,
         response_body_snippet=response_body[:500] if response_body else None,
         next_retry_at=next_retry_at,
-        dedupe_key=f\"{endpoint_id}:{event_id}\",
+        dedupe_key=f"{endpoint_id}:{event_id}",
     )
     db.add(attempt)
     db.flush()
@@ -527,7 +527,7 @@ def _dispatch_outbox_item(
                     outbox=outbox,
                     channel=channel,
                     payload=payload,
-                    provider=os.getenv(\"SMS_PROVIDER\", \"sms_stub\"),
+                    provider=os.getenv("SMS_PROVIDER", "sms_stub"),
                 )
             elif channel.channel_type == FleetNotificationChannelType.VOICE:
                 outbox.delivery_message_id = _send_stub_notification(
@@ -535,7 +535,7 @@ def _dispatch_outbox_item(
                     outbox=outbox,
                     channel=channel,
                     payload=payload,
-                    provider=os.getenv(\"VOICE_PROVIDER\", \"voice_stub\"),
+                    provider=os.getenv("VOICE_PROVIDER", "voice_stub"),
                 )
         outbox.status = FleetNotificationOutboxStatus.SENT
         outbox.last_status = "sent"

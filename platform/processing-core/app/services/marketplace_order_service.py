@@ -281,6 +281,7 @@ class MarketplaceOrderService:
         discount_amount = Decimal("0")
         final_price = price_amount
         pricing_result = None
+        pricing_mode = "promo_v1" if coupon_code else "legacy"
         if pricing_mode == "promo_v1" or coupon_code:
             from app.services.marketplace_pricing_service import MarketplacePricingService
             from app.services.marketplace_pricing_service import MarketplacePricingServiceError
@@ -319,19 +320,20 @@ class MarketplaceOrderService:
             external_ref=external_ref,
         )
         self.db.add(order)
-        promotion_service = MarketplacePromotionService(self.db, request_ctx=self.request_ctx)
-        try:
-            pricing = promotion_service.apply_promotions_to_order(
-                order=order,
-                product=product,
-                quantity=quantity,
-                client_id=client_id,
-                promotion_id=promotion_id,
-                coupon_code=coupon_code,
-            )
-        except MarketplacePromotionServiceError as exc:
-            raise MarketplaceOrderServiceError("promotion_invalid", detail={"reason": exc.code}) from exc
-        order.price_snapshot = pricing.price_snapshot
+        if promotion_id or coupon_code:
+            promotion_service = MarketplacePromotionService(self.db, request_ctx=self.request_ctx)
+            try:
+                pricing = promotion_service.apply_promotions_to_order(
+                    order=order,
+                    product=product,
+                    quantity=quantity,
+                    client_id=client_id,
+                    promotion_id=promotion_id,
+                    coupon_code=coupon_code,
+                )
+            except MarketplacePromotionServiceError as exc:
+                raise MarketplaceOrderServiceError("promotion_invalid", detail={"reason": exc.code}) from exc
+            order.price_snapshot = pricing.price_snapshot
         self.db.flush()
 
         if pricing_snapshot and pricing_result:

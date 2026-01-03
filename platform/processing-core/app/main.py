@@ -27,6 +27,9 @@ from app.routers.client_marketplace import router as client_marketplace_router
 from app.routers.client_marketplace_orders import router as client_marketplace_orders_router
 from app.routers.client_marketplace_deals import router as client_marketplace_deals_router
 from app.routers.client_service_bookings import router as client_service_bookings_router
+from app.routers.client_service_completion_proofs import (
+    router as client_service_completion_proofs_router,
+)
 from app.routers.client_portal import router as client_portal_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router

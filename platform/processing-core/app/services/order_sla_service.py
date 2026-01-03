@@ -10,22 +10,22 @@ from app.db.types import new_uuid_str
 from app.models.marketplace_contracts import Contract, ContractObligation
 from app.models.marketplace_order_sla import (
     MarketplaceOrderContractLink,
-    MarketplaceOrderEvent,
     OrderSlaEvaluation,
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from app.models.marketplace_orders import MarketplaceOrderEvent, MarketplaceOrderEventType
 from app.services.audit_service import AuditService, RequestContext
 from app.services.decision_memory.records import record_decision_memory
 from app.services.marketplace_contract_binding_service import bind_contract_for_order
 
 
 ORDER_EVENT_TYPES = {
-    "MARKETPLACE_ORDER_CREATED",
-    "MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER",
-    "MARKETPLACE_ORDER_STARTED",
-    "MARKETPLACE_ORDER_COMPLETED",
-    "MARKETPLACE_ORDER_FAILED",
+    MarketplaceOrderEventType.MARKETPLACE_ORDER_CREATED,
+    MarketplaceOrderEventType.MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER,
+    MarketplaceOrderEventType.MARKETPLACE_ORDER_STARTED,
+    MarketplaceOrderEventType.MARKETPLACE_ORDER_COMPLETED,
+    MarketplaceOrderEventType.MARKETPLACE_ORDER_FAILED,
 }
 
 
@@ -39,7 +39,10 @@ def _normalize_metric(metric: str) -> str:
     return (metric or "").strip().lower()
 
 
-def _first_event_time(events: list[MarketplaceOrderEvent], event_types: set[str]) -> datetime | None:
+def _first_event_time(
+    events: list[MarketplaceOrderEvent],
+    event_types: set[MarketplaceOrderEventType],
+) -> datetime | None:
     for event in events:
         if event.event_type in event_types:
             return event.occurred_at
@@ -96,9 +99,9 @@ def _resolve_contract_id(
 
 
 def _evaluate_response_time(events: list[MarketplaceOrderEvent]) -> tuple[Decimal, datetime, datetime] | None:
-    created_at = _first_event_time(events, {"MARKETPLACE_ORDER_CREATED"})
-    accepted_at = _first_event_time(events, {"MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER"})
-    started_at = _first_event_time(events, {"MARKETPLACE_ORDER_STARTED"})
+    created_at = _first_event_time(events, {MarketplaceOrderEventType.MARKETPLACE_ORDER_CREATED})
+    accepted_at = _first_event_time(events, {MarketplaceOrderEventType.MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER})
+    started_at = _first_event_time(events, {MarketplaceOrderEventType.MARKETPLACE_ORDER_STARTED})
     end_at = accepted_at or started_at
     if not created_at or not end_at:
         return None
@@ -106,8 +109,8 @@ def _evaluate_response_time(events: list[MarketplaceOrderEvent]) -> tuple[Decima
 
 
 def _evaluate_completion_time(events: list[MarketplaceOrderEvent]) -> tuple[Decimal, datetime, datetime] | None:
-    started_at = _first_event_time(events, {"MARKETPLACE_ORDER_STARTED"})
-    completed_at = _first_event_time(events, {"MARKETPLACE_ORDER_COMPLETED"})
+    started_at = _first_event_time(events, {MarketplaceOrderEventType.MARKETPLACE_ORDER_STARTED})
+    completed_at = _first_event_time(events, {MarketplaceOrderEventType.MARKETPLACE_ORDER_COMPLETED})
     if not started_at or not completed_at:
         return None
     return _minutes_delta(started_at, completed_at), started_at, completed_at

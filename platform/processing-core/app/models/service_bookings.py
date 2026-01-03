@@ -8,11 +8,16 @@ from sqlalchemy.types import JSON
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
-from app.models.vehicle_profile import VehicleServiceType
+from app.models.vehicle_profile import VehicleServiceRecord, VehicleServiceType
 
 
 JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
-RESOURCE_ID_ARRAY = postgresql.ARRAY(GUID()).with_variant(JSON_TYPE, "sqlite")
+RESOURCE_ID_ARRAY = postgresql.ARRAY(GUID()).with_variant(JSON(), "sqlite")
+
+
+class ServiceBookingBase(Base):
+    __abstract__ = True
+    __table_args__ = {"extend_existing": True}
 
 
 class PartnerServiceStatus(str, Enum):
@@ -72,7 +77,7 @@ class ServiceBookingImmutableError(ValueError):
     """Raised when WORM-protected booking records are mutated."""
 
 
-class PartnerService(Base):
+class PartnerService(ServiceBookingBase):
     __tablename__ = "partner_services"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -96,7 +101,7 @@ class PartnerService(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class PartnerServiceCalendar(Base):
+class PartnerServiceCalendar(ServiceBookingBase):
     __tablename__ = "partner_service_calendars"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -111,7 +116,7 @@ class PartnerServiceCalendar(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class PartnerResource(Base):
+class PartnerResource(ServiceBookingBase):
     __tablename__ = "partner_resources"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -131,7 +136,7 @@ class PartnerResource(Base):
     meta = Column(JSON_TYPE, nullable=True)
 
 
-class ServiceAvailabilityRule(Base):
+class ServiceAvailabilityRule(ServiceBookingBase):
     __tablename__ = "service_availability_rules"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -145,7 +150,7 @@ class ServiceAvailabilityRule(Base):
     meta = Column(JSON_TYPE, nullable=True)
 
 
-class BookingSlotLock(Base):
+class BookingSlotLock(ServiceBookingBase):
     __tablename__ = "booking_slot_locks"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -161,7 +166,7 @@ class BookingSlotLock(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class ServiceBooking(Base):
+class ServiceBooking(ServiceBookingBase):
     __tablename__ = "service_bookings"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -195,7 +200,7 @@ class ServiceBooking(Base):
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
 
-class ServiceBookingEvent(Base):
+class ServiceBookingEvent(ServiceBookingBase):
     __tablename__ = "service_booking_events"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
@@ -212,20 +217,6 @@ class ServiceBookingEvent(Base):
     actor_id = Column(GUID(), nullable=True)
     payload = Column(JSON_TYPE, nullable=False)
     audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class VehicleServiceRecord(Base):
-    __tablename__ = "vehicle_service_records"
-
-    id = Column(GUID(), primary_key=True, default=new_uuid_str)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    vehicle_id = Column(GUID(), ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False, index=True)
-    booking_id = Column(GUID(), ForeignKey("service_bookings.id", ondelete="RESTRICT"), nullable=False, index=True)
-    partner_id = Column(GUID(), ForeignKey("partners.id", ondelete="RESTRICT"), nullable=False, index=True)
-    service_type = Column(ExistingEnum(VehicleServiceType, name="vehicle_service_type"), nullable=False)
-    service_at_km = Column(Numeric(18, 4), nullable=False)
-    service_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

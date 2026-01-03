@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, Text, event, func
+from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, Text, event, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import JSON
 
@@ -33,6 +33,11 @@ class MarketplaceOrderEventType(str, Enum):
     ORDER_FAILED = "ORDER_FAILED"
     ORDER_CANCELLED = "ORDER_CANCELLED"
     ORDER_NOTE_ADDED = "ORDER_NOTE_ADDED"
+    MARKETPLACE_ORDER_CREATED = "MARKETPLACE_ORDER_CREATED"
+    MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER = "MARKETPLACE_ORDER_CONFIRMED_BY_PARTNER"
+    MARKETPLACE_ORDER_STARTED = "MARKETPLACE_ORDER_STARTED"
+    MARKETPLACE_ORDER_COMPLETED = "MARKETPLACE_ORDER_COMPLETED"
+    MARKETPLACE_ORDER_FAILED = "MARKETPLACE_ORDER_FAILED"
 
 
 class MarketplaceOrderActorType(str, Enum):
@@ -80,6 +85,8 @@ class MarketplaceOrderEvent(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     order_id = Column(GUID(), ForeignKey("marketplace_orders.id", ondelete="RESTRICT"), nullable=False, index=True)
+    client_id = Column(String(64), nullable=True, index=True)
+    partner_id = Column(String(64), nullable=True, index=True)
     event_type = Column(
         ExistingEnum(MarketplaceOrderEventType, name="marketplace_order_event_type"), nullable=False
     )
