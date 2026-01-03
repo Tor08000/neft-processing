@@ -30,8 +30,10 @@ from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
 from app.routers.internal.telegram import router as internal_telegram_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
+from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
 from app.routers.partner.marketplace_catalog import router as partner_marketplace_router
 from app.routers.partner.marketplace_orders import router as partner_marketplace_orders_router
+from app.routers.partner.marketplace_subscriptions import router as partner_marketplace_subscriptions_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
 from app.routers.subscriptions_v1 import router as subscriptions_router
@@ -428,6 +430,10 @@ app.include_router(partner_marketplace_router, prefix=LEGACY_API_PREFIX)
 app.include_router(partner_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
 app.include_router(partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
+app.include_router(partner_marketplace_analytics_router, prefix=LEGACY_API_PREFIX)
+app.include_router(partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
+app.include_router(partner_marketplace_subscriptions_router, prefix=LEGACY_API_PREFIX)
+app.include_router(partner_marketplace_subscriptions_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_router, prefix=LEGACY_API_PREFIX)
 app.include_router(client_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
