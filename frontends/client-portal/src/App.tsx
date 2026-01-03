@@ -28,7 +28,7 @@ import { useAuth } from "./auth/AuthContext";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ClientControlsPage } from "./pages/ClientControlsPage";
 import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
-import { MarketplaceServicePage } from "./pages/MarketplaceServicePage";
+import { MarketplaceProductDetailsPage } from "./pages/MarketplaceProductDetailsPage";
 import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
 import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
 import { SupportRequestsPage } from "./pages/SupportRequestsPage";
@@ -128,9 +128,9 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/operations/:id" element={<OperationDetailsPage />} />
                 <Route path="/balances" element={<BalancesPage />} />
                 <Route path="/marketplace" element={<MarketplaceCatalogPage />} />
+                <Route path="/marketplace/products/:productId" element={<MarketplaceProductDetailsPage />} />
                 <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
                 <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
-                <Route path="/marketplace/:serviceId" element={<MarketplaceServicePage />} />
                 <Route path="/support/requests" element={<SupportRequestsPage />} />
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
                 <Route path="/cases" element={<CasesPage />} />

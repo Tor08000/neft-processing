@@ -19,7 +19,9 @@
     "orders": "Заказы",
     "documents": "Документы",
     "exports": "Экспорты / 1C",
-    "marketplace": "Marketplace",
+    "marketplace": "Маркетплейс",
+    "marketplaceBrowse": "Маркетплейс · Витрина",
+    "marketplaceOrders": "Маркетплейс · Мои заказы",
     "actions": "Центр действий",
     "supportRequests": "Запросы",
     "cases": "Кейсы",
@@ -295,8 +297,8 @@
   },
   "emptyStates": {
     "marketplaceCatalog": {
-      "title": "Услуги пока недоступны",
-      "description": "Партнёры ещё не опубликовали услуги для вашего региона."
+      "title": "Маркетплейс пока пуст",
+      "description": "Опубликованные продукты пока не доступны."
     },
     "marketplaceOrders": {
       "title": "Заказов пока нет",
@@ -339,30 +341,89 @@
     "empty": "Нет данных по подписке"
   },
   "marketplaceCatalog": {
-    "title": "Marketplace",
-    "subtitle": "Выбирайте услуги партнёров и оформляйте заказы онлайн.",
+    "title": "Маркетплейс",
+    "subtitle": "Выбирайте опубликованные продукты и услуги партнёров.",
     "errors": {
-      "loadFailed": "Не удалось загрузить услуги"
+      "loadFailed": "Не удалось загрузить продукты",
+      "unavailable": "Маркетплейс недоступен в этом окружении."
     },
     "forbidden": {
       "clientOnly": "Доступ к маркетплейсу доступен только клиентам.",
-      "catalogDenied": "Доступ к каталогу услуг запрещён."
+      "catalogDenied": "Доступ к витрине маркетплейса запрещён."
+    },
+    "categories": {
+      "all": "Все",
+      "more": "Ещё…",
+      "less": "Скрыть"
     },
     "filters": {
+      "search": "Поиск",
       "category": "Категория",
+      "type": "Тип",
+      "priceModel": "Модель цены",
       "partner": "Партнёр",
-      "location": "Станция / Локация",
-      "priceFrom": "Цена от",
-      "priceTo": "Цена до",
-      "availability": "Доступность"
+      "sort": "Сортировка",
+      "all": "Все"
+    },
+    "types": {
+      "service": "Услуга",
+      "product": "Продукт"
+    },
+    "priceModels": {
+      "fixed": "Фиксированная",
+      "perUnit": "За единицу",
+      "tiered": "Тарифная"
+    },
+    "sort": {
+      "newest": "Сначала новые",
+      "priceAsc": "Цена по возрастанию",
+      "priceDesc": "Цена по убыванию"
     },
     "card": {
       "categoryFallback": "Категория не указана",
-      "descriptionFallback": "Описание услуги не предоставлено.",
-      "partner": "Партнёр: {name}",
-      "priceFrom": "Цена от: {price}",
-      "availability": "Доступность: {availability}"
+      "partnerFallback": "Партнёр не указан",
+      "descriptionFallback": "Описание не предоставлено.",
+      "priceSummary": "Цена: {price}",
+      "priceFallback": "Цена по запросу",
+      "view": "Открыть",
+      "order": "Заказать"
+    },
+    "empty": {
+      "filteredTitle": "Нет продуктов по выбранным фильтрам",
+      "filteredDescription": "Измените фильтры или сбросьте поиск."
     }
+  },
+  "marketplaceProduct": {
+    "title": "Карточка продукта",
+    "subtitle": "Подробности, условия SLA и стоимость.",
+    "errors": {
+      "loadFailed": "Не удалось загрузить карточку продукта"
+    },
+    "forbidden": {
+      "clientOnly": "Доступ к маркетплейсу доступен только клиентам.",
+      "productDenied": "Просмотр карточки продукта запрещён."
+    },
+    "backToMarketplace": "Назад в маркетплейс",
+    "partnerFallback": "Партнёр не указан",
+    "categoryFallback": "Категория не указана",
+    "verifiedBadge": "Проверен",
+    "priceLabel": "Стоимость",
+    "priceFallback": "Цена по запросу",
+    "order": "Заказать",
+    "descriptionLabel": "Описание",
+    "descriptionFallback": "Описание отсутствует.",
+    "sla": {
+      "title": "Уровень сервиса",
+      "threshold": "{comparison} {threshold} за {window}",
+      "windowDefault": "период",
+      "penalties": "Штрафы: {penalties}",
+      "fallback": "SLA будет предоставлен при подтверждении заказа."
+    },
+    "auditNote": "Все действия и заказы аудируются и подписываются.",
+    "orderingSoon": "Оформление заказа скоро будет доступно.",
+    "orderingEnabled": "Оформление заказа доступно.",
+    "notFoundTitle": "Продукт не найден",
+    "notFoundDescription": "Попробуйте вернуться в маркетплейс."
   },
   "marketplaceOrders": {
     "title": "Мои заказы",

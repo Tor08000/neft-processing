@@ -1,20 +1,57 @@
-export interface MarketplaceCatalogItem {
+export type MarketplaceProductType = "SERVICE" | "PRODUCT";
+export type MarketplacePriceModel = "FIXED" | "PER_UNIT" | "TIERED";
+
+export interface MarketplaceProductSummary {
   id: string;
+  type: MarketplaceProductType;
   title: string;
-  description?: string | null;
+  short_description?: string | null;
   category?: string | null;
+  price_model?: MarketplacePriceModel | null;
+  price_summary?: string | null;
   partner_name?: string | null;
   partner_id?: string | null;
-  price_from?: number | null;
-  currency?: string | null;
-  availability?: string | null;
+  published_at?: string | null;
 }
 
-export interface MarketplaceCatalogResponse {
-  items: MarketplaceCatalogItem[];
+export interface MarketplaceProductListResponse {
+  items: MarketplaceProductSummary[];
   total?: number | null;
   limit?: number | null;
   offset?: number | null;
+}
+
+export interface MarketplacePartnerSummary {
+  id?: string | null;
+  company_name?: string | null;
+  profile_url?: string | null;
+  verified?: boolean | null;
+}
+
+export interface MarketplaceSlaObligation {
+  metric: string;
+  threshold: number;
+  comparison?: string | null;
+  window?: string | null;
+  penalty?: string | null;
+}
+
+export interface MarketplaceSlaSummary {
+  obligations?: MarketplaceSlaObligation[] | null;
+  penalties?: string | null;
+}
+
+export interface MarketplaceProductDetails {
+  id: string;
+  type: MarketplaceProductType;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  price_model?: MarketplacePriceModel | null;
+  price_summary?: string | null;
+  price_config?: Record<string, unknown> | null;
+  partner?: MarketplacePartnerSummary | null;
+  sla_summary?: MarketplaceSlaSummary | null;
 }
 
 export interface MarketplaceOffer {
@@ -106,6 +143,12 @@ export interface MarketplaceCreateOrderPayload {
   offer_id: string;
   qty?: number | null;
   comment?: string | null;
+}
+
+export interface MarketplaceProductOrderPayload {
+  product_id: string;
+  qty?: number | null;
+  notes?: string | null;
 }
 
 export interface MarketplaceCreateOrderResponse {

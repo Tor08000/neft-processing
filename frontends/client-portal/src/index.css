@@ -216,6 +216,18 @@ button:disabled {
   min-width: 180px;
 }
 
+.filter--wide {
+  flex: 1;
+  min-width: 260px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .status-grid {
   display: grid;
   gap: 0.35rem;
@@ -1296,6 +1308,12 @@ textarea:focus-visible {
   border: 1px solid var(--neft-border);
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.summary-chip.is-active {
+  border-color: var(--neft-accent);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--neft-accent);
 }
 
 .alert-list {
