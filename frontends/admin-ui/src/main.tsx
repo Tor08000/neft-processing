@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import "./styles/neft-theme.css";
+import "../../shared/brand/brand.css";
 
 const base = import.meta.env.BASE_URL || "/admin/";
 

@@ -113,3 +113,34 @@ export const MessageCircle = (props: IconProps) => (
     <path d="M21 11a8 8 0 0 1-8 8H7l-4 3 1.2-4.5A8 8 0 1 1 21 11z" />
   </Icon>
 );
+
+export const BarChart3 = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M3 3v18h18" />
+    <rect x="7" y="11" width="3" height="6" rx="1" />
+    <rect x="12" y="7" width="3" height="10" rx="1" />
+    <rect x="17" y="5" width="3" height="12" rx="1" />
+  </Icon>
+);
+
+export const Briefcase = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="7" width="18" height="12" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Icon>
+);
+
+export const Percent = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M19 5L5 19" />
+    <circle cx="7" cy="7" r="2" />
+    <circle cx="17" cy="17" r="2" />
+  </Icon>
+);
+
+export const ShoppingBag = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M6 7h12l-1 12H7L6 7z" />
+    <path d="M9 7a3 3 0 0 1 6 0" />
+  </Icon>
+);

@@ -1,12 +1,13 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AppLogo } from "../../../shared/brand/components";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/", [searchParams]);
+  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/products", [searchParams]);
   const [email, setEmail] = useState("partner@neft.local");
   const [password, setPassword] = useState("partner");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,9 +33,12 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-wrapper">
-      <form className="card login-card" onSubmit={handleSubmit}>
-        <h1>Вход в кабинет партнёра</h1>
+    <div className="login-wrapper neft-page">
+      <form className="card login-card neft-card" onSubmit={handleSubmit}>
+        <div className="login-brand">
+          <AppLogo variant="full" size={72} />
+        </div>
+        <h1>NEFT Platform</h1>
         <p>Используйте учётные данные партнёра для доступа.</p>
         {error ? (
           <div className="error" role="alert">
@@ -55,6 +59,7 @@ export function LoginPage() {
             placeholder="partner@neft.local"
             required
             autoComplete="username"
+            className="neft-input neft-focus-ring"
           />
         </label>
 
@@ -67,10 +72,11 @@ export function LoginPage() {
             placeholder="partner"
             required
             autoComplete="current-password"
+            className="neft-input neft-focus-ring"
           />
         </label>
 
-        <button type="submit" className="primary" disabled={isSubmitting}>
+        <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting}>
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
       </form>

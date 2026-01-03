@@ -1,15 +1,16 @@
 import { Link } from "react-router-dom";
+import { EmptyState } from "../../../shared/brand/components";
 
 export function ForbiddenPage() {
   return (
-    <div className="empty-state empty-state--full">
-      <h1>Нет доступа</h1>
-      <p className="muted">У вас нет прав для просмотра этой страницы.</p>
-      <div className="actions">
-        <Link className="ghost" to="/login">
+    <EmptyState
+      title="Нет доступа"
+      description="У вас нет прав для просмотра этой страницы."
+      action={
+        <Link className="ghost neft-btn-secondary" to="/login">
           Войти под другой учетной записью
         </Link>
-      </div>
-    </div>
+      }
+    />
   );
 }

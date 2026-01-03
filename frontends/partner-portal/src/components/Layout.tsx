@@ -1,116 +1,73 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import {
-  BadgeDollarSign,
-  FileText,
-  Fuel,
-  LayoutDashboard,
-  LinkIcon,
-  MessageCircle,
+  BarChart3,
+  Briefcase,
   Package,
-  Settings,
-  ShieldCheck,
-  Wrench,
+  Percent,
+  ShoppingBag,
   Wallet,
-  Workflow,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n";
+import { BrandHeader, BrandSidebar, PageShell } from "../../../shared/brand/components";
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const location = useLocation();
+
+  const buildContextLabel = (section: string, path: string, basePath?: string) => {
+    if (!basePath) return section;
+    const suffix = path.replace(basePath, "");
+    const trail = suffix
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment));
+    return trail.length ? `${section} → ${trail.join(" / ")}` : section;
+  };
+
+  const navItems = [
+    { to: "/products", label: "Products", icon: <Package size={18} /> },
+    { to: "/orders", label: "Orders", icon: <ShoppingBag size={18} /> },
+    { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} /> },
+    { to: "/promotions", label: "Promotions", icon: <Percent size={18} /> },
+    { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} /> },
+    { to: "/payouts", label: "Payouts", icon: <Wallet size={18} /> },
+  ];
+
+  const activeItem = navItems.find(
+    (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
+  );
+  const sectionTitle = activeItem?.label ?? t("app.title");
+  const contextLabel = buildContextLabel(sectionTitle, location.pathname, activeItem?.to);
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar__meta">
-          <img className="logo" src="/partner/brand/neft-platform-mark.svg" alt="NEFT Platform mark" />
-          <div className="topbar__title">{t("app.title")}</div>
-          <div className="muted">
-            {user?.partnerId ? t("app.partnerLabel", { id: user.partnerId }) : t("app.partnerFallback")}
-          </div>
+    <div className="brand-shell neft-page">
+      <BrandSidebar items={navItems} title="Partner" />
+      <main className="brand-main">
+        <BrandHeader
+          title={sectionTitle}
+          subtitle={contextLabel}
+          meta={user?.partnerId ? t("app.partnerLabel", { id: user.partnerId }) : t("app.partnerFallback")}
+          userSlot={
+            <>
+              <div>
+                <div className="muted">{t("app.signedInAs")}</div>
+                <strong>{user?.email}</strong>
+                <div className="roles">{user?.roles.join(", ")}</div>
+              </div>
+              <button className="ghost neft-btn-secondary" onClick={logout} type="button">
+                {t("actions.logout")}
+              </button>
+            </>
+          }
+        />
+        <div className="brand-content">
+          <PageShell key={location.pathname}>
+            <Outlet />
+          </PageShell>
         </div>
-        <div className="topbar__meta topbar__meta--user">
-          <div>
-            <div className="muted">{t("app.signedInAs")}</div>
-            <strong>{user?.email}</strong>
-            <div className="roles">{user?.roles.join(", ")}</div>
-          </div>
-          <button className="ghost" onClick={logout} type="button">
-            {t("actions.logout")}
-          </button>
-        </div>
-      </header>
-
-      <div className="sidebar-layout">
-        <nav className="sidebar">
-          <NavLink to="/" end>
-            <LayoutDashboard size={18} />
-            {t("nav.dashboard")}
-          </NavLink>
-          <NavLink to="/stations">
-            <Fuel size={18} />
-            {t("nav.stations")}
-          </NavLink>
-          <NavLink to="/prices">
-            <BadgeDollarSign size={18} />
-            {t("nav.prices")}
-          </NavLink>
-          <NavLink to="/contracts">
-            <FileText size={18} />
-            {t("nav.contracts")}
-          </NavLink>
-          <NavLink to="/transactions">
-            <Workflow size={18} />
-            {t("nav.transactions")}
-          </NavLink>
-          <NavLink to="/orders">
-            <Package size={18} />
-            {t("nav.orders")}
-          </NavLink>
-          <NavLink to="/refunds">
-            <ShieldCheck size={18} />
-            {t("nav.refunds")}
-          </NavLink>
-          <NavLink to="/payouts">
-            <Wallet size={18} />
-            {t("nav.payouts")}
-          </NavLink>
-          <NavLink to="/documents">
-            <FileText size={18} />
-            {t("nav.documents")}
-          </NavLink>
-          <NavLink to="/services">
-            <Wrench size={18} />
-            {t("nav.services")}
-          </NavLink>
-          <div className="nav-section">{t("nav.marketplace")}</div>
-          <NavLink to="/marketplace/profile">
-            <FileText size={18} />
-            {t("nav.marketplaceProfile")}
-          </NavLink>
-          <NavLink to="/marketplace/products">
-            <Package size={18} />
-            {t("nav.marketplaceProducts")}
-          </NavLink>
-          <NavLink to="/integrations">
-            <LinkIcon size={18} />
-            {t("nav.integrations")}
-          </NavLink>
-          <NavLink to="/support/requests">
-            <MessageCircle size={18} />
-            {t("nav.supportRequests")}
-          </NavLink>
-          <NavLink to="/settings">
-            <Settings size={18} />
-            {t("nav.settings")}
-          </NavLink>
-        </nav>
-
-        <main className="main-area">
-          <Outlet />
-        </main>
-      </div>
+      </main>
     </div>
   );
 }

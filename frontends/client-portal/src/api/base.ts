@@ -3,10 +3,7 @@ const normalizePrefix = (raw: string): string => {
   return value.replace(/\/+$/, "");
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "http://gateway").replace(
-  /\/+$/,
-  "",
-);
+const API_BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
 const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/+$/, "");
 
 const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): string => {

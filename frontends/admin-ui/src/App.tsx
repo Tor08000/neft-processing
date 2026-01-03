@@ -58,6 +58,16 @@ export function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/users" replace />} />
+            <Route path="/finance" element={<Navigate to="/finance/invoices" replace />} />
+            <Route path="/finance/invoices" element={<BillingInvoicesPage />} />
+            <Route path="/finance/invoices/:id" element={<BillingInvoiceDetailsPage />} />
+            <Route path="/finance/payments" element={<BillingPaymentsPage />} />
+            <Route path="/finance/payments/:id" element={<BillingPaymentDetailsPage />} />
+            <Route path="/finance/refunds" element={<BillingRefundsPage />} />
+            <Route path="/finance/links" element={<BillingLinksPage />} />
+            <Route path="/risk" element={<Navigate to="/analytics/risk" replace />} />
+            <Route path="/policies" element={<Navigate to="/risk/rules" replace />} />
+            <Route path="/marketplace" element={<Navigate to="/crm/clients" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/billing" element={<BillingOverviewPage />}>
               <Route index element={<Navigate to="/billing/invoices" replace />} />
