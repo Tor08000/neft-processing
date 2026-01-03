@@ -3,10 +3,10 @@ FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY frontends/partner-portal/package.json frontends/partner-portal/package-lock.json ./
 RUN npm ci
 
-COPY . .
+COPY frontends/partner-portal/ ./
 RUN npm run build
 
 # ---------- Stage 2: nginx + статические файлы ----------
