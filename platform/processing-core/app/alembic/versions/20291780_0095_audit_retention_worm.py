@@ -89,6 +89,12 @@ def upgrade() -> None:
             sa.text(
                 f"""
                 DROP TRIGGER IF EXISTS case_events_worm_update ON {_schema_prefix()}case_events;
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER case_events_worm_update
                 BEFORE UPDATE ON {_schema_prefix()}case_events
                 FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}case_events_worm_guard();
@@ -99,6 +105,12 @@ def upgrade() -> None:
             sa.text(
                 f"""
                 DROP TRIGGER IF EXISTS case_events_worm_delete ON {_schema_prefix()}case_events;
+                """
+            )
+        )
+        op.execute(
+            sa.text(
+                f"""
                 CREATE TRIGGER case_events_worm_delete
                 BEFORE DELETE ON {_schema_prefix()}case_events
                 FOR EACH ROW EXECUTE FUNCTION {_schema_prefix()}case_events_worm_guard();
