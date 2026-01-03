@@ -12,7 +12,7 @@ from app.models.vehicle_profile import VehicleServiceType
 
 
 JSON_TYPE = JSON().with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
-RESOURCE_ID_ARRAY = postgresql.ARRAY(GUID()).with_variant(JSON_TYPE, "sqlite")
+RESOURCE_ID_ARRAY = postgresql.ARRAY(GUID()).with_variant(JSON(), "sqlite")
 
 
 class PartnerServiceStatus(str, Enum):
