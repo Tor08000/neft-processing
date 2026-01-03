@@ -7,7 +7,7 @@ COPY frontends/partner-portal/package.json frontends/partner-portal/package-lock
 RUN npm ci
 
 COPY frontends/partner-portal/ ./
-COPY frontends/shared/ /app/shared/
+COPY frontends/shared/brand/ /app/shared/brand/
 RUN npm run build
 
 # ---------- Stage 2: nginx + статические файлы ----------
