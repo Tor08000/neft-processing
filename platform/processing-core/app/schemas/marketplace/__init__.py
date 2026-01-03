@@ -29,6 +29,14 @@ from .sla import (  # noqa: F401
     OrderSlaEvaluationOut,
     OrderSlaEvaluationsResponse,
 )
+from .recommendations import (  # noqa: F401
+    MarketplaceEventCreate,
+    MarketplaceEventOut,
+    RecommendationItem,
+    RecommendationReason,
+    RecommendationResponse,
+    RelatedProductsResponse,
+)
 
 __all__ = [
     "PartnerProfileCreate",
