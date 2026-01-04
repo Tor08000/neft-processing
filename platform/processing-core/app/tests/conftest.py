@@ -196,8 +196,13 @@ def _run_alembic_upgrade(database_url: str, schema: str) -> None:
     if search_option not in options:
         options = f"{options} {search_option}".strip()
     query["options"] = options
-    cfg.set_main_option("sqlalchemy.url", url.set(query=query).render_as_string(hide_password=False))
+    url_str = url.set(query=query).render_as_string(hide_password=False)
+    cfg.set_main_option("sqlalchemy.url", _escape_alembic_cfg_percent(url_str))
     command.upgrade(cfg, "head")
+
+
+def _escape_alembic_cfg_percent(url: str) -> str:
+    return url.replace("%", "%%")
 
 
 def _reset_schema(database_url: str, schema: str) -> None:
