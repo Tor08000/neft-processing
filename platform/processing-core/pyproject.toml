@@ -26,6 +26,17 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
+testpaths = [
+  "app/tests"
+]
+norecursedirs = [
+  ".git",
+  ".venv",
+  "node_modules",
+  "platform/ai-services",
+  "platform/shared",
+  "platform/*/app/tests"
+]
 markers = [
   "unit",
   "integration",

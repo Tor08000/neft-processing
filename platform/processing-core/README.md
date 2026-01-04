@@ -25,6 +25,9 @@ pytest platform/processing-core/app/tests/test_reversals.py -q
 pytest platform/processing-core/app/tests/test_disputes.py -q
 ```
 
+⚠️ Monorepo note  
+Each service has isolated test dependencies. Run tests from the service root or via scoped pytest paths.
+
 ## Granting ADMIN role for auth-host
 
 Auth endpoints require an `ADMIN` role in the JWT. You can grant it directly in Postgres (works from Windows CMD as well):
