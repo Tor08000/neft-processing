@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -71,30 +70,8 @@ def _has_fastapi() -> bool:
         return False
 
 
-def _install_fastapi_skip_stubs() -> None:
-    def _skip(*_args, **_kwargs):
-        pytest.skip(FASTAPI_SKIP_REASON, allow_module_level=True)
-
-    def _make_module(name: str, is_pkg: bool = False) -> types.ModuleType:
-        module = types.ModuleType(name)
-
-        def __getattr__(_attr: str):
-            _skip()
-
-        module.__getattr__ = __getattr__  # type: ignore[attr-defined]
-        if is_pkg:
-            module.__path__ = []  # type: ignore[attr-defined]
-        return module
-
-    sys.modules.setdefault("fastapi", _make_module("fastapi", is_pkg=True))
-    sys.modules.setdefault("fastapi.testclient", _make_module("fastapi.testclient"))
-    sys.modules.setdefault("starlette", _make_module("starlette", is_pkg=True))
-    sys.modules.setdefault("starlette.testclient", _make_module("starlette.testclient"))
-
-
 HAS_FASTAPI = _has_fastapi()
-if not HAS_FASTAPI:
-    _install_fastapi_skip_stubs()
+TESTS_ROOT = PROCESSING_APP_ROOT / "app" / "tests"
 
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -111,6 +88,45 @@ def _log_database_url() -> None:
 
 
 _log_database_url()
+
+
+def pytest_report_header(config: pytest.Config) -> str | None:
+    if not HAS_FASTAPI:
+        return f"{FASTAPI_SKIP_REASON}; skipping contracts/smoke/integration collections"
+    return None
+
+
+def pytest_ignore_collect(path: Path, config: pytest.Config) -> bool:  # type: ignore[override]
+    if HAS_FASTAPI:
+        return False
+    path_str = str(path).lower()
+    if "/tests/contracts/" in path_str or "\\tests\\contracts\\" in path_str:
+        return True
+    if "/tests/smoke/" in path_str or "\\tests\\smoke\\" in path_str:
+        return True
+    if "/tests/integration/" in path_str or "\\tests\\integration\\" in path_str:
+        return True
+    return False
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:  # type: ignore[override]
+    known_marks = {
+        "unit",
+        "integration",
+        "smoke",
+        "contracts",
+        "contracts_api",
+        "contracts_events",
+    }
+    for item in items:
+        try:
+            item_path = Path(str(getattr(item, "fspath", getattr(item, "path", "")))).resolve()
+        except OSError:
+            item_path = Path(str(getattr(item, "fspath", getattr(item, "path", ""))))
+        if TESTS_ROOT not in item_path.parents and item_path != TESTS_ROOT:
+            continue
+        if not any(item.get_closest_marker(mark) for mark in known_marks):
+            item.add_marker("unit")
 
 
 def _uses_postgres(database_url: str) -> bool:
