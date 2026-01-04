@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -12,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import PlainTextResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -148,6 +150,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "core-api")
 DEFAULT_API_PREFIX = "/api/core"
 LEGACY_API_PREFIX = "/api"
 API_PREFIX_CORE = os.getenv("API_PREFIX_CORE", DEFAULT_API_PREFIX)
+CORE_API_PREFIX = DEFAULT_API_PREFIX
 
 
 def _normalize_api_prefix(prefix: str, default: str) -> str:
@@ -158,6 +161,9 @@ def _normalize_api_prefix(prefix: str, default: str) -> str:
 
 
 API_PREFIX_CORE = _normalize_api_prefix(API_PREFIX_CORE, DEFAULT_API_PREFIX)
+INCLUDE_CORE_PREFIX_ROUTES = API_PREFIX_CORE != CORE_API_PREFIX
+INCLUDE_API_PREFIX_CORE = API_PREFIX_CORE != LEGACY_API_PREFIX
+INCLUDE_CUSTOM_CORE_PREFIX = INCLUDE_API_PREFIX_CORE and INCLUDE_CORE_PREFIX_ROUTES
 init_logging(service_name=SERVICE_NAME)
 logger = get_logger(__name__)
 
@@ -450,47 +456,66 @@ if payouts_router is not None:
     app.include_router(payouts_router, prefix="")
 
 app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
-app.include_router(admin_router, prefix=API_PREFIX_CORE)
-app.include_router(kpi_router, prefix=API_PREFIX_CORE)
-app.include_router(explain_v2_router, prefix=API_PREFIX_CORE)
-app.include_router(cases_router, prefix=API_PREFIX_CORE)
-app.include_router(achievements_router, prefix=API_PREFIX_CORE)
-app.include_router(subscriptions_router, prefix=API_PREFIX_CORE)
-app.include_router(subscriptions_admin_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    app.include_router(admin_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    app.include_router(kpi_router, prefix=API_PREFIX_CORE)
+    app.include_router(explain_v2_router, prefix=API_PREFIX_CORE)
+    app.include_router(cases_router, prefix=API_PREFIX_CORE)
+    app.include_router(achievements_router, prefix=API_PREFIX_CORE)
+    app.include_router(subscriptions_router, prefix=API_PREFIX_CORE)
+    app.include_router(subscriptions_admin_router, prefix=API_PREFIX_CORE)
 app.include_router(client_router)
-app.include_router(client_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    app.include_router(client_router, prefix=API_PREFIX_CORE)
 app.include_router(fleet_router)
-app.include_router(fleet_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    app.include_router(fleet_router, prefix=API_PREFIX_CORE)
 app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
-app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
 app.include_router(client_vehicles_router)
-app.include_router(client_vehicles_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    app.include_router(client_vehicles_router, prefix=API_PREFIX_CORE)
 app.include_router(portal_client_router, prefix=LEGACY_API_PREFIX)
-app.include_router(portal_client_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(portal_client_router, prefix=API_PREFIX_CORE)
 app.include_router(portal_partner_router, prefix=LEGACY_API_PREFIX)
-app.include_router(portal_partner_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(portal_partner_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_promotions_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_promotions_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_coupons_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_coupons_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_coupons_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_analytics_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_marketplace_subscriptions_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_marketplace_subscriptions_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_marketplace_subscriptions_router, prefix=API_PREFIX_CORE)
 app.include_router(partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
-app.include_router(partner_service_bookings_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(partner_service_bookings_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_router, prefix=LEGACY_API_PREFIX)
-app.include_router(client_marketplace_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(client_marketplace_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
-app.include_router(client_marketplace_orders_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(client_marketplace_orders_router, prefix=API_PREFIX_CORE)
 app.include_router(client_marketplace_deals_router, prefix=LEGACY_API_PREFIX)
-app.include_router(client_marketplace_deals_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(client_marketplace_deals_router, prefix=API_PREFIX_CORE)
 app.include_router(client_service_bookings_router, prefix=LEGACY_API_PREFIX)
-app.include_router(client_service_bookings_router, prefix=API_PREFIX_CORE)
+if INCLUDE_API_PREFIX_CORE:
+    app.include_router(client_service_bookings_router, prefix=API_PREFIX_CORE)
 app.include_router(client_documents_router)
 app.include_router(internal_fleet_router)
 app.include_router(internal_telegram_router)
@@ -1017,7 +1042,6 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 # HEALTH
 # -----------------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse)
-@app.get(f"{API_PREFIX_CORE}/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     signing_service = AuditSigningService()
     return HealthResponse(
@@ -1075,6 +1099,47 @@ core_prefixed_router.add_api_route(
 )
 
 app.include_router(core_prefixed_router)
+
+
+def _enforce_unique_routes(fastapi_app: FastAPI) -> None:
+    duplicates: dict[tuple[str, str], list[APIRoute]] = defaultdict(list)
+    seen: dict[tuple[str, str], APIRoute] = {}
+    ignored_methods = {"HEAD", "OPTIONS"}
+    for route in fastapi_app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        methods = {method for method in (route.methods or set()) if method not in ignored_methods}
+        for method in methods:
+            key = (method, route.path)
+            if key in seen:
+                if not duplicates[key]:
+                    duplicates[key].append(seen[key])
+                duplicates[key].append(route)
+            else:
+                seen[key] = route
+
+    if not duplicates:
+        return
+
+    lines = ["Duplicate routes detected:"]
+    for (method, path), routes in sorted(duplicates.items()):
+        names = ", ".join(sorted({route.name for route in routes}))
+        lines.append(f"{method} {path} -> {names}")
+    message = "\n".join(lines)
+    logger.error(message)
+    raise RuntimeError(message)
+
+
+if API_PREFIX_CORE != CORE_API_PREFIX:
+    app.add_api_route(
+        f"{API_PREFIX_CORE}/health",
+        health,
+        response_model=HealthResponse,
+        methods=["GET"],
+    )
+
+if os.getenv("NEFT_STRICT_ROUTES", "").lower() in {"1", "true", "yes"}:
+    _enforce_unique_routes(app)
 
 
 @app.get("/api/core/openapi.json", include_in_schema=False)
