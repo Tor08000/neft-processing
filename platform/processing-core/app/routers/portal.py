@@ -31,8 +31,6 @@ from app.schemas.portal import (
     ClientInvoiceRefundSummary,
     ClientInvoiceSummary,
     ContractObligationSummary,
-    MarketplaceProductDetails,
-    MarketplaceProductListResponse,
     PartnerContractSummary,
     PartnerContractsResponse,
     PartnerDashboardResponse,
@@ -237,33 +235,6 @@ def list_client_invoices(
         for invoice in invoices
     ]
     return ClientInvoiceListResponse(items=items, total=total, limit=limit, offset=offset)
-
-
-@client_router.get("/marketplace/products", response_model=MarketplaceProductListResponse)
-def list_marketplace_products(
-    q: str | None = Query(None),
-    category: str | None = Query(None),
-    type: str | None = Query(None),
-    price_model: str | None = Query(None),
-    partner_id: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    principal: Principal = Depends(require_permission("client:marketplace:view")),
-) -> MarketplaceProductListResponse:
-    _ensure_client_context(principal)
-    return MarketplaceProductListResponse(items=[], total=0, limit=limit, offset=offset)
-
-
-@client_router.get("/marketplace/products/{product_id}", response_model=MarketplaceProductDetails)
-def get_marketplace_product_details(
-    product_id: str,
-    principal: Principal = Depends(require_permission("client:marketplace:view")),
-) -> MarketplaceProductDetails:
-    _ensure_client_context(principal)
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail={"error": "not_found", "reason": "product_unavailable", "resource": product_id},
-    )
 
 
 @client_router.get("/marketplace/orders/{order_id}/sla", response_model=OrderSlaEvaluationsResponse)
