@@ -61,11 +61,6 @@ def _prepare_paths(node_path: Path) -> Optional[Path]:
     return current_root
 
 
-def pytest_collect_file(file_path, parent):  # type: ignore[override]
-    _prepare_paths(Path(file_path))
-    return None
-
-
 def pytest_runtest_setup(item):  # type: ignore[override]
     node_path = Path(getattr(item, "fspath", getattr(item, "path", "")))
     _prepare_paths(node_path)

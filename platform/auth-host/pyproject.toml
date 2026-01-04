@@ -12,3 +12,8 @@ dependencies = [
   "redis==5.0.7",
   "neft_shared @ file:../../shared/python"
 ]
+
+[tool.pytest.ini_options]
+testpaths = [
+  "app/tests",
+]
