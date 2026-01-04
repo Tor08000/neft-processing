@@ -158,12 +158,12 @@ def _upgrade_and_inventory(db_url: str, schema: str, monkeypatch: pytest.MonkeyP
 
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for this integration test")
-def test_upgrade_creates_public_tables_via_docker(monkeypatch):
+def test_upgrade_creates_processing_core_tables_via_docker(monkeypatch):
     image = os.getenv("TEST_POSTGRES_IMAGE", "postgres:16")
 
     try:
         with _postgres_container(image) as db_url:
-            results = _upgrade_and_inventory(db_url, "public", monkeypatch)
+            results = _upgrade_and_inventory(db_url, "processing_core", monkeypatch)
     except RuntimeError as exc:
         pytest.skip(str(exc))
 
@@ -171,8 +171,8 @@ def test_upgrade_creates_public_tables_via_docker(monkeypatch):
     missing = [name for name in REQUIRED_TABLES if regclasses[name] is None]
     spillover = [name for name in REQUIRED_TABLES if results["spillover"].get(name) is not None]
 
-    assert not missing, f"tables missing in public schema: {missing}"
-    assert not spillover, f"tables unexpectedly found outside public schema: {spillover}"
+    assert not missing, f"tables missing in processing_core schema: {missing}"
+    assert not spillover, f"tables unexpectedly found outside processing_core schema: {spillover}"
     assert set(results["version_values"]) == results["script_heads"]
     for head in results["script_heads"]:
         assert head in results["current_output"]

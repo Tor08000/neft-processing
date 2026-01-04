@@ -24,7 +24,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     if not is_postgres(bind):
         return
-    schema = resolve_db_schema().schema or "public"
+    schema = resolve_db_schema().schema
     ensure_pg_enum_value(bind, "document_type", "OFFER", schema=schema)
 
 

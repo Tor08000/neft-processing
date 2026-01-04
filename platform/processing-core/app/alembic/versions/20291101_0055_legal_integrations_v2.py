@@ -31,7 +31,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "signature_type", SIGNATURE_TYPE, schema=SCHEMA)
 
     for value in ("SIG", "P7S", "CERT", "EDI_XML"):
-        ensure_pg_enum_value(bind, "document_file_type", value, schema=SCHEMA or "public")
+        ensure_pg_enum_value(bind, "document_file_type", value, schema=SCHEMA or resolve_db_schema().schema)
 
     envelope_status_enum = safe_enum(bind, "document_envelope_status", DOCUMENT_ENVELOPE_STATUS, schema=SCHEMA)
     signature_type_enum = safe_enum(bind, "signature_type", SIGNATURE_TYPE, schema=SCHEMA)

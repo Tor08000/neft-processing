@@ -185,7 +185,7 @@ def ensure_enum_type_exists(bind: Connection, type_name: str, values: Sequence[s
     ensure_pg_enum(bind, type_name, values=values, schema=schema)
 
 
-def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = "public") -> None:
+def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = DB_SCHEMA) -> None:
     """
     Ensure Postgres enum type contains a given label.
     - conn: SQLAlchemy Connection
@@ -196,7 +196,7 @@ def ensure_pg_enum_value(conn, enum_name: str, value: str, schema: str = "public
     if not is_postgres(conn):
         return
 
-    schema_name = schema or "public"
+    schema_name = schema or DB_SCHEMA
     value_literal = "'" + value.replace("'", "''") + "'"
 
     type_exists = conn.execute(
@@ -251,7 +251,7 @@ def drop_pg_enum_if_exists(bind: Connection, enum_name: str, schema: str = DB_SC
     if not is_postgres(bind):
         return
 
-    schema_name = schema or "public"
+    schema_name = schema or DB_SCHEMA
     qualified_enum = f"{schema_name}.{enum_name}"
     bind.exec_driver_sql(
         """
@@ -362,7 +362,7 @@ def create_unique_index_if_not_exists(
         logger.info("Index %s.%s already exists, skipping", schema, index_name)
         return
 
-    schema_name = schema or "public"
+    schema_name = schema or DB_SCHEMA
     sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} ({', '.join(columns)})"
     bind.exec_driver_sql(sql)
 
@@ -379,7 +379,7 @@ def create_unique_expr_index_if_not_exists(
         logger.info("Index %s.%s already exists, skipping", schema, index_name)
         return
 
-    schema_name = schema or "public"
+    schema_name = schema or DB_SCHEMA
     sql = f"CREATE UNIQUE INDEX {index_name} ON {schema_name}.{table_name} {expr_sql}"
     bind.exec_driver_sql(sql)
 

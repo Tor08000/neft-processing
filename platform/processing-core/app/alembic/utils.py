@@ -57,7 +57,7 @@ def _format_table_name(schema: str | None, table_name: str) -> str:
             )
         return f"{table_schema}.{table_part}"
 
-    schema_name = _safe_ident(schema or "public")
+    schema_name = _safe_ident(schema or SCHEMA)
     table_part = _safe_ident(table_name)
     return f"{schema_name}.{table_part}"
 

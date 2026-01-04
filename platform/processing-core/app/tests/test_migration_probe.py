@@ -2,12 +2,13 @@ import sqlalchemy as sa
 import pytest
 
 from app.db import engine
+from app.db.schema import resolve_db_schema
 
 
 @pytest.mark.skipif(engine.dialect.name != "postgresql", reason="Probe requires Postgres database")
 def test_postgres_probe_creates_table_and_is_visible():
     table_name = "_probe_migrations"
-    schema = "public"
+    schema = resolve_db_schema().schema
 
     with engine.begin() as connection:
         connection.exec_driver_sql(f"DROP TABLE IF EXISTS {schema}.{table_name}")
