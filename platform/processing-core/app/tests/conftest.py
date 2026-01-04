@@ -164,6 +164,14 @@ def _reset_schema(database_url: str, schema: str) -> None:
 
 
 def _ensure_required_tables(database_url: str, schema: str) -> None:
+    required_tables = {
+        "audit_log",
+        "billing_periods",
+        "cases",
+        "internal_ledger_accounts",
+        "invoices",
+        "reconciliation_runs",
+    }
     engine = create_engine(
         database_url,
         future=True,
@@ -184,7 +192,7 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
                     WHERE table_name = ANY(:table_names)
                     """
                 ),
-                {"table_names": list({"operations", "cards"})},
+                {"table_names": list(required_tables)},
             ).all()
         schemas_by_table: dict[str, set[str]] = {}
         for table_schema, table_name in rows:
@@ -192,12 +200,18 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
     finally:
         engine.dispose()
 
-    required_tables = {"operations", "cards"}
     missing = required_tables - tables
     if missing:
-        diagnostics = ", ".join(
-            f"{table} in {sorted(schemas_by_table.get(table, set())) or '[]'}"
-            for table in sorted(required_tables)
+        other_schema_hits = {
+            table: sorted(schemas - {schema})
+            for table, schemas in schemas_by_table.items()
+            if schemas - {schema}
+        }
+        diagnostics = (
+            f"Required tables: {', '.join(sorted(required_tables))}. "
+            f"Tables in schema '{schema}': {', '.join(sorted(tables)) or '[]'}. "
+            "Found in other schemas: "
+            f"{', '.join(f'{table} -> {schemas}' for table, schemas in sorted(other_schema_hits.items())) or '[]'}."
         )
         raise RuntimeError(
             "Missing required tables after migrations: "
