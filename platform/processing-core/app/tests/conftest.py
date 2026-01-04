@@ -1,9 +1,11 @@
 import os
 import re
 import sys
-from pathlib import Path
-from sqlalchemy.engine.url import make_url
+import types
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from sqlalchemy.engine.url import make_url
 
 from alembic import command
 from alembic.config import Config
@@ -56,24 +58,43 @@ os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
-def _maybe_import_fastapi():
+FASTAPI_SKIP_REASON = (
+    "fastapi not installed; run in docker: docker compose exec -T core-api pytest -q -x"
+)
+
+
+def _has_fastapi() -> bool:
     try:
-        from fastapi import Depends
+        import fastapi  # noqa: F401
+        return True
     except ModuleNotFoundError:
-        return None
-    return Depends
+        return False
 
 
-_FASTAPI_DEPENDS = _maybe_import_fastapi()
-if _FASTAPI_DEPENDS is not None:
-    try:
-        from app.api.dependencies.admin import require_admin_user
-        from app.main import app as fastapi_app
-        from app.services import admin_auth as _admin_auth
+def _install_fastapi_skip_stubs() -> None:
+    def _skip(*_args, **_kwargs):
+        pytest.skip(FASTAPI_SKIP_REASON, allow_module_level=True)
 
-        fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.require_admin
-    except Exception:
-        pass
+    def _make_module(name: str, is_pkg: bool = False) -> types.ModuleType:
+        module = types.ModuleType(name)
+
+        def __getattr__(_attr: str):
+            _skip()
+
+        module.__getattr__ = __getattr__  # type: ignore[attr-defined]
+        if is_pkg:
+            module.__path__ = []  # type: ignore[attr-defined]
+        return module
+
+    sys.modules.setdefault("fastapi", _make_module("fastapi", is_pkg=True))
+    sys.modules.setdefault("fastapi.testclient", _make_module("fastapi.testclient"))
+    sys.modules.setdefault("starlette", _make_module("starlette", is_pkg=True))
+    sys.modules.setdefault("starlette.testclient", _make_module("starlette.testclient"))
+
+
+HAS_FASTAPI = _has_fastapi()
+if not HAS_FASTAPI:
+    _install_fastapi_skip_stubs()
 
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -255,7 +276,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
 
 @pytest.fixture(autouse=True)
 def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
-    if _FASTAPI_DEPENDS is None:
+    if not HAS_FASTAPI:
         return
     try:
         from app.services import admin_auth, client_auth
