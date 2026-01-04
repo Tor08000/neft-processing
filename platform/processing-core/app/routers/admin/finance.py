@@ -11,7 +11,12 @@ from app.schemas.admin.finance import (
     PaymentResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
-from app.services.finance import FinanceOperationInProgress, FinanceService, InvoiceNotFound
+from app.services.finance import (
+    FinanceOperationInProgress,
+    FinanceService,
+    InvoiceNotFound,
+    PaymentIdempotencyConflict,
+)
 from app.services.policy import PolicyAccessDenied
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
 from app.services.job_locks import make_stable_key
@@ -47,6 +52,8 @@ def create_payment(
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
+    except PaymentIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvalidTransitionError as exc:
         AuditService(db).audit(
             event_type="PAYMENT_CONFLICT",

@@ -31,6 +31,7 @@ from app.services.finance import (
     FinanceOperationInProgress,
     FinanceService,
     InvoiceNotFound,
+    PaymentIdempotencyConflict,
     PaymentReferenceConflict,
     RefundReferenceConflict,
 )
@@ -188,6 +189,8 @@ def create_invoice_payment(
         raise HTTPException(status_code=404, detail="invoice not found") from exc
     except PaymentReferenceConflict as exc:
         raise HTTPException(status_code=409, detail="payment reference conflict") from exc
+    except PaymentIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except FinanceOperationInProgress as exc:
         raise HTTPException(status_code=409, detail="already running") from exc
     except InvalidTransitionError as exc:

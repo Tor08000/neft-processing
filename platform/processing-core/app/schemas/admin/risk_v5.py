@@ -25,7 +25,7 @@ class RiskV5ABAssignmentRead(RiskV5ABAssignmentCreate):
 
 
 class RiskV5ModelActivate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
     subject_type: RiskSubjectType
     model_version: str
@@ -38,6 +38,8 @@ class RiskV5RetrainingRun(BaseModel):
 
 
 class RiskV5RetrainingResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     published: bool
     model_version: str | None
 

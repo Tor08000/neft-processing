@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 OrderStatus = Literal[
@@ -33,15 +33,14 @@ OrderActorType = Literal["client", "partner", "admin", "system"]
 
 
 class OrderCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     product_id: str
     quantity: Decimal = Field(..., gt=0)
     note: str | None = None
     external_ref: str | None = Field(default=None, alias="idempotency_key")
     promotion_id: str | None = None
     coupon_code: str | None = None
-
-    class Config:
-        allow_population_by_field_name = True
 
 
 class OrderCancelRequest(BaseModel):
