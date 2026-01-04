@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 
 from alembic import command
 from alembic.config import Config
-from fastapi import Depends
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
 
@@ -57,14 +56,24 @@ os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
-try:
-    from app.api.dependencies.admin import require_admin_user
-    from app.main import app as fastapi_app
-    from app.services import admin_auth as _admin_auth
+def _maybe_import_fastapi():
+    try:
+        from fastapi import Depends
+    except ModuleNotFoundError:
+        return None
+    return Depends
 
-    fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.require_admin
-except Exception:
-    pass
+
+_FASTAPI_DEPENDS = _maybe_import_fastapi()
+if _FASTAPI_DEPENDS is not None:
+    try:
+        from app.api.dependencies.admin import require_admin_user
+        from app.main import app as fastapi_app
+        from app.services import admin_auth as _admin_auth
+
+        fastapi_app.dependency_overrides[require_admin_user] = _admin_auth.require_admin
+    except Exception:
+        pass
 
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -246,6 +255,8 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
 
 @pytest.fixture(autouse=True)
 def _mock_admin_public_key(monkeypatch: pytest.MonkeyPatch, rsa_keys: dict):
+    if _FASTAPI_DEPENDS is None:
+        return
     try:
         from app.services import admin_auth, client_auth
     except ModuleNotFoundError:
