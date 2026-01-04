@@ -23,6 +23,7 @@ from app.models.finance import (
 )
 from app.models.internal_ledger import InternalLedgerTransaction
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.money_flow import MoneyFlowEvent
 from app.models.refund_request import RefundRequest
 from app.services.legal_graph import (
     GraphContext,
@@ -43,6 +44,8 @@ from app.services.policy import Action, PolicyAccessDenied, PolicyEngine, actor_
 from app.services.policy.resources import ResourceContext
 from app.services.settlement_allocations import resolve_settlement_period
 from app.services.finance_invariants import FinancialInvariantChecker, FinancialInvariantViolation
+from app.services.money_flow.events import MoneyFlowEventType
+from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
 
 logger = get_logger(__name__)
 
@@ -158,6 +161,103 @@ class FinanceService:
             billing_metrics.mark_payment_failed()
             raise PaymentReferenceConflict(idempotency_key)
         return existing
+
+    def _resolve_payment_money_flow_event(self, *, idempotency_key: str) -> MoneyFlowEvent | None:
+        return (
+            self.db.query(MoneyFlowEvent)
+            .filter(MoneyFlowEvent.idempotency_key == idempotency_key)
+            .one_or_none()
+        )
+
+    def _replay_from_money_flow_event(
+        self,
+        *,
+        invoice_id: str,
+        idempotency_key: str,
+        amount: int,
+        currency: str,
+        external_ref: str | None,
+        provider: str | None,
+        request_ctx: RequestContext | None,
+        token: dict | None,
+    ) -> PaymentResult | None:
+        event = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
+        if not event:
+            return None
+        payment_id = None
+        if event.meta:
+            payment_id = event.meta.get("payment_id")
+        payment = None
+        if payment_id:
+            payment = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.id == payment_id)
+                .one_or_none()
+            )
+        if payment is None:
+            payment = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.idempotency_key == idempotency_key)
+                .one_or_none()
+            )
+        if payment is None:
+            logger.warning(
+                "money_flow_event_missing_payment",
+                extra={"idempotency_key": idempotency_key, "event_id": str(event.id)},
+            )
+            return None
+        if payment.invoice_id != invoice_id:
+            billing_metrics.mark_payment_error()
+            billing_metrics.mark_payment_failed()
+            raise PaymentReferenceConflict(idempotency_key)
+        self._validate_payment_replay(
+            payment=payment,
+            amount=amount,
+            currency=currency,
+            external_ref=external_ref,
+            provider=provider,
+        )
+        return self._replay_payment(
+            invoice_id=payment.invoice_id,
+            payment=payment,
+            request_ctx=request_ctx,
+            token=token,
+        )
+
+    def _ensure_payment_money_flow_event(
+        self,
+        *,
+        invoice: Invoice,
+        payment: InvoicePayment,
+        tenant_id: int,
+        ledger_transaction_id: str | None,
+        idempotency_key: str,
+    ) -> tuple[MoneyFlowEvent, bool]:
+        existing = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
+        if existing:
+            return existing, False
+        event = MoneyFlowEvent(
+            tenant_id=tenant_id,
+            client_id=invoice.client_id,
+            flow_type=MoneyFlowType.INVOICE_PAYMENT,
+            flow_ref_id=invoice.id,
+            state_from=None,
+            state_to=MoneyFlowState.SETTLED,
+            event_type=MoneyFlowEventType.SETTLE,
+            idempotency_key=idempotency_key,
+            ledger_transaction_id=ledger_transaction_id,
+            meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
+        )
+        try:
+            with self.db.begin_nested():
+                self.db.add(event)
+                self.db.flush()
+        except IntegrityError:
+            existing = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
+            if existing:
+                return existing, False
+            raise
+        return event, True
 
     def _validate_payment_replay(
         self,
@@ -426,6 +526,18 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> PaymentResult:
+        replay_from_flow = self._replay_from_money_flow_event(
+            invoice_id=invoice_id,
+            idempotency_key=idempotency_key,
+            amount=amount,
+            currency=currency,
+            external_ref=external_ref,
+            provider=provider,
+            request_ctx=request_ctx,
+            token=token,
+        )
+        if replay_from_flow:
+            return replay_from_flow
         try:
             existing = self._resolve_existing_payment(
                 invoice_id=invoice_id,
@@ -553,61 +665,76 @@ class FinanceService:
                         invoice=invoice,
                     )
                 raise
-            current_paid = int(invoice.amount_paid or 0)
-            current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
-            current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
-            total = int(invoice.total_with_tax or invoice.total_amount or 0)
-            outstanding_before = total - current_paid - current_credits + current_refunded
-
-            if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE}:
-                self.db.rollback()
-                billing_metrics.mark_payment_error()
-                raise InvalidTransitionError(
-                    f"payments allowed only from sent/partial/overdue, got {invoice.status}"
-                )
-
-            try:
-                target_status = InvoiceStatus.PARTIALLY_PAID
-                if amount >= outstanding_before:
-                    target_status = InvoiceStatus.PAID
-
-                self._apply_financial_transition(
-                    invoice,
-                    target=target_status,
-                    payment_amount=amount,
-                    request_ctx=request_ctx,
-                )
-                self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx, audit=False)
-            except (InvalidTransitionError, InvoiceInvariantError):
-                self.db.rollback()
-                billing_metrics.mark_payment_error()
-                billing_metrics.mark_payment_failed()
-                raise
-            except FinancialInvariantViolation as exc:
-                self.db.rollback()
-                billing_metrics.mark_payment_error()
-                billing_metrics.mark_payment_failed()
-                self._audit_invariant_violation(
-                    exc,
-                    request_ctx=request_ctx,
-                    extra_payload={"invoice_id": invoice.id},
-                )
-                raise
-
-            self._ensure_settlement_allocation(
-                invoice=invoice,
-                source_type=SettlementSourceType.PAYMENT,
-                source_id=str(payment.id),
-                amount=amount,
-                currency=currency,
-                applied_at=payment.created_at,
-                request_ctx=request_ctx,
-            )
             InternalLedgerService(self.db).post_payment_applied(
                 invoice=invoice,
                 payment=payment,
                 tenant_id=self._resolve_tenant_id(request_ctx),
             )
+            ledger_tx = (
+                self.db.query(InternalLedgerTransaction)
+                .filter(InternalLedgerTransaction.external_ref_type == "PAYMENT")
+                .filter(InternalLedgerTransaction.external_ref_id == str(payment.id))
+                .one_or_none()
+            )
+            event, event_created = self._ensure_payment_money_flow_event(
+                invoice=invoice,
+                payment=payment,
+                tenant_id=self._resolve_tenant_id(request_ctx),
+                ledger_transaction_id=str(ledger_tx.id) if ledger_tx else None,
+                idempotency_key=idempotency_key,
+            )
+
+            if event_created:
+                current_paid = int(invoice.amount_paid or 0)
+                current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
+                current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
+                total = int(invoice.total_with_tax or invoice.total_amount or 0)
+                outstanding_before = total - current_paid - current_credits + current_refunded
+
+                if invoice.status not in {InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE}:
+                    self.db.rollback()
+                    billing_metrics.mark_payment_error()
+                    raise InvalidTransitionError(
+                        f"payments allowed only from sent/partial/overdue, got {invoice.status}"
+                    )
+
+                try:
+                    target_status = InvoiceStatus.PARTIALLY_PAID
+                    if amount >= outstanding_before:
+                        target_status = InvoiceStatus.PAID
+
+                    self._apply_financial_transition(
+                        invoice,
+                        target=target_status,
+                        payment_amount=amount,
+                        request_ctx=request_ctx,
+                    )
+                    self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx, audit=False)
+                except (InvalidTransitionError, InvoiceInvariantError):
+                    self.db.rollback()
+                    billing_metrics.mark_payment_error()
+                    billing_metrics.mark_payment_failed()
+                    raise
+                except FinancialInvariantViolation as exc:
+                    self.db.rollback()
+                    billing_metrics.mark_payment_error()
+                    billing_metrics.mark_payment_failed()
+                    self._audit_invariant_violation(
+                        exc,
+                        request_ctx=request_ctx,
+                        extra_payload={"invoice_id": invoice.id},
+                    )
+                    raise
+
+                self._ensure_settlement_allocation(
+                    invoice=invoice,
+                    source_type=SettlementSourceType.PAYMENT,
+                    source_id=str(payment.id),
+                    amount=amount,
+                    currency=currency,
+                    applied_at=payment.created_at,
+                    request_ctx=request_ctx,
+                )
 
             self.job_service.succeed(
                 job_run,
@@ -623,11 +750,12 @@ class FinanceService:
                     "due_amount": invoice.amount_due,
                 },
             )
-            billing_metrics.mark_payment_posted()
-            billing_metrics.mark_payment_amount(amount)
-            if invoice.status == InvoiceStatus.PAID:
-                billing_metrics.mark_invoice_paid()
-            return PaymentResult(payment=payment, invoice=invoice, is_replay=False)
+            if event_created:
+                billing_metrics.mark_payment_posted()
+                billing_metrics.mark_payment_amount(amount)
+                if invoice.status == InvoiceStatus.PAID:
+                    billing_metrics.mark_invoice_paid()
+            return PaymentResult(payment=payment, invoice=invoice, is_replay=not event_created)
 
     def create_credit_note(
         self,
