@@ -24,3 +24,13 @@ dependencies = [
   "schemathesis==3.38.4",
   "jsonschema==4.23.0"
 ]
+
+[tool.pytest.ini_options]
+markers = [
+  "unit",
+  "integration",
+  "smoke",
+  "contracts",
+  "contracts_api",
+  "contracts_events",
+]

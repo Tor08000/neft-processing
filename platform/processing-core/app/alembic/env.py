@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import create_engine, text
 
 from app.alembic.helpers import ALEMBIC_VERSION_TABLE
-from app.db.schema import quote_schema, resolve_db_schema
+from app.db.schema import quote_schema
 
 config = context.config
 if config.config_file_name is not None:
@@ -18,8 +18,8 @@ try:
 except KeyError as exc:
     raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
-schema_resolution = resolve_db_schema()
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
+schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
 
 
 def run_migrations_offline() -> None:
@@ -28,13 +28,13 @@ def run_migrations_offline() -> None:
 
 
 def _configure(connection) -> None:
-    quoted_schema = quote_schema(schema_resolution.schema)
+    quoted_schema = quote_schema(schema)
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
-    connection.execute(text(schema_resolution.search_path_sql))
+    connection.execute(text(f"SET search_path TO {quoted_schema}"))
     context.configure(
         connection=connection,
         version_table=ALEMBIC_VERSION_TABLE,
-        version_table_schema=schema_resolution.schema,
+        version_table_schema=schema,
         include_schemas=True,
         transaction_per_migration=True,
     )
@@ -45,7 +45,7 @@ def run_migrations_online() -> None:
         DATABASE_URL,
         future=True,
         connect_args={
-            "options": f"-c search_path={schema_resolution.schema}",
+            "options": f"-c search_path={schema}",
             "prepare_threshold": 0,
         },
     )
