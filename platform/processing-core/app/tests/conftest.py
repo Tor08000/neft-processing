@@ -1,6 +1,6 @@
 import os
+import re
 import sys
-import time
 from pathlib import Path
 from sqlalchemy.engine.url import make_url
 from datetime import datetime, timedelta, timezone
@@ -9,6 +9,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi import Depends
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import OperationalError
 
 import pytest
 from jose import jwt
@@ -89,12 +90,43 @@ def _uses_postgres(database_url: str) -> bool:
         return False
 
 
+def _markexpr_includes(markexpr: str, marker: str) -> bool:
+    return re.search(rf"(?<![\w:]){re.escape(marker)}(?![\w:])", markexpr) is not None
+
+
+def _has_integration_path(config: pytest.Config) -> bool:
+    for arg in config.args:
+        arg_path = Path(arg)
+        try:
+            parts = {part.lower() for part in arg_path.parts}
+        except Exception:
+            parts = set()
+        if {"integration", "smoke"} & parts:
+            return True
+        arg_lower = str(arg).lower()
+        if "/integration/" in arg_lower or "\\integration\\" in arg_lower:
+            return True
+        if "/smoke/" in arg_lower or "\\smoke\\" in arg_lower:
+            return True
+    return False
+
+
 def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
-    markexpr = (config.getoption("-m") or "").strip()
-    if not markexpr:
+    markexpr = (config.getoption("-m") or "").strip().lower()
+    if markexpr:
+        if any(
+            _markexpr_includes(markexpr, marker)
+            for marker in ("contracts", "contracts_events", "contracts_api")
+        ):
+            return True
+        if _markexpr_includes(markexpr, "unit") and not any(
+            _markexpr_includes(markexpr, marker) for marker in ("integration", "smoke")
+        ):
+            return True
+        if any(_markexpr_includes(markexpr, marker) for marker in ("integration", "smoke")):
+            return False
+    if _has_integration_path(config):
         return False
-    if "unit" in markexpr and all(mark not in markexpr for mark in ("integration", "smoke", "contracts")):
-        return True
     return False
 
 
@@ -158,12 +190,17 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
 
     database_url = os.getenv("DATABASE_URL", "")
     if not _uses_postgres(database_url):
-        pytest.skip("Postgres DATABASE_URL is required for full test suite")
+        pytest.fail("postgres not available; start docker compose postgres")
 
     schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
-    _ensure_schema(database_url, schema)
-    _run_alembic_upgrade(database_url)
-    _ensure_required_tables(database_url, schema)
+    try:
+        _ensure_schema(database_url, schema)
+        _run_alembic_upgrade(database_url)
+        _ensure_required_tables(database_url, schema)
+    except OperationalError:
+        pytest.fail("postgres not available; start docker compose postgres")
+    except Exception as exc:
+        pytest.fail(f"DB bootstrap failed: {exc!r}")
 
 
 @pytest.fixture(autouse=True)
