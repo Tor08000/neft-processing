@@ -3,12 +3,9 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List, Optional
-from uuid import uuid4
+from typing import Any, AsyncIterator
 
-from celery.exceptions import TimeoutError as CeleryTimeoutError
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
@@ -58,14 +55,13 @@ from app.services.payout_metrics import metrics as payout_metrics
 from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
-from app.fastapi_utils import generate_unique_id
+from app.fastapi_utils import generate_unique_id, safe_include_router
 from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
-    CheckAndReserveResult,
     CheckAndReserveTaskResponse,
     LimitsTaskResponse,
     RecalcLimitsRequest,
@@ -179,178 +175,6 @@ class HealthResponse(BaseModel):
     audit_signing_mode: str | None = None
 
 
-class CeleryPingResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    task: str
-    result: Dict[str, Any]
-
-
-class TransactionLogEntry(BaseModel):
-    operation_id: str
-    created_at: datetime
-    operation_type: str  # AUTH, CAPTURE, REFUND, REVERSAL
-    status: str
-
-    merchant_id: str
-    terminal_id: str
-    client_id: str
-    card_id: str
-
-    amount: int
-    currency: str = "RUB"
-
-    daily_limit: Optional[int] = None
-    limit_per_tx: Optional[int] = None
-    used_today: Optional[int] = None
-    new_used_today: Optional[int] = None
-
-    authorized: bool = False
-    response_code: str = "00"
-    response_message: str = "OK"
-
-    parent_operation_id: Optional[str] = None
-    reason: Optional[str] = None
-
-    mcc: Optional[str] = None
-    product_code: Optional[str] = None
-    product_category: Optional[str] = None
-    tx_type: Optional[str] = None
-
-
-class TransactionsPage(BaseModel):
-    items: List[TransactionLogEntry]
-    total: int
-    limit: int
-    offset: int
-
-
-class TerminalAuthRequest(BaseModel):
-    merchant_id: str
-    terminal_id: str
-    client_id: str
-    card_id: str
-    amount: int
-    currency: str = "RUB"
-    product_code: Optional[str] = None
-    product_category: Optional[str] = None
-    mcc: Optional[str] = None
-    tx_type: Optional[str] = None
-    client_group_id: Optional[str] = None
-    card_group_id: Optional[str] = None
-
-
-class CaptureRequest(BaseModel):
-    amount: int
-
-
-class RefundRequest(BaseModel):
-    # amount стал НЕобязательным:
-    # - если есть → частичный / явный возврат
-    # - если нет → FULL REFUND оставшейся суммы
-    amount: Optional[int] = None
-    reason: Optional[str] = None
-
-
-class ReversalRequest(BaseModel):
-    reason: Optional[str] = None
-
-
-# -----------------------------------------------------------------------------
-# In-memory лог операций + сохранение в БД
-# -----------------------------------------------------------------------------
-TRANSACTION_LOG: List[TransactionLogEntry] = []
-
-
-def _persist_operation_to_db(entry: TransactionLogEntry) -> None:
-    """
-    Пишем операцию в таблицу operations через ORM.
-
-    Используем каноническую модель app.models.operation.Operation.
-    """
-    try:
-        from app.db import get_sessionmaker  # type: ignore
-        from app.models.operation import Operation  # type: ignore
-    except Exception as exc:  # pragma: no cover
-        logger.warning("DB Operation model not available yet: %s", exc)
-        return
-
-    db = get_sessionmaker()()
-    try:
-        db_op = Operation(
-            operation_id=entry.operation_id,
-            created_at=entry.created_at,
-            operation_type=entry.operation_type,
-            status=entry.status,
-            merchant_id=entry.merchant_id,
-            terminal_id=entry.terminal_id,
-            client_id=entry.client_id,
-            card_id=entry.card_id,
-            amount=entry.amount,
-            currency=entry.currency,
-            daily_limit=entry.daily_limit,
-            limit_per_tx=entry.limit_per_tx,
-            used_today=entry.used_today,
-            new_used_today=entry.new_used_today,
-            authorized=entry.authorized,
-            response_code=entry.response_code,
-            response_message=entry.response_message,
-            parent_operation_id=entry.parent_operation_id,
-            reason=entry.reason,
-            mcc=entry.mcc,
-            product_code=entry.product_code,
-            product_category=entry.product_category,
-            tx_type=entry.tx_type,
-        )
-        db.add(db_op)
-        db.commit()
-    except Exception as exc:  # pragma: no cover
-        logger.exception("Failed to persist operation to DB: %s", exc)
-        db.rollback()
-    finally:
-        db.close()
-
-
-def _append_log_entry(entry: TransactionLogEntry) -> TransactionLogEntry:
-    TRANSACTION_LOG.append(entry)
-    _persist_operation_to_db(entry)
-    return entry
-
-
-def _find_transaction(operation_id: str) -> Optional[TransactionLogEntry]:
-    for tx in TRANSACTION_LOG:
-        if tx.operation_id == operation_id:
-            return tx
-    return None
-
-
-def _get_transaction_or_404(operation_id: str) -> TransactionLogEntry:
-    tx = _find_transaction(operation_id)
-    if not tx:
-        raise HTTPException(status_code=404, detail="operation not found")
-    return tx
-
-
-def _get_children(parent_id: str) -> List[TransactionLogEntry]:
-    return [tx for tx in TRANSACTION_LOG if tx.parent_operation_id == parent_id]
-
-
-def _get_captures_for_auth(auth_operation_id: str) -> List[TransactionLogEntry]:
-    return [
-        tx
-        for tx in TRANSACTION_LOG
-        if tx.operation_type == "CAPTURE" and tx.parent_operation_id == auth_operation_id
-    ]
-
-
-def _get_refunds_for_capture(capture_operation_id: str) -> List[TransactionLogEntry]:
-    return [
-        tx
-        for tx in TRANSACTION_LOG
-        if tx.operation_type == "REFUND" and tx.parent_operation_id == capture_operation_id
-    ]
-
-
 # -----------------------------------------------------------------------------
 # FASTAPI
 # -----------------------------------------------------------------------------
@@ -419,155 +243,155 @@ app.add_middleware(
 )
 
 # Основной роутер v1
-app.include_router(api_router, prefix="/api/v1")
+safe_include_router(app, api_router, prefix="/api/v1")
 
 # Включаем доп. роутер с чтением операций из БД, если он есть
 if operations_router is not None:
-    app.include_router(operations_router, prefix="")
+    safe_include_router(app, operations_router, prefix="")
 
 # Включаем роутер транзакций, если он доступен
 if transactions_router is not None:
-    app.include_router(transactions_router, prefix="")
+    safe_include_router(app, transactions_router, prefix="")
 
 # Включаем роутер отчётов, если он доступен
 if reports_billing_router is not None:
-    app.include_router(reports_billing_router, prefix="")
+    safe_include_router(app, reports_billing_router, prefix="")
 if fuel_transactions_router is not None:
-    app.include_router(fuel_transactions_router, prefix="")
+    safe_include_router(app, fuel_transactions_router, prefix="")
 if logistics_router is not None:
-    app.include_router(logistics_router, prefix="")
+    safe_include_router(app, logistics_router, prefix="")
 if edo_events_router is not None:
-    app.include_router(edo_events_router, prefix="")
+    safe_include_router(app, edo_events_router, prefix="")
 if bi_router is not None:
-    app.include_router(bi_router, prefix="")
+    safe_include_router(app, bi_router, prefix="")
 if pricing_intelligence_router is not None:
-    app.include_router(pricing_intelligence_router, prefix="")
+    safe_include_router(app, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
-    app.include_router(support_requests_router, prefix="")
+    safe_include_router(app, support_requests_router, prefix="")
 
 if intake_router is not None:
-    app.include_router(intake_router, prefix="")
+    safe_include_router(app, intake_router, prefix="")
 
 if partners_router is not None:
-    app.include_router(partners_router, prefix="")
+    safe_include_router(app, partners_router, prefix="")
 if billing_invoices_router is not None:
-    app.include_router(billing_invoices_router, prefix="")
+    safe_include_router(app, billing_invoices_router, prefix="")
 if payouts_router is not None:
-    app.include_router(payouts_router, prefix="")
+    safe_include_router(app, payouts_router, prefix="")
 
-app.include_router(admin_router, prefix=LEGACY_API_PREFIX)
+safe_include_router(app, admin_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
-    app.include_router(admin_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, admin_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
-    app.include_router(kpi_router, prefix=API_PREFIX_CORE)
-    app.include_router(explain_v2_router, prefix=API_PREFIX_CORE)
-    app.include_router(cases_router, prefix=API_PREFIX_CORE)
-    app.include_router(achievements_router, prefix=API_PREFIX_CORE)
-    app.include_router(subscriptions_router, prefix=API_PREFIX_CORE)
-    app.include_router(subscriptions_admin_router, prefix=API_PREFIX_CORE)
-app.include_router(client_router)
+    safe_include_router(app, kpi_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, explain_v2_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, cases_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, achievements_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, subscriptions_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, subscriptions_admin_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
-    app.include_router(client_router, prefix=API_PREFIX_CORE)
-app.include_router(fleet_router)
+    safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, fleet_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
-    app.include_router(fleet_router, prefix=API_PREFIX_CORE)
-app.include_router(client_portal_router, prefix=LEGACY_API_PREFIX)
+    safe_include_router(app, fleet_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_portal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
-    app.include_router(client_portal_router, prefix=API_PREFIX_CORE)
-app.include_router(client_vehicles_router)
+    safe_include_router(app, client_portal_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_vehicles_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
-    app.include_router(client_vehicles_router, prefix=API_PREFIX_CORE)
-app.include_router(portal_client_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(portal_client_router, prefix=API_PREFIX_CORE)
-app.include_router(portal_partner_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(portal_partner_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_promotions_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_coupons_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_coupons_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_analytics_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_marketplace_subscriptions_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_marketplace_subscriptions_router, prefix=API_PREFIX_CORE)
-app.include_router(partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(partner_service_bookings_router, prefix=API_PREFIX_CORE)
-app.include_router(client_marketplace_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(client_marketplace_router, prefix=API_PREFIX_CORE)
-app.include_router(client_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(client_marketplace_orders_router, prefix=API_PREFIX_CORE)
-app.include_router(client_marketplace_deals_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(client_marketplace_deals_router, prefix=API_PREFIX_CORE)
-app.include_router(client_service_bookings_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_API_PREFIX_CORE:
-    app.include_router(client_service_bookings_router, prefix=API_PREFIX_CORE)
-app.include_router(client_documents_router)
-app.include_router(internal_fleet_router)
-app.include_router(internal_telegram_router)
-app.include_router(commercial_layer_router)
+    safe_include_router(app, client_vehicles_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, portal_client_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, portal_client_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, portal_partner_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, portal_partner_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_promotions_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_coupons_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_coupons_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_analytics_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_analytics_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_marketplace_subscriptions_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_marketplace_subscriptions_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_service_bookings_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_marketplace_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, client_marketplace_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, client_marketplace_orders_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_marketplace_deals_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, client_marketplace_deals_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_service_bookings_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, client_service_bookings_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_documents_router)
+safe_include_router(app, internal_fleet_router)
+safe_include_router(app, internal_telegram_router)
+safe_include_router(app, commercial_layer_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
-core_prefixed_router.include_router(api_router, prefix="/api/v1")
+safe_include_router(core_prefixed_router, api_router, prefix="/api/v1")
 
 if operations_router is not None:
-    core_prefixed_router.include_router(operations_router, prefix="")
+    safe_include_router(core_prefixed_router, operations_router, prefix="")
 if transactions_router is not None:
-    core_prefixed_router.include_router(transactions_router, prefix="")
+    safe_include_router(core_prefixed_router, transactions_router, prefix="")
 if reports_billing_router is not None:
-    core_prefixed_router.include_router(reports_billing_router, prefix="")
+    safe_include_router(core_prefixed_router, reports_billing_router, prefix="")
 if fuel_transactions_router is not None:
-    core_prefixed_router.include_router(fuel_transactions_router, prefix="")
+    safe_include_router(core_prefixed_router, fuel_transactions_router, prefix="")
 if logistics_router is not None:
-    core_prefixed_router.include_router(logistics_router, prefix="")
+    safe_include_router(core_prefixed_router, logistics_router, prefix="")
 if edo_events_router is not None:
-    core_prefixed_router.include_router(edo_events_router, prefix="")
+    safe_include_router(core_prefixed_router, edo_events_router, prefix="")
 if bi_router is not None:
-    core_prefixed_router.include_router(bi_router, prefix="")
+    safe_include_router(core_prefixed_router, bi_router, prefix="")
 if pricing_intelligence_router is not None:
-    core_prefixed_router.include_router(pricing_intelligence_router, prefix="")
+    safe_include_router(core_prefixed_router, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
-    core_prefixed_router.include_router(support_requests_router, prefix="")
+    safe_include_router(core_prefixed_router, support_requests_router, prefix="")
 if intake_router is not None:
-    core_prefixed_router.include_router(intake_router, prefix="")
+    safe_include_router(core_prefixed_router, intake_router, prefix="")
 if partners_router is not None:
-    core_prefixed_router.include_router(partners_router, prefix="")
+    safe_include_router(core_prefixed_router, partners_router, prefix="")
 if billing_invoices_router is not None:
-    core_prefixed_router.include_router(billing_invoices_router, prefix="")
+    safe_include_router(core_prefixed_router, billing_invoices_router, prefix="")
 if payouts_router is not None:
-    core_prefixed_router.include_router(payouts_router, prefix="")
+    safe_include_router(core_prefixed_router, payouts_router, prefix="")
 
-core_prefixed_router.include_router(admin_router)
-core_prefixed_router.include_router(kpi_router)
-core_prefixed_router.include_router(explain_v2_router)
-core_prefixed_router.include_router(cases_router)
-core_prefixed_router.include_router(achievements_router)
-core_prefixed_router.include_router(subscriptions_router)
-core_prefixed_router.include_router(subscriptions_admin_router)
-core_prefixed_router.include_router(client_router)
-core_prefixed_router.include_router(fleet_router)
-core_prefixed_router.include_router(client_portal_router)
-core_prefixed_router.include_router(client_vehicles_router)
-core_prefixed_router.include_router(client_documents_router)
-core_prefixed_router.include_router(client_service_completion_proofs_router)
-core_prefixed_router.include_router(internal_fleet_router)
-core_prefixed_router.include_router(internal_telegram_router)
-core_prefixed_router.include_router(commercial_layer_router)
+safe_include_router(core_prefixed_router, admin_router)
+safe_include_router(core_prefixed_router, kpi_router)
+safe_include_router(core_prefixed_router, explain_v2_router)
+safe_include_router(core_prefixed_router, cases_router)
+safe_include_router(core_prefixed_router, achievements_router)
+safe_include_router(core_prefixed_router, subscriptions_router)
+safe_include_router(core_prefixed_router, subscriptions_admin_router)
+safe_include_router(core_prefixed_router, client_router)
+safe_include_router(core_prefixed_router, fleet_router)
+safe_include_router(core_prefixed_router, client_portal_router)
+safe_include_router(core_prefixed_router, client_vehicles_router)
+safe_include_router(core_prefixed_router, client_documents_router)
+safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
+safe_include_router(core_prefixed_router, internal_fleet_router)
+safe_include_router(core_prefixed_router, internal_telegram_router)
+safe_include_router(core_prefixed_router, commercial_layer_router)
 
 
 # -----------------------------------------------------------------------------
@@ -1080,12 +904,6 @@ core_prefixed_router.add_api_route(
     methods=["GET"],
 )
 core_prefixed_router.add_api_route(
-    "/api/v1/health",
-    health,
-    response_model=HealthResponse,
-    methods=["GET"],
-)
-core_prefixed_router.add_api_route(
     "/health/db",
     health_db,
     response_model=HealthResponse,
@@ -1098,7 +916,7 @@ core_prefixed_router.add_api_route(
     methods=["GET"],
 )
 
-app.include_router(core_prefixed_router)
+safe_include_router(app, core_prefixed_router)
 
 
 def _enforce_unique_routes(fastapi_app: FastAPI) -> None:
@@ -1153,46 +971,6 @@ def core_prefixed_docs():
 
 
 # -----------------------------------------------------------------------------
-# Celery health
-# -----------------------------------------------------------------------------
-@app.get("/api/v1/health/enqueue", response_model=CeleryPingResponse)
-def health_enqueue(
-    wait: bool = Query(False, description="Wait synchronously for Celery ping result"),
-) -> CeleryPingResponse:
-    if not celery_app:
-        # работаем в деградированном режиме без Celery
-        return CeleryPingResponse(task="disabled", result={"pong": 1, "celery": "disabled"})
-
-    try:
-        async_result = celery_app.send_task("workers.ping", kwargs={"x": 1})
-    except Exception as exc:
-        logger.exception("Failed to enqueue Celery ping task: %s", exc)
-        raise HTTPException(status_code=503, detail="Celery unavailable")
-
-    if not wait:
-        # просто проверяем, что задача успешно поставлена в очередь
-        return CeleryPingResponse(
-            task="ping",
-            result={"queued": True, "task_id": async_result.id},
-        )
-
-    # Синхронное ожидание результата с обработкой таймаута
-    try:
-        result = async_result.get(timeout=5)
-        return CeleryPingResponse(task="ping", result=result)
-    except CeleryTimeoutError:
-        logger.warning("Celery ping timeout, task_id=%s", async_result.id)
-        # Не роняем /health/enqueue в 500, просто сигнализируем, что таймаут
-        return CeleryPingResponse(
-            task="ping",
-            result={"error": "timeout", "task_id": async_result.id},
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.exception("Celery ping failed: %s", exc)
-        raise HTTPException(status_code=503, detail="Celery ping failed")
-
-
-# -----------------------------------------------------------------------------
 # LIMITS – обёртки над tasks limits.check_and_reserve / limits.recalc
 # -----------------------------------------------------------------------------
 @app.post("/api/v1/limits/check-and-reserve", response_model=CheckAndReserveTaskResponse)
@@ -1215,289 +993,3 @@ def limits_recalc(
 
     async_result = celery_app.send_task("limits.recalc_all", kwargs={})
     return LimitsTaskResponse(task="limits.recalc_all", result={"task_id": async_result.id})
-
-
-# -----------------------------------------------------------------------------
-# AUTH
-# -----------------------------------------------------------------------------
-@app.post(
-    "/api/v1/processing/terminal-auth",
-    response_model=TransactionLogEntry,
-)
-def terminal_auth(body: TerminalAuthRequest = Body(...)) -> TransactionLogEntry:
-    tx_type = body.tx_type or derive_tx_type(
-        product_category=body.product_category, mcc=body.mcc
-    )
-
-    limits_result = call_limits_check_and_reserve_sync(
-        CheckAndReserveRequest(
-            merchant_id=body.merchant_id,
-            terminal_id=body.terminal_id,
-            client_id=body.client_id,
-            card_id=body.card_id,
-            amount=body.amount,
-            currency=body.currency,
-            product_category=body.product_category,
-            mcc=body.mcc,
-            tx_type=tx_type,
-            phase="AUTH",
-            client_group_id=body.client_group_id,
-            card_group_id=body.card_group_id,
-        )
-    )
-
-    op_id = str(uuid4())
-    status = "AUTHORIZED" if limits_result.approved else "DECLINED"
-
-    entry = TransactionLogEntry(
-        operation_id=op_id,
-        created_at=datetime.utcnow(),
-        operation_type="AUTH",
-        status=status,
-        merchant_id=body.merchant_id,
-        terminal_id=body.terminal_id,
-        client_id=body.client_id,
-        card_id=body.card_id,
-        amount=body.amount,
-        currency=body.currency,
-        daily_limit=limits_result.daily_limit,
-        limit_per_tx=limits_result.limit_per_tx,
-        used_today=limits_result.used_today,
-        new_used_today=limits_result.new_used_today,
-        authorized=limits_result.approved,
-        response_code=limits_result.response_code,
-        response_message=limits_result.response_message,
-        mcc=body.mcc,
-        product_code=body.product_code,
-        product_category=body.product_category,
-        tx_type=tx_type,
-    )
-    _append_log_entry(entry)
-    return entry
-
-
-# -----------------------------------------------------------------------------
-# CAPTURE
-# -----------------------------------------------------------------------------
-def _create_capture_entry(
-    auth_tx: TransactionLogEntry,
-    amount: int,
-    limits_result: Optional[CheckAndReserveResult] = None,
-) -> TransactionLogEntry:
-    approved = limits_result.approved if limits_result else True
-    status = "CAPTURED" if approved else "DECLINED"
-
-    return TransactionLogEntry(
-        operation_id=str(uuid4()),
-        created_at=datetime.utcnow(),
-        operation_type="CAPTURE",
-        status=status,
-        merchant_id=auth_tx.merchant_id,
-        terminal_id=auth_tx.terminal_id,
-        client_id=auth_tx.client_id,
-        card_id=auth_tx.card_id,
-        amount=amount,
-        currency=auth_tx.currency,
-        daily_limit=limits_result.daily_limit if limits_result else auth_tx.daily_limit,
-        limit_per_tx=limits_result.limit_per_tx if limits_result else auth_tx.limit_per_tx,
-        used_today=limits_result.used_today if limits_result else auth_tx.used_today,
-        new_used_today=limits_result.new_used_today if limits_result else auth_tx.new_used_today,
-        authorized=approved,
-        response_code=limits_result.response_code if limits_result else "00",
-        response_message=limits_result.response_message if limits_result else "captured",
-        parent_operation_id=auth_tx.operation_id,
-        mcc=auth_tx.mcc,
-        product_code=auth_tx.product_code,
-        product_category=auth_tx.product_category,
-        tx_type=auth_tx.tx_type,
-    )
-
-
-@app.post(
-    "/api/v1/transactions/{auth_operation_id}/capture",
-    response_model=TransactionLogEntry,
-)
-def capture_transaction(
-    auth_operation_id: str = Path(..., description="AUTH operation id"),
-    body: CaptureRequest = Body(...),
-) -> TransactionLogEntry:
-    auth_tx = _get_transaction_or_404(auth_operation_id)
-    if auth_tx.operation_type != "AUTH":
-        raise HTTPException(status_code=400, detail="only AUTH can be captured")
-
-    existing_captures = _get_captures_for_auth(auth_operation_id)
-    already_captured_amount = sum(tx.amount for tx in existing_captures)
-    if already_captured_amount + body.amount > auth_tx.amount:
-        raise HTTPException(status_code=400, detail="capture amount exceeds authorized amount")
-
-    capture_tx_type = auth_tx.tx_type or derive_tx_type(
-        product_category=auth_tx.product_category, mcc=auth_tx.mcc
-    )
-    limits_result = call_limits_check_and_reserve_sync(
-        CheckAndReserveRequest(
-            merchant_id=auth_tx.merchant_id,
-            terminal_id=auth_tx.terminal_id,
-            client_id=auth_tx.client_id,
-            card_id=auth_tx.card_id,
-            amount=body.amount,
-            currency=auth_tx.currency,
-            product_category=auth_tx.product_category,
-            mcc=auth_tx.mcc,
-            tx_type=capture_tx_type,
-            phase="CAPTURE",
-        )
-    )
-
-    entry = _create_capture_entry(auth_tx, body.amount, limits_result)
-    _append_log_entry(entry)
-    return entry
-
-
-# -----------------------------------------------------------------------------
-# REFUND
-# -----------------------------------------------------------------------------
-def _create_refund_entry(
-    capture_tx: TransactionLogEntry,
-    amount: int,
-    reason: Optional[str],
-) -> TransactionLogEntry:
-    return TransactionLogEntry(
-        operation_id=str(uuid4()),
-        created_at=datetime.utcnow(),
-        operation_type="REFUND",
-        status="REFUNDED",
-        merchant_id=capture_tx.merchant_id,
-        terminal_id=capture_tx.terminal_id,
-        client_id=capture_tx.client_id,
-        card_id=capture_tx.card_id,
-        amount=amount,
-        currency=capture_tx.currency,
-        daily_limit=capture_tx.daily_limit,
-        limit_per_tx=capture_tx.limit_per_tx,
-        used_today=capture_tx.used_today,
-        new_used_today=capture_tx.new_used_today,
-        authorized=True,
-        response_code="00",
-        response_message="refunded",
-        parent_operation_id=capture_tx.operation_id,
-        reason=reason,
-        mcc=capture_tx.mcc,
-        product_code=capture_tx.product_code,
-        product_category=capture_tx.product_category,
-        tx_type=capture_tx.tx_type,
-    )
-
-
-@app.post(
-    "/api/v1/transactions/{capture_operation_id}/refund",
-    response_model=TransactionLogEntry,
-)
-def refund_transaction(
-    capture_operation_id: str = Path(..., description="CAPTURE operation id"),
-    body: RefundRequest = Body(...),
-) -> TransactionLogEntry:
-    capture_tx = _get_transaction_or_404(capture_operation_id)
-    if capture_tx.operation_type != "CAPTURE":
-        raise HTTPException(status_code=400, detail="only CAPTURE can be refunded")
-
-    refunds = _get_refunds_for_capture(capture_operation_id)
-    already_refunded = sum(tx.amount for tx in refunds)
-
-    # Сколько ещё можно вернуть
-    remaining = capture_tx.amount - already_refunded
-    if remaining <= 0:
-        raise HTTPException(status_code=400, detail="nothing to refund")
-
-    # Если amount не передан → FULL REFUND на оставшуюся сумму
-    if body.amount is None:
-        refund_amount = remaining
-    else:
-        refund_amount = body.amount
-
-    if refund_amount <= 0:
-        raise HTTPException(status_code=400, detail="refund amount must be positive")
-
-    if already_refunded + refund_amount > capture_tx.amount:
-        raise HTTPException(status_code=400, detail="refund amount exceeds captured amount")
-
-    entry = _create_refund_entry(capture_tx, refund_amount, body.reason)
-    _append_log_entry(entry)
-    return entry
-
-
-# -----------------------------------------------------------------------------
-# REVERSAL
-# -----------------------------------------------------------------------------
-def _create_reversal_entry(
-    original_tx: TransactionLogEntry,
-    reason: Optional[str],
-) -> TransactionLogEntry:
-    return TransactionLogEntry(
-        operation_id=str(uuid4()),
-        created_at=datetime.utcnow(),
-        operation_type="REVERSAL",
-        status="REVERSED",
-        merchant_id=original_tx.merchant_id,
-        terminal_id=original_tx.terminal_id,
-        client_id=original_tx.client_id,
-        card_id=original_tx.card_id,
-        amount=original_tx.amount,
-        currency=original_tx.currency,
-        daily_limit=original_tx.daily_limit,
-        limit_per_tx=original_tx.limit_per_tx,
-        used_today=original_tx.used_today,
-        new_used_today=original_tx.new_used_today,
-        authorized=False,
-        response_code="00",
-        response_message="reversed",
-        parent_operation_id=original_tx.operation_id,
-        reason=reason,
-        mcc=original_tx.mcc,
-        product_code=original_tx.product_code,
-        product_category=original_tx.product_category,
-        tx_type=original_tx.tx_type,
-    )
-
-
-@app.post(
-    "/api/v1/transactions/{operation_id}/reversal",
-    response_model=TransactionLogEntry,
-)
-def reverse_transaction(
-    operation_id: str = Path(..., description="operation id to reverse"),
-    body: ReversalRequest = Body(...),
-) -> TransactionLogEntry:
-    original_tx = _get_transaction_or_404(operation_id)
-
-    # нельзя ревёрсить уже ревёрснутые операции
-    if original_tx.operation_type == "REVERSAL":
-        raise HTTPException(status_code=400, detail="cannot reverse reversal")
-
-    # проверим, не был ли уже сделан REVERSAL для этой операции
-    children = _get_children(original_tx.operation_id)
-    if any(child.operation_type == "REVERSAL" for child in children):
-        raise HTTPException(status_code=400, detail="reversal already exists for this operation")
-
-    entry = _create_reversal_entry(original_tx, body.reason)
-    _append_log_entry(entry)
-    return entry
-
-
-# -----------------------------------------------------------------------------
-# ЧТЕНИЕ in-memory лога
-# -----------------------------------------------------------------------------
-@app.get("/api/v1/transactions/log", response_model=TransactionsPage)
-def list_operations_log(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-) -> TransactionsPage:
-    # Возвращаем в обратном порядке (сначала последние)
-    items = list(reversed(TRANSACTION_LOG))
-    total = len(items)
-    slice_ = items[offset : offset + limit]
-    return TransactionsPage(
-        items=slice_,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
