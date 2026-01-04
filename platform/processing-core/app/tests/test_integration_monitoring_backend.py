@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import Depends
+
+pytest.importorskip("fastapi", reason="fastapi not installed; run tests in docker")
 from fastapi.testclient import TestClient
 
 from app import services

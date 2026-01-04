@@ -1,10 +1,11 @@
 import time
 
 import pytest
+
+pytest.importorskip("fastapi", reason="fastapi not installed; run tests in docker")
 from fastapi.testclient import TestClient
 
 from app.db import Base, engine
-from fastapi import Depends
 
 from app.main import app
 
