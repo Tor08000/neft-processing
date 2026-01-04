@@ -145,7 +145,7 @@ def _run_alembic_upgrade(database_url: str) -> None:
     command.upgrade(cfg, "head")
 
 
-def _ensure_schema(database_url: str, schema: str) -> None:
+def _reset_schema(database_url: str, schema: str) -> None:
     engine = create_engine(
         database_url,
         future=True,
@@ -157,6 +157,7 @@ def _ensure_schema(database_url: str, schema: str) -> None:
     try:
         with engine.connect() as conn:
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
     finally:
         engine.dispose()
@@ -215,7 +216,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
 
     schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
     try:
-        _ensure_schema(database_url, schema)
+        _reset_schema(database_url, schema)
         _run_alembic_upgrade(database_url)
         _ensure_required_tables(database_url, schema)
     except OperationalError:
