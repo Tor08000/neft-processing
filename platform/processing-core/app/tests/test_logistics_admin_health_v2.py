@@ -4,6 +4,7 @@ from typing import Tuple
 
 import pytest
 from fastapi import FastAPI
+from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -31,7 +32,7 @@ def admin_client() -> Tuple[TestClient, sessionmaker]:
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
     Base.metadata.create_all(bind=engine)
 
-    app = FastAPI()
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(admin_logistics_router, prefix="/admin")
 
     def override_get_db():

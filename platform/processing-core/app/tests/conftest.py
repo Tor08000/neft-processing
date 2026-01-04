@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -58,6 +57,8 @@ os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
+from app import models  # noqa: F401
+
 FASTAPI_SKIP_REASON = (
     "fastapi not installed; run in docker: docker compose exec -T core-api pytest -q -x"
 )
@@ -71,30 +72,8 @@ def _has_fastapi() -> bool:
         return False
 
 
-def _install_fastapi_skip_stubs() -> None:
-    def _skip(*_args, **_kwargs):
-        pytest.skip(FASTAPI_SKIP_REASON, allow_module_level=True)
-
-    def _make_module(name: str, is_pkg: bool = False) -> types.ModuleType:
-        module = types.ModuleType(name)
-
-        def __getattr__(_attr: str):
-            _skip()
-
-        module.__getattr__ = __getattr__  # type: ignore[attr-defined]
-        if is_pkg:
-            module.__path__ = []  # type: ignore[attr-defined]
-        return module
-
-    sys.modules.setdefault("fastapi", _make_module("fastapi", is_pkg=True))
-    sys.modules.setdefault("fastapi.testclient", _make_module("fastapi.testclient"))
-    sys.modules.setdefault("starlette", _make_module("starlette", is_pkg=True))
-    sys.modules.setdefault("starlette.testclient", _make_module("starlette.testclient"))
-
-
 HAS_FASTAPI = _has_fastapi()
-if not HAS_FASTAPI:
-    _install_fastapi_skip_stubs()
+TESTS_ROOT = PROCESSING_APP_ROOT / "app" / "tests"
 
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", "neft-auth")
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -111,6 +90,45 @@ def _log_database_url() -> None:
 
 
 _log_database_url()
+
+
+def pytest_report_header(config: pytest.Config) -> str | None:
+    if not HAS_FASTAPI:
+        return f"{FASTAPI_SKIP_REASON}; skipping contracts/smoke/integration collections"
+    return None
+
+
+def pytest_ignore_collect(path: Path, config: pytest.Config) -> bool:  # type: ignore[override]
+    if HAS_FASTAPI:
+        return False
+    path_str = str(path).lower()
+    if "/tests/contracts/" in path_str or "\\tests\\contracts\\" in path_str:
+        return True
+    if "/tests/smoke/" in path_str or "\\tests\\smoke\\" in path_str:
+        return True
+    if "/tests/integration/" in path_str or "\\tests\\integration\\" in path_str:
+        return True
+    return False
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:  # type: ignore[override]
+    known_marks = {
+        "unit",
+        "integration",
+        "smoke",
+        "contracts",
+        "contracts_api",
+        "contracts_events",
+    }
+    for item in items:
+        try:
+            item_path = Path(str(getattr(item, "fspath", getattr(item, "path", "")))).resolve()
+        except OSError:
+            item_path = Path(str(getattr(item, "fspath", getattr(item, "path", ""))))
+        if TESTS_ROOT not in item_path.parents and item_path != TESTS_ROOT:
+            continue
+        if not any(item.get_closest_marker(mark) for mark in known_marks):
+            item.add_marker("unit")
 
 
 def _uses_postgres(database_url: str) -> bool:
@@ -200,13 +218,88 @@ def _reset_schema(database_url: str, schema: str) -> None:
         engine.dispose()
 
 
+REQUIRED_TABLES = {
+    "audit_log",
+    "billing_invoices",
+    "billing_job_runs",
+    "billing_periods",
+    "credit_notes",
+    "internal_ledger_accounts",
+    "internal_ledger_entries",
+    "internal_ledger_transactions",
+    "invoice_payments",
+    "invoice_settlement_allocations",
+    "invoice_transition_logs",
+    "invoices",
+    "operations",
+}
+
+REQUIRED_ENUMS = {
+    "invoice_payment_status",
+    "credit_note_status",
+    "invoice_pdf_status",
+    "invoicestatus",
+    "internal_ledger_account_status",
+    "internal_ledger_account_type",
+    "internal_ledger_entry_direction",
+    "internal_ledger_transaction_type",
+    "settlement_source_type",
+}
+
+
+def _schema_diagnostics(conn, *, schema: str, missing_tables: set[str]) -> str:
+    current = conn.execute(
+        text("select current_schema(), current_setting('search_path')")
+    ).all()
+    tables = conn.execute(
+        text(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = :schema
+            ORDER BY table_name
+            LIMIT 30
+            """
+        ),
+        {"schema": schema},
+    ).scalars()
+    tables_list = list(tables)
+    try:
+        revision = conn.execute(
+            text(f'SELECT version_num FROM "{schema}".alembic_version_core')
+        ).scalar_one_or_none()
+    except Exception as exc:  # noqa: BLE001 - diagnostics only
+        revision = f"error: {exc!r}"
+
+    enums_status = {}
+    if conn.dialect.name == "postgresql":
+        rows = conn.execute(
+            text(
+                """
+                SELECT t.typname
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = :schema AND t.typname = ANY(:names)
+                """
+            ),
+            {"schema": schema, "names": sorted(REQUIRED_ENUMS)},
+        ).scalars()
+        existing_enums = set(rows)
+        enums_status = {
+            "missing": sorted(REQUIRED_ENUMS - existing_enums),
+            "present": sorted(existing_enums),
+        }
+
+    return (
+        f"schema={schema}, missing_tables={sorted(missing_tables)}; "
+        f"current_schema/search_path={current}; "
+        f"tables(sample)={tables_list}; "
+        f"alembic_revision={revision}; "
+        f"enums={enums_status or 'n/a'}"
+    )
+
+
 def _ensure_required_tables(database_url: str, schema: str) -> None:
-    required_tables = {
-        "billing_invoices",
-        "billing_job_runs",
-        "billing_periods",
-        "internal_ledger_accounts",
-    }
     engine = create_engine(
         database_url,
         future=True,
@@ -227,31 +320,29 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
                     WHERE table_name = ANY(:table_names)
                     """
                 ),
-                {"table_names": list(required_tables)},
+                {"table_names": sorted(REQUIRED_TABLES)},
             ).all()
-        schemas_by_table: dict[str, set[str]] = {}
-        for table_schema, table_name in rows:
-            schemas_by_table.setdefault(table_name, set()).add(table_schema)
+            schemas_by_table: dict[str, set[str]] = {}
+            for table_schema, table_name in rows:
+                schemas_by_table.setdefault(table_name, set()).add(table_schema)
+
+            missing = REQUIRED_TABLES - tables
+            if missing:
+                other_schema_hits = {
+                    table: sorted(schemas - {schema})
+                    for table, schemas in schemas_by_table.items()
+                    if schemas - {schema}
+                }
+                diagnostics = _schema_diagnostics(conn, schema=schema, missing_tables=missing)
+                raise RuntimeError(
+                    "Missing required tables after migrations: "
+                    f"{', '.join(sorted(missing))}. "
+                    "Found in other schemas: "
+                    f"{', '.join(f'{table} -> {schemas}' for table, schemas in sorted(other_schema_hits.items())) or '[]'}. "
+                    f"Diagnostics: {diagnostics}"
+                )
     finally:
         engine.dispose()
-
-    missing = required_tables - tables
-    if missing:
-        other_schema_hits = {
-            table: sorted(schemas - {schema})
-            for table, schemas in schemas_by_table.items()
-            if schemas - {schema}
-        }
-        diagnostics = (
-            f"Required tables: {', '.join(sorted(required_tables))}. "
-            f"Tables in schema '{schema}': {', '.join(sorted(tables)) or '[]'}. "
-            "Found in other schemas: "
-            f"{', '.join(f'{table} -> {schemas}' for table, schemas in sorted(other_schema_hits.items())) or '[]'}."
-        )
-        raise RuntimeError(
-            "Missing required tables after migrations: "
-            f"{', '.join(sorted(missing))}. Found schemas: {diagnostics}"
-        )
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -32,6 +32,8 @@ Run only the host-safe tests from the repo root:
 pytest -q -x
 ```
 
+This defaults to `tests_host/` via root `pytest.ini`.
+
 If you intentionally want to run a subset of processing-core tests on host and have the
 necessary deps installed, you can explicitly target them:
 
