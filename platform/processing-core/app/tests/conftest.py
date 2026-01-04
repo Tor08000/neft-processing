@@ -17,7 +17,21 @@ from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 ROOT_DIR = Path(__file__).resolve()
 while ROOT_DIR.name != "app" and ROOT_DIR.parent != ROOT_DIR:
     ROOT_DIR = ROOT_DIR.parent
-REPO_ROOT = ROOT_DIR.parents[2]
+
+
+def _find_repo_root(start_dir: Path) -> Path:
+    for current in (start_dir, *start_dir.parents):
+        docker_compose = current / "docker-compose.yml"
+        if docker_compose.exists():
+            return current
+        has_git = (current / ".git").exists()
+        has_platform_shared = (current / "platform").is_dir() and (current / "shared").is_dir()
+        if has_git or has_platform_shared:
+            return current
+    return start_dir.parent
+
+
+REPO_ROOT = _find_repo_root(ROOT_DIR)
 SHARED_PATH = REPO_ROOT / "shared" / "python"
 SERVICE_ROOT = REPO_ROOT / "services" / "core-api"
 PROCESSING_APP_ROOT = ROOT_DIR.parent
