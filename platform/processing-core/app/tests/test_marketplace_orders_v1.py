@@ -12,6 +12,7 @@ from alembic.config import Config
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
+from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -105,7 +106,7 @@ def api_client() -> tuple[TestClient, sessionmaker]:
     for table in tables:
         table.create(bind=engine)
 
-    app = FastAPI()
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(client_orders_router, prefix="/api")
     app.include_router(partner_orders_router, prefix="/api")
 

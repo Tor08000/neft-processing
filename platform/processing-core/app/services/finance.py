@@ -121,6 +121,66 @@ class FinanceService:
         if period.status not in {BillingPeriodStatus.FINALIZED, BillingPeriodStatus.LOCKED}:
             raise InvalidTransitionError(f"billing period {period.id} is {period.status.value} for {action}")
 
+    def _resolve_existing_payment(
+        self,
+        *,
+        invoice_id: str,
+        idempotency_key: str,
+        external_ref: str | None,
+        provider: str | None,
+    ) -> InvoicePayment | None:
+        if external_ref:
+            query = self.db.query(InvoicePayment).filter(InvoicePayment.external_ref == external_ref)
+            if provider is None:
+                query = query.filter(InvoicePayment.provider.is_(None))
+            else:
+                query = query.filter(InvoicePayment.provider == provider)
+            existing_by_ref = query.one_or_none()
+            if existing_by_ref:
+                if existing_by_ref.invoice_id != invoice_id:
+                    billing_metrics.mark_payment_error()
+                    billing_metrics.mark_payment_failed()
+                    raise PaymentReferenceConflict(external_ref)
+                return existing_by_ref
+
+        existing = (
+            self.db.query(InvoicePayment)
+            .filter(InvoicePayment.idempotency_key == idempotency_key)
+            .one_or_none()
+        )
+        if existing and existing.invoice_id != invoice_id:
+            billing_metrics.mark_payment_error()
+            billing_metrics.mark_payment_failed()
+            raise PaymentReferenceConflict(idempotency_key)
+        return existing
+
+    def _replay_payment(
+        self,
+        *,
+        invoice_id: str,
+        payment: InvoicePayment,
+        request_ctx: RequestContext | None,
+        token: dict | None,
+        invoice: Invoice | None = None,
+    ) -> PaymentResult:
+        invoice = invoice or self._lock_invoice(invoice_id)
+        self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+        InternalLedgerService(self.db).post_payment_applied(
+            invoice=invoice,
+            payment=payment,
+            tenant_id=self._resolve_tenant_id(request_ctx),
+        )
+        self._ensure_settlement_allocation(
+            invoice=invoice,
+            source_type=SettlementSourceType.PAYMENT,
+            source_id=str(payment.id),
+            amount=int(payment.amount),
+            currency=payment.currency,
+            applied_at=payment.created_at,
+            request_ctx=request_ctx,
+        )
+        return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
+
     def _resolve_tenant_id(self, request_ctx: RequestContext | None) -> int:
         if request_ctx and request_ctx.tenant_id is not None:
             return int(request_ctx.tenant_id)
@@ -324,63 +384,23 @@ class FinanceService:
         token: dict | None = None,
     ) -> PaymentResult:
         try:
-            if external_ref:
-                query = self.db.query(InvoicePayment).filter(InvoicePayment.external_ref == external_ref)
-                if provider is None:
-                    query = query.filter(InvoicePayment.provider.is_(None))
-                else:
-                    query = query.filter(InvoicePayment.provider == provider)
-                existing_by_ref = query.one_or_none()
-                if existing_by_ref:
-                    if existing_by_ref.invoice_id != invoice_id:
-                        billing_metrics.mark_payment_error()
-                        billing_metrics.mark_payment_failed()
-                        raise PaymentReferenceConflict(external_ref)
-                    invoice = self._lock_invoice(invoice_id)
-                    self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
-                    InternalLedgerService(self.db).post_payment_applied(
-                        invoice=invoice,
-                        payment=existing_by_ref,
-                        tenant_id=self._resolve_tenant_id(request_ctx),
-                    )
-                    self._ensure_settlement_allocation(
-                        invoice=invoice,
-                        source_type=SettlementSourceType.PAYMENT,
-                        source_id=str(existing_by_ref.id),
-                        amount=int(existing_by_ref.amount),
-                        currency=existing_by_ref.currency,
-                        applied_at=existing_by_ref.created_at,
-                        request_ctx=request_ctx,
-                    )
-                    return PaymentResult(payment=existing_by_ref, invoice=invoice, is_replay=True)
+            existing = self._resolve_existing_payment(
+                invoice_id=invoice_id,
+                idempotency_key=idempotency_key,
+                external_ref=external_ref,
+                provider=provider,
+            )
+            if existing:
+                return self._replay_payment(
+                    invoice_id=invoice_id,
+                    payment=existing,
+                    request_ctx=request_ctx,
+                    token=token,
+                )
         except InvoiceNotFound:
             billing_metrics.mark_payment_error()
             billing_metrics.mark_payment_failed()
             raise
-
-        existing = (
-            self.db.query(InvoicePayment)
-            .filter(InvoicePayment.idempotency_key == idempotency_key)
-            .one_or_none()
-        )
-        if existing:
-            invoice = self._lock_invoice(invoice_id)
-            self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
-            InternalLedgerService(self.db).post_payment_applied(
-                invoice=invoice,
-                payment=existing,
-                tenant_id=self._resolve_tenant_id(request_ctx),
-            )
-            self._ensure_settlement_allocation(
-                invoice=invoice,
-                source_type=SettlementSourceType.PAYMENT,
-                source_id=str(existing.id),
-                amount=int(existing.amount),
-                currency=existing.currency,
-                applied_at=existing.created_at,
-                request_ctx=request_ctx,
-            )
-            return PaymentResult(payment=existing, invoice=invoice, is_replay=True)
 
         txn_context = nullcontext() if self.db.in_transaction() else self.db.begin()
         job_run = None
@@ -394,6 +414,20 @@ class FinanceService:
 
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+            existing = self._resolve_existing_payment(
+                invoice_id=invoice_id,
+                idempotency_key=idempotency_key,
+                external_ref=external_ref,
+                provider=provider,
+            )
+            if existing:
+                return self._replay_payment(
+                    invoice_id=invoice_id,
+                    payment=existing,
+                    request_ctx=request_ctx,
+                    token=token,
+                    invoice=invoice,
+                )
             try:
                 self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx, audit=False)
                 self.invariant_checker.check_payment_application(
@@ -435,7 +469,26 @@ class FinanceService:
                 provider=provider,
                 status=PaymentStatus.POSTED,
             )
-            self.db.add(payment)
+            try:
+                with self.db.begin_nested():
+                    self.db.add(payment)
+                    self.db.flush()
+            except IntegrityError:
+                existing = self._resolve_existing_payment(
+                    invoice_id=invoice_id,
+                    idempotency_key=idempotency_key,
+                    external_ref=external_ref,
+                    provider=provider,
+                )
+                if existing:
+                    return self._replay_payment(
+                        invoice_id=invoice_id,
+                        payment=existing,
+                        request_ctx=request_ctx,
+                        token=token,
+                        invoice=invoice,
+                    )
+                raise
             current_paid = int(invoice.amount_paid or 0)
             current_credits = int(getattr(invoice, "credited_amount", 0) or 0)
             current_refunded = int(getattr(invoice, "amount_refunded", 0) or 0)

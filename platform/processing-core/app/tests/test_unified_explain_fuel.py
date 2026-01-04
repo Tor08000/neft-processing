@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
+from app.fastapi_utils import generate_unique_id
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,7 +43,7 @@ def admin_client(admin_auth_headers: dict) -> Tuple[TestClient, sessionmaker]:
 
     Base.metadata.create_all(bind=engine)
 
-    app = FastAPI()
+    app = FastAPI(generate_unique_id_function=generate_unique_id)
     app.include_router(explain_router, prefix="/api/v1/admin")
 
     def override_get_db():
