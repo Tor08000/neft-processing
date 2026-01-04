@@ -130,7 +130,7 @@ def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
     return False
 
 
-def _run_alembic_upgrade(database_url: str) -> None:
+def _run_alembic_upgrade(database_url: str, schema: str) -> None:
     alembic_ini = PROCESSING_APP_ROOT / "app" / "alembic.ini"
     if not alembic_ini.exists():
         raise RuntimeError(f"Alembic config not found at {alembic_ini}")
@@ -141,7 +141,14 @@ def _run_alembic_upgrade(database_url: str) -> None:
             "Alembic config is missing 'script_location'; "
             f"check {alembic_ini} and ensure it points at app/alembic"
         )
-    cfg.set_main_option("sqlalchemy.url", database_url)
+    url = make_url(database_url)
+    query = dict(url.query)
+    search_option = f"-c search_path={schema}"
+    options = query.get("options", "").strip()
+    if search_option not in options:
+        options = f"{options} {search_option}".strip()
+    query["options"] = options
+    cfg.set_main_option("sqlalchemy.url", url.set(query=query).render_as_string(hide_password=False))
     command.upgrade(cfg, "head")
 
 
@@ -165,12 +172,10 @@ def _reset_schema(database_url: str, schema: str) -> None:
 
 def _ensure_required_tables(database_url: str, schema: str) -> None:
     required_tables = {
-        "audit_log",
+        "billing_invoices",
+        "billing_job_runs",
         "billing_periods",
-        "cases",
         "internal_ledger_accounts",
-        "invoices",
-        "reconciliation_runs",
     }
     engine = create_engine(
         database_url,
@@ -231,7 +236,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
     schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
     try:
         _reset_schema(database_url, schema)
-        _run_alembic_upgrade(database_url)
+        _run_alembic_upgrade(database_url, schema)
         _ensure_required_tables(database_url, schema)
     except OperationalError:
         pytest.fail("postgres not available; start docker compose postgres")
