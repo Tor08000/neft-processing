@@ -17,12 +17,19 @@ docker compose exec -T core-api pytest -q -m "integration or smoke"
 docker compose exec -T core-api pytest -q -m "contracts"
 ```
 
+Container smoke checks:
+
+```bash
+docker compose exec -T core-api ls -la /app/docs/contracts/events
+docker compose exec -T core-api alembic -c /app/app/alembic.ini current
+```
+
 ### Host (Windows, light-weight)
 
 Run only the host-safe tests from the repo root:
 
 ```bash
-pytest -q tests_host
+pytest -q -x
 ```
 
 If you intentionally want to run a subset of processing-core tests on host and have the
