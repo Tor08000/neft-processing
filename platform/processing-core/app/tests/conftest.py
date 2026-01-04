@@ -98,10 +98,10 @@ def pytest_report_header(config: pytest.Config) -> str | None:
     return None
 
 
-def pytest_ignore_collect(path: Path, config: pytest.Config) -> bool:  # type: ignore[override]
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool:  # type: ignore[override]
     if HAS_FASTAPI:
         return False
-    path_str = str(path).lower()
+    path_str = str(collection_path).lower()
     if "/tests/contracts/" in path_str or "\\tests\\contracts\\" in path_str:
         return True
     if "/tests/smoke/" in path_str or "\\tests\\smoke\\" in path_str:

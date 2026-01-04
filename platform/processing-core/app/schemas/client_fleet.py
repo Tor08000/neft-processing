@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.fleet import EmployeeStatus, FuelGroupRole
 from app.models.fuel import (
@@ -237,12 +237,11 @@ class FleetAlertIgnoreIn(BaseModel):
 
 
 class FleetNotificationChannelIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     channel_type: FleetNotificationChannelType
     target: str
     secret_ref: str | None = Field(default=None, alias="secret")
-
-    class Config:
-        populate_by_name = True
 
 
 class FleetNotificationChannelOut(BaseModel):

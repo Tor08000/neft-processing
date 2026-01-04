@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 CampaignStatus = Literal["DRAFT", "ACTIVE", "PAUSED", "ENDED", "EXHAUSTED"]
@@ -24,18 +24,15 @@ class SponsoredCampaignCreate(BaseModel):
     starts_at: datetime
     ends_at: datetime | None = None
 
-    @root_validator(skip_on_failure=True)
-    def _validate_budget(cls, values: dict) -> dict:
-        bid = values.get("bid")
-        total_budget = values.get("total_budget")
-        if bid is not None and bid <= 0:
+    @model_validator(mode="after")
+    def _validate_budget(self) -> "SponsoredCampaignCreate":
+        if self.bid is not None and self.bid <= 0:
             raise ValueError("bid_must_be_positive")
-        if total_budget is not None and total_budget <= 0:
+        if self.total_budget is not None and self.total_budget <= 0:
             raise ValueError("total_budget_must_be_positive")
-        daily_cap = values.get("daily_cap")
-        if daily_cap is not None and daily_cap <= 0:
+        if self.daily_cap is not None and self.daily_cap <= 0:
             raise ValueError("daily_cap_must_be_positive")
-        return values
+        return self
 
 
 class SponsoredCampaignUpdate(BaseModel):
@@ -48,18 +45,15 @@ class SponsoredCampaignUpdate(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
-    @root_validator(skip_on_failure=True)
-    def _validate_budget(cls, values: dict) -> dict:
-        bid = values.get("bid")
-        if bid is not None and bid <= 0:
+    @model_validator(mode="after")
+    def _validate_budget(self) -> "SponsoredCampaignUpdate":
+        if self.bid is not None and self.bid <= 0:
             raise ValueError("bid_must_be_positive")
-        total_budget = values.get("total_budget")
-        if total_budget is not None and total_budget <= 0:
+        if self.total_budget is not None and self.total_budget <= 0:
             raise ValueError("total_budget_must_be_positive")
-        daily_cap = values.get("daily_cap")
-        if daily_cap is not None and daily_cap <= 0:
+        if self.daily_cap is not None and self.daily_cap <= 0:
             raise ValueError("daily_cap_must_be_positive")
-        return values
+        return self
 
 
 class SponsoredCampaignOut(BaseModel):

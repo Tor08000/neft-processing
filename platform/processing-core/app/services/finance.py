@@ -58,6 +58,10 @@ class PaymentReferenceConflict(RuntimeError):
     """Payment external reference points to a different invoice."""
 
 
+class PaymentIdempotencyConflict(RuntimeError):
+    """Payment idempotency key reused with a different payload."""
+
+
 class RefundReferenceConflict(RuntimeError):
     """Refund external reference points to a different invoice."""
 
@@ -154,6 +158,24 @@ class FinanceService:
             billing_metrics.mark_payment_failed()
             raise PaymentReferenceConflict(idempotency_key)
         return existing
+
+    def _validate_payment_replay(
+        self,
+        *,
+        payment: InvoicePayment,
+        amount: int,
+        currency: str,
+        external_ref: str | None,
+        provider: str | None,
+    ) -> None:
+        if int(payment.amount) != int(amount):
+            raise PaymentIdempotencyConflict("amount_mismatch")
+        if payment.currency != currency:
+            raise PaymentIdempotencyConflict("currency_mismatch")
+        if (payment.external_ref or None) != (external_ref or None):
+            raise PaymentIdempotencyConflict("external_ref_mismatch")
+        if (payment.provider or None) != (provider or None):
+            raise PaymentIdempotencyConflict("provider_mismatch")
 
     def _replay_payment(
         self,
@@ -412,6 +434,13 @@ class FinanceService:
                 provider=provider,
             )
             if existing:
+                self._validate_payment_replay(
+                    payment=existing,
+                    amount=amount,
+                    currency=currency,
+                    external_ref=external_ref,
+                    provider=provider,
+                )
                 return self._replay_payment(
                     invoice_id=invoice_id,
                     payment=existing,
@@ -442,6 +471,13 @@ class FinanceService:
                 provider=provider,
             )
             if existing:
+                self._validate_payment_replay(
+                    payment=existing,
+                    amount=amount,
+                    currency=currency,
+                    external_ref=external_ref,
+                    provider=provider,
+                )
                 return self._replay_payment(
                     invoice_id=invoice_id,
                     payment=existing,
@@ -502,6 +538,13 @@ class FinanceService:
                     provider=provider,
                 )
                 if existing:
+                    self._validate_payment_replay(
+                        payment=existing,
+                        amount=amount,
+                        currency=currency,
+                        external_ref=external_ref,
+                        provider=provider,
+                    )
                     return self._replay_payment(
                         invoice_id=invoice_id,
                         payment=existing,

@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 ProductType = Literal["SERVICE", "PRODUCT"]
@@ -105,10 +105,10 @@ class ProductCreate(BaseModel):
     price_model: PriceModel
     price_config: dict
 
-    @root_validator(skip_on_failure=True)
-    def _check_price_config(cls, values: dict) -> dict:
-        validate_price_config(values.get("price_model"), values.get("price_config"))
-        return values
+    @model_validator(mode="after")
+    def _check_price_config(self) -> "ProductCreate":
+        validate_price_config(self.price_model, self.price_config)
+        return self
 
 
 class ProductUpdate(BaseModel):
@@ -119,13 +119,11 @@ class ProductUpdate(BaseModel):
     price_model: PriceModel | None = None
     price_config: dict | None = None
 
-    @root_validator(skip_on_failure=True)
-    def _check_price_config(cls, values: dict) -> dict:
-        price_model = values.get("price_model")
-        price_config = values.get("price_config")
-        if price_model and price_config is not None:
-            validate_price_config(price_model, price_config)
-        return values
+    @model_validator(mode="after")
+    def _check_price_config(self) -> "ProductUpdate":
+        if self.price_model and self.price_config is not None:
+            validate_price_config(self.price_model, self.price_config)
+        return self
 
 
 class ProductOut(BaseModel):

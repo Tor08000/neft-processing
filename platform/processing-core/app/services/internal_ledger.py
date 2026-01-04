@@ -524,12 +524,20 @@ class InternalLedgerService:
     ) -> None:
         currency = payment.currency
         amount = int(payment.amount)
+        existing = (
+            self.db.query(InternalLedgerTransaction)
+            .filter(InternalLedgerTransaction.external_ref_type == "PAYMENT")
+            .filter(InternalLedgerTransaction.external_ref_id == str(payment.id))
+            .one_or_none()
+        )
+        if existing:
+            return
         transaction, is_replay = self._get_or_create_transaction(
             tenant_id=tenant_id,
             transaction_type=InternalLedgerTransactionType.PAYMENT_APPLIED,
             external_ref_type="PAYMENT",
             external_ref_id=str(payment.id),
-            idempotency_key=f"payment:{payment.id}:applied:v1",
+            idempotency_key=f"payment:{payment.idempotency_key}:applied:v1",
             total_amount=amount,
             currency=currency,
             posted_at=payment.created_at,
