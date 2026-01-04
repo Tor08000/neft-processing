@@ -21,6 +21,9 @@ RUN pip install --upgrade pip && \
 # сам код core-api
 COPY platform/processing-core /app
 
+# docs (contracts event schema registry)
+COPY docs /app/docs
+
 # entrypoint
 RUN chmod +x entrypoint.sh
 
