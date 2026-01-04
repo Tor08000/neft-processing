@@ -38,7 +38,7 @@ CASE_COMMENT_TYPE = ["user", "system"]
 def _create_desc_index(bind, name: str, table: str, columns: list[str]) -> None:
     if index_exists(bind, name, schema=SCHEMA):
         return
-    schema_name = SCHEMA or "public"
+    schema_name = SCHEMA or resolve_db_schema().schema
     columns_sql = ", ".join(columns)
     bind.exec_driver_sql(f"CREATE INDEX {name} ON {schema_name}.{table} ({columns_sql})")
 

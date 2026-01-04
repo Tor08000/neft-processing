@@ -25,7 +25,7 @@ CLOSING_PACKAGE_STATUSES = ["DRAFT", "ISSUED", "ACKNOWLEDGED", "FINALIZED", "VOI
 
 
 def _schema_name(schema: str | None) -> str:
-    return schema or "public"
+    return schema or resolve_db_schema().schema
 
 
 def _qualify(name: str, schema: str) -> str:

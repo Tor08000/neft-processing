@@ -10,9 +10,9 @@ def test_default_schema_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
 
     resolution = schema_module.resolve_db_schema(os.environ)
 
-    assert resolution.schema == "public"
-    assert resolution.search_path_sql == 'SET search_path TO "public"'
-    assert resolution.line() == "schema_resolved=public"
+    assert resolution.schema == "processing_core"
+    assert resolution.search_path_sql == 'SET search_path TO "processing_core"'
+    assert resolution.line() == "schema_resolved=processing_core"
 
 
 def test_neft_schema_has_priority(monkeypatch: pytest.MonkeyPatch) -> None:

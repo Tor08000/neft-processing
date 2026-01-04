@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from app.db import engine as app_engine
+from app.db.schema import resolve_db_schema
 
 
 def get_database_url() -> str:
@@ -28,7 +29,11 @@ def ensure_connectable(db_url: str) -> Engine:
 
     engine_kwargs = {}
     if db_url.startswith("postgresql"):
-        engine_kwargs["connect_args"] = {"prepare_threshold": 0}
+        schema = resolve_db_schema().schema
+        engine_kwargs["connect_args"] = {
+            "prepare_threshold": 0,
+            "options": f"-c search_path={schema}",
+        }
 
     connectable = sa.create_engine(db_url, **engine_kwargs)
     try:

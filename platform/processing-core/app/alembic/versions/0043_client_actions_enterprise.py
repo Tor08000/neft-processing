@@ -44,7 +44,7 @@ def _qualify(name: str) -> str:
 def _enum_value_exists(bind, enum_name: str, value: str) -> bool:
     if not is_postgres(bind):
         return False
-    schema = SCHEMA or "public"
+    schema = SCHEMA or resolve_db_schema().schema
     return (
         bind.execute(
             sa.text(
@@ -74,7 +74,7 @@ def upgrade() -> None:
     ensure_pg_enum(bind, "invoice_message_sender_type", INVOICE_MESSAGE_SENDERS, schema=SCHEMA)
 
     if is_postgres(bind):
-        enum_schema = SCHEMA or "public"
+        enum_schema = SCHEMA or resolve_db_schema().schema
         for value in AUDIT_VISIBILITY:
             ensure_pg_enum_value(bind, "audit_visibility", value, schema=enum_schema)
         for value in RECONCILIATION_STATUSES:

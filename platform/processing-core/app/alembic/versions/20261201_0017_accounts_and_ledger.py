@@ -279,6 +279,6 @@ def downgrade() -> None:
         op.drop_table("accounts", schema=SCHEMA)
 
     if bind.dialect.name == "postgresql":
-        schema_name = SCHEMA or "public"
+        schema_name = SCHEMA or resolve_db_schema().schema
         for enum_name in ("postingbatchstatus", "postingbatchtype", "ledgerdirection", "accountstatus", "accounttype", "accountownertype"):
             bind.exec_driver_sql(f'DROP TYPE IF EXISTS \"{schema_name}\".{enum_name}')

@@ -174,13 +174,34 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
     try:
         inspector = inspect(engine)
         tables = set(inspector.get_table_names(schema=schema))
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT table_schema, table_name
+                    FROM information_schema.tables
+                    WHERE table_name = ANY(:table_names)
+                    """
+                ),
+                {"table_names": list({"operations", "cards"})},
+            ).all()
+        schemas_by_table: dict[str, set[str]] = {}
+        for table_schema, table_name in rows:
+            schemas_by_table.setdefault(table_name, set()).add(table_schema)
     finally:
         engine.dispose()
 
     required_tables = {"operations", "cards"}
     missing = required_tables - tables
     if missing:
-        raise RuntimeError(f"Missing required tables after migrations: {', '.join(sorted(missing))}")
+        diagnostics = ", ".join(
+            f"{table} in {sorted(schemas_by_table.get(table, set())) or '[]'}"
+            for table in sorted(required_tables)
+        )
+        raise RuntimeError(
+            "Missing required tables after migrations: "
+            f"{', '.join(sorted(missing))}. Found schemas: {diagnostics}"
+        )
 
 
 @pytest.fixture(scope="session", autouse=True)

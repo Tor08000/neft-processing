@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.db.schema import resolve_db_schema
+
 migration = importlib.import_module(
     "app.alembic.versions.20261101_0014_billing_summary_alignment"
 )
@@ -72,4 +74,4 @@ def test_create_index_keyword_only_options(monkeypatch: pytest.MonkeyPatch):
     assert dummy_op.create_index_calls, "create_index should have been invoked"
     for args, kwargs in dummy_op.create_index_calls:
         assert len(args) == 3, "schema and postgresql_where must be keyword-only"
-        assert "schema" not in kwargs or kwargs["schema"] == "public"
+        assert "schema" not in kwargs or kwargs["schema"] == resolve_db_schema().schema

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Mapping, cast
 
 
-DEFAULT_SCHEMA = "public"
+DEFAULT_SCHEMA = "processing_core"
 PRIMARY_ENV = "NEFT_DB_SCHEMA"
 
 

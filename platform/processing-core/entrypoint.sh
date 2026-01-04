@@ -28,7 +28,7 @@ from sqlalchemy.engine import make_url
 import psycopg
 
 dsn = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA", "public").strip() or "public"
+schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
 timeout = int(os.getenv("DB_WAIT_TIMEOUT", "60"))
 interval = int(os.getenv("DB_WAIT_INTERVAL", "2"))
 
