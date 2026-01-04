@@ -17,9 +17,10 @@ from .fixtures.rsa_keys import rsa_keys  # noqa: F401
 ROOT_DIR = Path(__file__).resolve()
 while ROOT_DIR.name != "app" and ROOT_DIR.parent != ROOT_DIR:
     ROOT_DIR = ROOT_DIR.parent
-SHARED_PATH = ROOT_DIR / "shared" / "python"
-SERVICE_ROOT = ROOT_DIR / "services" / "core-api"
-PROCESSING_APP_ROOT = ROOT_DIR / "platform" / "processing-core"
+REPO_ROOT = ROOT_DIR.parents[2]
+SHARED_PATH = REPO_ROOT / "shared" / "python"
+SERVICE_ROOT = REPO_ROOT / "services" / "core-api"
+PROCESSING_APP_ROOT = ROOT_DIR.parent
 
 
 def _prepend_path(path: Path) -> None:
@@ -85,7 +86,15 @@ def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
 
 def _run_alembic_upgrade(database_url: str) -> None:
     alembic_ini = PROCESSING_APP_ROOT / "app" / "alembic.ini"
+    if not alembic_ini.exists():
+        raise RuntimeError(f"Alembic config not found at {alembic_ini}")
     cfg = Config(str(alembic_ini))
+    script_location = cfg.get_main_option("script_location")
+    if not script_location:
+        raise RuntimeError(
+            "Alembic config is missing 'script_location'; "
+            f"check {alembic_ini} and ensure it points at app/alembic"
+        )
     cfg.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(cfg, "head")
 
