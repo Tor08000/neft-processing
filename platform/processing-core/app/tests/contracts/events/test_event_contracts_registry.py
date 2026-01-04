@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -9,10 +10,25 @@ from jsonschema import Draft202012Validator, FormatChecker
 pytestmark = [pytest.mark.contracts, pytest.mark.contracts_events]
 
 ROOT_DIR = Path(__file__).resolve()
-while ROOT_DIR.name != "neft-processing" and ROOT_DIR.parent != ROOT_DIR:
+while ROOT_DIR.name != "app" and ROOT_DIR.parent != ROOT_DIR:
     ROOT_DIR = ROOT_DIR.parent
 
-SCHEMA_DIR = ROOT_DIR / "docs" / "contracts" / "events"
+
+def _find_repo_root(start_dir: Path) -> Path:
+    for current in (start_dir, *start_dir.parents):
+        if (current / "docs").is_dir():
+            return current
+        docker_compose = current / "docker-compose.yml"
+        if docker_compose.exists():
+            return current
+        has_platform_shared = (current / "platform").is_dir() and (current / "shared").is_dir()
+        if has_platform_shared:
+            return current
+    return start_dir.parent
+
+
+REPO_ROOT = _find_repo_root(ROOT_DIR)
+SCHEMA_DIR = Path(os.getenv("NEFT_EVENT_SCHEMA_DIR") or (REPO_ROOT / "docs" / "contracts" / "events"))
 
 
 def _load_schema(path: Path) -> dict:
