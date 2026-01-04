@@ -21,6 +21,7 @@ from app.models.finance import (
     PaymentStatus,
     SettlementSourceType,
 )
+from app.models.internal_ledger import InternalLedgerTransaction
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.refund_request import RefundRequest
 from app.services.legal_graph import (
@@ -165,6 +166,8 @@ class FinanceService:
     ) -> PaymentResult:
         invoice = invoice or self._lock_invoice(invoice_id)
         self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
+        if self._payment_already_applied(invoice=invoice, payment=payment):
+            return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
         InternalLedgerService(self.db).post_payment_applied(
             invoice=invoice,
             payment=payment,
@@ -180,6 +183,24 @@ class FinanceService:
             request_ctx=request_ctx,
         )
         return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
+
+    def _payment_already_applied(self, *, invoice: Invoice, payment: InvoicePayment) -> bool:
+        allocation_exists = (
+            self.db.query(InvoiceSettlementAllocation.id)
+            .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+            .filter(InvoiceSettlementAllocation.source_type == SettlementSourceType.PAYMENT)
+            .filter(InvoiceSettlementAllocation.source_id == str(payment.id))
+            .one_or_none()
+            is not None
+        )
+        ledger_exists = (
+            self.db.query(InternalLedgerTransaction.id)
+            .filter(InternalLedgerTransaction.external_ref_type == "PAYMENT")
+            .filter(InternalLedgerTransaction.external_ref_id == str(payment.id))
+            .one_or_none()
+            is not None
+        )
+        return allocation_exists and ledger_exists
 
     def _resolve_tenant_id(self, request_ctx: RequestContext | None) -> int:
         if request_ctx and request_ctx.tenant_id is not None:
