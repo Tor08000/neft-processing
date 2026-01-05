@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,12 +7,8 @@ from sqlalchemy.engine.url import make_url
 
 from alembic import command
 from alembic.config import Config
-import sqlalchemy as sa
-from functools import lru_cache
-from psycopg import errors as psycopg_errors
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.exc import OperationalError, ProgrammingError
-from sqlalchemy.dialects.postgresql import ENUM as PGEnum
+from sqlalchemy.exc import OperationalError
 
 import pytest
 from jose import jwt
@@ -62,11 +57,8 @@ os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
 from app import models  # noqa: F401
-from app.db import Base
 from app.db.schema import DB_SCHEMA
-from app.db.types import ExistingEnum
 from app.integrations.fuel import models as fuel_models  # noqa: F401
-from app.alembic.helpers import ensure_pg_enum
 
 FASTAPI_SKIP_REASON = (
     "fastapi not installed; run in docker: docker compose exec -T core-api pytest -q -x"
@@ -248,116 +240,6 @@ REQUIRED_TABLES = {
     "operations",
 }
 
-def _register_enum(
-    enum_types: dict[str, tuple[str, tuple[str, ...]]],
-    *,
-    name: str | None,
-    schema: str,
-    values: tuple[str, ...],
-) -> None:
-    if not name:
-        return
-    if not values:
-        raise RuntimeError(f"Enum {name} has no values")
-    existing = enum_types.get(name)
-    if existing:
-        existing_schema, existing_values = existing
-        if existing_schema != schema or existing_values != values:
-            raise RuntimeError(
-                "Enum value mismatch for "
-                f"{name}: {(existing_schema, existing_values)!r} vs {(schema, values)!r}"
-            )
-        return
-    enum_types[name] = (schema, values)
-
-
-@lru_cache(maxsize=1)
-def _iter_enum_types() -> dict[str, tuple[str, tuple[str, ...]]]:
-    enum_types: dict[str, tuple[str, tuple[str, ...]]] = {}
-    for table in Base.metadata.tables.values():
-        for column in table.columns:
-            column_type = column.type
-            while isinstance(column_type, sa.ARRAY):
-                column_type = column_type.item_type
-            if isinstance(column_type, ExistingEnum):
-                schema = column_type.schema or DB_SCHEMA
-                _register_enum(
-                    enum_types,
-                    name=column_type.name,
-                    schema=schema,
-                    values=tuple(column_type._values),
-                )
-                continue
-            if isinstance(column_type, PGEnum):
-                schema = column_type.schema or DB_SCHEMA
-                _register_enum(
-                    enum_types,
-                    name=column_type.name,
-                    schema=schema,
-                    values=tuple(column_type.enums),
-                )
-                continue
-            if isinstance(column_type, sa.Enum):
-                schema = column_type.schema or DB_SCHEMA
-                _register_enum(
-                    enum_types,
-                    name=column_type.name,
-                    schema=schema,
-                    values=tuple(column_type.enums),
-                )
-                continue
-    return enum_types
-
-
-_RESOLVED_ENUM_VALUES: dict[str, tuple[str, ...] | None] = {}
-
-
-def _resolve_enum_values(enum_name: str) -> tuple[str, ...] | None:
-    if enum_name in _RESOLVED_ENUM_VALUES:
-        return _RESOLVED_ENUM_VALUES[enum_name]
-    enum_registry = _iter_enum_types()
-    if enum_name in enum_registry:
-        _, values = enum_registry[enum_name]
-        _RESOLVED_ENUM_VALUES[enum_name] = values
-        return values
-    try:
-        from app.models.fuel import FleetNotificationChannelStatus, FleetNotificationChannelType
-    except ModuleNotFoundError:
-        FleetNotificationChannelStatus = None  # type: ignore[assignment]
-        FleetNotificationChannelType = None  # type: ignore[assignment]
-    known_enums = {
-        "fleet_notification_channel_status": tuple(
-            member.value for member in FleetNotificationChannelStatus
-        )
-        if FleetNotificationChannelStatus
-        else None,
-        "fleet_notification_channel_type": tuple(
-            member.value for member in FleetNotificationChannelType
-        )
-        if FleetNotificationChannelType
-        else None,
-    }
-    resolved = known_enums.get(enum_name)
-    _RESOLVED_ENUM_VALUES[enum_name] = resolved
-    return resolved
-
-
-def _collect_processing_enums(schema: str) -> dict[str, tuple[str, ...]]:
-    enums = {}
-    for enum_name, (enum_schema, values) in _iter_enum_types().items():
-        if enum_schema == schema:
-            enums[enum_name] = values
-    return enums
-
-
-# Warm enum registry after all model imports are loaded.
-_iter_enum_types.cache_clear()
-_iter_enum_types()
-_RESOLVED_ENUM_VALUES.clear()
-
-REQUIRED_ENUMS = set(_collect_processing_enums(DB_SCHEMA))
-
-
 def _schema_diagnostics(conn, *, schema: str, missing_tables: set[str]) -> str:
     current = conn.execute(
         text("select current_schema(), current_setting('search_path')")
@@ -382,35 +264,15 @@ def _schema_diagnostics(conn, *, schema: str, missing_tables: set[str]) -> str:
     except Exception as exc:  # noqa: BLE001 - diagnostics only
         revision = f"error: {exc!r}"
 
-    enums_status = {}
-    if conn.dialect.name == "postgresql":
-        rows = conn.execute(
-            text(
-                """
-                SELECT t.typname
-                FROM pg_type t
-                JOIN pg_namespace n ON n.oid = t.typnamespace
-                WHERE n.nspname = :schema AND t.typname = ANY(:names)
-                """
-            ),
-            {"schema": schema, "names": sorted(REQUIRED_ENUMS)},
-        ).scalars()
-        existing_enums = set(rows)
-        enums_status = {
-            "missing": sorted(REQUIRED_ENUMS - existing_enums),
-            "present": sorted(existing_enums),
-        }
-
     return (
         f"schema={schema}, missing_tables={sorted(missing_tables)}; "
         f"current_schema/search_path={current}; "
         f"tables(sample)={tables_list}; "
-        f"alembic_revision={revision}; "
-        f"enums={enums_status or 'n/a'}"
+        f"alembic_revision={revision}"
     )
 
 
-def _ensure_required_enums(database_url: str, schema: str) -> None:
+def _check_required_tables(database_url: str, schema: str) -> None:
     engine = create_engine(
         database_url,
         future=True,
@@ -420,33 +282,7 @@ def _ensure_required_enums(database_url: str, schema: str) -> None:
         },
     )
     try:
-        enum_map = _collect_processing_enums(schema)
-        if not enum_map:
-            return
         with engine.connect() as conn:
-            for enum_name, values in sorted(enum_map.items()):
-                ensure_pg_enum(conn, enum_name, values=values, schema=schema)
-    finally:
-        engine.dispose()
-
-
-def _ensure_required_tables(database_url: str, schema: str) -> None:
-    max_attempts = 5
-    missing_enum_regex = re.compile(r'type "([^"]+)\.([^"]+)" does not exist')
-    missing_enum_unqualified_regex = re.compile(r'type "([^"]+)" does not exist')
-    created_enums: list[str] = []
-    last_exception: Exception | None = None
-
-    engine = create_engine(
-        database_url,
-        future=True,
-        connect_args={
-            "options": f"-c search_path={schema}",
-            "prepare_threshold": 0,
-        },
-    )
-    try:
-        def _check_required_tables(conn) -> None:
             inspector = inspect(conn)
             tables = set(inspector.get_table_names(schema=schema))
             rows = conn.execute(
@@ -478,63 +314,6 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
                     f"{', '.join(f'{table} -> {schemas}' for table, schemas in sorted(other_schema_hits.items())) or '[]'}. "
                     f"Diagnostics: {diagnostics}"
                 )
-
-        for attempt in range(max_attempts):
-            try:
-                with engine.begin() as conn:
-                    Base.metadata.create_all(bind=conn)
-                    _check_required_tables(conn)
-                return
-            except ProgrammingError as exc:
-                last_exception = exc
-                message = str(exc.orig)
-                match = missing_enum_regex.search(message)
-                if match:
-                    error_schema, enum_name = match.groups()
-                else:
-                    match = missing_enum_unqualified_regex.search(message)
-                    if match:
-                        error_schema = schema
-                        enum_name = match.group(1)
-                    elif not isinstance(exc.orig, psycopg_errors.UndefinedObject):
-                        raise
-                    else:
-                        raise
-                if error_schema != schema:
-                    raise RuntimeError(
-                        f"Enum {error_schema}.{enum_name} is missing outside expected schema {schema}"
-                    ) from exc
-                values = _resolve_enum_values(enum_name)
-                if not values:
-                    raise RuntimeError(
-                        f"Unknown enum values for {enum_name}"
-                    ) from exc
-                values_sql = ", ".join("'{}'".format(value.replace("'", "''")) for value in values)
-                schema_sql = schema.replace('"', '""')
-                enum_sql = enum_name.replace('"', '""')
-                with engine.begin() as conn:
-                    conn.exec_driver_sql(
-                        f"""
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (
-                                SELECT 1
-                                FROM pg_type t
-                                JOIN pg_namespace n ON n.oid = t.typnamespace
-                                WHERE n.nspname = '{schema_sql}' AND t.typname = '{enum_sql}'
-                            ) THEN
-                                CREATE TYPE "{schema_sql}"."{enum_sql}" AS ENUM ({values_sql});
-                            END IF;
-                        END $$;
-                        """
-                    )
-                if enum_name not in created_enums:
-                    created_enums.append(enum_name)
-        last_message = f"{last_exception!r}" if last_exception else "unknown error"
-        raise RuntimeError(
-            "Exceeded enum bootstrap attempts while ensuring required tables. "
-            f"Created enums={created_enums}. Last error={last_message}"
-        )
     finally:
         engine.dispose()
 
@@ -552,8 +331,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
     try:
         _reset_schema(database_url, schema)
         _run_alembic_upgrade(database_url, schema)
-        _ensure_required_enums(database_url, schema)
-        _ensure_required_tables(database_url, schema)
+        _check_required_tables(database_url, schema)
     except OperationalError:
         pytest.fail("postgres not available; start docker compose postgres")
     except Exception as exc:
