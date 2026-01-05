@@ -8,6 +8,7 @@ from sqlalchemy.engine.url import make_url
 
 from alembic import command
 from alembic.config import Config
+import sqlalchemy as sa
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
 
@@ -58,6 +59,11 @@ os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
 from app import models  # noqa: F401
+from app.db import Base
+from app.db.schema import DB_SCHEMA
+from app.db.types import ExistingEnum
+from app.integrations.fuel import models as fuel_models  # noqa: F401
+from app.alembic.helpers import ensure_pg_enum
 
 FASTAPI_SKIP_REASON = (
     "fastapi not installed; run in docker: docker compose exec -T core-api pytest -q -x"
@@ -239,17 +245,36 @@ REQUIRED_TABLES = {
     "operations",
 }
 
-REQUIRED_ENUMS = {
-    "invoice_payment_status",
-    "credit_note_status",
-    "invoice_pdf_status",
-    "invoicestatus",
-    "internal_ledger_account_status",
-    "internal_ledger_account_type",
-    "internal_ledger_entry_direction",
-    "internal_ledger_transaction_type",
-    "settlement_source_type",
-}
+def _iter_enum_types() -> dict[str, tuple[str, tuple[str, ...]]]:
+    enum_types: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            column_type = column.type
+            if isinstance(column_type, sa.ARRAY):
+                column_type = column_type.item_type
+            if isinstance(column_type, ExistingEnum):
+                schema = column_type.schema or DB_SCHEMA
+                enum_types[column_type.name] = (schema, tuple(column_type._values))
+                continue
+            if isinstance(column_type, sa.Enum):
+                enum_name = column_type.name
+                if enum_name is None:
+                    continue
+                schema = column_type.schema or DB_SCHEMA
+                enum_types[enum_name] = (schema, tuple(column_type.enums))
+                continue
+    return enum_types
+
+
+def _collect_processing_enums(schema: str) -> dict[str, tuple[str, ...]]:
+    enums = {}
+    for enum_name, (enum_schema, values) in _iter_enum_types().items():
+        if enum_schema == schema:
+            enums[enum_name] = values
+    return enums
+
+
+REQUIRED_ENUMS = set(_collect_processing_enums(DB_SCHEMA))
 
 
 def _schema_diagnostics(conn, *, schema: str, missing_tables: set[str]) -> str:
@@ -302,6 +327,26 @@ def _schema_diagnostics(conn, *, schema: str, missing_tables: set[str]) -> str:
         f"alembic_revision={revision}; "
         f"enums={enums_status or 'n/a'}"
     )
+
+
+def _ensure_required_enums(database_url: str, schema: str) -> None:
+    engine = create_engine(
+        database_url,
+        future=True,
+        connect_args={
+            "options": f"-c search_path={schema}",
+            "prepare_threshold": 0,
+        },
+    )
+    try:
+        enum_map = _collect_processing_enums(schema)
+        if not enum_map:
+            return
+        with engine.connect() as conn:
+            for enum_name, values in enum_map.items():
+                ensure_pg_enum(conn, enum_name, values=values, schema=schema)
+    finally:
+        engine.dispose()
 
 
 def _ensure_required_tables(database_url: str, schema: str) -> None:
@@ -363,6 +408,7 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
     try:
         _reset_schema(database_url, schema)
         _run_alembic_upgrade(database_url, schema)
+        _ensure_required_enums(database_url, schema)
         _ensure_required_tables(database_url, schema)
     except OperationalError:
         pytest.fail("postgres not available; start docker compose postgres")
