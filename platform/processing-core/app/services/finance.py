@@ -169,6 +169,29 @@ class FinanceService:
             .one_or_none()
         )
 
+    def _resolve_payment_from_event(
+        self,
+        *,
+        event: MoneyFlowEvent,
+        idempotency_key: str,
+    ) -> InvoicePayment | None:
+        payment_id = None
+        if event.meta:
+            payment_id = event.meta.get("payment_id")
+        if payment_id:
+            payment = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.id == payment_id)
+                .one_or_none()
+            )
+            if payment:
+                return payment
+        return (
+            self.db.query(InvoicePayment)
+            .filter(InvoicePayment.idempotency_key == idempotency_key)
+            .one_or_none()
+        )
+
     def _replay_from_money_flow_event(
         self,
         *,
@@ -184,22 +207,7 @@ class FinanceService:
         event = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
         if not event:
             return None
-        payment_id = None
-        if event.meta:
-            payment_id = event.meta.get("payment_id")
-        payment = None
-        if payment_id:
-            payment = (
-                self.db.query(InvoicePayment)
-                .filter(InvoicePayment.id == payment_id)
-                .one_or_none()
-            )
-        if payment is None:
-            payment = (
-                self.db.query(InvoicePayment)
-                .filter(InvoicePayment.idempotency_key == idempotency_key)
-                .one_or_none()
-            )
+        payment = self._resolve_payment_from_event(event=event, idempotency_key=idempotency_key)
         if payment is None:
             logger.warning(
                 "money_flow_event_missing_payment",
@@ -210,6 +218,9 @@ class FinanceService:
             billing_metrics.mark_payment_error()
             billing_metrics.mark_payment_failed()
             raise PaymentReferenceConflict(idempotency_key)
+        invoice = self.db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+        if not invoice:
+            raise InvoiceNotFound(invoice_id)
         self._validate_payment_replay(
             payment=payment,
             amount=amount,
@@ -217,12 +228,7 @@ class FinanceService:
             external_ref=external_ref,
             provider=provider,
         )
-        return self._replay_payment(
-            invoice_id=payment.invoice_id,
-            payment=payment,
-            request_ctx=request_ctx,
-            token=token,
-        )
+        return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
 
     def _ensure_payment_money_flow_event(
         self,
