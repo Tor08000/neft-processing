@@ -157,17 +157,22 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
     if not is_postgres(bind):
         return
 
-    values_sql = ", ".join(f"'{value}'" for value in values)
-    type_name = enum_name if schema in {None, "", "public"} else f"{schema}.{enum_name}"
+    schema_name = schema or DB_SCHEMA
+    values_sql = ", ".join(f"'{value.replace(\"'\", \"''\")}'" for value in values)
+    schema_sql = schema_name.replace('"', '""')
+    enum_sql = enum_name.replace('"', '""')
     bind.exec_driver_sql(
         f"""
         DO $$
         BEGIN
-            BEGIN
-                CREATE TYPE {type_name} AS ENUM ({values_sql});
-            EXCEPTION WHEN duplicate_object THEN
-                NULL;
-            END;
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = '{schema_sql}' AND t.typname = '{enum_sql}'
+            ) THEN
+                CREATE TYPE "{schema_sql}"."{enum_sql}" AS ENUM ({values_sql});
+            END IF;
         END $$;
         """
     )
