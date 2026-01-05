@@ -158,7 +158,9 @@ def ensure_pg_enum(bind: Connection, enum_name: str, values: Sequence[str], sche
         return
 
     schema_name = schema or DB_SCHEMA
-    values_sql = ", ".join(f"'{value.replace(\"'\", \"''\")}'" for value in values)
+    if not values:
+        raise RuntimeError(f"Enum {schema}.{enum_name} values list is empty")
+    values_sql = ", ".join("'{}'".format(value.replace("'", "''")) for value in values)
     schema_sql = schema_name.replace('"', '""')
     enum_sql = enum_name.replace('"', '""')
     bind.exec_driver_sql(
