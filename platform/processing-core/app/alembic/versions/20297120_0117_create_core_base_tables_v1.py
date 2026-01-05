@@ -248,7 +248,6 @@ def upgrade() -> None:
 
     accounts_exists = table_exists(bind, "accounts", schema=SCHEMA)
     if not accounts_exists:
-        card_fk = f"{SCHEMA}.cards.id" if SCHEMA else "cards.id"
         op.create_table(
             "accounts",
             sa.Column(
@@ -260,7 +259,7 @@ def upgrade() -> None:
             sa.Column("client_id", sa.String(length=64), nullable=False),
             sa.Column("owner_type", account_owner_enum, nullable=False, default="CLIENT"),
             sa.Column("owner_id", GUID(), nullable=True),
-            sa.Column("card_id", sa.String(length=64), sa.ForeignKey(card_fk), nullable=True),
+            sa.Column("card_id", sa.String(length=64), nullable=True),
             sa.Column("tariff_id", sa.String(length=64), nullable=True),
             sa.Column("currency", sa.String(length=8), nullable=False),
             sa.Column("type", account_type_enum, nullable=False),
@@ -360,7 +359,11 @@ def upgrade() -> None:
                 "window",
                 limit_window_enum,
                 nullable=False,
-                server_default=LIMIT_WINDOW_VALUES[0],
+                server_default=(
+                    sa.text("'PER_TX'::limitwindow")
+                    if bind.dialect.name == "postgresql"
+                    else sa.text("'PER_TX'")
+                ),
                 default=LIMIT_WINDOW_VALUES[0],
             ),
             sa.Column("enabled", sa.Boolean(), nullable=False, default=True),
