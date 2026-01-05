@@ -170,7 +170,7 @@ def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
         if _markexpr_includes(markexpr, "unit") and not any(
             _markexpr_includes(markexpr, marker) for marker in ("integration", "smoke")
         ):
-            return True
+            return False
         if any(_markexpr_includes(markexpr, marker) for marker in ("integration", "smoke")):
             return False
     if _has_integration_path(config):
