@@ -1,4 +1,9 @@
+import os
 from pathlib import Path
+
+
+def pytest_configure():  # type: ignore[override]
+    os.environ.setdefault("NEFT_AUTO_CREATE_SCHEMA", "false")
 
 
 def _item_path(item) -> Path | None:
