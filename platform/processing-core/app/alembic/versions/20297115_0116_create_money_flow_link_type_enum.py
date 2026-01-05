@@ -53,7 +53,6 @@ def upgrade() -> None:
     DO $$
     DECLARE
         schema_name text := '{sql_str(SCHEMA)}';
-        enum_name text := '{sql_str("money_flow_link_type")}';
         values_sql text := '{sql_str(values_sql)}';
     BEGIN
         IF NOT EXISTS (
@@ -61,14 +60,9 @@ def upgrade() -> None:
             FROM pg_type t
             JOIN pg_namespace n ON n.oid = t.typnamespace
             WHERE n.nspname = schema_name
-              AND t.typname = enum_name
+              AND t.typname = 'money_flow_link_type'
         ) THEN
-            EXECUTE format(
-                'CREATE TYPE %I.%I AS ENUM (%s)',
-                schema_name,
-                enum_name,
-                values_sql
-            );
+            EXECUTE 'CREATE TYPE {SCHEMA}.money_flow_link_type AS ENUM (' || values_sql || ')';
         END IF;
     END $$;
     """
