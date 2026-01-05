@@ -9,8 +9,10 @@ from sqlalchemy.engine.url import make_url
 from alembic import command
 from alembic.config import Config
 import sqlalchemy as sa
+from functools import lru_cache
+from psycopg import errors as psycopg_errors
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 
 import pytest
@@ -269,6 +271,7 @@ def _register_enum(
     enum_types[name] = (schema, values)
 
 
+@lru_cache(maxsize=1)
 def _iter_enum_types() -> dict[str, tuple[str, tuple[str, ...]]]:
     enum_types: dict[str, tuple[str, tuple[str, ...]]] = {}
     for table in Base.metadata.tables.values():
@@ -306,6 +309,39 @@ def _iter_enum_types() -> dict[str, tuple[str, tuple[str, ...]]]:
     return enum_types
 
 
+_RESOLVED_ENUM_VALUES: dict[str, tuple[str, ...] | None] = {}
+
+
+def _resolve_enum_values(enum_name: str) -> tuple[str, ...] | None:
+    if enum_name in _RESOLVED_ENUM_VALUES:
+        return _RESOLVED_ENUM_VALUES[enum_name]
+    enum_registry = _iter_enum_types()
+    if enum_name in enum_registry:
+        _, values = enum_registry[enum_name]
+        _RESOLVED_ENUM_VALUES[enum_name] = values
+        return values
+    try:
+        from app.models.fuel import FleetNotificationChannelStatus, FleetNotificationChannelType
+    except ModuleNotFoundError:
+        FleetNotificationChannelStatus = None  # type: ignore[assignment]
+        FleetNotificationChannelType = None  # type: ignore[assignment]
+    known_enums = {
+        "fleet_notification_channel_status": tuple(
+            member.value for member in FleetNotificationChannelStatus
+        )
+        if FleetNotificationChannelStatus
+        else None,
+        "fleet_notification_channel_type": tuple(
+            member.value for member in FleetNotificationChannelType
+        )
+        if FleetNotificationChannelType
+        else None,
+    }
+    resolved = known_enums.get(enum_name)
+    _RESOLVED_ENUM_VALUES[enum_name] = resolved
+    return resolved
+
+
 def _collect_processing_enums(schema: str) -> dict[str, tuple[str, ...]]:
     enums = {}
     for enum_name, (enum_schema, values) in _iter_enum_types().items():
@@ -313,6 +349,11 @@ def _collect_processing_enums(schema: str) -> dict[str, tuple[str, ...]]:
             enums[enum_name] = values
     return enums
 
+
+# Warm enum registry after all model imports are loaded.
+_iter_enum_types.cache_clear()
+_iter_enum_types()
+_RESOLVED_ENUM_VALUES.clear()
 
 REQUIRED_ENUMS = set(_collect_processing_enums(DB_SCHEMA))
 
@@ -390,6 +431,12 @@ def _ensure_required_enums(database_url: str, schema: str) -> None:
 
 
 def _ensure_required_tables(database_url: str, schema: str) -> None:
+    max_attempts = 5
+    missing_enum_regex = re.compile(r'type "([^"]+)\.([^"]+)" does not exist')
+    missing_enum_unqualified_regex = re.compile(r'type "([^"]+)" does not exist')
+    created_enums: list[str] = []
+    last_exception: Exception | None = None
+
     engine = create_engine(
         database_url,
         future=True,
@@ -399,9 +446,9 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
         },
     )
     try:
-        inspector = inspect(engine)
-        tables = set(inspector.get_table_names(schema=schema))
-        with engine.connect() as conn:
+        def _check_required_tables(conn) -> None:
+            inspector = inspect(conn)
+            tables = set(inspector.get_table_names(schema=schema))
             rows = conn.execute(
                 text(
                     """
@@ -431,6 +478,45 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
                     f"{', '.join(f'{table} -> {schemas}' for table, schemas in sorted(other_schema_hits.items())) or '[]'}. "
                     f"Diagnostics: {diagnostics}"
                 )
+
+        for attempt in range(max_attempts):
+            try:
+                with engine.begin() as conn:
+                    Base.metadata.create_all(bind=conn)
+                    _check_required_tables(conn)
+                return
+            except ProgrammingError as exc:
+                last_exception = exc
+                message = str(exc.orig)
+                match = missing_enum_regex.search(message)
+                if match:
+                    error_schema, enum_name = match.groups()
+                else:
+                    match = missing_enum_unqualified_regex.search(message)
+                    if match:
+                        error_schema = schema
+                        enum_name = match.group(1)
+                    elif not isinstance(exc.orig, psycopg_errors.UndefinedObject):
+                        raise
+                    else:
+                        raise
+                if error_schema != schema:
+                    raise RuntimeError(
+                        f"Enum {error_schema}.{enum_name} is missing outside expected schema {schema}"
+                    ) from exc
+                values = _resolve_enum_values(enum_name)
+                if not values:
+                    raise RuntimeError(
+                        f"Unknown enum values for {enum_name}"
+                    ) from exc
+                with engine.connect() as conn:
+                    ensure_pg_enum(conn, enum_name, values=values, schema=schema)
+                created_enums.append(enum_name)
+        last_message = f"{last_exception!r}" if last_exception else "unknown error"
+        raise RuntimeError(
+            "Exceeded enum bootstrap attempts while ensuring required tables. "
+            f"Created enums={created_enums}. Last error={last_message}"
+        )
     finally:
         engine.dispose()
 
