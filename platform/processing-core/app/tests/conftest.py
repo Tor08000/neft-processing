@@ -509,9 +509,27 @@ def _ensure_required_tables(database_url: str, schema: str) -> None:
                     raise RuntimeError(
                         f"Unknown enum values for {enum_name}"
                     ) from exc
-                with engine.connect() as conn:
-                    ensure_pg_enum(conn, enum_name, values=values, schema=schema)
-                created_enums.append(enum_name)
+                values_sql = ", ".join("'{}'".format(value.replace("'", "''")) for value in values)
+                schema_sql = schema.replace('"', '""')
+                enum_sql = enum_name.replace('"', '""')
+                with engine.begin() as conn:
+                    conn.exec_driver_sql(
+                        f"""
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (
+                                SELECT 1
+                                FROM pg_type t
+                                JOIN pg_namespace n ON n.oid = t.typnamespace
+                                WHERE n.nspname = '{schema_sql}' AND t.typname = '{enum_sql}'
+                            ) THEN
+                                CREATE TYPE "{schema_sql}"."{enum_sql}" AS ENUM ({values_sql});
+                            END IF;
+                        END $$;
+                        """
+                    )
+                if enum_name not in created_enums:
+                    created_enums.append(enum_name)
         last_message = f"{last_exception!r}" if last_exception else "unknown error"
         raise RuntimeError(
             "Exceeded enum bootstrap attempts while ensuring required tables. "
