@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import Generator
 
@@ -50,7 +51,8 @@ def reset_engine() -> None:
 def init_db() -> None:
     from neft_integration_hub import models  # noqa: F401
 
-    Base.metadata.create_all(bind=get_engine())
+    if os.getenv("NEFT_AUTO_CREATE_SCHEMA") == "true":
+        Base.metadata.create_all(bind=get_engine())
 
 
 def get_db() -> Generator:

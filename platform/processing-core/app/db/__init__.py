@@ -185,9 +185,10 @@ def init_db() -> None:
     from app.models.posting_batch import PostingBatch  # noqa: F401
 
     # Для тестов и in-memory SQLite создаём таблицы автоматически.
-    engine = get_engine()
-    if str(engine.url).startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+    if os.getenv("NEFT_AUTO_CREATE_SCHEMA") == "true":
+        engine = get_engine()
+        if str(engine.url).startswith("sqlite"):
+            Base.metadata.create_all(bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
