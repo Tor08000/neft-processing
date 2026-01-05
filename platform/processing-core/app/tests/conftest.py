@@ -11,6 +11,7 @@ from alembic.config import Config
 import sqlalchemy as sa
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 
 import pytest
 from jose import jwt
@@ -245,23 +246,62 @@ REQUIRED_TABLES = {
     "operations",
 }
 
+def _register_enum(
+    enum_types: dict[str, tuple[str, tuple[str, ...]]],
+    *,
+    name: str | None,
+    schema: str,
+    values: tuple[str, ...],
+) -> None:
+    if not name:
+        return
+    if not values:
+        raise RuntimeError(f"Enum {name} has no values")
+    existing = enum_types.get(name)
+    if existing:
+        existing_schema, existing_values = existing
+        if existing_schema != schema or existing_values != values:
+            raise RuntimeError(
+                "Enum value mismatch for "
+                f"{name}: {(existing_schema, existing_values)!r} vs {(schema, values)!r}"
+            )
+        return
+    enum_types[name] = (schema, values)
+
+
 def _iter_enum_types() -> dict[str, tuple[str, tuple[str, ...]]]:
     enum_types: dict[str, tuple[str, tuple[str, ...]]] = {}
     for table in Base.metadata.tables.values():
         for column in table.columns:
             column_type = column.type
-            if isinstance(column_type, sa.ARRAY):
+            while isinstance(column_type, sa.ARRAY):
                 column_type = column_type.item_type
             if isinstance(column_type, ExistingEnum):
                 schema = column_type.schema or DB_SCHEMA
-                enum_types[column_type.name] = (schema, tuple(column_type._values))
+                _register_enum(
+                    enum_types,
+                    name=column_type.name,
+                    schema=schema,
+                    values=tuple(column_type._values),
+                )
+                continue
+            if isinstance(column_type, PGEnum):
+                schema = column_type.schema or DB_SCHEMA
+                _register_enum(
+                    enum_types,
+                    name=column_type.name,
+                    schema=schema,
+                    values=tuple(column_type.enums),
+                )
                 continue
             if isinstance(column_type, sa.Enum):
-                enum_name = column_type.name
-                if enum_name is None:
-                    continue
                 schema = column_type.schema or DB_SCHEMA
-                enum_types[enum_name] = (schema, tuple(column_type.enums))
+                _register_enum(
+                    enum_types,
+                    name=column_type.name,
+                    schema=schema,
+                    values=tuple(column_type.enums),
+                )
                 continue
     return enum_types
 
@@ -343,7 +383,7 @@ def _ensure_required_enums(database_url: str, schema: str) -> None:
         if not enum_map:
             return
         with engine.connect() as conn:
-            for enum_name, values in enum_map.items():
+            for enum_name, values in sorted(enum_map.items()):
                 ensure_pg_enum(conn, enum_name, values=values, schema=schema)
     finally:
         engine.dispose()
