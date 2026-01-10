@@ -94,15 +94,25 @@ def _create_invoice(
     due_date: date | None = None,
     currency: str = "RUB",
 ) -> Invoice:
-    period = BillingPeriod(
-        period_type=BillingPeriodType.ADHOC,
-        start_at=datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc),
-        end_at=datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc),
-        tz="UTC",
-        status=BillingPeriodStatus.FINALIZED,
+    start_at = datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc)
+    end_at = datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc)
+    period = (
+        db_session.query(BillingPeriod)
+        .filter(BillingPeriod.period_type == BillingPeriodType.ADHOC)
+        .filter(BillingPeriod.start_at == start_at)
+        .filter(BillingPeriod.end_at == end_at)
+        .one_or_none()
     )
-    db_session.add(period)
-    db_session.flush()
+    if not period:
+        period = BillingPeriod(
+            period_type=BillingPeriodType.ADHOC,
+            start_at=start_at,
+            end_at=end_at,
+            tz="UTC",
+            status=BillingPeriodStatus.FINALIZED,
+        )
+        db_session.add(period)
+        db_session.flush()
     amount_due = total - amount_paid - credited_amount + amount_refunded
     now = datetime.now(timezone.utc)
     invoice = Invoice(
