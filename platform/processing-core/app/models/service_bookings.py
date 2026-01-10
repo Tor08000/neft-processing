@@ -210,7 +210,7 @@ class ServiceBookingEvent(Base):
     )
     actor_id = Column(GUID(), nullable=True)
     payload = Column(JSON_TYPE, nullable=False)
-    audit_event_id = Column(String(36), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
+    audit_event_id = Column(GUID(), ForeignKey("case_events.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
