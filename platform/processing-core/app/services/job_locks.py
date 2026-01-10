@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 _LOCAL_LOCKS: dict[int, threading.Lock] = {}
 
 
+def to_signed_int64(value: int) -> int:
+    value &= (1 << 64) - 1
+    return value - (1 << 64) if value >= (1 << 63) else value
+
+
 def make_stable_key(job_type: str, scope: Mapping[str, Any], provided: str | None = None) -> str:
     """
     Build a deterministic idempotency key for the given job scope.
@@ -33,7 +38,8 @@ def make_lock_token(job_type: str, scope_key: str) -> int:
     """Generate a 64-bit integer token suitable for Postgres advisory locks."""
 
     digest = hashlib.sha256(f"{job_type}:{scope_key}".encode()).digest()
-    return int.from_bytes(digest[:8], byteorder="big", signed=False)
+    token = int.from_bytes(digest[:8], byteorder="big", signed=False)
+    return to_signed_int64(token)
 
 
 def _try_pg_lock(session: Session, token: int) -> bool:
@@ -44,7 +50,10 @@ def _try_pg_lock(session: Session, token: int) -> bool:
         return False
 
     try:
-        result = session.execute(text("SELECT pg_try_advisory_xact_lock(:token)"), {"token": token}).scalar()
+        result = session.execute(
+            text("SELECT pg_try_advisory_xact_lock(CAST(:token AS BIGINT))"),
+            {"token": token},
+        ).scalar()
         return bool(result)
     except (DBAPIError, SQLAlchemyError):
         session.rollback()
@@ -60,15 +69,16 @@ def advisory_lock(session: Session, token: int):
     engines a local in-process lock is used to keep tests deterministic.
     """
 
+    signed_token = to_signed_int64(token)
     try:
-        acquired = _try_pg_lock(session, token)
+        acquired = _try_pg_lock(session, signed_token)
     except (DBAPIError, SQLAlchemyError):
         session.rollback()
         raise
     local_lock = None
 
     if not acquired:
-        local_lock = _LOCAL_LOCKS.setdefault(token, threading.Lock())
+        local_lock = _LOCAL_LOCKS.setdefault(signed_token, threading.Lock())
         acquired = local_lock.acquire(blocking=False)
 
     try:
