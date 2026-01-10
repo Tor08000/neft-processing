@@ -15,7 +15,7 @@ class VehicleServiceRecord(Base):
     vehicle_id = Column(GUID(), ForeignKey("vehicles.id"), nullable=False, index=True)
 
     booking_id = Column(GUID(), ForeignKey("service_bookings.id", ondelete="RESTRICT"), nullable=True, index=True)
-    partner_id = Column(GUID(), ForeignKey("partners.id", ondelete="RESTRICT"), nullable=True, index=True)
+    partner_id = Column(String(64), ForeignKey("partners.id", ondelete="RESTRICT"), nullable=True, index=True)
     service_type = Column(ExistingEnum(VehicleServiceType, name="vehicle_service_type"), nullable=True)
     service_at_km = Column(Numeric(18, 4), nullable=True)
     service_at = Column(DateTime(timezone=True), nullable=True)

@@ -815,7 +815,7 @@ class FuelRiskProfile(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     client_id = Column(String(64), nullable=False, index=True)
-    policy_id = Column(GUID(), ForeignKey("risk_policies.id"), nullable=False)
+    policy_id = Column(String(64), ForeignKey("risk_policies.id"), nullable=False)
     thresholds_override = Column(JSON, nullable=True)
     enabled = Column(Boolean, nullable=False, default=True, server_default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

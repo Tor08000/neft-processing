@@ -1,0 +1,209 @@
+"""Fix FK type mismatches.
+
+Revision ID: 20297140_0121_fix_fk_type_mismatches_v1
+Revises: 20297140_0121_fix_vehicle_recommendations_partner_id_type
+Create Date: 2029-07-30 00:00:00.000000
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import sqlalchemy as sa
+from alembic import op
+
+from app.alembic.helpers import column_exists, constraint_exists, is_postgres, table_exists
+from app.db.schema import resolve_db_schema
+
+# revision identifiers, used by Alembic.
+revision = "20297140_0121_fix_fk_type_mismatches_v1"
+down_revision = "20297140_0121_fix_vehicle_recommendations_partner_id_type"
+branch_labels = None
+depends_on = None
+
+SCHEMA = resolve_db_schema().schema
+UUID_REGEX = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+
+@dataclass(frozen=True)
+class FkFix:
+    table: str
+    column: str
+    ref_table: str
+    ref_column: str
+    target_type: str
+    ondelete: str | None
+    requires_uuid_validation: bool = False
+
+
+FIXES = (
+    FkFix(
+        table="decision_memory",
+        column="audit_event_id",
+        ref_table="case_events",
+        ref_column="id",
+        target_type="UUID",
+        ondelete="RESTRICT",
+        requires_uuid_validation=True,
+    ),
+    FkFix(
+        table="marketplace_order_events",
+        column="audit_event_id",
+        ref_table="case_events",
+        ref_column="id",
+        target_type="UUID",
+        ondelete="RESTRICT",
+        requires_uuid_validation=True,
+    ),
+    FkFix(
+        table="service_booking_events",
+        column="audit_event_id",
+        ref_table="case_events",
+        ref_column="id",
+        target_type="UUID",
+        ondelete="RESTRICT",
+        requires_uuid_validation=True,
+    ),
+    FkFix(
+        table="fuel_risk_profiles",
+        column="policy_id",
+        ref_table="risk_policies",
+        ref_column="id",
+        target_type="VARCHAR(64)",
+        ondelete=None,
+    ),
+    FkFix(
+        table="vehicle_service_records",
+        column="partner_id",
+        ref_table="partners",
+        ref_column="id",
+        target_type="VARCHAR(64)",
+        ondelete="RESTRICT",
+    ),
+)
+
+
+def _column_info(bind, table: str, column: str):
+    return bind.execute(
+        sa.text(
+            """
+            SELECT data_type, udt_name, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+              AND column_name = :column_name
+            """
+        ),
+        {"schema": SCHEMA, "table_name": table, "column_name": column},
+    ).fetchone()
+
+
+def _is_uuid_column(column_info) -> bool:
+    return bool(column_info and column_info[1] == "uuid")
+
+
+def _is_string_column(column_info) -> bool:
+    return bool(column_info and column_info[0] in {"character varying", "text", "character"})
+
+
+def _fetch_fk_constraint(bind, table: str, column: str):
+    return bind.execute(
+        sa.text(
+            """
+            SELECT tc.constraint_name, rc.delete_rule
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.referential_constraints rc
+              ON tc.constraint_name = rc.constraint_name
+             AND tc.table_schema = rc.constraint_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_schema = :schema
+              AND tc.table_name = :table_name
+              AND kcu.column_name = :column_name
+            """
+        ),
+        {"schema": SCHEMA, "table_name": table, "column_name": column},
+    ).fetchone()
+
+
+def _preflight_uuid_cast(bind, table: str, column: str) -> None:
+    bad_rows = bind.execute(
+        sa.text(
+            f'SELECT "{column}" FROM "{SCHEMA}"."{table}" '
+            f'WHERE "{column}" IS NOT NULL AND ("{column}"::text) !~* :uuid_regex '
+            "LIMIT 20"
+        ),
+        {"uuid_regex": UUID_REGEX},
+    ).fetchall()
+    if bad_rows:
+        sample = ", ".join(str(row[0]) for row in bad_rows)
+        raise RuntimeError(
+            f"Cannot convert {table}.{column} to UUID; found non-UUID values. "
+            f"Sample ids: {sample}"
+        )
+
+
+def _apply_fix(bind, fix: FkFix) -> None:
+    if not table_exists(bind, fix.table, schema=SCHEMA):
+        return
+    if not column_exists(bind, fix.table, fix.column, schema=SCHEMA):
+        return
+
+    column_info = _column_info(bind, fix.table, fix.column)
+    if fix.target_type == "UUID" and _is_uuid_column(column_info):
+        return
+    if fix.target_type.startswith("VARCHAR") and _is_string_column(column_info):
+        return
+
+    fk_info = _fetch_fk_constraint(bind, fix.table, fix.column)
+    constraint_name = fk_info[0] if fk_info else None
+    delete_rule = fk_info[1] if fk_info else None
+
+    if constraint_name and constraint_exists(bind, fix.table, constraint_name, schema=SCHEMA):
+        op.drop_constraint(constraint_name, fix.table, schema=SCHEMA, type_="foreignkey")
+
+    if fix.target_type == "UUID":
+        if fix.requires_uuid_validation:
+            _preflight_uuid_cast(bind, fix.table, fix.column)
+        op.execute(
+            sa.text(
+                f'ALTER TABLE "{SCHEMA}"."{fix.table}" '
+                f'ALTER COLUMN "{fix.column}" TYPE UUID USING "{fix.column}"::uuid'
+            )
+        )
+    else:
+        op.execute(
+            sa.text(
+                f'ALTER TABLE "{SCHEMA}"."{fix.table}" '
+                f'ALTER COLUMN "{fix.column}" TYPE {fix.target_type} USING "{fix.column}"::text'
+            )
+        )
+
+    constraint_name = constraint_name or f"fk_{fix.table}_{fix.column}_{fix.ref_table}"
+    if not constraint_exists(bind, fix.table, constraint_name, schema=SCHEMA):
+        ondelete = fix.ondelete or (None if delete_rule in {None, "NO ACTION"} else delete_rule)
+        op.create_foreign_key(
+            constraint_name,
+            fix.table,
+            fix.ref_table,
+            [fix.column],
+            [fix.ref_column],
+            source_schema=SCHEMA,
+            referent_schema=SCHEMA,
+            ondelete=ondelete,
+        )
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    if not is_postgres(bind):
+        return
+
+    for fix in FIXES:
+        _apply_fix(bind, fix)
+
+
+def downgrade() -> None:
+    # Keep migration idempotent; no downgrade to avoid data loss.
+    pass
