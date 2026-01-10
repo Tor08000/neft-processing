@@ -31,10 +31,23 @@ def upgrade() -> None:
     if not is_postgres(bind):
         return
 
+    column_type = bind.execute(
+        sa.text(
+            "SELECT data_type, udt_name "
+            "FROM information_schema.columns "
+            "WHERE table_schema = :schema "
+            "AND table_name = 'reconciliation_requests' "
+            "AND column_name = 'id'"
+        ),
+        {"schema": SCHEMA},
+    ).fetchone()
+    if column_type and column_type[1] == "uuid":
+        return
+
     bad_rows = bind.execute(
         sa.text(
             f'SELECT id FROM "{SCHEMA}".reconciliation_requests '
-            "WHERE id IS NOT NULL AND id !~* :uuid_regex "
+            "WHERE id IS NOT NULL AND (id::text) !~* :uuid_regex "
             "LIMIT 20"
         ),
         {"uuid_regex": UUID_REGEX},
