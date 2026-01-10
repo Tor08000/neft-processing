@@ -64,7 +64,7 @@ class Invoice(Base):
     period_to = Column(Date, nullable=False, index=True)
     currency = Column(String(3), nullable=False)
     billing_period_id = Column(GUID(), ForeignKey("billing_periods.id"), nullable=True, index=True)
-    reconciliation_request_id = Column(String(36), ForeignKey("reconciliation_requests.id"), nullable=True, index=True)
+    reconciliation_request_id = Column(GUID(), ForeignKey("reconciliation_requests.id"), nullable=True, index=True)
 
     due_date = Column(Date, nullable=True, index=True)
     payment_terms_days = Column(Integer, nullable=True)
