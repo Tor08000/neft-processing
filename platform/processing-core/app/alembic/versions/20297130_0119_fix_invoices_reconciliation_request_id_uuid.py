@@ -56,6 +56,46 @@ def upgrade() -> None:
     if not table_exists(bind, "reconciliation_requests", schema=SCHEMA):
         return
 
+    if is_postgres(bind) and column_exists(bind, "reconciliation_requests", "id", schema=SCHEMA):
+        id_type = bind.execute(
+            sa.text(
+                """
+                SELECT data_type, udt_name
+                FROM information_schema.columns
+                WHERE table_schema = :schema AND table_name = :table_name AND column_name = :column_name
+                """
+            ),
+            {"schema": SCHEMA, "table_name": "reconciliation_requests", "column_name": "id"},
+        ).first()
+        is_uuid = bool(id_type) and (id_type[0] == "uuid" or id_type[1] == "uuid")
+
+        if not is_uuid:
+            invalid_ids = bind.execute(
+                sa.text(
+                    f"""
+                    SELECT id
+                    FROM "{SCHEMA}".reconciliation_requests
+                    WHERE id IS NOT NULL
+                      AND id !~* '^[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$'
+                    LIMIT 5
+                    """
+                )
+            ).fetchall()
+            if invalid_ids:
+                invalid_values = ", ".join(str(row[0]) for row in invalid_ids)
+                raise RuntimeError(
+                    "reconciliation_requests.id contains non-UUID values; "
+                    f"example values: {invalid_values}"
+                )
+
+            op.execute(
+                sa.text(
+                    f'ALTER TABLE "{SCHEMA}".reconciliation_requests '
+                    "ALTER COLUMN id "
+                    "TYPE UUID USING id::uuid"
+                )
+            )
+
     if not constraint_exists(bind, "invoices", "invoices_reconciliation_request_id_fkey", schema=SCHEMA):
         op.create_foreign_key(
             "invoices_reconciliation_request_id_fkey",
