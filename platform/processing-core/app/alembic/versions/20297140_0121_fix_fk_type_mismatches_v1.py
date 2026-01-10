@@ -27,7 +27,7 @@ FIXES = [
         "table": "marketplace_order_events",
         "column": "audit_event_id",
         "from_type": "varchar(64)",
-        "to_type": "uuid",
+        "to_type": "varchar(64)",
         "ref_table": "case_events",
         "ref_column": "id",
         "constraint": "marketplace_order_events_audit_event_id_fkey",
@@ -36,7 +36,7 @@ FIXES = [
         "table": "service_booking_events",
         "column": "audit_event_id",
         "from_type": "varchar(64)",
-        "to_type": "uuid",
+        "to_type": "varchar(64)",
         "ref_table": "case_events",
         "ref_column": "id",
         "constraint": "service_booking_events_audit_event_id_fkey",
@@ -137,77 +137,6 @@ def _preflight_uuid_cast(bind, table: str, column: str) -> None:
         )
 
 
-def _ensure_case_events_id_uuid(bind) -> None:
-    if not table_exists(bind, "case_events", schema=SCHEMA):
-        return
-    if not column_exists(bind, "case_events", "id", schema=SCHEMA):
-        return
-
-    column_info = _column_info(bind, "case_events", "id")
-    if _is_uuid_column(column_info):
-        return
-
-    _preflight_uuid_cast(bind, "case_events", "id")
-
-    op.execute(
-        sa.text(
-            f'ALTER TABLE "{SCHEMA}"."case_events" '
-            'ALTER COLUMN "id" TYPE UUID USING "id"::uuid'
-        )
-    )
-
-
-def _ensure_decision_memory_audit_event_id_uuid(bind) -> None:
-    if not table_exists(bind, "decision_memory", schema=SCHEMA):
-        return
-    if not column_exists(bind, "decision_memory", "audit_event_id", schema=SCHEMA):
-        return
-
-    case_events_info = _column_info(bind, "case_events", "id")
-    if not _is_uuid_column(case_events_info):
-        _ensure_case_events_id_uuid(bind)
-        case_events_info = _column_info(bind, "case_events", "id")
-    if not _is_uuid_column(case_events_info):
-        return
-
-    column_info = _column_info(bind, "decision_memory", "audit_event_id")
-    if _is_uuid_column(column_info):
-        return
-
-    _preflight_uuid_cast(bind, "decision_memory", "audit_event_id")
-    op.execute(
-        sa.text(
-            f'ALTER TABLE "{SCHEMA}"."decision_memory" '
-            'ALTER COLUMN "audit_event_id" TYPE UUID USING "audit_event_id"::uuid'
-        )
-    )
-
-
-def _ensure_decision_memory_fk(bind) -> None:
-    if not table_exists(bind, "decision_memory", schema=SCHEMA):
-        return
-    if not column_exists(bind, "decision_memory", "audit_event_id", schema=SCHEMA):
-        return
-    if not table_exists(bind, "case_events", schema=SCHEMA):
-        return
-    if not column_exists(bind, "case_events", "id", schema=SCHEMA):
-        return
-    if constraint_exists(
-        bind, "decision_memory", "decision_memory_audit_event_id_fkey", schema=SCHEMA
-    ):
-        return
-
-    op.create_foreign_key(
-        "decision_memory_audit_event_id_fkey",
-        "decision_memory",
-        "case_events",
-        ["audit_event_id"],
-        ["id"],
-        source_schema=SCHEMA,
-        referent_schema=SCHEMA,
-    )
-
-
 def _apply_fix(bind, fix: dict) -> None:
     if not table_exists(bind, fix["table"], schema=SCHEMA):
         return
@@ -263,15 +192,68 @@ def _apply_fix(bind, fix: dict) -> None:
         )
 
 
+def _fix_all_case_events_fk_to_varchar(bind) -> None:
+    if not table_exists(bind, "case_events", schema=SCHEMA):
+        return
+    if not column_exists(bind, "case_events", "id", schema=SCHEMA):
+        return
+
+    results = bind.execute(
+        sa.text(
+            """
+            SELECT
+              tc.table_name AS src_table,
+              kcu.column_name AS src_column,
+              tc.constraint_name AS fk_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
+             AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_schema = :schema
+              AND ccu.table_schema = :schema
+              AND ccu.table_name = 'case_events'
+              AND ccu.column_name = 'id'
+            """
+        ),
+        {"schema": SCHEMA},
+    ).fetchall()
+
+    for row in results:
+        src_table = row.src_table
+        src_column = row.src_column
+        fk_name = row.fk_name
+        op.execute(
+            sa.text(
+                f'ALTER TABLE "{SCHEMA}"."{src_table}" '
+                f'DROP CONSTRAINT IF EXISTS "{fk_name}"'
+            )
+        )
+        op.execute(
+            sa.text(
+                f'ALTER TABLE "{SCHEMA}"."{src_table}" '
+                f'ALTER COLUMN "{src_column}" TYPE varchar(64) '
+                f'USING "{src_column}"::text'
+            )
+        )
+        op.execute(
+            sa.text(
+                f'ALTER TABLE "{SCHEMA}"."{src_table}" '
+                f'ADD CONSTRAINT "{fk_name}" FOREIGN KEY ("{src_column}") '
+                f'REFERENCES "{SCHEMA}"."case_events" ("id")'
+            )
+        )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if not is_postgres(bind):
         return
 
-    _drop_fk_if_exists(bind, "decision_memory", "decision_memory_audit_event_id_fkey")
-    _ensure_case_events_id_uuid(bind)
-    _ensure_decision_memory_audit_event_id_uuid(bind)
-    _ensure_decision_memory_fk(bind)
+    _fix_all_case_events_fk_to_varchar(bind)
 
     for fix in FIXES:
         _apply_fix(bind, fix)
