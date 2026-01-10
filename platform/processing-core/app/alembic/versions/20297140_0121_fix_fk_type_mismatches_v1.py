@@ -133,6 +133,35 @@ def _preflight_uuid_cast(bind, table: str, column: str) -> None:
         )
 
 
+def _ensure_case_events_id_uuid(bind) -> None:
+    if not table_exists(bind, "case_events", schema=SCHEMA):
+        return
+    if not column_exists(bind, "case_events", "id", schema=SCHEMA):
+        return
+
+    column_info = _column_info(bind, "case_events", "id")
+    if _is_uuid_column(column_info):
+        return
+
+    bad_rows = bind.execute(
+        sa.text(
+            f'SELECT "id" FROM "{SCHEMA}"."case_events" '
+            f'WHERE "id" IS NOT NULL AND ("id"::text) !~* :uuid_regex '
+            "LIMIT 20"
+        ),
+        {"uuid_regex": UUID_REGEX},
+    ).fetchall()
+    if bad_rows:
+        raise RuntimeError("case_events.id contains non-uuid")
+
+    op.execute(
+        sa.text(
+            f'ALTER TABLE "{SCHEMA}"."case_events" '
+            'ALTER COLUMN "id" TYPE UUID USING "id"::uuid'
+        )
+    )
+
+
 def _apply_fix(bind, fix: dict) -> None:
     if not table_exists(bind, fix["table"], schema=SCHEMA):
         return
@@ -192,6 +221,8 @@ def upgrade() -> None:
     bind = op.get_bind()
     if not is_postgres(bind):
         return
+
+    _ensure_case_events_id_uuid(bind)
 
     for fix in FIXES:
         _apply_fix(bind, fix)
