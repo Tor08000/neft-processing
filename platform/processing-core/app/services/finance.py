@@ -255,10 +255,12 @@ class FinanceService:
             meta={"invoice_id": invoice.id, "payment_id": str(payment.id)},
         )
         try:
-            with self.db.begin_nested():
-                self.db.add(event)
-                self.db.flush()
+            nested = self.db.begin_nested()
+            self.db.add(event)
+            self.db.flush()
+            nested.commit()
         except IntegrityError:
+            nested.rollback()
             existing = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
             if existing:
                 return existing, False
@@ -417,10 +419,12 @@ class FinanceService:
             applied_at=event_at,
         )
         try:
-            with self.db.begin_nested():
-                self.db.add(allocation)
-                self.db.flush()
+            nested = self.db.begin_nested()
+            self.db.add(allocation)
+            self.db.flush()
+            nested.commit()
         except IntegrityError:
+            nested.rollback()
             existing = (
                 self.db.query(InvoiceSettlementAllocation)
                 .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
@@ -645,10 +649,12 @@ class FinanceService:
                 status=PaymentStatus.POSTED,
             )
             try:
-                with self.db.begin_nested():
-                    self.db.add(payment)
-                    self.db.flush()
+                nested = self.db.begin_nested()
+                self.db.add(payment)
+                self.db.flush()
+                nested.commit()
             except IntegrityError:
+                nested.rollback()
                 existing = self._resolve_existing_payment(
                     invoice_id=invoice_id,
                     idempotency_key=idempotency_key,
