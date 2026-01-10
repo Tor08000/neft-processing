@@ -24,15 +24,6 @@ UUID_REGEX = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 FIXES = [
     {
-        "table": "decision_memory",
-        "column": "audit_event_id",
-        "from_type": "varchar(64)",
-        "to_type": "uuid",
-        "ref_table": "case_events",
-        "ref_column": "id",
-        "constraint": "decision_memory_audit_event_id_fkey",
-    },
-    {
         "table": "marketplace_order_events",
         "column": "audit_event_id",
         "from_type": "varchar(64)",
@@ -116,6 +107,19 @@ def _fetch_fk_constraint(bind, table: str, column: str):
     ).fetchone()
 
 
+def _drop_fk_if_exists(bind, table: str, fk_name: str) -> None:
+    if not table_exists(bind, table, schema=SCHEMA):
+        return
+    if not constraint_exists(bind, table, fk_name, schema=SCHEMA):
+        return
+    op.execute(
+        sa.text(
+            f'ALTER TABLE "{SCHEMA}"."{table}" '
+            f'DROP CONSTRAINT IF EXISTS "{fk_name}"'
+        )
+    )
+
+
 def _preflight_uuid_cast(bind, table: str, column: str) -> None:
     bad_rows = bind.execute(
         sa.text(
@@ -143,22 +147,64 @@ def _ensure_case_events_id_uuid(bind) -> None:
     if _is_uuid_column(column_info):
         return
 
-    bad_rows = bind.execute(
-        sa.text(
-            f'SELECT "id" FROM "{SCHEMA}"."case_events" '
-            f'WHERE "id" IS NOT NULL AND ("id"::text) !~* :uuid_regex '
-            "LIMIT 20"
-        ),
-        {"uuid_regex": UUID_REGEX},
-    ).fetchall()
-    if bad_rows:
-        raise RuntimeError("case_events.id contains non-uuid")
+    _preflight_uuid_cast(bind, "case_events", "id")
 
     op.execute(
         sa.text(
             f'ALTER TABLE "{SCHEMA}"."case_events" '
             'ALTER COLUMN "id" TYPE UUID USING "id"::uuid'
         )
+    )
+
+
+def _ensure_decision_memory_audit_event_id_uuid(bind) -> None:
+    if not table_exists(bind, "decision_memory", schema=SCHEMA):
+        return
+    if not column_exists(bind, "decision_memory", "audit_event_id", schema=SCHEMA):
+        return
+
+    case_events_info = _column_info(bind, "case_events", "id")
+    if not _is_uuid_column(case_events_info):
+        _ensure_case_events_id_uuid(bind)
+        case_events_info = _column_info(bind, "case_events", "id")
+    if not _is_uuid_column(case_events_info):
+        return
+
+    column_info = _column_info(bind, "decision_memory", "audit_event_id")
+    if _is_uuid_column(column_info):
+        return
+
+    _preflight_uuid_cast(bind, "decision_memory", "audit_event_id")
+    op.execute(
+        sa.text(
+            f'ALTER TABLE "{SCHEMA}"."decision_memory" '
+            'ALTER COLUMN "audit_event_id" TYPE UUID USING "audit_event_id"::uuid'
+        )
+    )
+
+
+def _ensure_decision_memory_fk(bind) -> None:
+    if not table_exists(bind, "decision_memory", schema=SCHEMA):
+        return
+    if not column_exists(bind, "decision_memory", "audit_event_id", schema=SCHEMA):
+        return
+    if not table_exists(bind, "case_events", schema=SCHEMA):
+        return
+    if not column_exists(bind, "case_events", "id", schema=SCHEMA):
+        return
+    if constraint_exists(
+        bind, "decision_memory", "decision_memory_audit_event_id_fkey", schema=SCHEMA
+    ):
+        return
+
+    op.create_foreign_key(
+        "decision_memory_audit_event_id_fkey",
+        "decision_memory",
+        "case_events",
+        ["audit_event_id"],
+        ["id"],
+        source_schema=SCHEMA,
+        referent_schema=SCHEMA,
     )
 
 
@@ -222,7 +268,10 @@ def upgrade() -> None:
     if not is_postgres(bind):
         return
 
+    _drop_fk_if_exists(bind, "decision_memory", "decision_memory_audit_event_id_fkey")
     _ensure_case_events_id_uuid(bind)
+    _ensure_decision_memory_audit_event_id_uuid(bind)
+    _ensure_decision_memory_fk(bind)
 
     for fix in FIXES:
         _apply_fix(bind, fix)
