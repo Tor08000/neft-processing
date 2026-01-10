@@ -85,10 +85,12 @@ class InternalLedgerService:
             currency=currency,
         )
         try:
-            with self.db.begin_nested():
-                self.db.add(account)
-                self.db.flush()
+            nested = self.db.begin_nested()
+            self.db.add(account)
+            self.db.flush()
+            nested.commit()
         except IntegrityError:
+            nested.rollback()
             existing = (
                 self.db.query(InternalLedgerAccount)
                 .filter(InternalLedgerAccount.tenant_id == tenant_id)
@@ -139,10 +141,12 @@ class InternalLedgerService:
             meta=meta,
         )
         try:
-            with self.db.begin_nested():
-                self.db.add(txn)
-                self.db.flush()
+            nested = self.db.begin_nested()
+            self.db.add(txn)
+            self.db.flush()
+            nested.commit()
         except IntegrityError:
+            nested.rollback()
             existing = (
                 self.db.query(InternalLedgerTransaction)
                 .filter(InternalLedgerTransaction.idempotency_key == idempotency_key)
