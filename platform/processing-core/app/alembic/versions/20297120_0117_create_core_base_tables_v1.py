@@ -18,7 +18,7 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20297120_0117_create_core_base_tables_v1"
-down_revision = "20297115_0116_create_money_flow_link_type_enum"
+down_revision = "20297115_0116_create_money_flow_link_type_enum"  # keep chain after 0116
 branch_labels = None
 depends_on = None
 
