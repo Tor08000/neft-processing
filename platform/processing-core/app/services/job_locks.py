@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import Any, Mapping
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 _LOCAL_LOCKS: dict[int, threading.Lock] = {}
@@ -38,18 +39,16 @@ def make_lock_token(job_type: str, scope_key: str) -> int:
 def _try_pg_lock(session: Session, token: int) -> bool:
     """Attempt to take a PostgreSQL advisory transaction lock."""
 
-    try:
-        dialect = getattr(session.bind, "dialect", None)
-        if not dialect or dialect.name != "postgresql":
-            return False
-    except Exception:
+    dialect = getattr(session.bind, "dialect", None)
+    if not dialect or dialect.name != "postgresql":
         return False
 
     try:
         result = session.execute(text("SELECT pg_try_advisory_xact_lock(:token)"), {"token": token}).scalar()
         return bool(result)
-    except Exception:
-        return False
+    except (DBAPIError, SQLAlchemyError):
+        session.rollback()
+        raise
 
 
 @contextmanager
@@ -61,7 +60,11 @@ def advisory_lock(session: Session, token: int):
     engines a local in-process lock is used to keep tests deterministic.
     """
 
-    acquired = _try_pg_lock(session, token)
+    try:
+        acquired = _try_pg_lock(session, token)
+    except (DBAPIError, SQLAlchemyError):
+        session.rollback()
+        raise
     local_lock = None
 
     if not acquired:
