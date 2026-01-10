@@ -6,8 +6,8 @@ from typing import Tuple
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -137,30 +137,35 @@ class FinanceService:
         external_ref: str | None,
         provider: str | None,
     ) -> InvoicePayment | None:
-        if external_ref:
-            query = self.db.query(InvoicePayment).filter(InvoicePayment.external_ref == external_ref)
-            if provider is None:
-                query = query.filter(InvoicePayment.provider.is_(None))
-            else:
-                query = query.filter(InvoicePayment.provider == provider)
-            existing_by_ref = query.one_or_none()
-            if existing_by_ref:
-                if existing_by_ref.invoice_id != invoice_id:
-                    billing_metrics.mark_payment_error()
-                    billing_metrics.mark_payment_failed()
-                    raise PaymentReferenceConflict(external_ref)
-                return existing_by_ref
+        try:
+            if external_ref:
+                query = self.db.query(InvoicePayment).filter(InvoicePayment.external_ref == external_ref)
+                if provider is None:
+                    query = query.filter(InvoicePayment.provider.is_(None))
+                else:
+                    query = query.filter(InvoicePayment.provider == provider)
+                existing_by_ref = query.one_or_none()
+                if existing_by_ref:
+                    if existing_by_ref.invoice_id != invoice_id:
+                        billing_metrics.mark_payment_error()
+                        billing_metrics.mark_payment_failed()
+                        raise PaymentReferenceConflict(external_ref)
+                    return existing_by_ref
 
-        existing = (
-            self.db.query(InvoicePayment)
-            .filter(InvoicePayment.idempotency_key == idempotency_key)
-            .one_or_none()
-        )
-        if existing and existing.invoice_id != invoice_id:
-            billing_metrics.mark_payment_error()
-            billing_metrics.mark_payment_failed()
-            raise PaymentReferenceConflict(idempotency_key)
-        return existing
+            existing = (
+                self.db.query(InvoicePayment)
+                .filter(InvoicePayment.idempotency_key == idempotency_key)
+                .one_or_none()
+            )
+            if existing and existing.invoice_id != invoice_id:
+                billing_metrics.mark_payment_error()
+                billing_metrics.mark_payment_failed()
+                raise PaymentReferenceConflict(idempotency_key)
+            return existing
+        except (DBAPIError, SQLAlchemyError):
+            self.db.rollback()
+            logger.exception("payment_lookup_failed", extra={"idempotency_key": idempotency_key})
+            raise
 
     def _resolve_payment_money_flow_event(self, *, idempotency_key: str) -> MoneyFlowEvent | None:
         return (
@@ -204,31 +209,36 @@ class FinanceService:
         request_ctx: RequestContext | None,
         token: dict | None,
     ) -> PaymentResult | None:
-        event = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
-        if not event:
-            return None
-        payment = self._resolve_payment_from_event(event=event, idempotency_key=idempotency_key)
-        if payment is None:
-            logger.warning(
-                "money_flow_event_missing_payment",
-                extra={"idempotency_key": idempotency_key, "event_id": str(event.id)},
+        try:
+            event = self._resolve_payment_money_flow_event(idempotency_key=idempotency_key)
+            if not event:
+                return None
+            payment = self._resolve_payment_from_event(event=event, idempotency_key=idempotency_key)
+            if payment is None:
+                logger.warning(
+                    "money_flow_event_missing_payment",
+                    extra={"idempotency_key": idempotency_key, "event_id": str(event.id)},
+                )
+                return None
+            if payment.invoice_id != invoice_id:
+                billing_metrics.mark_payment_error()
+                billing_metrics.mark_payment_failed()
+                raise PaymentReferenceConflict(idempotency_key)
+            invoice = self.db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
+            if not invoice:
+                raise InvoiceNotFound(invoice_id)
+            self._validate_payment_replay(
+                payment=payment,
+                amount=amount,
+                currency=currency,
+                external_ref=external_ref,
+                provider=provider,
             )
-            return None
-        if payment.invoice_id != invoice_id:
-            billing_metrics.mark_payment_error()
-            billing_metrics.mark_payment_failed()
-            raise PaymentReferenceConflict(idempotency_key)
-        invoice = self.db.query(Invoice).filter(Invoice.id == invoice_id).one_or_none()
-        if not invoice:
-            raise InvoiceNotFound(invoice_id)
-        self._validate_payment_replay(
-            payment=payment,
-            amount=amount,
-            currency=currency,
-            external_ref=external_ref,
-            provider=provider,
-        )
-        return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
+            return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
+        except (DBAPIError, SQLAlchemyError):
+            self.db.rollback()
+            logger.exception("payment_replay_lookup_failed", extra={"idempotency_key": idempotency_key})
+            raise
 
     def _ensure_payment_money_flow_event(
         self,
@@ -583,6 +593,12 @@ class FinanceService:
                 if not acquired:
                     billing_metrics.mark_payment_failed()
                     raise FinanceOperationInProgress(idempotency_key)
+
+            try:
+                self.db.execute(text("SELECT 1"))
+            except DBAPIError:
+                self.db.rollback()
+                raise
 
             invoice = self._lock_invoice(invoice_id)
             self._enforce_policy(token=token, action=Action.PAYMENT_APPLY, invoice=invoice)
