@@ -6,8 +6,6 @@ Create Date: 2029-07-30 00:00:00.000000
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import sqlalchemy as sa
 from alembic import op
 
@@ -24,62 +22,53 @@ SCHEMA = resolve_db_schema().schema
 UUID_REGEX = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 
-@dataclass(frozen=True)
-class FkFix:
-    table: str
-    column: str
-    ref_table: str
-    ref_column: str
-    target_type: str
-    ondelete: str | None
-    requires_uuid_validation: bool = False
-
-
-FIXES = (
-    FkFix(
-        table="decision_memory",
-        column="audit_event_id",
-        ref_table="case_events",
-        ref_column="id",
-        target_type="UUID",
-        ondelete="RESTRICT",
-        requires_uuid_validation=True,
-    ),
-    FkFix(
-        table="marketplace_order_events",
-        column="audit_event_id",
-        ref_table="case_events",
-        ref_column="id",
-        target_type="UUID",
-        ondelete="RESTRICT",
-        requires_uuid_validation=True,
-    ),
-    FkFix(
-        table="service_booking_events",
-        column="audit_event_id",
-        ref_table="case_events",
-        ref_column="id",
-        target_type="UUID",
-        ondelete="RESTRICT",
-        requires_uuid_validation=True,
-    ),
-    FkFix(
-        table="fuel_risk_profiles",
-        column="policy_id",
-        ref_table="risk_policies",
-        ref_column="id",
-        target_type="VARCHAR(64)",
-        ondelete=None,
-    ),
-    FkFix(
-        table="vehicle_service_records",
-        column="partner_id",
-        ref_table="partners",
-        ref_column="id",
-        target_type="VARCHAR(64)",
-        ondelete="RESTRICT",
-    ),
-)
+FIXES = [
+    {
+        "table": "decision_memory",
+        "column": "audit_event_id",
+        "from_type": "varchar(64)",
+        "to_type": "uuid",
+        "ref_table": "case_events",
+        "ref_column": "id",
+        "constraint": "decision_memory_audit_event_id_fkey",
+    },
+    {
+        "table": "marketplace_order_events",
+        "column": "audit_event_id",
+        "from_type": "varchar(64)",
+        "to_type": "uuid",
+        "ref_table": "case_events",
+        "ref_column": "id",
+        "constraint": "marketplace_order_events_audit_event_id_fkey",
+    },
+    {
+        "table": "service_booking_events",
+        "column": "audit_event_id",
+        "from_type": "varchar(64)",
+        "to_type": "uuid",
+        "ref_table": "case_events",
+        "ref_column": "id",
+        "constraint": "service_booking_events_audit_event_id_fkey",
+    },
+    {
+        "table": "fuel_risk_profiles",
+        "column": "policy_id",
+        "from_type": "uuid",
+        "to_type": "varchar(64)",
+        "ref_table": "risk_policies",
+        "ref_column": "id",
+        "constraint": "fuel_risk_profiles_policy_id_fkey",
+    },
+    {
+        "table": "vehicle_service_records",
+        "column": "partner_id",
+        "from_type": "uuid",
+        "to_type": "varchar(64)",
+        "ref_table": "partners",
+        "ref_column": "id",
+        "constraint": "vehicle_service_records_partner_id_fkey",
+    },
+]
 
 
 def _column_info(bind, table: str, column: str):
@@ -144,51 +133,55 @@ def _preflight_uuid_cast(bind, table: str, column: str) -> None:
         )
 
 
-def _apply_fix(bind, fix: FkFix) -> None:
-    if not table_exists(bind, fix.table, schema=SCHEMA):
+def _apply_fix(bind, fix: dict) -> None:
+    if not table_exists(bind, fix["table"], schema=SCHEMA):
         return
-    if not column_exists(bind, fix.table, fix.column, schema=SCHEMA):
-        return
-
-    column_info = _column_info(bind, fix.table, fix.column)
-    if fix.target_type == "UUID" and _is_uuid_column(column_info):
-        return
-    if fix.target_type.startswith("VARCHAR") and _is_string_column(column_info):
+    if not column_exists(bind, fix["table"], fix["column"], schema=SCHEMA):
         return
 
-    fk_info = _fetch_fk_constraint(bind, fix.table, fix.column)
+    column_info = _column_info(bind, fix["table"], fix["column"])
+    if fix["to_type"] == "uuid" and _is_uuid_column(column_info):
+        return
+    if fix["to_type"].startswith("varchar") and _is_string_column(column_info):
+        return
+
+    fk_info = _fetch_fk_constraint(bind, fix["table"], fix["column"])
     constraint_name = fk_info[0] if fk_info else None
     delete_rule = fk_info[1] if fk_info else None
 
-    if constraint_name and constraint_exists(bind, fix.table, constraint_name, schema=SCHEMA):
-        op.drop_constraint(constraint_name, fix.table, schema=SCHEMA, type_="foreignkey")
+    constraint_name = fix["constraint"] or constraint_name
+    if constraint_name and constraint_exists(bind, fix["table"], constraint_name, schema=SCHEMA):
+        op.drop_constraint(constraint_name, fix["table"], schema=SCHEMA, type_="foreignkey")
 
-    if fix.target_type == "UUID":
-        if fix.requires_uuid_validation:
-            _preflight_uuid_cast(bind, fix.table, fix.column)
+    if fix["to_type"] == "uuid":
+        _preflight_uuid_cast(bind, fix["table"], fix["column"])
         op.execute(
             sa.text(
-                f'ALTER TABLE "{SCHEMA}"."{fix.table}" '
-                f'ALTER COLUMN "{fix.column}" TYPE UUID USING "{fix.column}"::uuid'
+                f'ALTER TABLE "{SCHEMA}"."{fix["table"]}" '
+                f'ALTER COLUMN "{fix["column"]}" TYPE UUID USING "{fix["column"]}"::uuid'
             )
         )
     else:
         op.execute(
             sa.text(
-                f'ALTER TABLE "{SCHEMA}"."{fix.table}" '
-                f'ALTER COLUMN "{fix.column}" TYPE {fix.target_type} USING "{fix.column}"::text'
+                f'ALTER TABLE "{SCHEMA}"."{fix["table"]}" '
+                f'ALTER COLUMN "{fix["column"]}" TYPE {fix["to_type"]} USING "{fix["column"]}"::text'
             )
         )
 
-    constraint_name = constraint_name or f"fk_{fix.table}_{fix.column}_{fix.ref_table}"
-    if not constraint_exists(bind, fix.table, constraint_name, schema=SCHEMA):
-        ondelete = fix.ondelete or (None if delete_rule in {None, "NO ACTION"} else delete_rule)
+    constraint_name = constraint_name or f'fk_{fix["table"]}_{fix["column"]}_{fix["ref_table"]}'
+    if not table_exists(bind, fix["ref_table"], schema=SCHEMA):
+        return
+    if not column_exists(bind, fix["ref_table"], fix["ref_column"], schema=SCHEMA):
+        return
+    if not constraint_exists(bind, fix["table"], constraint_name, schema=SCHEMA):
+        ondelete = None if delete_rule in {None, "NO ACTION"} else delete_rule
         op.create_foreign_key(
             constraint_name,
-            fix.table,
-            fix.ref_table,
-            [fix.column],
-            [fix.ref_column],
+            fix["table"],
+            fix["ref_table"],
+            [fix["column"]],
+            [fix["ref_column"]],
             source_schema=SCHEMA,
             referent_schema=SCHEMA,
             ondelete=ondelete,
