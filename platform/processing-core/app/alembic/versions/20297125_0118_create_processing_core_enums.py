@@ -16,7 +16,7 @@ from app.db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20297125_0118_create_processing_core_enums"
-down_revision = "20297120_0117_create_core_base_tables_v1"
+down_revision = "20297120_0117_create_core_base_tables_v1"  # keep 0117 in ancestry
 branch_labels = None
 depends_on = None
 
