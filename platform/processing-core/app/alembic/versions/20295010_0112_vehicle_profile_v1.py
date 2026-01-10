@@ -181,7 +181,7 @@ def upgrade() -> None:
                     nullable=False,
                 ),
                 sa.Column("reason", sa.String(length=512), nullable=False),
-                sa.Column("partner_id", sa.String(length=36), sa.ForeignKey(f"{SCHEMA}.partners.id"), nullable=True),
+                sa.Column("partner_id", sa.String(length=64), sa.ForeignKey(f"{SCHEMA}.partners.id"), nullable=True),
                 sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
             ),
         )

@@ -136,7 +136,7 @@ class VehicleRecommendation(Base):
         nullable=False,
     )
     reason = Column(String(512), nullable=False)
-    partner_id = Column(GUID(), ForeignKey("partners.id"), nullable=True)
+    partner_id = Column(String(64), ForeignKey("partners.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
