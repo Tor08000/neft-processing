@@ -113,6 +113,7 @@ PROCESSING_ENUMS = {
     'financial_adjustment_related': ('REFUND', 'REVERSAL', 'DISPUTE', 'BILLING_PERIOD'),
     'financial_adjustment_status': ('PENDING', 'POSTED', 'FAILED'),
     'fleet_driver_status': ('ACTIVE', 'INACTIVE'),
+    'fleet_notification_channel_status': ('ACTIVE', 'DISABLED'),
     'fleet_vehicle_status': ('ACTIVE', 'INACTIVE'),
     'fuel_group_role': ('viewer', 'manager', 'admin'),
     'fuelproducttype': ('ANY', 'DIESEL', 'AI92', 'AI95', 'AI98', 'GAS', 'OTHER'),
