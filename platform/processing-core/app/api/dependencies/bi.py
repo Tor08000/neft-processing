@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request
+from neft_shared.settings import get_settings
 
 from app.services import admin_auth, client_auth
 
@@ -16,6 +17,8 @@ def _get_bearer_token(request: Request) -> str:
 
 
 def bi_user(request: Request) -> dict:
+    if not settings.BI_CLICKHOUSE_ENABLED:
+        raise HTTPException(status_code=404, detail="bi_disabled")
     token = _get_bearer_token(request)
     try:
         payload = admin_auth.verify_admin_token(token)
@@ -34,3 +37,4 @@ def bi_user_dep(token: dict = Depends(bi_user)) -> dict:
 
 
 __all__ = ["bi_user_dep"]
+settings = get_settings()

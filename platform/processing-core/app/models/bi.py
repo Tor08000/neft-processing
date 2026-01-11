@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from enum import Enum
+from uuid import uuid4
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -49,6 +51,17 @@ class BiExportStatus(str, Enum):
     GENERATED = "GENERATED"
     DELIVERED = "DELIVERED"
     CONFIRMED = "CONFIRMED"
+    FAILED = "FAILED"
+
+
+class BiSyncRunType(str, Enum):
+    INIT = "INIT"
+    INCREMENTAL = "INCREMENTAL"
+
+
+class BiSyncRunStatus(str, Enum):
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
 
@@ -223,18 +236,149 @@ class BiExportBatch(Base):
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class BiExport(Base):
+    __tablename__ = "bi_exports"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    mart_name = Column(String(128), nullable=False)
+    period = Column(String(64), nullable=False)
+    format = Column(String(16), nullable=False)
+    file_ref = Column(String(512), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BiWatermark(Base):
+    __tablename__ = "bi_watermarks"
+    __table_args__ = {"schema": "bi"}
+
+    name = Column(String(128), primary_key=True)
+    last_updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BiSyncRun(Base):
+    __tablename__ = "bi_sync_runs"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    type = Column(SAEnum(BiSyncRunType, name="bi_sync_run_type", schema="bi"), nullable=False)
+    status = Column(SAEnum(BiSyncRunStatus, name="bi_sync_run_status", schema="bi"), nullable=False)
+    rows_written = Column(BigInteger, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BiMartVersion(Base):
+    __tablename__ = "bi_mart_versions"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    mart_name = Column(String(128), nullable=False, index=True)
+    version = Column(String(32), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BiMartFinanceDaily(Base):
+    __tablename__ = "mart_finance_daily"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    gross_revenue = Column(BigInteger, nullable=False, default=0)
+    net_revenue = Column(BigInteger, nullable=False, default=0)
+    commission_income = Column(BigInteger, nullable=False, default=0)
+    vat = Column(BigInteger, nullable=False, default=0)
+    refunds = Column(BigInteger, nullable=False, default=0)
+    penalties = Column(BigInteger, nullable=False, default=0)
+    margin = Column(BigInteger, nullable=False, default=0)
+
+
+class BiMartCashflow(Base):
+    __tablename__ = "mart_cashflow"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    inflow = Column(BigInteger, nullable=False, default=0)
+    outflow = Column(BigInteger, nullable=False, default=0)
+    net_cashflow = Column(BigInteger, nullable=False, default=0)
+    balance_estimated = Column(BigInteger, nullable=False, default=0)
+
+
+class BiMartOpsSla(Base):
+    __tablename__ = "mart_ops_sla"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    total_orders = Column(BigInteger, nullable=False, default=0)
+    sla_breaches = Column(BigInteger, nullable=False, default=0)
+    avg_resolution_time = Column(Numeric(12, 4), nullable=True)
+    p95_resolution_time = Column(Numeric(12, 4), nullable=True)
+    top_partners_by_breaches = Column(json_variant, nullable=True)
+
+
+class BiMartPartnerPerformance(Base):
+    __tablename__ = "mart_partner_performance"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    partner_id = Column(String(64), nullable=False, index=True)
+    period = Column(Date, nullable=False, index=True)
+    orders_count = Column(BigInteger, nullable=False, default=0)
+    revenue = Column(BigInteger, nullable=False, default=0)
+    penalties = Column(BigInteger, nullable=False, default=0)
+    payout_amount = Column(BigInteger, nullable=False, default=0)
+    sla_score = Column(Numeric(6, 4), nullable=True)
+
+
+class BiMartClientSpend(Base):
+    __tablename__ = "mart_client_spend"
+    __table_args__ = {"schema": "bi"}
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id = Column(Integer, nullable=False, index=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    period = Column(Date, nullable=False, index=True)
+    spend_total = Column(BigInteger, nullable=False, default=0)
+    spend_by_product = Column(json_variant, nullable=True)
+    fuel_spend = Column(BigInteger, nullable=False, default=0)
+    marketplace_spend = Column(BigInteger, nullable=False, default=0)
+    avg_ticket = Column(BigInteger, nullable=False, default=0)
+
+
 __all__ = [
     "BiClickhouseCursor",
     "BiCursor",
     "BiDailyMetric",
     "BiDeclineEvent",
     "BiExportBatch",
+    "BiExport",
     "BiExportFormat",
     "BiExportKind",
     "BiExportStatus",
+    "BiMartCashflow",
+    "BiMartClientSpend",
+    "BiMartFinanceDaily",
+    "BiMartOpsSla",
+    "BiMartPartnerPerformance",
+    "BiMartVersion",
     "BiOfferMetric",
     "BiOrderEvent",
     "BiPayoutEvent",
     "BiPriceVersionMetric",
     "BiScopeType",
+    "BiSyncRun",
+    "BiSyncRunStatus",
+    "BiSyncRunType",
+    "BiWatermark",
 ]

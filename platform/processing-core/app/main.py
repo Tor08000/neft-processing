@@ -140,6 +140,11 @@ except Exception:  # pragma: no cover - в dev может ещё не сущес
     bi_router = None  # type: ignore
 
 try:
+    from app.api.v1.endpoints.bi_dashboards import router as bi_dashboards_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    bi_dashboards_router = None  # type: ignore
+
+try:
     from app.api.v1.endpoints.pricing_intelligence import router as pricing_intelligence_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     pricing_intelligence_router = None  # type: ignore
@@ -271,6 +276,8 @@ if edo_events_router is not None:
     safe_include_router(app, edo_events_router, prefix="")
 if bi_router is not None:
     safe_include_router(app, bi_router, prefix="")
+if bi_dashboards_router is not None:
+    safe_include_router(app, bi_dashboards_router, prefix="")
 if pricing_intelligence_router is not None:
     safe_include_router(app, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
@@ -385,6 +392,8 @@ if edo_events_router is not None:
     safe_include_router(core_prefixed_router, edo_events_router, prefix="")
 if bi_router is not None:
     safe_include_router(core_prefixed_router, bi_router, prefix="")
+if bi_dashboards_router is not None:
+    safe_include_router(core_prefixed_router, bi_dashboards_router, prefix="")
 if pricing_intelligence_router is not None:
     safe_include_router(core_prefixed_router, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
@@ -583,6 +592,9 @@ def _bi_metrics() -> list[str]:
     ]
     if not clickhouse_lag_lines:
         clickhouse_lag_lines.append('core_api_bi_clickhouse_lag_seconds{dataset="unset"} 0')
+    sync_duration = bi_metrics.sync_duration_seconds
+    rows_written_total = bi_metrics.rows_written_total
+    query_latency = bi_metrics.query_latency_seconds
 
     return [
         "# HELP core_api_bi_ingest_events_total BI ingest runs by status.",
@@ -606,6 +618,15 @@ def _bi_metrics() -> list[str]:
         "# HELP core_api_bi_clickhouse_lag_seconds BI ClickHouse lag seconds.",
         "# TYPE core_api_bi_clickhouse_lag_seconds gauge",
         *clickhouse_lag_lines,
+        "# HELP core_api_bi_sync_duration_seconds BI sync duration seconds.",
+        "# TYPE core_api_bi_sync_duration_seconds gauge",
+        f"core_api_bi_sync_duration_seconds {sync_duration}",
+        "# HELP core_api_bi_rows_written_total BI rows written total.",
+        "# TYPE core_api_bi_rows_written_total counter",
+        f"core_api_bi_rows_written_total {rows_written_total}",
+        "# HELP core_api_bi_query_latency_seconds BI query latency seconds.",
+        "# TYPE core_api_bi_query_latency_seconds gauge",
+        f"core_api_bi_query_latency_seconds {query_latency}",
     ]
 
 
