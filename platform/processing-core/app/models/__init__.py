@@ -10,6 +10,12 @@ from .risk_rule import (  # noqa: F401
     RiskRuleAuditAction,
     RiskRuleVersion,
 )
+from .abac import (  # noqa: F401
+    AbacPolicy,
+    AbacPolicyEffect,
+    AbacPolicyVersion,
+    AbacPolicyVersionStatus,
+)
 from .unified_rule import (  # noqa: F401
     RuleSetActive,
     RuleSetAudit,
@@ -30,7 +36,6 @@ from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
 from .client_portal import ClientCard, ClientLimit, ClientOperation  # noqa: F401
 from .commercial_layer import (  # noqa: F401
     ClientBranding,
-    ClientOnboardingState,
     CommercialPlan,
     PlanBillingPeriod,
     PlanFeature,
@@ -197,6 +202,15 @@ from .money_flow_v3 import (  # noqa: F401
     MoneyInvariantSnapshotPhase,
 )
 from .audit_log import ActorType, AuditLog, AuditVisibility  # noqa: F401
+from .service_identities import (  # noqa: F401
+    ServiceIdentity,
+    ServiceIdentityStatus,
+    ServiceToken,
+    ServiceTokenStatus,
+    ServiceTokenAudit,
+    ServiceTokenAuditAction,
+    ServiceTokenActorType,
+)
 from .decision_result import DecisionResult  # noqa: F401
 from .refund_request import RefundRequest, RefundRequestStatus, SettlementPolicy  # noqa: F401
 from .support_request import (  # noqa: F401
@@ -660,6 +674,10 @@ __all__ = [
     "RiskRuleAudit",
     "RiskRuleAuditAction",
     "RiskRuleVersion",
+    "AbacPolicy",
+    "AbacPolicyEffect",
+    "AbacPolicyVersion",
+    "AbacPolicyVersionStatus",
     "Account",
     "AccountOwnerType",
     "AccountBalance",
@@ -728,6 +746,13 @@ __all__ = [
     "AuditLog",
     "ActorType",
     "AuditVisibility",
+    "ServiceIdentity",
+    "ServiceIdentityStatus",
+    "ServiceToken",
+    "ServiceTokenStatus",
+    "ServiceTokenAudit",
+    "ServiceTokenAuditAction",
+    "ServiceTokenActorType",
     "Contract",
     "ContractEvent",
     "ContractImmutableError",

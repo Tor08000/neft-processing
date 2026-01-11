@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -33,6 +33,10 @@ from app.schemas.edo import (
     EdoTransitionOut,
 )
 from app.services.edo import EdoService
+from app.services.abac import AbacContext, AbacEngine, AbacResource
+from app.services.abac.dependency import get_abac_principal
+from app.services.entitlements_service import get_entitlements
+from app.security.service_auth import require_scope
 from app.integrations.edo.dtos import EdoRevokeRequest, EdoStatusRequest
 
 
@@ -170,7 +174,50 @@ def list_counterparties(
 
 
 @router.post("/documents/send", response_model=EdoSendResponse)
-def send_document(payload: EdoDocumentSendIn, db: Session = Depends(get_db)) -> EdoSendResponse:
+def send_document(
+    payload: EdoDocumentSendIn,
+    request: Request,
+    _scope=Depends(require_scope("edo:send")),
+    db: Session = Depends(get_db),
+) -> EdoSendResponse:
+    principal = get_abac_principal(request, db)
+    entitlements_payload = {}
+    if payload.subject_type == EdoSubjectType.CLIENT.value:
+        entitlements = get_entitlements(db, client_id=payload.subject_id)
+        entitlements_payload = {
+            "plan": entitlements.plan_code,
+            "modules": entitlements.modules,
+            "limits": entitlements.limits,
+        }
+    decision = AbacEngine(db).evaluate(
+        principal=principal,
+        action="edo:send",
+        resource=AbacResource(
+            "EDO_DOCUMENT",
+            {
+                "subject_type": payload.subject_type,
+                "subject_id": payload.subject_id,
+                "document_kind": payload.document_kind,
+                "account_id": payload.account_id,
+            },
+        ),
+        entitlements=entitlements_payload,
+        context=AbacContext(
+            ip=request.client.host if request.client else None,
+            region=request.headers.get("x-region"),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "abac_deny",
+                "reason_code": decision.reason_code,
+                "matched_policies": decision.matched_policies,
+                "explain": decision.explain,
+            },
+        )
     existing = db.query(EdoDocument).filter(EdoDocument.send_dedupe_key == payload.dedupe_key).one_or_none()
     if existing:
         return EdoSendResponse(

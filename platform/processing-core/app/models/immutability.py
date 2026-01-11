@@ -7,7 +7,7 @@ from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentStatus
 from app.models.invoice import Invoice, InvoiceLine
-from app.models.legal_gate import LegalAcceptance
+from app.models.legal_acceptance import LegalAcceptance
 
 
 class ImmutableRecordError(ValueError):

@@ -11,7 +11,6 @@ from app.api.dependencies.client import client_portal_user
 from app.db import get_db
 from app.models.commercial_layer import (
     ClientBranding,
-    ClientOnboardingState,
     CommercialPlan,
     PlanFeature,
     PlanFeatureCode,
@@ -100,6 +99,33 @@ def _plan_out(plan: CommercialPlan, features: list[PlanFeature]) -> PlanOut:
             )
             for feature in features
         ],
+    )
+
+
+def _parse_completed_at(value: object | None) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _serialize_onboarding_state(state: ClientOnboardingState) -> OnboardingStateOut:
+    meta = state.meta or {}
+    current_step = meta.get("current_step") or (state.state.value if state.state else None)
+    completed_steps = meta.get("completed_steps")
+    completed_at = _parse_completed_at(meta.get("completed_at"))
+    return OnboardingStateOut(
+        client_id=state.client_id,
+        current_step=current_step,
+        completed_steps=completed_steps,
+        updated_at=state.updated_at,
+        completed_at=completed_at,
     )
 
 

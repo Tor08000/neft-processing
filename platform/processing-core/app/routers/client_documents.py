@@ -35,8 +35,10 @@ from app.schemas.closing_documents import (
     DocumentAcknowledgementResponse,
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.services.abac import AbacResourceData, require_abac
 from app.services.document_chain import compute_ack_hash
-from app.services.entitlements_service import assert_module_enabled
+from app.services.entitlements_service import assert_module_enabled, get_entitlements
+from app.security.service_auth import require_scope
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
@@ -62,6 +64,31 @@ def _ensure_tenant_context(token: dict) -> int:
     if tenant_id is None:
         raise HTTPException(status_code=403, detail="Missing tenant context")
     return int(tenant_id)
+
+
+def _load_document_abac(
+    document_id: str,
+    db: Session = Depends(get_db),
+) -> AbacResourceData:
+    document = db.query(Document).filter(Document.id == document_id).one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="document_not_found")
+    entitlements = get_entitlements(db, client_id=document.client_id)
+    ent_payload = {
+        "plan": entitlements.plan_code,
+        "modules": entitlements.modules,
+        "limits": entitlements.limits,
+    }
+    return AbacResourceData(
+        type="DOCUMENT",
+        attributes={
+            "owner_client_id": document.client_id,
+            "tenant_id": document.tenant_id,
+            "status": document.status.value,
+            "document_type": document.document_type.value,
+        },
+        entitlements=ent_payload,
+    )
 
 
 def _risk_state(decision: RiskDecisionType) -> str:
@@ -311,6 +338,8 @@ def download_document(
     file_type: DocumentFileType,
     request: Request,
     token: dict = Depends(client_portal_user),
+    _scope=Depends(require_scope("documents:read")),
+    _abac=Depends(require_abac("documents:download", _load_document_abac)),
     db: Session = Depends(get_db),
 ) -> Response:
     client_id = _ensure_client_context(token)

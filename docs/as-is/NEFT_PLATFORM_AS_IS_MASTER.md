@@ -144,6 +144,15 @@ docs/
 
 ---
 
+### Security (Service Identities + ABAC) — **READY**
+
+- **Service identities (M2M):** таблицы `service_identities`, `service_tokens`, `service_token_audit`; выпуск/ротация/ревокация через admin API. (`platform/processing-core/app/models/service_identity.py`, `platform/processing-core/app/routers/admin/security.py`)
+- **Token rotation flow:** issue → rotate (grace period) → revoke; токены только в виде хэша + префикс, plaintext выдаётся однократно. (`platform/processing-core/app/services/service_identities.py`)
+- **ABAC policies:** версии `abac_policy_versions` + правила `abac_policies` с JSON conditions и приоритетами. (`platform/processing-core/app/models/abac.py`, `platform/processing-core/app/services/abac/engine.py`)
+- **ABAC enforcement:** подключено к Documents download, EDO send, CRM client read, Payout export, BI scope. (`platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/admin/crm.py`, `platform/processing-core/app/api/v1/endpoints/payouts.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`)
+
+---
+
 ## 4.6 Core Business Modules (AS-IS)
 
 > Статусы: **READY / PARTIAL / NOT IMPLEMENTED**.
