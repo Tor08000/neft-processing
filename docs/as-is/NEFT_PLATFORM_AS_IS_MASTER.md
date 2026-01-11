@@ -174,10 +174,10 @@ docs/
 - **Модели/таблицы:** `reconciliation_*`, `billing_reconciliation_*`, `internal_ledger_*`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/models/internal_ledger.py`)
 - **Сервисы/эндпоинты:** `app/services/reconciliation_service.py`, `app/services/settlement_service.py`.
 
-### Documents / Exports — **PARTIAL**
-- **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
-- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`.
-- **Почему PARTIAL:** EDO интеграции и внешние провайдеры — stub/мок режим (`platform/integration-hub/neft_integration_hub/services/edo_stub.py`).
+### Documents / Exports — **READY**
+- **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`, `edo_*` (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`, `platform/processing-core/app/models/edo.py`).
+- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`, `app/routers/admin/edo.py`, `app/routers/client_edo.py`, `app/routers/partner/edo.py`.
+- **EDO:** провайдер SBIS, статусы, outbox и webhook (`platform/processing-core/app/integrations/edo`, `platform/processing-core/app/routers/integrations/edo_sbis.py`).
 
 ---
 

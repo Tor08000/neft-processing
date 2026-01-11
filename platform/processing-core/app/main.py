@@ -23,6 +23,7 @@ from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
+from app.routers.client_edo import router as client_edo_router
 from app.routers.client_marketplace import router as client_marketplace_router
 from app.routers.client_marketplace_orders import router as client_marketplace_orders_router
 from app.routers.client_marketplace_deals import router as client_marketplace_deals_router
@@ -44,11 +45,13 @@ from app.routers.partner.marketplace_promotions import router as partner_marketp
 from app.routers.partner.marketplace_coupons import router as partner_marketplace_coupons_router
 from app.routers.partner.marketplace_subscriptions import router as partner_marketplace_subscriptions_router
 from app.routers.partner.service_bookings import router as partner_service_bookings_router
+from app.routers.partner.edo import router as partner_edo_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
 from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
+from app.routers.integrations.edo_sbis import router as edo_sbis_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
@@ -332,6 +335,9 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 safe_include_router(app, partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_service_bookings_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_edo_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_edo_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_marketplace_router, prefix=API_PREFIX_CORE)
@@ -345,9 +351,11 @@ safe_include_router(app, client_service_bookings_router, prefix=LEGACY_API_PREFI
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_service_bookings_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_documents_router)
+safe_include_router(app, client_edo_router)
 safe_include_router(app, internal_fleet_router)
 safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
+safe_include_router(app, edo_sbis_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -392,10 +400,12 @@ safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_vehicles_router)
 safe_include_router(core_prefixed_router, client_documents_router)
+safe_include_router(core_prefixed_router, client_edo_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
 safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
 safe_include_router(core_prefixed_router, commercial_layer_router)
+safe_include_router(core_prefixed_router, partner_edo_router)
 
 
 # -----------------------------------------------------------------------------
