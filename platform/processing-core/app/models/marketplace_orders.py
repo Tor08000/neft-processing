@@ -59,6 +59,7 @@ class MarketplaceOrder(Base):
     partner_id = Column(GUID(), nullable=False, index=True)
     product_id = Column(GUID(), nullable=False, index=True)
     quantity = Column(Numeric(18, 4), nullable=False)
+    currency = Column(String(8), nullable=True)
     price_snapshot = Column(JSON_TYPE, nullable=False)
     price_snapshot_json = Column(JSON_TYPE, nullable=True)
     pricing_version = Column(Text, nullable=True)
@@ -67,6 +68,7 @@ class MarketplaceOrder(Base):
     price = Column(Numeric(18, 4), nullable=True)
     discount = Column(Numeric(18, 4), nullable=True)
     final_price = Column(Numeric(18, 4), nullable=True)
+    commission_snapshot = Column(JSON_TYPE, nullable=True)
     commission = Column(Numeric(18, 4), nullable=True)
     status = Column(
         ExistingEnum(MarketplaceOrderStatus, name="marketplace_order_status"),

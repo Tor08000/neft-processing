@@ -269,12 +269,28 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from .marketplace_commissions import (  # noqa: F401
+    MarketplaceCommissionRule,
+    MarketplaceCommissionScope,
+    MarketplaceCommissionStatus,
+    MarketplaceCommissionType,
+)
+from .marketplace_settlement import (  # noqa: F401
+    MarketplaceAdjustment,
+    MarketplaceAdjustmentType,
+    MarketplaceSettlementItem,
+    MarketplaceSettlementStatus,
+)
 from .marketplace_sponsored import (  # noqa: F401
+    MarketplaceSponsoredPlacement,
     SponsoredCampaign,
     SponsoredCampaignObjective,
     SponsoredCampaignStatus,
     SponsoredEvent,
     SponsoredEventType,
+    SponsoredPlacementBidType,
+    SponsoredPlacementStatus,
+    SponsoredPlacementType,
     SponsoredSpendDirection,
     SponsoredSpendLedger,
     SponsoredSpendType,
