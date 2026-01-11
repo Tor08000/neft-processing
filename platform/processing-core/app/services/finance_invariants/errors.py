@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-@dataclass(frozen=True)
+@dataclass
 class FinancialInvariantViolation(RuntimeError):
     """Raised when financial invariant validation fails."""
 
@@ -29,13 +29,13 @@ class FinancialInvariantViolation(RuntimeError):
     ) -> None:
         message = f"Financial invariant violated: {invariant_name}"
         super().__init__(message)
-        object.__setattr__(self, "entity_type", entity_type)
-        object.__setattr__(self, "entity_id", entity_id)
-        object.__setattr__(self, "invariant_name", invariant_name)
-        object.__setattr__(self, "expected", expected)
-        object.__setattr__(self, "actual", actual)
-        object.__setattr__(self, "ledger_transaction_id", ledger_transaction_id)
-        object.__setattr__(self, "violations", list(violations) if violations is not None else None)
+        self.entity_type = entity_type
+        self.entity_id = entity_id
+        self.invariant_name = invariant_name
+        self.expected = expected
+        self.actual = actual
+        self.ledger_transaction_id = ledger_transaction_id
+        self.violations = list(violations) if violations is not None else None
 
 
 __all__ = ["FinancialInvariantViolation"]
