@@ -35,6 +35,16 @@ export class ApiError extends Error {
   }
 }
 
+export class LegalRequiredError extends ApiError {
+  details: unknown;
+
+  constructor(message: string, status: number, correlationId: string | null, details: unknown) {
+    super(message, status, correlationId);
+    this.name = "LegalRequiredError";
+    this.details = details;
+  }
+}
+
 const buildHeaders = (token?: string): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
@@ -80,6 +90,16 @@ export async function request<T>(
   if (response.status === 422) {
     const details = await response.json().catch(() => undefined);
     throw new ValidationError("Ошибка валидации", details);
+  }
+  if (response.status === 428) {
+    const details = await response.json().catch(() => undefined);
+    window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
+    throw new LegalRequiredError(
+      "Legal documents must be accepted before performing this action.",
+      response.status,
+      correlationId,
+      details,
+    );
   }
   if (!response.ok) {
     const text = await response.text();
@@ -129,6 +149,16 @@ export async function requestWithMeta<T>(
   if (response.status === 422) {
     const details = await response.json().catch(() => undefined);
     throw new ValidationError("Ошибка валидации", details);
+  }
+  if (response.status === 428) {
+    const details = await response.json().catch(() => undefined);
+    window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
+    throw new LegalRequiredError(
+      "Legal documents must be accepted before performing this action.",
+      response.status,
+      correlationId,
+      details,
+    );
   }
   if (!response.ok) {
     const text = await response.text();

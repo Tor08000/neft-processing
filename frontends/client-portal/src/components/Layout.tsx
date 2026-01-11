@@ -6,6 +6,7 @@ import {
   ShoppingCart,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
+import { useLegalGate } from "../auth/LegalGateContext";
 import { CLIENT_BASE_PATH } from "../api/base";
 import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
@@ -36,6 +37,7 @@ const buildContextLabel = (section: string, path: string, basePath?: string) => 
 
 export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
+  const { isBlocked } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
   const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
@@ -48,9 +50,12 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} /> },
     { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} /> },
+    { to: "/legal", label: "Legal" },
   ];
 
-  const visibleNavItems = navItems.filter((item) => !item.isHidden);
+  const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
+    (item) => !item.isHidden,
+  );
   const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );

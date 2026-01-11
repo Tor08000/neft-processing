@@ -10,6 +10,7 @@ if "%COMPOSE_FILE%"=="" (
 
 echo Running core-api tests inside the container...
 docker compose exec -T core-api pytest -q %*
+echo Tip: run scripts\smoke_legal_gate.cmd to validate the legal gate end-to-end.
 exit /b %ERRORLEVEL%
 
 :help

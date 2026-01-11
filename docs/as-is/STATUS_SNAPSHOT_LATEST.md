@@ -69,6 +69,7 @@
 | `smoke_billing_v14.cmd` | YES | `scripts/smoke_billing_v14.cmd` |
 | `smoke_finance_negative_scenarios.cmd` | YES | `scripts/smoke_finance_negative_scenarios.cmd` |
 | `smoke_invoice_state_machine.cmd` | YES | `scripts/smoke_invoice_state_machine.cmd` |
+| `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
 | `smoke_local.sh` | YES | `scripts/smoke_local.sh` |
 | `smoke_restart.cmd` | YES | `scripts/smoke_restart.cmd` |
 | `test_core_api.cmd` | YES | `scripts/test_core_api.cmd` |
@@ -95,3 +96,10 @@
 | Marketplace | YES | `platform/processing-core/app/tests/test_marketplace_orders_v1.py` |
 | Fleet/Fuel | YES | `platform/processing-core/app/tests/test_fleet_ingestion_v1.py` |
 | Pricing | YES | `platform/processing-core/app/tests/test_pricing_service.py` |
+| Legal | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
+
+---
+
+## 5) Notes
+
+* LEGAL GATE: implemented.

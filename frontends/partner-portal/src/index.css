@@ -139,3 +139,46 @@ button {
   background: var(--neft-surface2);
   color: var(--neft-text);
 }
+
+.legal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.legal-item {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-actions {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.legal-preview {
+  padding: 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-content {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: rgba(0, 0, 0, 0.2);
+  white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .legal-grid {
+    grid-template-columns: 1fr;
+  }
+}
