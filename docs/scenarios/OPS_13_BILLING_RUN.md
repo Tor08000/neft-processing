@@ -28,9 +28,11 @@ Ops triggers billing runs and verifies invoice generation.
 - `billing_periods` — period lifecycle.
 - `invoices`, `invoice_payments`, `credit_notes` — billing outputs.
 - `billing_task_links` — task linkage for billing jobs.
+- `integration_exports`, `integration_files` — 1C exports generated post-billing.
 
 ## Events & Audit
 - `INVOICE_ISSUED` — case event emitted by billing service.
+- `ONEC_EXPORT_COMPLETED` — audit event for monthly 1C export artifacts.
 - **NOT IMPLEMENTED**: `BILLING_RUN_STARTED`, `BILLING_RUN_FINISHED`, `BILLING_RUN_FAILED` explicit events.
 
 ## Security / Gates

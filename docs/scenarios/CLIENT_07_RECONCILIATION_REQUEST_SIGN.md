@@ -37,11 +37,15 @@ Client requests a reconciliation act, receives generated document, and acknowled
 - `reconciliation_requests` — request lifecycle and result object key.
 - `document_acknowledgements` — client acknowledgements.
 - `invoices` — linked to reconciliation request (for inclusion).
+- `bank_statements`, `bank_transactions` — imported statements used for reconciliation runs.
+- `bank_reconciliation_runs`, `bank_reconciliation_diffs` — reconciliation outcomes after bank import.
 
 ## Events & Audit
 - `RECONCILIATION_REQUEST_CREATED` — client request creation audit event.
 - `RECONCILIATION_ACKNOWLEDGED` — client acknowledgement audit event.
 - `RECONCILIATION_GENERATED`, `RECONCILIATION_SENT` — admin-side status changes.
+- `BANK_STATEMENT_IMPORTED` — audit event on statement upload.
+- `RECONCILIATION_RUN_COMPLETED` — audit event on bank reconciliation run.
 - **NOT IMPLEMENTED**: `RECON_SIGNED` event code (signing not separate from ack).
 
 ## Security / Gates
