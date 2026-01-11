@@ -56,6 +56,12 @@ class FuelTransactionStatus(str, Enum):
     SETTLED = "SETTLED"
 
 
+class FuelTransactionAuthType(str, Enum):
+    ONLINE = "ONLINE"
+    OFFLINE = "OFFLINE"
+    UNKNOWN = "UNKNOWN"
+
+
 class FuelIngestJobStatus(str, Enum):
     RECEIVED = "RECEIVED"
     PROCESSED = "PROCESSED"
@@ -223,6 +229,25 @@ class FuelFraudSignalType(str, Enum):
     ROUTE_DEVIATION_BEFORE_FUEL = "ROUTE_DEVIATION_BEFORE_FUEL"
 
 
+class FleetOfflineProfileStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
+class FleetOfflineReconciliationStatus(str, Enum):
+    STARTED = "STARTED"
+    FINISHED = "FINISHED"
+    FAILED = "FAILED"
+
+
+class FleetOfflineDiscrepancyReason(str, Enum):
+    OFFLINE_LIMIT_EXCEEDED = "OFFLINE_LIMIT_EXCEEDED"
+    UNEXPECTED_PRODUCT = "UNEXPECTED_PRODUCT"
+    CARD_BLOCKED_AT_TIME = "CARD_BLOCKED_AT_TIME"
+    DUPLICATE_TX = "DUPLICATE_TX"
+    AMOUNT_MISMATCH = "AMOUNT_MISMATCH"
+
+
 class FuelCard(Base):
     __tablename__ = "fuel_cards"
     __table_args__ = (
@@ -242,6 +267,7 @@ class FuelCard(Base):
     card_group_id = Column(GUID(), ForeignKey("fuel_card_groups.id"), nullable=True, index=True)
     vehicle_id = Column(GUID(), ForeignKey("fleet_vehicles.id"), nullable=True, index=True)
     driver_id = Column(GUID(), ForeignKey("fleet_drivers.id"), nullable=True, index=True)
+    card_offline_profile_id = Column(GUID(), ForeignKey("fleet_offline_profiles.id"), nullable=True, index=True)
     issued_at = Column(DateTime(timezone=True), nullable=True)
     blocked_at = Column(DateTime(timezone=True), nullable=True)
     meta = Column(JSON, nullable=True)
@@ -372,6 +398,7 @@ class FuelTransaction(Base):
         Index("ix_fuel_transactions_status_time", "status", "occurred_at"),
         Index("ix_fuel_transactions_external_ref", "external_ref"),
         Index("ix_fuel_transactions_provider_tx", "provider_code", "provider_tx_id"),
+        Index("ix_fuel_transactions_provider_batch", "provider_batch_key"),
         UniqueConstraint("provider_code", "provider_tx_id", name="uq_fuel_transactions_provider_tx"),
         UniqueConstraint("provider_code", "external_ref", name="uq_fuel_transactions_provider_external_ref"),
         UniqueConstraint(
@@ -397,6 +424,7 @@ class FuelTransaction(Base):
     amount_total_minor = Column(BigInteger, nullable=False)
     currency = Column(String(3), nullable=False)
     status = Column(ExistingEnum(FuelTransactionStatus, name="fuel_tx_status"), nullable=False)
+    auth_type = Column(ExistingEnum(FuelTransactionAuthType, name="fuel_tx_auth_type"), nullable=True)
     decline_code = Column(String(64), nullable=True)
     risk_decision_id = Column(GUID(), ForeignKey("risk_decisions.id"), nullable=True)
     ledger_transaction_id = Column(
@@ -404,6 +432,7 @@ class FuelTransaction(Base):
     )
     provider_code = Column(String(64), nullable=True, index=True)
     provider_tx_id = Column(String(128), nullable=True, index=True)
+    provider_batch_key = Column(String(128), nullable=True, index=True)
     merchant_key = Column(String(256), nullable=True, index=True)
     external_ref = Column(String(128), nullable=True)
     external_settlement_ref = Column(String(128), nullable=True)
@@ -414,7 +443,9 @@ class FuelTransaction(Base):
     merchant_name = Column(String(256), nullable=True)
     station_external_id = Column(String(128), nullable=True)
     location = Column(String(256), nullable=True)
+    raw_payload = Column(JSON, nullable=True)
     raw_payload_redacted = Column(JSON, nullable=True)
+    content_hash = Column(String(64), nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
     limit_check_status = Column(
         ExistingEnum(FuelLimitCheckStatus, name="fuel_limit_check_status"), nullable=True
@@ -444,6 +475,68 @@ class FuelIngestJob(Base):
     deduped_count = Column(Integer, nullable=False, default=0)
     error = Column(String(512), nullable=True)
     audit_event_id = Column(GUID(), nullable=True)
+
+
+class FleetOfflineProfile(Base):
+    __tablename__ = "fleet_offline_profiles"
+    __table_args__ = (Index("ix_fleet_offline_profiles_client_status", "client_id", "status"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    name = Column(String(128), nullable=False)
+    daily_amount_limit = Column(Numeric, nullable=True)
+    daily_txn_limit = Column(Integer, nullable=True)
+    allowed_products = Column(JSON, nullable=True)
+    allowed_stations = Column(JSON, nullable=True)
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_to = Column(DateTime(timezone=True), nullable=True)
+    status = Column(ExistingEnum(FleetOfflineProfileStatus, name="fleet_offline_profile_status"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FleetOfflineReconciliationRun(Base):
+    __tablename__ = "fleet_offline_reconciliation_runs"
+    __table_args__ = (Index("ix_fleet_offline_reconciliation_client_period", "client_id", "period_key"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(String(64), nullable=False, index=True)
+    period_key = Column(String(32), nullable=False, index=True)
+    status = Column(
+        ExistingEnum(FleetOfflineReconciliationStatus, name="fleet_offline_reconciliation_status"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FleetOfflineDiscrepancy(Base):
+    __tablename__ = "fleet_offline_discrepancies"
+    __table_args__ = (Index("ix_fleet_offline_discrepancies_run", "run_id"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    run_id = Column(GUID(), ForeignKey("fleet_offline_reconciliation_runs.id"), nullable=False, index=True)
+    provider_tx_id = Column(String(128), nullable=True, index=True)
+    tx_id = Column(GUID(), ForeignKey("fuel_transactions.id"), nullable=True, index=True)
+    reason = Column(
+        ExistingEnum(FleetOfflineDiscrepancyReason, name="fleet_offline_discrepancy_reason"),
+        nullable=False,
+    )
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelUnmatchedRecord(Base):
+    __tablename__ = "fuel_unmatched_records"
+    __table_args__ = (
+        Index("ix_fuel_unmatched_records_provider", "provider_code", "created_at"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider_code = Column(String(64), nullable=False, index=True)
+    provider_tx_id = Column(String(128), nullable=True, index=True)
+    batch_id = Column(GUID(), nullable=True, index=True)
+    reason = Column(String(128), nullable=True)
+    raw_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class FuelLimitBreach(Base):

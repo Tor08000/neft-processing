@@ -12,6 +12,9 @@ class BiMetrics:
     export_generate_duration_seconds: float = 0.0
     clickhouse_sync_total: dict[tuple[str, str], int] = field(default_factory=dict)
     clickhouse_lag_seconds: dict[str, float] = field(default_factory=dict)
+    sync_duration_seconds: float = 0.0
+    rows_written_total: int = 0
+    query_latency_seconds: float = 0.0
 
     def mark_ingest(self, status: str) -> None:
         self.ingest_events_total[status] = self.ingest_events_total.get(status, 0) + 1
@@ -34,6 +37,15 @@ class BiMetrics:
 
     def mark_clickhouse_lag(self, dataset: str, lag_seconds: float) -> None:
         self.clickhouse_lag_seconds[dataset] = lag_seconds
+
+    def mark_sync_duration(self, duration_seconds: float) -> None:
+        self.sync_duration_seconds = duration_seconds
+
+    def mark_rows_written(self, rows_written: int) -> None:
+        self.rows_written_total += rows_written
+
+    def mark_query_latency(self, duration_seconds: float) -> None:
+        self.query_latency_seconds = duration_seconds
 
 
 metrics = BiMetrics()

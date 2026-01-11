@@ -1,10 +1,11 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, String
+from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.db import Base
+from app.db.types import GUID
 
 
 class Client(Base):
@@ -29,6 +30,7 @@ class Client(Base):
     tariff_plan = Column(String, nullable=True)
     account_manager = Column(String, nullable=True)
     status = Column(String, nullable=False, server_default="ACTIVE")
+    client_offline_profile_id = Column(GUID(), ForeignKey("fleet_offline_profiles.id"), nullable=True)
 
     # Когда клиент был создан
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

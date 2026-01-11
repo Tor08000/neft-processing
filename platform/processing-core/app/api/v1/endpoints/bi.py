@@ -276,6 +276,8 @@ def create_export(
             created_by=created_by,
         )
     except bi_exports.BiExportError as exc:
+        if str(exc) == "bi_disabled":
+            raise HTTPException(status_code=404, detail="bi_disabled") from exc
         if str(exc) == "export_in_progress":
             raise HTTPException(status_code=409, detail="export_in_progress") from exc
         if str(exc) == "unsupported_export_format":

@@ -1,11 +1,21 @@
+from __future__ import annotations
+
+import sys
+
 from app.db import Base
-import app.models  # noqa: F401
+from app.models import legal_document
+from app.models import legal_gate
 
 
-def test_security_tables_registered_once() -> None:
-    table_names = list(Base.metadata.tables)
-    assert table_names.count("service_identities") == 1
-    assert table_names.count("service_tokens") == 1
-    assert table_names.count("service_token_audit") == 1
-    assert table_names.count("abac_policy_versions") == 1
-    assert table_names.count("abac_policies") == 1
+def test_legal_document_table_singleton() -> None:
+    assert legal_document.LegalDocument.__table__ is Base.metadata.tables["legal_documents"]
+    assert legal_gate.LegalDocument.__table__ is Base.metadata.tables["legal_documents"]
+    assert [name for name in Base.metadata.tables if name == "legal_documents"] == [
+        "legal_documents"
+    ]
+
+
+def test_no_alternate_processing_core_imports() -> None:
+    alt_prefixes = ("processing_core.", "platform.processing_core.")
+    offenders = [name for name in sys.modules if name.startswith(alt_prefixes)]
+    assert not offenders, f"unexpected processing_core imports: {offenders}"

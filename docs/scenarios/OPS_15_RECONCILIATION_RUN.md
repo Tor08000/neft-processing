@@ -17,16 +17,27 @@ Ops runs reconciliation and reviews discrepancies and reports.
 1. `POST /api/reconciliation/run` — run reconciliation (internal/external).
 2. `GET /api/reconciliation/runs` — list runs.
 3. `GET /api/reconciliation/runs/{run_id}/discrepancies` — discrepancies.
+4. `POST /api/v1/admin/integrations/bank/statements/import` — upload bank statement and auto-run reconciliation.
+5. `GET /api/v1/admin/integrations/bank/statements` — list imported statements.
 
 **NOT IMPLEMENTED**
 - `GET /api/reconciliation/runs/{run_id}/export` (export report).
+
+**Offline reconciliation (fleet)**
+1. `POST /internal/fuel/offline-reconcile` — run offline batch reconciliation for period.
+2. `GET /internal/fuel/offline-reconcile/{run_id}` — run status.
+3. `GET /internal/fuel/offline-reconcile/{run_id}/discrepancies` — offline discrepancies.
 
 ## DB Touchpoints
 - `reconciliation_runs` — run metadata.
 - `reconciliation_discrepancies` — diff records.
 - `external_statements` — provider statements.
+- `fleet_offline_reconciliation_runs` — offline reconciliation runs for fuel batches.
+- `fleet_offline_discrepancies` — offline mismatch records (limits/products/cards).
 
 ## Events & Audit
+- `BANK_STATEMENT_IMPORTED` — statement upload audit event.
+- `RECONCILIATION_RUN_COMPLETED` — bank reconciliation completion audit event.
 - **NOT IMPLEMENTED**: `RECON_RUN_STARTED`, `RECON_DIFF_DETECTED`, `RECON_RUN_FINISHED` event codes.
 
 ## Security / Gates

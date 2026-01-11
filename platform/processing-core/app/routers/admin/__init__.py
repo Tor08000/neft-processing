@@ -23,6 +23,7 @@ from app.routers.admin import (
     fuel_providers,
     what_if,
     integration_monitoring,
+    integrations,
     logistics,
     legal_graph,
     limits,
@@ -58,7 +59,7 @@ from app.routers.admin import (
     pricing,
     entitlements,
     edo,
-    security,
+    bi_sync,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -77,6 +78,7 @@ router.include_router(risk_rules.router)
 router.include_router(unified_rules.router)
 router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
+router.include_router(integrations.router)
 router.include_router(settlement_v1.router)
 router.include_router(settlements.router)
 router.include_router(refunds.router)
@@ -119,6 +121,6 @@ router.include_router(legal.router)
 router.include_router(pricing.router)
 router.include_router(entitlements.router)
 router.include_router(edo.router)
-router.include_router(security.router)
+router.include_router(bi_sync.router)
 
 __all__ = ["router"]

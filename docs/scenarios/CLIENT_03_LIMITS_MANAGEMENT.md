@@ -20,6 +20,11 @@ Client admins view and manage spending limits, and verify enforcement on transac
 2. `POST /api/client/fleet/limits/set` — create/update limit.
 3. `POST /api/client/fleet/limits/revoke` — revoke limit.
 
+**Offline profiles**
+1. `GET /api/client/fleet/offline-profiles` — list offline profiles (per client/card).
+2. `POST /api/client/fleet/offline-profiles` — create/update offline profile.
+3. `POST /api/client/fleet/offline-profiles/assign` — assign to card/client.
+
 **NOT IMPLEMENTED**
 - Self-service “apply preset profile” is not exposed; CRM limit profiles exist but no client UI uses them.
 
@@ -27,6 +32,9 @@ Client admins view and manage spending limits, and verify enforcement on transac
 - `fuel_limits` — active limits by scope (client/card/group).
 - `crm_limit_profiles` — CRM profiles (used by contracts, not self-service).
 - `fuel_limit_breaches` — limit breach records (if enforcement is active).
+- `fleet_offline_profiles` — offline profile definitions (daily amount/txn limits).
+- `fuel_cards.card_offline_profile_id` — card-level offline profile binding.
+- `clients.client_offline_profile_id` — client-level offline profile binding.
 
 ## Events & Audit
 - `LIMIT_SET`, `LIMIT_REVOKED` — emitted as `case_events` by fleet service.

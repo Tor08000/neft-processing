@@ -22,6 +22,8 @@ Client downloads monthly documents and acknowledges receipt/signature.
 2. `GET /api/v1/client/invoices/{invoice_id}` — invoice details.
 3. `GET /api/v1/client/invoices/{invoice_id}/pdf` — download PDF.
 4. `POST /api/v1/client/documents/INVOICE_PDF/{invoice_id}/ack` — acknowledge document.
+5. `GET /api/v1/admin/integrations/onec/exports` — list 1C exports for monthly package (admin).
+6. `GET /api/v1/admin/integrations/onec/exports/{id}/download` — download NEFT_1C_EXCHANGE XML.
 
 **NOT IMPLEMENTED**
 - Closing packages endpoints (`/closing-packages`, `/documents/{id}/download`, `/closing-packages/{id}/sign`).
@@ -34,6 +36,7 @@ Client downloads monthly documents and acknowledges receipt/signature.
 ## Events & Audit
 - `INVOICE_ISSUED` — case event emitted during billing.
 - `DOCUMENT_ACKNOWLEDGED` — audit event on document acknowledgement.
+- `ONEC_EXPORT_COMPLETED` — audit event for 1C export artifacts.
 - **NOT IMPLEMENTED**: `CLOSING_PACKAGE_READY`, `DOC_DOWNLOADED`, `CLOSING_ACK`, `CLOSING_SIGNED`.
 
 ## Security / Gates

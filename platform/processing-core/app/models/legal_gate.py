@@ -1,4 +1,6 @@
-from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
-from app.models.legal_document import LegalDocument, LegalDocumentStatus
+from __future__ import annotations
 
-__all__ = ["LegalDocument", "LegalAcceptance", "LegalDocumentStatus", "LegalSubjectType"]
+from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
+from app.models.legal_document import LegalDocument
+
+__all__ = ["LegalAcceptance", "LegalDocument", "LegalSubjectType"]

@@ -16,7 +16,7 @@ from app.models.commercial_layer import (
     PlanFeatureCode,
     UsageMetric,
 )
-from app.models.crm import ClientOnboardingState, ClientOnboardingStateEnum
+from app.models.crm import ClientOnboardingStateEnum
 from app.models.subscriptions_v1 import ClientSubscription, SubscriptionStatus
 from app.schemas.commercial_layer import (
     BillingPlanSummary,
@@ -47,6 +47,17 @@ from app.services.commercial_layer import (
 from app.services.pricing_service import apply_overages, calculate_monthly_usage
 
 router = APIRouter(prefix="/api", tags=["commercial-layer"])
+
+
+def _serialize_onboarding_state(state: ClientOnboardingState) -> OnboardingStateOut:
+    meta = state.meta if isinstance(state.meta, dict) else {}
+    return OnboardingStateOut(
+        client_id=state.client_id,
+        current_step=meta.get("current_step"),
+        completed_steps=meta.get("completed_steps"),
+        updated_at=state.updated_at,
+        completed_at=meta.get("completed_at"),
+    )
 
 
 def _ensure_client_context(token: dict) -> tuple[str, int]:
@@ -296,8 +307,7 @@ def get_onboarding_state(
     if not state:
         state = ClientOnboardingState(
             client_id=client_id,
-            state=ClientOnboardingStateEnum.LEAD_CREATED,
-            meta={},
+            state=ClientOnboardingStateEnum.LEGAL_ACCEPTANCE_PENDING,
         )
         db.add(state)
         db.commit()
@@ -317,20 +327,15 @@ def update_onboarding_step(
     if not state:
         state = ClientOnboardingState(
             client_id=client_id,
-            state=ClientOnboardingStateEnum.LEAD_CREATED,
-            meta={},
+            state=ClientOnboardingStateEnum.LEGAL_ACCEPTANCE_PENDING,
         )
         db.add(state)
 
-    meta = state.meta or {}
+    meta = state.meta if isinstance(state.meta, dict) else {}
     completed = meta.get("completed_steps") or {}
     completed[payload.step] = payload.completed
     meta["completed_steps"] = completed
     meta["current_step"] = payload.step
-    try:
-        state.state = ClientOnboardingStateEnum(payload.step)
-    except ValueError:
-        pass
     if payload.step == "done" and payload.completed:
         meta["completed_at"] = datetime.now(timezone.utc).isoformat()
         AuditService(db).audit(

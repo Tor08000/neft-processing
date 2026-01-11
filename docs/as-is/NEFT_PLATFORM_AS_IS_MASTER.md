@@ -162,11 +162,11 @@ docs/
 - **Сервисы/эндпоинты:** `app/services/billing_service.py`, `app/services/payouts_service.py`, `app/routers/admin/billing.py`, `app/api/v1/endpoints/billing_invoices.py`.
 - **Инварианты/стейт-машины:** invoice transitions + billing flow state в `invoice_transition_logs`, `billing_flow`. (`platform/processing-core/app/models/invoice.py`, `platform/processing-core/app/models/billing_flow.py`)
 
-### Fleet / Fuel — **PARTIAL**
-- **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fleet_notification_*`, `fuel_anomaly_events`, `fleet_vehicles`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/models/fleet.py`)
-- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`.
-- **Инварианты:** блокировки/эскалации в `fleet_policy_engine.py`, `fleet_anomaly_service.py`.
-- **Почему PARTIAL:** реальные провайдеры топлива — stub/template (`platform/processing-core/app/integrations/fuel/providers/stub_provider.py`).
+### Fleet / Fuel — **REAL**
+- **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fuel_provider_batches`, `fleet_offline_profiles`, `fleet_offline_reconciliation_runs`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/models.py`)
+- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`, `app/routers/internal/fuel_providers.py`.
+- **Инварианты:** блокировки/эскалации в `fleet_policy_engine.py`, `fleet_anomaly_service.py`; batch replay idempotency через `content_hash` и `provider_batch_key`.
+- **Fleet Providers: REAL** — эталонный адаптер `provider_ref` с протоколами ingestion/authorize/settlement, CSV ingest и replay. (`platform/processing-core/app/integrations/fuel/providers/provider_ref/`)
 
 ### Marketplace — **PARTIAL**
 - **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `service_bookings`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/service_bookings.py`)
@@ -274,6 +274,9 @@ scripts\test_processing_core_docker.cmd all
 ### integration-hub
 - `INTEGRATION_HUB_DATABASE_URL`, `WEBHOOK_INTAKE_SECRET`, `WEBHOOK_ALLOW_UNSIGNED`.
 - `DIADOK_MODE`, `DIADOK_BASE_URL`, `DIADOK_API_TOKEN` (stub/real). (`platform/integration-hub/neft_integration_hub/settings.py`)
+
+### Integrations Hub (core-api)
+- 1C export + bank statements + reconciliation implemented in `platform/processing-core/app/integrations/` and `/api/v1/admin/integrations/*`.
 
 ### workers/beat
 - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_DEFAULT_QUEUE`.

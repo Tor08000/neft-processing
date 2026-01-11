@@ -46,5 +46,4 @@ class LegalDocument(Base):
     )
     created_by = Column(String(128), nullable=True)
 
-
 __all__ = ["LegalDocument", "LegalDocumentContentType", "LegalDocumentStatus"]

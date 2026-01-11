@@ -81,18 +81,47 @@ from .erp_exports import (  # noqa: F401
     ErpReconciliationVerdict,
     ErpSystemType,
 )
+from .integrations import (  # noqa: F401
+    BankReconciliationDiff,
+    BankReconciliationMatch,
+    BankReconciliationRun,
+    BankStatement,
+    BankStatementStatus,
+    BankTransaction,
+    BankTransactionDirection,
+    IntegrationExport,
+    IntegrationExportStatus,
+    IntegrationFile,
+    IntegrationMapping,
+    IntegrationType,
+    ReconciliationDiffReason,
+    ReconciliationDiffSource,
+    ReconciliationMatchType,
+    ReconciliationRunStatus,
+)
 from .bi import (  # noqa: F401
     BiClickhouseCursor,
     BiCursor,
     BiDailyMetric,
     BiDeclineEvent,
+    BiExport,
     BiExportBatch,
     BiExportFormat,
     BiExportKind,
     BiExportStatus,
+    BiMartCashflow,
+    BiMartClientSpend,
+    BiMartFinanceDaily,
+    BiMartOpsSla,
+    BiMartPartnerPerformance,
+    BiMartVersion,
     BiOrderEvent,
     BiPayoutEvent,
     BiScopeType,
+    BiSyncRun,
+    BiSyncRunStatus,
+    BiSyncRunType,
+    BiWatermark,
 )
 from .partner import Partner  # noqa: F401
 from .groups import (  # noqa: F401
@@ -283,12 +312,28 @@ from .marketplace_order_sla import (  # noqa: F401
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from .marketplace_commissions import (  # noqa: F401
+    MarketplaceCommissionRule,
+    MarketplaceCommissionScope,
+    MarketplaceCommissionStatus,
+    MarketplaceCommissionType,
+)
+from .marketplace_settlement import (  # noqa: F401
+    MarketplaceAdjustment,
+    MarketplaceAdjustmentType,
+    MarketplaceSettlementItem,
+    MarketplaceSettlementStatus,
+)
 from .marketplace_sponsored import (  # noqa: F401
+    MarketplaceSponsoredPlacement,
     SponsoredCampaign,
     SponsoredCampaignObjective,
     SponsoredCampaignStatus,
     SponsoredEvent,
     SponsoredEventType,
+    SponsoredPlacementBidType,
+    SponsoredPlacementStatus,
+    SponsoredPlacementType,
     SponsoredSpendDirection,
     SponsoredSpendLedger,
     SponsoredSpendType,
@@ -407,6 +452,11 @@ from .legal_integrations import (  # noqa: F401
     DocumentSignatureStatus,
     LegalProviderConfig,
     SignatureType,
+)
+from .legal_gate import (  # noqa: F401
+    LegalAcceptance,
+    LegalDocument,
+    LegalSubjectType,
 )
 from .immutability import ImmutableRecordError  # noqa: F401
 from .fleet import (  # noqa: F401
@@ -559,16 +609,29 @@ _FUEL_EXPORTS = {
     "FuelStationStatus",
     "StationReputationDaily",
     "FuelTransaction",
+    "FuelTransactionAuthType",
     "FuelTransactionStatus",
+    "FleetOfflineProfile",
+    "FleetOfflineProfileStatus",
+    "FleetOfflineReconciliationRun",
+    "FleetOfflineReconciliationStatus",
+    "FleetOfflineDiscrepancy",
+    "FleetOfflineDiscrepancyReason",
+    "FuelUnmatchedRecord",
     "FuelType",
 }
 
 _FUEL_INTEGRATION_EXPORTS = {
     "FuelIngestMode",
     "FuelProviderAuthType",
+    "FuelProviderAuthorizationDecision",
+    "FuelProviderBatch",
+    "FuelProviderBatchStatus",
     "FuelProviderCardMap",
     "FuelProviderConnection",
     "FuelProviderConnectionStatus",
+    "FuelProviderRecord",
+    "FuelProviderRecordStatus",
     "FuelProviderRawEvent",
 }
 
