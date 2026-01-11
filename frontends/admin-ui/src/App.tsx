@@ -19,6 +19,7 @@ import { OperationDetailsPage } from "./pages/OperationDetailsPage";
 import { RiskAnalyticsPage } from "./pages/RiskAnalyticsPage";
 import { RiskRulesListPage } from "./pages/RiskRulesListPage";
 import { RiskRuleDetailsPage } from "./pages/RiskRuleDetailsPage";
+import { RulesSandboxPage } from "./pages/RulesSandboxPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import PayoutsList from "./pages/finance/PayoutsList";
 import PayoutBatchDetail from "./pages/finance/PayoutBatchDetail";
@@ -90,6 +91,7 @@ export function App() {
             <Route path="/analytics/risk" element={<RiskAnalyticsPage />} />
             <Route path="/risk/rules" element={<RiskRulesListPage />} />
             <Route path="/risk/rules/:id" element={<RiskRuleDetailsPage />} />
+            <Route path="/risk/sandbox" element={<RulesSandboxPage />} />
             <Route path="/finance/payouts" element={<PayoutsList />} />
             <Route path="/finance/payouts/:batchId" element={<PayoutBatchDetail />} />
             <Route path="/forbidden" element={<ForbiddenPage />} />

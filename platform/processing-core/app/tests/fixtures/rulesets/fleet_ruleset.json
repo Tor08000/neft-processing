@@ -1,0 +1,30 @@
+{
+  "version": {
+    "name": "REGRESSION_FLEET_2026_01",
+    "scope": "FLEET"
+  },
+  "rules": [
+    {
+      "code": "FLEET_DAILY_SPEND_LIMIT",
+      "scope": "FLEET",
+      "metric": "AMOUNT",
+      "window": { "type": "rolling", "unit": "day", "size": 1 },
+      "value": { "op": "<=", "threshold": 100 },
+      "policy": "HARD_DECLINE",
+      "priority": 100,
+      "reason_code": "LIMIT_DAILY_SPEND_EXCEEDED"
+    }
+  ],
+  "cases": [
+    {
+      "context": { "client_id": "client-1", "card_id": "card-1", "amount": 120 },
+      "synthetic_metrics": {},
+      "expected_decision": "HARD_DECLINE"
+    },
+    {
+      "context": { "client_id": "client-1", "card_id": "card-1", "amount": 50 },
+      "synthetic_metrics": {},
+      "expected_decision": "ALLOW"
+    }
+  ]
+}

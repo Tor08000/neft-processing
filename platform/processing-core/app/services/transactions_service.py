@@ -28,8 +28,11 @@ from app.schemas.operations import OperationSchema
 from app.models.ledger_entry import LedgerDirection
 from app.repositories.accounts_repository import AccountsRepository
 from app.repositories.ledger_repository import LedgerRepository
+from app.models.unified_rule import UnifiedRulePolicy, UnifiedRuleScope
+from app.schemas.unified_rules import RuleEvaluationContext, RuleEvaluationObject, RuleEvaluationSubject
 from app.services.decision import DecisionContext, DecisionEngine, DecisionOutcome
 from app.services.limits import CheckAndReserveRequest, evaluate_limits_locally
+from app.services.unified_rules_engine import evaluate_with_db
 from app.services.risk_adapter import (
     OperationContext,
     RiskDecisionLevel,
@@ -456,6 +459,45 @@ def authorize_operation(
             product_type=product_type,
             risk_payload={"decision_engine": decision.to_payload()},
             risk_result=risk_result,
+        )
+
+    unified_context = RuleEvaluationContext(
+        timestamp=datetime.now(timezone.utc),
+        scope=UnifiedRuleScope.FLEET,
+        subject=RuleEvaluationSubject(client_id=client_id),
+        object=RuleEvaluationObject(
+            card_id=card_id,
+            amount=amount,
+            currency=currency,
+            endpoint="fleet/authorize",
+        ),
+    )
+    unified_decision, matched_rules, _ = evaluate_with_db(db, unified_context)
+    if unified_decision != UnifiedRulePolicy.ALLOW:
+        reason_code = next(
+            (rule.rule.reason_code for rule in matched_rules if rule.rule.reason_code),
+            "RULES_DECLINE",
+        )
+        return decline_operation(
+            db,
+            ext_operation_id=ext_operation_id,
+            reason=reason_code,
+            amount=amount,
+            currency=currency,
+            client_id=client_id,
+            card_id=card_id,
+            tariff_id=tariff_id,
+            terminal_id=terminal_id,
+            merchant_id=merchant_id,
+            product_id=product_id,
+            product_type=product_type,
+            risk_payload={
+                "unified_rules": {
+                    "decision": unified_decision.value,
+                    "matched": [rule.rule.code for rule in matched_rules],
+                }
+            },
+            risk_result=RiskLevel.MEDIUM,
         )
 
     limits_request = CheckAndReserveRequest(
