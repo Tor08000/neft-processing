@@ -551,16 +551,29 @@ _FUEL_EXPORTS = {
     "FuelStationStatus",
     "StationReputationDaily",
     "FuelTransaction",
+    "FuelTransactionAuthType",
     "FuelTransactionStatus",
+    "FleetOfflineProfile",
+    "FleetOfflineProfileStatus",
+    "FleetOfflineReconciliationRun",
+    "FleetOfflineReconciliationStatus",
+    "FleetOfflineDiscrepancy",
+    "FleetOfflineDiscrepancyReason",
+    "FuelUnmatchedRecord",
     "FuelType",
 }
 
 _FUEL_INTEGRATION_EXPORTS = {
     "FuelIngestMode",
     "FuelProviderAuthType",
+    "FuelProviderAuthorizationDecision",
+    "FuelProviderBatch",
+    "FuelProviderBatchStatus",
     "FuelProviderCardMap",
     "FuelProviderConnection",
     "FuelProviderConnectionStatus",
+    "FuelProviderRecord",
+    "FuelProviderRecordStatus",
     "FuelProviderRawEvent",
 }
 
