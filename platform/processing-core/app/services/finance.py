@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 from typing import Tuple
 
 from sqlalchemy import select, text
@@ -46,6 +45,7 @@ from app.services.settlement_allocations import resolve_settlement_period
 from app.services.finance_invariants import FinancialInvariantChecker, FinancialInvariantViolation
 from app.services.money_flow.events import MoneyFlowEventType
 from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
+from app.services.key_normalization import normalize_key, normalize_key_optional
 
 logger = get_logger(__name__)
 
@@ -91,13 +91,6 @@ class FinanceService:
         self.job_service = BillingJobRunService(db)
         self.policy_engine = PolicyEngine()
         self.invariant_checker = FinancialInvariantChecker(db)
-
-    @staticmethod
-    def _normalize_idempotency_key(idempotency_key: str) -> str:
-        if len(idempotency_key) <= 128:
-            return idempotency_key
-        digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
-        return f"hash:{digest}"
 
     def _audit_invariant_violation(
         self,
@@ -553,7 +546,8 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> PaymentResult:
-        idempotency_key = self._normalize_idempotency_key(idempotency_key)
+        idempotency_key = normalize_key(idempotency_key, prefix="hash:")
+        external_ref = normalize_key_optional(external_ref, prefix="hash:")
         replay_from_flow = self._replay_from_money_flow_event(
             invoice_id=invoice_id,
             idempotency_key=idempotency_key,
@@ -804,7 +798,7 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> CreditNoteResult:
-        idempotency_key = self._normalize_idempotency_key(idempotency_key)
+        idempotency_key = normalize_key(idempotency_key, prefix="hash:")
         existing = (
             self.db.query(CreditNote)
             .filter(CreditNote.idempotency_key == idempotency_key)
@@ -978,6 +972,7 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> CreditNoteResult:
+        external_ref = normalize_key_optional(external_ref, prefix="hash:")
         if external_ref:
             existing_by_ref = (
                 self.db.query(CreditNote)
@@ -1010,7 +1005,8 @@ class FinanceService:
         job_run = None
 
         with txn_context:
-            lock_token = make_lock_token("finance_refund", external_ref or f"{invoice_id}:{amount}")
+            lock_ref = external_ref or f"{invoice_id}:{amount}"
+            lock_token = make_lock_token("finance_refund", normalize_key(lock_ref, prefix="hash:"))
             with advisory_lock(self.db, lock_token) as acquired:
                 if not acquired:
                     billing_metrics.mark_payment_error()
@@ -1022,7 +1018,7 @@ class FinanceService:
                 self.invariant_checker.check_refund(
                     invoice,
                     amount=amount,
-                    reference=external_ref or f"refund:{invoice_id}",
+                    reference=normalize_key(external_ref or f"refund:{invoice_id}", prefix="hash:"),
                     request_ctx=request_ctx,
                     audit=False,
                 )
@@ -1051,16 +1047,20 @@ class FinanceService:
                     "external_ref": external_ref,
                     "provider": provider,
                 },
-                correlation_id=external_ref or f"refund:{invoice_id}",
+                correlation_id=normalize_key(external_ref or f"refund:{invoice_id}", prefix="hash:"),
                 invoice_id=invoice_id,
             )
 
+            idempotency_key = normalize_key(
+                external_ref or f"refund:{invoice_id}:{amount}",
+                prefix="hash:",
+            )
             refund = CreditNote(
                 invoice_id=invoice_id,
                 amount=amount,
                 currency=currency,
                 reason=reason,
-                idempotency_key=external_ref or f"refund:{invoice_id}:{amount}",
+                idempotency_key=idempotency_key,
                 external_ref=external_ref,
                 provider=provider,
                 status=CreditNoteStatus.POSTED,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from itertools import count
 from uuid import uuid4
 
 import pytest
@@ -35,6 +36,8 @@ from app.services.finance import FinanceService
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
 from app.services.order_sla_consequence_service import apply_sla_consequences
 from app.services.order_sla_service import evaluate_order_event
+
+_INVOICE_PERIOD_SEQ = count()
 
 
 @pytest.fixture(autouse=True)
@@ -99,13 +102,11 @@ def _create_invoice(
     due_date: date | None = None,
     currency: str = "RUB",
 ) -> Invoice:
-    unique_offset = uuid4().int % 10_000_000
-    start_at = datetime.now(timezone.utc) + timedelta(
-        seconds=unique_offset // 1_000_000,
-        microseconds=unique_offset % 1_000_000,
-    )
+    period_offset = next(_INVOICE_PERIOD_SEQ)
+    start_at = datetime.now(timezone.utc) + timedelta(seconds=period_offset)
     end_at = start_at + timedelta(hours=1)
     period = BillingPeriod(
+        id=str(uuid4()),
         period_type=BillingPeriodType.ADHOC,
         start_at=start_at,
         end_at=end_at,

@@ -22,6 +22,7 @@ from app.models.internal_ledger import (
 )
 from app.models.invoice import Invoice, InvoiceStatus
 from app.services.audit_service import AuditService, RequestContext
+from app.services.key_normalization import normalize_key
 
 
 @dataclass(frozen=True)
@@ -117,10 +118,7 @@ class InternalLedgerService:
         posted_at: datetime | None,
         meta: dict[str, object] | None = None,
     ) -> tuple[InternalLedgerTransaction, bool]:
-        if len(idempotency_key) > 128:
-            truncated = idempotency_key.encode("utf-8")
-            digest = hashlib.sha256(truncated).hexdigest()
-            idempotency_key = f"ledger:{digest}"
+        idempotency_key = normalize_key(idempotency_key, prefix="ledger:")
         existing = (
             self.db.query(InternalLedgerTransaction)
             .filter(InternalLedgerTransaction.idempotency_key == idempotency_key)
