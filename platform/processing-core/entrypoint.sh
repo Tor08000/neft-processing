@@ -137,6 +137,195 @@ import os
 import sys
 
 import psycopg
+from sqlalchemy.engine import make_url
+
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    print("[entrypoint] DATABASE_URL is not set for schema repair", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+url = make_url(db_url)
+if url.drivername.endswith("+psycopg"):
+    url = url.set(drivername="postgresql")
+dsn = url.render_as_string(hide_password=False)
+
+def _quote_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+def _ensure_enum(cur, name: str, values: list[str]) -> None:
+    joined = ", ".join(_quote_literal(value) for value in values)
+    cur.execute(
+        f"""
+        DO $$
+        BEGIN
+            CREATE TYPE processing_core.{name} AS ENUM ({joined});
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$;
+        """
+    )
+
+operation_type_values = [
+    "AUTH",
+    "HOLD",
+    "COMMIT",
+    "REVERSE",
+    "REFUND",
+    "DECLINE",
+    "CAPTURE",
+    "REVERSAL",
+]
+operation_status_values = [
+    "PENDING",
+    "AUTHORIZED",
+    "HELD",
+    "COMPLETED",
+    "REVERSED",
+    "REFUNDED",
+    "DECLINED",
+    "CANCELLED",
+    "CAPTURED",
+    "OPEN",
+]
+product_type_values = [
+    "DIESEL",
+    "AI92",
+    "AI95",
+    "AI98",
+    "GAS",
+    "OTHER",
+]
+risk_result_values = [
+    "LOW",
+    "MEDIUM",
+    "HIGH",
+    "BLOCK",
+    "MANUAL_REVIEW",
+]
+
+with psycopg.connect(dsn, prepare_threshold=0) as conn:
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("CREATE SCHEMA IF NOT EXISTS processing_core")
+        cur.execute("select current_schema(), current_setting('search_path')")
+        current_schema, search_path = cur.fetchone()
+        cur.execute("select to_regclass('processing_core.operations')")
+        processing_core_reg = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT n.nspname, c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = 'operations'
+            ORDER BY n.nspname
+            """
+        )
+        pg_class_hits = cur.fetchall()
+        cur.execute(
+            """
+            SELECT table_schema
+            FROM information_schema.tables
+            WHERE table_name = 'operations'
+            ORDER BY table_schema
+            """
+        )
+        operations_schemas = [row[0] for row in cur.fetchall()]
+        print(
+            "[entrypoint] repair diagnostics: "
+            f"current_schema={current_schema} search_path={search_path} "
+            f"processing_core.operations={processing_core_reg} "
+            f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
+            flush=True,
+        )
+        if processing_core_reg is not None:
+            sys.exit(0)
+
+        _ensure_enum(cur, "operationtype", operation_type_values)
+        _ensure_enum(cur, "operationstatus", operation_status_values)
+        _ensure_enum(cur, "producttype", product_type_values)
+        _ensure_enum(cur, "riskresult", risk_result_values)
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processing_core.operations (
+                id uuid PRIMARY KEY NOT NULL,
+                operation_id varchar(64) NOT NULL,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now(),
+                operation_type processing_core.operationtype NOT NULL,
+                status processing_core.operationstatus NOT NULL,
+                merchant_id varchar(64) NOT NULL,
+                terminal_id varchar(64) NOT NULL,
+                client_id varchar(64) NOT NULL,
+                card_id varchar(64) NOT NULL,
+                tariff_id varchar(64) NULL,
+                product_id varchar(64) NULL,
+                amount bigint NOT NULL,
+                amount_settled bigint NULL DEFAULT 0,
+                currency varchar(3) NOT NULL DEFAULT 'RUB',
+                product_type processing_core.producttype NULL,
+                quantity numeric(18, 3) NULL,
+                unit_price numeric(18, 3) NULL,
+                captured_amount bigint NOT NULL DEFAULT 0,
+                refunded_amount bigint NOT NULL DEFAULT 0,
+                daily_limit bigint NULL,
+                limit_per_tx bigint NULL,
+                used_today bigint NULL,
+                new_used_today bigint NULL,
+                limit_profile_id varchar(64) NULL,
+                limit_check_result json NULL,
+                authorized boolean NOT NULL DEFAULT false,
+                response_code varchar(8) NOT NULL DEFAULT '00',
+                response_message varchar(255) NOT NULL DEFAULT 'OK',
+                auth_code varchar(32) NULL,
+                parent_operation_id varchar(64) NULL,
+                reason varchar(255) NULL,
+                mcc varchar(8) NULL,
+                product_code varchar(32) NULL,
+                product_category varchar(32) NULL,
+                tx_type varchar(16) NULL,
+                accounts jsonb NULL,
+                posting_result jsonb NULL,
+                risk_score double precision NULL,
+                risk_result processing_core.riskresult NULL,
+                risk_payload json NULL,
+                CONSTRAINT uq_operations_operation_id UNIQUE (operation_id)
+            )
+            """
+        )
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id "
+            "ON processing_core.operations (operation_id)"
+        )
+        for index_name, columns in {
+            "ix_operations_card_id": "card_id",
+            "ix_operations_client_id": "client_id",
+            "ix_operations_merchant_id": "merchant_id",
+            "ix_operations_terminal_id": "terminal_id",
+            "ix_operations_created_at": "created_at",
+            "ix_operations_operation_id": "operation_id",
+            "ix_operations_operation_type": "operation_type",
+            "ix_operations_status": "status",
+        }.items():
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON processing_core.operations ({columns})"
+            )
+
+        cur.execute("select to_regclass('processing_core.operations')")
+        repaired_reg = cur.fetchone()[0]
+        print(
+            "[entrypoint] repair completed: "
+            f"processing_core.operations={repaired_reg}",
+            flush=True,
+        )
+PY
+
+python - <<'PY'
+import os
+import sys
+
+import psycopg
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import make_url

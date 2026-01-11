@@ -81,6 +81,11 @@ def _alembic_head_revision() -> str | None:
 
 def test_db_schema_consistency() -> None:
     database_url = os.getenv("DATABASE_URL", "")
+    full_schema_expected = os.getenv("NEFT_FULL_SCHEMA_EXPECTED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     engine = create_engine(
         database_url,
         future=True,
@@ -93,6 +98,8 @@ def test_db_schema_consistency() -> None:
         with engine.connect() as conn:
             inspector = inspect(conn)
             required_tables = set(REQUIRED_TABLES)
+            if full_schema_expected:
+                required_tables = set(Base.metadata.tables)
             expected_tables = {DB_SCHEMA: required_tables}
             for schema, table_names in expected_tables.items():
                 actual_tables = set(inspector.get_table_names(schema=schema))
