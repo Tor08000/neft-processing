@@ -28,6 +28,18 @@ export class ValidationError extends Error {
   }
 }
 
+export class LegalRequiredError extends Error {
+  status: number;
+  details: unknown;
+
+  constructor(message: string, status: number, details: unknown) {
+    super(message);
+    this.name = "LegalRequiredError";
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const buildHeaders = (token?: string | null): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
@@ -82,6 +94,11 @@ export async function request<T>(
   if (response.status === 422) {
     const details = await response.json().catch(() => undefined);
     throw new ValidationError("Ошибка валидации", details);
+  }
+  if (response.status === 428) {
+    const details = await response.json().catch(() => undefined);
+    window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
+    throw new LegalRequiredError("Legal documents must be accepted before performing this action.", 428, details);
   }
   if (!response.ok) {
     const details = await response.text();

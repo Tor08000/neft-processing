@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -57,6 +58,7 @@ import { FleetPolicyCenterOverviewPage } from "./pages/FleetPolicyCenterOverview
 import { FleetIncidentsPage } from "./pages/FleetIncidentsPage";
 import { FleetIncidentDetailsPage } from "./pages/FleetIncidentDetailsPage";
 import { isPwaMode } from "./pwa/mode";
+import { LegalPage } from "./pages/LegalPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -81,22 +83,24 @@ function PwaIndexRedirect() {
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<Layout pwaMode={isPwaMode} />}>
-            {isPwaMode ? (
-              <>
-                <Route index element={<PwaIndexRedirect />} />
-                <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
-                <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
-                <Route path="/documents" element={<ClientDocumentsPage />} />
-                <Route path="/documents/:id" element={<ClientDocumentDetailsPage />} />
-              </>
-            ) : (
-              <>
-                <Route index element={<IndexRedirect />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
+      <LegalGateProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout pwaMode={isPwaMode} />}>
+              {isPwaMode ? (
+                <>
+                  <Route index element={<PwaIndexRedirect />} />
+                  <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
+                  <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
+                  <Route path="/documents" element={<ClientDocumentsPage />} />
+                  <Route path="/documents/:id" element={<ClientDocumentDetailsPage />} />
+                  <Route path="/legal" element={<LegalPage />} />
+                </>
+              ) : (
+                <>
+                  <Route index element={<IndexRedirect />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/vehicles" element={<FleetGroupsPage />} />
                 <Route path="/vehicles/:id" element={<FleetGroupDetailsPage />} />
                 <Route path="/cards" element={<ClientCardsPage />} />
@@ -149,6 +153,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />
+                <Route path="/legal" element={<LegalPage />} />
                 <Route path="/fleet/cards" element={<FleetCardsPage />} />
                 <Route path="/fleet/cards/:id" element={<FleetCardDetailsPage />} />
                 <Route path="/fleet/groups" element={<FleetGroupsPage />} />
@@ -167,12 +172,13 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/fleet/notifications/channels" element={<Navigate to="/fleet/policy-center/channels" replace />} />
                 <Route path="/fleet/policies" element={<Navigate to="/fleet/policy-center/actions" replace />} />
                 <Route path="/fleet/policies/executions" element={<Navigate to="/fleet/policy-center/executions" replace />} />
-              </>
-            )}
+                </>
+              )}
+            </Route>
           </Route>
-        </Route>
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </LegalGateProvider>
     </AuthProvider>
   );
 }

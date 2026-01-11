@@ -1,9 +1,11 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ForbiddenPage } from "../pages/ForbiddenPage";
+import { useLegalGate } from "../auth/LegalGateContext";
 
 export function ProtectedRoute() {
   const { user, isLoading, hasClientRole, logout } = useAuth();
+  const { isBlocked } = useLegalGate();
   const location = useLocation();
   const returnUrl = `${location.pathname}${location.search}`;
 
@@ -22,6 +24,10 @@ export function ProtectedRoute() {
 
   if (!hasClientRole) {
     return <ForbiddenPage />;
+  }
+
+  if (isBlocked && location.pathname !== "/legal") {
+    return <Navigate to="/legal" replace />;
   }
 
   return <Outlet />;

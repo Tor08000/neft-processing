@@ -215,6 +215,16 @@ from .partner_subscriptions import (  # noqa: F401
     PartnerSubscription,
     PartnerSubscriptionStatus,
 )
+from .legal_document import (  # noqa: F401
+    LegalDocument,
+    LegalDocumentContentType,
+    LegalDocumentStatus,
+)
+from .legal_acceptance import (  # noqa: F401
+    LegalAcceptance,
+    LegalAcceptanceImmutableError,
+    LegalSubjectType,
+)
 from .marketplace_order_sla import (  # noqa: F401
     MarketplaceOrderContractLink,
     MarketplaceOrderEvent,
@@ -808,4 +818,10 @@ __all__ = [
     "PromotionApplicationImmutableError",
     "PromotionStatus",
     "PromotionType",
+    "LegalDocument",
+    "LegalDocumentContentType",
+    "LegalDocumentStatus",
+    "LegalAcceptance",
+    "LegalAcceptanceImmutableError",
+    "LegalSubjectType",
 ]

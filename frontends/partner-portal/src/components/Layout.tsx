@@ -8,11 +8,13 @@ import {
   Wallet,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
+import { useLegalGate } from "../auth/LegalGateContext";
 import { useI18n } from "../i18n";
 import { BrandHeader, BrandSidebar, PageShell } from "../../shared/brand/components";
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const { isBlocked } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
 
@@ -33,9 +35,11 @@ export function Layout() {
     { to: "/promotions", label: "Promotions", icon: <Percent size={18} /> },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} /> },
     { to: "/payouts", label: "Payouts", icon: <Wallet size={18} /> },
+    { to: "/legal", label: "Legal", icon: <Package size={18} /> },
   ];
 
-  const activeItem = navItems.find(
+  const visibleNavItems = isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems;
+  const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
   const sectionTitle = activeItem?.label ?? t("app.title");
@@ -43,7 +47,7 @@ export function Layout() {
 
   return (
     <div className="brand-shell neft-page">
-      <BrandSidebar items={navItems} title="Partner" />
+      <BrandSidebar items={visibleNavItems} title="Partner" />
       <main className="brand-main">
         <BrandHeader
           title={sectionTitle}
