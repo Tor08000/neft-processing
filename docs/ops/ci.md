@@ -1,22 +1,38 @@
 # CI merge gate requirements
 
-## Required checks for `main`
+## Required release gates (ordered)
 
-Enable branch protection rules for `main` with the following required status checks:
+Release pipeline must enforce the following order. Any failure blocks release tagging.
 
-- `db-smoke` (workflow: **CI Smoke**)
-- `smoke-scenarios` (workflow: **CI Smoke**)
-
-These checks guarantee:
-
-- Alembic migrations are idempotent (repeat `upgrade head`).
-- End-to-end smoke scenarios for fuel and billing flows pass on a clean database.
+1. **Static**
+   - lint
+   - typecheck (if applicable)
+   - import stability tests
+2. **Migrations**
+   - alembic dry-run
+   - apply migrations on empty DB
+   - rollback (if supported)
+3. **Contracts**
+   - API schema compatibility
+   - BI mart contracts
+   - ABAC schema validation
+4. **Core tests**
+   - `scripts\\test_processing_core_docker.cmd`
+5. **Smoke (backend)**
+   - `scripts\\smoke_legal_gate.cmd`
+   - `scripts\\smoke_billing_v14.cmd`
+   - `scripts\\smoke_edo_sbis_send.cmd`
+   - `scripts\\smoke_fuel_ingest_batch.cmd`
+   - `scripts\\smoke_partner_onboarding.cmd` (or relevant core set)
+6. **UI build**
+   - Admin/Client/Partner build
+   - Playwright UI smoke (headless)
 
 ## GitHub settings checklist
 
 1. Go to **Settings → Branches → Branch protection rules**.
 2. Edit (or create) the rule for `main`.
 3. Under **Require status checks to pass before merging**:
-   - Add `db-smoke`
-   - Add `smoke-scenarios`
+   - Add checks for each stage above.
+   - Keep ordering in the workflow pipeline.
 4. Save the rule.

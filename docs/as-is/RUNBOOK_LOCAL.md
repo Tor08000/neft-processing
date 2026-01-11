@@ -152,6 +152,15 @@ scripts\billing_smoke.cmd
 scripts\smoke_billing_v14.cmd
 scripts\smoke_invoice_state_machine.cmd
 scripts\smoke_legal_gate.cmd
+scripts\chaos\chaos_smoke_all.cmd
+scripts\backup\backup_postgres.cmd
+scripts\backup\backup_minio.cmd
+scripts\backup\backup_clickhouse.cmd
+scripts\backup\verify_backup.cmd
+scripts\restore\restore_postgres.cmd
+scripts\restore\restore_minio.cmd
+scripts\restore\restore_clickhouse.cmd
+scripts\release\generate_release_notes.cmd
 ```
 
 **Processing-core tests (recommended):**
@@ -161,6 +170,45 @@ scripts\test_core_stack.cmd --full
 ```
 
 Processing-core tests are run inside docker compose; host runs are not supported.
+
+## 10) Chaos checks (minimal)
+
+```cmd
+scripts\chaos\chaos_postgres_restart.cmd
+scripts\chaos\chaos_redis_flush.cmd
+scripts\chaos\chaos_minio_down.cmd
+scripts\chaos\chaos_smoke_all.cmd
+```
+
+## 11) Backup / Restore
+
+Postgres:
+
+```cmd
+scripts\backup\backup_postgres.cmd
+scripts\restore\restore_postgres.cmd
+scripts\backup\verify_backup.cmd
+```
+
+MinIO:
+
+```cmd
+scripts\backup\backup_minio.cmd
+scripts\restore\restore_minio.cmd
+```
+
+ClickHouse (optional):
+
+```cmd
+scripts\backup\backup_clickhouse.cmd
+scripts\restore\restore_clickhouse.cmd
+```
+
+## 12) Release discipline
+
+```cmd
+scripts\release\generate_release_notes.cmd vYYYY.MM.PATCH
+```
 
 ## 9) Known failure points
 

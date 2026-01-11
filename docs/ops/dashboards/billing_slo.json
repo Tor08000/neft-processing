@@ -1,0 +1,14 @@
+{
+  "title": "Billing SLO",
+  "description": "Billing run success and latency panels",
+  "panels": [
+    {
+      "title": "Billing run success",
+      "promql": "sum(increase(billing_run_status{status=\"success\"}[1d]))"
+    },
+    {
+      "title": "Billing run failures",
+      "promql": "sum(increase(billing_run_status{status=\"failed\"}[1d]))"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "title": "SLO Overview",
+  "description": "Baseline SLO overview panels",
+  "panels": [
+    {
+      "title": "API Availability",
+      "promql": "sum(rate(http_requests_total{status=~\"2..|3..\"}[5m])) / sum(rate(http_requests_total[5m]))"
+    },
+    {
+      "title": "Authorize p95 latency",
+      "promql": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route=~\".*authorize.*\"}[5m])) by (le))"
+    },
+    {
+      "title": "BI Sync Lag",
+      "promql": "max(bi_sync_duration)"
+    }
+  ]
+}
