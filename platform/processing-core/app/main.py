@@ -47,11 +47,13 @@ from app.routers.partner.marketplace_promotions import router as partner_marketp
 from app.routers.partner.marketplace_coupons import router as partner_marketplace_coupons_router
 from app.routers.partner.marketplace_subscriptions import router as partner_marketplace_subscriptions_router
 from app.routers.partner.service_bookings import router as partner_service_bookings_router
+from app.routers.partner.edo import router as partner_edo_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
 from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
+from app.routers.integrations.edo_sbis import router as edo_sbis_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
@@ -338,6 +340,9 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 safe_include_router(app, partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_service_bookings_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_edo_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_edo_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_marketplace_router, prefix=API_PREFIX_CORE)
@@ -358,6 +363,7 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, internal_fleet_router)
 safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
+safe_include_router(app, edo_sbis_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -408,6 +414,7 @@ safe_include_router(core_prefixed_router, client_service_completion_proofs_route
 safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
 safe_include_router(core_prefixed_router, commercial_layer_router)
+safe_include_router(core_prefixed_router, partner_edo_router)
 
 
 # -----------------------------------------------------------------------------

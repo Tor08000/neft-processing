@@ -57,6 +57,7 @@ from app.routers.admin import (
     legal,
     pricing,
     entitlements,
+    edo,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -116,5 +117,6 @@ router.include_router(erp_stub.router)
 router.include_router(legal.router)
 router.include_router(pricing.router)
 router.include_router(entitlements.router)
+router.include_router(edo.router)
 
 __all__ = ["router"]
