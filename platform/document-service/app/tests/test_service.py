@@ -87,8 +87,8 @@ def test_render_creates_pdf_and_metadata(monkeypatch) -> None:
     storage = DummyStorage()
     renderer = DummyRenderer()
 
-    monkeypatch.setattr(main, "get_storage", lambda: storage)
-    monkeypatch.setattr(main, "get_renderer", lambda: renderer)
+    main.app.dependency_overrides[main.get_storage] = lambda: storage
+    main.app.dependency_overrides[main.get_renderer] = lambda: renderer
 
     client = TestClient(main.app)
     payload = _build_payload()
@@ -107,14 +107,15 @@ def test_render_creates_pdf_and_metadata(monkeypatch) -> None:
     assert payload_bytes is not None
     assert body["size_bytes"] == len(payload_bytes)
     assert body["sha256"] == hashlib.sha256(payload_bytes).hexdigest()
+    main.app.dependency_overrides.clear()
 
 
 def test_render_idempotent(monkeypatch) -> None:
     storage = DummyStorage()
     renderer = DummyRenderer()
 
-    monkeypatch.setattr(main, "get_storage", lambda: storage)
-    monkeypatch.setattr(main, "get_renderer", lambda: renderer)
+    main.app.dependency_overrides[main.get_storage] = lambda: storage
+    main.app.dependency_overrides[main.get_renderer] = lambda: renderer
 
     client = TestClient(main.app)
     payload = _build_payload()
@@ -125,3 +126,4 @@ def test_render_idempotent(monkeypatch) -> None:
     assert second.status_code == 200
     assert first.json() == second.json()
     assert renderer.calls == 1
+    main.app.dependency_overrides.clear()

@@ -335,6 +335,12 @@ from .legal_integrations import (  # noqa: F401
     LegalProviderConfig,
     SignatureType,
 )
+from .legal_gate import (  # noqa: F401
+    LegalAcceptance,
+    LegalDocument,
+    LegalDocumentStatus,
+    LegalSubjectType,
+)
 from .immutability import ImmutableRecordError  # noqa: F401
 from .fleet import (  # noqa: F401
     ClientEmployee,
@@ -685,6 +691,10 @@ __all__ = [
     "LegalEdgeType",
     "LegalGraphSnapshot",
     "LegalGraphSnapshotScopeType",
+    "LegalDocument",
+    "LegalDocumentStatus",
+    "LegalSubjectType",
+    "LegalAcceptance",
     "ImmutableRecordError",
     "FuelCard",
     "FuelCardGroup",

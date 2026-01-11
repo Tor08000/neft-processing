@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Monthly act template variables",
+  "type": "object",
+  "required": ["client_name", "period_from", "period_to", "total_amount", "currency"],
+  "properties": {
+    "client_name": { "type": "string" },
+    "period_from": { "type": "string", "format": "date" },
+    "period_to": { "type": "string", "format": "date" },
+    "total_amount": { "type": "number" },
+    "currency": { "type": "string" },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

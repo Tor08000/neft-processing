@@ -71,6 +71,9 @@
 | `smoke_invoice_state_machine.cmd` | YES | `scripts/smoke_invoice_state_machine.cmd` |
 | `smoke_local.sh` | YES | `scripts/smoke_local.sh` |
 | `smoke_restart.cmd` | YES | `scripts/smoke_restart.cmd` |
+| `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
+| `test_processing_core.cmd` | YES | `scripts/test_processing_core.cmd` |
+| `test_core_stack.cmd` | YES | `scripts/test_core_stack.cmd` |
 | `test_core_api.cmd` | YES | `scripts/test_core_api.cmd` |
 | `test_core_full.cmd` | YES | `scripts/test_core_full.cmd` |
 | `test_auth_host.cmd` | YES | `scripts/test_auth_host.cmd` |
@@ -89,9 +92,25 @@
 | Reconciliation | YES | `platform/processing-core/app/tests/test_reconciliation_v1.py` |
 | Documents | YES | `platform/processing-core/app/tests/test_documents_lifecycle.py` |
 | Document service | YES | `platform/document-service/app/tests/test_service.py` |
+| Document templates | YES | `platform/document-service/app/tests/test_templates.py` |
+| Legal gate | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
+| Trust gates | YES | `platform/processing-core/app/tests/test_trust_gates.py` |
 | Webhooks | YES | `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` |
 | EDO stub | YES | `platform/integration-hub/neft_integration_hub/tests/test_edo_stub.py` |
 | Logistics | YES | `platform/processing-core/app/tests/test_logistics_eta.py` |
 | Marketplace | YES | `platform/processing-core/app/tests/test_marketplace_orders_v1.py` |
 | Fleet/Fuel | YES | `platform/processing-core/app/tests/test_fleet_ingestion_v1.py` |
 | Pricing | YES | `platform/processing-core/app/tests/test_pricing_service.py` |
+
+---
+
+## 5) Verification runs (this workspace)
+
+| Check | Command | Result | Evidence |
+|---|---|---|---|
+| Document-service tests (root) | `pytest platform/document-service/app/tests -q` | **PASS** | Completed locally (11 passed). |
+| Document-service tests (service cwd) | `cd platform/document-service && pytest -q` | **PASS** | Completed locally (11 passed). |
+| Processing-core legal gate tests (docker) | `scripts\\test_core_stack.cmd` | **FAIL** | Docker not available in this environment. |
+| Pricing entitlements tests (docker) | `scripts\\test_core_stack.cmd` | **FAIL** | Docker not available in this environment. |
+| Processing-core full tests (docker) | `scripts\\test_core_stack.cmd --full` | **NOT RUN** | Requires docker compose stack. |
+| Smoke legal gate (Windows CMD) | `scripts\\smoke_legal_gate.cmd` | **FAIL** | Docker not available in this environment. |

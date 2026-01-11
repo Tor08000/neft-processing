@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contract</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 40px; color: #111; }
+      h1 { font-size: 20px; margin-bottom: 12px; }
+      .meta { margin-bottom: 16px; }
+      .meta div { margin-bottom: 4px; }
+      .clause { margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Master Service Agreement</h1>
+    <div class="meta">
+      <div><strong>Contract No:</strong> {{ contract_number }}</div>
+      <div><strong>Client:</strong> {{ client_name }}</div>
+      <div><strong>Provider:</strong> {{ provider_name }}</div>
+      <div><strong>Effective date:</strong> {{ effective_date }}</div>
+    </div>
+    <div class="clause">
+      <p>{{ scope }}</p>
+      <p>Commercial terms: {{ terms_summary }}</p>
+    </div>
+    <footer>Draft template for NEFT Platform</footer>
+  </body>
+</html>

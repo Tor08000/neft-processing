@@ -10,6 +10,7 @@ from app.models.card import Card
 from app.models.merchant import Merchant
 from app.models.terminal import Terminal
 from app.db import DB_SCHEMA, get_sessionmaker
+from app.services.legal_gate import ensure_default_legal_documents
 
 DEFAULT_MERCHANT_ID = "M-001"
 DEFAULT_TERMINAL_ID = "T-001"
@@ -111,6 +112,8 @@ def ensure_default_refs(db: Session | None = None) -> None:
         else:
             card.client_id = DEFAULT_CLIENT_ID
             card.status = "ACTIVE"
+
+        ensure_default_legal_documents(db)
 
         db.commit()
     except SQLAlchemyError as exc:  # pragma: no cover - safeguard on startup

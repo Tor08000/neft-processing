@@ -4,6 +4,8 @@ import importlib
 import importlib.abc
 import sys
 
+from prometheus_client import REGISTRY
+
 
 class _BlockWeasyPrintFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path, target=None):  # type: ignore[override]
@@ -15,6 +17,8 @@ class _BlockWeasyPrintFinder(importlib.abc.MetaPathFinder):
 def test_main_import_does_not_require_weasyprint(monkeypatch) -> None:
     monkeypatch.delitem(sys.modules, "app.main", raising=False)
     monkeypatch.delitem(sys.modules, "app.renderer", raising=False)
+    REGISTRY._names_to_collectors.clear()
+    REGISTRY._collector_to_names.clear()
 
     finder = _BlockWeasyPrintFinder()
     monkeypatch.setattr(sys, "meta_path", [finder, *sys.meta_path])

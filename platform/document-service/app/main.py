@@ -7,6 +7,7 @@ from datetime import date
 from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from jsonschema import ValidationError, validate
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 from app.renderer import HtmlRenderer
@@ -17,12 +18,15 @@ from app.schemas import (
     RenderResponse,
     SignRequest,
     SignResponse,
+    TemplateDetail,
+    TemplateListItem,
     VerifyRequest,
     VerifyResponse,
 )
 from app.sign.registry import ProviderRegistry, get_registry
 from app.settings import get_settings
 from app.storage import S3Storage
+from app.templates import TemplateRegistry
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -89,6 +93,10 @@ def get_sign_registry() -> ProviderRegistry:
     return get_registry()
 
 
+def get_template_registry() -> TemplateRegistry:
+    return TemplateRegistry()
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next: Callable[[Request], Response]) -> Response:
     try:
@@ -126,11 +134,38 @@ def render_document(
     request: Request,
     storage: S3Storage = Depends(get_storage),
     renderer: HtmlRenderer = Depends(get_renderer),
+    templates: TemplateRegistry = Depends(get_template_registry),
 ) -> RenderResponse:
     start = time.monotonic()
     request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID")
 
-    if payload.template_kind.upper() != "HTML":
+    template_html = payload.template_html
+    render_data = payload.data or {}
+    schema_hash = None
+    template_hash = None
+
+    if payload.template_code:
+        definition = templates.get_template(payload.template_code)
+        if not definition:
+            raise HTTPException(status_code=404, detail="template_not_found")
+        template_html = definition.load_template()
+        render_data = payload.variables or {}
+        schema = definition.load_schema()
+        try:
+            validate(instance=render_data, schema=schema)
+        except ValidationError as exc:
+            error_path = ".".join([str(item) for item in exc.path]) if exc.path else "variables"
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "schema_validation_failed", "field": error_path, "message": exc.message},
+            ) from exc
+        template_hash = definition.template_hash()
+        schema_hash = definition.schema_hash()
+        template_kind = definition.engine
+    else:
+        template_kind = payload.template_kind
+
+    if not template_html or not template_kind or template_kind.upper() != "HTML":
         raise HTTPException(status_code=422, detail="unsupported_template_kind")
     if payload.output_format.upper() != "PDF":
         raise HTTPException(status_code=422, detail="unsupported_output_format")
@@ -174,10 +209,12 @@ def render_document(
                 size_bytes=existing.size_bytes,
                 content_type=existing.content_type,
                 version=payload.version,
+                template_hash=template_hash,
+                schema_hash=schema_hash,
             )
 
     try:
-        render_result = renderer.render(payload.template_html, payload.data)
+        render_result = renderer.render(template_html, render_data)
         pdf_bytes = render_result.pdf_bytes
         sha256 = hashlib.sha256(pdf_bytes).hexdigest()
         storage.ensure_bucket()
@@ -222,6 +259,49 @@ def render_document(
         size_bytes=len(pdf_bytes),
         content_type="application/pdf",
         version=payload.version,
+        template_hash=template_hash,
+        schema_hash=schema_hash,
+    )
+
+
+@app.get("/v1/templates", response_model=list[TemplateListItem])
+def list_templates(templates: TemplateRegistry = Depends(get_template_registry)) -> list[TemplateListItem]:
+    response: list[TemplateListItem] = []
+    for template in templates.list_templates():
+        repo_path, schema_path = templates.repo_paths(template)
+        response.append(
+            TemplateListItem(
+                code=template.code,
+                title=template.title,
+                engine=template.engine,
+                repo_path=repo_path,
+                schema_path=schema_path,
+                template_hash=template.template_hash(),
+                schema_hash=template.schema_hash(),
+                version=template.version,
+                status=template.status,
+            )
+        )
+    return response
+
+
+@app.get("/v1/templates/{code}", response_model=TemplateDetail)
+def get_template(code: str, templates: TemplateRegistry = Depends(get_template_registry)) -> TemplateDetail:
+    template = templates.get_template(code)
+    if not template:
+        raise HTTPException(status_code=404, detail="template_not_found")
+    repo_path, schema_path = templates.repo_paths(template)
+    return TemplateDetail(
+        code=template.code,
+        title=template.title,
+        engine=template.engine,
+        repo_path=repo_path,
+        schema_path=schema_path,
+        template_hash=template.template_hash(),
+        schema_hash=template.schema_hash(),
+        version=template.version,
+        status=template.status,
+        schema=template.load_schema(),
     )
 
 
