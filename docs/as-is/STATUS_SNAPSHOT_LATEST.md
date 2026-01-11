@@ -83,6 +83,19 @@
 | `test_auth_host.cmd` | YES | `scripts/test_auth_host.cmd` |
 | `verify_all.cmd` | YES | `scripts/verify_all.cmd` |
 | `test_processing_core_docker.cmd` | YES | `scripts/test_processing_core_docker.cmd` |
+| `chaos_postgres_restart.cmd` | YES | `scripts/chaos/chaos_postgres_restart.cmd` |
+| `chaos_redis_flush.cmd` | YES | `scripts/chaos/chaos_redis_flush.cmd` |
+| `chaos_minio_down.cmd` | YES | `scripts/chaos/chaos_minio_down.cmd` |
+| `chaos_smoke_all.cmd` | YES | `scripts/chaos/chaos_smoke_all.cmd` |
+| `backup_postgres.cmd` | YES | `scripts/backup/backup_postgres.cmd` |
+| `backup_clickhouse.cmd` | YES | `scripts/backup/backup_clickhouse.cmd` |
+| `backup_minio.cmd` | YES | `scripts/backup/backup_minio.cmd` |
+| `verify_backup.cmd` | YES | `scripts/backup/verify_backup.cmd` |
+| `backup_restore_smoke.cmd` | YES | `scripts/backup/backup_restore_smoke.cmd` |
+| `restore_postgres.cmd` | YES | `scripts/restore/restore_postgres.cmd` |
+| `restore_clickhouse.cmd` | YES | `scripts/restore/restore_clickhouse.cmd` |
+| `restore_minio.cmd` | YES | `scripts/restore/restore_minio.cmd` |
+| `generate_release_notes.cmd` | YES | `scripts/release/generate_release_notes.cmd` |
 
 ---
 
@@ -113,7 +126,18 @@
 
 ---
 
-## 5) Notes
+## 5) Ops baseline docs
+
+| Artifact | Found | Path |
+| --- | --- | --- |
+| SLO definitions | YES | `docs/ops/SLO.md` |
+| Release checklist | YES | `docs/ops/RELEASE_CHECKLIST.md` |
+| SLO dashboards | YES | `docs/ops/dashboards/slo_overview.json`, `docs/ops/dashboards/billing_slo.json`, `docs/ops/dashboards/edo_slo.json` |
+| CI gates | YES | `docs/ops/ci.md` |
+
+---
+
+## 6) Notes
 
 * LEGAL GATE: implemented.
 * EDO (SBIS): implemented, e2e runs with `EDO_E2E_ENABLED=1` and `EDO_PROVIDER=SBIS`.
@@ -133,7 +157,7 @@ pytest platform/processing-core/app/tests/test_abac_explain.py -q
 
 ---
 
-## 6) Core tests via docker compose run
+## 7) Core tests via docker compose run
 
 Command:
 

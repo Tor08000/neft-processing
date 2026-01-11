@@ -1,0 +1,14 @@
+{
+  "title": "EDO SLO",
+  "description": "EDO send success panels",
+  "panels": [
+    {
+      "title": "EDO send success rate",
+      "promql": "sum(rate(edo_send_status{status=\"success\"}[5m])) / sum(rate(edo_send_status[5m]))"
+    },
+    {
+      "title": "EDO send failures",
+      "promql": "sum(rate(edo_send_status{status=\"failed\"}[5m]))"
+    }
+  ]
+}
