@@ -220,6 +220,16 @@ docker compose logs -f auth-host
 docker compose logs -f gateway
 ```
 
+**How to run core tests (processing-core):**
+```cmd
+scripts\test_processing_core_docker.cmd
+```
+
+All processing-core tests:
+```cmd
+scripts\test_processing_core_docker.cmd all
+```
+
 **Типовые ошибки (минимум 5):**
 1) **MinIO init не проходит** → проверьте `MINIO_ROOT_USER/PASSWORD` и `minio-init` логи. (`infra/minio-init.sh`)
 2) **Auth-host не стартует** → проверьте ключи и `AUTH_KEY_DIR` volume. (`docker-compose.yml`, `.env.example`)
@@ -282,4 +292,3 @@ docker compose logs -f gateway
 ## 4.11 Status Snapshot 2026-01-03
 
 Снимок статуса: **[docs/as-is/STATUS_SNAPSHOT_2026-01-03.md](STATUS_SNAPSHOT_2026-01-03.md)**
-
