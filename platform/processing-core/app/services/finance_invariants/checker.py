@@ -5,13 +5,13 @@ from decimal import Decimal
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.account import Account
 from app.models.audit_log import AuditVisibility
 from app.models.billing_period import BillingPeriod
-from app.models.finance import InvoiceSettlementAllocation
+from app.models.finance import InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice
 from app.services.audit_service import AuditService, RequestContext
 from app.services.finance_invariants.errors import FinancialInvariantViolation
@@ -30,6 +30,7 @@ class FinancialInvariantChecker:
         entity_id: str,
         violations: list[rules.InvariantViolation],
         ledger_transaction_id: str | None = None,
+        context: dict | None = None,
     ) -> FinancialInvariantViolation:
         primary = violations[0]
         return FinancialInvariantViolation(
@@ -40,6 +41,7 @@ class FinancialInvariantChecker:
             actual=primary.actual,
             ledger_transaction_id=ledger_transaction_id,
             violations=violations,
+            context=context,
         )
 
     def audit_violation(
@@ -64,6 +66,8 @@ class FinancialInvariantChecker:
             ],
             "ledger_transaction_id": violation.ledger_transaction_id,
         }
+        if violation.context:
+            payload["context"] = violation.context
         if extra_payload:
             payload.update(extra_payload)
         self.audit_service.audit(
@@ -76,6 +80,45 @@ class FinancialInvariantChecker:
             request_ctx=request_ctx,
             reason=violation.invariant_name,
         )
+
+    def _invoice_snapshot(self, invoice: Invoice) -> dict[str, object]:
+        total = int(invoice.total_with_tax or invoice.total_amount or 0)
+        paid = int(invoice.amount_paid or 0)
+        refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
+        credited = int(getattr(invoice, "credited_amount", 0) or 0)
+        due = int(invoice.amount_due or 0)
+        allocations = (
+            self.db.query(InvoiceSettlementAllocation)
+            .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+            .all()
+        )
+        summary = {
+            "count": len(allocations),
+            "total_payments": 0,
+            "total_credits": 0,
+            "total_refunds": 0,
+            "settlement_period_ids": sorted(
+                {str(allocation.settlement_period_id) for allocation in allocations}
+            ),
+        }
+        for allocation in allocations:
+            if allocation.source_type == SettlementSourceType.PAYMENT:
+                summary["total_payments"] += int(allocation.amount or 0)
+            elif allocation.source_type == SettlementSourceType.CREDIT_NOTE:
+                summary["total_credits"] += int(allocation.amount or 0)
+            elif allocation.source_type == SettlementSourceType.REFUND:
+                summary["total_refunds"] += int(allocation.amount or 0)
+
+        return {
+            "invoice_id": str(invoice.id),
+            "billing_period_id": str(invoice.billing_period_id) if invoice.billing_period_id else None,
+            "total": total,
+            "paid": paid,
+            "refunded": refunded,
+            "credited": credited,
+            "due": due,
+            "allocations": summary,
+        }
 
     def check_invoice(
         self,
@@ -90,6 +133,7 @@ class FinancialInvariantChecker:
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=violations,
+                context=self._invoice_snapshot(invoice),
             )
             if audit:
                 self.audit_violation(violation, request_ctx=request_ctx, extra_payload={"invoice_id": invoice.id})
@@ -110,6 +154,10 @@ class FinancialInvariantChecker:
                 entity_type="payment",
                 entity_id=idempotency_key,
                 violations=violations,
+                context={
+                    "payment_reference": idempotency_key,
+                    **self._invoice_snapshot(invoice),
+                },
             )
             if audit:
                 self.audit_violation(violation, request_ctx=request_ctx, extra_payload={"invoice_id": invoice.id})
@@ -130,6 +178,10 @@ class FinancialInvariantChecker:
                 entity_type="payment",
                 entity_id=reference,
                 violations=violations,
+                context={
+                    "refund_reference": reference,
+                    **self._invoice_snapshot(invoice),
+                },
             )
             if audit:
                 self.audit_violation(
@@ -145,6 +197,8 @@ class FinancialInvariantChecker:
         invoice: Invoice,
         amount: int,
         settlement_period_id: str,
+        source_type: SettlementSourceType,
+        source_id: str,
         override: bool,
         request_ctx: RequestContext | None = None,
         audit: bool = True,
@@ -184,12 +238,62 @@ class FinancialInvariantChecker:
                 )
             raise violation
 
-        total_allocated = (
-            self.db.query(func.coalesce(func.sum(InvoiceSettlementAllocation.amount), 0))
+        totals = (
+            self.db.query(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                InvoiceSettlementAllocation.source_type == SettlementSourceType.PAYMENT,
+                                InvoiceSettlementAllocation.amount,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("total_payments"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                InvoiceSettlementAllocation.source_type == SettlementSourceType.CREDIT_NOTE,
+                                InvoiceSettlementAllocation.amount,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("total_credits"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                InvoiceSettlementAllocation.source_type == SettlementSourceType.REFUND,
+                                InvoiceSettlementAllocation.amount,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("total_refunds"),
+                func.count(InvoiceSettlementAllocation.id).label("allocation_count"),
+            )
             .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
-            .scalar()
+            .one()
         )
-        total_allocated = int(total_allocated or 0) + int(amount)
+        total_payments = int(totals.total_payments or 0)
+        total_credits = int(totals.total_credits or 0)
+        total_refunds = int(totals.total_refunds or 0)
+        allocation_count = int(totals.allocation_count or 0)
+
+        if source_type == SettlementSourceType.PAYMENT:
+            total_payments += int(amount)
+        elif source_type == SettlementSourceType.CREDIT_NOTE:
+            total_credits += int(amount)
+        elif source_type == SettlementSourceType.REFUND:
+            total_refunds += int(amount)
+
+        total_allocated = total_payments - total_credits - total_refunds
         invoice_total = int(invoice.total_with_tax or invoice.total_amount or 0)
         total_violations = rules.validate_settlement_total(
             total_allocated=total_allocated,
@@ -200,6 +304,19 @@ class FinancialInvariantChecker:
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=total_violations,
+                context={
+                    **self._invoice_snapshot(invoice),
+                    "settlement_period_id": settlement_period_id,
+                    "source_type": source_type.value,
+                    "source_id": source_id,
+                    "allocation_totals": {
+                        "total_payments": total_payments,
+                        "total_credits": total_credits,
+                        "total_refunds": total_refunds,
+                        "allocation_count": allocation_count,
+                        "net_allocated": total_allocated,
+                    },
+                },
             )
             if audit:
                 self.audit_violation(

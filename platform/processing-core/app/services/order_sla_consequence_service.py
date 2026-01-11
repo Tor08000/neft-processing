@@ -25,6 +25,7 @@ from app.models.marketplace_order_sla import (
     OrderSlaStatus,
 )
 from app.services.audit_service import AuditService, RequestContext
+from app.services.key_normalization import normalize_key
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.case_event_redaction import redact_deep
 from app.services.decision_memory.records import record_decision_memory
@@ -182,6 +183,7 @@ def _enqueue_notification(
     request_ctx: RequestContext | None,
 ) -> None:
     redacted_payload = redact_deep(payload, "payload", include_hash=True)
+    dedupe_key = normalize_key(dedupe_key, prefix="outbox:")
     existing = (
         db.query(MarketplaceSlaNotificationOutbox)
         .filter(MarketplaceSlaNotificationOutbox.dedupe_key == dedupe_key)
@@ -228,9 +230,10 @@ def apply_sla_consequences(
     obligation = db.query(ContractObligation).filter(ContractObligation.id == evaluation.obligation_id).one()
     contract = db.query(Contract).filter(Contract.id == evaluation.contract_id).one()
     consequence_type = _resolve_consequence_type(obligation)
-    dedupe_key = (
+    dedupe_key_raw = (
         f"order:{evaluation.order_id}:obligation:{obligation.id}:period:{evaluation.period_end.isoformat()}"
     )
+    dedupe_key = normalize_key(dedupe_key_raw, prefix="dedupe:")
     existing = (
         db.query(OrderSlaConsequence)
         .filter(OrderSlaConsequence.dedupe_key == dedupe_key)
@@ -255,7 +258,7 @@ def apply_sla_consequences(
         transaction_type=InternalLedgerTransactionType.ADJUSTMENT,
         external_ref_type="ORDER_SLA_CONSEQUENCE",
         external_ref_id=consequence_id,
-        idempotency_key=f"order_sla:{dedupe_key}",
+        idempotency_key=normalize_key(f"order_sla:{dedupe_key}", prefix="ledger:"),
         posted_at=datetime.now(timezone.utc),
         meta={
             "order_id": evaluation.order_id,
@@ -332,7 +335,10 @@ def apply_sla_consequences(
         "severity": severity.value,
     }
     if client_id:
-        dedupe_key = f"order:{evaluation.order_id}:eval:{evaluation.id}:client:{client_id}"
+        dedupe_key = normalize_key(
+            f"order:{evaluation.order_id}:eval:{evaluation.id}:client:{client_id}",
+            prefix="outbox:",
+        )
         _enqueue_notification(
             db,
             order_id=evaluation.order_id,
@@ -344,7 +350,10 @@ def apply_sla_consequences(
             request_ctx=request_ctx,
         )
     if partner_id:
-        dedupe_key = f"order:{evaluation.order_id}:eval:{evaluation.id}:partner:{partner_id}"
+        dedupe_key = normalize_key(
+            f"order:{evaluation.order_id}:eval:{evaluation.id}:partner:{partner_id}",
+            prefix="outbox:",
+        )
         _enqueue_notification(
             db,
             order_id=evaluation.order_id,

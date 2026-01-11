@@ -180,15 +180,24 @@ def validate_settlement_period(
 
 
 def validate_settlement_total(*, total_allocated: int, invoice_total: int) -> list[InvariantViolation]:
+    violations: list[InvariantViolation] = []
     if total_allocated > invoice_total:
-        return [
+        violations.append(
             InvariantViolation(
                 name="settlement.allocations_total",
                 expected=f"<= {invoice_total}",
                 actual=total_allocated,
             )
-        ]
-    return []
+        )
+    if total_allocated < 0:
+        violations.append(
+            InvariantViolation(
+                name="settlement.allocations_non_negative",
+                expected=">= 0",
+                actual=total_allocated,
+            )
+        )
+    return violations
 
 
 def validate_ledger_lines(lines: Iterable[dict[str, Any]]) -> list[InvariantViolation]:

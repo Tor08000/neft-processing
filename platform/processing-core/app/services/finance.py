@@ -413,6 +413,8 @@ class FinanceService:
             invoice=invoice,
             amount=amount,
             settlement_period_id=str(settlement_period.id),
+            source_type=source_type,
+            source_id=source_id,
             override=override,
             request_ctx=request_ctx,
             audit=False,
