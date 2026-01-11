@@ -42,9 +42,12 @@ class SmtpEmailSender(EmailSender):
         self.host = os.getenv("SMTP_HOST", "")
         self.port = int(os.getenv("SMTP_PORT", "587"))
         self.username = os.getenv("SMTP_USER")
-        self.password = os.getenv("SMTP_PASS")
+        self.password = os.getenv("SMTP_PASSWORD") or os.getenv("SMTP_PASS")
         self.from_address = os.getenv("SMTP_FROM") or self.username or "no-reply@neft.local"
-        self.use_tls = os.getenv("SMTP_USE_TLS", "true").lower() not in {"0", "false", "no"}
+        tls_env = os.getenv("SMTP_TLS")
+        if tls_env is None:
+            tls_env = os.getenv("SMTP_USE_TLS", "true")
+        self.use_tls = str(tls_env).lower() not in {"0", "false", "no"}
 
     def send(
         self,

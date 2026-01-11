@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from app.models.billing_flow import (
 )
 from app.models.billing_summary import BillingSummary
 from app.models.cases import CaseEventType, CaseKind, CasePriority
+from app.models.client import Client
 from app.models.internal_ledger import (
     InternalLedgerAccountType,
     InternalLedgerEntryDirection,
@@ -33,12 +34,14 @@ from app.models.reconciliation import (
 )
 from app.models.operation import Operation, OperationType
 from app.models.contract_limits import TariffPrice
+from app.models.notifications import NotificationPriority, NotificationSubjectType
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.cases_service import create_case
 from app.services.billing_periods import BillingPeriodConflict
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
+from app.services.notifications_v1 import enqueue_notification_message
 from app.db import SessionLocal
 
 
@@ -374,6 +377,30 @@ def issue_invoice(
         audit_event_id=event.id,
     )
     db.add(invoice)
+
+    client = None
+    try:
+        client_uuid = UUID(str(client_id))
+    except ValueError:
+        client_uuid = None
+    if client_uuid:
+        client = db.query(Client).filter(Client.id == client_uuid).one_or_none()
+    enqueue_notification_message(
+        db,
+        event_type="INVOICE_ISSUED",
+        subject_type=NotificationSubjectType.CLIENT,
+        subject_id=client_id,
+        template_code="invoice_issued_email",
+        template_vars={
+            "invoice_number": number,
+            "amount": str(amount_total),
+            "period": issued_at.date().isoformat(),
+            "download_link": f"/billing/invoices/{invoice_id}/pdf",
+            "client_name": client.name if client else "",
+        },
+        priority=NotificationPriority.NORMAL,
+        dedupe_key=f"invoice:{invoice_id}:issued",
+    )
 
     record_decision_memory(
         db,

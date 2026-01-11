@@ -32,6 +32,7 @@ from app.routers.client_service_completion_proofs import (
 )
 from app.routers.client_portal import router as client_portal_router
 from app.routers.legal import router as legal_router
+from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
@@ -296,6 +297,9 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, notifications_router)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, notifications_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, fleet_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, fleet_router, prefix=API_PREFIX_CORE)
