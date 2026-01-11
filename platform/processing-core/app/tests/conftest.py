@@ -190,6 +190,8 @@ def _run_alembic_upgrade(database_url: str, schema: str) -> None:
             "Alembic config is missing 'script_location'; "
             f"check {alembic_ini} and ensure it points at app/alembic"
         )
+    previous_schema = os.environ.get("NEFT_DB_SCHEMA")
+    os.environ["NEFT_DB_SCHEMA"] = schema
     url = make_url(database_url)
     query = dict(url.query)
     search_option = f"-c search_path={schema}"
@@ -199,7 +201,13 @@ def _run_alembic_upgrade(database_url: str, schema: str) -> None:
     query["options"] = options
     url_str = url.set(query=query).render_as_string(hide_password=False)
     cfg.set_main_option("sqlalchemy.url", _escape_alembic_cfg_percent(url_str))
-    command.upgrade(cfg, "head")
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        if previous_schema is None:
+            os.environ.pop("NEFT_DB_SCHEMA", None)
+        else:
+            os.environ["NEFT_DB_SCHEMA"] = previous_schema
 
 
 def _escape_alembic_cfg_percent(url: str) -> str:
@@ -225,6 +233,7 @@ def _reset_schema(database_url: str, schema: str) -> None:
 
 
 REQUIRED_TABLES = {
+    "alembic_version_core",
     "audit_log",
     "billing_invoices",
     "billing_job_runs",

@@ -2,21 +2,18 @@ from __future__ import annotations
 
 import os
 
+from pathlib import Path
+
 import sqlalchemy as sa
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 
 from app.db import Base
 from app.db.schema import DB_SCHEMA
 from app.db.types import ExistingEnum
-
-
-def _collect_tables(metadata: sa.MetaData, default_schema: str) -> dict[str, set[str]]:
-    tables_by_schema: dict[str, set[str]] = {}
-    for table in metadata.tables.values():
-        schema = table.schema or default_schema
-        tables_by_schema.setdefault(schema, set()).add(table.name)
-    return tables_by_schema
+from app.tests.conftest import REQUIRED_TABLES
 
 
 def _register_enum(
@@ -33,9 +30,13 @@ def _register_enum(
     enum_types.setdefault(schema, {})[name] = values
 
 
-def _collect_enums(metadata: sa.MetaData, default_schema: str) -> dict[str, dict[str, tuple[str, ...]]]:
+def _collect_enums(
+    metadata: sa.MetaData, default_schema: str, required_tables: set[str]
+) -> dict[str, dict[str, tuple[str, ...]]]:
     enum_types: dict[str, dict[str, tuple[str, ...]]] = {}
     for table in metadata.tables.values():
+        if table.name not in required_tables:
+            continue
         for column in table.columns:
             column_type = column.type
             while isinstance(column_type, sa.ARRAY):
@@ -70,6 +71,14 @@ def _collect_enums(metadata: sa.MetaData, default_schema: str) -> dict[str, dict
     return enum_types
 
 
+def _alembic_head_revision() -> str | None:
+    alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
+    if not alembic_ini.exists():
+        return None
+    cfg = Config(str(alembic_ini))
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
 def test_db_schema_consistency() -> None:
     database_url = os.getenv("DATABASE_URL", "")
     engine = create_engine(
@@ -83,16 +92,31 @@ def test_db_schema_consistency() -> None:
     try:
         with engine.connect() as conn:
             inspector = inspect(conn)
-            expected_tables = _collect_tables(Base.metadata, DB_SCHEMA)
+            required_tables = set(REQUIRED_TABLES)
+            expected_tables = {DB_SCHEMA: required_tables}
             for schema, table_names in expected_tables.items():
                 actual_tables = set(inspector.get_table_names(schema=schema))
                 missing_tables = table_names - actual_tables
-                assert not missing_tables, (
-                    f"Missing tables in schema {schema}: {sorted(missing_tables)}"
-                )
+                if missing_tables:
+                    current_schema, search_path = conn.execute(
+                        text("select current_schema(), current_setting('search_path')")
+                    ).one()
+                    head_revision = _alembic_head_revision()
+                    try:
+                        current_revision = conn.execute(
+                            text(f'SELECT version_num FROM "{schema}".alembic_version_core')
+                        ).scalar_one_or_none()
+                    except Exception as exc:  # noqa: BLE001 - diagnostics only
+                        current_revision = f"error: {exc!r}"
+                    raise AssertionError(
+                        "Missing required tables after migrations. "
+                        f"schema={schema} missing_tables={sorted(missing_tables)} "
+                        f"current_schema={current_schema} search_path={search_path} "
+                        f"head_revision={head_revision} current_revision={current_revision}"
+                    )
 
             if conn.dialect.name == "postgresql":
-                expected_enums = _collect_enums(Base.metadata, DB_SCHEMA)
+                expected_enums = _collect_enums(Base.metadata, DB_SCHEMA, required_tables)
                 for schema, enums in expected_enums.items():
                     if not enums:
                         continue

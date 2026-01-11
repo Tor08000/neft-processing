@@ -9,7 +9,7 @@ PROJECT_NAME := neft-processing
 .PHONY: up down restart ps build prepull-base-images \
         logs logs-core logs-auth logs-workers logs-nginx logs-ai logs-db \
         shell-core shell-auth shell-workers shell-ai \
-        migrate test test-core test-auth test-ai test-workers test-core-integration-clean itest-clean \
+        migrate test test-core test-core-full test-auth test-ai test-workers test-core-integration-clean itest-clean \
         health health-core health-auth health-ai prometheus-smoke smoke schema-smoke-core \
         schema-smoke-core-local alembic-version-check \
         clean-volumes clean-images kpi-smoke cases-smoke subscription-smoke plans-smoke seed-smoke gamification-smoke
@@ -94,6 +94,10 @@ migrate:
 
 test-core:
 	$(DOCKER_COMPOSE) run --rm core-api pytest
+
+test-core-full:
+	$(DOCKER_COMPOSE) up -d postgres redis minio minio-health minio-init
+	$(DOCKER_COMPOSE) run --rm core-api pytest -q app/tests/system app/tests/smoke app/tests/contracts app/tests/integration -vv -s
 
 test-auth:
 	$(DOCKER_COMPOSE) run --rm auth-host pytest
