@@ -8,7 +8,7 @@ import pytest
 from app.db import Base, engine, get_sessionmaker
 from app.models.audit_log import ActorType, AuditLog
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
-from app.models.cases import Case, CaseEvent
+from app.models.cases import Case, CaseEvent, CaseEventType, CaseKind
 from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.internal_ledger import (
     InternalLedgerEntry,
@@ -24,7 +24,12 @@ from app.models.marketplace_order_sla import (
     OrderSlaConsequence,
     OrderSlaEvaluation,
 )
-from app.models.marketplace_orders import MarketplaceOrderActorType, MarketplaceOrderEventType
+from app.models.marketplace_orders import (
+    MarketplaceOrder,
+    MarketplaceOrderActorType,
+    MarketplaceOrderEventType,
+    MarketplaceOrderStatus,
+)
 from app.services.audit_service import RequestContext
 from app.services.finance import FinanceService
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceStateMachine
@@ -96,23 +101,15 @@ def _create_invoice(
 ) -> Invoice:
     start_at = datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc)
     end_at = datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc)
-    period = (
-        db_session.query(BillingPeriod)
-        .filter(BillingPeriod.period_type == BillingPeriodType.ADHOC)
-        .filter(BillingPeriod.start_at == start_at)
-        .filter(BillingPeriod.end_at == end_at)
-        .one_or_none()
+    period = BillingPeriod(
+        period_type=BillingPeriodType.ADHOC,
+        start_at=start_at,
+        end_at=end_at,
+        tz="UTC",
+        status=BillingPeriodStatus.FINALIZED,
     )
-    if not period:
-        period = BillingPeriod(
-            period_type=BillingPeriodType.ADHOC,
-            start_at=start_at,
-            end_at=end_at,
-            tz="UTC",
-            status=BillingPeriodStatus.FINALIZED,
-        )
-        db_session.add(period)
-        db_session.flush()
+    db_session.add(period)
+    db_session.flush()
     amount_due = total - amount_paid - credited_amount + amount_refunded
     now = datetime.now(timezone.utc)
     invoice = Invoice(
@@ -346,6 +343,32 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     db_session.commit()
 
     order_id = str(uuid4())
+    order = MarketplaceOrder(
+        id=order_id,
+        client_id=client_id,
+        partner_id=partner_id,
+        product_id=str(uuid4()),
+        quantity=1,
+        price_snapshot={"amount": "0"},
+        status=MarketplaceOrderStatus.CREATED.value,
+    )
+    case = Case(
+        tenant_id=1,
+        kind=CaseKind.ORDER,
+        title="SLA case",
+    )
+    db_session.add_all([order, case])
+    db_session.flush()
+    case_event = CaseEvent(
+        case_id=case.id,
+        seq=1,
+        type=CaseEventType.MARKETPLACE_ORDER_CREATED,
+        payload_redacted={},
+        prev_hash="0",
+        hash="1",
+    )
+    db_session.add(case_event)
+    db_session.flush()
     created_at = datetime.now(timezone.utc) - timedelta(minutes=33)
     accepted_at = datetime.now(timezone.utc)
     created_event = MarketplaceOrderEvent(
@@ -356,7 +379,7 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
         occurred_at=created_at,
         payload_redacted={},
         actor_type=MarketplaceOrderActorType.SYSTEM,
-        audit_event_id=str(uuid4()),
+        audit_event_id=str(case_event.id),
     )
     accepted_event = MarketplaceOrderEvent(
         order_id=order_id,
@@ -366,7 +389,7 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
         occurred_at=accepted_at,
         payload_redacted={},
         actor_type=MarketplaceOrderActorType.SYSTEM,
-        audit_event_id=str(uuid4()),
+        audit_event_id=str(case_event.id),
     )
     db_session.add_all([created_event, accepted_event])
     db_session.commit()
