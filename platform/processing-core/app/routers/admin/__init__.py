@@ -35,6 +35,7 @@ from app.routers.admin import (
     reconciliation,
     cases,
     risk_rules,
+    unified_rules,
     risk_v5,
     settlement_v1,
     settlements,
@@ -70,6 +71,7 @@ router.include_router(billing.router)
 router.include_router(billing_flows.router)
 router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
+router.include_router(unified_rules.router)
 router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
 router.include_router(settlement_v1.router)

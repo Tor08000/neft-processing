@@ -76,6 +76,13 @@ export const RiskRulesListPage: React.FC = () => {
     <div>
       <div className="page-header">
         <h1>Risk rules</h1>
+        <button
+          type="button"
+          className="neft-btn-secondary"
+          onClick={() => navigate("/risk/sandbox")}
+        >
+          Rules sandbox
+        </button>
         {(isLoading || isFetching) && <Loader label="Загружаем правила" />}
         {error && <span style={{ color: "#dc2626" }}>{(error as Error).message}</span>}
       </div>

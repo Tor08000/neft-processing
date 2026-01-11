@@ -10,6 +10,16 @@ from .risk_rule import (  # noqa: F401
     RiskRuleAuditAction,
     RiskRuleVersion,
 )
+from .unified_rule import (  # noqa: F401
+    RuleSetActive,
+    RuleSetAudit,
+    RuleSetStatus,
+    RuleSetVersion,
+    UnifiedRule,
+    UnifiedRuleMetric,
+    UnifiedRulePolicy,
+    UnifiedRuleScope,
+)
 from .billing_summary import BillingSummary, BillingSummaryStatus  # noqa: F401
 from .billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType  # noqa: F401
 from .billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType  # noqa: F401
