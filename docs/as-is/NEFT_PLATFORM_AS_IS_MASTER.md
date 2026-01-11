@@ -266,6 +266,9 @@ scripts\test_processing_core_docker.cmd all
 - `INTEGRATION_HUB_DATABASE_URL`, `WEBHOOK_INTAKE_SECRET`, `WEBHOOK_ALLOW_UNSIGNED`.
 - `DIADOK_MODE`, `DIADOK_BASE_URL`, `DIADOK_API_TOKEN` (stub/real). (`platform/integration-hub/neft_integration_hub/settings.py`)
 
+### Integrations Hub (core-api)
+- 1C export + bank statements + reconciliation implemented in `platform/processing-core/app/integrations/` and `/api/v1/admin/integrations/*`.
+
 ### workers/beat
 - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_DEFAULT_QUEUE`.
 - S3 + ClickHouse envs (same as core-api).

@@ -73,6 +73,9 @@
 | `smoke_local.sh` | YES | `scripts/smoke_local.sh` |
 | `smoke_restart.cmd` | YES | `scripts/smoke_restart.cmd` |
 | `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
+| `smoke_onec_export.cmd` | YES | `scripts/smoke_onec_export.cmd` |
+| `smoke_bank_statement_import.cmd` | YES | `scripts/smoke_bank_statement_import.cmd` |
+| `smoke_reconciliation_after_bank.cmd` | YES | `scripts/smoke_reconciliation_after_bank.cmd` |
 | `test_processing_core.cmd` | YES | `scripts/test_processing_core.cmd` |
 | `test_core_stack.cmd` | YES | `scripts/test_core_stack.cmd` |
 | `test_core_api.cmd` | YES | `scripts/test_core_api.cmd` |
@@ -92,6 +95,7 @@
 | Billing | YES | `platform/processing-core/app/tests/test_invoice_state_machine.py` |
 | Settlement | YES | `platform/processing-core/app/tests/test_settlement_v1.py` |
 | Reconciliation | YES | `platform/processing-core/app/tests/test_reconciliation_v1.py` |
+| Integrations Hub | YES | `platform/processing-core/app/tests/test_onec_export.py`, `platform/processing-core/app/tests/test_bank_statement_reconciliation_e2e.py` |
 | Documents | YES | `platform/processing-core/app/tests/test_documents_lifecycle.py` |
 | Document service | YES | `platform/document-service/app/tests/test_service.py` |
 | Document templates | YES | `platform/document-service/app/tests/test_templates.py` |
@@ -110,6 +114,7 @@
 ## 5) Notes
 
 * LEGAL GATE: implemented.
+* Integrations Hub v1: implemented in core-api (1C export + bank statement import + reconciliation).
 
 ---
 

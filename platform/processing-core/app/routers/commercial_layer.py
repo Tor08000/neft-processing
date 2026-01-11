@@ -17,6 +17,7 @@ from app.models.commercial_layer import (
     PlanFeatureCode,
     UsageMetric,
 )
+from app.models.crm import ClientOnboardingStateEnum
 from app.models.subscriptions_v1 import ClientSubscription, SubscriptionStatus
 from app.schemas.commercial_layer import (
     BillingPlanSummary,
@@ -47,6 +48,17 @@ from app.services.commercial_layer import (
 from app.services.pricing_service import apply_overages, calculate_monthly_usage
 
 router = APIRouter(prefix="/api", tags=["commercial-layer"])
+
+
+def _serialize_onboarding_state(state: ClientOnboardingState) -> OnboardingStateOut:
+    meta = state.meta if isinstance(state.meta, dict) else {}
+    return OnboardingStateOut(
+        client_id=state.client_id,
+        current_step=meta.get("current_step"),
+        completed_steps=meta.get("completed_steps"),
+        updated_at=state.updated_at,
+        completed_at=meta.get("completed_at"),
+    )
 
 
 def _ensure_client_context(token: dict) -> tuple[str, int]:
@@ -267,11 +279,14 @@ def get_onboarding_state(
     client_id, _tenant_id = _ensure_client_context(token)
     state = db.query(ClientOnboardingState).filter(ClientOnboardingState.client_id == client_id).one_or_none()
     if not state:
-        state = ClientOnboardingState(client_id=client_id)
+        state = ClientOnboardingState(
+            client_id=client_id,
+            state=ClientOnboardingStateEnum.LEGAL_ACCEPTANCE_PENDING,
+        )
         db.add(state)
         db.commit()
         db.refresh(state)
-    return OnboardingStateOut.model_validate(state)
+    return _serialize_onboarding_state(state)
 
 
 @router.post("/client/onboarding/step", response_model=OnboardingStateOut)
@@ -284,15 +299,19 @@ def update_onboarding_step(
     client_id, _tenant_id = _ensure_client_context(token)
     state = db.query(ClientOnboardingState).filter(ClientOnboardingState.client_id == client_id).one_or_none()
     if not state:
-        state = ClientOnboardingState(client_id=client_id)
+        state = ClientOnboardingState(
+            client_id=client_id,
+            state=ClientOnboardingStateEnum.LEGAL_ACCEPTANCE_PENDING,
+        )
         db.add(state)
 
-    completed = state.completed_steps or {}
+    meta = state.meta if isinstance(state.meta, dict) else {}
+    completed = meta.get("completed_steps") or {}
     completed[payload.step] = payload.completed
-    state.completed_steps = completed
-    state.current_step = payload.step
+    meta["completed_steps"] = completed
+    meta["current_step"] = payload.step
     if payload.step == "done" and payload.completed:
-        state.completed_at = datetime.now(timezone.utc)
+        meta["completed_at"] = datetime.now(timezone.utc).isoformat()
         AuditService(db).audit(
             event_type="ONBOARDING_COMPLETED",
             entity_type="client",
@@ -301,10 +320,11 @@ def update_onboarding_step(
             visibility=AuditVisibility.INTERNAL,
             request_ctx=request_context_from_request(request, token=token),
         )
+    state.meta = meta
 
     db.commit()
     db.refresh(state)
-    return OnboardingStateOut.model_validate(state)
+    return _serialize_onboarding_state(state)
 
 
 @router.get("/admin/plans", response_model=list[PlanOut])

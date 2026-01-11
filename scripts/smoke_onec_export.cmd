@@ -1,0 +1,54 @@
+@echo off
+setlocal enabledelayedexpansion
+
+set "BASE_URL=http://localhost"
+set "AUTH_URL=%BASE_URL%/api/auth/api/v1/auth"
+set "CORE_URL=%BASE_URL%/api/core/api/v1/admin"
+
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin123"
+
+set "TOKEN="
+set "AUTH_HEADER="
+set "EXPORT_ID="
+
+echo [1/5] Login to auth-host...
+curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{""email"":""%ADMIN_EMAIL%"",""password"":""%ADMIN_PASSWORD%""}" > login.json
+for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open('login.json')).get('access_token',''))"`) do set "TOKEN=%%t"
+if "%TOKEN%"=="" (
+  echo [FAIL] No access_token returned.
+  goto :fail
+)
+set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
+
+echo [2/5] Create 1C export...
+for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{""period_start"":""2026-01-01"",""period_end"":""2026-01-31"",""mapping_version"":""2026.01"",""seller_name"":""ООО НЕФТЬ"",""seller_inn"":""7700000000"",""seller_kpp"":""770001001""}" -o onec_export.json "%CORE_URL%/integrations/onec/export"`) do set "CODE=%%c"
+if not "%CODE%"=="201" (
+  echo [FAIL] Export creation returned %CODE%.
+  goto :fail
+)
+for /f "usebackq tokens=*" %%i in (`python -c "import json; print(json.load(open('onec_export.json')).get('id',''))"`) do set "EXPORT_ID=%%i"
+if "%EXPORT_ID%"=="" (
+  echo [FAIL] Export id missing.
+  goto :fail
+)
+
+echo [3/5] Download export...
+for /f "usebackq tokens=*" %%c in (`curl -s -o onec_export.xml -w "%%{http_code}" -H "%AUTH_HEADER%" "%CORE_URL%/integrations/onec/exports/%EXPORT_ID%/download"`) do set "CODE=%%c"
+if not "%CODE%"=="200" (
+  echo [FAIL] Export download returned %CODE%.
+  goto :fail
+)
+
+echo [4/5] Check exported XML...
+python -c "import sys; data=open('onec_export.xml','rb').read(); sys.exit(0 if b'<NEFTExchange' in data else 1)"
+if not "%ERRORLEVEL%"=="0" (
+  echo [FAIL] Exported XML missing root.
+  goto :fail
+)
+
+echo [5/5] Smoke completed.
+exit /b 0
+
+:fail
+exit /b 1

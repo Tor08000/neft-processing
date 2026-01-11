@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
-from app.models.legal_gate import LegalDocumentStatus, LegalSubjectType
+from app.models.legal_document import LegalDocumentStatus
+from app.models.legal_gate import LegalSubjectType
 from app.schemas.legal_gate import LegalAcceptRequest, LegalAcceptResponse, LegalDocumentOut, LegalRequiredResponse
 from app.services.legal_gate import accept_documents, get_missing_documents, get_required_documents
 

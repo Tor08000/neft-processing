@@ -76,6 +76,24 @@ from .erp_exports import (  # noqa: F401
     ErpReconciliationVerdict,
     ErpSystemType,
 )
+from .integrations import (  # noqa: F401
+    BankReconciliationDiff,
+    BankReconciliationMatch,
+    BankReconciliationRun,
+    BankStatement,
+    BankStatementStatus,
+    BankTransaction,
+    BankTransactionDirection,
+    IntegrationExport,
+    IntegrationExportStatus,
+    IntegrationFile,
+    IntegrationMapping,
+    IntegrationType,
+    ReconciliationDiffReason,
+    ReconciliationDiffSource,
+    ReconciliationMatchType,
+    ReconciliationRunStatus,
+)
 from .bi import (  # noqa: F401
     BiClickhouseCursor,
     BiCursor,
@@ -366,7 +384,6 @@ from .legal_integrations import (  # noqa: F401
 from .legal_gate import (  # noqa: F401
     LegalAcceptance,
     LegalDocument,
-    LegalDocumentStatus,
     LegalSubjectType,
 )
 from .immutability import ImmutableRecordError  # noqa: F401

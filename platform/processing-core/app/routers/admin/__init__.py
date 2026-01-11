@@ -23,6 +23,7 @@ from app.routers.admin import (
     fuel_providers,
     what_if,
     integration_monitoring,
+    integrations,
     logistics,
     legal_graph,
     limits,
@@ -74,6 +75,7 @@ router.include_router(risk_rules.router)
 router.include_router(unified_rules.router)
 router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
+router.include_router(integrations.router)
 router.include_router(settlement_v1.router)
 router.include_router(settlements.router)
 router.include_router(refunds.router)

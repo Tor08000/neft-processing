@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BankStatement>
+  <Document>
+    <Date>2026-01-31T10:00:00+00:00</Date>
+    <Amount>120000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата по счету INV-2026-000123</Purpose>
+    <ExternalRef></ExternalRef>
+  </Document>
+  <Document>
+    <Date>2026-01-31T10:05:00+00:00</Date>
+    <Amount>119999.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата по счету INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T10:10:00+00:00</Date>
+    <Amount>119950.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата по счету INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-02-10T10:00:00+00:00</Date>
+    <Amount>120000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата по счету INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T11:00:00+00:00</Date>
+    <Amount>1000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата услуг без ссылки</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T12:00:00+00:00</Date>
+    <Amount>60000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Частичная оплата INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T12:05:00+00:00</Date>
+    <Amount>60000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Частичная оплата INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T13:00:00+00:00</Date>
+    <Amount>121000.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Оплата по счету INV-2026-000123</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T14:00:00+00:00</Date>
+    <Amount>500.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>OUT</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Выплата партнеру</Purpose>
+  </Document>
+  <Document>
+    <Date>2026-01-31T15:00:00+00:00</Date>
+    <Amount>700.00</Amount>
+    <Currency>RUB</Currency>
+    <Direction>IN</Direction>
+    <Counterparty>ООО Ромашка</Counterparty>
+    <Purpose>Без ссылки</Purpose>
+  </Document>
+</BankStatement>

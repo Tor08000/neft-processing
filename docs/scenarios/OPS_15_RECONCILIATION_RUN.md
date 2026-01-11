@@ -17,6 +17,8 @@ Ops runs reconciliation and reviews discrepancies and reports.
 1. `POST /api/reconciliation/run` — run reconciliation (internal/external).
 2. `GET /api/reconciliation/runs` — list runs.
 3. `GET /api/reconciliation/runs/{run_id}/discrepancies` — discrepancies.
+4. `POST /api/v1/admin/integrations/bank/statements/import` — upload bank statement and auto-run reconciliation.
+5. `GET /api/v1/admin/integrations/bank/statements` — list imported statements.
 
 **NOT IMPLEMENTED**
 - `GET /api/reconciliation/runs/{run_id}/export` (export report).
@@ -25,8 +27,12 @@ Ops runs reconciliation and reviews discrepancies and reports.
 - `reconciliation_runs` — run metadata.
 - `reconciliation_discrepancies` — diff records.
 - `external_statements` — provider statements.
+- `bank_statements`, `bank_transactions` — imported statements and transactions.
+- `bank_reconciliation_runs`, `bank_reconciliation_diffs`, `bank_reconciliation_matches` — bank reconciliation outcomes.
 
 ## Events & Audit
+- `BANK_STATEMENT_IMPORTED` — statement upload audit event.
+- `RECONCILIATION_RUN_COMPLETED` — bank reconciliation completion audit event.
 - **NOT IMPLEMENTED**: `RECON_RUN_STARTED`, `RECON_DIFF_DETECTED`, `RECON_RUN_FINISHED` event codes.
 
 ## Security / Gates

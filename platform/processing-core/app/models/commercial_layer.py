@@ -20,6 +20,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import JSON
 
 from app.db import Base
+from app.models.crm import ClientOnboardingState
 
 
 class PlanBillingPeriod(str, Enum):
@@ -101,12 +102,4 @@ class ClientBranding(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class ClientOnboardingState(Base):
-    __tablename__ = "client_onboarding_state"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, unique=True, index=True)
-    current_step = Column(String(64), nullable=True)
-    completed_steps = Column(JSON_TYPE, nullable=True)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+# ClientOnboardingState is defined in app.models.crm; re-exported here for legacy imports.
