@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy.orm import Session
@@ -7,13 +8,21 @@ from sqlalchemy.orm import Session
 from app.models.billing_period import BillingPeriod
 from app.models.crm import (
     CRMBillingMode,
+    ClientOnboardingEvent,
+    ClientOnboardingState,
+    ClientOnboardingStateEnum,
     CRMClient,
     CRMClientStatus,
     CRMContract,
     CRMContractStatus,
+    CRMDeal,
+    CRMDealEvent,
     CRMFeatureFlag,
     CRMFeatureFlagType,
+    CRMLead,
+    CRMLeadStatus,
     CRMLimitProfile,
+    CRMTask,
     CRMProfileStatus,
     CRMRiskProfile,
     CRMSubscription,
@@ -24,6 +33,8 @@ from app.models.crm import (
     CRMTariffPlan,
     CRMTariffStatus,
     CRMUsageCounter,
+    CRMTicketLink,
+    CRMClientProfile,
 )
 
 
@@ -138,6 +149,207 @@ def update_tariff(db: Session, tariff: CRMTariffPlan) -> CRMTariffPlan:
     db.commit()
     db.refresh(tariff)
     return tariff
+
+
+def add_lead(db: Session, lead: CRMLead) -> CRMLead:
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+def update_lead(db: Session, lead: CRMLead) -> CRMLead:
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+def get_lead(db: Session, *, lead_id: str) -> CRMLead | None:
+    return db.query(CRMLead).filter(CRMLead.id == lead_id).one_or_none()
+
+
+def list_leads(
+    db: Session,
+    *,
+    tenant_id: int,
+    status: CRMLeadStatus | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[CRMLead]:
+    query = db.query(CRMLead).filter(CRMLead.tenant_id == tenant_id)
+    if status:
+        query = query.filter(CRMLead.status == status)
+    return query.order_by(CRMLead.created_at.desc()).offset(offset).limit(limit).all()
+
+
+def add_deal(db: Session, deal: CRMDeal) -> CRMDeal:
+    db.add(deal)
+    db.commit()
+    db.refresh(deal)
+    return deal
+
+
+def update_deal(db: Session, deal: CRMDeal) -> CRMDeal:
+    db.add(deal)
+    db.commit()
+    db.refresh(deal)
+    return deal
+
+
+def get_deal(db: Session, *, deal_id: str) -> CRMDeal | None:
+    return db.query(CRMDeal).filter(CRMDeal.id == deal_id).one_or_none()
+
+
+def list_deals(
+    db: Session,
+    *,
+    tenant_id: int | None = None,
+    client_id: str | None = None,
+    lead_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[CRMDeal]:
+    query = db.query(CRMDeal)
+    if tenant_id:
+        query = query.filter(CRMDeal.tenant_id == tenant_id)
+    if client_id:
+        query = query.filter(CRMDeal.client_id == client_id)
+    if lead_id:
+        query = query.filter(CRMDeal.lead_id == lead_id)
+    return query.order_by(CRMDeal.created_at.desc()).offset(offset).limit(limit).all()
+
+
+def add_deal_event(db: Session, event: CRMDealEvent) -> CRMDealEvent:
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def list_deal_events(db: Session, *, deal_id: str) -> list[CRMDealEvent]:
+    return (
+        db.query(CRMDealEvent)
+        .filter(CRMDealEvent.deal_id == deal_id)
+        .order_by(CRMDealEvent.created_at.desc())
+        .all()
+    )
+
+
+def add_task(db: Session, task: CRMTask) -> CRMTask:
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def update_task(db: Session, task: CRMTask) -> CRMTask:
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def get_task(db: Session, *, task_id: str) -> CRMTask | None:
+    return db.query(CRMTask).filter(CRMTask.id == task_id).one_or_none()
+
+
+def list_tasks(
+    db: Session,
+    *,
+    tenant_id: int,
+    assigned_to: str | None = None,
+    subject_type: str | None = None,
+    subject_id: str | None = None,
+    due_bucket: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[CRMTask]:
+    query = db.query(CRMTask).filter(CRMTask.tenant_id == tenant_id)
+    if assigned_to:
+        query = query.filter(CRMTask.assigned_to == assigned_to)
+    if subject_type:
+        query = query.filter(CRMTask.subject_type == subject_type)
+    if subject_id:
+        query = query.filter(CRMTask.subject_id == subject_id)
+    if due_bucket:
+        now = datetime.now(timezone.utc)
+        if due_bucket == "overdue":
+            query = query.filter(CRMTask.due_at < now)
+        elif due_bucket == "today":
+            end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            query = query.filter(CRMTask.due_at >= now).filter(CRMTask.due_at <= end)
+        elif due_bucket == "week":
+            end = now + timedelta(days=7)
+            query = query.filter(CRMTask.due_at >= now).filter(CRMTask.due_at <= end)
+    return query.order_by(CRMTask.due_at.asc().nullslast()).offset(offset).limit(limit).all()
+
+
+def add_ticket_link(db: Session, link: CRMTicketLink) -> CRMTicketLink:
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+def list_ticket_links(db: Session, *, client_id: str) -> list[CRMTicketLink]:
+    return (
+        db.query(CRMTicketLink)
+        .filter(CRMTicketLink.client_id == client_id)
+        .order_by(CRMTicketLink.linked_at.desc())
+        .all()
+    )
+
+
+def get_client_profile(db: Session, *, client_id: str) -> CRMClientProfile | None:
+    return db.query(CRMClientProfile).filter(CRMClientProfile.client_id == client_id).one_or_none()
+
+
+def upsert_client_profile(db: Session, profile: CRMClientProfile) -> CRMClientProfile:
+    db.merge(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def get_onboarding_state(db: Session, *, client_id: str) -> ClientOnboardingState | None:
+    return (
+        db.query(ClientOnboardingState)
+        .filter(ClientOnboardingState.client_id == client_id)
+        .one_or_none()
+    )
+
+
+def upsert_onboarding_state(db: Session, state: ClientOnboardingState) -> ClientOnboardingState:
+    db.merge(state)
+    db.commit()
+    db.refresh(state)
+    return state
+
+
+def add_onboarding_event(db: Session, event: ClientOnboardingEvent) -> ClientOnboardingEvent:
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def list_onboarding_events(db: Session, *, client_id: str) -> list[ClientOnboardingEvent]:
+    return (
+        db.query(ClientOnboardingEvent)
+        .filter(ClientOnboardingEvent.client_id == client_id)
+        .order_by(ClientOnboardingEvent.created_at.desc())
+        .all()
+    )
+
+
+def initialize_onboarding_state(db: Session, *, client_id: str) -> ClientOnboardingState:
+    state = ClientOnboardingState(
+        client_id=client_id,
+        state=ClientOnboardingStateEnum.QUALIFIED_CLIENT_CREATED,
+        meta={},
+    )
+    return upsert_onboarding_state(db, state)
 
 
 def add_subscription(db: Session, subscription: CRMSubscription) -> CRMSubscription:

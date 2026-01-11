@@ -9,12 +9,20 @@ from app.models.crm import (
     CRMBillingCycle,
     CRMBillingMode,
     CRMBillingPeriod,
+    CRMClientProfileStatus,
+    CRMClientRiskLevel,
     CRMClientStatus,
     CRMContractStatus,
+    CRMDealStage,
     CRMFeatureFlagType,
+    CRMLeadStatus,
     CRMProfileStatus,
     CRMSubscriptionStatus,
     CRMTariffStatus,
+    CRMTaskPriority,
+    CRMTaskStatus,
+    CRMTaskSubjectType,
+    ClientOnboardingStateEnum,
 )
 
 
@@ -198,6 +206,230 @@ class CRMSubscriptionPreviewUsage(BaseModel):
     metric: str
     value: int
     limit_value: int | None = None
+
+
+class CRMLeadCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: int
+    source: Optional[str] = None
+    status: CRMLeadStatus = CRMLeadStatus.NEW
+    company_name: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    comment: Optional[str] = None
+    utm: Optional[dict[str, Any]] = None
+    assigned_to: Optional[str] = None
+
+
+class CRMLeadQualifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    tenant_id: int
+    country: str
+    timezone: str = "Europe/Moscow"
+    legal_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    kpp: Optional[str] = None
+    inn: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    bank_details: Optional[dict[str, Any]] = None
+    contacts: Optional[dict[str, Any]] = None
+    roles: Optional[dict[str, Any]] = None
+    profile_status: Optional[CRMClientProfileStatus] = None
+    risk_level: Optional[CRMClientRiskLevel] = None
+    tags: Optional[list[str]] = None
+    notes: Optional[str] = None
+
+    def to_client_payload(self, lead: Any) -> CRMClientCreate:
+        return CRMClientCreate(
+            id=self.client_id,
+            tenant_id=self.tenant_id,
+            legal_name=self.legal_name or lead.company_name or "Client",
+            tax_id=self.tax_id,
+            kpp=self.kpp,
+            country=self.country,
+            timezone=self.timezone,
+            status=CRMClientStatus.ACTIVE,
+        )
+
+
+class CRMLeadOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    tenant_id: int
+    source: Optional[str] = None
+    status: CRMLeadStatus
+    company_name: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    comment: Optional[str] = None
+    utm: Optional[dict[str, Any]] = None
+    assigned_to: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CRMDealCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: int
+    lead_id: Optional[str] = None
+    client_id: Optional[str] = None
+    stage: CRMDealStage = CRMDealStage.DISCOVERY
+    value_amount: Optional[int] = None
+    currency: Optional[str] = None
+    probability: Optional[int] = Field(None, ge=0, le=100)
+    next_step: Optional[str] = None
+    owner_id: Optional[str] = None
+
+
+class CRMDealUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: Optional[CRMDealStage] = None
+    value_amount: Optional[int] = None
+    currency: Optional[str] = None
+    probability: Optional[int] = Field(None, ge=0, le=100)
+    next_step: Optional[str] = None
+    owner_id: Optional[str] = None
+
+
+class CRMDealOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    tenant_id: int
+    lead_id: Optional[str] = None
+    client_id: Optional[str] = None
+    stage: CRMDealStage
+    value_amount: Optional[int] = None
+    currency: Optional[str] = None
+    probability: Optional[int] = None
+    next_step: Optional[str] = None
+    owner_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CRMTaskCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: int
+    subject_type: CRMTaskSubjectType
+    subject_id: str
+    title: str
+    description: Optional[str] = None
+    status: CRMTaskStatus = CRMTaskStatus.OPEN
+    priority: CRMTaskPriority = CRMTaskPriority.MEDIUM
+    due_at: Optional[datetime] = None
+    assigned_to: Optional[str] = None
+    created_by: Optional[str] = None
+
+
+class CRMTaskUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[CRMTaskStatus] = None
+    priority: Optional[CRMTaskPriority] = None
+    due_at: Optional[datetime] = None
+    assigned_to: Optional[str] = None
+
+
+class CRMTaskOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    tenant_id: int
+    subject_type: CRMTaskSubjectType
+    subject_id: str
+    title: str
+    description: Optional[str] = None
+    status: CRMTaskStatus
+    priority: CRMTaskPriority
+    due_at: Optional[datetime] = None
+    assigned_to: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CRMClientProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    legal_name: Optional[str] = None
+    inn: Optional[str] = None
+    kpp: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    bank_details: Optional[dict[str, Any]] = None
+    contacts: Optional[dict[str, Any]] = None
+    roles: Optional[dict[str, Any]] = None
+    status: Optional[CRMClientProfileStatus] = None
+    risk_level: Optional[CRMClientRiskLevel] = None
+    tags: Optional[list[str]] = None
+    notes: Optional[str] = None
+
+
+class CRMClientProfileOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    client_id: str
+    legal_name: Optional[str] = None
+    inn: Optional[str] = None
+    kpp: Optional[str] = None
+    ogrn: Optional[str] = None
+    legal_address: Optional[str] = None
+    actual_address: Optional[str] = None
+    bank_details: Optional[dict[str, Any]] = None
+    contacts: Optional[dict[str, Any]] = None
+    roles: Optional[dict[str, Any]] = None
+    status: CRMClientProfileStatus
+    risk_level: Optional[CRMClientRiskLevel] = None
+    tags: Optional[list[str]] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CRMTicketLinkOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: str
+    client_id: str
+    ticket_id: str
+    linked_by: Optional[str] = None
+    linked_at: datetime
+
+
+class CRMClientOnboardingStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    state: ClientOnboardingStateEnum
+    state_entered_at: datetime
+    is_blocked: bool
+    block_reason: Optional[str] = None
+    evidence: dict[str, Any]
+    steps: dict[str, bool]
+    meta: Optional[dict[str, Any]] = None
+
+
+class CRMTimelineEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str
+    source: str
+    created_at: datetime
+    payload: dict[str, Any]
     overage: int | None = None
     segment_id: str | None = None
 
