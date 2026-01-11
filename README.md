@@ -341,6 +341,20 @@ docker compose -f docker-compose.yml -f docker-compose.test.yml --profile test u
 RUN_INTEGRATION_TESTS=1 pytest -m integration platform/processing-core/app/tests
 ```
 
+Интеграционные тесты core-api в чистом окружении (одноразовый контейнер):
+
+```cmd
+docker compose down -v
+docker compose up -d postgres redis minio minio-health
+docker compose run --rm core-api pytest -q app/tests/integration
+```
+
+Makefile-обёртка для этого сценария:
+
+```cmd
+make test-core-integration-clean
+```
+
 ## Общий Python-пакет `neft_shared`
 
 В каталоге `shared/python` расположен пакет с общими настройками и логированием.

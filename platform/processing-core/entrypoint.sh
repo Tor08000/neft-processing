@@ -195,6 +195,26 @@ print(
 )
 PY
 
+run_pytest=0
+if [ "${NEFT_MODE}" = "test" ]; then
+    run_pytest=1
+fi
+if [ "$#" -gt 0 ]; then
+    case "$1" in
+        pytest|py.test)
+            run_pytest=1
+            ;;
+    esac
+fi
+
+if [ "$run_pytest" -eq 1 ]; then
+    if [ "$#" -eq 0 ]; then
+        set -- pytest
+    fi
+    echo "[entrypoint] test mode detected; running: $*"
+    exec "$@"
+fi
+
 if [ "${ENTRYPOINT_SKIP_APP}" = "1" ]; then
     echo "[entrypoint] ENTRYPOINT_SKIP_APP=1 is set; exiting after migrations"
     exit 0
