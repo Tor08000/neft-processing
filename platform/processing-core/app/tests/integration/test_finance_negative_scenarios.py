@@ -357,7 +357,7 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     db_session.add(obligation)
     db_session.commit()
 
-    order_id = "order-" + "x" * 58
+    order_id = str(uuid4())
     order = MarketplaceOrder(
         id=order_id,
         client_id=client_id,
@@ -442,6 +442,15 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     assert len(sla_tx.idempotency_key) <= 128
     assert sla_tx.idempotency_key != raw_idempotency_key
     assert _ledger_balanced(db_session, str(sla_tx.id))
+    consequence_replay = apply_sla_consequences(
+        db_session,
+        evaluation_id=str(evaluation.id),
+        request_ctx=_request_ctx(),
+    )
+    db_session.commit()
+    assert consequence_replay is not None
+    assert consequence_replay.consequence.id == consequence_result.consequence.id
+    assert consequence_replay.was_applied is False
 
     invoice = _create_invoice(db_session, total=10_000)
     invoice.client_id = client_id
@@ -464,17 +473,33 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     assert invoice.status == InvoiceStatus.PARTIALLY_PAID
     assert invoice.amount_due == 8_500
 
+    long_payment_key = "scn4-payment-" + ("x" * 500)
     payment = service.apply_payment(
         invoice_id=invoice.id,
         amount=8_500,
         currency="USD",
-        idempotency_key="scn4-pay-1",
+        idempotency_key=long_payment_key,
         external_ref="SCN4-PAY-1",
         provider="bank_stub",
         request_ctx=_request_ctx(),
         token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester", "tenant_id": 1},
     )
     db_session.commit()
+    assert len(payment.payment.idempotency_key) <= 128
+    assert payment.payment.idempotency_key != long_payment_key
+    payment_replay = service.apply_payment(
+        invoice_id=invoice.id,
+        amount=8_500,
+        currency="USD",
+        idempotency_key=long_payment_key,
+        external_ref="SCN4-PAY-1",
+        provider="bank_stub",
+        request_ctx=_request_ctx(),
+        token={"roles": ["ADMIN", "ADMIN_FINANCE"], "sub": "tester", "tenant_id": 1},
+    )
+    db_session.commit()
+    assert payment_replay.is_replay is True
+    assert payment_replay.payment.id == payment.payment.id
 
     refund = service.create_refund(
         invoice_id=invoice.id,

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Tuple
-
 from datetime import datetime, timezone
+import hashlib
+from typing import Tuple
 
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
@@ -91,6 +91,13 @@ class FinanceService:
         self.job_service = BillingJobRunService(db)
         self.policy_engine = PolicyEngine()
         self.invariant_checker = FinancialInvariantChecker(db)
+
+    @staticmethod
+    def _normalize_idempotency_key(idempotency_key: str) -> str:
+        if len(idempotency_key) <= 128:
+            return idempotency_key
+        digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        return f"hash:{digest}"
 
     def _audit_invariant_violation(
         self,
@@ -546,6 +553,7 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> PaymentResult:
+        idempotency_key = self._normalize_idempotency_key(idempotency_key)
         replay_from_flow = self._replay_from_money_flow_event(
             invoice_id=invoice_id,
             idempotency_key=idempotency_key,
@@ -796,6 +804,7 @@ class FinanceService:
         request_ctx: RequestContext | None = None,
         token: dict | None = None,
     ) -> CreditNoteResult:
+        idempotency_key = self._normalize_idempotency_key(idempotency_key)
         existing = (
             self.db.query(CreditNote)
             .filter(CreditNote.idempotency_key == idempotency_key)
