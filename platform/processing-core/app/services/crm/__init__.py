@@ -4,7 +4,11 @@ from app.services.crm import (  # noqa: F401
     clients,
     contracts,
     decision_context,
+    deals,
     events,
+    leads,
+    onboarding,
+    profiles,
     repository,
     settings,
     subscription_billing,
@@ -12,6 +16,7 @@ from app.services.crm import (  # noqa: F401
     subscription_usage_collector,
     subscriptions,
     sync,
+    tasks,
     tariffs,
 )
 
@@ -19,7 +24,11 @@ __all__ = [
     "clients",
     "contracts",
     "decision_context",
+    "deals",
     "events",
+    "leads",
+    "onboarding",
+    "profiles",
     "repository",
     "settings",
     "subscription_billing",
@@ -27,5 +36,6 @@ __all__ = [
     "subscription_usage_collector",
     "subscriptions",
     "sync",
+    "tasks",
     "tariffs",
 ]

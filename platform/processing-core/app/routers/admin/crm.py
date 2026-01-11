@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.crm import (
+    ClientOnboardingStateEnum,
     CRMClientStatus,
     CRMContractStatus,
+    CRMTicketLink,
     CRMFeatureFlagType,
+    CRMLeadStatus,
     CRMProfileStatus,
+    CRMTaskSubjectType,
     CRMSubscription,
     CRMSubscriptionSegmentReason,
     CRMSubscriptionStatus,
@@ -21,10 +25,19 @@ from app.schemas.admin.crm import CRMDecisionContextResponse
 from app.schemas.crm import (
     CRMClientCreate,
     CRMClientOut,
+    CRMClientOnboardingStatus,
+    CRMClientProfileOut,
+    CRMClientProfileUpdate,
     CRMClientUpdate,
     CRMContractCreate,
     CRMContractOut,
+    CRMDealCreate,
+    CRMDealOut,
+    CRMDealUpdate,
     CRMFeatureFlagOut,
+    CRMLeadCreate,
+    CRMLeadOut,
+    CRMLeadQualifyRequest,
     CRMProfileCreate,
     CRMProfileOut,
     CRMRiskProfileCreate,
@@ -36,13 +49,33 @@ from app.schemas.crm import (
     CRMSubscriptionPreviewOut,
     CRMSubscriptionPreviewSegment,
     CRMSubscriptionPreviewUsage,
+    CRMTaskCreate,
+    CRMTaskOut,
+    CRMTaskUpdate,
+    CRMTicketLinkOut,
+    CRMTimelineEvent,
     CRMTariffCreate,
     CRMTariffOut,
     CRMTariffUpdate,
 )
 from app.security.rbac.guard import require_permission
 from app.services.audit_service import request_context_from_request
-from app.services.crm import clients, contracts, decision_context, events, repository, settings, subscriptions, sync, tariffs
+from app.services.crm import (
+    clients,
+    contracts,
+    deals,
+    decision_context,
+    events,
+    leads,
+    onboarding,
+    profiles,
+    repository,
+    settings,
+    subscriptions,
+    sync,
+    tasks,
+    tariffs,
+)
 from app.services.crm.subscription_cfo_explain import build_subscription_cfo_explain
 from app.services.crm.subscription_explain import build_explain
 from app.services.crm.subscription_pricing_engine import price_subscription_v2
@@ -61,6 +94,44 @@ router = APIRouter(
     tags=["admin", "crm"],
     dependencies=[Depends(require_control_plane_version), Depends(require_permission("admin:contracts:*"))],
 )
+
+
+@router.post("/leads", response_model=CRMLeadOut)
+def create_lead_endpoint(
+    request: Request,
+    payload: CRMLeadCreate,
+    db: Session = Depends(get_db),
+) -> CRMLeadOut:
+    ctx = request_context_from_request(request)
+    lead = leads.create_lead(db, payload=payload, request_ctx=ctx)
+    return CRMLeadOut.model_validate(lead)
+
+
+@router.get("/leads", response_model=list[CRMLeadOut])
+def list_leads_endpoint(
+    tenant_id: int = Query(..., ge=1),
+    status: CRMLeadStatus | None = Query(default=None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[CRMLeadOut]:
+    items = repository.list_leads(db, tenant_id=tenant_id, status=status, limit=limit, offset=offset)
+    return [CRMLeadOut.model_validate(item) for item in items]
+
+
+@router.post("/leads/{lead_id}/qualify", response_model=CRMClientOut)
+def qualify_lead_endpoint(
+    request: Request,
+    lead_id: str,
+    payload: CRMLeadQualifyRequest,
+    db: Session = Depends(get_db),
+) -> CRMClientOut:
+    lead = repository.get_lead(db, lead_id=lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="lead not found")
+    ctx = request_context_from_request(request)
+    client, _profile = leads.qualify_lead(db, lead=lead, payload=payload, request_ctx=ctx)
+    return CRMClientOut.model_validate(client)
 
 
 @router.post("/clients", response_model=CRMClientOut)
@@ -133,6 +204,235 @@ def update_client_endpoint(
     ctx = request_context_from_request(request)
     updated = clients.update_client(db, client=client, payload=payload, request_ctx=ctx)
     return CRMClientOut.model_validate(updated)
+
+
+@router.get("/clients/{client_id}/profile", response_model=CRMClientProfileOut)
+def get_client_profile_endpoint(
+    client_id: str,
+    db: Session = Depends(get_db),
+) -> CRMClientProfileOut:
+    profile = repository.get_client_profile(db, client_id=client_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="profile not found")
+    return CRMClientProfileOut.model_validate(profile)
+
+
+@router.patch("/clients/{client_id}/profile", response_model=CRMClientProfileOut)
+def update_client_profile_endpoint(
+    request: Request,
+    client_id: str,
+    payload: CRMClientProfileUpdate,
+    db: Session = Depends(get_db),
+) -> CRMClientProfileOut:
+    ctx = request_context_from_request(request)
+    profile = profiles.upsert_profile(db, client_id=client_id, payload=payload, request_ctx=ctx)
+    return CRMClientProfileOut.model_validate(profile)
+
+
+@router.get("/clients/{client_id}/tickets", response_model=list[CRMTicketLinkOut])
+def list_ticket_links_endpoint(
+    client_id: str,
+    db: Session = Depends(get_db),
+) -> list[CRMTicketLinkOut]:
+    links = repository.list_ticket_links(db, client_id=client_id)
+    return [CRMTicketLinkOut.model_validate(item) for item in links]
+
+
+@router.post("/clients/{client_id}/tickets", response_model=CRMTicketLinkOut)
+def create_ticket_link_endpoint(
+    request: Request,
+    client_id: str,
+    ticket_id: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+) -> CRMTicketLinkOut:
+    link = repository.add_ticket_link(
+        db,
+        CRMTicketLink(
+            client_id=client_id,
+            ticket_id=ticket_id,
+            linked_by=request_context_from_request(request).actor_id,
+        ),
+    )
+    return CRMTicketLinkOut.model_validate(link)
+
+
+@router.get("/clients/{client_id}/onboarding", response_model=CRMClientOnboardingStatus)
+def get_onboarding_status_endpoint(
+    request: Request,
+    client_id: str,
+    db: Session = Depends(get_db),
+) -> CRMClientOnboardingStatus:
+    ctx = request_context_from_request(request)
+    state, facts = onboarding.recompute(db, client_id=client_id, request_ctx=ctx)
+    steps = {state_name.value: False for state_name in ClientOnboardingStateEnum}
+    if facts.legal_accepted:
+        steps[ClientOnboardingStateEnum.LEGAL_ACCEPTED.value] = True
+    if facts.contract_signed:
+        steps[ClientOnboardingStateEnum.CONTRACT_SIGNED.value] = True
+    if facts.subscription_assigned:
+        steps[ClientOnboardingStateEnum.SUBSCRIPTION_ASSIGNED.value] = True
+    if facts.limits_applied:
+        steps[ClientOnboardingStateEnum.LIMITS_APPLIED.value] = True
+    if facts.cards_issued or facts.cards_skipped:
+        steps[ClientOnboardingStateEnum.CARDS_ISSUED.value] = True
+    if facts.client_activated:
+        steps[ClientOnboardingStateEnum.CLIENT_ACTIVATED.value] = True
+    if facts.first_operation_allowed:
+        steps[ClientOnboardingStateEnum.FIRST_OPERATION_ALLOWED.value] = True
+    return CRMClientOnboardingStatus(
+        state=state.state,
+        state_entered_at=state.state_entered_at,
+        is_blocked=state.is_blocked,
+        block_reason=state.block_reason,
+        evidence=facts.__dict__,
+        steps=steps,
+        meta=state.meta,
+    )
+
+
+@router.post("/clients/{client_id}/onboarding/actions/{action}", response_model=CRMClientOnboardingStatus)
+def apply_onboarding_action_endpoint(
+    request: Request,
+    client_id: str,
+    action: onboarding.OnboardingAction,
+    db: Session = Depends(get_db),
+) -> CRMClientOnboardingStatus:
+    ctx = request_context_from_request(request)
+    state, facts = onboarding.advance(db, client_id=client_id, action=action, request_ctx=ctx)
+    return CRMClientOnboardingStatus(
+        state=state.state,
+        state_entered_at=state.state_entered_at,
+        is_blocked=state.is_blocked,
+        block_reason=state.block_reason,
+        evidence=facts.__dict__,
+        steps={},
+        meta=state.meta,
+    )
+
+
+@router.post("/clients/{client_id}/onboarding/recompute", response_model=CRMClientOnboardingStatus)
+def recompute_onboarding_endpoint(
+    request: Request,
+    client_id: str,
+    db: Session = Depends(get_db),
+) -> CRMClientOnboardingStatus:
+    ctx = request_context_from_request(request)
+    state, facts = onboarding.recompute(db, client_id=client_id, request_ctx=ctx)
+    return CRMClientOnboardingStatus(
+        state=state.state,
+        state_entered_at=state.state_entered_at,
+        is_blocked=state.is_blocked,
+        block_reason=state.block_reason,
+        evidence=facts.__dict__,
+        steps={},
+        meta=state.meta,
+    )
+
+
+@router.get("/clients/{client_id}/timeline", response_model=list[CRMTimelineEvent])
+def get_client_timeline_endpoint(
+    client_id: str,
+    db: Session = Depends(get_db),
+) -> list[CRMTimelineEvent]:
+    timeline: list[CRMTimelineEvent] = []
+    for event in repository.list_onboarding_events(db, client_id=client_id):
+        timeline.append(
+            CRMTimelineEvent(
+                event_type=event.event_type.value,
+                source="onboarding",
+                created_at=event.created_at,
+                payload=event.payload or {},
+            )
+        )
+    deals_list = repository.list_deals(db, client_id=client_id)
+    for deal in deals_list:
+        for event in repository.list_deal_events(db, deal_id=str(deal.id)):
+            timeline.append(
+                CRMTimelineEvent(
+                    event_type=event.event_type.value,
+                    source="deal",
+                    created_at=event.created_at,
+                    payload={**(event.payload or {}), "deal_id": str(deal.id)},
+                )
+            )
+    timeline.sort(key=lambda item: item.created_at, reverse=True)
+    return timeline
+
+
+@router.post("/deals", response_model=CRMDealOut)
+def create_deal_endpoint(
+    request: Request,
+    payload: CRMDealCreate,
+    db: Session = Depends(get_db),
+) -> CRMDealOut:
+    ctx = request_context_from_request(request)
+    deal = deals.create_deal(db, payload=payload, request_ctx=ctx)
+    return CRMDealOut.model_validate(deal)
+
+
+@router.patch("/deals/{deal_id}", response_model=CRMDealOut)
+def update_deal_endpoint(
+    request: Request,
+    deal_id: str,
+    payload: CRMDealUpdate,
+    db: Session = Depends(get_db),
+) -> CRMDealOut:
+    deal = repository.get_deal(db, deal_id=deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="deal not found")
+    ctx = request_context_from_request(request)
+    updated = deals.update_deal_stage(db, deal=deal, payload=payload, request_ctx=ctx)
+    return CRMDealOut.model_validate(updated)
+
+
+@router.post("/tasks", response_model=CRMTaskOut)
+def create_task_endpoint(
+    request: Request,
+    payload: CRMTaskCreate,
+    db: Session = Depends(get_db),
+) -> CRMTaskOut:
+    ctx = request_context_from_request(request)
+    task = tasks.create_task(db, payload=payload, request_ctx=ctx)
+    return CRMTaskOut.model_validate(task)
+
+
+@router.get("/tasks", response_model=list[CRMTaskOut])
+def list_tasks_endpoint(
+    tenant_id: int = Query(..., ge=1),
+    assigned_to: str | None = Query(default=None),
+    subject_type: CRMTaskSubjectType | None = Query(default=None),
+    subject_id: str | None = Query(default=None),
+    due_bucket: str | None = Query(default=None, pattern="^(overdue|today|week)?$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[CRMTaskOut]:
+    items = repository.list_tasks(
+        db,
+        tenant_id=tenant_id,
+        assigned_to=assigned_to,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        due_bucket=due_bucket,
+        limit=limit,
+        offset=offset,
+    )
+    return [CRMTaskOut.model_validate(item) for item in items]
+
+
+@router.patch("/tasks/{task_id}", response_model=CRMTaskOut)
+def update_task_endpoint(
+    request: Request,
+    task_id: str,
+    payload: CRMTaskUpdate,
+    db: Session = Depends(get_db),
+) -> CRMTaskOut:
+    task = repository.get_task(db, task_id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    ctx = request_context_from_request(request)
+    updated = tasks.update_task(db, task=task, payload=payload, request_ctx=ctx)
+    return CRMTaskOut.model_validate(updated)
 
 
 @router.post("/clients/{client_id}/contracts", response_model=CRMContractOut)
