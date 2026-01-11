@@ -40,6 +40,9 @@ from app.services.entitlements_service import assert_module_enabled
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
+from app.schemas.unified_rules import RuleEvaluationContext, RuleEvaluationObject, RuleEvaluationSubject
+from app.models.unified_rule import UnifiedRulePolicy, UnifiedRuleScope
+from app.services.unified_rules_engine import evaluate_with_db
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -311,6 +314,22 @@ def download_document(
     db: Session = Depends(get_db),
 ) -> Response:
     client_id = _ensure_client_context(token)
+    unified_context = RuleEvaluationContext(
+        timestamp=datetime.now(timezone.utc),
+        scope=UnifiedRuleScope.DOCS,
+        subject=RuleEvaluationSubject(client_id=client_id),
+        object=RuleEvaluationObject(
+            document_id=document_id,
+            endpoint="documents/download",
+        ),
+    )
+    unified_decision, matched_rules, _ = evaluate_with_db(db, unified_context)
+    if unified_decision != UnifiedRulePolicy.ALLOW:
+        reason_code = next(
+            (rule.rule.reason_code for rule in matched_rules if rule.rule.reason_code),
+            "DOCUMENT_RULE_BLOCKED",
+        )
+        raise HTTPException(status_code=403, detail=reason_code)
     document = db.query(Document).filter(Document.id == document_id).one_or_none()
     if document is None:
         raise HTTPException(status_code=404, detail="document_not_found")

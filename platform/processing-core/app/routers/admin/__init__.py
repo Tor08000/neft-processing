@@ -35,6 +35,7 @@ from app.routers.admin import (
     reconciliation,
     cases,
     risk_rules,
+    unified_rules,
     risk_v5,
     settlement_v1,
     settlements,
@@ -47,6 +48,7 @@ from app.routers.admin import (
     marketplace_order_sla,
     marketplace_sponsored,
     marketplace_moderation,
+    notifications,
     service_bookings,
     audit,
     exports,
@@ -71,6 +73,7 @@ router.include_router(billing.router)
 router.include_router(billing_flows.router)
 router.include_router(closing_packages.router)
 router.include_router(risk_rules.router)
+router.include_router(unified_rules.router)
 router.include_router(risk_v5.router)
 router.include_router(integration_monitoring.router)
 router.include_router(settlement_v1.router)
@@ -107,6 +110,7 @@ router.include_router(marketplace_sponsored.router)
 router.include_router(service_bookings.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
+router.include_router(notifications.router)
 router.include_router(reconciliation.router)
 router.include_router(bank_stub.router)
 router.include_router(erp_stub.router)

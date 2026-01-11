@@ -72,6 +72,9 @@
 | `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
 | `smoke_local.sh` | YES | `scripts/smoke_local.sh` |
 | `smoke_restart.cmd` | YES | `scripts/smoke_restart.cmd` |
+| `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
+| `test_processing_core.cmd` | YES | `scripts/test_processing_core.cmd` |
+| `test_core_stack.cmd` | YES | `scripts/test_core_stack.cmd` |
 | `test_core_api.cmd` | YES | `scripts/test_core_api.cmd` |
 | `test_core_full.cmd` | YES | `scripts/test_core_full.cmd` |
 | `test_auth_host.cmd` | YES | `scripts/test_auth_host.cmd` |
@@ -91,6 +94,9 @@
 | Reconciliation | YES | `platform/processing-core/app/tests/test_reconciliation_v1.py` |
 | Documents | YES | `platform/processing-core/app/tests/test_documents_lifecycle.py` |
 | Document service | YES | `platform/document-service/app/tests/test_service.py` |
+| Document templates | YES | `platform/document-service/app/tests/test_templates.py` |
+| Legal gate | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
+| Trust gates | YES | `platform/processing-core/app/tests/test_trust_gates.py` |
 | Webhooks | YES | `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` |
 | EDO SBIS | YES | `platform/processing-core/app/tests/integration/test_edo_sbis_e2e.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py` |
 | Logistics | YES | `platform/processing-core/app/tests/test_logistics_eta.py` |

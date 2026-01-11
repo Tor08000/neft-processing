@@ -10,6 +10,16 @@ from .risk_rule import (  # noqa: F401
     RiskRuleAuditAction,
     RiskRuleVersion,
 )
+from .unified_rule import (  # noqa: F401
+    RuleSetActive,
+    RuleSetAudit,
+    RuleSetStatus,
+    RuleSetVersion,
+    UnifiedRule,
+    UnifiedRuleMetric,
+    UnifiedRulePolicy,
+    UnifiedRuleScope,
+)
 from .billing_summary import BillingSummary, BillingSummaryStatus  # noqa: F401
 from .billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType  # noqa: F401
 from .billing_job_run import BillingJobRun, BillingJobStatus, BillingJobType  # noqa: F401
@@ -107,6 +117,19 @@ from .finance import (  # noqa: F401
     InvoiceSettlementAllocation,
     PaymentStatus,
     SettlementSourceType,
+)
+from .notifications import (  # noqa: F401
+    NotificationChannel,
+    NotificationDelivery,
+    NotificationDeliveryStatus,
+    NotificationMessage,
+    NotificationOutboxStatus,
+    NotificationPreference,
+    NotificationPriority,
+    NotificationSubjectType,
+    NotificationTemplate,
+    NotificationTemplateContentType,
+    NotificationWebPushSubscription,
 )
 from .billing_flow import (  # noqa: F401
     BillingInvoice,
@@ -370,6 +393,12 @@ from .legal_integrations import (  # noqa: F401
     DocumentSignatureStatus,
     LegalProviderConfig,
     SignatureType,
+)
+from .legal_gate import (  # noqa: F401
+    LegalAcceptance,
+    LegalDocument,
+    LegalDocumentStatus,
+    LegalSubjectType,
 )
 from .immutability import ImmutableRecordError  # noqa: F401
 from .fleet import (  # noqa: F401
@@ -737,6 +766,10 @@ __all__ = [
     "LegalEdgeType",
     "LegalGraphSnapshot",
     "LegalGraphSnapshotScopeType",
+    "LegalDocument",
+    "LegalDocumentStatus",
+    "LegalSubjectType",
+    "LegalAcceptance",
     "ImmutableRecordError",
     "FuelCard",
     "FuelCardGroup",

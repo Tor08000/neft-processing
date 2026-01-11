@@ -9,6 +9,7 @@ const baseNavItems = [
   { to: "/finance", label: "Finance" },
   { to: "/stubs", label: "Stubs" },
   { to: "/risk", label: "Risk" },
+  { to: "/risk/sandbox", label: "Rules Sandbox" },
   { to: "/policies", label: "Policies" },
   { to: "/marketplace", label: "Marketplace" },
   { to: "/users", label: "Users" },

@@ -3,23 +3,34 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RenderRequest(BaseModel):
-    template_kind: str = Field(..., examples=["HTML"])
+    template_code: str | None = None
+    variables: dict[str, Any] | None = None
+    template_kind: str | None = Field(default=None, examples=["HTML"])
     template_id: str | None = None
-    template_html: str
-    data: dict[str, Any] = Field(default_factory=dict)
+    template_html: str | None = None
+    data: dict[str, Any] | None = None
     output_format: str = Field(..., examples=["PDF"])
     tenant_id: int
     client_id: str | None = None
     idempotency_key: str
+    locale: str | None = None
     meta: dict[str, Any] | None = None
     doc_id: str
     doc_type: str
     version: int = Field(ge=1)
     document_date: date | None = None
+
+    @model_validator(mode="after")
+    def _ensure_template_payload(self) -> "RenderRequest":
+        if self.template_code:
+            return self
+        if self.template_html and self.template_kind:
+            return self
+        raise ValueError("template_code or template_html/template_kind must be provided")
 
 
 class RenderResponse(BaseModel):
@@ -29,6 +40,24 @@ class RenderResponse(BaseModel):
     size_bytes: int
     content_type: str
     version: int
+    template_hash: str | None = None
+    schema_hash: str | None = None
+
+
+class TemplateListItem(BaseModel):
+    code: str
+    title: str
+    engine: str
+    repo_path: str
+    schema_path: str
+    template_hash: str
+    schema_hash: str
+    version: str
+    status: str
+
+
+class TemplateDetail(TemplateListItem):
+    schema: dict[str, Any]
 
 
 class PresignRequest(BaseModel):

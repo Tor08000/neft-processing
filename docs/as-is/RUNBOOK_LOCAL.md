@@ -111,14 +111,22 @@ docker compose logs -f gateway
 ```cmd
 scripts\get_admin_token.cmd
 scripts\test_core_api.cmd
+scripts\test_processing_core.cmd
+scripts\test_core_stack.cmd
 scripts\test_auth_host.cmd
 scripts\billing_smoke.cmd
 scripts\smoke_billing_v14.cmd
 scripts\smoke_invoice_state_machine.cmd
-scripts\smoke_edo_sbis_send.cmd
-scripts\smoke_edo_sbis_wait_signed.cmd
-scripts\smoke_edo_sbis_revoke.cmd
+scripts\smoke_legal_gate.cmd
 ```
+
+**Processing-core tests (recommended):**
+```cmd
+scripts\test_core_stack.cmd
+scripts\test_core_stack.cmd --full
+```
+
+Processing-core tests are run inside docker compose; host runs are not supported.
 
 ## 9) Known failure points
 

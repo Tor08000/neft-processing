@@ -30,6 +30,13 @@ services:
     ports:
       - "6379:6379"
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: neft-processing-mailpit-1
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.6
     container_name: neft-processing-clickhouse-1
@@ -207,6 +214,10 @@ services:
       LOGISTICS_SERVICE_URL: ${LOGISTICS_SERVICE_URL:-http://logistics-service:8000}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
       NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@neft.local}
+      SMTP_TLS: ${SMTP_TLS:-0}
     depends_on:
       postgres:
         condition: service_healthy

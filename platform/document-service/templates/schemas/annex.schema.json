@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Annex template variables",
+  "type": "object",
+  "required": ["contract_number", "annex_number", "annex_date", "annex_body"],
+  "properties": {
+    "contract_number": { "type": "string" },
+    "annex_number": { "type": "string" },
+    "annex_date": { "type": "string", "format": "date" },
+    "annex_body": { "type": "string" }
+  },
+  "additionalProperties": false
+}

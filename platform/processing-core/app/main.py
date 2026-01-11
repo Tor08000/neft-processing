@@ -23,7 +23,8 @@ from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
-from app.routers.client_edo import router as client_edo_router
+from app.routers.document_templates import router as document_templates_router
+from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client_marketplace import router as client_marketplace_router
 from app.routers.client_marketplace_orders import router as client_marketplace_orders_router
 from app.routers.client_marketplace_deals import router as client_marketplace_deals_router
@@ -33,6 +34,7 @@ from app.routers.client_service_completion_proofs import (
 )
 from app.routers.client_portal import router as client_portal_router
 from app.routers.legal import router as legal_router
+from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
@@ -299,6 +301,9 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, notifications_router)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, notifications_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, fleet_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, fleet_router, prefix=API_PREFIX_CORE)
@@ -351,7 +356,10 @@ safe_include_router(app, client_service_bookings_router, prefix=LEGACY_API_PREFI
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_service_bookings_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_documents_router)
-safe_include_router(app, client_edo_router)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, document_templates_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, legal_gate_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, internal_fleet_router)
 safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
@@ -400,7 +408,8 @@ safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_vehicles_router)
 safe_include_router(core_prefixed_router, client_documents_router)
-safe_include_router(core_prefixed_router, client_edo_router)
+safe_include_router(core_prefixed_router, document_templates_router)
+safe_include_router(core_prefixed_router, legal_gate_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
 safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
