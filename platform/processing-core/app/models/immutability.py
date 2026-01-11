@@ -7,6 +7,7 @@ from app.models.billing_period import BillingPeriod, BillingPeriodStatus
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentStatus
 from app.models.invoice import Invoice, InvoiceLine
+from app.models.legal_gate import LegalAcceptance
 
 
 class ImmutableRecordError(ValueError):
@@ -44,6 +45,12 @@ def _block_document_file_mutation(mapper, connection, target: DocumentFile) -> N
 @event.listens_for(DocumentAcknowledgement, "before_delete")
 def _block_document_ack_mutation(mapper, connection, target: DocumentAcknowledgement) -> None:
     raise ImmutableRecordError("document_acknowledgement_immutable")
+
+
+@event.listens_for(LegalAcceptance, "before_update")
+@event.listens_for(LegalAcceptance, "before_delete")
+def _block_legal_acceptance_mutation(mapper, connection, target: LegalAcceptance) -> None:
+    raise ImmutableRecordError("legal_acceptance_immutable")
 
 
 @event.listens_for(Document, "before_update")

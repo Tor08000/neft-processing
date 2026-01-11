@@ -48,9 +48,15 @@ def _prepend_path(path: Path) -> None:
 for path in (SHARED_PATH, PROCESSING_APP_ROOT, SERVICE_ROOT):
     _prepend_path(path)
 
+def _running_in_container() -> bool:
+    return Path("/.dockerenv").exists() or os.getenv("IN_DOCKER") == "1"
+
+
 if os.getenv("DATABASE_URL_TEST"):
     os.environ["DATABASE_URL"] = os.environ["DATABASE_URL_TEST"]
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://neft:neft@postgres:5432/neft")
+default_container_url = "postgresql+psycopg://neft:neft@postgres:5432/neft"
+if "DATABASE_URL" not in os.environ:
+    os.environ["DATABASE_URL"] = default_container_url
 os.environ.setdefault("NEFT_DB_SCHEMA", "processing_core")
 os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
@@ -333,6 +339,8 @@ def ensure_db_ready(request: pytest.FixtureRequest) -> None:
         return
 
     database_url = os.getenv("DATABASE_URL", "")
+    if not _running_in_container() and "@postgres:" in database_url:
+        pytest.fail("processing-core tests require docker compose stack. Run scripts\\test_core_stack.cmd")
     if not _uses_postgres(database_url):
         pytest.fail("postgres not available; start docker compose postgres")
 

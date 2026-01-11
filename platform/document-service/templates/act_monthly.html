@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Monthly Act</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 40px; color: #111; }
+      h1 { font-size: 20px; margin-bottom: 12px; }
+      .meta { margin-bottom: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Act of Services Rendered</h1>
+    <div class="meta">
+      <div><strong>Client:</strong> {{ client_name }}</div>
+      <div><strong>Period:</strong> {{ period_from }} — {{ period_to }}</div>
+    </div>
+    <p>Services delivered in the amount of {{ total_amount }} {{ currency }}.</p>
+    <p>{{ notes }}</p>
+  </body>
+</html>

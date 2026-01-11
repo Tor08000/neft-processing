@@ -177,7 +177,14 @@ docs/
 ### Documents / Exports — **PARTIAL**
 - **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
 - **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`.
+- **Шаблоны документов:** репозиторий `platform/document-service/templates/` + схемы `platform/document-service/templates/schemas/`, эндпоинты `GET /v1/templates` и `GET /v1/templates/{code}` в document-service, прокси `GET /api/core/documents/templates` в core-api.
 - **Почему PARTIAL:** EDO интеграции и внешние провайдеры — stub/мок режим (`platform/integration-hub/neft_integration_hub/services/edo_stub.py`).
+
+### Legal Gate / Compliance — **PARTIAL**
+- **Граф доверия (legal graph):** `app/services/legal_graph/*`, admin endpoints `/api/core/admin/legal-graph/*`.
+- **Trust gates:** интеграционные проверки в `platform/processing-core/app/tests/test_trust_gates.py`.
+- **Проверка legal gate (Windows CMD):** `scripts\\test_core_stack.cmd` (unit tests) и `scripts\\smoke_legal_gate.cmd` (smoke через gateway).
+- **Почему PARTIAL:** юридические блокировки/гейты для бизнес-операций описаны, но API-обвязка под конкретные сценарии требует настройки.
 
 ---
 

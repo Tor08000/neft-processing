@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Contract main template variables",
+  "type": "object",
+  "required": ["contract_number", "client_name", "provider_name", "effective_date", "scope", "terms_summary"],
+  "properties": {
+    "contract_number": { "type": "string" },
+    "client_name": { "type": "string" },
+    "provider_name": { "type": "string" },
+    "effective_date": { "type": "string", "format": "date" },
+    "scope": { "type": "string" },
+    "terms_summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

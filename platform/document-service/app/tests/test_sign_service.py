@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from fastapi.testclient import TestClient
+import pytest
 
 import app.main as main
 from app.sign.providers.base import SignedResult, VerifyResult
@@ -41,6 +42,12 @@ class DummyStorage:
         return DummyStorage._payloads.get((self.bucket, object_key))
 
 
+@pytest.fixture(autouse=True)
+def _reset_dummy_storage() -> None:
+    DummyStorage._payloads.clear()
+    DummyStorage._metadata.clear()
+
+
 class DummyProvider:
     def sign(self, payload: bytes, meta: dict | None = None):
         signature = f"sig:{hashlib.sha256(payload).hexdigest()}".encode("utf-8")
@@ -62,7 +69,9 @@ def _seed_input(bucket: str, object_key: str, payload: bytes) -> None:
 
 def test_sign_happy_path(monkeypatch):
     monkeypatch.setattr(main, "S3Storage", DummyStorage)
-    monkeypatch.setattr(main, "get_sign_registry", lambda: ProviderRegistry(providers={"provider_x": DummyProvider()}))
+    main.app.dependency_overrides[main.get_sign_registry] = lambda: ProviderRegistry(
+        providers={"provider_x": DummyProvider()}
+    )
 
     client = TestClient(main.app)
     input_payload = b"PDF-BYTES"
@@ -88,6 +97,7 @@ def test_sign_happy_path(monkeypatch):
 
     stored_signed = DummyStorage(bucket="out-bucket").get_bytes(body["signed"]["object_key"])
     assert stored_signed == input_payload
+    main.app.dependency_overrides.clear()
 
 
 def test_sign_provider_failure(monkeypatch):
@@ -96,7 +106,9 @@ def test_sign_provider_failure(monkeypatch):
             raise TimeoutError("timeout")
 
     monkeypatch.setattr(main, "S3Storage", DummyStorage)
-    monkeypatch.setattr(main, "get_sign_registry", lambda: ProviderRegistry(providers={"provider_x": FailingProvider()}))
+    main.app.dependency_overrides[main.get_sign_registry] = lambda: ProviderRegistry(
+        providers={"provider_x": FailingProvider()}
+    )
 
     client = TestClient(main.app)
     input_payload = b"PDF-BYTES"
@@ -108,10 +120,11 @@ def test_sign_provider_failure(monkeypatch):
             "document_id": "doc-1",
             "provider": "provider_x",
             "input": {"bucket": "in-bucket", "object_key": "documents/tenant-1/INVOICE/2024/05/doc-1/v1.pdf"},
-            "output": {"bucket": "out-bucket", "prefix": "documents/tenant-1/INVOICE/2024/05/doc-1"},
+            "output": {"bucket": "out-bucket-fail", "prefix": "documents/tenant-1/INVOICE/2024/05/doc-1"},
             "idempotency_key": "idem-1",
         },
     )
 
     assert response.status_code == 502
     assert response.json()["detail"] == "sign_failed"
+    main.app.dependency_overrides.clear()

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Invoice template variables",
+  "type": "object",
+  "required": ["invoice_number", "client_name", "issue_date", "items", "total_amount", "currency"],
+  "properties": {
+    "invoice_number": { "type": "string" },
+    "client_name": { "type": "string" },
+    "issue_date": { "type": "string", "format": "date" },
+    "total_amount": { "type": "number" },
+    "currency": { "type": "string" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["description", "quantity", "unit_price", "amount"],
+        "properties": {
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit_price": { "type": "number" },
+          "amount": { "type": "number" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

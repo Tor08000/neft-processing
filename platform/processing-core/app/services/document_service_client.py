@@ -82,6 +82,20 @@ class DocumentVerifyResult:
     certificate: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class DocumentTemplateMetadata:
+    code: str
+    title: str
+    engine: str
+    repo_path: str
+    schema_path: str
+    template_hash: str
+    schema_hash: str
+    version: str
+    status: str
+    schema: dict[str, Any] | None = None
+
+
 class DocumentServiceClient:
     def __init__(self, *, base_url: str | None = None) -> None:
         self.base_url = (base_url or settings.DOCUMENT_SERVICE_URL).rstrip("/")
@@ -216,6 +230,64 @@ class DocumentServiceClient:
                 continue
             except httpx.HTTPStatusError as exc:
                 raise RuntimeError("document_service_verify_failed") from exc
+
+        raise RuntimeError("document_service_unreachable") from last_error
+
+    def list_templates(self) -> list[DocumentTemplateMetadata]:
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.get(f"{self.base_url}/v1/templates")
+                response.raise_for_status()
+                data = response.json()
+                return [
+                    DocumentTemplateMetadata(
+                        code=item["code"],
+                        title=item["title"],
+                        engine=item["engine"],
+                        repo_path=item["repo_path"],
+                        schema_path=item["schema_path"],
+                        template_hash=item["template_hash"],
+                        schema_hash=item["schema_hash"],
+                        version=item["version"],
+                        status=item["status"],
+                    )
+                    for item in data
+                ]
+            except httpx.RequestError as exc:
+                last_error = exc
+                continue
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError("document_service_templates_failed") from exc
+
+        raise RuntimeError("document_service_unreachable") from last_error
+
+    def get_template(self, code: str) -> DocumentTemplateMetadata:
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.get(f"{self.base_url}/v1/templates/{code}")
+                response.raise_for_status()
+                item = response.json()
+                return DocumentTemplateMetadata(
+                    code=item["code"],
+                    title=item["title"],
+                    engine=item["engine"],
+                    repo_path=item["repo_path"],
+                    schema_path=item["schema_path"],
+                    template_hash=item["template_hash"],
+                    schema_hash=item["schema_hash"],
+                    version=item["version"],
+                    status=item["status"],
+                    schema=item.get("schema"),
+                )
+            except httpx.RequestError as exc:
+                last_error = exc
+                continue
+            except httpx.HTTPStatusError as exc:
+                raise RuntimeError("document_service_template_failed") from exc
 
         raise RuntimeError("document_service_unreachable") from last_error
 
