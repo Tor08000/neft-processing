@@ -38,6 +38,7 @@ from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
+from app.routers.internal.fuel_providers import router as internal_fuel_providers_router
 from app.routers.internal.telegram import router as internal_telegram_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
@@ -356,6 +357,7 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, legal_gate_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, internal_fleet_router)
+safe_include_router(app, internal_fuel_providers_router)
 safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
 
@@ -406,6 +408,7 @@ safe_include_router(core_prefixed_router, document_templates_router)
 safe_include_router(core_prefixed_router, legal_gate_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
 safe_include_router(core_prefixed_router, internal_fleet_router)
+safe_include_router(core_prefixed_router, internal_fuel_providers_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
 safe_include_router(core_prefixed_router, commercial_layer_router)
 
