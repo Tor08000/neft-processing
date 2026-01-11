@@ -101,9 +101,6 @@ class ClientBranding(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class ClientOnboardingState(Base):
-    __tablename__ = "client_onboarding_state"
-
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, unique=True, index=True)
     current_step = Column(String(64), nullable=True)

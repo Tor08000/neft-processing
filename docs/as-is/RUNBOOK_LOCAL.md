@@ -97,6 +97,40 @@ curl http://localhost:8010/metrics
 curl http://localhost:9808/metrics
 ```
 
+## 6.1) Service identities (M2M tokens)
+
+Issue a service identity and token (admin JWT required):
+
+```cmd
+curl -X POST http://localhost/api/core/v1/admin/security/service-identities ^
+  -H "Authorization: Bearer <ADMIN_JWT>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"service_name\":\"document-service\",\"description\":\"Docs\"}"
+```
+
+```cmd
+curl -X POST http://localhost/api/core/v1/admin/security/service-identities/<ID>/tokens/issue ^
+  -H "Authorization: Bearer <ADMIN_JWT>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"scopes\":[\"rules:evaluate\"],\"expires_at\":\"2030-01-01T00:00:00Z\",\"env\":\"test\"}"
+```
+
+Rotate (optional grace window) and revoke:
+
+```cmd
+curl -X POST http://localhost/api/core/v1/admin/security/service-tokens/<TOKEN_ID>/rotate ^
+  -H "Authorization: Bearer <ADMIN_JWT>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"grace_hours\":24,\"env\":\"test\"}"
+```
+
+```cmd
+curl -X POST http://localhost/api/core/v1/admin/security/service-tokens/<TOKEN_ID>/revoke ^
+  -H "Authorization: Bearer <ADMIN_JWT>" ^
+  -H "Content-Type: application/json" ^
+  -d \"{}\"
+```
+
 ## 7) Logs
 
 ```cmd

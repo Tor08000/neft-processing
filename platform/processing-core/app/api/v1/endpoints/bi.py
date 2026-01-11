@@ -26,6 +26,9 @@ from app.schemas.bi import (
     BiPayoutEventOut,
     BiTopReasonOut,
 )
+from app.services.abac import AbacContext, AbacEngine, AbacResource
+from app.services.abac.dependency import get_abac_principal
+from app.security.service_auth import require_scope
 from app.services.bi import exports as bi_exports
 from app.services.bi import service as bi_service
 from app.services.audit_service import AuditService, request_context_from_request
@@ -36,7 +39,14 @@ from app.tasks.bi_analytics import generate_export_task
 router = APIRouter(prefix="/api/v1/bi", tags=["bi"])
 
 
-def _enforce_scope(token: dict, *, client_id: str | None, partner_id: str | None) -> None:
+def _enforce_scope(
+    token: dict,
+    *,
+    client_id: str | None,
+    partner_id: str | None,
+    request: Request,
+    db: Session,
+) -> None:
     token_client = token.get("client_id")
     if token_client and client_id and token_client != client_id:
         raise HTTPException(status_code=403, detail="forbidden_client_scope")
@@ -45,21 +55,62 @@ def _enforce_scope(token: dict, *, client_id: str | None, partner_id: str | None
     if token_partner and partner_id and token_partner != partner_id:
         raise HTTPException(status_code=403, detail="forbidden_partner_scope")
 
+    scope_type = "TENANT"
+    scope_id = str(token.get("tenant_id"))
+    if client_id:
+        scope_type = "CLIENT"
+        scope_id = client_id
+    if partner_id:
+        scope_type = "PARTNER"
+        scope_id = partner_id
+
+    principal = get_abac_principal(request, db)
+    decision = AbacEngine(db).evaluate(
+        principal=principal,
+        action="bi:read",
+        resource=AbacResource(
+            "BI_SCOPE",
+            {
+                "scope_type": scope_type,
+                "scope_id": scope_id,
+                "tenant_id": token.get("tenant_id"),
+            },
+        ),
+        entitlements={},
+        context=AbacContext(
+            ip=request.client.host if request.client else None,
+            region=request.headers.get("x-region"),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "abac_deny",
+                "reason_code": decision.reason_code,
+                "matched_policies": decision.matched_policies,
+                "explain": decision.explain,
+            },
+        )
+
 
 @router.get("/metrics/daily", response_model=list[BiDailyMetricOut])
 def list_daily_metrics(
+    request: Request,
     scope_type: BiScopeType = Query(...),
     scope_id: str = Query(...),
     date_from: date = Query(..., alias="from"),
     date_to: date = Query(..., alias="to"),
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiDailyMetricOut]:
     tenant_id = int(token.get("tenant_id"))
     if scope_type == BiScopeType.CLIENT:
-        _enforce_scope(token, client_id=scope_id, partner_id=None)
+        _enforce_scope(token, client_id=scope_id, partner_id=None, request=request, db=db)
     if scope_type == BiScopeType.PARTNER:
-        _enforce_scope(token, client_id=None, partner_id=scope_id)
+        _enforce_scope(token, client_id=None, partner_id=scope_id, request=request, db=db)
     metrics = bi_service.list_daily_metrics(
         db,
         tenant_id=tenant_id,
@@ -73,16 +124,18 @@ def list_daily_metrics(
 
 @router.get("/orders", response_model=list[BiOrderEventOut])
 def list_orders(
+    request: Request,
     date_from: datetime = Query(..., alias="from"),
     date_to: datetime = Query(..., alias="to"),
     client_id: str | None = Query(default=None),
     partner_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiOrderEventOut]:
     tenant_id = int(token.get("tenant_id"))
-    _enforce_scope(token, client_id=client_id, partner_id=partner_id)
+    _enforce_scope(token, client_id=client_id, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiOrderEvent)
         .filter(BiOrderEvent.tenant_id == tenant_id)
@@ -101,14 +154,16 @@ def list_orders(
 
 @router.get("/payouts", response_model=list[BiPayoutEventOut])
 def list_payouts(
+    request: Request,
     date_from: datetime = Query(..., alias="from"),
     date_to: datetime = Query(..., alias="to"),
     partner_id: str | None = Query(default=None),
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiPayoutEventOut]:
     tenant_id = int(token.get("tenant_id"))
-    _enforce_scope(token, client_id=None, partner_id=partner_id)
+    _enforce_scope(token, client_id=None, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiPayoutEvent)
         .filter(BiPayoutEvent.tenant_id == tenant_id)
@@ -123,6 +178,7 @@ def list_payouts(
 
 @router.get("/declines", response_model=list[BiDeclineEventOut])
 def list_declines(
+    request: Request,
     date_from: datetime = Query(..., alias="from"),
     date_to: datetime = Query(..., alias="to"),
     reason: str | None = Query(default=None),
@@ -130,10 +186,11 @@ def list_declines(
     client_id: str | None = Query(default=None),
     partner_id: str | None = Query(default=None),
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiDeclineEventOut]:
     tenant_id = int(token.get("tenant_id"))
-    _enforce_scope(token, client_id=client_id, partner_id=partner_id)
+    _enforce_scope(token, client_id=client_id, partner_id=partner_id, request=request, db=db)
     query = (
         db.query(BiDeclineEvent)
         .filter(BiDeclineEvent.tenant_id == tenant_id)
@@ -154,11 +211,13 @@ def list_declines(
 
 @router.get("/top-reasons", response_model=list[BiTopReasonOut])
 def top_reasons(
+    request: Request,
     date_from: datetime = Query(..., alias="from"),
     date_to: datetime = Query(..., alias="to"),
     scope_type: BiScopeType | None = Query(default=None),
     scope_id: str | None = Query(default=None),
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> list[BiTopReasonOut]:
     tenant_id = int(token.get("tenant_id"))
@@ -172,10 +231,10 @@ def top_reasons(
         .filter(BiDeclineEvent.occurred_at <= date_to)
     )
     if scope_type == BiScopeType.CLIENT and scope_id:
-        _enforce_scope(token, client_id=scope_id, partner_id=None)
+        _enforce_scope(token, client_id=scope_id, partner_id=None, request=request, db=db)
         query = query.filter(BiDeclineEvent.client_id == scope_id)
     if scope_type == BiScopeType.PARTNER and scope_id:
-        _enforce_scope(token, client_id=None, partner_id=scope_id)
+        _enforce_scope(token, client_id=None, partner_id=scope_id, request=request, db=db)
         query = query.filter(BiDeclineEvent.partner_id == scope_id)
     if scope_type == BiScopeType.STATION and scope_id:
         query = query.filter(BiDeclineEvent.station_id == scope_id)
@@ -194,13 +253,14 @@ def create_export(
     payload: BiExportCreateRequest,
     request: Request,
     token: dict = Depends(bi_user_dep),
+    _scope=Depends(require_scope("bi:sync")),
     db: Session = Depends(get_db),
 ) -> BiExportOut:
     tenant_id = int(token.get("tenant_id"))
     if payload.scope_type == BiScopeType.CLIENT and payload.scope_id:
-        _enforce_scope(token, client_id=payload.scope_id, partner_id=None)
+        _enforce_scope(token, client_id=payload.scope_id, partner_id=None, request=request, db=db)
     if payload.scope_type == BiScopeType.PARTNER and payload.scope_id:
-        _enforce_scope(token, client_id=None, partner_id=payload.scope_id)
+        _enforce_scope(token, client_id=None, partner_id=payload.scope_id, request=request, db=db)
 
     created_by = token.get("user_id") or token.get("sub") or token.get("client_id")
     try:

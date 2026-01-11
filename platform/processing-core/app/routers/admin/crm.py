@@ -64,6 +64,7 @@ from app.schemas.crm import (
     CRMTariffOut,
     CRMTariffUpdate,
 )
+from app.services.abac import AbacResourceData, require_abac
 from app.security.rbac.guard import require_permission
 from app.services.audit_service import request_context_from_request
 from app.services.crm import (
@@ -87,7 +88,7 @@ from app.services.crm.subscription_explain import build_explain
 from app.services.crm.subscription_pricing_engine import price_subscription_v2
 from app.services.crm.subscription_segments import build_segments_v2, record_subscription_change
 from app.services.crm.subscription_usage_collector import collect_usage_by_segments
-from app.services.entitlements_service import assert_module_enabled
+from app.services.entitlements_service import assert_module_enabled, get_entitlements
 from app.services.pricing_versions import get_active_price_version
 from app.services.subscription_service import assign_plan_to_client, get_client_subscription
 
@@ -96,6 +97,23 @@ def require_control_plane_version(
 ) -> None:
     if not x_crm_version:
         raise HTTPException(status_code=409, detail="crm_control_plane_frozen")
+
+
+def _load_crm_client_abac(
+    client_id: str,
+    tenant_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+) -> AbacResourceData:
+    entitlements = get_entitlements(db, client_id=client_id)
+    return AbacResourceData(
+        type="CLIENT",
+        attributes={"client_id": client_id, "tenant_id": tenant_id},
+        entitlements={
+            "plan": entitlements.plan_code,
+            "modules": entitlements.modules,
+            "limits": entitlements.limits,
+        },
+    )
 
 
 router = APIRouter(
@@ -169,6 +187,7 @@ def list_clients_endpoint(
 def get_client_endpoint(
     client_id: str,
     tenant_id: int = Query(..., ge=1),
+    _abac=Depends(require_abac("crm:read", _load_crm_client_abac)),
     db: Session = Depends(get_db),
 ) -> CRMClientOut:
     client = repository.get_client(db, tenant_id=tenant_id, client_id=client_id)
@@ -181,6 +200,7 @@ def get_client_endpoint(
 def get_decision_context_endpoint(
     client_id: str,
     tenant_id: int = Query(..., ge=1),
+    _abac=Depends(require_abac("crm:read", _load_crm_client_abac)),
     db: Session = Depends(get_db),
 ) -> CRMDecisionContextResponse:
     assert_module_enabled(db, client_id=client_id, module_code="CRM")

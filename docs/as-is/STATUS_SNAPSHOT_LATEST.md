@@ -104,6 +104,8 @@
 | Fleet/Fuel | YES | `platform/processing-core/app/tests/test_fleet_ingestion_v1.py` |
 | Pricing | YES | `platform/processing-core/app/tests/test_pricing_service.py` |
 | Legal | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
+| Security (service identities) | YES | `platform/processing-core/app/tests/test_service_tokens.py` |
+| Security (ABAC) | YES | `platform/processing-core/app/tests/test_abac_policies.py`, `platform/processing-core/app/tests/test_abac_explain.py` |
 
 ---
 
@@ -111,11 +113,18 @@
 
 * LEGAL GATE: implemented.
 * EDO (SBIS): implemented, e2e runs with `EDO_E2E_ENABLED=1` and `EDO_PROVIDER=SBIS`.
+* Security baseline (service identities + ABAC): IMPLEMENTED + VERIFIED.
 
 ```cmd
 set EDO_E2E_ENABLED=1
 set EDO_PROVIDER=SBIS
 pytest platform/processing-core/app/tests/integration/test_edo_sbis_e2e.py -q
+```
+
+```cmd
+pytest platform/processing-core/app/tests/test_service_tokens.py -q
+pytest platform/processing-core/app/tests/test_abac_policies.py -q
+pytest platform/processing-core/app/tests/test_abac_explain.py -q
 ```
 
 ---

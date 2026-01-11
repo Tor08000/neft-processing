@@ -21,7 +21,9 @@ from app.schemas.payouts import (
     PayoutMarkRequest,
     PayoutReconcileResponse,
 )
+from app.services.abac import AbacResourceData, require_abac
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
+from app.security.service_auth import require_scope
 from app.services.payout_exports import (
     PayoutExportConflictError,
     PayoutExportError,
@@ -45,6 +47,25 @@ from app.services.policy import PolicyAccessDenied
 from app.services.s3_storage import S3Storage
 
 router = APIRouter(prefix="/api/v1/payouts", tags=["payouts"])
+
+
+def _load_payout_export_abac(
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> AbacResourceData:
+    batch = load_payout_batch(db, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="batch_not_found")
+    return AbacResourceData(
+        type="PAYOUT_BATCH",
+        attributes={
+            "batch_id": batch.id,
+            "tenant_id": batch.tenant_id,
+            "partner_id": batch.partner_id,
+            "state": batch.state.value,
+        },
+        entitlements={},
+    )
 
 
 @router.post("/close-period", response_model=PayoutBatchSummary)
@@ -277,6 +298,8 @@ def create_export_endpoint(
     request: Request,
     payload: PayoutExportCreateRequest,
     token: dict = Depends(require_admin_user),
+    _scope=Depends(require_scope("marketplace:settlement")),
+    _abac=Depends(require_abac("payouts:export", _load_payout_export_abac)),
     db: Session = Depends(get_db),
 ) -> PayoutExportOut:
     try:
