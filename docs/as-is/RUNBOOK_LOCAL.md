@@ -20,6 +20,18 @@ Edit `.env` and set at least:
 
 (See `.env.example` for full list.)
 
+### EDO (SBIS) local configuration
+
+Set secret refs for SBIS credentials and webhook secrets via environment:
+
+```cmd
+set SBIS_TEST_CREDENTIALS={"base_url":"https://sbis.test","token":"...","meta":{"send_path":"/edo/send","status_path":"/edo/status","revoke_path":"/edo/revoke"}}
+set SBIS_TEST_WEBHOOK_SECRET=supersecret
+```
+
+Create EDO account with `credentials_ref=env:SBIS_TEST_CREDENTIALS` and
+`webhook_secret_ref=env:SBIS_TEST_WEBHOOK_SECRET` via admin API.
+
 ## 3) Start the stack
 
 ```cmd

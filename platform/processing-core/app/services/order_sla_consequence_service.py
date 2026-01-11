@@ -13,6 +13,8 @@ from app.models.internal_ledger import (
     InternalLedgerEntryDirection,
     InternalLedgerTransactionType,
 )
+from app.models.finance import CreditNote, CreditNoteStatus
+from app.models.invoice import Invoice, InvoiceStatus
 from app.models.marketplace_contracts import Contract, ContractObligation
 from app.models.marketplace_order_sla import (
     MarketplaceSlaNotificationOutbox,
@@ -24,12 +26,15 @@ from app.models.marketplace_order_sla import (
     OrderSlaSeverity,
     OrderSlaStatus,
 )
+from app.models.marketplace_orders import MarketplaceOrder
+from app.models.marketplace_settlement import MarketplaceAdjustmentType
 from app.services.audit_service import AuditService, RequestContext
 from app.services.key_normalization import normalize_key
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.case_event_redaction import redact_deep
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
+from app.services.marketplace_settlement_service import MarketplaceSettlementService
 
 
 @dataclass(frozen=True)
@@ -373,7 +378,119 @@ def apply_sla_consequences(
             request_ctx=request_ctx,
         )
 
+    _apply_marketplace_penalty(
+        db,
+        evaluation=evaluation,
+        consequence=consequence,
+        amount=amount,
+        request_ctx=request_ctx,
+    )
+
     return OrderSlaConsequenceResult(consequence=consequence, was_applied=True)
+
+
+def _apply_marketplace_penalty(
+    db: Session,
+    *,
+    evaluation: OrderSlaEvaluation,
+    consequence: OrderSlaConsequence,
+    amount: Decimal,
+    request_ctx: RequestContext | None,
+) -> None:
+    order = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == evaluation.order_id).one_or_none()
+    if not order:
+        return
+    settlement_service = MarketplaceSettlementService(db, request_ctx=request_ctx)
+    period = None
+    if order.completed_at:
+        period = order.completed_at.strftime("%Y-%m")
+    elif order.created_at:
+        period = order.created_at.strftime("%Y-%m")
+    else:
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
+    adjustment = settlement_service.apply_adjustment(
+        partner_id=str(order.partner_id),
+        order_id=str(order.id),
+        period=period,
+        adjustment_type=MarketplaceAdjustmentType.PENALTY,
+        amount=amount,
+        reason_code=f"SLA_BREACH_{evaluation.breach_reason or 'UNKNOWN'}",
+        meta={"evaluation_id": str(evaluation.id), "consequence_id": str(consequence.id)},
+    )
+    settlement_service.update_penalty_for_order(order_id=str(order.id), penalty_amount=amount)
+    AuditService(db).audit(
+        event_type="MARKETPLACE_SLA_PENALTY_APPLIED",
+        entity_type="marketplace_adjustment",
+        entity_id=str(adjustment.id),
+        action="MARKETPLACE_SLA_PENALTY_APPLIED",
+        after={
+            "order_id": str(order.id),
+            "partner_id": str(order.partner_id),
+            "amount": str(amount),
+            "currency": order.currency,
+        },
+        request_ctx=request_ctx,
+    )
+    _maybe_create_credit_note(
+        db,
+        order=order,
+        amount=amount,
+        currency=order.currency or consequence.currency,
+        evaluation=evaluation,
+        request_ctx=request_ctx,
+    )
+
+
+def _maybe_create_credit_note(
+    db: Session,
+    *,
+    order: MarketplaceOrder,
+    amount: Decimal,
+    currency: str | None,
+    evaluation: OrderSlaEvaluation,
+    request_ctx: RequestContext | None,
+) -> None:
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.client_id == str(order.client_id))
+        .filter(Invoice.currency == (currency or "RUB"))
+        .filter(Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID]))
+        .order_by(Invoice.period_to.desc())
+        .first()
+    )
+    if not invoice:
+        return
+    idempotency_key = normalize_key(
+        f"sla_credit:{order.id}:{evaluation.id}:{invoice.id}",
+        prefix="credit_note:",
+    )
+    existing = db.query(CreditNote).filter(CreditNote.idempotency_key == idempotency_key).one_or_none()
+    if existing:
+        return
+    credit_note = CreditNote(
+        id=new_uuid_str(),
+        invoice_id=str(invoice.id),
+        amount=int(amount),
+        currency=currency or invoice.currency,
+        reason="sla_penalty",
+        idempotency_key=idempotency_key,
+        status=CreditNoteStatus.POSTED,
+    )
+    db.add(credit_note)
+    AuditService(db).audit(
+        event_type="BILLING_CREDIT_NOTE_CREATED",
+        entity_type="credit_note",
+        entity_id=str(credit_note.id),
+        action="BILLING_CREDIT_NOTE_CREATED",
+        after={
+            "order_id": str(order.id),
+            "invoice_id": str(invoice.id),
+            "amount": str(amount),
+            "currency": currency or invoice.currency,
+            "reason": "sla_penalty",
+        },
+        request_ctx=request_ctx,
+    )
 
 
 __all__ = ["OrderSlaConsequenceResult", "apply_sla_consequences"]

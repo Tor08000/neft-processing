@@ -22,8 +22,14 @@ Client reviews operations and obtains explain/reason details for decisions.
 
 ## DB Touchpoints
 - `operations` — operation records.
+- `fuel_transactions` — canonical fleet operations (provider batch + content hash).
+- `fuel_provider_batches` — batch ingest status and idempotency keys.
 - `decision_memory` — decision snapshots used by explain.
 - `case_events` — `TRANSACTION_INGESTED` events from ingestion.
+
+## Fleet-specific explain
+- Fleet transactions map provider payloads to `fuel_transactions` with `provider_tx_id` and `content_hash`.
+- Replay ingest keeps `fuel_transactions` deterministic and uses `provider_batch_key` to preserve batch lineage.
 
 ## Events & Audit
 - `TRANSACTION_INGESTED` — case event emitted during fleet ingestion.

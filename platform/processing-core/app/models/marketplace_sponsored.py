@@ -42,6 +42,24 @@ class SponsoredSpendDirection(str, Enum):
     CREDIT = "CREDIT"
 
 
+class SponsoredPlacementStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ENDED = "ENDED"
+
+
+class SponsoredPlacementType(str, Enum):
+    SEARCH_RESULTS = "SEARCH_RESULTS"
+    HOMEPAGE = "HOMEPAGE"
+    CATEGORY = "CATEGORY"
+
+
+class SponsoredPlacementBidType(str, Enum):
+    CPM = "CPM"
+    CPC = "CPC"
+    FIXED = "FIXED"
+
+
 class SponsoredCampaign(Base):
     __tablename__ = "sponsored_campaigns"
 
@@ -114,12 +132,43 @@ class SponsoredSpendLedger(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class MarketplaceSponsoredPlacement(Base):
+    __tablename__ = "marketplace_sponsored_placements"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    partner_id = Column(GUID(), nullable=False, index=True)
+    product_id = Column(GUID(), nullable=False, index=True)
+    placement_type = Column(
+        ExistingEnum(SponsoredPlacementType, name="marketplace_sponsored_placement_type"),
+        nullable=False,
+    )
+    bid_type = Column(
+        ExistingEnum(SponsoredPlacementBidType, name="marketplace_sponsored_bid_type"),
+        nullable=False,
+    )
+    bid_amount = Column(Numeric(18, 4), nullable=False)
+    budget_total = Column(Numeric(18, 4), nullable=False)
+    budget_spent = Column(Numeric(18, 4), nullable=False, server_default="0")
+    effective_from = Column(DateTime(timezone=True), nullable=False)
+    effective_to = Column(DateTime(timezone=True), nullable=True)
+    status = Column(
+        ExistingEnum(SponsoredPlacementStatus, name="marketplace_sponsored_placement_status"),
+        nullable=False,
+        default=SponsoredPlacementStatus.ACTIVE.value,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 __all__ = [
+    "MarketplaceSponsoredPlacement",
     "SponsoredCampaign",
     "SponsoredCampaignObjective",
     "SponsoredCampaignStatus",
     "SponsoredEvent",
     "SponsoredEventType",
+    "SponsoredPlacementBidType",
+    "SponsoredPlacementStatus",
+    "SponsoredPlacementType",
     "SponsoredSpendDirection",
     "SponsoredSpendLedger",
     "SponsoredSpendType",

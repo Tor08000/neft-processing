@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 
 import sqlalchemy as sa
-from sqlalchemy import Column, DateTime, Index, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -26,6 +26,19 @@ class FuelIngestMode(str, Enum):
     BACKFILL = "BACKFILL"
     REPLAY = "REPLAY"
     EDI = "EDI"
+
+
+class FuelProviderBatchStatus(str, Enum):
+    RECEIVED = "RECEIVED"
+    PARSED = "PARSED"
+    APPLIED = "APPLIED"
+    FAILED = "FAILED"
+
+
+class FuelProviderRecordStatus(str, Enum):
+    APPLIED = "APPLIED"
+    DUPLICATE = "DUPLICATE"
+    FAILED = "FAILED"
 
 
 class FuelProviderConnection(Base):
@@ -94,11 +107,75 @@ class FuelProviderRawEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class FuelProviderBatch(Base):
+    __tablename__ = "fuel_provider_batches"
+    __table_args__ = (
+        UniqueConstraint("provider_code", "batch_key", name="uq_fuel_provider_batch_key"),
+        Index("ix_fuel_provider_batches_provider_status", "provider_code", "status"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider_code = Column(String(64), nullable=False, index=True)
+    batch_key = Column(String(128), nullable=False, index=True)
+    source = Column(String(32), nullable=False)
+    status = Column(ExistingEnum(FuelProviderBatchStatus, name="fuel_provider_batch_status"), nullable=False)
+    payload_ref = Column(Text, nullable=True)
+    records_total = Column(Integer, nullable=False, default=0)
+    records_applied = Column(Integer, nullable=False, default=0)
+    records_failed = Column(Integer, nullable=False, default=0)
+    records_duplicate = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    is_offline_batch = Column(Boolean, nullable=False, default=False)
+    offline_window = Column(String(64), nullable=True)
+    offline_profile_snapshot = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class FuelProviderRecord(Base):
+    __tablename__ = "fuel_provider_records"
+    __table_args__ = (
+        UniqueConstraint("provider_code", "provider_tx_id", name="uq_fuel_provider_records_tx"),
+        Index("ix_fuel_provider_records_batch", "batch_id"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    batch_id = Column(GUID(), ForeignKey("fuel_provider_batches.id"), nullable=False, index=True)
+    provider_code = Column(String(64), nullable=False, index=True)
+    provider_tx_id = Column(String(128), nullable=False, index=True)
+    status = Column(ExistingEnum(FuelProviderRecordStatus, name="fuel_provider_record_status"), nullable=False)
+    error = Column(Text, nullable=True)
+    raw_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FuelProviderAuthorizationDecision(Base):
+    __tablename__ = "fuel_provider_authorization_decisions"
+    __table_args__ = (Index("ix_fuel_provider_auth_decisions_provider", "provider_code", "created_at"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider_code = Column(String(64), nullable=False, index=True)
+    provider_tx_id = Column(String(128), nullable=True, index=True)
+    client_id = Column(String(64), nullable=True, index=True)
+    card_id = Column(GUID(), nullable=True, index=True)
+    decision = Column(String(32), nullable=False)
+    reason_code = Column(String(64), nullable=False)
+    auth_code = Column(String(64), nullable=True)
+    offline_profile_id = Column(GUID(), nullable=True)
+    context = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "FuelIngestMode",
     "FuelProviderAuthType",
+    "FuelProviderBatch",
+    "FuelProviderBatchStatus",
+    "FuelProviderAuthorizationDecision",
     "FuelProviderCardMap",
     "FuelProviderConnection",
     "FuelProviderConnectionStatus",
+    "FuelProviderRecord",
+    "FuelProviderRecordStatus",
     "FuelProviderRawEvent",
 ]

@@ -198,6 +198,11 @@ class Settings:
     TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN: int = int(os.getenv("TELEGRAM_MESSAGE_RATE_LIMIT_PER_MIN", "60"))
     TELEGRAM_MAX_RETRY: int = int(os.getenv("TELEGRAM_MAX_RETRY", "10"))
 
+    # EDO / SBIS
+    EDO_PROVIDER: str = os.getenv("EDO_PROVIDER", "SBIS")
+    EDO_E2E_ENABLED: bool = os.getenv("EDO_E2E_ENABLED", "0").lower() in {"1", "true", "yes"}
+    EDO_WEBHOOK_SIGNATURE_HEADER: str = os.getenv("EDO_WEBHOOK_SIGNATURE_HEADER", "x-sbis-signature")
+
     # SMS/Voice notifications (stub providers)
     SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "sms_stub")
     VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "voice_stub")

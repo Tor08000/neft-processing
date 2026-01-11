@@ -26,6 +26,9 @@ from app.services.case_event_redaction import redact_deep
 from app.services.case_events_service import CaseEventActor, emit_case_event
 from app.services.decision_memory.records import record_decision_memory
 from app.services.marketplace_promotion_service import MarketplacePromotionService, MarketplacePromotionServiceError
+from app.services.marketplace_commission_service import MarketplaceCommissionService
+from app.services.marketplace_settlement_service import MarketplaceSettlementService
+from app.services.audit_service import AuditService
 
 
 class MarketplaceOrderServiceError(ValueError):
@@ -272,9 +275,15 @@ class MarketplaceOrderService:
             price_config=product.price_config,
             quantity=quantity,
         )
+        unit_price = price_amount / quantity if quantity else Decimal("0")
         price_snapshot = {
             "price_model": price_model,
             "price_config": product.price_config,
+            "unit_price": str(unit_price),
+            "subtotal": str(price_amount),
+            "vat": "0",
+            "total": str(price_amount),
+            "currency": product.price_config.get("currency", "RUB") if isinstance(product.price_config, dict) else "RUB",
         }
         pricing_snapshot = None
         applied_promotions = None
@@ -307,6 +316,7 @@ class MarketplaceOrderService:
             partner_id=str(product.partner_id),
             product_id=str(product.id),
             quantity=quantity,
+            currency=price_snapshot.get("currency"),
             price_snapshot=price_snapshot,
             price_snapshot_json=pricing_snapshot,
             pricing_version="promo_v1" if pricing_mode == "promo_v1" or coupon_code else None,
@@ -346,6 +356,28 @@ class MarketplaceOrderService:
                 client_id=client_id,
                 partner_id=str(product.partner_id),
             )
+            order.currency = (pricing_snapshot or {}).get("currency") or order.currency
+
+        subtotal = self._to_decimal((order.price_snapshot or {}).get("subtotal") or order.final_price or order.price)
+        commission_service = MarketplaceCommissionService(self.db)
+        commission_snapshot = commission_service.apply_commission_snapshot(
+            order=order,
+            product_category=product.category,
+            subtotal=subtotal,
+        )
+        AuditService(self.db).audit(
+            event_type="MARKETPLACE_COMMISSION_SNAPSHOTTED",
+            entity_type="marketplace_order",
+            entity_id=str(order.id),
+            action="MARKETPLACE_COMMISSION_SNAPSHOTTED",
+            after={
+                "order_id": str(order.id),
+                "commission_type": commission_snapshot.commission_type,
+                "commission_amount": str(commission_snapshot.amount),
+                "rule_id": commission_snapshot.rule_id,
+            },
+            request_ctx=self.request_ctx,
+        )
 
         event = self._emit_order_event(
             order=order,
@@ -582,6 +614,7 @@ class MarketplaceOrderService:
             rationale=summary,
             audit_event_id=str(event.audit_event_id),
         )
+        MarketplaceSettlementService(self.db, request_ctx=self.request_ctx).create_settlement_item_for_order(order=order)
         return order
 
     def fail_order(

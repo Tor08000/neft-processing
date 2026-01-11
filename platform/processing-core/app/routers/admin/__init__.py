@@ -49,6 +49,7 @@ from app.routers.admin import (
     marketplace_order_sla,
     marketplace_sponsored,
     marketplace_moderation,
+    notifications,
     service_bookings,
     audit,
     exports,
@@ -57,6 +58,8 @@ from app.routers.admin import (
     legal,
     pricing,
     entitlements,
+    edo,
+    bi_sync,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -110,11 +113,14 @@ router.include_router(marketplace_sponsored.router)
 router.include_router(service_bookings.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
+router.include_router(notifications.router)
 router.include_router(reconciliation.router)
 router.include_router(bank_stub.router)
 router.include_router(erp_stub.router)
 router.include_router(legal.router)
 router.include_router(pricing.router)
 router.include_router(entitlements.router)
+router.include_router(edo.router)
+router.include_router(bi_sync.router)
 
 __all__ = ["router"]

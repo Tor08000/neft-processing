@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Iterable
@@ -17,6 +18,10 @@ from app.models.marketplace_recommendations import (
     MarketplaceEventType,
     OfferCandidate,
     ProductAttributes,
+)
+from app.models.marketplace_sponsored import (
+    MarketplaceSponsoredPlacement,
+    SponsoredPlacementStatus,
 )
 from app.schemas.marketplace.recommendations import MarketplaceEventCreate, RecommendationReason
 from app.services.marketplace_catalog_service import MarketplaceCatalogService
@@ -65,6 +70,15 @@ class MarketplaceRecommendationService:
         client_id: str,
         limit: int,
     ) -> list[dict]:
+        mode = os.getenv("RECOMMENDER_MODE", "rules").lower()
+        if mode == "ml":
+            ml_items = self._ml_stub_recommendations(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                limit=limit,
+            )
+            if ml_items:
+                return ml_items
         now = datetime.now(timezone.utc)
         query = self.db.query(OfferCandidate).filter(OfferCandidate.client_id == client_id)
         if tenant_id:
@@ -95,6 +109,8 @@ class MarketplaceRecommendationService:
         )
         products_by_id = {str(product.id): product for product in products}
         items: list[dict] = []
+        placements = self._active_placements(now=now)
+        placement_by_product = {str(place.product_id): place for place in placements}
         for candidate in candidates:
             product = products_by_id.get(str(candidate.product_id))
             if not product:
@@ -102,6 +118,13 @@ class MarketplaceRecommendationService:
             price = _price_from_config(product)
             reasons = _normalize_reasons(candidate.reasons)
             badges = ["Рекомендуем"]
+            sponsored = False
+            placement = placement_by_product.get(str(product.id))
+            if placement:
+                sponsored = True
+                reasons.append(RecommendationReason(code="SPONSORED", text="Sponsored"))
+                if "Sponsored" not in badges:
+                    badges.append("Sponsored")
             for reason in reasons:
                 badge = _BADGE_TEXTS.get(reason.code)
                 if badge and badge not in badges:
@@ -116,6 +139,8 @@ class MarketplaceRecommendationService:
                     "final_price": price,
                     "score": Decimal(candidate.base_score or 0),
                     "reasons": reasons,
+                    "reason_codes": [reason.code for reason in reasons],
+                    "is_sponsored": sponsored,
                     "badges": badges,
                     "valid_to": candidate.valid_to,
                 }
@@ -140,11 +165,22 @@ class MarketplaceRecommendationService:
                     "final_price": price,
                     "score": Decimal("0"),
                     "reasons": reasons,
+                    "reason_codes": [reason.code for reason in reasons],
+                    "is_sponsored": False,
                     "badges": ["Рекомендуем"],
                     "valid_to": None,
                 }
             )
         return items
+
+    def _ml_stub_recommendations(
+        self,
+        *,
+        tenant_id: str | None,
+        client_id: str,
+        limit: int,
+    ) -> list[dict]:
+        return []
 
     def list_related_products(self, *, product_id: str, limit: int) -> list[MarketplaceProduct]:
         product = self.db.query(MarketplaceProduct).filter(MarketplaceProduct.id == product_id).one_or_none()
@@ -173,6 +209,19 @@ class MarketplaceRecommendationService:
                 )
             )
         return related_query.order_by(MarketplaceProduct.updated_at.desc().nullslast()).limit(limit).all()
+
+    def _active_placements(self, *, now: datetime) -> list[MarketplaceSponsoredPlacement]:
+        return (
+            self.db.query(MarketplaceSponsoredPlacement)
+            .filter(MarketplaceSponsoredPlacement.status == SponsoredPlacementStatus.ACTIVE)
+            .filter(MarketplaceSponsoredPlacement.effective_from <= now)
+            .filter(
+                (MarketplaceSponsoredPlacement.effective_to.is_(None))
+                | (MarketplaceSponsoredPlacement.effective_to >= now)
+            )
+            .filter(MarketplaceSponsoredPlacement.budget_spent < MarketplaceSponsoredPlacement.budget_total)
+            .all()
+        )
 
 
 def _normalize_reasons(raw_reasons: Iterable | None) -> list[RecommendationReason]:

@@ -102,7 +102,7 @@
 | Legal gate | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
 | Trust gates | YES | `platform/processing-core/app/tests/test_trust_gates.py` |
 | Webhooks | YES | `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` |
-| EDO stub | YES | `platform/integration-hub/neft_integration_hub/tests/test_edo_stub.py` |
+| EDO SBIS | YES | `platform/processing-core/app/tests/integration/test_edo_sbis_e2e.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py` |
 | Logistics | YES | `platform/processing-core/app/tests/test_logistics_eta.py` |
 | Marketplace | YES | `platform/processing-core/app/tests/test_marketplace_orders_v1.py` |
 | Fleet/Fuel | YES | `platform/processing-core/app/tests/test_fleet_ingestion_v1.py` |
@@ -114,7 +114,13 @@
 ## 5) Notes
 
 * LEGAL GATE: implemented.
-* Integrations Hub v1: implemented in core-api (1C export + bank statement import + reconciliation).
+* EDO (SBIS): implemented, e2e runs with `EDO_E2E_ENABLED=1` and `EDO_PROVIDER=SBIS`.
+
+```cmd
+set EDO_E2E_ENABLED=1
+set EDO_PROVIDER=SBIS
+pytest platform/processing-core/app/tests/integration/test_edo_sbis_e2e.py -q
+```
 
 ---
 

@@ -34,9 +34,11 @@ from app.routers.client_service_completion_proofs import (
 )
 from app.routers.client_portal import router as client_portal_router
 from app.routers.legal import router as legal_router
+from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
+from app.routers.internal.fuel_providers import router as internal_fuel_providers_router
 from app.routers.internal.telegram import router as internal_telegram_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
@@ -46,11 +48,13 @@ from app.routers.partner.marketplace_promotions import router as partner_marketp
 from app.routers.partner.marketplace_coupons import router as partner_marketplace_coupons_router
 from app.routers.partner.marketplace_subscriptions import router as partner_marketplace_subscriptions_router
 from app.routers.partner.service_bookings import router as partner_service_bookings_router
+from app.routers.partner.edo import router as partner_edo_router
 from app.routers.kpi import router as kpi_router
 from app.routers.subscriptions_admin import router as subscriptions_admin_router
 from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
+from app.routers.integrations.edo_sbis import router as edo_sbis_router
 from app.services.bootstrap import ensure_default_refs
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
@@ -134,6 +138,11 @@ try:
     from app.api.v1.endpoints.bi import router as bi_router
 except Exception:  # pragma: no cover - в dev может ещё не существовать
     bi_router = None  # type: ignore
+
+try:
+    from app.api.v1.endpoints.bi_dashboards import router as bi_dashboards_router
+except Exception:  # pragma: no cover - в dev может ещё не существовать
+    bi_dashboards_router = None  # type: ignore
 
 try:
     from app.api.v1.endpoints.pricing_intelligence import router as pricing_intelligence_router
@@ -267,6 +276,8 @@ if edo_events_router is not None:
     safe_include_router(app, edo_events_router, prefix="")
 if bi_router is not None:
     safe_include_router(app, bi_router, prefix="")
+if bi_dashboards_router is not None:
+    safe_include_router(app, bi_dashboards_router, prefix="")
 if pricing_intelligence_router is not None:
     safe_include_router(app, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
@@ -298,6 +309,9 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, notifications_router)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, notifications_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, fleet_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, fleet_router, prefix=API_PREFIX_CORE)
@@ -334,6 +348,9 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 safe_include_router(app, partner_service_bookings_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_service_bookings_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_edo_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_edo_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, client_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, client_marketplace_router, prefix=API_PREFIX_CORE)
@@ -352,8 +369,10 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, legal_gate_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, internal_fleet_router)
+safe_include_router(app, internal_fuel_providers_router)
 safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
+safe_include_router(app, edo_sbis_router)
 
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
@@ -373,6 +392,8 @@ if edo_events_router is not None:
     safe_include_router(core_prefixed_router, edo_events_router, prefix="")
 if bi_router is not None:
     safe_include_router(core_prefixed_router, bi_router, prefix="")
+if bi_dashboards_router is not None:
+    safe_include_router(core_prefixed_router, bi_dashboards_router, prefix="")
 if pricing_intelligence_router is not None:
     safe_include_router(core_prefixed_router, pricing_intelligence_router, prefix="")
 if support_requests_router is not None:
@@ -402,8 +423,10 @@ safe_include_router(core_prefixed_router, document_templates_router)
 safe_include_router(core_prefixed_router, legal_gate_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
 safe_include_router(core_prefixed_router, internal_fleet_router)
+safe_include_router(core_prefixed_router, internal_fuel_providers_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
 safe_include_router(core_prefixed_router, commercial_layer_router)
+safe_include_router(core_prefixed_router, partner_edo_router)
 
 
 # -----------------------------------------------------------------------------
@@ -569,6 +592,9 @@ def _bi_metrics() -> list[str]:
     ]
     if not clickhouse_lag_lines:
         clickhouse_lag_lines.append('core_api_bi_clickhouse_lag_seconds{dataset="unset"} 0')
+    sync_duration = bi_metrics.sync_duration_seconds
+    rows_written_total = bi_metrics.rows_written_total
+    query_latency = bi_metrics.query_latency_seconds
 
     return [
         "# HELP core_api_bi_ingest_events_total BI ingest runs by status.",
@@ -592,6 +618,15 @@ def _bi_metrics() -> list[str]:
         "# HELP core_api_bi_clickhouse_lag_seconds BI ClickHouse lag seconds.",
         "# TYPE core_api_bi_clickhouse_lag_seconds gauge",
         *clickhouse_lag_lines,
+        "# HELP core_api_bi_sync_duration_seconds BI sync duration seconds.",
+        "# TYPE core_api_bi_sync_duration_seconds gauge",
+        f"core_api_bi_sync_duration_seconds {sync_duration}",
+        "# HELP core_api_bi_rows_written_total BI rows written total.",
+        "# TYPE core_api_bi_rows_written_total counter",
+        f"core_api_bi_rows_written_total {rows_written_total}",
+        "# HELP core_api_bi_query_latency_seconds BI query latency seconds.",
+        "# TYPE core_api_bi_query_latency_seconds gauge",
+        f"core_api_bi_query_latency_seconds {query_latency}",
     ]
 
 

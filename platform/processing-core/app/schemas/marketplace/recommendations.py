@@ -46,6 +46,8 @@ class RecommendationItem(BaseModel):
     final_price: Decimal | None = None
     score: Decimal
     reasons: list[RecommendationReason] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    is_sponsored: bool = False
     badges: list[str] = Field(default_factory=list)
     valid_to: datetime | None = None
 

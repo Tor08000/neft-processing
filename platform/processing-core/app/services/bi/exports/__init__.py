@@ -7,9 +7,11 @@ from datetime import date, datetime, timezone
 from typing import Callable
 
 from neft_shared.logging_setup import get_logger
+from neft_shared.settings import get_settings
 from sqlalchemy.orm import Session
 
 from app.models.bi import (
+    BiExport,
     BiExportBatch,
     BiExportFormat,
     BiExportKind,
@@ -24,6 +26,7 @@ from .manifest import build_manifest
 from .serializers import render_csv, render_jsonl
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 class BiExportError(Exception):
@@ -93,6 +96,8 @@ def create_export_batch(
     export_format: BiExportFormat,
     created_by: str | None,
 ) -> BiExportBatch:
+    if not settings.BI_CLICKHOUSE_ENABLED:
+        raise BiExportError("bi_disabled")
     if kind not in EXPORTERS:
         raise BiExportError("unsupported_export_kind")
     if export_format == BiExportFormat.PARQUET:
@@ -127,6 +132,8 @@ def create_export_batch(
 
 
 def generate_export(db: Session, export_id: str) -> BiExportBatch:
+    if not settings.BI_CLICKHOUSE_ENABLED:
+        raise BiExportError("bi_disabled")
     export = db.query(BiExportBatch).filter(BiExportBatch.id == export_id).one_or_none()
     if not export:
         raise BiExportError("export_not_found")
@@ -181,6 +188,16 @@ def generate_export(db: Session, export_id: str) -> BiExportBatch:
     export.delivered_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(export)
+
+    export_record = BiExport(
+        tenant_id=export.tenant_id,
+        mart_name=export.kind.value.lower(),
+        period=f"{export.date_from.isoformat()}:{export.date_to.isoformat()}",
+        format=export.format.value,
+        file_ref=export.object_key or "",
+    )
+    db.add(export_record)
+    db.commit()
 
     duration = (datetime.now(timezone.utc) - started_at).total_seconds()
     bi_metrics.mark_export_generated(export.kind.value.lower(), export.format.value, export.status.value, duration)
