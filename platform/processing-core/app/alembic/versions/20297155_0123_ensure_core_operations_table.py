@@ -20,7 +20,6 @@ from app.alembic.utils import (
     create_unique_index_if_not_exists,
     ensure_pg_enum,
     safe_enum,
-    table_exists,
 )
 
 # revision identifiers, used by Alembic.
@@ -93,7 +92,11 @@ def upgrade() -> None:
     bind = op.get_bind()
     _ensure_schema()
 
-    if table_exists(bind, "operations", schema=SCHEMA):
+    exists = bind.execute(
+        sa.text("select to_regclass(:qname)"),
+        {"qname": f"{SCHEMA}.operations"},
+    ).scalar()
+    if exists:
         return
 
     ensure_pg_enum(bind, "operationtype", OPERATION_TYPE_VALUES, schema=SCHEMA)

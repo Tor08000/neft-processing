@@ -58,3 +58,30 @@ def test_alembic_head_creates_core_tables() -> None:
             assert not missing, f"Missing enums after upgrade: {sorted(missing)}"
     finally:
         engine.dispose()
+
+
+def test_alembic_head_creates_processing_core_operations() -> None:
+    database_url = os.getenv("DATABASE_URL", "")
+    assert database_url, "DATABASE_URL must be set for alembic head test"
+
+    schema = "processing_core"
+    _reset_schema(database_url, schema)
+    _run_alembic_upgrade(database_url, schema)
+
+    engine = create_engine(
+        database_url,
+        future=True,
+        connect_args={
+            "options": f"-c search_path={schema}",
+            "prepare_threshold": 0,
+        },
+    )
+    try:
+        with engine.connect() as conn:
+            operations_reg = conn.execute(
+                sa.text("select to_regclass(:reg)"),
+                {"reg": f"{schema}.operations"},
+            ).scalar_one_or_none()
+            assert operations_reg is not None, "operations table is missing after upgrade"
+    finally:
+        engine.dispose()
