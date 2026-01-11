@@ -36,6 +36,7 @@ from app.schemas.closing_documents import (
 )
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.document_chain import compute_ack_hash
+from app.services.entitlements_service import assert_module_enabled
 from app.services.policy import Action, actor_from_token, audit_access_denied, PolicyEngine, ResourceContext
 from app.services.documents_storage import DocumentsStorage
 from app.services.legal_graph import GraphContext, LegalGraphBuilder, LegalGraphWriteFailure, audit_graph_write_failure
@@ -104,6 +105,7 @@ def list_documents(
     offset: int = Query(0, ge=0),
 ) -> ClientDocumentListResponse:
     client_id = _ensure_client_context(token)
+    assert_module_enabled(db, client_id=client_id, module_code="DOCS")
 
     query = db.query(Document).filter(Document.client_id == client_id)
     if date_from:
@@ -192,6 +194,7 @@ def get_document_details(
     events_limit: int = Query(50, ge=1, le=200),
 ) -> ClientDocumentDetails:
     client_id = _ensure_client_context(token)
+    assert_module_enabled(db, client_id=client_id, module_code="DOCS")
 
     document = db.query(Document).filter(Document.id == document_id).one_or_none()
     if document is None:

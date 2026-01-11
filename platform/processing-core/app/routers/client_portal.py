@@ -64,9 +64,11 @@ from app.schemas.client_actions import (
     ReconciliationRequestList,
     ReconciliationRequestOut,
 )
+from app.schemas.crm import CRMClientOnboardingStatus
 from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.document_chain import compute_ack_hash
+from app.services.crm import onboarding
 from app.services.s3_storage import S3Storage
 from app.services.settlement_allocations import list_settlement_summary
 
@@ -151,6 +153,49 @@ def _parse_reconciliation_status_values(
     for value in raw_values:
         parsed.append(_parse_enum_value(value, ReconciliationRequestStatus))
     return list(dict.fromkeys(parsed))
+
+
+@router.get("/onboarding", response_model=CRMClientOnboardingStatus)
+def get_client_onboarding_status(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> CRMClientOnboardingStatus:
+    client_id = _ensure_client_context(token)
+    ctx = request_context_from_request(request, token=token)
+    state, facts = onboarding.recompute(db, client_id=client_id, request_ctx=ctx)
+    return CRMClientOnboardingStatus(
+        state=state.state,
+        state_entered_at=state.state_entered_at,
+        is_blocked=state.is_blocked,
+        block_reason=state.block_reason,
+        evidence=facts.__dict__,
+        steps={},
+        meta=state.meta,
+    )
+
+
+@router.post("/onboarding/actions/{action}", response_model=CRMClientOnboardingStatus)
+def apply_client_onboarding_action(
+    request: Request,
+    action: onboarding.OnboardingAction,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> CRMClientOnboardingStatus:
+    client_id = _ensure_client_context(token)
+    if action not in {onboarding.OnboardingAction.REQUEST_LEGAL, onboarding.OnboardingAction.SIGN_CONTRACT}:
+        raise HTTPException(status_code=403, detail="forbidden")
+    ctx = request_context_from_request(request, token=token)
+    state, facts = onboarding.advance(db, client_id=client_id, action=action, request_ctx=ctx)
+    return CRMClientOnboardingStatus(
+        state=state.state,
+        state_entered_at=state.state_entered_at,
+        is_blocked=state.is_blocked,
+        block_reason=state.block_reason,
+        evidence=facts.__dict__,
+        steps={},
+        meta=state.meta,
+    )
 
 
 def _audit_forbidden_access(

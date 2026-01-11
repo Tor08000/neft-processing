@@ -2358,3 +2358,58 @@ p {
 .progress-hints__icon {
   font-size: 18px;
 }
+
+.legal-section {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.legal-required-list,
+.legal-table {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.legal-required-item,
+.legal-table__row {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-form__row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.legal-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.legal-filters {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.legal-table__actions {
+  display: flex;
+  gap: 0.5rem;
+}

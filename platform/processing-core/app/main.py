@@ -33,6 +33,7 @@ from app.routers.client_service_completion_proofs import (
     router as client_service_completion_proofs_router,
 )
 from app.routers.client_portal import router as client_portal_router
+from app.routers.legal import router as legal_router
 from app.routers.client_vehicles import router as client_vehicles_router
 from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
@@ -284,6 +285,9 @@ if payouts_router is not None:
 safe_include_router(app, admin_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, admin_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, legal_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, legal_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, kpi_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, explain_v2_router, prefix=API_PREFIX_CORE)

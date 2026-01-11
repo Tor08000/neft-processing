@@ -28,6 +28,14 @@ from .commercial_layer import (  # noqa: F401
     UsageCounter,
     UsageMetric,
 )
+from .pricing import (  # noqa: F401
+    PriceSchedule,
+    PriceScheduleStatus,
+    PriceVersion,
+    PriceVersionAudit,
+    PriceVersionItem,
+    PriceVersionStatus,
+)
 from .settlement import Settlement, SettlementStatus  # noqa: F401
 from .payout_order import PayoutOrder, PayoutOrderStatus  # noqa: F401
 from .payout_event import PayoutEvent  # noqa: F401
@@ -214,6 +222,16 @@ from .partner_subscriptions import (  # noqa: F401
     PartnerPlan,
     PartnerSubscription,
     PartnerSubscriptionStatus,
+)
+from .legal_document import (  # noqa: F401
+    LegalDocument,
+    LegalDocumentContentType,
+    LegalDocumentStatus,
+)
+from .legal_acceptance import (  # noqa: F401
+    LegalAcceptance,
+    LegalAcceptanceImmutableError,
+    LegalSubjectType,
 )
 from .marketplace_order_sla import (  # noqa: F401
     MarketplaceOrderContractLink,
@@ -818,4 +836,10 @@ __all__ = [
     "PromotionApplicationImmutableError",
     "PromotionStatus",
     "PromotionType",
+    "LegalDocument",
+    "LegalDocumentContentType",
+    "LegalDocumentStatus",
+    "LegalAcceptance",
+    "LegalAcceptanceImmutableError",
+    "LegalSubjectType",
 ]

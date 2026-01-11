@@ -75,6 +75,7 @@ from app.security.rbac.permissions import Permission
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.audit_service import AuditService, request_context_from_request
+from app.services.entitlements_service import assert_max_cards, assert_module_enabled
 from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_notification
 from neft_shared.settings import get_settings
 
@@ -209,6 +210,8 @@ def create_card(
     db: Session = Depends(get_db),
 ) -> FleetCardOut:
     client_id = _ensure_client_context(principal)
+    assert_module_enabled(db, client_id=client_id, module_code="FLEET")
+    assert_max_cards(db, client_id=client_id, delta=1)
     request_id, trace_id = _request_ids(request)
     card = fleet_service.create_card(
         db,

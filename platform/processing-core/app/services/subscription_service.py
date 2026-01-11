@@ -22,6 +22,7 @@ from app.schemas.subscriptions import (
     SubscriptionPlanModuleBase,
     SubscriptionPlanUpdate,
 )
+from app.services.pricing_versions import get_active_price_version
 
 DEFAULT_TENANT_ID = 1
 FREE_PLAN_CODES = {"FREE_BASE", "FREE"}
@@ -72,6 +73,8 @@ def ensure_free_subscription(db: Session, *, tenant_id: int, client_id: str) -> 
                 "tier": "free",
                 "limits": {"marketplace_discount_percent": 0},
             },
+            SubscriptionModuleCode.DOCS: {"enabled": True, "tier": "basic", "limits": {}},
+            SubscriptionModuleCode.FLEET: {"enabled": True, "tier": "basic", "limits": {}},
             SubscriptionModuleCode.EXPLAIN: {
                 "enabled": True,
                 "tier": "basic",
@@ -101,6 +104,7 @@ def ensure_free_subscription(db: Session, *, tenant_id: int, client_id: str) -> 
                 )
             )
 
+    price_version = get_active_price_version(db)
     subscription = ClientSubscription(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -108,6 +112,7 @@ def ensure_free_subscription(db: Session, *, tenant_id: int, client_id: str) -> 
         status=SubscriptionStatus.FREE,
         start_at=_now(),
         auto_renew=False,
+        current_price_version_id=price_version.id if price_version else None,
     )
     db.add(subscription)
     db.commit()
@@ -148,6 +153,7 @@ def assign_plan_to_client(
 
     status = SubscriptionStatus.FREE if plan.code in FREE_PLAN_CODES else SubscriptionStatus.ACTIVE
 
+    price_version = get_active_price_version(db)
     subscription = ClientSubscription(
         tenant_id=tenant_id,
         client_id=client_id,
@@ -156,6 +162,7 @@ def assign_plan_to_client(
         start_at=now,
         end_at=end_at,
         auto_renew=auto_renew,
+        current_price_version_id=price_version.id if price_version else None,
     )
     db.add(subscription)
     db.commit()

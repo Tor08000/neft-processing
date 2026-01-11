@@ -1,6 +1,7 @@
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useLegalGate } from "../../auth/LegalGateContext";
 import { BrandHeader, BrandSidebar, PageShell } from "../../../../shared/brand/components";
 
 const baseNavItems = [
@@ -11,6 +12,7 @@ const baseNavItems = [
   { to: "/policies", label: "Policies" },
   { to: "/marketplace", label: "Marketplace" },
   { to: "/users", label: "Users" },
+  { to: "/legal", label: "Legal" },
 ];
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {
@@ -29,8 +31,9 @@ export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const { isBlocked } = useLegalGate();
 
-  const navItems = baseNavItems;
+  const navItems = isBlocked ? baseNavItems.filter((item) => item.to === "/legal") : baseNavItems;
 
   const activeItem = navItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),

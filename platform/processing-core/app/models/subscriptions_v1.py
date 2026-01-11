@@ -4,6 +4,7 @@ import uuid
 from enum import Enum
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -18,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import synonym
-from sqlalchemy.types import BigInteger, JSON
+from sqlalchemy.types import JSON
 
 from app.db import Base
 
@@ -44,6 +46,10 @@ class SubscriptionModuleCode(str, Enum):
     ANALYTICS = "ANALYTICS"
     SLA = "SLA"
     BONUSES = "BONUSES"
+    BILLING = "BILLING"
+    DOCS = "DOCS"
+    FLEET = "FLEET"
+    CRM = "CRM"
 
 
 class SubscriptionPlan(Base):
@@ -87,6 +93,8 @@ class ClientSubscription(Base):
     status = Column(SAEnum(SubscriptionStatus, name="subscription_status"), nullable=False, index=True)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=True)
+    billing_anchor_day = Column(Integer, nullable=False, server_default="1")
+    current_price_version_id = Column(String(36), ForeignKey("price_versions.id"), nullable=True)
     billing_account_id = Column(String(64), nullable=True)
     audit_event_id = Column(String(64), nullable=True)
     auto_renew = Column(Boolean, nullable=False, server_default="true")
@@ -106,6 +114,57 @@ class RoleEntitlement(Base):
     plan_id = Column(String(64), ForeignKey("subscription_plans.id"), nullable=False, index=True)
     role_code = Column(String(64), nullable=False)
     entitlements = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SubscriptionPlanLimit(Base):
+    __tablename__ = "subscription_plan_limits"
+    __table_args__ = (UniqueConstraint("plan_id", "limit_code", "period", name="uq_subscription_plan_limit"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id = Column(String(64), ForeignKey("subscription_plans.id"), nullable=False, index=True)
+    limit_code = Column(String(64), nullable=False, index=True)
+    value_int = Column(BigInteger, nullable=True)
+    value_decimal = Column(Numeric(18, 6), nullable=True)
+    value_text = Column(String(128), nullable=True)
+    value_json = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    period = Column(String(16), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SubscriptionEventType(str, Enum):
+    ASSIGNED = "ASSIGNED"
+    UPGRADED = "UPGRADED"
+    DOWNGRADED = "DOWNGRADED"
+    RENEWED = "RENEWED"
+    CANCELLED = "CANCELLED"
+    PRORATED = "PRORATED"
+    PRICE_VERSION_CHANGED = "PRICE_VERSION_CHANGED"
+    PRICE_VERSION_CAPTURED = "PRICE_VERSION_CAPTURED"
+
+
+class SubscriptionEvent(Base):
+    __tablename__ = "subscription_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    event_type = Column(SAEnum(SubscriptionEventType, name="subscription_event_type"), nullable=False)
+    payload = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    actor_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class SubscriptionUsageCounter(Base):
+    __tablename__ = "subscription_usage_counters"
+    __table_args__ = (UniqueConstraint("client_id", "counter_code", "period_key", name="uq_subscription_usage"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(64), nullable=False, index=True)
+    counter_code = Column(String(64), nullable=False, index=True)
+    period_key = Column(String(16), nullable=False, index=True)
+    value = Column(BigInteger, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -208,6 +267,10 @@ __all__ = [
     "SubscriptionPlanModule",
     "ClientSubscription",
     "RoleEntitlement",
+    "SubscriptionPlanLimit",
+    "SubscriptionEvent",
+    "SubscriptionEventType",
+    "SubscriptionUsageCounter",
     "BonusRule",
     "ClientBonusState",
     "Achievement",

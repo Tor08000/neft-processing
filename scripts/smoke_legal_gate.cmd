@@ -1,56 +1,79 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM ==========================================
-REM Smoke: Legal Gate (requires running stack)
-REM Prereqs:
-REM  - docker compose up -d --build
-REM  - core-api + auth-host reachable via gateway
-REM  - admin credentials in .env (ADMIN_EMAIL/ADMIN_PASSWORD)
-REM ==========================================
+set "BASE_URL=http://localhost"
+set "AUTH_URL=%BASE_URL%/api/auth/api/v1/auth"
+set "CORE_ROOT=%BASE_URL%/api/core"
+set "ADMIN_URL=%CORE_ROOT%/api/v1/admin"
 
-set "GATEWAY_URL=http://localhost"
-set "CORE_API_BASE=%GATEWAY_URL%/api/core"
-set "AUTH_API_BASE=%GATEWAY_URL%/api/auth"
-set "ADMIN_TOKEN_FILE=.admin_token"
-set "SUBJECT_TYPE=CLIENT"
-set "SUBJECT_ID=client-1"
-
-call scripts\get_admin_token.cmd
-if errorlevel 1 exit /b 1
+if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin123"
 
 set "TOKEN="
-set /p "TOKEN="<"%ADMIN_TOKEN_FILE%"
-if not defined TOKEN (
-    echo Failed to read admin token from %ADMIN_TOKEN_FILE%.
-    exit /b 1
+set "AUTH_HEADER="
+
+echo [1/6] Login to auth-host...
+curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" > legal_login.json
+for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open('legal_login.json')).get('access_token',''))"`) do set "TOKEN=%%t"
+if "%TOKEN%"=="" (
+  echo [FAIL] No access_token returned.
+  goto :fail
+)
+set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
+
+set "CREATE_BODY={\"code\":\"LEGAL_SMOKE\",\"version\":\"1\",\"title\":\"Legal Smoke\",\"locale\":\"ru\",\"effective_from\":\"2025-01-01T00:00:00Z\",\"content_type\":\"MARKDOWN\",\"content\":\"TBD\"}"
+
+call :post_expect "[2/6] Protected action blocked" "%ADMIN_URL%/legal/documents" "%CREATE_BODY%" "428" || goto :fail
+
+call :check_get "[3/6] Fetch required docs" "%CORE_ROOT%/legal/required" "%AUTH_HEADER%" "200" || goto :fail
+
+for /f "usebackq tokens=*" %%c in (`python -c "import json; data=json.load(open('legal_required.json')); print(' '.join([f\"{d['code']}|{d['required_version']}|{d['locale']}\" for d in data.get('required',[])]))"`) do set "DOCS=%%c"
+if "%DOCS%"=="" (
+  echo [WARN] No required docs found. Seed legal docs before running.
+  goto :fail
 )
 
-echo [Legal Gate] Checking core-api health...
-curl -s -S "%CORE_API_BASE%/health" >nul
-if errorlevel 1 exit /b 1
-
-echo [Legal Gate] Checking protected endpoint (expect LEGAL_REQUIRED)...
-for /f %%A in ('curl -s -o "%TEMP%\\legal_gate_resp.json" -w "%%{http_code}" -H "Authorization: Bearer %TOKEN%" "%CORE_API_BASE%/legal/protected?subject_type=%SUBJECT_TYPE%&subject_id=%SUBJECT_ID%"') do set "STATUS=%%A"
-if not "%STATUS%"=="428" (
-    echo Expected 428, got %STATUS%.
-    exit /b 1
+for %%d in (%DOCS%) do (
+  for /f "tokens=1-3 delims=|" %%a in ("%%d") do (
+    call :post_expect "[4/6] Accept %%a" "%CORE_ROOT%/legal/accept" "{\"code\":\"%%a\",\"version\":\"%%b\",\"locale\":\"%%c\",\"accepted\":true}" "200" || goto :fail
+  )
 )
 
-echo [Legal Gate] Fetching required documents...
-curl -s -S -H "Authorization: Bearer %TOKEN%" "%CORE_API_BASE%/legal/required?subject_type=%SUBJECT_TYPE%&subject_id=%SUBJECT_ID%" >"%TEMP%\\legal_required.json"
-if errorlevel 1 exit /b 1
+call :post_expect "[5/6] Protected action allowed" "%ADMIN_URL%/legal/documents" "%CREATE_BODY%" "200" || goto :fail
 
-echo [Legal Gate] Accepting required documents...
-curl -s -S -X POST -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"subject_type\":\"%SUBJECT_TYPE%\",\"subject_id\":\"%SUBJECT_ID%\",\"accept_all\":true}" "%CORE_API_BASE%/legal/accept" >nul
-if errorlevel 1 exit /b 1
+call :check_get "[6/6] Fetch acceptances" "%ADMIN_URL%/legal/acceptances" "%AUTH_HEADER%" "200" || goto :fail
 
-echo [Legal Gate] Re-checking protected endpoint (expect 200)...
-for /f %%A in ('curl -s -o "%TEMP%\\legal_gate_ok.json" -w "%%{http_code}" -H "Authorization: Bearer %TOKEN%" "%CORE_API_BASE%/legal/protected?subject_type=%SUBJECT_TYPE%&subject_id=%SUBJECT_ID%"') do set "STATUS=%%A"
-if not "%STATUS%"=="200" (
-    echo Expected 200, got %STATUS%.
-    exit /b 1
+echo [SMOKE] Legal gate smoke completed.
+exit /b 0
+
+:check_get
+set "LABEL=%~1"
+set "URL=%~2"
+set "HEADER=%~3"
+set "EXPECTED=%~4"
+set "CODE="
+for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%HEADER%" -o legal_required.json "%URL%"`) do set "CODE=%%c"
+if "%CODE%"=="%EXPECTED%" (
+  echo [OK] %LABEL%
+  exit /b 0
 )
+echo [FAIL] %LABEL% expected %EXPECTED% got %CODE%
+exit /b 1
 
-echo [Legal Gate] OK
-endlocal
+:post_expect
+set "LABEL=%~1"
+set "URL=%~2"
+set "BODY=%~3"
+set "EXPECTED=%~4"
+set "CODE="
+for /f "usebackq tokens=*" %%c in (`curl -s -o NUL -w "%%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "%BODY%" -X POST "%URL%"`) do set "CODE=%%c"
+if "%CODE%"=="%EXPECTED%" (
+  echo [OK] %LABEL%
+  exit /b 0
+)
+echo [FAIL] %LABEL% expected %EXPECTED% got %CODE%
+exit /b 1
+
+:fail
+echo [SMOKE] Failed.
+exit /b 1

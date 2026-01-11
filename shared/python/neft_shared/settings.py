@@ -176,6 +176,16 @@ class Settings:
         "true",
         "yes",
     }
+    LEGAL_GATE_ENABLED: bool = os.getenv("LEGAL_GATE_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    LEGAL_GATE_EXEMPT_ROLES: str = os.getenv("LEGAL_GATE_EXEMPT_ROLES", "")
+    LEGAL_REQUIRED_DOCS: str = os.getenv(
+        "LEGAL_REQUIRED_DOCS",
+        "TERMS,PRIVACY_POLICY,CONSENT_PERSONAL_DATA",
+    )
     BI_CLICKHOUSE_ENABLED: bool = os.getenv("BI_CLICKHOUSE_ENABLED", "0").lower() in {"1", "true", "yes"}
     CLICKHOUSE_URL: str = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123")
     CLICKHOUSE_DB: str = os.getenv("CLICKHOUSE_DB", "default")

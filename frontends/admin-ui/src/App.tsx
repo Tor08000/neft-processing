@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { LegalGateProvider } from "./auth/LegalGateContext";
 import { Layout } from "./components/Layout/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -50,15 +51,17 @@ import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
 import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
 import FleetSpendPage from "./pages/fleet/FleetSpendPage";
 import StubProvidersPage from "./pages/stubs/StubProvidersPage";
+import LegalPage from "./pages/legal/LegalPage";
 
 export function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Navigate to="/users" replace />} />
+      <LegalGateProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Navigate to="/users" replace />} />
             <Route path="/finance" element={<Navigate to="/finance/invoices" replace />} />
             <Route path="/finance/invoices" element={<BillingInvoicesPage />} />
             <Route path="/finance/invoices/:id" element={<BillingInvoiceDetailsPage />} />
@@ -117,11 +120,13 @@ export function App() {
             <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
             <Route path="/fleet/limits" element={<FleetLimitsPage />} />
             <Route path="/fleet/spend" element={<FleetSpendPage />} />
-            <Route path="/stubs" element={<StubProvidersPage />} />
+              <Route path="/stubs" element={<StubProvidersPage />} />
+              <Route path="/legal" element={<LegalPage />} />
+            </Route>
           </Route>
-        </Route>
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </LegalGateProvider>
     </AuthProvider>
   );
 }

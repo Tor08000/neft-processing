@@ -52,6 +52,9 @@ from app.routers.admin import (
     exports,
     bank_stub,
     erp_stub,
+    legal,
+    pricing,
+    entitlements,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -106,5 +109,8 @@ router.include_router(exports.router)
 router.include_router(reconciliation.router)
 router.include_router(bank_stub.router)
 router.include_router(erp_stub.router)
+router.include_router(legal.router)
+router.include_router(pricing.router)
+router.include_router(entitlements.router)
 
 __all__ = ["router"]

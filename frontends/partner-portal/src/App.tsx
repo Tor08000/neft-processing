@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -31,6 +32,7 @@ import { SupportRequestsPage } from "./pages/SupportRequestsPage";
 import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
 import { MarketplaceProfilePage } from "./pages/MarketplaceProfilePage";
 import { MarketplaceProductsPage } from "./pages/MarketplaceProductsPage";
+import { LegalPage } from "./pages/LegalPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -39,47 +41,50 @@ interface AppProps {
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
-            <Route index element={<Navigate to="/products" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/products" element={<MarketplaceProductsPage />} />
-            <Route path="/products/:id" element={<MarketplaceProductsPage />} />
-            <Route path="/bookings" element={<ServicesCatalogPage />} />
-            <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
-            <Route path="/promotions" element={<MarketplaceProfilePage />} />
-            <Route path="/analytics" element={<PriceAnalyticsPage />} />
-            <Route path="/contracts" element={<PartnerContractsPage />} />
-            <Route path="/stations" element={<StationsPage />} />
-            <Route path="/stations/:id" element={<StationDetailsPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
-            <Route path="/prices" element={<PricesPage />} />
-            <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
-            <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
-            <Route path="/payouts" element={<PayoutsPage />} />
-            <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
-            <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/documents/:id" element={<DocumentDetailsPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailsPage />} />
-            <Route path="/refunds" element={<RefundsPage />} />
-            <Route path="/refunds/:id" element={<RefundDetailsPage />} />
-            <Route path="/services" element={<ServicesCatalogPage />} />
-            <Route path="/services/:id" element={<ServiceDetailsPage />} />
-            <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
-            <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
-            <Route path="/integrations" element={<IntegrationsPage />} />
-            <Route path="/support/requests" element={<SupportRequestsPage />} />
-            <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+      <LegalGateProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route index element={<Navigate to="/products" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/products" element={<MarketplaceProductsPage />} />
+              <Route path="/products/:id" element={<MarketplaceProductsPage />} />
+              <Route path="/bookings" element={<ServicesCatalogPage />} />
+              <Route path="/bookings/:id" element={<ServiceDetailsPage />} />
+              <Route path="/promotions" element={<MarketplaceProfilePage />} />
+              <Route path="/analytics" element={<PriceAnalyticsPage />} />
+              <Route path="/contracts" element={<PartnerContractsPage />} />
+              <Route path="/stations" element={<StationsPage />} />
+              <Route path="/stations/:id" element={<StationDetailsPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/transactions/:id" element={<TransactionDetailsPage />} />
+              <Route path="/prices" element={<PricesPage />} />
+              <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
+              <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
+              <Route path="/payouts" element={<PayoutsPage />} />
+              <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
+              <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
+              <Route path="/documents" element={<DocumentsPage />} />
+              <Route path="/documents/:id" element={<DocumentDetailsPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:id" element={<OrderDetailsPage />} />
+              <Route path="/refunds" element={<RefundsPage />} />
+              <Route path="/refunds/:id" element={<RefundDetailsPage />} />
+              <Route path="/services" element={<ServicesCatalogPage />} />
+              <Route path="/services/:id" element={<ServiceDetailsPage />} />
+              <Route path="/marketplace/profile" element={<MarketplaceProfilePage />} />
+              <Route path="/marketplace/products" element={<MarketplaceProductsPage />} />
+              <Route path="/integrations" element={<IntegrationsPage />} />
+              <Route path="/support/requests" element={<SupportRequestsPage />} />
+              <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/legal" element={<LegalPage />} />
+            </Route>
           </Route>
-        </Route>
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </LegalGateProvider>
     </AuthProvider>
   );
 }

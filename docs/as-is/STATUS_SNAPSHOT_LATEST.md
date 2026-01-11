@@ -69,6 +69,7 @@
 | `smoke_billing_v14.cmd` | YES | `scripts/smoke_billing_v14.cmd` |
 | `smoke_finance_negative_scenarios.cmd` | YES | `scripts/smoke_finance_negative_scenarios.cmd` |
 | `smoke_invoice_state_machine.cmd` | YES | `scripts/smoke_invoice_state_machine.cmd` |
+| `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
 | `smoke_local.sh` | YES | `scripts/smoke_local.sh` |
 | `smoke_restart.cmd` | YES | `scripts/smoke_restart.cmd` |
 | `smoke_legal_gate.cmd` | YES | `scripts/smoke_legal_gate.cmd` |
@@ -78,6 +79,7 @@
 | `test_core_full.cmd` | YES | `scripts/test_core_full.cmd` |
 | `test_auth_host.cmd` | YES | `scripts/test_auth_host.cmd` |
 | `verify_all.cmd` | YES | `scripts/verify_all.cmd` |
+| `test_processing_core_docker.cmd` | YES | `scripts/test_processing_core_docker.cmd` |
 
 ---
 
@@ -101,16 +103,28 @@
 | Marketplace | YES | `platform/processing-core/app/tests/test_marketplace_orders_v1.py` |
 | Fleet/Fuel | YES | `platform/processing-core/app/tests/test_fleet_ingestion_v1.py` |
 | Pricing | YES | `platform/processing-core/app/tests/test_pricing_service.py` |
+| Legal | YES | `platform/processing-core/app/tests/test_legal_gate.py` |
 
 ---
 
-## 5) Verification runs (this workspace)
+## 5) Notes
 
-| Check | Command | Result | Evidence |
-|---|---|---|---|
-| Document-service tests (root) | `pytest platform/document-service/app/tests -q` | **PASS** | Completed locally (11 passed). |
-| Document-service tests (service cwd) | `cd platform/document-service && pytest -q` | **PASS** | Completed locally (11 passed). |
-| Processing-core legal gate tests (docker) | `scripts\\test_core_stack.cmd` | **FAIL** | Docker not available in this environment. |
-| Pricing entitlements tests (docker) | `scripts\\test_core_stack.cmd` | **FAIL** | Docker not available in this environment. |
-| Processing-core full tests (docker) | `scripts\\test_core_stack.cmd --full` | **NOT RUN** | Requires docker compose stack. |
-| Smoke legal gate (Windows CMD) | `scripts\\smoke_legal_gate.cmd` | **FAIL** | Docker not available in this environment. |
+* LEGAL GATE: implemented.
+
+---
+
+## 6) Core tests via docker compose run
+
+Command:
+
+```
+scripts\test_processing_core_docker.cmd
+```
+
+All tests:
+
+```
+scripts\test_processing_core_docker.cmd all
+```
+
+Latest run status: PASS
