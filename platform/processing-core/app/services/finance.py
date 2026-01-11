@@ -916,12 +916,12 @@ class FinanceService:
                     if remaining_after_credit <= 0:
                         target_status = InvoiceStatus.PAID
 
-                self._apply_financial_transition(
-                    invoice,
-                    target=target_status,
-                    credit_note_amount=amount,
-                    request_ctx=request_ctx,
-                )
+                    self._apply_financial_transition(
+                        invoice,
+                        target=target_status,
+                        credit_note_amount=amount,
+                        request_ctx=request_ctx,
+                    )
                 self.invariant_checker.check_invoice(invoice, request_ctx=request_ctx, audit=False)
             except (InvalidTransitionError, InvoiceInvariantError):
                 self.db.rollback()
