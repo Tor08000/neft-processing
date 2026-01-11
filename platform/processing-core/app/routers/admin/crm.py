@@ -16,6 +16,12 @@ from app.models.crm import (
     CRMSubscriptionStatus,
     CRMTariffStatus,
 )
+from app.models.subscriptions_v1 import (
+    SubscriptionEvent,
+    SubscriptionEventType,
+    SubscriptionPlan,
+    SubscriptionStatus,
+)
 from app.schemas.admin.money_flow import SubscriptionCFOExplainResponse
 from app.schemas.admin.crm import CRMDecisionContextResponse
 from app.schemas.crm import (
@@ -48,6 +54,9 @@ from app.services.crm.subscription_explain import build_explain
 from app.services.crm.subscription_pricing_engine import price_subscription_v2
 from app.services.crm.subscription_segments import build_segments_v2, record_subscription_change
 from app.services.crm.subscription_usage_collector import collect_usage_by_segments
+from app.services.entitlements_service import assert_module_enabled
+from app.services.pricing_versions import get_active_price_version
+from app.services.subscription_service import assign_plan_to_client, get_client_subscription
 
 def require_control_plane_version(
     x_crm_version: str | None = Header(default=None, alias="X-CRM-Version"),
@@ -103,6 +112,7 @@ def get_decision_context_endpoint(
     tenant_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
 ) -> CRMDecisionContextResponse:
+    assert_module_enabled(db, client_id=client_id, module_code="CRM")
     try:
         payload = decision_context.build_decision_context(db, tenant_id=tenant_id, client_id=client_id)
     except decision_context.DecisionContextNotFound as exc:
@@ -272,7 +282,46 @@ def create_subscription_endpoint(
     payload: CRMSubscriptionCreate,
     db: Session = Depends(get_db),
 ) -> CRMSubscriptionOut:
+    assert_module_enabled(db, client_id=client_id, module_code="CRM")
     subscription = subscriptions.create_subscription(db, client_id=client_id, payload=payload)
+    active_version = get_active_price_version(db)
+    price_version_id = active_version.id if active_version else None
+    plan_code = payload.tariff_plan_id
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.code == plan_code).one_or_none()
+    if plan:
+        existing = get_client_subscription(db, tenant_id=payload.tenant_id, client_id=client_id)
+        if existing:
+            existing.plan_id = plan.id
+            existing.status = SubscriptionStatus.ACTIVE
+            existing.current_price_version_id = price_version_id
+            db.add(existing)
+            db.commit()
+        else:
+            assign_plan_to_client(
+                db,
+                tenant_id=payload.tenant_id,
+                client_id=client_id,
+                plan_id=plan.id,
+                duration_months=None,
+                auto_renew=True,
+            )
+    if price_version_id:
+        db.add(
+            SubscriptionEvent(
+                client_id=client_id,
+                event_type=SubscriptionEventType.PRICE_VERSION_CAPTURED,
+                payload={"plan_code": plan_code, "price_version_id": price_version_id},
+            )
+        )
+        db.commit()
+    events.audit_event(
+        db,
+        event_type="ASSIGN_SUBSCRIPTION",
+        entity_type="crm_subscription",
+        entity_id=str(subscription.id),
+        payload={"plan_code": plan_code, "price_version_id": price_version_id},
+        request_ctx=request_context_from_request(request),
+    )
     return CRMSubscriptionOut.model_validate(subscription)
 
 
