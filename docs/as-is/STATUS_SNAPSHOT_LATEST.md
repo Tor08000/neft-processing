@@ -74,6 +74,7 @@
 | `test_core_api.cmd` | YES | `scripts/test_core_api.cmd` |
 | `test_core_full.cmd` | YES | `scripts/test_core_full.cmd` |
 | `test_auth_host.cmd` | YES | `scripts/test_auth_host.cmd` |
+| `verify_all.cmd` | YES | `scripts/verify_all.cmd` |
 
 ---
 
