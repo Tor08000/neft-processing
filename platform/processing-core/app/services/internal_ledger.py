@@ -117,6 +117,10 @@ class InternalLedgerService:
         posted_at: datetime | None,
         meta: dict[str, object] | None = None,
     ) -> tuple[InternalLedgerTransaction, bool]:
+        if len(idempotency_key) > 128:
+            truncated = idempotency_key.encode("utf-8")
+            digest = hashlib.sha256(truncated).hexdigest()
+            idempotency_key = f"ledger:{digest}"
         existing = (
             self.db.query(InternalLedgerTransaction)
             .filter(InternalLedgerTransaction.idempotency_key == idempotency_key)
