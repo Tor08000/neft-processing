@@ -18,6 +18,21 @@ PY
 )
 echo "[entrypoint] schema_resolved=${DB_SCHEMA}"
 
+python - <<'PY'
+import os
+from sqlalchemy.engine import make_url
+
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    raise SystemExit("[entrypoint] DATABASE_URL is not set")
+try:
+    parsed = make_url(db_url)
+    safe_url = parsed._replace(password="***").render_as_string(hide_password=False)
+except Exception:
+    safe_url = db_url
+print(f"[entrypoint] DATABASE_URL={safe_url}")
+PY
+
 wait_for_postgres() {
     python - <<'PY'
 import os
@@ -155,6 +170,21 @@ with psycopg.connect(dsn, **connect_kwargs) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
         regclasses: dict[str, str | None] = {}
+        cur.execute("select current_setting('search_path')")
+        search_path = cur.fetchone()[0]
+        cur.execute("select to_regclass(%s)", ("processing_core.operations",))
+        processing_core_reg = cur.fetchone()[0]
+        cur.execute("select to_regclass(%s)", ("public.operations",))
+        public_reg = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT table_schema
+            FROM information_schema.tables
+            WHERE table_name = 'operations'
+            ORDER BY table_schema
+            """
+        )
+        operations_schemas = [row[0] for row in cur.fetchall()]
         for table in ("alembic_version_core", "operations"):
             qualified = f"{_quote_schema(resolution.schema)}.{table}"
             cur.execute("select to_regclass(%s)", (qualified,))
@@ -171,7 +201,9 @@ missing = [table for table, reg in regclasses.items() if reg is None]
 if missing:
     print(
         "[entrypoint] required tables missing after migrations: "
-        f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing}",
+        f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing} "
+        f"search_path={search_path} processing_core.operations={processing_core_reg} "
+        f"public.operations={public_reg} operations_schemas={operations_schemas}",
         file=sys.stderr,
         flush=True,
     )
@@ -190,7 +222,9 @@ if unique_versions != {head_revision}:
 
 print(
     "[entrypoint] migration check passed: "
-    f"schema_resolved={resolution.schema} regclass={regclasses} head={head_revision}",
+    f"schema_resolved={resolution.schema} regclass={regclasses} head={head_revision} "
+    f"search_path={search_path} processing_core.operations={processing_core_reg} "
+    f"public.operations={public_reg} operations_schemas={operations_schemas}",
     flush=True,
 )
 PY
@@ -200,11 +234,13 @@ if [ "${NEFT_MODE}" = "test" ]; then
     run_pytest=1
 fi
 if [ "$#" -gt 0 ]; then
-    case "$1" in
-        pytest|py.test)
-            run_pytest=1
-            ;;
-    esac
+    for arg in "$@"; do
+        case "$arg" in
+            pytest|py.test|*pytest*)
+                run_pytest=1
+                ;;
+        esac
+    done
 fi
 
 if [ "$run_pytest" -eq 1 ]; then

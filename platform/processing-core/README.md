@@ -75,3 +75,9 @@ Run focused tests:
 pytest -q platform/processing-core/app/tests/test_billing_periods.py
 pytest -q tests/test_alembic_single_head.py
 ```
+
+Clean integration test run via Docker Compose (from repo root):
+
+```bash
+make itest-clean
+```
