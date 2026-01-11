@@ -170,12 +170,22 @@ with psycopg.connect(dsn, **connect_kwargs) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
         regclasses: dict[str, str | None] = {}
-        cur.execute("select current_setting('search_path')")
-        search_path = cur.fetchone()[0]
+        cur.execute("select current_schema(), current_setting('search_path')")
+        current_schema, search_path = cur.fetchone()
         cur.execute("select to_regclass(%s)", ("processing_core.operations",))
         processing_core_reg = cur.fetchone()[0]
         cur.execute("select to_regclass(%s)", ("public.operations",))
         public_reg = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT n.nspname, c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = 'operations'
+            ORDER BY n.nspname
+            """
+        )
+        pg_class_hits = cur.fetchall()
         cur.execute(
             """
             SELECT table_schema
@@ -202,8 +212,9 @@ if missing:
     print(
         "[entrypoint] required tables missing after migrations: "
         f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing} "
-        f"search_path={search_path} processing_core.operations={processing_core_reg} "
-        f"public.operations={public_reg} operations_schemas={operations_schemas}",
+        f"current_schema={current_schema} search_path={search_path} "
+        f"processing_core.operations={processing_core_reg} public.operations={public_reg} "
+        f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
         file=sys.stderr,
         flush=True,
     )
@@ -214,7 +225,9 @@ if unique_versions != {head_revision}:
     print(
         "[entrypoint] alembic_version_core mismatch: "
         f"schema_resolved={resolution.schema} regclass={regclasses} "
-        f"expected={{{head_revision}}} found={sorted(unique_versions)}",
+        f"expected={{{head_revision}}} found={sorted(unique_versions)} "
+        f"current_schema={current_schema} search_path={search_path} "
+        f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
         file=sys.stderr,
         flush=True,
     )
@@ -223,14 +236,18 @@ if unique_versions != {head_revision}:
 print(
     "[entrypoint] migration check passed: "
     f"schema_resolved={resolution.schema} regclass={regclasses} head={head_revision} "
-    f"search_path={search_path} processing_core.operations={processing_core_reg} "
-    f"public.operations={public_reg} operations_schemas={operations_schemas}",
+    f"current_schema={current_schema} search_path={search_path} "
+    f"processing_core.operations={processing_core_reg} public.operations={public_reg} "
+    f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
     flush=True,
 )
 PY
 
 run_pytest=0
 if [ "${NEFT_MODE}" = "test" ]; then
+    run_pytest=1
+fi
+if [ "${NEFT_TEST_MODE}" = "1" ]; then
     run_pytest=1
 fi
 if [ "$#" -gt 0 ]; then

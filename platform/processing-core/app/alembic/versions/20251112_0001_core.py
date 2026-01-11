@@ -87,7 +87,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("merchant_id", sa.String(length=64), nullable=False),
         sa.Column("terminal_id", sa.String(length=64), nullable=False),
-        sa.Column("client_id", uuid_type, nullable=False),
+        sa.Column("client_id", sa.String(length=64), nullable=False),
         sa.Column("card_id", sa.String(length=64), nullable=False),
         sa.Column("accounts", json_type, nullable=True),
         sa.Column("posting_result", json_type, nullable=True),
