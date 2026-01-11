@@ -337,30 +337,59 @@
 - Observability stack configs. (`infra/*`, `docker-compose.yml`)
 
 ### FINAL VISION (UPAS / итоговая цель)
-> Основано на перечне доменов из ТЗ (без предположений о реализации).
-- Identity/Auth
-- Processing/Transactions lifecycle
-- Pricing
-- Rules/Limits
-- Billing
-- Clearing/Settlement/Payouts
-- Reconciliation
-- Documents/PDF/EDO
-- Audit/Trust layer
-- Integrations/Webhooks/Integration Hub
-- Fleet/Fuel
-- Marketplace
-- CRM
-- Logistics
-- Analytics/BI
-- Notifications
-- Frontends (Admin/Client/Partner)
-- Observability stack
+> Эталон — файл `docs/as-is/FINAL_VISION_BASELINE.md` (вставлен дословно).
 
 ### GAP (разница между FINAL VISION и DONE)
 - Все runtime-проверки, включая health/metrics, миграции, smoke/e2e — **NOT VERIFIED**.
 - Реальные внешние интеграции (EDO провайдеры, топливные провайдеры, ML-recommendations) — **NOT IMPLEMENTED** (stub).
 - ClickHouse BI runtime — **NOT VERIFIED**.
+
+---
+
+## 4.10 GAP Map vs FINAL VISION BASELINE (домены)
+
+> Формат: **AS-IS покрытие** → **GAP** → **Proof**. Статус отражает фактическую реализацию в коде.
+
+| Domain (Baseline) | Status | AS-IS coverage (facts) | GAP vs baseline | Proof (paths/tests/migrations) |
+|---|---|---|---|---|
+| Identity & Access | **PARTIAL** | JWT auth-host, RBAC guard, tenant context | Нет явных ABAC правил и service identities | `platform/auth-host/app/api/routes/auth.py`, `platform/processing-core/app/security/rbac/*`, `platform/processing-core/app/routers/*` (tenant checks) |
+| Processing & Transactions lifecycle | **READY (CODED)** | Authorize/capture/refund/reversal маршруты и сервисы | Явная idempotency хранится/проверяется — не зафиксирована | `platform/processing-core/app/api/routes/transactions.py`, `platform/processing-core/app/services/transactions.py`, tests `platform/processing-core/app/tests/test_transactions_*` |
+| Pricing | **PARTIAL** | Price lookup endpoint, базовые модели | Нет версионности/расписаний/прайсинговых workflow | `platform/processing-core/app/api/routes/prices.py`, tests `platform/processing-core/app/tests/test_pricing_service.py` |
+| Rules/Limits | **PARTIAL** | Limits/rules endpoints + сервисы | Не видно DSL/sandbox/priority layers | `platform/processing-core/app/api/routes/limits.py`, `platform/processing-core/app/api/routes/rules.py`, `platform/processing-core/app/services/limits.py` |
+| Billing | **READY (CODED)** | Инвойсы/платежи/рефанды, state machine | Runtime verification | `platform/processing-core/app/models/billing_flow.py`, `platform/processing-core/app/services/billing_service.py`, tests `platform/processing-core/app/tests/test_billing_*` |
+| Clearing/Settlement/Payouts | **READY (CODED)** | Settlement + payout models/services | Runtime verification | `platform/processing-core/app/models/settlement.py`, `platform/processing-core/app/services/settlement_service.py`, tests `platform/processing-core/app/tests/test_settlement_*` |
+| Reconciliation | **READY (CODED)** | Reconciliation runs + discrepancies + сервисы | Runtime verification | `platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/services/reconciliation_service.py`, tests `platform/processing-core/app/tests/test_reconciliation_v1.py` |
+| Documents | **READY (CODED)** | Document registry/closing packages, PDF render/sign/verify | Runtime verification | `platform/processing-core/app/models/documents.py`, `platform/processing-core/app/routers/admin/closing_packages.py`, `platform/document-service/app/main.py`, tests `platform/processing-core/app/tests/test_closing_documents_e2e.py` |
+| EDO (реальная интеграция) | **PARTIAL** | EDO stub, dispatch endpoints | Реальные провайдеры отсутствуют | `platform/integration-hub/neft_integration_hub/services/edo_stub.py`, tests `platform/integration-hub/neft_integration_hub/tests/test_edo_stub.py` |
+| Audit / Trust layer | **PARTIAL** | Audit log + signing + hash-chain | Retention/KMS интеграции не подтверждены | `platform/processing-core/app/models/audit_log.py`, `platform/processing-core/app/services/audit_signing.py`, tests `platform/processing-core/app/tests/test_audit_*` |
+| Integrations hub | **READY (CODED)** | Webhooks intake/delivery/retry/replay + SLA logic | Runtime verification | `platform/integration-hub/neft_integration_hub/services/webhooks.py`, tests `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` |
+| Fleet/Fuel | **PARTIAL** | Cards, ingestion, anomalies, policies | Реальные провайдеры топлива — stub | `platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/services/fleet_service.py`, `platform/processing-core/app/integrations/fuel/providers/stub_provider.py` |
+| Marketplace | **PARTIAL** | Catalog/orders/SLA/promotions/sponsored routes | Recommendations/ML external отсутствуют | `platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/routers/client_marketplace*.py`, tests `platform/processing-core/app/tests/test_marketplace_*` |
+| Logistics | **READY (CODED)** | ETA/deviation/explain endpoints + core models | Runtime verification | `platform/logistics-service/neft_logistics_service/main.py`, `platform/processing-core/app/models/logistics.py`, tests `platform/processing-core/app/tests/test_logistics_*` |
+| CRM | **PARTIAL** | CRM models + stub service | Реальные CRM интеграции отсутствуют | `platform/processing-core/app/models/crm.py`, `platform/crm-service/app/main.py`, tests `platform/processing-core/app/tests/test_crm_*` |
+| Analytics/BI | **PARTIAL** | Exports + BI models + optional ClickHouse | ClickHouse runtime не подтверждён | `platform/processing-core/app/models/bi.py`, `platform/processing-core/app/services/bi/metrics.py`, tests `platform/processing-core/app/tests/test_bi_exports_v1_1.py`, `docker-compose.yml` |
+| Notifications | **PARTIAL** | Outbox/dispatcher (email/telegram/webpush stubs) | Реальные провайдеры не подтверждены | `platform/processing-core/app/services/fleet_notification_dispatcher.py`, tests `platform/processing-core/app/tests/test_fleet_notifications_*` |
+| Frontends: Admin/Client/Partner | **READY (CODED)** | Routes + API clients wired | Runtime/UI verification | `frontends/admin-ui/src/App.tsx`, `frontends/client-portal/src/App.tsx`, `frontends/partner-portal/src/App.tsx` |
+| Observability | **READY (CODED)** | Prometheus/Grafana/Jaeger/Loki/OTel configs | Runtime verification | `infra/prometheus.yml`, `infra/grafana/`, `infra/loki/`, `infra/promtail/`, `docker-compose.yml` |
+
+---
+
+## 4.11 GAP Map vs FINAL VISION BASELINE (сквозные сценарии)
+
+| Scenario (Baseline) | Status | AS-IS coverage (facts) | GAP / blockers | Proof (paths/tests) |
+|---|---|---|---|---|
+| Onboarding: клиент → роли → подписки/лимиты → карты → первые операции | **PARTIAL** | RBAC guards, subscriptions, limits, cards, transactions routes | Нет явного e2e сценария, нужна склейка фронт/бэка | `platform/processing-core/app/routers/subscriptions_v1.py`, `platform/processing-core/app/api/routes/limits.py`, `platform/processing-core/app/api/routes/transactions.py`, `platform/processing-core/app/api/routes/cards.py` |
+| Partner onboarding: партнёр/АЗС → цены → POS/терминалы → операции | **PARTIAL** | Partner marketplace/pricing routes, terminals, transactions | Не зафиксирован end-to-end flow в коде | `platform/processing-core/app/routers/partner/marketplace_catalog.py`, `platform/processing-core/app/api/routes/terminals.py`, `platform/processing-core/app/api/routes/transactions.py` |
+| Processing E2E: authorize → capture → reverse/refund + логирование + аудит | **READY (CODED)** | Transactions lifecycle + audit log | Runtime verification | `platform/processing-core/app/api/routes/transactions.py`, `platform/processing-core/app/services/transactions.py`, `platform/processing-core/app/models/audit_log.py` |
+| Billing cycle: период → инвойсы/акты → PDF → хранение → выдача клиенту | **READY (CODED)** | Invoice state machine + PDF render/sign + storage models | Runtime verification | `platform/processing-core/app/models/invoice.py`, `platform/document-service/app/main.py`, tests `platform/processing-core/app/tests/test_billing_invoice_pdf_e2e.py` |
+| Settlement: расчёт → payout batches → exports | **READY (CODED)** | Settlement + payouts services | Runtime verification | `platform/processing-core/app/services/settlement_service.py`, tests `platform/processing-core/app/tests/test_payout_exports_e2e.py` |
+| Reconciliation: импорт/сверка → discrepancies → отчёт | **READY (CODED)** | Reconciliation runs + discrepancies | Runtime verification | `platform/processing-core/app/services/reconciliation_service.py`, tests `platform/processing-core/app/tests/test_reconciliation_v1.py` |
+| Documents: генерация/подпись/верификация + связи с периодом/инвойсом | **READY (CODED)** | Document service + closing packages | Runtime verification | `platform/document-service/app/main.py`, `platform/processing-core/app/services/closing_documents.py`, tests `platform/processing-core/app/tests/test_closing_documents_e2e.py` |
+| Webhooks: intake → delivery → retry/replay + SLA/alerts | **READY (CODED)** | Integration hub webhooks pipeline | Runtime verification | `platform/integration-hub/neft_integration_hub/services/webhooks.py`, tests `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` |
+| Fleet: ingest топлива → anomalies → policies → notifications | **PARTIAL** | Ingestion + anomalies + policies + notification outbox | Реальные провайдеры топлива/каналы уведомлений не подтверждены | `platform/processing-core/app/services/fleet_ingestion_service.py`, `platform/processing-core/app/services/fleet_notification_dispatcher.py` |
+| Marketplace: product → order → SLA evaluation → billing coupling | **PARTIAL** | Marketplace products/orders/events + SLA logic | Нет внешнего recommendations; billing coupling не подтверждён | `platform/processing-core/app/services/marketplace_order_service.py`, `platform/processing-core/app/models/marketplace_order_events.py` |
+| Logistics: trip → tracking events → deviation → explain | **READY (CODED)** | Logistics service + tracking models | Runtime verification | `platform/logistics-service/neft_logistics_service/main.py`, `platform/processing-core/app/models/logistics.py` |
+| BI: отчёты/экспорт, витрины, (опционально ClickHouse) | **PARTIAL** | BI exports + ClickHouse compose option | ClickHouse runtime не подтверждён | `platform/processing-core/app/services/bi/metrics.py`, `docker-compose.yml` |
 
 ---
 
