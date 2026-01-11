@@ -99,8 +99,12 @@ def _create_invoice(
     due_date: date | None = None,
     currency: str = "RUB",
 ) -> Invoice:
-    start_at = datetime.combine(date.today(), datetime.min.time(), tzinfo=timezone.utc)
-    end_at = datetime.combine(date.today(), datetime.max.time(), tzinfo=timezone.utc)
+    unique_offset = uuid4().int % 10_000_000
+    start_at = datetime.now(timezone.utc) + timedelta(
+        seconds=unique_offset // 1_000_000,
+        microseconds=unique_offset % 1_000_000,
+    )
+    end_at = start_at + timedelta(hours=1)
     period = BillingPeriod(
         period_type=BillingPeriodType.ADHOC,
         start_at=start_at,
@@ -110,6 +114,17 @@ def _create_invoice(
     )
     db_session.add(period)
     db_session.flush()
+    existing_invoice = (
+        db_session.query(Invoice)
+        .filter(Invoice.client_id == "client-1")
+        .filter(Invoice.billing_period_id == period.id)
+        .filter(Invoice.currency == currency)
+        .one_or_none()
+    )
+    assert existing_invoice is None, (
+        "Invoice scope already exists for client_id=client-1, "
+        f"billing_period_id={period.id}, currency={currency}"
+    )
     amount_due = total - amount_paid - credited_amount + amount_refunded
     now = datetime.now(timezone.utc)
     invoice = Invoice(
@@ -342,7 +357,7 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
     db_session.add(obligation)
     db_session.commit()
 
-    order_id = str(uuid4())
+    order_id = "order-" + "x" * 58
     order = MarketplaceOrder(
         id=order_id,
         client_id=client_id,
@@ -419,6 +434,13 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
         .filter(InternalLedgerTransaction.external_ref_id == str(consequence.id))
         .one()
     )
+    raw_idempotency_key = (
+        f"order_sla:order:{evaluation.order_id}:obligation:{evaluation.obligation_id}"
+        f":period:{evaluation.period_end.isoformat()}"
+    )
+    assert len(raw_idempotency_key) > 128
+    assert len(sla_tx.idempotency_key) <= 128
+    assert sla_tx.idempotency_key != raw_idempotency_key
     assert _ledger_balanced(db_session, str(sla_tx.id))
 
     invoice = _create_invoice(db_session, total=10_000)
