@@ -18,7 +18,8 @@ If any invariant fails, the system raises a domain error and emits
 | `payment.amount <= invoice.amount_due` | Payment apply | Prevents overpayment. |
 | `payment.invoice_status != CANCELLED` | Payment apply | Prevents applying payments to voided invoices. |
 | `refund.amount <= amount_paid - amount_refunded` | Refund | Prevents over-refunding. |
-| `sum(allocations) <= invoice.total_with_tax` | Settlement allocation | Prevents allocation overflow across periods. |
+| `alloc_net == paid_total - refund_total - credited_total` | Settlement allocation | Ensures settlement allocations match net coverage. |
+| `abs(alloc_net) <= invoice.total_with_tax` | Settlement allocation | Prevents allocation overflow across periods. |
 | `settlement_period.status != LOCKED` (unless override) | Settlement allocation | Prevents changes in closed settlement periods. |
 | `ΣDEBIT == ΣCREDIT` per currency | Ledger posting | Ensures double-entry postings stay balanced. |
 | `ledger_entry.currency == account.currency` | Ledger posting | Prevents currency mismatches in accounts. |
@@ -40,3 +41,8 @@ Every violation emits `FINANCIAL_INVARIANT_VIOLATION` with payload:
   "ledger_transaction_id": "..."
 }
 ```
+
+## Settlement allocation coverage
+
+`alloc_net` is computed as payment allocations minus credit note allocations minus refund allocations.
+`net coverage` is computed as `paid_total - refund_total - credited_total`, where paid totals are derived from invoice payments and refunds/credits are derived from invoice totals. The settlement allocation invariant asserts these stay aligned after each payment, credit note, or refund, and reconciliation is invoked after those operations to backfill missing allocations when needed.

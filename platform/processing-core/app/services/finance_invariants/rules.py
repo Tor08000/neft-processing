@@ -179,21 +179,26 @@ def validate_settlement_period(
     return []
 
 
-def validate_settlement_total(*, total_allocated: int, invoice_total: int) -> list[InvariantViolation]:
+def validate_settlement_total(
+    *,
+    total_allocated: int,
+    net_coverage: int,
+    invoice_total: int,
+) -> list[InvariantViolation]:
     violations: list[InvariantViolation] = []
-    if total_allocated > invoice_total:
+    if total_allocated != net_coverage:
+        violations.append(
+            InvariantViolation(
+                name="settlement.allocations_net_matches_coverage",
+                expected=net_coverage,
+                actual=total_allocated,
+            )
+        )
+    if abs(total_allocated) > invoice_total:
         violations.append(
             InvariantViolation(
                 name="settlement.allocations_total",
                 expected=f"<= {invoice_total}",
-                actual=total_allocated,
-            )
-        )
-    if total_allocated < 0:
-        violations.append(
-            InvariantViolation(
-                name="settlement.allocations_non_negative",
-                expected=">= 0",
                 actual=total_allocated,
             )
         )

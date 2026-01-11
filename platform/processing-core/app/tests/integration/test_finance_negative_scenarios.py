@@ -567,6 +567,15 @@ def test_scn4_refund_after_sla_penalty(db_session) -> None:
         == 2
     )
 
+    db_session.refresh(invoice)
+    alloc_net = total_payments - total_credits - total_refunds
+    net_coverage = invoice.amount_paid - invoice.amount_refunded - invoice.credited_amount
+    assert alloc_net == net_coverage
+    assert invoice.amount_paid >= 0
+    assert invoice.amount_refunded >= 0
+    assert invoice.amount_due >= 0
+    assert invoice.status == InvoiceStatus.PARTIALLY_PAID
+
     assert db_session.query(OrderSlaEvaluation).count() == 1
     assert db_session.query(MarketplaceOrderContractLink).count() == 1
     assert db_session.query(MarketplaceSlaNotificationOutbox).count() >= 1
