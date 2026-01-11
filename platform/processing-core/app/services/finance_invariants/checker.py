@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import os
 from decimal import Decimal
 from typing import Iterable
 from uuid import UUID
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.audit_log import AuditVisibility
 from app.models.billing_period import BillingPeriod
-from app.models.finance import InvoiceSettlementAllocation, SettlementSourceType
+from app.models.finance import CreditNote, InvoicePayment, InvoiceSettlementAllocation, SettlementSourceType
 from app.models.invoice import Invoice
 from app.services.audit_service import AuditService, RequestContext
 from app.services.finance_invariants.errors import FinancialInvariantViolation
@@ -83,6 +84,8 @@ class FinancialInvariantChecker:
 
     def _invoice_snapshot(self, invoice: Invoice) -> dict[str, object]:
         total = int(invoice.total_with_tax or invoice.total_amount or 0)
+        total_amount = int(invoice.total_amount or 0)
+        total_with_tax = int(invoice.total_with_tax or 0)
         paid = int(invoice.amount_paid or 0)
         refunded = int(getattr(invoice, "amount_refunded", 0) or 0)
         credited = int(getattr(invoice, "credited_amount", 0) or 0)
@@ -112,12 +115,87 @@ class FinancialInvariantChecker:
         return {
             "invoice_id": str(invoice.id),
             "billing_period_id": str(invoice.billing_period_id) if invoice.billing_period_id else None,
+            "currency": invoice.currency,
             "total": total,
+            "total_amount": total_amount,
+            "total_with_tax": total_with_tax,
             "paid": paid,
             "refunded": refunded,
             "credited": credited,
             "due": due,
             "allocations": summary,
+        }
+
+    @staticmethod
+    def _is_test_mode() -> bool:
+        return bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("PYTEST_XDIST_WORKER"))
+
+    def _settlement_debug_snapshot(
+        self,
+        *,
+        invoice: Invoice,
+        allocations: list[InvoiceSettlementAllocation],
+        total_payments: int,
+        total_credits: int,
+        total_refunds: int,
+    ) -> dict[str, object]:
+        paid_total = int(
+            self.db.query(func.coalesce(func.sum(InvoicePayment.amount), 0))
+            .filter(InvoicePayment.invoice_id == invoice.id)
+            .scalar()
+            or 0
+        )
+        refund_total = int(getattr(invoice, "amount_refunded", 0) or 0)
+        credited_total = int(getattr(invoice, "credited_amount", 0) or 0)
+        penalty_total = int(
+            self.db.query(func.coalesce(func.sum(CreditNote.amount), 0))
+            .filter(CreditNote.invoice_id == invoice.id)
+            .filter(CreditNote.reason == "sla_penalty")
+            .scalar()
+            or 0
+        )
+        allocation_lines = []
+        for allocation in allocations:
+            allocation_lines.append(
+                {
+                    "id": str(allocation.id),
+                    "invoice_id": str(allocation.invoice_id),
+                    "source_type": allocation.source_type.value if allocation.source_type else None,
+                    "source_id": allocation.source_id,
+                    "amount_allocated": int(allocation.amount or 0),
+                    "amount_released": (
+                        allocation.meta.get("amount_released") if isinstance(allocation.meta, dict) else None
+                    ),
+                    "amount_refunded": (
+                        allocation.meta.get("amount_refunded") if isinstance(allocation.meta, dict) else None
+                    ),
+                    "created_at": allocation.applied_at,
+                }
+            )
+        alloc_total = int(sum(int(allocation.amount or 0) for allocation in allocations))
+        alloc_net = int(total_payments - total_credits - total_refunds)
+        return {
+            "invoice_id": str(invoice.id),
+            "total_amount": int(invoice.total_amount or 0),
+            "amount_paid": int(invoice.amount_paid or 0),
+            "amount_due": int(invoice.amount_due or 0),
+            "amount_refunded": refund_total,
+            "credited_amount": credited_total,
+            "currency": invoice.currency,
+            "allocations": allocation_lines,
+            "allocation_totals": {
+                "alloc_total": alloc_total,
+                "alloc_net": alloc_net,
+                "total_payments": total_payments,
+                "total_credits": total_credits,
+                "total_refunds": total_refunds,
+            },
+            "computed_totals": {
+                "paid_total": paid_total,
+                "refund_total": refund_total,
+                "penalty_total": penalty_total,
+            },
+            "formula": "alloc_net == paid_total - refund_total - credited_total",
         }
 
     def check_invoice(
@@ -294,29 +372,50 @@ class FinancialInvariantChecker:
             total_refunds += int(amount)
 
         total_allocated = total_payments - total_credits - total_refunds
+        net_coverage = (
+            int(invoice.amount_paid or 0)
+            - int(getattr(invoice, "amount_refunded", 0) or 0)
+            - int(getattr(invoice, "credited_amount", 0) or 0)
+        )
         invoice_total = int(invoice.total_with_tax or invoice.total_amount or 0)
         total_violations = rules.validate_settlement_total(
             total_allocated=total_allocated,
+            net_coverage=net_coverage,
             invoice_total=invoice_total,
         )
         if total_violations:
+            allocations = (
+                self.db.query(InvoiceSettlementAllocation)
+                .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+                .all()
+            )
+            context = {
+                **self._invoice_snapshot(invoice),
+                "settlement_period_id": settlement_period_id,
+                "source_type": source_type.value,
+                "source_id": source_id,
+                "allocation_totals": {
+                    "total_payments": total_payments,
+                    "total_credits": total_credits,
+                    "total_refunds": total_refunds,
+                    "allocation_count": allocation_count,
+                    "net_allocated": total_allocated,
+                    "net_coverage": net_coverage,
+                },
+            }
+            if self._is_test_mode():
+                context["debug"] = self._settlement_debug_snapshot(
+                    invoice=invoice,
+                    allocations=allocations,
+                    total_payments=total_payments,
+                    total_credits=total_credits,
+                    total_refunds=total_refunds,
+                )
             violation = self._build_error(
                 entity_type="invoice",
                 entity_id=invoice.id,
                 violations=total_violations,
-                context={
-                    **self._invoice_snapshot(invoice),
-                    "settlement_period_id": settlement_period_id,
-                    "source_type": source_type.value,
-                    "source_id": source_id,
-                    "allocation_totals": {
-                        "total_payments": total_payments,
-                        "total_credits": total_credits,
-                        "total_refunds": total_refunds,
-                        "allocation_count": allocation_count,
-                        "net_allocated": total_allocated,
-                    },
-                },
+                context=context,
             )
             if audit:
                 self.audit_violation(

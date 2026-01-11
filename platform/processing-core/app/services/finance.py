@@ -46,6 +46,7 @@ from app.services.finance_invariants import FinancialInvariantChecker, Financial
 from app.services.money_flow.events import MoneyFlowEventType
 from app.services.money_flow.states import MoneyFlowState, MoneyFlowType
 from app.services.key_normalization import normalize_key, normalize_key_optional
+from app.db.types import new_uuid_str
 
 logger = get_logger(__name__)
 
@@ -322,6 +323,12 @@ class FinanceService:
             applied_at=payment.created_at,
             request_ctx=request_ctx,
         )
+        self.reconcile_invoice_allocations(
+            invoice.id,
+            reason="payment_replay",
+            correlation_id=payment.idempotency_key,
+            request_ctx=request_ctx,
+        )
         return PaymentResult(payment=payment, invoice=invoice, is_replay=True)
 
     def _payment_already_applied(self, *, invoice: Invoice, payment: InvoicePayment) -> bool:
@@ -513,6 +520,125 @@ class FinanceService:
             )
 
         return allocation
+
+    def reconcile_invoice_allocations(
+        self,
+        invoice_id: str,
+        *,
+        reason: str,
+        correlation_id: str | None,
+        request_ctx: RequestContext | None,
+    ) -> None:
+        invoice = self._lock_invoice(invoice_id)
+        allocations = (
+            self.db.query(InvoiceSettlementAllocation)
+            .filter(InvoiceSettlementAllocation.invoice_id == invoice.id)
+            .all()
+        )
+        existing = {(alloc.source_type, alloc.source_id): alloc for alloc in allocations}
+        payments = (
+            self.db.query(InvoicePayment)
+            .filter(InvoicePayment.invoice_id == invoice.id)
+            .all()
+        )
+        for payment in payments:
+            key = (SettlementSourceType.PAYMENT, str(payment.id))
+            if key not in existing:
+                allocation = self._ensure_settlement_allocation(
+                    invoice=invoice,
+                    source_type=SettlementSourceType.PAYMENT,
+                    source_id=str(payment.id),
+                    amount=int(payment.amount),
+                    currency=payment.currency,
+                    applied_at=payment.created_at,
+                    request_ctx=request_ctx,
+                )
+                existing[key] = allocation
+
+        credit_notes = (
+            self.db.query(CreditNote)
+            .filter(CreditNote.invoice_id == invoice.id)
+            .all()
+        )
+        for credit_note in credit_notes:
+            key_credit = (SettlementSourceType.CREDIT_NOTE, str(credit_note.id))
+            key_refund = (SettlementSourceType.REFUND, str(credit_note.id))
+            if key_credit in existing or key_refund in existing:
+                continue
+            source_type = SettlementSourceType.CREDIT_NOTE
+            refund_tx = (
+                self.db.query(InternalLedgerTransaction.id)
+                .filter(InternalLedgerTransaction.external_ref_type == "REFUND")
+                .filter(InternalLedgerTransaction.external_ref_id == str(credit_note.id))
+                .one_or_none()
+            )
+            if refund_tx:
+                source_type = SettlementSourceType.REFUND
+            allocation = self._ensure_settlement_allocation(
+                invoice=invoice,
+                source_type=source_type,
+                source_id=str(credit_note.id),
+                amount=int(credit_note.amount),
+                currency=credit_note.currency,
+                applied_at=credit_note.created_at,
+                request_ctx=request_ctx,
+            )
+            existing[(source_type, str(credit_note.id))] = allocation
+
+        total_payments = sum(
+            alloc.amount for alloc in existing.values() if alloc.source_type == SettlementSourceType.PAYMENT
+        )
+        total_credits = sum(
+            alloc.amount for alloc in existing.values() if alloc.source_type == SettlementSourceType.CREDIT_NOTE
+        )
+        total_refunds = sum(
+            alloc.amount for alloc in existing.values() if alloc.source_type == SettlementSourceType.REFUND
+        )
+        alloc_net = int(total_payments - total_credits - total_refunds)
+        net_coverage = (
+            int(invoice.amount_paid or 0)
+            - int(getattr(invoice, "amount_refunded", 0) or 0)
+            - int(getattr(invoice, "credited_amount", 0) or 0)
+        )
+        if alloc_net == net_coverage:
+            return
+
+        adjustment_amount = abs(net_coverage - alloc_net)
+        adjustment_type = (
+            SettlementSourceType.REFUND if alloc_net > net_coverage else SettlementSourceType.PAYMENT
+        )
+        adjustment_id = new_uuid_str()
+        allocation = self._ensure_settlement_allocation(
+            invoice=invoice,
+            source_type=adjustment_type,
+            source_id=adjustment_id,
+            amount=adjustment_amount,
+            currency=invoice.currency,
+            applied_at=datetime.now(timezone.utc),
+            request_ctx=request_ctx,
+        )
+        allocation.meta = {
+            "reconciliation_reason": reason,
+            "correlation_id": correlation_id,
+            "adjustment": True,
+        }
+        AuditService(self.db).audit(
+            event_type="SETTLEMENT_ALLOCATION_RECONCILED",
+            entity_type="invoice",
+            entity_id=invoice.id,
+            action="SETTLEMENT_ALLOCATIONS_RECONCILED",
+            after={
+                "invoice_id": invoice.id,
+                "adjustment_id": str(adjustment_id),
+                "adjustment_type": adjustment_type.value,
+                "adjustment_amount": adjustment_amount,
+                "alloc_net_before": alloc_net,
+                "net_coverage": net_coverage,
+                "reason": reason,
+                "correlation_id": correlation_id,
+            },
+            request_ctx=request_ctx,
+        )
 
     def _apply_financial_transition(
         self,
@@ -768,6 +894,13 @@ class FinanceService:
                     request_ctx=request_ctx,
                 )
 
+            self.reconcile_invoice_allocations(
+                invoice.id,
+                reason="payment_apply",
+                correlation_id=idempotency_key,
+                request_ctx=request_ctx,
+            )
+
             self.job_service.succeed(
                 job_run,
                 metrics={
@@ -821,6 +954,12 @@ class FinanceService:
                 amount=int(existing.amount),
                 currency=existing.currency,
                 applied_at=existing.created_at,
+                request_ctx=request_ctx,
+            )
+            self.reconcile_invoice_allocations(
+                invoice.id,
+                reason="credit_note_replay",
+                correlation_id=existing.idempotency_key,
                 request_ctx=request_ctx,
             )
             return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
@@ -945,6 +1084,12 @@ class FinanceService:
                 credit_note=credit_note,
                 tenant_id=self._resolve_tenant_id(request_ctx),
             )
+            self.reconcile_invoice_allocations(
+                invoice.id,
+                reason="credit_note_apply",
+                correlation_id=idempotency_key,
+                request_ctx=request_ctx,
+            )
 
             self.job_service.succeed(
                 job_run,
@@ -999,6 +1144,12 @@ class FinanceService:
                     amount=int(existing_by_ref.amount),
                     currency=existing_by_ref.currency,
                     applied_at=existing_by_ref.created_at,
+                    request_ctx=request_ctx,
+                )
+                self.reconcile_invoice_allocations(
+                    invoice.id,
+                    reason="refund_replay",
+                    correlation_id=existing_by_ref.idempotency_key,
                     request_ctx=request_ctx,
                 )
                 return CreditNoteResult(credit_note=existing_by_ref, invoice=invoice, is_replay=True)
@@ -1110,6 +1261,12 @@ class FinanceService:
                             applied_at=existing.created_at,
                             request_ctx=request_ctx,
                         )
+                        self.reconcile_invoice_allocations(
+                            invoice.id,
+                            reason="refund_replay",
+                            correlation_id=existing.idempotency_key,
+                            request_ctx=request_ctx,
+                        )
                         return CreditNoteResult(credit_note=existing, invoice=invoice, is_replay=True)
                 raise
             except (InvalidTransitionError, InvoiceInvariantError):
@@ -1137,6 +1294,12 @@ class FinanceService:
                 invoice=invoice,
                 refund=refund,
                 tenant_id=self._resolve_tenant_id(request_ctx),
+            )
+            self.reconcile_invoice_allocations(
+                invoice.id,
+                reason="refund_apply",
+                correlation_id=idempotency_key,
+                request_ctx=request_ctx,
             )
 
             self.job_service.succeed(
