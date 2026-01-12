@@ -39,8 +39,8 @@ REM ===== Log header =====
 REM ===== Run =====
 call :run_cmd "1. Stack up" "docker compose up -d --build" || goto finalize
 call :run_cmd "2.1 Migrations" "scripts\migrate.cmd" || goto finalize
-call :run_cmd "2.2 Alembic core-api current" "docker compose exec -T core-api sh -lc ""alembic -c app/alembic.ini current""" || goto finalize
-call :run_cmd "2.3 Alembic auth-host current" "docker compose exec -T auth-host sh -lc ""alembic -c alembic.ini current""" || goto finalize
+call :run_cmd "2.2 Alembic core-api current" "docker compose exec -T core-api sh -lc ^"alembic -c app/alembic.ini current^"" || goto finalize
+call :run_cmd "2.3 Alembic auth-host current" "docker compose exec -T auth-host sh -lc ^"alembic -c alembic.ini current^"" || goto finalize
 
 call :check_endpoints "3. Health checks" ^
   "http://localhost/health" ^
