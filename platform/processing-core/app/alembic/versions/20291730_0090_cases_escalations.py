@@ -10,14 +10,14 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     column_exists,
     create_index_if_not_exists,
     ensure_pg_enum,
     index_exists,
     safe_enum,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 
 # revision identifiers, used by Alembic.

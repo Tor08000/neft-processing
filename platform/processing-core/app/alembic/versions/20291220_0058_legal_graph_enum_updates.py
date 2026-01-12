@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.helpers import ensure_pg_enum_value, is_postgres
-from app.db.schema import resolve_db_schema
+from alembic_helpers import ensure_pg_enum_value, is_postgres
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20291220_0058_legal_graph_enum_updates"

@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.helpers import is_postgres
-from app.alembic.utils import SCHEMA
+from alembic_helpers import is_postgres
+from alembic_helpers import SCHEMA
 
 # revision identifiers, used by Alembic.
 revision = "20297160_0124_fix_operations_client_id_type"

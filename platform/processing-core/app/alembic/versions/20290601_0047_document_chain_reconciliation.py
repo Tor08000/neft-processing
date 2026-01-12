@@ -12,14 +12,14 @@ import logging
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     column_exists,
     constraint_exists,
     create_index_if_not_exists,
     is_postgres,
     table_exists,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 
 revision = "20290601_0047_document_chain_reconciliation"

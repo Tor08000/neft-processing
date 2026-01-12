@@ -12,13 +12,13 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     DB_SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,
     is_postgres,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20295000_0111_marketplace_gamification_v1"

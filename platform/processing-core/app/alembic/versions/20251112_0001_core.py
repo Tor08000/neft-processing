@@ -13,8 +13,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.helpers import DB_SCHEMA, create_table_if_not_exists, ensure_pg_enum, safe_enum
-from app.db.schema import resolve_db_schema
+from alembic_helpers import DB_SCHEMA, create_table_if_not_exists, ensure_pg_enum, safe_enum
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251112_0001_core"

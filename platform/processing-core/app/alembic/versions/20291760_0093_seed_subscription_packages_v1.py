@@ -14,8 +14,8 @@ import uuid
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import column_exists, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, table_exists
+from db.schema import resolve_db_schema
 
 
 # revision identifiers, used by Alembic.

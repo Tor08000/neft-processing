@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     DB_SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,

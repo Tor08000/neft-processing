@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import column_exists, constraint_exists, is_postgres, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, constraint_exists, is_postgres, table_exists
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20297130_0119_fix_invoices_reconciliation_request_id_uuid"

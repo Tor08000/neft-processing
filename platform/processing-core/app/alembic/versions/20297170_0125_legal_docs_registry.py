@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,
@@ -21,7 +21,7 @@ from app.alembic.utils import (
     is_postgres,
     safe_enum,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20297170_0125_legal_docs_registry"

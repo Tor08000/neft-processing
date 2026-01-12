@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import create_index_if_not_exists, create_table_if_not_exists, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_index_if_not_exists, create_table_if_not_exists, table_exists
+from db.schema import resolve_db_schema
 
 
 SCHEMA = resolve_db_schema().schema

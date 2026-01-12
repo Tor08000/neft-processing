@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import is_postgres
-from app.alembic.utils import (
+from alembic_helpers import is_postgres
+from alembic_helpers import (
     SCHEMA,
     column_exists,
     create_index_if_not_exists,

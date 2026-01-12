@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import create_index_if_not_exists, create_table_if_not_exists, ensure_pg_enum, ensure_pg_enum_value, safe_enum
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_index_if_not_exists, create_table_if_not_exists, ensure_pg_enum, ensure_pg_enum_value, safe_enum
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20291101_0055_legal_integrations_v2"

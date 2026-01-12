@@ -10,9 +10,9 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import create_index_if_not_exists, create_table_if_not_exists, ensure_pg_enum, safe_enum
-from app.db.types import GUID
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_index_if_not_exists, create_table_if_not_exists, ensure_pg_enum, safe_enum
+from db.types import GUID
+from db.schema import resolve_db_schema
 
 revision = "20290520_0046_risk_scores"
 down_revision = "20290501_0045_document_status_lifecycle"

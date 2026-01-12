@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270620_0025_ledger_entries_operation_id_nullable"

@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import SCHEMA, column_exists, constraint_exists, ensure_pg_enum, is_postgres, table_exists
+from alembic_helpers import SCHEMA, column_exists, constraint_exists, ensure_pg_enum, is_postgres, table_exists
 
 revision = "20291420_0071_subscriptions_v2_segments_and_rules"
 down_revision = "20291510_0070_money_flow_v2"

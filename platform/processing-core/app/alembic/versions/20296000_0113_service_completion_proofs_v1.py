@@ -9,13 +9,13 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     ensure_pg_enum,
     table_exists,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
 

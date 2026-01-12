@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,
@@ -20,7 +20,7 @@ from app.alembic.utils import (
     ensure_pg_enum_value,
     safe_enum,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20291930_0101_settlement_v1"

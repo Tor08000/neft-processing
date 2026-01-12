@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, text
 
-from app.db.schema import quote_schema, resolve_db_schema
+BASE_DIR = Path(__file__).resolve().parents[2]
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from db.schema import quote_schema, resolve_db_schema
 
 config = context.config
 if config.config_file_name is not None:

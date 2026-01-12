@@ -10,8 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import column_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists
+from db.schema import resolve_db_schema
 
 revision = "20290510_0046_accounting_export_erp_ack"
 down_revision = "20290501_0045_document_status_lifecycle"

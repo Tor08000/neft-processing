@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.utils import ensure_pg_enum
+from alembic_helpers import ensure_pg_enum
 
 
 # revision identifiers, used by Alembic.

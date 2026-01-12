@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import create_table_if_not_exists, ensure_pg_enum, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_table_if_not_exists, ensure_pg_enum, table_exists
+from db.schema import resolve_db_schema
 
 
 SCHEMA = resolve_db_schema().schema

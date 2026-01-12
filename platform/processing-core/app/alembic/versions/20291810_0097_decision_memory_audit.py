@@ -10,8 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import column_exists, create_index_if_not_exists, create_table_if_not_exists, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, create_index_if_not_exists, create_table_if_not_exists, table_exists
+from db.schema import resolve_db_schema
 
 
 revision = "20291810_0097_decision_memory_audit"

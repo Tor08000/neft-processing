@@ -9,8 +9,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import column_exists, constraint_exists, is_postgres, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, constraint_exists, is_postgres, table_exists
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20297140_0121_fix_fk_type_mismatches_v1"

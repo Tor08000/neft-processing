@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import SCHEMA, column_exists, is_postgres
+from alembic_helpers import SCHEMA, column_exists, is_postgres
 
 # revision identifiers, used by Alembic.
 revision = "0045_invoice_payments_provider"

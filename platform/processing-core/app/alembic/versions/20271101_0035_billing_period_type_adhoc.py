@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.helpers import ensure_pg_enum_value, is_postgres
-from app.db.schema import resolve_db_schema
+from alembic_helpers import ensure_pg_enum_value, is_postgres
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20271101_0035_billing_period_type_adhoc"

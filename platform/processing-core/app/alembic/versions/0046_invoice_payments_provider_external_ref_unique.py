@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     create_index_if_not_exists,
     create_unique_index_if_not_exists,

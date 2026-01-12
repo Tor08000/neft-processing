@@ -6,7 +6,7 @@ from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 revision = "20261010_0012_client_ids_uuid"
 down_revision = "20260115_0011_operations_indexes"

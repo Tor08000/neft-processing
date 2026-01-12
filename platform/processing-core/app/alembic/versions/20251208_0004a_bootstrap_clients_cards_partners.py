@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import constraint_exists, create_index_if_not_exists, create_table_if_not_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import constraint_exists, create_index_if_not_exists, create_table_if_not_exists
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251208_0004a_bootstrap_clients_cards_partners"

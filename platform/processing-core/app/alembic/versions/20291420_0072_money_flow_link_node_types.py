@@ -12,7 +12,7 @@ import re
 from alembic import op
 from sqlalchemy import text
 
-from app.alembic.utils import SCHEMA, ensure_pg_enum_value, is_postgres
+from alembic_helpers import SCHEMA, ensure_pg_enum_value, is_postgres
 
 revision = "20291420_0072_money_flow_link_node_types"
 down_revision = "20291420_0071_subscriptions_v2_segments_and_rules"

@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import ensure_pg_enum, ensure_pg_enum_value, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import ensure_pg_enum, ensure_pg_enum_value, table_exists
+from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
 

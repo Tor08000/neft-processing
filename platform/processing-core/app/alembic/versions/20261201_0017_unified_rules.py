@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     drop_index_if_exists,
@@ -19,7 +19,7 @@ from app.alembic.utils import (
     safe_enum,
     table_exists,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 revision = "20261201_0017_unified_rules"
 down_revision = "20261125_0016_risk_rule_audit"

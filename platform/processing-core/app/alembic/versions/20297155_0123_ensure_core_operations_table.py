@@ -13,8 +13,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.helpers import is_postgres
-from app.alembic.utils import (
+from alembic_helpers import is_postgres
+from alembic_helpers import (
     SCHEMA,
     create_index_if_not_exists,
     create_unique_index_if_not_exists,

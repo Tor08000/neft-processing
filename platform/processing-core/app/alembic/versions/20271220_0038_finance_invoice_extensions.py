@@ -10,14 +10,14 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     column_exists,
     create_index_if_not_exists,
     ensure_pg_enum_value,
     is_postgres,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 # revision identifiers, used by Alembic.
 revision = "20271220_0038_finance_invoice_extensions"

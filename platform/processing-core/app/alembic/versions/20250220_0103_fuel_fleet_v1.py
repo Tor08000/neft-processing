@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     column_exists,
     create_index_if_not_exists,
     create_table_if_not_exists,
@@ -20,7 +20,7 @@ from app.alembic.utils import (
     is_postgres,
     table_exists,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
 

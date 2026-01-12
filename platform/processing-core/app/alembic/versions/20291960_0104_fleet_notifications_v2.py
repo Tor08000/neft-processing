@@ -8,7 +8,7 @@ Create Date: 2025-02-02 00:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     DB_SCHEMA,
     column_exists,
     create_index_if_not_exists,

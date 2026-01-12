@@ -11,9 +11,9 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.helpers import create_index_if_not_exists, create_table_if_not_exists
-from app.db.types import GUID
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_index_if_not_exists, create_table_if_not_exists
+from db.types import GUID
+from db.schema import resolve_db_schema
 
 revision = "20280420_0045_decision_results"
 down_revision = "20280415_0044_accounting_export_batches"

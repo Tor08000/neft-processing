@@ -11,7 +11,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import create_index_if_not_exists, drop_index_if_exists
+from alembic_helpers import create_index_if_not_exists, drop_index_if_exists
 
 
 # revision identifiers, used by Alembic.

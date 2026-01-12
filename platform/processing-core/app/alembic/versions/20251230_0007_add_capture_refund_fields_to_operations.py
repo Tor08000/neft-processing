@@ -8,7 +8,7 @@ Create Date: 2025-12-30 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251230_0007_add_capture_refund_fields_to_operations"
