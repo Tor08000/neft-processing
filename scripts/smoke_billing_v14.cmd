@@ -13,9 +13,8 @@ set "AUTH_HEADER="
 set "INVOICE_ID="
 set "TRANSITION_INVOICE_ID="
 
-echo [1/16] Login to auth-host...
-curl -s -S -X POST "%AUTH_URL%/login" -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" > login.json
-for /f "usebackq tokens=*" %%t in (`python -c "import json,sys; print(json.load(open('login.json')).get('access_token',''))"`) do set "TOKEN=%%t"
+echo [1/16] Fetch admin token...
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
   echo [FAIL] No access_token returned.
   goto :fail
