@@ -25,8 +25,7 @@ set "OPENAPI_FILE=%TEMP%\\auth_openapi_%RANDOM%.tmp"
 set "TOKEN="
 set "STATUS="
 if defined AUTH_ADMIN_URL (
-    echo %AUTH_ADMIN_URL% | findstr /I "/login" >NUL
-    if not errorlevel 1 (
+    if not "%AUTH_ADMIN_URL:/login=%"=="%AUTH_ADMIN_URL%" (
         set "LOGIN_URL=%AUTH_ADMIN_URL%"
     ) else (
         set "AUTH_BASE_URL=%AUTH_ADMIN_URL%"
@@ -43,6 +42,8 @@ if not defined LOGIN_URL (
     for /f "usebackq delims=" %%U in (`python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=[p for p,m in paths.items() if 'post' in m and p.endswith('/login')]; candidates=sorted(candidates, key=lambda p: (0 if '/api/auth/' in p else 1, len(p))); print(candidates[0] if candidates else '')"`) do set "LOGIN_PATH=%%U"
     if not defined LOGIN_PATH (
         echo [ERROR] Login endpoint not found in OpenAPI spec. 1>&2
+        echo --- OpenAPI preview (first 80 lines) --- 1>&2
+        python -c "from pathlib import Path;lines=Path(r'%OPENAPI_FILE%').read_text(encoding='utf-8',errors='ignore').splitlines();print('\n'.join(lines[:80]))" 1>&2
         exit /b 1
     )
     set "LOGIN_URL=%AUTH_BASE_URL%%LOGIN_PATH%"
@@ -59,7 +60,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-for /f "tokens=2 delims= " %%A in ('findstr /R /C:"^HTTP/" "%HEADER_FILE%"') do set "STATUS=%%A"
+for /f "usebackq delims=" %%A in (`python -c "import re;from pathlib import Path;data=Path(r'%HEADER_FILE%').read_text(encoding='utf-8',errors='ignore');matches=re.findall(r'^HTTP/\\S+\\s+(\\d+)', data, flags=re.M);print(matches[-1] if matches else '')"`) do set "STATUS=%%A"
 if not "%STATUS%"=="200" (
     echo [ERROR] Admin token request failed. 1>&2
     echo URL: %LOGIN_URL% 1>&2
