@@ -124,7 +124,7 @@ export function FleetNotificationPoliciesPage() {
       {
         key: "severity",
         title: t("fleetNotifications.policies.severityMin"),
-        render: (policy) => <span className="badge badge-muted">{policy.severity_min ?? "—"}</span>,
+        render: (policy) => <span className="neft-chip neft-chip-muted">{policy.severity_min ?? "—"}</span>,
       },
       {
         key: "channels",
@@ -132,7 +132,7 @@ export function FleetNotificationPoliciesPage() {
         render: (policy) => (
           <div className="channel-tags">
             {policyChannelsFromIds(policy, channels).map((channel) => (
-              <span key={channel.id} className="badge badge-info">
+              <span key={channel.id} className="neft-chip neft-chip-info">
                 {channel.channel_type === "WEBHOOK"
                   ? t("fleetNotifications.channels.webhook")
                   : channel.channel_type === "EMAIL"
@@ -164,7 +164,7 @@ export function FleetNotificationPoliciesPage() {
         key: "status",
         title: t("fleetNotifications.policies.status"),
         render: (policy) => (
-          <span className={policy.status === "DISABLED" ? "badge badge-muted" : "badge badge-success"}>
+          <span className={policy.status === "DISABLED" ? "neft-chip neft-chip-muted" : "neft-chip neft-chip-ok"}>
             {policy.status === "DISABLED"
               ? t("fleetNotifications.policies.statusDisabled")
               : t("fleetNotifications.policies.statusActive")}

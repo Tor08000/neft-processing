@@ -17,19 +17,19 @@ const severityOrder = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
 const getSeverityBadgeClass = (severity?: string | null) => {
   const normalized = severity?.toUpperCase();
-  if (normalized === "LOW") return "badge badge-muted";
-  if (normalized === "MEDIUM") return "badge badge-info";
-  if (normalized === "HIGH") return "badge badge-warning";
-  if (normalized === "CRITICAL") return "badge badge-error";
-  return "badge badge-muted";
+  if (normalized === "LOW") return "neft-chip neft-chip-muted";
+  if (normalized === "MEDIUM") return "neft-chip neft-chip-info";
+  if (normalized === "HIGH") return "neft-chip neft-chip-warn";
+  if (normalized === "CRITICAL") return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-muted";
 };
 
 const getStatusBadgeClass = (status?: string | null) => {
   const normalized = status?.toUpperCase();
-  if (normalized === "OPEN") return "badge badge-warning";
-  if (normalized === "ACKED") return "badge badge-info";
-  if (normalized === "IGNORED") return "badge badge-muted";
-  return "badge badge-muted";
+  if (normalized === "OPEN") return "neft-chip neft-chip-warn";
+  if (normalized === "ACKED") return "neft-chip neft-chip-info";
+  if (normalized === "IGNORED") return "neft-chip neft-chip-muted";
+  return "neft-chip neft-chip-muted";
 };
 
 const formatRelativeTime = (value?: string | null) => {

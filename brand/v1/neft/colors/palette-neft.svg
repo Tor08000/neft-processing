@@ -1,0 +1,64 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" fill="#F3F6F9"/>
+  <text x="48" y="64" font-family="Inter, Arial, sans-serif" font-size="24" fill="#0B1F2A">NEFT Palette v1.0</text>
+
+  <!-- Core Dark -->
+  <rect x="48" y="96" width="260" height="96" rx="12" fill="#0B1F2A"/>
+  <text x="64" y="136" font-family="Inter, Arial, sans-serif" font-size="16" fill="#E5E7EB">Core Dark</text>
+  <text x="64" y="160" font-family="Inter, Arial, sans-serif" font-size="14" fill="#9CA3AF">#0B1F2A</text>
+
+  <!-- Surface -->
+  <rect x="330" y="96" width="260" height="96" rx="12" fill="#111827"/>
+  <text x="346" y="136" font-family="Inter, Arial, sans-serif" font-size="16" fill="#E5E7EB">Surface</text>
+  <text x="346" y="160" font-family="Inter, Arial, sans-serif" font-size="14" fill="#9CA3AF">#111827</text>
+
+  <!-- Card -->
+  <rect x="612" y="96" width="260" height="96" rx="12" fill="#1F2937"/>
+  <text x="628" y="136" font-family="Inter, Arial, sans-serif" font-size="16" fill="#E5E7EB">Card</text>
+  <text x="628" y="160" font-family="Inter, Arial, sans-serif" font-size="14" fill="#9CA3AF">#1F2937</text>
+
+  <!-- Border -->
+  <rect x="894" y="96" width="260" height="96" rx="12" fill="#2C3E50"/>
+  <text x="910" y="136" font-family="Inter, Arial, sans-serif" font-size="16" fill="#E5E7EB">Border</text>
+  <text x="910" y="160" font-family="Inter, Arial, sans-serif" font-size="14" fill="#9CA3AF">#2C3E50</text>
+
+  <!-- Primary Accent -->
+  <rect x="48" y="224" width="260" height="96" rx="12" fill="#15A1C7"/>
+  <text x="64" y="264" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Primary Accent</text>
+  <text x="64" y="288" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#15A1C7</text>
+
+  <!-- Info -->
+  <rect x="330" y="224" width="260" height="96" rx="12" fill="#3B82F6"/>
+  <text x="346" y="264" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Info</text>
+  <text x="346" y="288" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#3B82F6</text>
+
+  <!-- Success -->
+  <rect x="612" y="224" width="260" height="96" rx="12" fill="#0EE8A8"/>
+  <text x="628" y="264" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Success</text>
+  <text x="628" y="288" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#0EE8A8</text>
+
+  <!-- Warning -->
+  <rect x="894" y="224" width="260" height="96" rx="12" fill="#FFB020"/>
+  <text x="910" y="264" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Warning</text>
+  <text x="910" y="288" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#FFB020</text>
+
+  <!-- Error -->
+  <rect x="48" y="352" width="260" height="96" rx="12" fill="#E5484D"/>
+  <text x="64" y="392" font-family="Inter, Arial, sans-serif" font-size="16" fill="#F3F6F9">Error</text>
+  <text x="64" y="416" font-family="Inter, Arial, sans-serif" font-size="14" fill="#F3F6F9">#E5484D</text>
+
+  <!-- Text Primary -->
+  <rect x="330" y="352" width="260" height="96" rx="12" fill="#E5E7EB"/>
+  <text x="346" y="392" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Text Primary</text>
+  <text x="346" y="416" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#E5E7EB</text>
+
+  <!-- Text Secondary -->
+  <rect x="612" y="352" width="260" height="96" rx="12" fill="#9CA3AF"/>
+  <text x="628" y="392" font-family="Inter, Arial, sans-serif" font-size="16" fill="#0B1F2A">Text Secondary</text>
+  <text x="628" y="416" font-family="Inter, Arial, sans-serif" font-size="14" fill="#0B1F2A">#9CA3AF</text>
+
+  <!-- Text Muted -->
+  <rect x="894" y="352" width="260" height="96" rx="12" fill="#6B7280"/>
+  <text x="910" y="392" font-family="Inter, Arial, sans-serif" font-size="16" fill="#F3F6F9">Text Muted</text>
+  <text x="910" y="416" font-family="Inter, Arial, sans-serif" font-size="14" fill="#F3F6F9">#6B7280</text>
+</svg>

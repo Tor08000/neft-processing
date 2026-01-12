@@ -6,12 +6,13 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
-import "./styles/neft-theme.css";
 import "../../shared/brand/brand.css";
+import { applyTheme, getInitialTheme } from "./lib/theme";
 
 const base = import.meta.env.BASE_URL || "/client/";
 
 registerServiceWorker();
+applyTheme(getInitialTheme());
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

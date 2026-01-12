@@ -64,7 +64,7 @@ export const KpiCard = ({
   const explainUrl = explainKey ? `/explain?kpi_key=${encodeURIComponent(explainKey)}&window_days=${explainWindowDays ?? 7}` : null;
 
   return (
-    <div className="kpi-card">
+    <div className="kpi-card neft-card">
       <div className="kpi-card__header">
         <span className="kpi-card__title">{title}</span>
         {delta !== undefined && delta !== null ? (

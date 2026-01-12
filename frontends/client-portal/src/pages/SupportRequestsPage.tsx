@@ -120,7 +120,7 @@ export function SupportRequestsPage() {
                   </td>
                   <td>{supportSubjectLabel(item.subject_type, item.subject_id)}</td>
                   <td>
-                    <span className={`badge ${supportStatusTone(item.status)}`}>{supportStatusLabel(item.status)}</span>
+                    <span className={supportStatusTone(item.status)}>{supportStatusLabel(item.status)}</span>
                   </td>
                   <td>{formatDateTime(item.updated_at)}</td>
                 </tr>

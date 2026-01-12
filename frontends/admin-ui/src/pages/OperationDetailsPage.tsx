@@ -102,7 +102,7 @@ export const OperationDetailsPage: React.FC = () => {
       <div className="page-header">
         <h1>Operation details</h1>
         {(isLoading || isFetching || isChildrenFetching) && <Loader label="Загружаем операцию" />}
-        {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
+        {error && <span style={{ color: "var(--neft-error)" }}>{error.message}</span>}
         {operation ? (
           <div className="stack-inline">
             <Link className="ghost" to={`/explain?kind=operation&id=${encodeURIComponent(operation.operation_id)}`}>
@@ -120,7 +120,7 @@ export const OperationDetailsPage: React.FC = () => {
 
       {operation && (
         <div className="card-grid" style={{ marginBottom: 16 }}>
-          <div className="card">
+          <div className="neft-card">
             <h3>{operation.operation_id}</h3>
             <p>
               <strong>Type:</strong> {operation.operation_type}
@@ -138,7 +138,7 @@ export const OperationDetailsPage: React.FC = () => {
               <strong>Merchant:</strong> {operation.merchant_id}
             </p>
           </div>
-          <div className="card">
+          <div className="neft-card">
             <h3>Aggregates</h3>
             <p>
               AUTH: <strong>{formatAmount(totals.authAmount)}</strong>
@@ -153,7 +153,7 @@ export const OperationDetailsPage: React.FC = () => {
               Remaining: <strong>{formatAmount(totals.remaining)}</strong>
             </p>
           </div>
-          <div className="card">
+          <div className="neft-card">
             <h3>Risk</h3>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
               <RiskBadge
@@ -172,11 +172,7 @@ export const OperationDetailsPage: React.FC = () => {
                 <span className="label">Причины</span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {riskReasons.map((reason) => (
-                    <span
-                      key={reason}
-                      className="badge"
-                      style={{ background: "#e0f2fe", color: "#075985", padding: "2px 8px" }}
-                    >
+                    <span key={reason} className="neft-chip neft-chip-info">
                       {reason}
                     </span>
                   ))}
@@ -190,9 +186,9 @@ export const OperationDetailsPage: React.FC = () => {
                   {riskRules.map((rule) => {
                     const isId = /^\d+$/.test(String(rule));
                     return (
-                      <li key={rule} style={{ color: "#334155" }}>
+                      <li key={rule} style={{ color: "var(--neft-text-secondary)" }}>
                         {isId ? (
-                          <a href={`/risk/rules/${rule}`} style={{ color: "#2563eb" }}>
+                          <a href={`/risk/rules/${rule}`} style={{ color: "var(--neft-primary)" }}>
                             {rule}
                           </a>
                         ) : (
@@ -207,7 +203,7 @@ export const OperationDetailsPage: React.FC = () => {
             {(aiScore !== null || aiModelVersion) && (
               <div style={{ marginTop: 8 }}>
                 <span className="label">AI</span>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, color: "#334155" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, color: "var(--neft-text-secondary)" }}>
                   {aiScore !== null && (
                     <span>
                       ai_score: <strong>{(aiScore * 100).toFixed(1)}</strong>

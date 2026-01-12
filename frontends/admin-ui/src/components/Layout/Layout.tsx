@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useLegalGate } from "../../auth/LegalGateContext";
 import { BrandHeader, BrandSidebar, PageShell } from "../../../../shared/brand/components";
+import { getInitialTheme, toggleTheme } from "../../lib/theme";
 
 const baseNavItems = [
   { to: "/operations", label: "Ops" },
@@ -33,6 +34,7 @@ export const Layout: React.FC = () => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const { isBlocked } = useLegalGate();
+  const [theme, setTheme] = useState(getInitialTheme());
 
   const navItems = isBlocked ? baseNavItems.filter((item) => item.to === "/legal") : baseNavItems;
 
@@ -48,7 +50,7 @@ export const Layout: React.FC = () => {
   };
 
   return (
-    <div className="brand-shell neft-page">
+    <div className="brand-shell neft-page neft-app">
       <BrandSidebar
         items={navItems.map((item) => ({
           ...item,
@@ -66,6 +68,13 @@ export const Layout: React.FC = () => {
                 <div className="admin-user__email">{user?.email}</div>
                 <div className="admin-user__roles">{user?.roles.join(", ")}</div>
               </div>
+              <button
+                type="button"
+                className="neft-btn neft-btn-outline"
+                onClick={() => setTheme(toggleTheme(theme))}
+              >
+                Theme: {theme}
+              </button>
               <button onClick={handleLogout} className="neft-btn-secondary" type="button">
                 Выход
               </button>

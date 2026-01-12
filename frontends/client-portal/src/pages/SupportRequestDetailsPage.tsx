@@ -77,7 +77,7 @@ export function SupportRequestDetailsPage() {
         <div className="meta-grid">
           <div>
             <div className="label">Статус</div>
-            <span className={`badge ${supportStatusTone(supportRequest.status)}`}>
+            <span className={supportStatusTone(supportRequest.status)}>
               {supportStatusLabel(supportRequest.status)}
             </span>
           </div>

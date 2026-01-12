@@ -6,6 +6,11 @@ const normalizeRole = (role?: string | null) => (role ? role.toLowerCase() : "vi
 
 export function RoleBadge({ role }: RoleBadgeProps) {
   const normalized = normalizeRole(role);
-  const className = normalized === "admin" ? "badge badge-success" : normalized === "manager" ? "badge badge-info" : "badge badge-muted";
+  const className =
+    normalized === "admin"
+      ? "neft-chip neft-chip-ok"
+      : normalized === "manager"
+        ? "neft-chip neft-chip-info"
+        : "neft-chip neft-chip-muted";
   return <span className={className}>{normalized}</span>;
 }

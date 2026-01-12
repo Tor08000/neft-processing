@@ -7,8 +7,17 @@ export type StatusPillProps = {
   children: ReactNode;
 };
 
+const toneMap: Record<StatusTone, string> = {
+  success: "ok",
+  warning: "warn",
+  error: "err",
+  info: "info",
+  neutral: "muted",
+};
+
 export function StatusPill({ tone = "neutral", children }: StatusPillProps) {
-  return <span className={`status-pill status-pill--${tone}`}>{children}</span>;
+  const mapped = toneMap[tone];
+  return <span className={`neft-chip neft-chip-${mapped}`}>{children}</span>;
 }
 
 export default StatusPill;

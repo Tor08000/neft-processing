@@ -27,20 +27,20 @@ const formatTimestamp = (value?: string | null) => {
 const shortId = (value: string) => value.slice(0, 8);
 
 const statusTone = (status: CaseStatus) => {
-  if (status === "RESOLVED") return "badge badge-success";
-  if (status === "CLOSED") return "badge badge-danger";
-  return "badge";
+  if (status === "RESOLVED") return "neft-chip neft-chip-ok";
+  if (status === "CLOSED") return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-muted";
 };
 
 const priorityTone = (priority: CasePriority) => {
-  if (priority === "HIGH" || priority === "CRITICAL") return "badge badge-danger";
-  return "badge";
+  if (priority === "HIGH" || priority === "CRITICAL") return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-muted";
 };
 
 const slaTone = (slaState?: CaseSlaState | null) => {
-  if (slaState === "BREACHED") return "badge badge-danger";
-  if (slaState === "WARNING") return "badge badge-success";
-  return "badge";
+  if (slaState === "BREACHED") return "neft-chip neft-chip-err";
+  if (slaState === "WARNING") return "neft-chip neft-chip-warn";
+  return "neft-chip neft-chip-muted";
 };
 
 const formatRemaining = (dueAt?: string | null) => {
@@ -127,7 +127,7 @@ export function CasesListPage() {
       {
         key: "queue",
         title: "Queue",
-        render: (item: CaseItem) => <span className="badge">{item.queue}</span>,
+        render: (item: CaseItem) => <span className="neft-chip neft-chip-muted">{item.queue}</span>,
       },
       {
         key: "title",
@@ -159,7 +159,7 @@ export function CasesListPage() {
       {
         key: "escalation",
         title: "Escalation",
-        render: (item: CaseItem) => <span className="badge">{`E${item.escalation_level}`}</span>,
+        render: (item: CaseItem) => <span className="neft-chip neft-chip-muted">{`E${item.escalation_level}`}</span>,
       },
       {
         key: "updated",
@@ -190,7 +190,7 @@ export function CasesListPage() {
 
   return (
     <div className="stack">
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700 }}>Support Cases</h1>
@@ -302,7 +302,7 @@ export function CasesListPage() {
         </div>
       </section>
 
-      {error ? <div className="card error-state">{error}</div> : null}
+      {error ? <div className="neft-card error-state">{error}</div> : null}
 
       <Table
         columns={columns}

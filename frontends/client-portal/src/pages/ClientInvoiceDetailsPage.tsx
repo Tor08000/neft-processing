@@ -63,7 +63,7 @@ export function ClientInvoiceDetailsPage() {
         <div className="stats-grid">
           <div className="stat">
             <span className="muted">Статус</span>
-            <strong className={`neft-badge ${getInvoiceStatusTone(invoice.status)}`}>
+            <strong className={`neft-chip neft-chip-${getInvoiceStatusTone(invoice.status)}`}>
               {getInvoiceStatusLabel(invoice.status)}
             </strong>
           </div>

@@ -74,7 +74,7 @@ export const KpiCard = ({
     : null;
 
   return (
-    <div className="kpi-card">
+    <div className="kpi-card neft-card">
       <div className="kpi-card__header">
         <span className="kpi-card__title">{title}</span>
         {delta !== undefined && delta !== null ? (

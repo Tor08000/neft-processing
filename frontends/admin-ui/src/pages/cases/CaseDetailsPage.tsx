@@ -43,9 +43,9 @@ import { computeChain, verifyChain } from "../../audit_chain/chain";
 import type { ChainLink, ChainVerificationResult } from "../../audit_chain/types";
 
 const statusTone = (status: CaseStatus) => {
-  if (status === "CLOSED") return "badge badge-danger";
-  if (status === "IN_PROGRESS") return "badge badge-success";
-  return "badge";
+  if (status === "CLOSED") return "neft-chip neft-chip-err";
+  if (status === "IN_PROGRESS") return "neft-chip neft-chip-ok";
+  return "neft-chip neft-chip-muted";
 };
 
 const formatTimestamp = (value?: string | null) => {
@@ -678,27 +678,27 @@ export function CaseDetailsPage() {
   };
 
   if (!id) {
-    return <div className="card">Case not found</div>;
+    return <div className="neft-card">Case not found</div>;
   }
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <div className="neft-card error-state">Not authorized</div>;
   }
 
   if (notAvailable) {
-    return <div className="card">Not available in this environment</div>;
+    return <div className="neft-card">Not available in this environment</div>;
   }
 
   if (isLoading) {
-    return <div className="card">Loading case...</div>;
+    return <div className="neft-card">Loading case...</div>;
   }
 
   if (error) {
-    return <div className="card error-state">{error}</div>;
+    return <div className="neft-card error-state">{error}</div>;
   }
 
   if (!payload) {
-    return <div className="card">Case not found</div>;
+    return <div className="neft-card">Case not found</div>;
   }
 
   const activeSnapshot = lastSnapshot ?? payload.latest_snapshot;
@@ -721,7 +721,7 @@ export function CaseDetailsPage() {
   return (
     <div className="stack">
       <Toast toast={toast} />
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <div>
             <h2>{resolveTitle(payload.case.id, payload.case.kind, payload.case.title)}</h2>
@@ -743,7 +743,7 @@ export function CaseDetailsPage() {
           </div>
           <div>
             <div className="label">Priority</div>
-            <span className="badge">{payload.case.priority ?? "—"}</span>
+            <span className="neft-chip neft-chip-muted">{payload.case.priority ?? "—"}</span>
           </div>
           <div>
             <div className="label">Created</div>
@@ -784,7 +784,7 @@ export function CaseDetailsPage() {
         </div>
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <h3>Summary</h3>
         <div className="stack" style={{ gap: 12 }}>
           <div>
@@ -804,7 +804,7 @@ export function CaseDetailsPage() {
         </div>
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <h3>Snapshots / Evidence</h3>
         {activeSnapshot ? (
           <div>
@@ -832,7 +832,7 @@ export function CaseDetailsPage() {
         )}
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <h3>Exports</h3>
         </div>
@@ -869,7 +869,7 @@ export function CaseDetailsPage() {
                 return (
                   <tr key={exportItem.id}>
                     <td>
-                      <span className="badge">{exportItem.kind}</span>
+                      <span className="neft-chip neft-chip-muted">{exportItem.kind}</span>
                       {isDeleted ? <span className="pill pill--outline">Deleted</span> : null}
                     </td>
                     <td>{formatTimestamp(exportItem.created_at)}</td>
@@ -910,7 +910,7 @@ export function CaseDetailsPage() {
         )}
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <h3>Timeline</h3>
         </div>

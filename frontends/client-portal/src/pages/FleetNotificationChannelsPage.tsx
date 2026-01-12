@@ -441,7 +441,7 @@ export function FleetNotificationChannelsPage() {
             <div key={channel.id} className="card channel-card">
               <div className="channel-card__header">
                 <div>
-                  <span className="badge badge-info">
+                  <span className="neft-chip neft-chip-info">
                     {channel.channel_type === "WEBHOOK"
                       ? t("fleetNotifications.channels.webhook")
                       : channel.channel_type === "EMAIL"
@@ -454,7 +454,7 @@ export function FleetNotificationChannelsPage() {
                   </span>
                   <div className="channel-card__target">{channel.target ?? t("common.notAvailable")}</div>
                 </div>
-                <span className={channel.status === "DISABLED" ? "badge badge-muted" : "badge badge-success"}>
+                <span className={channel.status === "DISABLED" ? "neft-chip neft-chip-muted" : "neft-chip neft-chip-ok"}>
                   {channel.status === "DISABLED"
                     ? t("fleetNotifications.channels.statusDisabled")
                     : t("fleetNotifications.channels.statusActive")}
@@ -490,10 +490,16 @@ export function FleetNotificationChannelsPage() {
       <div className="card telegram-card">
         <div className="channel-card__header">
           <div>
-            <span className="badge badge-info">{t("fleetNotifications.telegram.title")}</span>
+            <span className="neft-chip neft-chip-info">{t("fleetNotifications.telegram.title")}</span>
             <div className="channel-card__target">{t("fleetNotifications.telegram.subtitle")}</div>
           </div>
-          <span className={telegramBindings.some((binding) => binding.status === "ACTIVE") ? "badge badge-success" : "badge badge-muted"}>
+          <span
+            className={
+              telegramBindings.some((binding) => binding.status === "ACTIVE")
+                ? "neft-chip neft-chip-ok"
+                : "neft-chip neft-chip-muted"
+            }
+          >
             {telegramBindings.some((binding) => binding.status === "ACTIVE")
               ? t("fleetNotifications.telegram.statusActive")
               : t("fleetNotifications.telegram.statusInactive")}
@@ -551,10 +557,10 @@ export function FleetNotificationChannelsPage() {
             <div key={binding.id} className="card channel-card">
               <div className="channel-card__header">
                 <div>
-                  <span className="badge badge-info">{t("fleetNotifications.telegram.chat")}</span>
+                  <span className="neft-chip neft-chip-info">{t("fleetNotifications.telegram.chat")}</span>
                   <div className="channel-card__target">{binding.chat_title ?? t("fleetNotifications.telegram.chatFallback")}</div>
                 </div>
-                <span className={binding.status === "DISABLED" ? "badge badge-muted" : "badge badge-success"}>
+                <span className={binding.status === "DISABLED" ? "neft-chip neft-chip-muted" : "neft-chip neft-chip-ok"}>
                   {binding.status === "DISABLED"
                     ? t("fleetNotifications.telegram.statusDisabled")
                     : t("fleetNotifications.telegram.statusEnabled")}
@@ -589,10 +595,10 @@ export function FleetNotificationChannelsPage() {
       <div className="card push-card">
         <div className="channel-card__header">
           <div>
-            <span className="badge badge-info">{t("fleetNotifications.channels.push")}</span>
+            <span className="neft-chip neft-chip-info">{t("fleetNotifications.channels.push")}</span>
             <div className="channel-card__target">{t("fleetNotifications.push.deviceLabel")}</div>
           </div>
-          <span className={pushSubscription ? "badge badge-success" : "badge badge-muted"}>
+          <span className={pushSubscription ? "neft-chip neft-chip-ok" : "neft-chip neft-chip-muted"}>
             {pushSubscription ? t("fleetNotifications.push.enabledStatus") : t("fleetNotifications.push.disabledStatus")}
           </span>
         </div>

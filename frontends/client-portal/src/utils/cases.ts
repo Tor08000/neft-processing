@@ -21,7 +21,7 @@ export const casePriorityLabel = (priority: CasePriority): string => {
 };
 
 export const caseStatusTone = (status: CaseStatus): string => {
-  if (status === "RESOLVED") return "badge success";
-  if (status === "CLOSED") return "badge neutral";
-  return "badge";
+  if (status === "RESOLVED") return "neft-chip neft-chip-ok";
+  if (status === "CLOSED") return "neft-chip neft-chip-muted";
+  return "neft-chip neft-chip-info";
 };

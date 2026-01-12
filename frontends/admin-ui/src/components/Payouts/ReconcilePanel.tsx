@@ -13,12 +13,12 @@ export const ReconcilePanel: React.FC<ReconcilePanelProps> = ({ data, onCopyDiag
   const mismatch = data.status === "MISMATCH";
 
   return (
-    <div className="card">
+    <div className="neft-card">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h3>Reconciliation</h3>
-        <span className={`badge ${mismatch ? "badge-danger" : "badge-success"}`}>{data.status}</span>
+        <span className={`neft-chip ${mismatch ? "neft-chip-err" : "neft-chip-ok"}`}>{data.status}</span>
       </div>
-      <table className="table" style={{ marginTop: 12 }}>
+      <table className="neft-table" style={{ marginTop: 12 }}>
         <thead>
           <tr>
             <th></th>
@@ -37,7 +37,7 @@ export const ReconcilePanel: React.FC<ReconcilePanelProps> = ({ data, onCopyDiag
             <td>{formatRub(data.recorded.total_amount)}</td>
             <td>{data.recorded.operations_count}</td>
           </tr>
-          <tr style={{ color: mismatch ? "#dc2626" : "inherit", fontWeight: 700 }}>
+          <tr style={{ color: mismatch ? "var(--neft-error)" : "inherit", fontWeight: 700 }}>
             <td>Diff</td>
             <td>{formatRub(data.diff.amount)}</td>
             <td>{data.diff.count}</td>
@@ -46,7 +46,7 @@ export const ReconcilePanel: React.FC<ReconcilePanelProps> = ({ data, onCopyDiag
       </table>
       {mismatch && (
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "#dc2626", fontWeight: 600 }}>Mismatch detected. Check diagnostics.</span>
+          <span style={{ color: "var(--neft-error)", fontWeight: 600 }}>Mismatch detected. Check diagnostics.</span>
           <CopyButton
             value={JSON.stringify(data, null, 2)}
             label="Copy diagnostics JSON"

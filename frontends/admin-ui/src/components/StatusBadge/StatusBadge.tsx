@@ -1,22 +1,22 @@
 import React from "react";
 
 const variantMap: Record<string, string> = {
-  ok: "success",
-  finalized: "success",
-  confirmed: "success",
-  capture: "success",
-  pending: "warning",
-  sent: "warning",
-  auth: "warning",
-  failed: "error",
-  error: "error",
-  declined: "error",
-  draft: "neutral",
-  unknown: "neutral",
+  ok: "ok",
+  finalized: "ok",
+  confirmed: "ok",
+  capture: "ok",
+  pending: "warn",
+  sent: "warn",
+  auth: "warn",
+  failed: "err",
+  error: "err",
+  declined: "err",
+  draft: "muted",
+  unknown: "muted",
 };
 
 export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const normalized = status.toLowerCase();
-  const variant = variantMap[normalized] || "neutral";
-  return <span className={`neft-badge ${variant}`}>{status}</span>;
+  const variant = variantMap[normalized] || "muted";
+  return <span className={`neft-chip neft-chip-${variant}`}>{status}</span>;
 };

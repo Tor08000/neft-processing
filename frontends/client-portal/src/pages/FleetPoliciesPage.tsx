@@ -30,19 +30,19 @@ const getPolicyRole = (user: ReturnType<typeof useAuth>["user"], groups: FleetGr
 };
 
 const getScopeBadgeClass = (scopeType?: string | null) => {
-  if (scopeType === "CLIENT") return "badge badge-info";
-  if (scopeType === "GROUP") return "badge badge-warning";
-  if (scopeType === "CARD") return "badge badge-muted";
-  return "badge badge-muted";
+  if (scopeType === "CLIENT") return "neft-chip neft-chip-info";
+  if (scopeType === "GROUP") return "neft-chip neft-chip-warn";
+  if (scopeType === "CARD") return "neft-chip neft-chip-muted";
+  return "neft-chip neft-chip-muted";
 };
 
 const getStatusBadgeClass = (status?: string | null) =>
-  status === "DISABLED" ? "badge badge-muted" : "badge badge-success";
+  status === "DISABLED" ? "neft-chip neft-chip-muted" : "neft-chip neft-chip-ok";
 
 const getActionBadgeClass = (action?: string | null) => {
-  if (action === "AUTO_BLOCK_CARD") return "badge badge-warning";
-  if (action === "ESCALATE_CASE") return "badge badge-info";
-  return "badge badge-muted";
+  if (action === "AUTO_BLOCK_CARD") return "neft-chip neft-chip-warn";
+  if (action === "ESCALATE_CASE") return "neft-chip neft-chip-info";
+  return "neft-chip neft-chip-muted";
 };
 
 export function FleetPoliciesPage() {
@@ -252,7 +252,7 @@ export function FleetPoliciesPage() {
       {
         key: "severity",
         title: t("fleetPolicies.severityMin"),
-        render: (policy) => <span className="badge badge-muted">{policy.severity_min ?? "—"}</span>,
+        render: (policy) => <span className="neft-chip neft-chip-muted">{policy.severity_min ?? "—"}</span>,
       },
       {
         key: "breachKind",

@@ -22,13 +22,13 @@ export const supportStatusTone = (status: SupportRequestStatus): string => {
     case "OPEN":
     case "IN_PROGRESS":
     case "WAITING":
-      return "warning";
+      return "neft-chip neft-chip-warn";
     case "RESOLVED":
-      return "success";
+      return "neft-chip neft-chip-ok";
     case "CLOSED":
-      return "neutral";
+      return "neft-chip neft-chip-muted";
     default:
-      return "warning";
+      return "neft-chip neft-chip-warn";
   }
 };
 

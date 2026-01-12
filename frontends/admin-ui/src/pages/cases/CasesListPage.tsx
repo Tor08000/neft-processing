@@ -23,15 +23,15 @@ const formatTimestamp = (value?: string | null) => {
 };
 
 const statusTone = (status: CaseStatus) => {
-  if (status === "CLOSED") return "badge badge-danger";
-  if (status === "IN_PROGRESS") return "badge badge-success";
-  return "badge";
+  if (status === "CLOSED") return "neft-chip neft-chip-err";
+  if (status === "IN_PROGRESS") return "neft-chip neft-chip-ok";
+  return "neft-chip neft-chip-muted";
 };
 
 const priorityTone = (priority?: CasePriority) => {
-  if (priority === "HIGH" || priority === "CRITICAL") return "badge badge-danger";
-  if (priority === "MEDIUM") return "badge badge-success";
-  return "badge";
+  if (priority === "HIGH" || priority === "CRITICAL") return "neft-chip neft-chip-err";
+  if (priority === "MEDIUM") return "neft-chip neft-chip-warn";
+  return "neft-chip neft-chip-muted";
 };
 
 const resolveTitle = (item: CaseItem) => item.title ?? (item.kind ? `${item.kind} · ${item.id}` : `Case ${item.id}`);
@@ -216,13 +216,13 @@ export function CasesListPage() {
   };
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <div className="neft-card error-state">Not authorized</div>;
   }
 
   return (
     <div className="stack">
       <Toast toast={toast} />
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700 }}>Cases</h1>
@@ -264,8 +264,8 @@ export function CasesListPage() {
         </div>
       </section>
 
-      {notAvailable ? <div className="card">Not available in this environment</div> : null}
-      {error ? <div className="card error-state">{error}</div> : null}
+      {notAvailable ? <div className="neft-card">Not available in this environment</div> : null}
+      {error ? <div className="neft-card error-state">{error}</div> : null}
 
       <Table
         columns={columns}

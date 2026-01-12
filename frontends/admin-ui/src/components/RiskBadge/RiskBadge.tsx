@@ -14,14 +14,14 @@ export interface RiskBadgeProps {
 type Palette = { label: string; variant: string };
 
 const COLORS: Record<string, Palette> = {
-  LOW: { label: "LOW", variant: "success" },
-  MEDIUM: { label: "MEDIUM", variant: "warning" },
-  HIGH: { label: "HIGH", variant: "warning" },
-  BLOCK: { label: "BLOCK", variant: "error" },
-  HARD_DECLINE: { label: "DECLINE", variant: "error" },
-  MANUAL_REVIEW: { label: "REVIEW", variant: "warning" },
-  APPROVED: { label: "APPROVED", variant: "success" },
-  UNKNOWN: { label: "UNKNOWN", variant: "neutral" },
+  LOW: { label: "LOW", variant: "ok" },
+  MEDIUM: { label: "MEDIUM", variant: "warn" },
+  HIGH: { label: "HIGH", variant: "warn" },
+  BLOCK: { label: "BLOCK", variant: "err" },
+  HARD_DECLINE: { label: "DECLINE", variant: "err" },
+  MANUAL_REVIEW: { label: "REVIEW", variant: "warn" },
+  APPROVED: { label: "APPROVED", variant: "ok" },
+  UNKNOWN: { label: "UNKNOWN", variant: "muted" },
 };
 
 function normalizeLevel(level?: string | null): string {
@@ -67,14 +67,21 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({ level, decision, score, re
 
   return (
     <span
-      className={`neft-badge ${palette.variant}`}
+      className={`neft-chip neft-chip-${palette.variant}`}
       title={tooltipParts.join(" • ")}
       style={{ minWidth: 88, justifyContent: "center" }}
     >
       <span>{label}</span>
       {decisionLabel && decisionLabel !== label && <span style={{ opacity: 0.85 }}>· {decisionLabel}</span>}
       {typeof score === "number" && (
-        <span style={{ padding: "0 4px", borderRadius: 4, background: "rgba(0,0,0,0.06)", opacity: 0.8 }}>
+        <span
+          style={{
+            padding: "0 4px",
+            borderRadius: 4,
+            background: "color-mix(in srgb, var(--neft-border) 35%, transparent)",
+            opacity: 0.8,
+          }}
+        >
           {(score * 100).toFixed(0)}
         </span>
       )}

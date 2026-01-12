@@ -111,14 +111,14 @@ export function MarketplaceProductDetailsPage() {
                   </div>
                 </div>
                 <div className="badge-row">
-                  <span className="badge badge-muted">
+                  <span className="neft-chip neft-chip-muted">
                     {product.category ?? t("marketplaceProduct.categoryFallback")}
                   </span>
-                  <span className="badge badge-info">
+                  <span className="neft-chip neft-chip-info">
                     {product.type === "SERVICE" ? t("marketplaceCatalog.types.service") : t("marketplaceCatalog.types.product")}
                   </span>
                   {product.partner?.verified ? (
-                    <span className="badge badge-success">{t("marketplaceProduct.verifiedBadge")}</span>
+                    <span className="neft-chip neft-chip-ok">{t("marketplaceProduct.verifiedBadge")}</span>
                   ) : null}
                 </div>
               </div>

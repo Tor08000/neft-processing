@@ -63,31 +63,31 @@ export const refundStatusBadge = (status?: BillingRefundStatus | null) => {
 export const linkStatusBadge = (status?: ReconciliationLinkStatus | null) => {
   switch (status) {
     case "MATCHED":
-      return "success";
+      return "ok";
     case "MISMATCHED":
-      return "error";
+      return "err";
     case "PENDING":
-      return "warning";
+      return "warn";
     default:
-      return "neutral";
+      return "muted";
   }
 };
 
 export const directionBadge = (direction?: ReconciliationLinkDirection | null) => {
-  if (direction === "IN") return "success";
-  if (direction === "OUT") return "warning";
-  return "neutral";
+  if (direction === "IN") return "ok";
+  if (direction === "OUT") return "warn";
+  return "muted";
 };
 
 export const entityTypeBadge = (type?: ReconciliationLinkEntityType | null) => {
-  if (type === "invoice") return "accent";
-  if (type === "payment") return "success";
-  if (type === "refund") return "warning";
-  return "neutral";
+  if (type === "invoice") return "info";
+  if (type === "payment") return "ok";
+  if (type === "refund") return "warn";
+  return "muted";
 };
 
 export const renderBadge = (label: string, tone: string) => (
-  <span className={`neft-badge ${tone}`}>{label}</span>
+  <span className={`neft-chip neft-chip-${tone}`}>{label}</span>
 );
 
 export const toDateInputValue = (value?: string | null): string => {

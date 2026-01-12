@@ -41,17 +41,17 @@ const getSummaryNumber = (summary: Record<string, unknown> | null | undefined, k
 };
 
 const scopeBadge = (scope?: string | null) => {
-  if (scope === "internal") return "success";
-  if (scope === "external") return "warning";
-  return "neutral";
+  if (scope === "internal") return "ok";
+  if (scope === "external") return "info";
+  return "muted";
 };
 
 const statusBadge = (status?: string | null) => {
-  if (!status) return "neutral";
-  if (status === "completed") return "success";
-  if (status === "failed") return "error";
-  if (status === "started") return "warning";
-  return "neutral";
+  if (!status) return "muted";
+  if (status === "completed") return "ok";
+  if (status === "failed") return "err";
+  if (status === "started") return "warn";
+  return "muted";
 };
 
 const matchesDateRange = (value: string, from?: string, to?: string) => {
@@ -149,7 +149,7 @@ export function ReconciliationRunsPage() {
         key: "scope",
         title: "Scope",
         render: (item) => (
-          <span className={`neft-badge ${scopeBadge(item.scope)}`}>{item.scope ?? "unknown"}</span>
+          <span className={`neft-chip neft-chip-${scopeBadge(item.scope)}`}>{item.scope ?? "unknown"}</span>
         ),
       },
       {
@@ -166,7 +166,7 @@ export function ReconciliationRunsPage() {
         key: "status",
         title: "Status",
         render: (item) => (
-          <span className={`neft-badge ${statusBadge(item.status)}`}>{item.status ?? "unknown"}</span>
+          <span className={`neft-chip neft-chip-${statusBadge(item.status)}`}>{item.status ?? "unknown"}</span>
         ),
       },
       {

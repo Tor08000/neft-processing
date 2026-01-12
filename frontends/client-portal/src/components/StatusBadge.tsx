@@ -6,6 +6,11 @@ const normalizeStatus = (status?: string | null) => (status ? status.toUpperCase
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const normalized = normalizeStatus(status);
-  const className = normalized === "ACTIVE" ? "badge badge-success" : normalized === "BLOCKED" ? "badge badge-warning" : "badge badge-muted";
+  const className =
+    normalized === "ACTIVE"
+      ? "neft-chip neft-chip-ok"
+      : normalized === "BLOCKED"
+        ? "neft-chip neft-chip-warn"
+        : "neft-chip neft-chip-muted";
   return <span className={className}>{normalized}</span>;
 }

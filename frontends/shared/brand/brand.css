@@ -1,32 +1,24 @@
+@import "../../../brand/v1/neft/colors/tokens.css";
+
 :root {
-  --neft-bg: #0B0F14;
-  --neft-bg2: #0F1621;
-  --neft-surface: #121B27;
-  --neft-surface2: #162235;
-  --neft-border: #243247;
-  --neft-border2: #2E3F5C;
-  --neft-text: #EAF0F8;
-  --neft-text-muted: #A9B4C4;
-  --neft-text-faint: #7B879A;
-  --neft-accent: #B6FF3B;
-  --neft-accent-hover: #A6F72A;
-  --neft-accent-soft: rgba(182, 255, 59, 0.14);
-  --neft-accent-glow: rgba(182, 255, 59, 0.28);
-  --neft-success: #2FEA9B;
-  --neft-warning: #FFB020;
-  --neft-danger: #FF4D4D;
-  --neft-info: #4DA3FF;
-  --neft-neutral: #94A3B8;
-  --neft-radius-card: 16px;
-  --neft-radius-control: 12px;
-  --neft-radius-pill: 999px;
-  --neft-shadow-sm: 0 1px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.25);
-  --neft-shadow-md: 0 2px 0 rgba(0,0,0,0.35), 0 14px 28px rgba(0,0,0,0.32);
-  --neft-shadow-lg: 0 3px 0 rgba(0,0,0,0.40), 0 20px 42px rgba(0,0,0,0.40);
-  --neft-focus-ring: 0 0 0 3px var(--neft-accent-soft), 0 0 0 1px var(--neft-accent);
-  --neft-font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
-  --neft-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --neft-header-height: 64px;
+  --neft-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --neft-bg2: var(--neft-surface);
+  --neft-surface2: var(--neft-surface);
+  --neft-accent: var(--neft-primary);
+  --neft-accent-hover: var(--neft-primary);
+  --neft-accent-soft: var(--neft-focus);
+  --neft-accent-glow: var(--neft-focus);
+  --neft-danger: var(--neft-error);
+  --neft-neutral: var(--neft-text-muted);
+  --neft-text-faint: var(--neft-text-muted);
+  --neft-radius-card: var(--neft-radius-md);
+  --neft-radius-control: var(--neft-radius-sm);
+  --neft-radius-pill: 999px;
+  --neft-shadow-sm: var(--neft-shadow-1);
+  --neft-shadow-md: var(--neft-shadow-2);
+  --neft-shadow-lg: var(--neft-shadow-2);
+  --neft-focus-ring: 0 0 0 4px var(--neft-focus);
 }
 
 html, body {
@@ -36,76 +28,59 @@ html, body {
 }
 
 .neft-page {
-  background: radial-gradient(1200px 600px at 15% 10%, rgba(182,255,59,0.06), transparent 55%),
-              radial-gradient(900px 500px at 85% 0%, rgba(77,163,255,0.06), transparent 50%),
-              var(--neft-bg);
+  background: var(--neft-bg);
   min-height: 100vh;
-}
-
-.neft-card {
-  background: var(--neft-surface);
-  border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
-  box-shadow: var(--neft-shadow-sm);
 }
 
 .neft-input,
 .neft-select {
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   color: var(--neft-text);
   border: 1px solid var(--neft-border);
   padding: 10px 12px;
   outline: none;
-  border-radius: var(--neft-radius-control);
+  border-radius: var(--neft-radius-md);
   min-height: 44px;
 }
 
 .neft-input:focus,
 .neft-select:focus {
-  border-color: var(--neft-accent);
-  box-shadow: var(--neft-focus-ring);
-}
-
-.neft-input:hover,
-.neft-select:hover {
-  border-color: var(--neft-border2);
+  border-color: var(--neft-primary);
+  box-shadow: 0 0 0 4px var(--neft-focus);
 }
 
 .neft-input::placeholder,
 .neft-select::placeholder {
-  color: var(--neft-text-faint);
+  color: var(--neft-text-muted);
 }
 
 .neft-btn-primary {
-  background: var(--neft-accent);
-  color: #0B0F14;
+  background: var(--neft-primary);
+  color: #0B1F2A;
   border: 1px solid transparent;
   padding: 10px 14px;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
-  border-radius: var(--neft-radius-control);
+  border-radius: 10px;
 }
 
-.neft-btn-primary:hover {
-  background: var(--neft-accent-hover);
-}
-
+.neft-btn-outline,
 .neft-btn-secondary {
-  background: var(--neft-surface);
+  background: transparent;
   color: var(--neft-text);
   border: 1px solid var(--neft-border);
   padding: 10px 14px;
   cursor: pointer;
-  border-radius: var(--neft-radius-control);
+  border-radius: 10px;
 }
 
+.neft-btn-outline:hover,
 .neft-btn-secondary:hover {
-  background: var(--neft-surface2);
-  border-color: var(--neft-border2);
+  border-color: var(--neft-primary);
 }
 
 .neft-focus-ring:focus-visible {
-  box-shadow: var(--neft-focus-ring);
+  box-shadow: 0 0 0 4px var(--neft-focus);
 }
 
 .neft-button {
@@ -115,17 +90,17 @@ html, body {
   gap: 8px;
   min-height: 44px;
   padding: 10px 16px;
-  border-radius: var(--neft-radius-control);
+  border-radius: 10px;
   border: 1px solid transparent;
-  background: var(--neft-accent);
-  color: #0b0f14;
-  font-weight: 650;
+  background: var(--neft-primary);
+  color: #0B1F2A;
+  font-weight: 600;
   cursor: pointer;
   transition: transform 0.1s ease, opacity 0.2s ease, background 0.2s ease;
 }
 
 .neft-button:hover:not(:disabled) {
-  background: var(--neft-accent-hover);
+  opacity: 0.92;
 }
 
 .neft-button:active:not(:disabled) {
@@ -147,12 +122,12 @@ html, body {
 
 .roles {
   font-size: 0.85rem;
-  color: var(--neft-text-faint);
+  color: var(--neft-text-secondary);
 }
 
 .ghost {
   padding: 0.5rem 0.75rem;
-  border-radius: var(--neft-radius-control);
+  border-radius: 10px;
   border: 1px solid var(--neft-border);
   background: var(--neft-surface);
   color: var(--neft-text);
@@ -166,7 +141,7 @@ html, body {
 }
 
 .brand-sidebar {
-  background: var(--neft-bg2);
+  background: var(--neft-surface);
   color: var(--neft-text);
   padding: 20px 16px;
   border-right: 1px solid var(--neft-border);
@@ -204,7 +179,7 @@ html, body {
   padding: 10px 12px;
   border-radius: 10px;
   text-decoration: none;
-  color: var(--neft-text-muted);
+  color: var(--neft-text-secondary);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -219,12 +194,12 @@ html, body {
 
 .brand-nav-link:hover {
   color: var(--neft-text);
-  background: rgba(22, 34, 53, 0.45);
+  background: var(--neft-table-hover);
 }
 
 .brand-nav-link.is-active {
-  color: #0b0f14;
-  background: var(--neft-accent);
+  color: var(--neft-text);
+  background: var(--neft-primary);
 }
 
 .brand-header {
@@ -233,8 +208,7 @@ html, body {
   justify-content: space-between;
   height: var(--neft-header-height);
   padding: 0 24px;
-  background: rgba(18, 27, 39, 0.82);
-  backdrop-filter: blur(14px);
+  background: var(--neft-surface);
   border-bottom: 1px solid var(--neft-border);
   position: sticky;
   top: 0;
@@ -325,7 +299,12 @@ html, body {
 }
 
 .neft-skeleton {
-  background: linear-gradient(90deg, rgba(22, 34, 53, 0.35) 25%, rgba(36, 50, 71, 0.55) 37%, rgba(22, 34, 53, 0.35) 63%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--neft-border) 45%, transparent) 25%,
+    color-mix(in srgb, var(--neft-border) 65%, transparent) 37%,
+    color-mix(in srgb, var(--neft-border) 45%, transparent) 63%
+  );
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.2s ease infinite;
   border-radius: 12px;
@@ -341,51 +320,6 @@ html, body {
   }
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 10px;
-  border-radius: var(--neft-radius-pill);
-  border: 1px solid var(--neft-border);
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--neft-text-muted);
-}
-
-.status-pill--success {
-  background: rgba(47, 234, 155, 0.12);
-  color: var(--neft-success);
-  border-color: rgba(47, 234, 155, 0.35);
-}
-
-.status-pill--warning {
-  background: rgba(255, 176, 32, 0.16);
-  color: var(--neft-warning);
-  border-color: rgba(255, 176, 32, 0.35);
-}
-
-.status-pill--error {
-  background: rgba(255, 77, 77, 0.16);
-  color: var(--neft-danger);
-  border-color: rgba(255, 77, 77, 0.35);
-}
-
-.status-pill--info {
-  background: rgba(77, 163, 255, 0.16);
-  color: var(--neft-info);
-  border-color: rgba(77, 163, 255, 0.35);
-}
-
-.status-pill--neutral {
-  background: rgba(148, 163, 184, 0.16);
-  color: var(--neft-neutral);
-  border-color: rgba(148, 163, 184, 0.35);
-}
-
 .empty-state {
   display: grid;
   gap: 12px;
@@ -393,10 +327,10 @@ html, body {
   align-items: center;
   justify-items: center;
   padding: 24px;
-  background: var(--neft-surface);
+  background: var(--neft-card);
   border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
-  box-shadow: var(--neft-shadow-sm);
+  border-radius: var(--neft-radius-md);
+  box-shadow: var(--neft-shadow-1);
 }
 
 .empty-state__title {
@@ -414,10 +348,10 @@ html, body {
   right: 24px;
   padding: 12px 16px;
   border-radius: 12px;
-  color: #0b0f14;
+  color: #0B1F2A;
   font-weight: 700;
   z-index: 50;
-  box-shadow: var(--neft-shadow-lg);
+  box-shadow: var(--neft-shadow-2);
 }
 
 .toast.success {
@@ -425,7 +359,7 @@ html, body {
 }
 
 .toast.error {
-  background: var(--neft-danger);
+  background: var(--neft-error);
 }
 
 .toast.info {

@@ -8,26 +8,26 @@ import {
 
 const quickWindows = [5, 15, 60];
 
-const badgeColor = (status: string) => {
-  if (status === "ONLINE") return "#16a34a";
-  if (status === "DEGRADED") return "#f59e0b";
-  return "#ef4444";
+const statusChipClass = (status: string) => {
+  if (status === "ONLINE") return "neft-chip neft-chip-ok";
+  if (status === "DEGRADED") return "neft-chip neft-chip-warn";
+  return "neft-chip neft-chip-err";
 };
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode }>
  = ({ title, children }) => (
-  <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+  <div className="neft-card" style={{ padding: 16 }}>
     <div style={{ fontWeight: 700, marginBottom: 12 }}>{title}</div>
     {children}
   </div>
 );
 
 const Table: React.FC<{ headers: string[]; children: React.ReactNode }> = ({ headers, children }) => (
-  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+  <table className="neft-table">
     <thead>
       <tr>
         {headers.map((h) => (
-          <th key={h} style={{ textAlign: "left", padding: "8px 6px", color: "#475569", fontSize: 12 }}>
+          <th key={h} style={{ textAlign: "left", padding: "8px 6px", color: "var(--neft-text-secondary)", fontSize: 12 }}>
             {h}
           </th>
         ))}
@@ -82,14 +82,15 @@ const IntegrationMonitoringPage: React.FC = () => {
   const declineTitle = useMemo(() => `Realtime Declines (${reasonFilter || "all"})`, [reasonFilter]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="stack-inline" style={{ gap: 8, alignItems: "center" }}>
         <span>Window:</span>
         {quickWindows.map((m) => (
           <button
             key={m}
             onClick={() => setWindowMinutes(m)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: windowMinutes === m ? "2px solid #0ea5e9" : "1px solid #cbd5e1" }}
+            className="neft-btn neft-btn-outline"
+            style={{ borderWidth: windowMinutes === m ? 2 : 1 }}
           >
             {m}m
           </button>
@@ -98,15 +99,16 @@ const IntegrationMonitoringPage: React.FC = () => {
           placeholder="Partner"
           value={partnerFilter}
           onChange={(e) => setPartnerFilter(e.target.value)}
-          style={{ padding: 8, borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 160 }}
+          className="neft-input"
+          style={{ minWidth: 160 }}
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: 8, borderRadius: 8 }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="neft-input">
           <option value="">Status (any)</option>
           <option value="APPROVED">APPROVED</option>
           <option value="DECLINED">DECLINED</option>
           <option value="ERROR">ERROR</option>
         </select>
-        <select value={reasonFilter} onChange={(e) => setReasonFilter(e.target.value)} style={{ padding: 8, borderRadius: 8 }}>
+        <select value={reasonFilter} onChange={(e) => setReasonFilter(e.target.value)} className="neft-input">
           <option value="">Reason (any)</option>
           <option value="RISK">RISK</option>
           <option value="LIMIT">LIMIT</option>
@@ -115,24 +117,14 @@ const IntegrationMonitoringPage: React.FC = () => {
         </select>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="card-grid">
         <SectionCard title="Partner Status">
           <Table headers={["Partner", "Status", "Requests", "Error rate", "Avg latency"]}>
             {partnerStatuses.map((p) => (
-              <tr key={p.partner_id} style={{ borderTop: "1px solid #e2e8f0" }}>
+              <tr key={p.partner_id} style={{ borderTop: "1px solid var(--neft-border)" }}>
                 <td style={{ padding: 8 }}>{p.partner_name}</td>
                 <td style={{ padding: 8 }}>
-                  <span
-                    style={{
-                      background: badgeColor(p.status),
-                      color: "white",
-                      padding: "4px 8px",
-                      borderRadius: 12,
-                      fontSize: 12,
-                    }}
-                  >
-                    {p.status}
-                  </span>
+                  <span className={statusChipClass(p.status)}>{p.status}</span>
                 </td>
                 <td style={{ padding: 8 }}>{p.total_requests}</td>
                 <td style={{ padding: 8 }}>{(p.error_rate * 100).toFixed(1)}%</td>
@@ -145,7 +137,10 @@ const IntegrationMonitoringPage: React.FC = () => {
         <SectionCard title="AZS Heatmap">
           <Table headers={["AZS", "Requests", "Declines", "Error rate"]}>
             {azsHeatmap.map((h) => (
-              <tr key={h.azs_id} style={{ borderTop: "1px solid #e2e8f0", background: "rgba(14,165,233,0.05)" }}>
+              <tr
+                key={h.azs_id}
+                style={{ borderTop: "1px solid var(--neft-border)", background: "var(--neft-table-hover)" }}
+              >
                 <td style={{ padding: 8 }}>{h.azs_id}</td>
                 <td style={{ padding: 8 }}>{h.total_requests}</td>
                 <td style={{ padding: 8 }}>{h.declines_total}</td>
@@ -158,7 +153,7 @@ const IntegrationMonitoringPage: React.FC = () => {
         <SectionCard title="Incoming Requests">
           <Table headers={["Time", "Partner", "AZS", "Type", "Amount", "Status", "Reason"]}>
             {requests.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid #e2e8f0" }}>
+              <tr key={r.id} style={{ borderTop: "1px solid var(--neft-border)" }}>
                 <td style={{ padding: 8 }}>{new Date(r.created_at).toLocaleTimeString()}</td>
                 <td style={{ padding: 8 }}>{r.partner_id}</td>
                 <td style={{ padding: 8 }}>{r.azs_id}</td>
@@ -179,8 +174,8 @@ const IntegrationMonitoringPage: React.FC = () => {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  background: "#fff7ed",
-                  border: "1px solid #fed7aa",
+                  background: "color-mix(in srgb, var(--neft-warning) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--neft-warning) 35%, transparent)",
                   borderRadius: 8,
                   padding: "8px 10px",
                   fontSize: 13,

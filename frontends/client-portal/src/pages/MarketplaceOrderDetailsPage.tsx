@@ -36,11 +36,11 @@ interface OrderErrorState {
 type DetailsTab = "timeline" | "sla" | "incidents" | "invoices";
 
 const statusClass = (status?: string | null) => {
-  if (!status) return "badge warning";
+  if (!status) return "neft-chip neft-chip-warn";
   const normalized = status.toLowerCase();
-  if (["completed", "confirmed"].includes(normalized)) return "badge success";
-  if (["cancelled", "canceled", "failed"].includes(normalized)) return "badge error";
-  return "badge warning";
+  if (["completed", "confirmed"].includes(normalized)) return "neft-chip neft-chip-ok";
+  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-warn";
 };
 
 const resolveAmount = (order: MarketplaceOrderDetails) =>
