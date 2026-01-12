@@ -3,19 +3,12 @@ setlocal ENABLEDELAYEDEXPANSION
 
 echo ===== Billing smoke =====
 
-set AUTH_URL=http://localhost:8002/api/v1/auth/login
 set CORE_BILLING=http://localhost/api/v1/admin/billing
 
-echo Logging in to auth-host...
-curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json
-
-echo Extracting access token...
-python -c "import json; import sys; data=json.load(open('token.json')); sys.stdout.write(data.get('access_token',''))" > token.txt
-
-set /p TOKEN=<token.txt
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
-  echo [ERROR] Failed to extract access token. Check credentials and auth-host.
-  goto :eof
+  echo [ERROR] No access_token returned 1>&2
+  exit /b 1
 )
 
 echo Token acquired.

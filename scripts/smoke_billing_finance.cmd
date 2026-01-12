@@ -4,11 +4,12 @@ setlocal enabledelayedexpansion
 set AUTH_BASE=http://localhost:8002/api/v1/auth
 set CORE_BASE=http://localhost:8001/api/v1/admin
 
-echo [1/10] Login to auth-host...
-curl -s -S -X POST "%AUTH_BASE%/login" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json || goto :error
-python -c "import json, pathlib; pathlib.Path('token.txt').write_text(json.load(open('token.json')).get('access_token',''))" || goto :error
-set /p TOKEN=<token.txt
-if "%TOKEN%"=="" goto :error
+echo [1/10] Fetch admin token...
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
+if "%TOKEN%"=="" (
+  echo [ERROR] No access_token returned 1>&2
+  exit /b 1
+)
 
 echo [2/10] Check /auth/me...
 curl -s -o NUL -w "%%{http_code}" "%AUTH_BASE%/me" -H "Authorization: Bearer %TOKEN%" | findstr 200 >NUL || goto :error

@@ -16,38 +16,39 @@ if exist "%ENV_FILE%" (
     )
 )
 
-set "RESPONSE_FILE=%TEMP%\\admin_login_response.json"
+set "HEADER_FILE=%TEMP%\\admin_login_headers_%RANDOM%.tmp"
+set "BODY_FILE=%TEMP%\\admin_login_body_%RANDOM%.tmp"
 
-echo Requesting admin token from %AUTH_ADMIN_URL% using %ADMIN_EMAIL%...
-curl -s -S -X POST -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" "%AUTH_ADMIN_URL%" >"%RESPONSE_FILE%"
+curl -sS -D "%HEADER_FILE%" -o "%BODY_FILE%" -X POST -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" "%AUTH_ADMIN_URL%"
 if errorlevel 1 (
-    echo Failed to retrieve token.
+    echo [ERROR] Failed to request admin token. 1>&2
+    echo URL: %AUTH_ADMIN_URL% 1>&2
+    echo Email: %ADMIN_EMAIL% 1>&2
     exit /b 1
 )
 
-set "RESPONSE="
-set /p "RESPONSE="<"%RESPONSE_FILE%"
-if not defined RESPONSE (
-    echo Empty response received.
+set "STATUS="
+for /f "tokens=2 delims= " %%A in ('findstr /R /C:"^HTTP/" "%HEADER_FILE%"') do set "STATUS=%%A"
+
+if not "%STATUS%"=="200" (
+    echo [ERROR] Admin token request failed. 1>&2
+    echo URL: %AUTH_ADMIN_URL% 1>&2
+    echo Email: %ADMIN_EMAIL% 1>&2
+    echo HTTP status: %STATUS% 1>&2
+    type "%BODY_FILE%" 1>&2
     exit /b 1
 )
 
 set "TOKEN="
-set "MARK=\"access_token\":\""
-set "AFTER=!RESPONSE:*%MARK%=!"
-if "!AFTER!"=="!RESPONSE!" (
-    echo access_token not found in response.
+for /f "usebackq delims=" %%T in (`python -c "import json;print(json.load(open(r'%BODY_FILE%','r',encoding='utf-8')).get('access_token',''))"`) do set "TOKEN=%%T"
+
+if "%TOKEN%"=="" (
+    echo [ERROR] No access_token returned. 1>&2
+    echo URL: %AUTH_ADMIN_URL% 1>&2
+    echo Email: %ADMIN_EMAIL% 1>&2
+    echo HTTP status: %STATUS% 1>&2
+    type "%BODY_FILE%" 1>&2
     exit /b 1
 )
-for /f "tokens=1 delims=,\"" %%A in ("!AFTER!") do set "TOKEN=%%A"
 
-if not defined TOKEN (
-    echo access_token not found in response.
-    exit /b 1
-)
-
-echo !TOKEN! > ".admin_token"
-
-echo Token saved to .admin_token and available as !TOKEN!.
-
-endlocal & set "TOKEN=%TOKEN%"
+endlocal & echo %TOKEN%
