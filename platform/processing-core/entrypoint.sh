@@ -139,39 +139,47 @@ if [ "$heads_count" -ne 1 ]; then
 fi
 
 echo "[entrypoint] ensuring alembic_version_core length"
-python - <<'PY'
-import os
-import sys
+if [ -z "$DATABASE_URL" ]; then
+    echo "[entrypoint] DATABASE_URL is not set for alembic version repair" >&2
+    exit 1
+fi
+PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
+DO \$\$
+DECLARE
+  current_len integer;
+BEGIN
+  IF to_regclass('${schema_resolved}.alembic_version_core') IS NULL THEN
+    RAISE NOTICE 'alembic_version_core missing; skipping length check';
+    RETURN;
+  END IF;
 
-from sqlalchemy import create_engine
-from sqlalchemy.engine import make_url
+  SELECT character_maximum_length
+    INTO current_len
+    FROM information_schema.columns
+   WHERE table_schema = '${schema_resolved}'
+     AND table_name = 'alembic_version_core'
+     AND column_name = 'version_num';
 
-from app.alembic.helpers import MIN_VERSION_LENGTH, ensure_alembic_version_length
+  IF current_len IS NULL THEN
+    RAISE NOTICE 'alembic_version_core.version_num missing; skipping length check';
+    RETURN;
+  END IF;
 
-db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
-if not db_url:
-    print("[entrypoint] DATABASE_URL is not set for alembic version repair", file=sys.stderr, flush=True)
-    sys.exit(1)
+  RAISE NOTICE 'alembic_version_core.version_num length=%', current_len;
 
-url = make_url(db_url)
-if url.drivername.endswith("+psycopg"):
-    url = url.set(drivername="postgresql")
-dsn = url.render_as_string(hide_password=False)
-
-engine = create_engine(
-    dsn,
-    future=True,
-    connect_args={
-        "options": f"-c search_path={schema},public",
-        "prepare_threshold": 0,
-    },
-)
-with engine.begin() as connection:
-    ensure_alembic_version_length(connection, min_length=MIN_VERSION_LENGTH)
-engine.dispose()
-print("[entrypoint] alembic_version_core length check complete", flush=True)
-PY
+  IF current_len < 128 THEN
+    EXECUTE format(
+      'ALTER TABLE %I.alembic_version_core ALTER COLUMN version_num TYPE varchar(128)',
+      '${schema_resolved}'
+    );
+    RAISE NOTICE 'alembic_version_core.version_num length altered to 128';
+  ELSE
+    RAISE NOTICE 'alembic_version_core.version_num length already >= 128';
+  END IF;
+END \$\$;
+EOF
+echo "[entrypoint] alembic_version_core length check complete"
 
 echo "[entrypoint] pre-migration cleanup: schema_resolved=${schema_resolved} search_path=${schema_resolved},public"
 echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
@@ -179,7 +187,6 @@ if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
-PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
 DECLARE r record;
