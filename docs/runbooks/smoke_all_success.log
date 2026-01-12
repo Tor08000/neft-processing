@@ -1,0 +1,16 @@
+[OK] Core API health
+[OK] Core API metrics
+[OK] Gateway root
+[OK] Gateway core health
+[OK] Auth health
+[OK] Flower UI (status 401)
+[OK] Grafana
+[OK] Prometheus ready
+[OK] Prometheus core-api target
+[OK] Jaeger
+[OK] MinIO ready
+[OK] Postgres select 1
+[OK] Alembic heads
+[OK] Alembic current
+[OK] Alembic version rows
+OK smoke_all.cmd finished successfully
