@@ -398,7 +398,22 @@ def create_table_if_not_exists(
 
     column_list = list(table_columns or keyword_columns or [])
     index_definitions = list(indexes or [])
-    table_present = table_exists_real(bind, schema, table_name)
+    if is_postgres(bind):
+        table_present = bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = :schema
+                  AND c.relname = :table_name
+                  AND c.relkind IN ('r', 'p')
+                """
+            ),
+            {"schema": schema, "table_name": table_name},
+        ).first() is not None
+    else:
+        table_present = table_exists(bind, table_name, schema=schema)
     if table_present:
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return

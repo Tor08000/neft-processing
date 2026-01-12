@@ -138,6 +138,7 @@ BEGIN
       AND c.relname=r.type_name
     LIMIT 1;
 
+    RAISE NOTICE 'composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
     IF rk IS NULL OR rk NOT IN ('r','p') THEN
       RAISE NOTICE 'dropping orphan composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
       EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
