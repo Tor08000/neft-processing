@@ -77,15 +77,33 @@ def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> 
     return result is not None
 
 
-def composite_type_exists(bind: Connection, schema: str, type_name: str | None = None) -> bool:
+def table_exists_real(bind: Connection, schema: str, table_name: str) -> bool:
+    _require_bind(bind, caller="table_exists_real")
+
+    if is_postgres(bind):
+        result = bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = :schema
+                  AND c.relname = :table_name
+                  AND c.relkind IN ('r', 'p')
+                """
+            ),
+            {"schema": schema, "table_name": table_name},
+        ).first()
+        return result is not None
+
+    return table_exists(bind, table_name, schema=schema)
+
+
+def composite_type_exists(bind: Connection, schema: str, type_name: str) -> bool:
     _require_bind(bind, caller="composite_type_exists")
 
     if not is_postgres(bind):
         return False
-
-    if type_name is None:
-        type_name = schema
-        schema = DB_SCHEMA
 
     result = bind.execute(
         sa.text(
@@ -119,7 +137,7 @@ def drop_orphan_composite_type_if_needed(
 ) -> None:
     _require_bind(bind, caller="drop_orphan_composite_type_if_needed")
 
-    if table_exists(bind, type_name, schema=schema):
+    if table_exists_real(bind, schema, type_name):
         return
 
     if composite_type_exists(bind, schema, type_name):
@@ -380,7 +398,7 @@ def create_table_if_not_exists(
 
     column_list = list(table_columns or keyword_columns or [])
     index_definitions = list(indexes or [])
-    if table_exists(bind, table_name, schema=schema):
+    if table_exists_real(bind, schema, table_name):
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return
 

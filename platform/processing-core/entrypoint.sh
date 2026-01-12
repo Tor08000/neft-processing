@@ -127,14 +127,14 @@ BEGIN
     SELECT n.nspname AS schema_name, t.typname AS type_name
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname='processing_core'
-      AND t.typtype='c'
+    WHERE n.nspname = 'processing_core'
+      AND t.typtype = 'c'
       AND NOT EXISTS (
         SELECT 1
         FROM pg_class c
-        JOIN pg_namespace n2 ON n2.oid=c.relnamespace
-        WHERE n2.nspname=n.nspname
-          AND c.relname=t.typname
+        JOIN pg_namespace n2 ON n2.oid = c.relnamespace
+        WHERE n2.nspname = n.nspname
+          AND c.relname = t.typname
           AND c.relkind IN ('r','p')
       )
   ) LOOP
