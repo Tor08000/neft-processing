@@ -1,3 +1,4 @@
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +8,8 @@ from app.alembic import helpers
 from app.db.schema import resolve_db_schema
 from app.models.crm import ClientOnboardingStateEnum
 from app.tests.utils import ensure_connectable, get_database_url
+
+pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="docker is required for postgres tests")
 
 
 def _override_create_table(conn: sa.Connection) -> None:
