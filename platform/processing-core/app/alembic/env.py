@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import create_engine, text
 
 from app.alembic.helpers import ALEMBIC_VERSION_TABLE
-from app.db.schema import quote_schema
+from app.db.schema import quote_schema, resolve_db_schema
 
 config = context.config
 if config.config_file_name is not None:
@@ -19,7 +19,8 @@ except KeyError as exc:
     raise RuntimeError("DATABASE_URL is required for alembic migrations") from exc
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
-schema = (os.getenv("NEFT_DB_SCHEMA") or "processing_core").strip() or "processing_core"
+schema_resolution = resolve_db_schema()
+schema = schema_resolution.schema
 
 
 def run_migrations_offline() -> None:
