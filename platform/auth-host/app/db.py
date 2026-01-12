@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg import sql
 
 # Настройки БД берем из .env (docker-compose -> env_file: .env)
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
@@ -12,6 +13,7 @@ POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "neft")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "neft")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "neft")
+AUTH_DB_SCHEMA = os.getenv("AUTH_DB_SCHEMA", "public")
 
 DSN_ASYNC = (
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
@@ -28,6 +30,9 @@ async def get_conn():
     conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
     try:
         async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                sql.SQL("SET search_path TO {}").format(sql.Identifier(AUTH_DB_SCHEMA))
+            )
             yield conn, cur
     finally:
         if not conn.closed:

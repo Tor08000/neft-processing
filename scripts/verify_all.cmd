@@ -16,6 +16,10 @@ set "LOG_FILE=%LOG_DIR%\verify_all_%ts%.log"
 set "SNAPSHOT_FILE=%SNAPSHOT_DIR%\STATUS_SNAPSHOT_RUNTIME_%ts%.md"
 set "ERROR_FILE=%LOG_DIR%\verify_all_%ts%_errors.tmp"
 
+if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
+
 del "%ERROR_FILE%" 2>NUL
 
 REM ===== Snapshot header =====
@@ -42,7 +46,7 @@ call :run_cmd "2.1 Migrations" "scripts\migrate.cmd" || goto finalize
 call :run_cmd "2.2 Alembic core-api current" "docker compose exec -T core-api sh -lc ^"alembic -c app/alembic.ini current^"" || goto finalize
 call :run_cmd "2.3 Alembic auth-host current" "docker compose exec -T auth-host sh -lc ^"alembic -c alembic.ini current^"" || goto finalize
 
-call :wait_endpoint "http://localhost/api/core/health" 30 2
+call :wait_endpoint "%GATEWAY_BASE%%CORE_BASE%/health" 30 2
 if errorlevel 1 (
   call :mark_fail "2.9 Wait core-api via gateway" "core-api not ready"
   goto finalize
@@ -51,16 +55,16 @@ if errorlevel 1 (
 )
 
 call :check_endpoints "3. Health checks" ^
-  "http://localhost/health" ^
-  "http://localhost/api/core/health" ^
-  "http://localhost/api/auth/health" ^
-  "http://localhost/api/ai/health" ^
-  "http://localhost/api/int/health" ^
+  "%GATEWAY_BASE%/health" ^
+  "%GATEWAY_BASE%%CORE_BASE%/health" ^
+  "%GATEWAY_BASE%%AUTH_BASE%/health" ^
+  "%GATEWAY_BASE%/api/ai/health" ^
+  "%GATEWAY_BASE%/api/int/health" ^
   || goto finalize
 
 call :check_endpoints "4. Metrics checks" ^
-  "http://localhost/metrics" ^
-  "http://localhost:8001/metrics" ^
+  "%GATEWAY_BASE%/metrics" ^
+  "%GATEWAY_BASE%%CORE_BASE%/metrics" ^
   "http://localhost:8010/metrics" ^
   || goto finalize
 

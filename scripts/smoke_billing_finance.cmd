@@ -1,8 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set AUTH_BASE=http://localhost:8002/api/v1/auth
-set CORE_BASE=http://localhost:8001/api/v1/admin
+if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
+set "AUTH_BASE=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
+set "CORE_BASE=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 
 echo [1/10] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"

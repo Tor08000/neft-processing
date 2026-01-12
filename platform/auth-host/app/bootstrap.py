@@ -4,7 +4,7 @@ import logging
 from uuid import UUID, uuid4
 
 from app.db import get_conn
-from app.security import hash_password
+from app.security import hash_password, verify_password
 from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ async def bootstrap_admin_account(settings: Settings | None = None) -> None:
         full_name=full_name,
         roles=roles,
         label="bootstrap admin",
+        ensure_password=True,
     )
 
 
@@ -72,6 +73,7 @@ async def bootstrap_admin(settings: Settings | None = None) -> None:
         full_name=settings.bootstrap_admin_full_name,
         roles=settings.bootstrap_admin_roles,
         label="bootstrap admin",
+        ensure_password=True,
     )
     logger.info(
         "auth bootstrap: admin seed finished",
@@ -94,6 +96,7 @@ async def _ensure_demo_user(
     roles: list[str],
     label: str,
     preferred_id: UUID | None = None,
+    ensure_password: bool = False,
 ) -> str:
     normalized_email = email.strip().lower()
     password_hash = hash_password(password)
@@ -131,7 +134,14 @@ async def _ensure_demo_user(
                     "UPDATE users SET is_active = TRUE WHERE id = %s",
                     (user_id,),
                 )
-            if not existing_user.get("password_hash"):
+            existing_hash = existing_user.get("password_hash")
+            if not existing_hash:
+                await cur.execute(
+                    "UPDATE users SET password_hash = %s WHERE id = %s",
+                    (password_hash, user_id),
+                )
+                password_reset = True
+            elif ensure_password and not verify_password(password, existing_hash):
                 await cur.execute(
                     "UPDATE users SET password_hash = %s WHERE id = %s",
                     (password_hash, user_id),

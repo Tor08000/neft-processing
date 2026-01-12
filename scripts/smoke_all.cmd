@@ -10,9 +10,12 @@ set "RESET=%ESC%[0m"
 set "OK=%GREEN%OK%RESET%"
 set "FAIL=%RED%FAIL%RESET%"
 
-set "CORE_API_URL=http://localhost:8001"
-set "GATEWAY_URL=http://localhost"
-set "AUTH_URL=http://localhost:8002"
+if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
+set "CORE_API_URL=%GATEWAY_BASE%%CORE_BASE%"
+set "GATEWAY_URL=%GATEWAY_BASE%"
+set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%"
 set "FLOWER_URL=http://localhost:5555"
 set "GRAFANA_URL=http://localhost:3000"
 set "PROMETHEUS_URL=http://localhost:9090"
@@ -31,13 +34,13 @@ set "MINIO_CONTAINER=neft-processing-minio-1"
 
 set "FAILED=0"
 
-call :check_http "Core API health" "%CORE_API_URL%/api/core/health" "%CORE_CONTAINER%"
+call :check_http "Core API health" "%CORE_API_URL%/health" "%CORE_CONTAINER%"
 call :check_http "Core API metrics" "%CORE_API_URL%/metrics" "%CORE_CONTAINER%"
 
 call :check_http_head "Gateway root" "%GATEWAY_URL%/" "%GATEWAY_CONTAINER%"
 call :check_http_head "Gateway core health" "%GATEWAY_URL%/api/core/health" "%GATEWAY_CONTAINER%"
 
-call :check_http "Auth health" "%AUTH_URL%/api/auth/health" "%AUTH_CONTAINER%"
+call :check_http "Auth health" "%AUTH_URL%/health" "%AUTH_CONTAINER%"
 
 call :check_http_head_any "Flower UI" "%FLOWER_URL%/" "%FLOWER_CONTAINER%" "200 301 302 401 403"
 

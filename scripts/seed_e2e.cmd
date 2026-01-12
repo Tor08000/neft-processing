@@ -1,13 +1,15 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "BASE_URL=http://localhost"
-set "AUTH_URL=%BASE_URL%/api/auth/api/v1/auth"
-set "CORE_ADMIN_URL=%BASE_URL%/api/core/api/v1/admin"
-set "CORE_CLIENT_URL=%BASE_URL%/api/core/client/api/v1"
+if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
+set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
+set "CORE_ADMIN_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
+set "CORE_CLIENT_URL=%GATEWAY_BASE%%CORE_BASE%/client/api/v1"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
 if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
 if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
 
