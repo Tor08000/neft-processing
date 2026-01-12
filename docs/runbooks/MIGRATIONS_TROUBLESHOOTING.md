@@ -51,6 +51,18 @@ scripts\db\repair_processing_core.cmd core-api
 docker compose exec -T core-api sh -lc "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -c \"DROP DOMAIN IF EXISTS processing_core.client_onboarding_state CASCADE; DROP TYPE IF EXISTS processing_core.client_onboarding_state CASCADE;\""
 ```
 
+## `syntax error at or near ":"` during pre-migration cleanup
+
+**Symptoms**
+- Postgres error: `syntax error at or near ":"`
+- Logs mention `WHERE n.nspname = :'schema'` or similar.
+
+**Cause**
+- SQL with psql placeholders (like `:'schema'`) executed without `psql -v schema=...`.
+
+**Fix**
+- Use bash substitution in the entrypoint SQL (`${schema_resolved}`) **or** ensure `psql -v` provides the variable.
+
 ## Multi-head migrations
 
 **Symptoms**
