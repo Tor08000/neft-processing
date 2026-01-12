@@ -130,7 +130,7 @@ fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
 
 extract_heads() {
-    printf "%s\n" "$1" | awk '/\(head\)/ {print $1}' | awk 'NF' | awk '!seen[$0]++'
+    printf "%s\n" "$1" | awk '/^Rev: / {print $2}' | tr -d '\r' | awk 'NF' | sort -u
 }
 
 run_diag_cmd() {
@@ -526,13 +526,19 @@ if [ -z "$required_operations" ] || [ -z "$required_version_table" ]; then
 fi
 
 echo "[entrypoint] post-migration version validation starting"
-expected_heads_sorted=$(printf "%s\n" "$expected_heads" | sort)
-found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
-found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
-found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+expected_heads_sorted=$(printf "%s\n" "$expected_heads" | sort -u)
+found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
+echo "[entrypoint] found versions: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 if [ -z "$found_versions" ]; then
     echo "[entrypoint] alembic_version_core empty; stamping expected heads"
     for head in $expected_heads; do
+        if ! alembic -c "$ALEMBIC_CONFIG" history --verbose | grep -q "$head"; then
+            echo "[entrypoint] alembic history missing revision $head; refusing to stamp" >&2
+            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini heads --verbose"
+            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
+            exit 1
+        fi
         echo "[entrypoint] stamping alembic head $head"
         if ! alembic -q -c "$ALEMBIC_CONFIG" stamp "$head" >>"$MIGRATION_LOG" 2>&1; then
             echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
@@ -540,9 +546,9 @@ if [ -z "$found_versions" ]; then
             exit 1
         fi
     done
-    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
-    found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
-    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
+    echo "[entrypoint] found versions after stamp: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 fi
 
 if [ -z "$found_versions" ]; then
@@ -554,6 +560,12 @@ if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
     echo "[entrypoint] alembic_version_core mismatch: expected=[$(printf "%s\n" "$expected_heads_sorted" | tr '\n' ' ')] found=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]" >&2
     echo "[entrypoint] attempting to stamp expected heads after mismatch" >&2
     for head in $expected_heads; do
+        if ! alembic -c "$ALEMBIC_CONFIG" history --verbose | grep -q "$head"; then
+            echo "[entrypoint] alembic history missing revision $head; refusing to stamp" >&2
+            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini heads --verbose"
+            run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
+            exit 1
+        fi
         echo "[entrypoint] stamping alembic head $head"
         if ! alembic -q -c "$ALEMBIC_CONFIG" stamp "$head" >>"$MIGRATION_LOG" 2>&1; then
             echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
@@ -561,9 +573,9 @@ if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
             exit 1
         fi
     done
-    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
-    found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
-    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
+    echo "[entrypoint] found versions after mismatch stamp: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 fi
 
 if [ -z "$found_versions" ]; then
@@ -576,7 +588,7 @@ if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
     exit 1
 fi
 
-echo "[entrypoint] post-migration version validation complete: heads=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
+echo "[entrypoint] version validation OK: heads=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 
 run_pytest=0
 if [ "${NEFT_MODE}" = "test" ]; then
