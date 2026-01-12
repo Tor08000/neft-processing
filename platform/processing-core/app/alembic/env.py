@@ -76,11 +76,7 @@ def _ensure_version_table(connection) -> None:
         )
 
 
-def _detect_alembic_cmd() -> str | None:
-    command_opts = getattr(config, "cmd_opts", None)
-    command_name = getattr(command_opts, "cmd", None)
-    if command_name:
-        return command_name
+def _detect_alembic_cmd() -> str:
     known_commands = {
         "upgrade",
         "downgrade",
@@ -93,7 +89,7 @@ def _detect_alembic_cmd() -> str | None:
     for arg in sys.argv[1:]:
         if arg in known_commands:
             return arg
-    return None
+    return "unknown"
 
 
 def run_migrations_online() -> None:
@@ -110,8 +106,14 @@ def run_migrations_online() -> None:
 
     with engine.connect() as connection:
         command_name = _detect_alembic_cmd()
+        if isinstance(command_name, (list, tuple)):
+            command_name = command_name[0] if command_name else "unknown"
+        if command_name is None:
+            command_name = "unknown"
+        command_name = str(command_name).lower()
         preflight_connection = connection.execution_options(isolation_level="AUTOCOMMIT")
-        if command_name not in {"current", "history", "heads"}:
+        skip_preflight = command_name in {"current", "history", "heads"}
+        if not skip_preflight:
             _ensure_version_table(preflight_connection)
         else:
             quoted_schema = quote_schema(schema)
