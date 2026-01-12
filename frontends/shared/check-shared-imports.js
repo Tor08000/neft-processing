@@ -1,9 +1,8 @@
-const { readdir, readFile } = require("node:fs/promises");
+const { readdir, readFile, access } = require("node:fs/promises");
 const path = require("node:path");
 
-const repoRoot = path.resolve(__dirname, "..");
-const frontendsDir = path.join(repoRoot, "frontends");
-const portals = ["admin-ui", "client-portal", "partner-portal"];
+const portalRoot = process.cwd();
+const portalSrcDir = path.resolve(portalRoot, "src");
 
 async function collectSourceFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -23,46 +22,55 @@ async function collectSourceFiles(dir) {
   return files;
 }
 
-function findInvalidImports(content) {
-  const invalid = [];
-  const importRegex = /from\s+["']([^"']+)["']/g;
-  let match;
-
-  while ((match = importRegex.exec(content)) !== null) {
-    if (match[1].includes("../shared/")) {
-      invalid.push(match[1]);
-    }
+function resolvesToSharedOutsidePortal(importPath, filePath) {
+  if (!importPath.startsWith(".")) {
+    return false;
   }
 
-  return invalid;
+  const resolvedPath = path.resolve(path.dirname(filePath), importPath);
+  const pathSegments = resolvedPath.split(path.sep);
+
+  return pathSegments.includes("shared") && !resolvedPath.startsWith(portalSrcDir);
 }
 
 async function main() {
+  try {
+    await access(portalSrcDir);
+  } catch (error) {
+    console.error(`Cannot find src dir at ${portalSrcDir}`);
+    process.exit(1);
+  }
+
+  const files = await collectSourceFiles(portalSrcDir);
   const violations = [];
 
-  for (const portal of portals) {
-    const srcDir = path.join(frontendsDir, portal, "src");
-    const files = await collectSourceFiles(srcDir);
-    for (const filePath of files) {
-      const contents = await readFile(filePath, "utf8");
-      const invalidImports = findInvalidImports(contents);
-      if (invalidImports.length > 0) {
-        violations.push({
-          filePath,
-          invalidImports,
-          portal,
-        });
+  for (const filePath of files) {
+    const contents = await readFile(filePath, "utf8");
+    const lines = contents.split(/\r?\n/);
+
+    lines.forEach((line, index) => {
+      const lineNumber = index + 1;
+      const importRegex = /from\s+["']([^"']+)["']|require\(\s*["']([^"']+)["']\s*\)|import\(\s*["']([^"']+)["']\s*\)/g;
+      let match;
+
+      while ((match = importRegex.exec(line)) !== null) {
+        const importPath = match[1] || match[2] || match[3];
+        if (resolvesToSharedOutsidePortal(importPath, filePath)) {
+          violations.push({
+            filePath,
+            lineNumber,
+            importPath,
+          });
+        }
       }
-    }
+    });
   }
 
   if (violations.length > 0) {
     console.error("Invalid shared imports detected in portal sources:");
     for (const violation of violations) {
-      const relativePath = path.relative(repoRoot, violation.filePath);
-      console.error(
-        `- ${violation.portal}/${relativePath}: ${violation.invalidImports.join(", ")}`
-      );
+      const relativePath = path.relative(portalRoot, violation.filePath);
+      console.error(`- ${relativePath}:${violation.lineNumber} ${violation.importPath}`);
     }
     process.exit(1);
   }
