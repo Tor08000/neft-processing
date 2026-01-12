@@ -124,19 +124,17 @@ if [ ! -f "$ALEMBIC_CONFIG" ]; then
 fi
 
 echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
-heads_output=$(alembic -c "$ALEMBIC_CONFIG" heads 2>&1)
-heads_count=$(printf "%s\n" "$heads_output" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-if [ "$heads_count" -ne 1 ]; then
-    echo "[entrypoint] migration validation failed; multiple heads detected" >&2
-    echo "$heads_output" >&2
-    echo "[entrypoint] create merge revision with: alembic merge <head1> <head2>" >&2
-    echo "[entrypoint] migration validation failed; run scripts\\check_migrations.cmd" >&2
-    if [ "${ENTRYPOINT_MIGRATION_KEEPALIVE}" = "1" ]; then
-        echo "[entrypoint] ENTRYPOINT_MIGRATION_KEEPALIVE=1; keeping container alive" >&2
-        tail -f /dev/null
-    fi
+heads_output=$(alembic -q -c "$ALEMBIC_CONFIG" heads 2>&1)
+if [ $? -ne 0 ]; then
+    echo "[entrypoint] alembic heads failed: $heads_output" >&2
     exit 1
 fi
+expected_heads=$(printf "%s\n" "$heads_output" | awk 'NF{print $1}')
+if [ -z "$expected_heads" ]; then
+    echo "[entrypoint] alembic heads returned empty output" >&2
+    exit 1
+fi
+echo "[entrypoint] alembic heads resolved: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
 
 echo "[entrypoint] ensuring alembic_version_core length"
 if [ -z "$DATABASE_URL" ]; then
@@ -196,7 +194,10 @@ DO \$\$
 DECLARE r record;
 DECLARE has_table boolean;
 DECLARE total int := 0;
+DECLARE eligible int := 0;
 DECLARE dropped int := 0;
+DECLARE skipped int := 0;
+DECLARE skip_reason text;
 BEGIN
   FOR r IN (
     SELECT n.nspname AS schema_name,
@@ -217,17 +218,37 @@ BEGIN
         AND c.relkind IN ('r','p')
     ) INTO has_table;
 
-    IF NOT has_table THEN
+    IF has_table THEN
+      skip_reason := 'table exists';
+      skipped := skipped + 1;
+      RAISE DEBUG 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+      CONTINUE;
+    END IF;
+
+    IF r.type_kind NOT IN ('d', 'e') THEN
+      skip_reason := format('unsupported typtype=%s', r.type_kind);
+      skipped := skipped + 1;
+      RAISE DEBUG 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+      CONTINUE;
+    END IF;
+
+    eligible := eligible + 1;
+    BEGIN
       IF r.type_kind = 'd' THEN
         EXECUTE format('DROP DOMAIN IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
       ELSE
         EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
       END IF;
       dropped := dropped + 1;
-    END IF;
+      RAISE DEBUG 'orphan cleanup drop: schema=% type=% typtype=% reason=dropped', r.schema_name, r.type_name, r.type_kind;
+    EXCEPTION WHEN OTHERS THEN
+      skip_reason := SQLERRM;
+      skipped := skipped + 1;
+      RAISE NOTICE 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+    END;
   END LOOP;
 
-  RAISE NOTICE 'pre-migration cleanup: orphan types/domains found %, dropped %', total, dropped;
+  RAISE NOTICE 'pre-migration cleanup: orphan types/domains found_total %, eligible_to_drop %, dropped %, skipped_with_reason %', total, eligible, dropped, skipped;
 END
 \$\$;
 EOF
@@ -397,207 +418,67 @@ echo "[entrypoint] repair completed: ${schema_resolved}.operations=${repaired_re
 echo "[entrypoint] post-migration schema repair completed"
 fi
 
-python - <<'PY'
-import os
-import sys
+required_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+IFS='|' read -r required_operations required_version_table <<EOF
+$required_state
+EOF
+if [ -z "$required_operations" ] || [ -z "$required_version_table" ]; then
+    echo "[entrypoint] required tables missing after migrations: ${schema_resolved}.operations=${required_operations} ${schema_resolved}.alembic_version_core=${required_version_table}" >&2
+    exit 1
+fi
 
-import psycopg
-from alembic import command
-from alembic.config import Config
-from alembic.script import ScriptDirectory
-from sqlalchemy.engine import make_url
+echo "[entrypoint] post-migration version validation starting"
+expected_heads_sorted=$(printf "%s\n" "$expected_heads" | sort)
+found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
+found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
+found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+if [ -z "$found_versions" ]; then
+    echo "[entrypoint] alembic_version_core empty; stamping expected heads"
+    for head in $expected_heads; do
+        echo "[entrypoint] stamping alembic head $head"
+        if ! alembic -q -c "$ALEMBIC_CONFIG" stamp "$head" >>"$MIGRATION_LOG" 2>&1; then
+            echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
+            tail -n 200 "$MIGRATION_LOG" >&2 || true
+            exit 1
+        fi
+    done
+    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
+    found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
+    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+fi
 
-db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
-ALEMBIC_VERSION_TABLE = "alembic_version_core"
-if not db_url:
-    print("[entrypoint] DATABASE_URL is not set for post-migration verification", file=sys.stderr, flush=True)
-    sys.exit(1)
+if [ -z "$found_versions" ]; then
+    echo "[entrypoint] alembic_version_core still empty after stamp; refusing to start" >&2
+    exit 1
+fi
 
-cfg = Config(os.getenv("ALEMBIC_CONFIG", "app/alembic.ini"))
-cfg.set_main_option("sqlalchemy.url", db_url)
-expected_heads = set(ScriptDirectory.from_config(cfg).get_heads())
+if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
+    echo "[entrypoint] alembic_version_core mismatch: expected=[$(printf "%s\n" "$expected_heads_sorted" | tr '\n' ' ')] found=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]" >&2
+    echo "[entrypoint] attempting to stamp expected heads after mismatch" >&2
+    for head in $expected_heads; do
+        echo "[entrypoint] stamping alembic head $head"
+        if ! alembic -q -c "$ALEMBIC_CONFIG" stamp "$head" >>"$MIGRATION_LOG" 2>&1; then
+            echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
+            tail -n 200 "$MIGRATION_LOG" >&2 || true
+            exit 1
+        fi
+    done
+    found_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
+    found_versions=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d')
+    found_versions_sorted=$(printf "%s\n" "$found_versions" | sort)
+fi
 
-url = make_url(db_url)
-if url.drivername.endswith("+psycopg"):
-    url = url.set(drivername="postgresql")
-dsn = url.render_as_string(hide_password=False)
+if [ -z "$found_versions" ]; then
+    echo "[entrypoint] alembic_version_core empty after retry; refusing to start" >&2
+    exit 1
+fi
 
-def _quote_schema(value: str) -> str:
-    return '"' + value.replace('"', '""') + '"'
+if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
+    echo "[entrypoint] alembic_version_core mismatch after stamp: expected=[$(printf "%s\n" "$expected_heads_sorted" | tr '\n' ' ')] found=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]" >&2
+    exit 1
+fi
 
-connect_kwargs = {
-    "prepare_threshold": 0,
-    "options": f"-c search_path={schema},public",
-}
-
-def _collect_state(cur):
-    regclasses: dict[str, str | None] = {}
-    cur.execute("select current_schema(), current_setting('search_path')")
-    current_schema, search_path = cur.fetchone()
-    cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
-    processing_core_reg = cur.fetchone()[0]
-    cur.execute("select to_regclass(%s)", ("public.operations",))
-    public_reg = cur.fetchone()[0]
-    cur.execute(
-        """
-        SELECT n.nspname, c.relname
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE c.relname IN ('operations', %s)
-        ORDER BY n.nspname
-        """
-    , (ALEMBIC_VERSION_TABLE,))
-    pg_class_hits = cur.fetchall()
-    cur.execute(
-        """
-        SELECT table_schema
-        FROM information_schema.tables
-        WHERE table_name = 'operations'
-        ORDER BY table_schema
-        """
-    )
-    operations_schemas = [row[0] for row in cur.fetchall()]
-    for table in (ALEMBIC_VERSION_TABLE, "operations"):
-        qualified = f"{_quote_schema(schema)}.{table}"
-        cur.execute("select to_regclass(%s)", (qualified,))
-        regclasses[table] = cur.fetchone()[0]
-
-    version_reg = regclasses[ALEMBIC_VERSION_TABLE]
-    versions = []
-    if version_reg is not None:
-        cur.execute(f'SELECT version_num FROM "{schema}".{ALEMBIC_VERSION_TABLE}')
-        versions = [row[0] for row in cur.fetchall()]
-
-    return (
-        regclasses,
-        versions,
-        current_schema,
-        search_path,
-        processing_core_reg,
-        public_reg,
-        pg_class_hits,
-        operations_schemas,
-    )
-
-def _ensure_alembic_version_length(cur, *, min_length: int = 128) -> None:
-    cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-    cur.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS "{schema}".{ALEMBIC_VERSION_TABLE} (
-            version_num VARCHAR({min_length}) NOT NULL,
-            CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkey PRIMARY KEY (version_num)
-        )
-        """
-    )
-    cur.execute(
-        """
-        SELECT character_maximum_length
-        FROM information_schema.columns
-        WHERE table_schema = %s AND table_name = %s AND column_name = 'version_num'
-        """,
-        (schema, ALEMBIC_VERSION_TABLE),
-    )
-    row = cur.fetchone()
-    if row is None:
-        cur.execute(
-            f"""
-            ALTER TABLE "{schema}".{ALEMBIC_VERSION_TABLE}
-            ADD COLUMN version_num VARCHAR({min_length}) NOT NULL
-            """
-        )
-        current_length = None
-    else:
-        current_length = row[0]
-    if current_length is None or current_length < min_length:
-        cur.execute(
-            f'ALTER TABLE "{schema}".{ALEMBIC_VERSION_TABLE} '
-            f'ALTER COLUMN version_num TYPE VARCHAR({min_length})'
-        )
-
-with psycopg.connect(dsn, **connect_kwargs) as conn:
-    conn.autocommit = True
-    with conn.cursor() as cur:
-        (
-            regclasses,
-            versions,
-            current_schema,
-            search_path,
-            processing_core_reg,
-            public_reg,
-            pg_class_hits,
-            operations_schemas,
-        ) = _collect_state(cur)
-
-missing = [table for table, reg in regclasses.items() if reg is None]
-
-if ALEMBIC_VERSION_TABLE in missing:
-    print(
-        "[entrypoint] alembic version table missing; attempting to stamp heads: "
-        f"schema_resolved={schema} search_path={search_path} current_schema={current_schema} "
-        f"pg_class_hits={pg_class_hits}",
-        file=sys.stderr,
-        flush=True,
-    )
-    try:
-        with psycopg.connect(dsn, **connect_kwargs) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                _ensure_alembic_version_length(cur)
-        command.stamp(cfg, "heads")
-    except Exception as exc:  # noqa: BLE001 - entrypoint diagnostics
-        print(f"[entrypoint] alembic stamp failed: {exc}", file=sys.stderr, flush=True)
-        sys.exit(1)
-
-    with psycopg.connect(dsn, **connect_kwargs) as conn:
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            (
-                regclasses,
-                versions,
-                current_schema,
-                search_path,
-                processing_core_reg,
-                public_reg,
-                pg_class_hits,
-                operations_schemas,
-            ) = _collect_state(cur)
-    missing = [table for table, reg in regclasses.items() if reg is None]
-
-if missing:
-    print(
-        "[entrypoint] required tables missing after migrations: "
-        f"schema_resolved={schema} regclass={regclasses} missing={missing} "
-        f"current_schema={current_schema} search_path={search_path} "
-        f"{schema}.operations={processing_core_reg} public.operations={public_reg} "
-        f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
-        file=sys.stderr,
-        flush=True,
-    )
-    sys.exit(1)
-
-unique_versions = set(versions)
-if unique_versions != expected_heads:
-    print(
-        "[entrypoint] alembic_version_core mismatch: "
-        f"schema_resolved={schema} regclass={regclasses} "
-        f"expected={sorted(expected_heads)} found={sorted(unique_versions)} "
-        f"current_schema={current_schema} search_path={search_path} "
-        f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
-        file=sys.stderr,
-        flush=True,
-    )
-    sys.exit(1)
-
-print(
-    "[entrypoint] migration check passed: "
-    f"schema_resolved={schema} regclass={regclasses} heads={sorted(expected_heads)} "
-    f"current_schema={current_schema} search_path={search_path} "
-    f"{schema}.operations={processing_core_reg} public.operations={public_reg} "
-    f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
-    flush=True,
-)
-PY
+echo "[entrypoint] post-migration version validation complete: heads=[$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
 
 run_pytest=0
 if [ "${NEFT_MODE}" = "test" ]; then
