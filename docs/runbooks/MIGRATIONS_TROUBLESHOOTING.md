@@ -51,6 +51,19 @@ scripts\db\repair_processing_core.cmd core-api
 docker compose exec -T core-api sh -lc "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -c \"DROP DOMAIN IF EXISTS processing_core.client_onboarding_state CASCADE; DROP TYPE IF EXISTS processing_core.client_onboarding_state CASCADE;\""
 ```
 
+## `ModuleNotFoundError: No module named 'psycopg2'` on startup
+
+**Symptoms**
+- `ModuleNotFoundError: No module named 'psycopg2'`
+- Error points to an entrypoint step that tries to create a SQLAlchemy engine.
+
+**Cause**
+- Someone added a SQLAlchemy/psycopg2-based block to the entrypoint. The core-api image ships with psycopg3 only.
+
+**Fix**
+- Remove the SQLAlchemy block from `platform/processing-core/entrypoint.sh`.
+- Re-implement the check using `psql` (same pattern as other repair/cleanup steps).
+
 ## `syntax error at or near ":"` during pre-migration cleanup
 
 **Symptoms**
