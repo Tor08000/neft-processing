@@ -12,7 +12,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client", "react", "react-dom", "./types/vitest"]
+    "types": ["vite/client", "react", "react-dom", "./types/vitest"],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    }
   },
   "include": ["src", "types", "../shared/brand"],
   "exclude": [

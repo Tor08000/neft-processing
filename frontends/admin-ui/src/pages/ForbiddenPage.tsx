@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { EmptyState } from "../../../shared/brand/components";
+import { EmptyState } from "@shared/brand/components";
 
 export const ForbiddenPage: React.FC = () => {
   return (

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { listPolicies, type PolicyIndexItem, type PolicyStatus, type PolicyType } from "../api/policies";
 import { useAuth } from "../auth/AuthContext";
 import { DataTable, type DataColumn } from "../components/common/DataTable";
-import { EmptyState as BrandEmptyState, StatusPill } from "../../../shared/brand/components";
+import { EmptyState as BrandEmptyState, StatusPill } from "@shared/brand/components";
 import ForbiddenPage from "./ForbiddenPage";
 import { describeError } from "../utils/apiErrors";
 import { formatDateTime } from "../utils/format";

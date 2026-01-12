@@ -6,7 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
-import "../../shared/brand/brand.css";
+import "@shared/brand/brand.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
 
 const base = import.meta.env.BASE_URL || "/client/";

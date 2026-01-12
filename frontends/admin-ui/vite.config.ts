@@ -6,6 +6,11 @@ export default defineConfig(() => {
   return {
     base: "/admin/",
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@shared": resolve(__dirname, "../shared"),
+      },
+    },
     server: {
       host: true,
       port: 8080,

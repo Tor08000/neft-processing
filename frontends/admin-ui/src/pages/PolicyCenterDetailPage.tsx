@@ -14,7 +14,7 @@ import { useAuth } from "../auth/AuthContext";
 import { DataTable, type DataColumn } from "../components/common/DataTable";
 import { CopyButton } from "../components/CopyButton/CopyButton";
 import { JsonViewer } from "../components/common/JsonViewer";
-import { EmptyState as BrandEmptyState, StatusPill } from "../../../shared/brand/components";
+import { EmptyState as BrandEmptyState, StatusPill } from "@shared/brand/components";
 import ForbiddenPage from "./ForbiddenPage";
 import { describeError } from "../utils/apiErrors";
 import { formatDateTime } from "../utils/format";

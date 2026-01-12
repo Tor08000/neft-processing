@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useLegalGate } from "../../auth/LegalGateContext";
-import { BrandHeader, BrandSidebar, PageShell } from "../../../../shared/brand/components";
+import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 import { getInitialTheme, toggleTheme } from "../../lib/theme";
 
 const baseNavItems = [
