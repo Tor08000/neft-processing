@@ -130,6 +130,7 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
+STAMP_FALLBACK_REVISION="20299000_0130_merge_heads_processing_core"
 
 extract_heads() {
     printf "%s\n" "$1" | awk '/^Rev: / {print $2}' | tr -d '\r' | awk 'NF' | sort -u
@@ -148,14 +149,22 @@ run_diag_cmd() {
 }
 
 get_found_versions() {
-    table_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
-    if [ -z "$table_reg" ]; then
-        return 0
-    fi
     psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
         "SELECT version_num FROM ${schema_resolved}.alembic_version_core ORDER BY 1;" \
         | tr -d '\r' | sed '/^[[:space:]]*$/d'
+}
+
+log_found_versions() {
+    found_versions="$1"
+    rows_count=$(printf "%s\n" "$found_versions" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+    echo "[entrypoint] found versions rows count: $rows_count"
+    echo "[entrypoint] found versions list: [$(printf "%s\n" "$found_versions" | tr '\n' ' ')]"
+}
+
+fallback_stamp_insert() {
+    echo "[entrypoint] stamp fallback: inserting ${STAMP_FALLBACK_REVISION} into ${schema_resolved}.alembic_version_core"
+    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -c \
+        "INSERT INTO ${schema_resolved}.alembic_version_core(version_num) VALUES ('${STAMP_FALLBACK_REVISION}') ON CONFLICT DO NOTHING;"
 }
 
 run_alembic_current_verbose() {
@@ -528,7 +537,7 @@ echo "[entrypoint] post-migration version validation starting"
 expected_heads_sorted=$(printf "%s\n" "$expected_heads" | sort -u)
 found_versions=$(get_found_versions)
 found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-echo "[entrypoint] found versions: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
+log_found_versions "$found_versions_sorted"
 if [ -z "$found_versions" ]; then
     echo "[entrypoint] alembic_version_core empty; stamping expected heads"
     for head in $expected_heads; do
@@ -548,7 +557,15 @@ if [ -z "$found_versions" ]; then
     run_alembic_current_verbose
     found_versions=$(get_found_versions)
     found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-    echo "[entrypoint] found versions after stamp: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
+    echo "[entrypoint] found versions after stamp:"
+    log_found_versions "$found_versions_sorted"
+    if [ -z "$found_versions" ]; then
+        fallback_stamp_insert
+        found_versions=$(get_found_versions)
+        found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
+        echo "[entrypoint] found versions after fallback insert:"
+        log_found_versions "$found_versions_sorted"
+    fi
     if [ -z "$found_versions" ]; then
         echo "[entrypoint] alembic_version_core empty after stamp; running diagnostics" >&2
         run_empty_stamp_diagnostics
@@ -580,7 +597,15 @@ if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
     run_alembic_current_verbose
     found_versions=$(get_found_versions)
     found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
-    echo "[entrypoint] found versions after mismatch stamp: [$(printf "%s\n" "$found_versions_sorted" | tr '\n' ' ')]"
+    echo "[entrypoint] found versions after mismatch stamp:"
+    log_found_versions "$found_versions_sorted"
+    if [ -z "$found_versions" ]; then
+        fallback_stamp_insert
+        found_versions=$(get_found_versions)
+        found_versions_sorted=$(printf "%s\n" "$found_versions" | sort -u)
+        echo "[entrypoint] found versions after mismatch fallback insert:"
+        log_found_versions "$found_versions_sorted"
+    fi
     if [ -z "$found_versions" ]; then
         echo "[entrypoint] alembic_version_core empty after mismatch stamp; running diagnostics" >&2
         run_empty_stamp_diagnostics
