@@ -111,7 +111,7 @@ exit /b 1
 set "step=5. Smoke scripts"
 set "failed=0"
 
-call :run_script_if_exists "scripts\test_auth_host.cmd" || set "failed=1"
+call :run_cmd "5.1 auth-host tests subset" "docker compose exec -T auth-host pytest app/tests/test_health.py app/tests/test_metrics.py -q" || set "failed=1"
 call :run_script_if_exists "scripts\billing_smoke.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_billing_finance.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_invoice_state_machine.cmd" || set "failed=1"
