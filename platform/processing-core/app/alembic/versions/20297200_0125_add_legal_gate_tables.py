@@ -1,7 +1,7 @@
 """Add legal gate documents and acceptances.
 
 Revision ID: 20297200_0125_add_legal_gate_tables
-Revises: 20297160_0124_fix_operations_client_id_type
+Revises: 20297170_0125_legal_docs_registry
 Create Date: 2029-08-10 00:00:00.000000
 """
 
@@ -14,15 +14,21 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.alembic.helpers import is_postgres
-from app.alembic.utils import SCHEMA, create_index_if_not_exists, ensure_pg_enum, safe_enum
+from app.alembic.utils import (
+    SCHEMA,
+    create_index_if_not_exists,
+    create_table_if_not_exists,
+    ensure_pg_enum,
+    safe_enum,
+)
 
 revision = "20297200_0125_add_legal_gate_tables"
-down_revision = "20297160_0124_fix_operations_client_id_type"
+down_revision = "20297170_0125_legal_docs_registry"
 branch_labels = None
 depends_on = None
 
 
-LEGAL_DOCUMENT_STATUS = ["DRAFT", "PUBLISHED", "DEPRECATED"]
+LEGAL_DOCUMENT_STATUS = ["DRAFT", "PUBLISHED", "ARCHIVED"]
 LEGAL_SUBJECT_TYPE = ["CLIENT", "PARTNER", "USER"]
 
 
@@ -50,7 +56,8 @@ def upgrade() -> None:
     subject_enum = safe_enum(bind, "legal_subject_type", LEGAL_SUBJECT_TYPE, schema=SCHEMA)
     uuid_type = _uuid_type(bind)
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "legal_documents",
         sa.Column("id", uuid_type, primary_key=True, nullable=False, default=uuid.uuid4),
         sa.Column("code", sa.String(length=64), nullable=False),
@@ -70,7 +77,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    op.create_table(
+    create_table_if_not_exists(
+        bind,
         "legal_acceptances",
         sa.Column("id", uuid_type, primary_key=True, nullable=False, default=uuid.uuid4),
         sa.Column("document_id", uuid_type, sa.ForeignKey(f"{SCHEMA}.legal_documents.id"), nullable=False),
