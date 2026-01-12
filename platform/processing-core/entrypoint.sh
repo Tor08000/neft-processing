@@ -121,6 +121,7 @@ PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE r record;
+DECLARE rk char;
 DECLARE dropped int := 0;
 BEGIN
   FOR r IN (
@@ -129,19 +130,22 @@ BEGIN
     JOIN pg_namespace n ON n.oid=t.typnamespace
     WHERE n.nspname = 'processing_core'
       AND t.typtype = 'c'
-      AND NOT EXISTS (
-        SELECT 1
-        FROM pg_class c
-        JOIN pg_namespace n2 ON n2.oid = c.relnamespace
-        WHERE n2.nspname = n.nspname
-          AND c.relname = t.typname
-          AND c.relkind IN ('r','p')
-      )
   ) LOOP
-    RAISE NOTICE 'dropping orphan composite type %.% ...', r.schema_name, r.type_name;
-    EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
-    dropped := dropped + 1;
+    SELECT c.relkind INTO rk
+    FROM pg_class c
+    JOIN pg_namespace n2 ON n2.oid = c.relnamespace
+    WHERE n2.nspname = r.schema_name
+      AND c.relname = r.type_name
+    LIMIT 1;
+
+    -- orphan if there is no table/partitioned-table relation
+    IF rk IS NULL OR rk NOT IN ('r','p') THEN
+      RAISE NOTICE 'dropping orphan composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
+      EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
+      dropped := dropped + 1;
+    END IF;
   END LOOP;
+
   RAISE NOTICE 'dropped % orphan composite types', dropped;
 END $$;
 SQL
