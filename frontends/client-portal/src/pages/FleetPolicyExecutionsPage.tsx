@@ -16,16 +16,16 @@ import { canViewExecutions, type FleetPolicyRole } from "../utils/fleetPolicyPer
 import { PolicyCenterTabs } from "../components/PolicyCenterTabs";
 
 const getExecutionStatusClass = (status?: string | null) => {
-  if (status === "APPLIED") return "badge badge-success";
-  if (status === "FAILED") return "badge badge-error";
-  if (status === "SKIPPED") return "badge badge-muted";
-  return "badge badge-muted";
+  if (status === "APPLIED") return "neft-chip neft-chip-ok";
+  if (status === "FAILED") return "neft-chip neft-chip-err";
+  if (status === "SKIPPED") return "neft-chip neft-chip-muted";
+  return "neft-chip neft-chip-muted";
 };
 
 const getActionBadgeClass = (action?: string | null) => {
-  if (action === "AUTO_BLOCK_CARD") return "badge badge-warning";
-  if (action === "ESCALATE_CASE") return "badge badge-info";
-  return "badge badge-muted";
+  if (action === "AUTO_BLOCK_CARD") return "neft-chip neft-chip-warn";
+  if (action === "ESCALATE_CASE") return "neft-chip neft-chip-info";
+  return "neft-chip neft-chip-muted";
 };
 
 const toIsoDate = (value: string, endOfDay = false) => {
@@ -141,7 +141,7 @@ export function FleetPolicyExecutionsPage() {
                   ? t("fleetPolicies.triggerAnomaly")
                   : execution.trigger_type ?? t("common.notAvailable")}
             </div>
-            {execution.severity ? <span className="badge badge-muted">{execution.severity}</span> : null}
+            {execution.severity ? <span className="neft-chip neft-chip-muted">{execution.severity}</span> : null}
           </div>
         ),
       },
@@ -164,7 +164,7 @@ export function FleetPolicyExecutionsPage() {
         key: "scope",
         title: t("fleetPolicies.scope"),
         render: (execution) => (
-          <span className="badge badge-muted">
+          <span className="neft-chip neft-chip-muted">
             {execution.scope_type === "CLIENT"
               ? t("fleetPolicies.scopeClient")
               : execution.scope_type === "GROUP"

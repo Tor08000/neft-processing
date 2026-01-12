@@ -10,7 +10,7 @@ export default defineConfig(() => {
     server: {
       port: 4174,
       fs: {
-        allow: [resolve(__dirname), resolve(__dirname, "../shared")],
+        allow: [resolve(__dirname), resolve(__dirname, "../shared"), resolve(__dirname, "../../brand")],
       },
     },
     test: {

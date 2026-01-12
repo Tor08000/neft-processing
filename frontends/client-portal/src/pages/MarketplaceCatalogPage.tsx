@@ -238,8 +238,10 @@ export function MarketplaceCatalogPage() {
                   <div className="muted small">{item.partner_name ?? t("marketplaceCatalog.card.partnerFallback")}</div>
                 </div>
                 <div className="badge-row">
-                  <span className="badge badge-muted">{item.category ?? t("marketplaceCatalog.card.categoryFallback")}</span>
-                  <span className="badge badge-info">
+                  <span className="neft-chip neft-chip-muted">
+                    {item.category ?? t("marketplaceCatalog.card.categoryFallback")}
+                  </span>
+                  <span className="neft-chip neft-chip-info">
                     {item.type === "SERVICE"
                       ? t("marketplaceCatalog.types.service")
                       : t("marketplaceCatalog.types.product")}

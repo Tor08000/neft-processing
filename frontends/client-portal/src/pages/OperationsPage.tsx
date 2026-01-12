@@ -347,10 +347,10 @@ export function OperationsPage() {
                 key: "status",
                 title: "Статус",
                 render: (op) => {
-                  const statusTone = op.status === "APPROVED" ? "success" : op.status === "DECLINED" ? "error" : "warning";
+                  const statusTone = op.status === "APPROVED" ? "ok" : op.status === "DECLINED" ? "err" : "warn";
                   return (
                     <div>
-                      <span className={`neft-badge ${statusTone}`}>{op.status}</span>
+                      <span className={`neft-chip neft-chip-${statusTone}`}>{op.status}</span>
                       {op.status === "DECLINED" && op.reason && <div className="muted small">{op.reason}</div>}
                     </div>
                   );
@@ -361,7 +361,7 @@ export function OperationsPage() {
                 title: "Причина",
                 render: (op) =>
                   op.primary_reason ? (
-                    <span className="neft-badge neutral" title={op.primary_reason}>
+                    <span className="neft-chip neft-chip-muted" title={op.primary_reason}>
                       {op.primary_reason}
                     </span>
                   ) : (
@@ -373,7 +373,7 @@ export function OperationsPage() {
                 title: "Risk",
                 render: (op) =>
                   op.risk_level ? (
-                    <span className="neft-badge warning" title={`Risk score: ${op.risk_level}`}>
+                    <span className="neft-chip neft-chip-warn" title={`Risk score: ${op.risk_level}`}>
                       {op.risk_level}
                     </span>
                   ) : (

@@ -108,7 +108,13 @@ export function AnalyticsExportsPage() {
                   <tr key={item.id}>
                     <td>{item.id}</td>
                     <td>
-                      <span className={item.status.toLowerCase().includes("ok") ? "badge success" : "badge warning"}>
+                      <span
+                        className={
+                          item.status.toLowerCase().includes("ok")
+                            ? "neft-chip neft-chip-ok"
+                            : "neft-chip neft-chip-warn"
+                        }
+                      >
                         {item.status}
                       </span>
                     </td>

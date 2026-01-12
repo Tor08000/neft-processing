@@ -42,20 +42,20 @@ const formatValue = (value?: number | string | null) => {
 };
 
 const statusBadge = (status?: string | null) => {
-  if (!status) return "neutral";
-  if (status === "completed" || status === "resolved") return "success";
-  if (status === "failed") return "error";
-  if (status === "started" || status === "open") return "warning";
-  if (status === "ignored") return "neutral";
-  return "neutral";
+  if (!status) return "muted";
+  if (status === "completed" || status === "resolved") return "ok";
+  if (status === "failed") return "err";
+  if (status === "started" || status === "open") return "warn";
+  if (status === "ignored") return "muted";
+  return "muted";
 };
 
 const deltaTone = (value?: number | string | null) => {
   const numeric = parseNumber(value);
-  if (numeric === null) return "#475569";
-  if (numeric > 0) return "#dc2626";
-  if (numeric < 0) return "#16a34a";
-  return "#475569";
+  if (numeric === null) return "var(--neft-text-muted)";
+  if (numeric > 0) return "var(--neft-error)";
+  if (numeric < 0) return "var(--neft-success)";
+  return "var(--neft-text-muted)";
 };
 
 
@@ -228,7 +228,7 @@ export function ReconciliationRunDetailsPage() {
       {
         key: "type",
         title: "Type",
-        render: (item) => <span className="neft-badge info">{item.discrepancy_type}</span>,
+        render: (item) => <span className="neft-chip neft-chip-info">{item.discrepancy_type}</span>,
       },
       {
         key: "account",
@@ -261,7 +261,7 @@ export function ReconciliationRunDetailsPage() {
         key: "status",
         title: "Status",
         render: (item) => (
-          <span className={`neft-badge ${statusBadge(item.status)}`}>{item.status ?? "unknown"}</span>
+          <span className={`neft-chip neft-chip-${statusBadge(item.status)}`}>{item.status ?? "unknown"}</span>
         ),
       },
       {
@@ -324,19 +324,19 @@ export function ReconciliationRunDetailsPage() {
   );
 
   if (unauthorized) {
-    return <div className="card error-state">Not authorized</div>;
+    return <div className="neft-card error-state">Not authorized</div>;
   }
 
   return (
     <div className="stack">
       <Toast toast={toast} />
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header" style={{ justifyContent: "space-between", gap: 16 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700 }}>Run {run?.id ?? ""}</h1>
             <div className="stack-inline" style={{ flexWrap: "wrap" }}>
-              <span className={`neft-badge ${statusBadge(run?.status)}`}>{run?.status ?? "unknown"}</span>
-              <span className={`neft-badge ${run?.scope === "external" ? "warning" : "success"}`}>
+              <span className={`neft-chip neft-chip-${statusBadge(run?.status)}`}>{run?.status ?? "unknown"}</span>
+              <span className={`neft-chip ${run?.scope === "external" ? "neft-chip-info" : "neft-chip-ok"}`}>
                 {run?.scope ?? "unknown"}
               </span>
               {run?.provider ? <span className="muted">{run.provider}</span> : null}
@@ -372,10 +372,18 @@ export function ReconciliationRunDetailsPage() {
       </section>
 
       {showAudit && run?.audit_event_id ? (
-        <section className="card">
+        <section className="neft-card">
           <h3>Audit integrity</h3>
           <div className="stack">
-            <div className={`neft-badge ${auditIntegrity === "verified" ? "success" : auditIntegrity === "broken" ? "danger" : "neutral"}`}>
+            <div
+              className={`neft-chip ${
+                auditIntegrity === "verified"
+                  ? "neft-chip-ok"
+                  : auditIntegrity === "broken"
+                    ? "neft-chip-err"
+                    : "neft-chip-muted"
+              }`}
+            >
               {auditIntegrity}
             </div>
             <p className="muted">
@@ -386,12 +394,12 @@ export function ReconciliationRunDetailsPage() {
         </section>
       ) : null}
 
-      {notAvailable ? <div className="card">Reconciliation API not available in this environment</div> : null}
-      {error ? <div className="card error-state">{error}</div> : null}
+      {notAvailable ? <div className="neft-card">Reconciliation API not available in this environment</div> : null}
+      {error ? <div className="neft-card error-state">{error}</div> : null}
 
       <div className="card-grid" style={{ marginBottom: 16 }}>
         {summaryCards.map((card) => (
-          <div key={card.label} className="card">
+          <div key={card.label} className="neft-card">
             <div className="muted" style={{ marginBottom: 8 }}>
               {card.label}
             </div>
@@ -417,7 +425,7 @@ export function ReconciliationRunDetailsPage() {
           emptyState={{ title: "No discrepancies", description: "This run is balanced." }}
         />
       ) : (
-        <section className="card">
+        <section className="neft-card">
           <h3>Reconciliation links</h3>
           {run?.summary && run.summary["links"] ? (
             <JsonViewer value={run.summary["links"]} redactionMode="audit" />

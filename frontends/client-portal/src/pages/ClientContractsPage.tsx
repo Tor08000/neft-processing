@@ -7,9 +7,9 @@ import { formatDate } from "../utils/format";
 import { AppErrorState, AppLoadingState } from "../components/states";
 
 const slaTone = (status: string) => {
-  if (status === "OK") return "success";
-  if (status === "VIOLATIONS") return "warning";
-  return "neutral";
+  if (status === "OK") return "ok";
+  if (status === "VIOLATIONS") return "warn";
+  return "muted";
 };
 
 export function ClientContractsPage() {
@@ -64,7 +64,7 @@ export function ClientContractsPage() {
                   {formatDate(contract.effective_from)} — {contract.effective_to ? formatDate(contract.effective_to) : "—"}
                 </td>
                 <td>
-                  <span className={`neft-badge ${slaTone(contract.sla_status)}`}>{contract.sla_status}</span>
+                  <span className={`neft-chip neft-chip-${slaTone(contract.sla_status)}`}>{contract.sla_status}</span>
                 </td>
                 <td>{contract.sla_violations}</td>
                 <td>

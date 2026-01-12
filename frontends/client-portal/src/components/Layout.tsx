@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import {
   MessageCircle,
@@ -13,6 +13,7 @@ import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
 import { BrandHeader, BrandSidebar, PageShell } from "../../../shared/brand/components";
+import { getInitialTheme, toggleTheme } from "../lib/theme";
 
 interface LayoutProps {
   pwaMode?: boolean;
@@ -40,6 +41,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { isBlocked } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
+  const [theme, setTheme] = useState(getInitialTheme());
   const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
@@ -64,7 +66,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   if (isApiBaseMissing) {
     return (
-      <div className="brand-shell neft-page">
+      <div className="brand-shell neft-page neft-app">
         <main className="brand-main">
           <BrandHeader title={t("app.title")} />
           <div className="card state">
@@ -79,7 +81,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   if (configError) {
     return (
-      <div className="brand-shell neft-page">
+      <div className="brand-shell neft-page neft-app">
         <main className="brand-main">
           <BrandHeader title={t("app.title")} />
           <AppErrorState message={configError} />
@@ -89,7 +91,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   }
 
   return (
-    <div className="brand-shell neft-page">
+    <div className="brand-shell neft-page neft-app">
       <BrandSidebar items={visibleNavItems} title="Client" />
       <main className="brand-main">
         <BrandHeader
@@ -100,12 +102,15 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
             <>
               <div>
                 <div className="muted">{t("app.signedInAs")}</div>
-                <strong>{user?.email}</strong>
-                <div className="roles">{user?.roles.join(", ")}</div>
-              </div>
-              <button className="ghost neft-btn-secondary" onClick={logout} type="button">
-                {t("actions.logout")}
-              </button>
+            <strong>{user?.email}</strong>
+            <div className="roles">{user?.roles.join(", ")}</div>
+          </div>
+          <button type="button" className="neft-btn neft-btn-outline" onClick={() => setTheme(toggleTheme(theme))}>
+            Theme: {theme}
+          </button>
+          <button className="ghost neft-btn-secondary" onClick={logout} type="button">
+            {t("actions.logout")}
+          </button>
             </>
           }
         />

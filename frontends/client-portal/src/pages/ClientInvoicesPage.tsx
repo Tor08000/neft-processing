@@ -211,7 +211,7 @@ export function ClientInvoicesPage() {
             key: "status",
             title: "Статус",
             render: (invoice) => (
-              <span className={`neft-badge ${getInvoiceStatusTone(invoice.status)}`}>
+              <span className={`neft-chip neft-chip-${getInvoiceStatusTone(invoice.status)}`}>
                 {getInvoiceStatusLabel(invoice.status)}
               </span>
             ),

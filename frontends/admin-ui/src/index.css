@@ -3,6 +3,7 @@
   background-color: var(--neft-bg);
   font-family: var(--neft-font-sans);
   --neft-header-height: 64px;
+  --neft-focus-ring: 0 0 0 4px var(--neft-focus);
 }
 
 * {
@@ -67,10 +68,10 @@ textarea {
 
 .table-container {
   border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
+  border-radius: var(--neft-radius-md);
   overflow: hidden;
-  background: var(--neft-surface);
-  box-shadow: var(--neft-shadow-sm);
+  background: var(--neft-card);
+  box-shadow: var(--neft-shadow-1);
 }
 
 .table-shell {
@@ -93,7 +94,7 @@ textarea {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   font-size: 12px;
   color: var(--neft-text-muted);
 }
@@ -121,8 +122,8 @@ textarea {
 }
 
 .table-density__button.is-active {
-  background: var(--neft-accent);
-  color: #0b0f14;
+  background: var(--neft-primary);
+  color: #0B1F2A;
 }
 
 .table-scroll {
@@ -152,11 +153,11 @@ textarea {
 }
 
 .card {
-  background: var(--neft-surface);
+  background: var(--neft-card);
   border: 1px solid var(--neft-border);
-  border-radius: var(--neft-radius-card);
+  border-radius: var(--neft-radius-md);
   padding: 16px;
-  box-shadow: var(--neft-shadow-sm);
+  box-shadow: var(--neft-shadow-1);
 }
 
 .badge {
@@ -167,30 +168,30 @@ textarea {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(156, 163, 175, 0.10);
   border: 1px solid var(--neft-border);
   color: var(--neft-text-muted);
 }
 
 .badge-success {
-  background: rgba(47, 234, 155, 0.12);
-  color: var(--neft-success);
-  border-color: rgba(47, 234, 155, 0.4);
+  background: rgba(14, 232, 168, 0.14);
+  color: var(--neft-text);
+  border-color: rgba(14, 232, 168, 0.35);
 }
 
 .badge-danger {
-  background: rgba(255, 77, 77, 0.12);
-  color: var(--neft-danger);
-  border-color: rgba(255, 77, 77, 0.4);
+  background: rgba(229, 72, 77, 0.14);
+  color: var(--neft-text);
+  border-color: rgba(229, 72, 77, 0.35);
 }
 
 input,
 select,
 textarea {
-  border-radius: var(--neft-radius-control);
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   padding: 8px 10px;
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   color: var(--neft-text);
 }
 
@@ -198,7 +199,7 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--neft-accent);
+  border-color: var(--neft-primary);
   box-shadow: var(--neft-focus-ring);
 }
 
@@ -238,19 +239,19 @@ p {
 .table th,
 .table td {
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(36, 50, 71, 0.55);
+  border-bottom: 1px solid var(--neft-border);
   text-align: left;
   font-size: 14px;
 }
 
 .table th {
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   font-weight: 700;
   color: var(--neft-text-muted);
 }
 
 .table tbody tr:hover {
-  background: rgba(22, 34, 53, 0.6);
+  background: var(--neft-table-hover);
 }
 
 .status-grid {
@@ -284,12 +285,12 @@ p {
 }
 
 .login-card {
-  background: var(--neft-surface);
+  background: var(--neft-card);
   width: 100%;
   max-width: 420px;
   padding: 28px;
-  border-radius: var(--neft-radius-card);
-  box-shadow: var(--neft-shadow-lg);
+  border-radius: var(--neft-radius-md);
+  box-shadow: var(--neft-shadow-2);
   border: 1px solid var(--neft-border);
 }
 
@@ -334,7 +335,7 @@ p {
 }
 
 .error-text {
-  color: var(--neft-danger);
+  color: var(--neft-error);
   font-size: 14px;
 }
 
@@ -387,7 +388,7 @@ p {
 .table-skeleton__cell {
   height: 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
+  background: linear-gradient(90deg, var(--neft-border) 0%, var(--neft-surface) 50%, var(--neft-border) 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
 }
@@ -404,8 +405,8 @@ p {
 
 .error-state {
   text-align: center;
-  border-color: rgba(148, 163, 184, 0.35);
-  background: rgba(22, 34, 53, 0.4);
+  border-color: color-mix(in srgb, var(--neft-border) 60%, transparent);
+  background: color-mix(in srgb, var(--neft-surface) 70%, transparent);
 }
 
 .error-state__content {
@@ -431,7 +432,7 @@ p {
   margin-top: 8px;
   padding: 12px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.6);
+  background: color-mix(in srgb, var(--neft-surface) 70%, transparent);
   border: 1px solid var(--neft-border);
   white-space: pre-wrap;
   color: var(--neft-text-muted);
@@ -443,8 +444,8 @@ p {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(11, 15, 20, 0.3);
-  border-top-color: rgba(11, 15, 20, 0.9);
+  border: 2px solid color-mix(in srgb, var(--neft-text) 20%, transparent);
+  border-top-color: color-mix(in srgb, var(--neft-text) 60%, transparent);
   animation: spin 1s linear infinite;
 }
 
@@ -454,9 +455,9 @@ p {
   justify-content: center;
   gap: 8px;
   padding: 10px 14px;
-  border-radius: var(--neft-radius-control);
+  border-radius: 10px;
   border: 1px solid var(--neft-border);
-  background: var(--neft-surface);
+  background: transparent;
   color: var(--neft-text);
   cursor: pointer;
   text-decoration: none;
@@ -464,9 +465,9 @@ p {
 }
 
 .button.primary {
-  background: var(--neft-accent);
+  background: var(--neft-primary);
   border-color: transparent;
-  color: #0b0f14;
+  color: #0B1F2A;
 }
 
 .stack {
@@ -482,7 +483,7 @@ p {
 }
 
 .pill {
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   color: var(--neft-text);
   padding: 6px 10px;
   border-radius: 999px;
@@ -491,20 +492,20 @@ p {
 }
 
 .pill--neutral {
-  background: rgba(148, 163, 184, 0.15);
-  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(156, 163, 175, 0.10);
+  border-color: rgba(156, 163, 175, 0.35);
   color: var(--neft-text-muted);
 }
 
 .pill--accent {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(59, 130, 246, 0.14);
   border-color: rgba(59, 130, 246, 0.35);
-  color: #60a5fa;
+  color: var(--neft-text);
 }
 
 .pill--outline {
   background: transparent;
-  border-color: rgba(148, 163, 184, 0.4);
+  border-color: rgba(156, 163, 175, 0.35);
   color: var(--neft-text-muted);
 }
 
@@ -577,7 +578,7 @@ p {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--neft-border);
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
 }
 
 .timeline-item__meta {
@@ -609,19 +610,19 @@ p {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--neft-border);
-  background: var(--neft-surface);
+  background: var(--neft-card);
   font-weight: 600;
   font-size: 13px;
 }
 
 .audit-integrity--verified {
   color: var(--neft-success);
-  border-color: rgba(22, 163, 74, 0.4);
+  border-color: rgba(14, 232, 168, 0.35);
 }
 
 .audit-integrity--broken {
-  color: var(--neft-danger);
-  border-color: rgba(220, 38, 38, 0.4);
+  color: var(--neft-error);
+  border-color: rgba(229, 72, 77, 0.35);
 }
 
 .audit-integrity--unknown {
@@ -637,15 +638,15 @@ p {
   margin-top: 12px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgba(220, 38, 38, 0.35);
-  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(229, 72, 77, 0.35);
+  background: rgba(229, 72, 77, 0.08);
   display: grid;
   gap: 8px;
 }
 
 .audit-integrity-details__title {
   font-weight: 700;
-  color: var(--neft-danger);
+  color: var(--neft-error);
 }
 
 .audit-integrity-details__hashes {
@@ -730,7 +731,7 @@ p {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   border: 1px solid var(--neft-border);
   display: flex;
   align-items: center;
@@ -739,7 +740,7 @@ p {
 }
 
 .audit-item__content {
-  background: var(--neft-surface2);
+  background: var(--neft-surface);
   border: 1px solid var(--neft-border);
   border-radius: 12px;
   padding: 12px;

@@ -23,20 +23,20 @@ const formatTimestamp = (value?: string | null) => {
 };
 
 const statusTone = (status: CaseStatus) => {
-  if (status === "RESOLVED") return "badge badge-success";
-  if (status === "CLOSED") return "badge badge-danger";
-  return "badge";
+  if (status === "RESOLVED") return "neft-chip neft-chip-ok";
+  if (status === "CLOSED") return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-muted";
 };
 
 const priorityTone = (priority: CasePriority) => {
-  if (priority === "HIGH" || priority === "CRITICAL") return "badge badge-danger";
-  return "badge";
+  if (priority === "HIGH" || priority === "CRITICAL") return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-muted";
 };
 
 const slaTone = (slaState?: CaseSlaState | null) => {
-  if (slaState === "BREACHED") return "badge badge-danger";
-  if (slaState === "WARNING") return "badge badge-success";
-  return "badge";
+  if (slaState === "BREACHED") return "neft-chip neft-chip-err";
+  if (slaState === "WARNING") return "neft-chip neft-chip-warn";
+  return "neft-chip neft-chip-muted";
 };
 
 const formatRemaining = (dueAt?: string | null) => {
@@ -157,15 +157,15 @@ export function CaseDetailsPage() {
   }
 
   if (isLoading) {
-    return <div className="card">Загружаем кейс...</div>;
+    return <div className="neft-card">Загружаем кейс...</div>;
   }
 
   if (error) {
-    return <div className="card error-state">{error}</div>;
+    return <div className="neft-card error-state">{error}</div>;
   }
 
   if (!payload) {
-    return <div className="card">Кейс не найден</div>;
+    return <div className="neft-card">Кейс не найден</div>;
   }
 
   const latestSnapshot = payload.latest_snapshot;
@@ -173,7 +173,7 @@ export function CaseDetailsPage() {
   return (
     <div className="stack">
       <Toast toast={toast} />
-      <section className="card">
+      <section className="neft-card">
         <div className="card__header">
           <div>
             <h2>{payload.case.title}</h2>
@@ -203,7 +203,7 @@ export function CaseDetailsPage() {
           </div>
           <div>
             <div className="label">Queue</div>
-            <span className="badge">{payload.case.queue}</span>
+            <span className="neft-chip neft-chip-muted">{payload.case.queue}</span>
           </div>
           <div>
             <div className="label">SLA</div>
@@ -226,7 +226,7 @@ export function CaseDetailsPage() {
         </div>
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <h3>SLA таймеры</h3>
         <div className="meta-grid">
           <div>
@@ -239,12 +239,12 @@ export function CaseDetailsPage() {
           </div>
           <div>
             <div className="label">Escalation level</div>
-            <span className="badge">{`E${payload.case.escalation_level}`}</span>
+            <span className="neft-chip neft-chip-muted">{`E${payload.case.escalation_level}`}</span>
           </div>
         </div>
       </section>
 
-      <section className="card">
+      <section className="neft-card">
         <h3>Эскалации</h3>
         {escalationHistory.length === 0 ? (
           <div className="muted">Эскалаций пока нет</div>

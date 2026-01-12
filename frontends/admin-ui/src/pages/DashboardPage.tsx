@@ -48,12 +48,12 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="stack">
       <Toast toast={toast} />
-      <div className="card">
+      <div className="neft-card">
         <h2>Добро пожаловать, {user?.email}</h2>
         <p className="muted">Роль: {user?.roles.join(", ")}</p>
       </div>
 
-      <div className="card">
+      <div className="neft-card">
         <h3>Пользователи системы</h3>
         {error ? <div className="error-text">{error}</div> : null}
         <p>Загружено: {users.length}</p>
@@ -66,7 +66,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="card">
+      <div className="neft-card">
         <h3>KPI за период</h3>
         <p className="muted">Операционные метрики по качеству и скорости исполнения.</p>
         {kpiError ? (
@@ -87,17 +87,17 @@ export const DashboardPage: React.FC = () => {
         )}
       </div>
 
-      <div className="card">
+      <div className="neft-card">
         <h3>Прогресс и дисциплина</h3>
         {kpiError ? null : <KpiHintList hints={hints} />}
       </div>
 
-      <div className="card">
+      <div className="neft-card">
         <h3>Мониторинг</h3>
         <p className="muted">Секции для клиентских аккаунтов, операций и мониторинга появятся позже.</p>
       </div>
 
-      <div className="card">
+      <div className="neft-card">
         <h3>Badges & Streak</h3>
         {achievementsError ? (
           <ErrorState

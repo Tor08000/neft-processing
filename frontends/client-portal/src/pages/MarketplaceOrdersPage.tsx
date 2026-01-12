@@ -35,11 +35,11 @@ const buildDateRange = (preset: string) => {
 };
 
 const statusClass = (status?: string | null) => {
-  if (!status) return "neft-badge warning";
+  if (!status) return "neft-chip neft-chip-warn";
   const normalized = status.toLowerCase();
-  if (["completed", "confirmed"].includes(normalized)) return "neft-badge success";
-  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-badge error";
-  return "neft-badge warning";
+  if (["completed", "confirmed"].includes(normalized)) return "neft-chip neft-chip-ok";
+  if (["cancelled", "canceled", "failed"].includes(normalized)) return "neft-chip neft-chip-err";
+  return "neft-chip neft-chip-warn";
 };
 
 const LAST_UPDATED_KEY = "pwa:lastUpdated:orders";
@@ -220,11 +220,11 @@ export function MarketplaceOrdersPage() {
 
   const renderSlaStatus = (order: MarketplaceOrderSummary) => {
     if (!order.sla_status) {
-      return <span className="neft-badge warning">—</span>;
+      return <span className="neft-chip neft-chip-warn">—</span>;
     }
     const normalized = order.sla_status.toUpperCase();
-    const tone = normalized === "VIOLATION" ? "error" : normalized === "OK" ? "success" : "warning";
-    return <span className={`neft-badge ${tone}`}>{t(`marketplaceOrders.slaStatus.${normalized}`)}</span>;
+    const tone = normalized === "VIOLATION" ? "err" : normalized === "OK" ? "ok" : "warn";
+    return <span className={`neft-chip neft-chip-${tone}`}>{t(`marketplaceOrders.slaStatus.${normalized}`)}</span>;
   };
 
   const handleCancel = async (orderId: string) => {
@@ -375,7 +375,10 @@ export function MarketplaceOrdersPage() {
                 key: "documents",
                 title: t("marketplaceOrders.table.documents"),
                 render: (order) => (
-                  <span className="neft-badge warning" title={getMarketplaceDocumentStatusLabel(order.documents_status)}>
+                  <span
+                    className="neft-chip neft-chip-warn"
+                    title={getMarketplaceDocumentStatusLabel(order.documents_status)}
+                  >
                     {getMarketplaceDocumentStatusLabel(order.documents_status)}
                   </span>
                 ),

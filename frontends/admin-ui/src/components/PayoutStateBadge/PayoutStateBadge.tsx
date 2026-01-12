@@ -4,20 +4,20 @@ import { PayoutState } from "../../types/payouts";
 export function getPayoutStateVariant(state: PayoutState): string {
   switch (state) {
     case "READY":
-      return "warning";
+      return "warn";
     case "SENT":
-      return "warning";
+      return "warn";
     case "SETTLED":
-      return "success";
+      return "ok";
     case "FAILED":
-      return "error";
+      return "err";
     case "DRAFT":
     default:
-      return "neutral";
+      return "muted";
   }
 }
 
 export const PayoutStateBadge: React.FC<{ state: PayoutState }> = ({ state }) => {
   const variant = getPayoutStateVariant(state);
-  return <span className={`neft-badge ${variant}`}>{state}</span>;
+  return <span className={`neft-chip neft-chip-${variant}`}>{state}</span>;
 };
