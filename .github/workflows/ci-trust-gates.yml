@@ -94,4 +94,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build core-api image
-        run: docker build -t neft/core-api -f platform/processing-core/Dockerfile .
+        run: docker compose build --no-cache core-api

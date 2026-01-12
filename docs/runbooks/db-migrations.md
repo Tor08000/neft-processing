@@ -16,6 +16,13 @@ cd platform/processing-core
 PYTHONPATH=$(pwd) alembic -c app/alembic.ini upgrade head
 ```
 
+If you change Alembic helper logic (for example, `app/alembic/helpers.py`), rebuild the
+container without cache before running migrations:
+
+```bash
+docker compose build --no-cache core-api
+```
+
 ## Rule: merging heads in migrations
 
 If your PR adds a migration and `main` already has another head, you must add a merge
