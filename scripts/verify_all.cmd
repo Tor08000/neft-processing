@@ -9,6 +9,7 @@ set ts=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%_%dt:~8,4%
 set LOG_DIR=logs
 set SNAPSHOT_DIR=docs\as-is
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+if not exist "%SNAPSHOT_DIR%" mkdir "%SNAPSHOT_DIR%"
 
 set LOG_FILE=%LOG_DIR%\verify_all_%ts%.log
 set SNAPSHOT_FILE=%SNAPSHOT_DIR%\STATUS_SNAPSHOT_RUNTIME_%ts%.md
@@ -68,17 +69,19 @@ if errorlevel 1 goto finalize
 goto finalize
 
 :run_cmd
-set step=%~1
-shift
-set command=%*
-echo. >> "%LOG_FILE%"
-echo [!step!] %command% >> "%LOG_FILE%"
-%command% >> "%LOG_FILE%" 2>&1
+set "step=%~1"
+shift /1
+set "cmdline=%*"
+
+>> "%LOG_FILE%" echo.
+>> "%LOG_FILE%" echo [%step%] %cmdline%
+
+call %cmdline% >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
-  call :mark_fail "!step!" "%command%"
+  call :mark_fail "%step%" "%cmdline%"
   exit /b 1
 ) else (
-  call :mark_ok "!step!" "%command%"
+  call :mark_ok "%step%" "%cmdline%"
 )
 exit /b 0
 
@@ -95,7 +98,7 @@ if not defined container_id (
   exit /b 1
 )
 for /f %%H in ('docker inspect --format="{{.State.Health.Status}}" %container_id%') do set health=%%H
-echo [!step!] %service% health=!health! >> "%LOG_FILE%"
+echo [%step%] %service% health=!health! >> "%LOG_FILE%"
 if "!health!"=="healthy" (
   call :mark_ok "%step%" "%service% healthy"
   exit /b 0
@@ -117,7 +120,7 @@ set step=%~1
 shift
 set failed=0
 for %%E in (%*) do (
-  echo [!step!] Checking %%E >> "%LOG_FILE%"
+  echo [%step%] Checking %%E >> "%LOG_FILE%"
   curl -fsS %%E >NUL 2>> "%LOG_FILE%"
   if errorlevel 1 (
     set failed=1
@@ -125,10 +128,10 @@ for %%E in (%*) do (
   )
 )
 if !failed! EQU 0 (
-  call :mark_ok "!step!" "All endpoints OK"
+  call :mark_ok "%step%" "All endpoints OK"
   exit /b 0
 )
-call :mark_fail "!step!" "One or more endpoints failed"
+call :mark_fail "%step%" "One or more endpoints failed"
 exit /b 1
 
 :run_smoke_scripts
@@ -193,15 +196,15 @@ call :mark_ok "%step%" "All pytest checks OK"
 exit /b 0
 
 :mark_ok
-set step=%~1
-set details=%~2
-echo ^| %step% ^| OK ^| %details% ^| >> "%SNAPSHOT_FILE%"
+set "step=%~1"
+set "details=%~2"
+>> "%SNAPSHOT_FILE%" echo ^| %step% ^| OK ^| %details% ^|
 exit /b 0
 
 :mark_fail
-set step=%~1
-set details=%~2
-echo ^| %step% ^| FAIL ^| %details% ^| >> "%SNAPSHOT_FILE%"
+set "step=%~1"
+set "details=%~2"
+>> "%SNAPSHOT_FILE%" echo ^| %step% ^| FAIL ^| %details% ^|
 call :append_error "%step% failed: %details%"
 exit /b 1
 
