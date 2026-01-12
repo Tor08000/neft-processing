@@ -112,6 +112,28 @@ html, body {
   cursor: not-allowed;
 }
 
+.neft-brand-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.neft-brand-mark {
+  height: var(--neft-brand-mark-size, 32px);
+  width: auto;
+  display: inline-block;
+  color: var(--neft-text);
+}
+
+[data-theme="dark"] .neft-brand-mark {
+  color: var(--neft-text);
+}
+
+.neft-brand-fallback {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--neft-text);
+}
+
 .muted {
   color: var(--neft-text-muted);
 }

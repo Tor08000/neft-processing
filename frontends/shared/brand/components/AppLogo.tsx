@@ -1,3 +1,7 @@
+import type { CSSProperties, SyntheticEvent } from "react";
+
+import neftMark from "../assets/neft-mark.svg";
+
 export type AppLogoProps = {
   variant?: "full" | "mark";
   size?: number;
@@ -13,9 +17,36 @@ export function AppLogo({
   alt = defaultAlt,
   className,
 }: AppLogoProps) {
-  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
-  const src = variant === "full" ? `${base}/brand/logo.png` : `${base}/brand/logo-mark.png`;
-  return <img src={src} width={size} height={size} alt={alt} className={className} loading="lazy" />;
+  const classes = ["neft-brand-mark", className].filter(Boolean).join(" ");
+  const style = {
+    "--neft-brand-mark-size": `${size}px`,
+  } as CSSProperties;
+  const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
+    event.currentTarget.style.display = "none";
+    const fallback = event.currentTarget.parentElement?.querySelector(".neft-brand-fallback") as
+      | HTMLElement
+      | null;
+    if (fallback) fallback.style.display = "inline-block";
+  };
+
+  return (
+    <span className="neft-brand-wrapper" aria-label={alt}>
+      <img
+        src={neftMark}
+        width={size}
+        height={size}
+        alt={alt}
+        className={classes}
+        loading="lazy"
+        onError={handleError}
+        data-variant={variant}
+        style={style}
+      />
+      <span className="neft-brand-fallback" style={{ display: "none" }} aria-hidden="true">
+        NEFT
+      </span>
+    </span>
+  );
 }
 
 export default AppLogo;
