@@ -36,18 +36,25 @@ if not defined LOGIN_PATH (
     goto :error_openapi_login
 )
 
-set "GATEWAY_LOGIN_URL=%AUTH_GATEWAY_URL%%LOGIN_PATH%"
-set "DIRECT_LOGIN_URL=%AUTH_HOST_URL%%LOGIN_PATH%"
+if not "%LOGIN_PATH:~0,1%"=="/" set "LOGIN_PATH=/%LOGIN_PATH%"
+set "LOGIN_PATH_FOR_GATEWAY=%LOGIN_PATH%"
+if /I "%LOGIN_PATH_FOR_GATEWAY:~0,10%"=="/api/auth/" set "LOGIN_PATH_FOR_GATEWAY=%LOGIN_PATH_FOR_GATEWAY:~9%"
+set "GATEWAY_URL=http://localhost/api/auth%LOGIN_PATH_FOR_GATEWAY%"
+set "DIRECT_URL=http://localhost:8002%LOGIN_PATH%"
 
-call :request_token "%GATEWAY_LOGIN_URL%"
+set "ERROR_LOGIN_PATH=%LOGIN_PATH%"
+set "ERROR_GATEWAY_URL=%GATEWAY_URL%"
+set "ERROR_DIRECT_URL=%DIRECT_URL%"
+
+call :request_token "%GATEWAY_URL%"
 set "REQUEST_RESULT=%ERRORLEVEL%"
 if "%REQUEST_RESULT%"=="2" (
-    call :request_token "%DIRECT_LOGIN_URL%"
+    call :request_token "%DIRECT_URL%"
     set "REQUEST_RESULT=%ERRORLEVEL%"
 )
 if "%REQUEST_RESULT%"=="2" (
     set "ERROR_MESSAGE=[ERROR] Login endpoint returned 404 on gateway and direct."
-    set "ERROR_URL=%DIRECT_LOGIN_URL%"
+    set "ERROR_URL=%DIRECT_URL%"
     set "ERROR_EMAIL=%ADMIN_EMAIL%"
     set "ERROR_STATUS=404"
     set "ERROR_BODY_FILE=%BODY_FILE%"
@@ -75,6 +82,9 @@ exit /b 1
 
 :error_request_token
 echo %ERROR_MESSAGE% 1>&2
+if defined ERROR_LOGIN_PATH echo LOGIN_PATH: %ERROR_LOGIN_PATH% 1>&2
+if defined ERROR_GATEWAY_URL echo GATEWAY_URL: %ERROR_GATEWAY_URL% 1>&2
+if defined ERROR_DIRECT_URL echo DIRECT_URL: %ERROR_DIRECT_URL% 1>&2
 if defined ERROR_URL echo URL: %ERROR_URL% 1>&2
 if defined ERROR_EMAIL echo Email: %ERROR_EMAIL% 1>&2
 if defined ERROR_STATUS echo HTTP status: %ERROR_STATUS% 1>&2
