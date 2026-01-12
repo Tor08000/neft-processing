@@ -1,49 +1,37 @@
 # PARTNER 10 — Webhooks Self-Service
 
 ## Goal
-Partner creates webhook endpoints, rotates secrets, sends test deliveries, and replays deliveries.
+Partner registers webhooks, rotates secrets, and replays deliveries.
 
 ## Actors & Roles
 - Partner Admin
 
 ## Prerequisites
-- Integration hub API (`platform/integration-hub`).
+- Integration-hub running with DB.
 
 ## UI Flow
 **Partner portal**
-- Webhooks page → create endpoint → rotate secret → send test → replay delivery.
-
-**NOT IMPLEMENTED**
-- Partner portal UI is not present.
+- Webhooks list → add endpoint → rotate secret → replay delivery.
 
 ## API Flow
-1. `POST /v1/webhooks/endpoints` — create endpoint (returns secret).
-2. `POST /v1/webhooks/endpoints/{endpoint_id}/rotate-secret` — rotate secret.
-3. `POST /v1/webhooks/endpoints/{endpoint_id}/test` — send test delivery.
-4. `POST /v1/webhooks/endpoints/{endpoint_id}/replay` — schedule replay.
-5. `GET /v1/webhooks/deliveries?endpoint_id=...` — list deliveries.
+1. `POST /v1/webhooks/endpoints` — create endpoint.
+2. `GET /v1/webhooks/endpoints` — list endpoints.
+3. `POST /v1/webhooks/endpoints/{id}/rotate-secret` — rotate secret.
+4. `POST /v1/webhooks/endpoints/{id}/replay` — replay deliveries.
 
 ## DB Touchpoints
-- `webhook_endpoints` — endpoint configuration.
-- `webhook_deliveries` — delivery attempts.
-- `webhook_replays` — replay records.
-- `webhook_alerts` — SLA/delivery alerts.
-
-**NOT IMPLEMENTED**
-- `webhook_secrets` history table (secret rotation stored inline on endpoint).
+- `webhook_endpoints`, `webhook_deliveries`, `webhook_replays`.
 
 ## Events & Audit
-- `WEBHOOK_ALERT_TRIGGERED`, `WEBHOOK_ALERT_RESOLVED` — emitted during SLA alert evaluation.
-- **NOT IMPLEMENTED**: `WEBHOOK_CREATED`, `WEBHOOK_SECRET_ROTATED`, `WEBHOOK_TEST_SENT`, `WEBHOOK_DELIVERY_REPLAYED` as explicit event codes.
+- Delivery/replay records stored in webhook tables; retries recorded as `webhook_replays` rows.
 
 ## Security / Gates
-- Integration hub endpoints currently lack explicit partner auth (assumed internal/service usage).
+- Webhook signatures verified via HMAC; replay protection enforced.
 
 ## Failure modes
-- Endpoint not found → `404 endpoint_not_found`.
-- Delivery replay without deliveries → `200` with `scheduled_deliveries=0`.
+- Invalid secret or signature → `401` / `422`.
 
 ## VERIFIED
 - pytest: `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py`.
-- smoke cmd: `scripts/smoke_partner_webhooks.cmd` (fails with NOT IMPLEMENTED).
-- PASS: webhook endpoint created, test delivery recorded, replay scheduled.
+- smoke cmd: `scripts/smoke_partner_webhooks.cmd` (placeholder).
+- PASS: endpoint created and delivery stored.

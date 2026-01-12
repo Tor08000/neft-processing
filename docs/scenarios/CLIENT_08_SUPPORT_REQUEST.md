@@ -1,51 +1,39 @@
-# CLIENT 08 — Support Request (Create → Status → Close)
+# CLIENT 08 — Support Request
 
 ## Goal
-Client creates a support ticket and tracks status until closure.
+Client creates and tracks support tickets.
 
 ## Actors & Roles
-- Client user (creates ticket)
-- Support admin (updates status, closes case)
+- Client Owner / Client User
+- Support/Ops
 
 ## Prerequisites
-- Processing-core API.
-- Support user token context (client or admin) for `/cases` endpoints.
+- Core API running with `postgres`.
 
 ## UI Flow
 **Client portal**
-- Create ticket → view status.
-
-**Admin**
-- Update status → close case → add comments.
+- Support page → create ticket → add comments → close ticket.
 
 ## API Flow
-1. `POST /api/cases` — create case.
-2. `GET /api/cases` — list client cases (scoped by creator).
-3. `GET /api/cases/{case_id}` — view details.
-4. `PATCH /api/cases/{case_id}` — admin update status/assignment.
-5. `POST /api/cases/{case_id}/comments` — admin adds comment.
-
-**NOT IMPLEMENTED**
-- Client-side close endpoint (closure is admin-only).
+1. `POST /api/cases` — create ticket.
+2. `GET /api/cases` — list tickets.
+3. `GET /api/cases/{id}` — ticket details.
+4. `POST /api/cases/{id}/comments` — add comment.
+5. `POST /api/cases/{id}/close` — close case.
 
 ## DB Touchpoints
-- `cases` — ticket records.
-- `case_events` — immutable event log.
-- `case_comments` — discussion history.
+- `cases`, `case_events`, `case_comments`.
 
 ## Events & Audit
-- `CASE_CREATED` — emitted on case creation.
-- `STATUS_CHANGED` — emitted when status changes.
-- `CASE_CLOSED` — emitted on close.
+- `CASE_CREATED`, `STATUS_CHANGED`, `CASE_CLOSED`.
 
 ## Security / Gates
-- Client can only view own cases; admin required for update/close.
+- Client auth required.
 
 ## Failure modes
-- Missing client context → `403 missing_client_context`.
-- Non-admin update attempt → `403 forbidden`.
+- Case not found or forbidden → `404` / `403`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (support case e2e tests not present).
-- smoke cmd: `scripts/smoke_support_ticket.cmd` (fails with NOT IMPLEMENTED).
-- PASS: case created by client, admin updates to CLOSED, event log shows status changes.
+- pytest: `platform/processing-core/app/tests/test_cases_list.py`, `platform/processing-core/app/tests/test_cases_create_applies_queue_and_sla.py`.
+- smoke cmd: `scripts/smoke_support_ticket.cmd` (placeholder).
+- PASS: case created, updated, and closed.

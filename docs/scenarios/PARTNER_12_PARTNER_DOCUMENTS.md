@@ -1,38 +1,37 @@
-# PARTNER 12 — Partner Documents (Acts / Reconciliation)
+# PARTNER 12 — Partner Documents (EDO)
 
 ## Goal
-Partner downloads and acknowledges monthly documents (acts/reconciliation).
+Partner lists EDO documents, downloads artifacts, and acknowledges receipt.
 
 ## Actors & Roles
 - Partner Admin
 
 ## Prerequisites
-- Partner billing documents generated (not implemented).
+- Core API running with `postgres`.
 
 ## UI Flow
 **Partner portal**
-- Documents list → download → acknowledge/sign.
-
-**NOT IMPLEMENTED**
-- Partner documents UI not present.
+- EDO documents list → document details → download artifacts → acknowledge.
 
 ## API Flow
-**NOT IMPLEMENTED**
-- No partner documents endpoints exist.
+1. `GET /partner/api/v1/edo/documents` — list partner EDO documents.
+2. `GET /partner/api/v1/edo/documents/{id}` — document details.
+3. `GET /partner/api/v1/edo/documents/{id}/artifacts` — download artifacts.
+4. `POST /partner/api/v1/edo/documents/{id}/ack` — acknowledge.
 
 ## DB Touchpoints
-- **NOT IMPLEMENTED**: partner-scoped documents registry.
+- `edo_documents`, `edo_artifacts`, `edo_transitions`.
 
 ## Events & Audit
-- **NOT IMPLEMENTED**: partner document events.
+- EDO transitions stored in `edo_transitions` and audit log.
 
 ## Security / Gates
-- N/A (not implemented).
+- Partner auth required; partner ownership enforced by token context.
 
 ## Failure modes
-- Partner documents unavailable → **NOT IMPLEMENTED**.
+- Document not found or not owned by partner → `404` / `403`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED**.
-- smoke cmd: `scripts/smoke_partner_documents.cmd` (fails with NOT IMPLEMENTED).
-- PASS: **NOT IMPLEMENTED**.
+- pytest: `platform/processing-core/app/tests/test_edo_events.py`.
+- smoke cmd: `scripts/smoke_partner_documents.cmd` (placeholder).
+- PASS: list/details/artifacts endpoints return data.

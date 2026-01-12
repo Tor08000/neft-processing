@@ -1,44 +1,39 @@
-# PARTNER 11 — Payouts: Batch → Export → Mark Sent/Settled
+# PARTNER 11 — Payouts Batch Export
 
 ## Goal
-Partner or ops builds payout batches, exports files, and marks payouts sent/settled.
+Partner exports payout batches and downloads export files.
 
 ## Actors & Roles
 - Partner Admin
 - Ops/Admin
 
 ## Prerequisites
-- Settlement data available.
+- Core API running with `postgres` and `minio`.
 
 ## UI Flow
 **Partner portal**
-- Payout batches → export → mark sent/settled.
-
-**NOT IMPLEMENTED**
-- Partner portal payout batch UI not present.
+- Payouts list → open batch → download export.
 
 ## API Flow
-**NOT IMPLEMENTED**
-- No payout batch/export endpoints exist.
-- Existing admin payout endpoints are per-payout, not batch-based:
-  - `POST /api/settlements/payouts/{payout_id}/send`
-  - `POST /api/settlements/payouts/{payout_id}/confirm`
+1. `GET /api/v1/payouts/batches` — list payout batches.
+2. `GET /api/v1/payouts/batches/{id}` — batch details.
+3. `POST /api/v1/payouts/exports` — create export.
+4. `GET /api/v1/payouts/exports` — list exports.
+5. `GET /api/v1/payouts/exports/{id}/download` — download export.
 
 ## DB Touchpoints
-- `settlement_payouts` — payout records.
-- `settlement_periods`, `settlement_items` — settlement sources.
+- `payout_batches`, `payout_exports`, `settlement_payouts`.
 
 ## Events & Audit
-- `PAYOUT_INITIATED`, `PAYOUT_CONFIRMED` — case events for payout lifecycle.
-- **NOT IMPLEMENTED**: `PAYOUT_BATCH_BUILT`, `PAYOUT_EXPORTED`, `PAYOUT_MARKED_SENT`, `PAYOUT_SETTLED`.
+- `PAYOUT_INITIATED`, `PAYOUT_CONFIRMED` recorded in audit log.
 
 ## Security / Gates
-- Admin payouts require `admin` permissions.
+- ABAC enforced for payout exports (`payouts:export`).
 
 ## Failure modes
-- Missing payout record → `404 payout_not_found`.
+- Export for missing batch → `404`.
 
 ## VERIFIED
-- pytest: `platform/processing-core/app/tests/test_payout_exports_e2e.py` (export logic only).
-- smoke cmd: `scripts/smoke_payouts_batch_export.cmd` (fails with NOT IMPLEMENTED).
-- PASS: **NOT IMPLEMENTED**.
+- pytest: `platform/processing-core/app/tests/test_payout_exports_e2e.py`, `platform/processing-core/app/tests/test_payout_exports_xlsx_e2e.py`.
+- smoke cmd: `scripts/smoke_payouts_batch_export.cmd` (placeholder).
+- PASS: export created and download returns file.

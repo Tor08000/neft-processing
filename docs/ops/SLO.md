@@ -6,11 +6,12 @@
 
 | SLO | Target | Measurement source |
 | --- | --- | --- |
-| API availability | 99.9% | `http_requests_total` + error codes |
+| API availability | 99.9% | `http_requests_total` + error codes (`/metrics`) |
 | Authorize latency | p95 < 200ms | `http_request_duration_seconds` for authorize endpoints |
 | Billing run success | 100% per period | `billing_run_status` |
-| EDO send success | ≥ 99% | `edo_send_status` |
-| BI sync freshness | < 15 min lag | `bi_sync_duration` + scheduler offsets |
+| EDO send success | ≥ 99% | `edo_send_status` / EDO transitions |
+| BI sync freshness | < 15 min lag | BI sync metrics + ClickHouse mart timestamps |
+| Fleet ingest errors | < 0.5% | `fuel_ingest_errors` |
 
 ## Metrics baseline
 
@@ -22,6 +23,14 @@ Ensure `/metrics` is available on gateway and core services, and that the follow
 - `edo_send_status`
 - `bi_sync_duration`
 - `fuel_ingest_errors`
+
+## Dashboards
+
+Dashboards are stored in `docs/ops/dashboards/*.json`:
+
+- `slo_overview.json`
+- `billing_slo.json`
+- `edo_slo.json`
 
 ## Verification checklist
 

@@ -4,29 +4,31 @@
 
 Release pipeline must enforce the following order. Any failure blocks release tagging.
 
-1. **Static**
-   - lint
-   - typecheck (if applicable)
-   - import stability tests
+1. **Static checks**
+   - `python scripts\check_enum_policy.py`
+   - `python scripts\check_migration_patterns.py`
+   - `python scripts\check_db_alignment.py`
+   - `python scripts\check_alembic_history.py`
 2. **Migrations**
-   - alembic dry-run
-   - apply migrations on empty DB
-   - rollback (if supported)
+   - `scripts\check_migrations.cmd` (alembic heads + upgrade on empty DB)
 3. **Contracts**
-   - API schema compatibility
-   - BI mart contracts
-   - ABAC schema validation
+   - `scripts\test_core_full.cmd` (contracts + integration + system suites)
 4. **Core tests**
-   - `scripts\\test_processing_core_docker.cmd`
+   - `scripts\test_processing_core_docker.cmd`
 5. **Smoke (backend)**
-   - `scripts\\smoke_legal_gate.cmd`
-   - `scripts\\smoke_billing_v14.cmd`
-   - `scripts\\smoke_edo_sbis_send.cmd`
-   - `scripts\\smoke_fuel_ingest_batch.cmd`
-   - `scripts\\smoke_partner_onboarding.cmd` (or relevant core set)
-6. **UI build**
-   - Admin/Client/Partner build
-   - Playwright UI smoke (headless)
+   - `scripts\smoke_legal_gate.cmd`
+   - `scripts\smoke_billing_v14.cmd`
+   - `scripts\smoke_edo_sbis_send.cmd`
+   - `scripts\smoke_fuel_ingest_batch.cmd`
+6. **BI smoke (if enabled)**
+   - `scripts\smoke_bi_ops_dashboard.cmd`
+   - `scripts\smoke_bi_partner_dashboard.cmd`
+   - `scripts\smoke_bi_client_spend_dashboard.cmd`
+7. **UI build + smoke**
+   - `cd frontends\admin-ui && npm install && npm run build`
+   - `cd frontends\client-portal && npm install && npm run build`
+   - `cd frontends\partner-portal && npm install && npm run build`
+   - `cd frontends\e2e && npm install && npx playwright install && npx playwright test`
 
 ## GitHub settings checklist
 

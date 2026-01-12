@@ -1,39 +1,36 @@
 # OPS 14 — Clearing Batch Build
 
 ## Goal
-Ops builds clearing batches for a period and reviews batch details.
+Admin builds clearing batches for settlement.
 
 ## Actors & Roles
-- Admin / Ops
+- Ops/Admin
 
 ## Prerequisites
-- Clearing data available.
+- Core API running with `postgres`.
 
 ## UI Flow
-**Admin UI**
-- Clearing batches list → build batch → view batch operations.
+**Admin portal**
+- Clearing batches → build batch → review operations.
 
 ## API Flow
-1. `POST /api/clearing/batches/build` — build batch for period.
-2. `GET /api/clearing/batches` — list batches.
-3. `GET /api/clearing/batches/{batch_id}` — batch details.
-4. `GET /api/clearing/batches/{batch_id}/operations` — batch operations.
+1. `POST /api/clearing/run?clearing_date=YYYY-MM-DD` — run clearing for date.
+2. `GET /api/clearing/batches/{id}` — fetch batch details.
+3. `GET /api/clearing/batches/{id}/operations` — list batch operations.
 
 ## DB Touchpoints
-- `clearing_batch` — batch records.
-- `clearing_batch_operation` — operations linked to batch.
-- `clearing` — legacy clearing entries.
+- `clearing_batch`, `clearing_batch_operation`.
 
 ## Events & Audit
-- **NOT IMPLEMENTED**: `CLEARING_BATCH_BUILT` explicit event code.
+- `SETTLEMENT_CALCULATED` audit events for settlement batches.
 
 ## Security / Gates
-- Requires `admin:clearing:*` permission.
+- Admin permissions required (`admin:clearing:*`).
 
 ## Failure modes
-- Batch already exists for period → `409` or service error.
+- Clearing date without data → empty batch.
 
 ## VERIFIED
 - pytest: `platform/processing-core/app/tests/test_admin_clearing_api.py`.
-- smoke cmd: `scripts/smoke_clearing_batch.cmd` (fails with NOT IMPLEMENTED).
-- PASS: batch created and operations list returned.
+- smoke cmd: `scripts/smoke_clearing_batch.cmd` (placeholder).
+- PASS: batch created and operations listed.

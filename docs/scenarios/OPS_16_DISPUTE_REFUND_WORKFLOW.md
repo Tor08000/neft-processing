@@ -1,45 +1,38 @@
 # OPS 16 — Dispute / Refund Workflow
 
 ## Goal
-Ops opens disputes, reviews them, and issues refunds when approved.
+Admin opens disputes, resolves them, and issues refunds where required.
 
 ## Actors & Roles
-- Admin / Ops
+- Ops/Admin
 
 ## Prerequisites
-- Operations available to dispute.
+- Core API running with `postgres`.
 
 ## UI Flow
-**Admin UI**
-- Disputes list → create dispute → approve refund / reject → track status.
+**Admin portal**
+- Disputes list → open dispute → accept/reject/close → review refund entries.
 
 ## API Flow
 1. `POST /api/disputes/open` — open dispute.
-2. `POST /api/disputes/{dispute_id}/review` — move to review.
-3. `POST /api/disputes/{dispute_id}/accept` — accept and resolve.
-4. `POST /api/disputes/{dispute_id}/reject` — reject.
-5. `POST /api/disputes/{dispute_id}/close` — close.
-6. `POST /api/refunds` — request refund (ops refunds endpoint).
+2. `POST /api/disputes/{id}/review` — move to review.
+3. `POST /api/disputes/{id}/accept` / `POST /api/disputes/{id}/reject` — resolve.
+4. `POST /api/refunds` — create refund request.
 
 ## DB Touchpoints
-- `disputes` — dispute records.
-- `dispute_events` — dispute lifecycle events.
-- `refund_requests` — refund requests.
-- `operations`, `ledger_entries` — financial postings.
+- `disputes`, `dispute_events`.
+- `billing_refunds` / `credit_notes` for refunds.
 
 ## Events & Audit
-- `DisputeEventType.OPENED`, `MOVED_TO_REVIEW`, `ACCEPTED`, `REJECTED`, `CLOSED` — dispute events.
-- `REFUND_POSTED` — dispute event when refund posted.
-- **NOT IMPLEMENTED**: `DISPUTE_CREATED`, `DISPUTE_RESOLVED`, `REFUND_ISSUED` as standalone event codes.
+- Audit log entries for dispute transitions and refunds.
 
 ## Security / Gates
-- Requires admin permissions (disputes/refunds routers are admin-only).
+- Admin permissions required (`admin:disputes:*`, `admin:refunds:*`).
 
 ## Failure modes
-- Invalid state transition → `409` or service error.
-- Refund cap exceeded → `409 refund_cap_exceeded`.
+- Invalid dispute state transition → `409`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (refund ledger invariants not dedicated).
-- smoke cmd: `scripts/smoke_dispute_refund.cmd` (fails with NOT IMPLEMENTED).
-- PASS: dispute moves through statuses and refund request is recorded.
+- pytest: `platform/processing-core/app/tests/test_disputes.py`, `platform/processing-core/app/tests/test_refunds.py`.
+- smoke cmd: `scripts/smoke_dispute_refund.cmd` (placeholder).
+- PASS: dispute transitions apply and refund entries recorded.

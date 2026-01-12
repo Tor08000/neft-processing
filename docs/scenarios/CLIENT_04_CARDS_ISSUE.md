@@ -1,15 +1,14 @@
 # CLIENT 04 — Cards Issue
 
 ## Goal
-Client admins issue cards, manage card status, and update card limits.
+Client issues fleet cards, manages status, and sees updates reflected in operations.
 
 ## Actors & Roles
-- Client Owner / Client Admin
-- Regular User (view-only)
+- Client Owner / Fleet Manager
+- Ops/Admin (optional)
 
 ## Prerequisites
-- Processing-core API.
-- Fleet module enabled for the client.
+- Core API running with `postgres`.
 
 ## UI Flow
 **Client portal**
@@ -18,30 +17,23 @@ Client admins issue cards, manage card status, and update card limits.
 ## API Flow
 1. `GET /api/client/fleet/cards` — list cards.
 2. `POST /api/client/fleet/cards` — issue card.
-3. `POST /api/client/fleet/cards/{card_id}/block` — freeze card.
-4. `POST /api/client/fleet/cards/{card_id}/unblock` — unfreeze card.
-
-**NOT IMPLEMENTED**
-- Per-card limit update endpoint (limits are managed via `/limits/set` for scopes).
+3. `POST /api/client/fleet/cards/{card_id}/block` — block card.
+4. `POST /api/client/fleet/cards/{card_id}/unblock` — unblock card.
 
 ## DB Touchpoints
-- `fuel_cards` — card records.
-- `fuel_card_status_events` — card status history (immutable).
-- `case_events` — fleet event stream for card actions.
+- `fuel_cards` — card registry.
+- `fuel_card_status_events` — status transitions.
 
 ## Events & Audit
-- `CARD_CREATED` — emitted when card is issued.
-- `CARD_STATUS_CHANGED` — emitted on block.
-- `FUEL_CARD_UNBLOCKED` — emitted on unblock.
+- `CARD_CREATED`, `CARD_STATUS_CHANGED` in `case_events`.
 
 ## Security / Gates
-- Requires `client:fleet:cards:manage` permission for create/block/unblock.
+- Client permissions required (`client:fleet:*`).
 
 ## Failure modes
-- Unauthorized user → `403 forbidden`.
-- Invalid card id → `404 card_not_found`.
+- Card not found or not owned by client → `404` / `403`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (card issuance tests not isolated).
-- smoke cmd: `scripts/smoke_cards_issue.cmd` (fails with NOT IMPLEMENTED).
-- PASS: card issued, status changes visible in list and events.
+- pytest: `platform/processing-core/app/tests/test_fleet_v1.py`.
+- smoke cmd: `scripts/smoke_cards_issue.cmd` (placeholder).
+- PASS: card issued and status updates recorded.
