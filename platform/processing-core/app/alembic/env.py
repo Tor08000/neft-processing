@@ -31,15 +31,16 @@ def run_migrations_offline() -> None:
     raise RuntimeError(msg)
 
 
-def _configure(connection) -> None:
+def _configure(connection, command_name: str | None) -> None:
     quoted_schema = quote_schema(schema)
     connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
+    transaction_per_migration = command_name in {"upgrade", "downgrade"}
     context.configure(
         connection=connection,
         version_table=version_table,
         version_table_schema=schema,
         include_schemas=True,
-        transaction_per_migration=True,
+        transaction_per_migration=transaction_per_migration,
     )
 
 
@@ -74,6 +75,16 @@ def _ensure_version_table(connection) -> None:
         )
 
 
+def _get_command_name() -> str | None:
+    alembic_context = context.get_context()
+    command_opts = getattr(alembic_context, "command_opts", None)
+    command_name = getattr(command_opts, "cmd", None)
+    if command_name:
+        return command_name
+    config_opts = getattr(getattr(alembic_context, "config", None), "cmd_opts", None)
+    return getattr(config_opts, "cmd", None)
+
+
 def run_migrations_online() -> None:
     engine = create_engine(
         DATABASE_URL,
@@ -85,11 +96,15 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
-        _ensure_version_table(connection)
-        _configure(connection)
-
-        with context.begin_transaction():
+        preflight_connection = connection.execution_options(isolation_level="AUTOCOMMIT")
+        _ensure_version_table(preflight_connection)
+        command_name = _get_command_name()
+        _configure(connection, command_name)
+        if command_name in {"current", "history", "heads", "branches", "show"}:
             context.run_migrations()
+        else:
+            with context.begin_transaction():
+                context.run_migrations()
 
     engine.dispose()
 
