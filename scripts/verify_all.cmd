@@ -42,6 +42,9 @@ if errorlevel 1 goto finalize
 call :run_cmd "2.3) Alembic auth-host" docker compose exec -T auth-host sh -lc "alembic -c alembic.ini current"
 if errorlevel 1 goto finalize
 
+call :run_cmd "2.4) Alembic version table core-api" docker compose exec -T core-api sh -lc "count=$(psql \"${DATABASE_URL}\" -v ON_ERROR_STOP=1 -Atc \"select count(*) from processing_core.alembic_version_core\"); test \"${count}\" -gt 0"
+if errorlevel 1 goto finalize
+
 call :check_endpoints "3) Health checks" http://localhost/health http://localhost/api/core/health http://localhost/api/auth/health http://localhost/api/ai/health http://localhost/api/int/health
 if errorlevel 1 goto finalize
 

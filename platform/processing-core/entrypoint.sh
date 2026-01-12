@@ -67,7 +67,11 @@ def _normalize_postgres_dsn(raw: str) -> str:
     return safe_url.render_as_string(hide_password=False)
 
 dsn = _normalize_postgres_dsn(dsn)
-connect_kwargs = {"connect_timeout": 5, "prepare_threshold": 0, "options": f"-c search_path={schema}"}
+connect_kwargs = {
+    "connect_timeout": 5,
+    "prepare_threshold": 0,
+    "options": f"-c search_path={schema},public",
+}
 deadline = time.time() + timeout
 last_error = None
 
@@ -88,6 +92,36 @@ PY
 
 echo "[entrypoint] waiting for postgres..."
 wait_for_postgres
+
+python - <<'PY'
+import os
+import sys
+
+import psycopg
+from sqlalchemy.engine import make_url
+
+from app.db.schema import resolve_db_schema
+
+db_url = os.getenv("DATABASE_URL")
+schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
+if not db_url:
+    raise SystemExit("[entrypoint] DATABASE_URL is not set")
+
+url = make_url(db_url)
+if url.drivername.endswith("+psycopg"):
+    url = url.set(drivername="postgresql")
+dsn = url.render_as_string(hide_password=False)
+
+with psycopg.connect(dsn, prepare_threshold=0, options=f"-c search_path={schema},public") as conn:
+    with conn.cursor() as cur:
+        cur.execute("select current_schema(), current_setting('search_path')")
+        current_schema, search_path = cur.fetchone()
+        print(
+            "[entrypoint] pre-migration search_path check: "
+            f"schema_resolved={schema} current_schema={current_schema} search_path={search_path}",
+            flush=True,
+        )
+PY
 
 ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
 MIGRATION_LOG=${MIGRATION_LOG:-/tmp/alembic_migration.log}
@@ -112,34 +146,27 @@ if [ "$heads_count" -ne 1 ]; then
     exit 1
 fi
 
-echo "[entrypoint] dropping orphan composite types (pre-migration cleanup)"
+echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
 if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<'SQL'
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 -v schema="$DB_SCHEMA" <<'SQL'
 DO $$
 DECLARE r record;
-DECLARE rk char;
 DECLARE has_table boolean;
 DECLARE dropped int := 0;
 BEGIN
   FOR r IN (
-    SELECT n.nspname AS schema_name, t.typname AS type_name
+    SELECT n.nspname AS schema_name,
+           t.typname AS type_name,
+           t.typtype AS type_kind
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname='processing_core'
-      AND t.typtype='c'
+    WHERE n.nspname = :'schema'
+      AND t.typname NOT LIKE '\_%'
   ) LOOP
-    SELECT c.relkind INTO rk
-    FROM pg_class c
-    JOIN pg_namespace n2 ON n2.oid=c.relnamespace
-    WHERE n2.nspname=r.schema_name
-      AND c.relname=r.type_name
-    ORDER BY c.relkind
-    LIMIT 1;
-
     SELECT EXISTS (
       SELECT 1
       FROM pg_class c
@@ -149,15 +176,17 @@ BEGIN
         AND c.relkind IN ('r','p')
     ) INTO has_table;
 
-    RAISE NOTICE 'composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
     IF NOT has_table THEN
-      RAISE NOTICE 'dropping orphan composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
-      EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
+      IF r.type_kind = 'd' THEN
+        EXECUTE format('DROP DOMAIN IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
+      ELSE
+        EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
+      END IF;
       dropped := dropped + 1;
     END IF;
   END LOOP;
 
-  RAISE NOTICE 'dropped % orphan composite types', dropped;
+  RAISE NOTICE 'dropped % orphan types/domains', dropped;
 END $$;
 SQL
 
@@ -193,6 +222,7 @@ if not db_url:
     print("[entrypoint] DATABASE_URL is not set for schema repair", file=sys.stderr, flush=True)
     sys.exit(1)
 
+schema = resolve_db_schema().schema
 url = make_url(db_url)
 if url.drivername.endswith("+psycopg"):
     url = url.set(drivername="postgresql")
@@ -201,13 +231,15 @@ dsn = url.render_as_string(hide_password=False)
 def _quote_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
-def _ensure_enum(cur, name: str, values: list[str]) -> None:
+def _ensure_enum(cur, schema: str, name: str, values: list[str]) -> None:
     joined = ", ".join(_quote_literal(value) for value in values)
+    schema_sql = schema.replace('"', '""')
+    name_sql = name.replace('"', '""')
     cur.execute(
         f"""
         DO $$
         BEGIN
-            CREATE TYPE processing_core.{name} AS ENUM ({joined});
+            CREATE TYPE "{schema_sql}"."{name_sql}" AS ENUM ({joined});
         EXCEPTION
             WHEN duplicate_object THEN NULL;
         END $$;
@@ -252,13 +284,18 @@ risk_result_values = [
     "MANUAL_REVIEW",
 ]
 
-with psycopg.connect(dsn, prepare_threshold=0) as conn:
+with psycopg.connect(
+    dsn,
+    prepare_threshold=0,
+    options=f"-c search_path={schema},public",
+) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
-        cur.execute("CREATE SCHEMA IF NOT EXISTS processing_core")
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        cur.execute(f'SET search_path TO "{schema}", public')
         cur.execute("select current_schema(), current_setting('search_path')")
         current_schema, search_path = cur.fetchone()
-        cur.execute("select to_regclass('processing_core.operations')")
+        cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
         processing_core_reg = cur.fetchone()[0]
         cur.execute(
             """
@@ -282,27 +319,27 @@ with psycopg.connect(dsn, prepare_threshold=0) as conn:
         print(
             "[entrypoint] repair diagnostics: "
             f"current_schema={current_schema} search_path={search_path} "
-            f"processing_core.operations={processing_core_reg} "
+            f"{schema}.operations={processing_core_reg} "
             f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
             flush=True,
         )
         if processing_core_reg is not None:
             sys.exit(0)
 
-        _ensure_enum(cur, "operationtype", operation_type_values)
-        _ensure_enum(cur, "operationstatus", operation_status_values)
-        _ensure_enum(cur, "producttype", product_type_values)
-        _ensure_enum(cur, "riskresult", risk_result_values)
+        _ensure_enum(cur, schema, "operationtype", operation_type_values)
+        _ensure_enum(cur, schema, "operationstatus", operation_status_values)
+        _ensure_enum(cur, schema, "producttype", product_type_values)
+        _ensure_enum(cur, schema, "riskresult", risk_result_values)
 
         cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS processing_core.operations (
+            f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".operations (
                 id uuid PRIMARY KEY NOT NULL,
                 operation_id varchar(64) NOT NULL,
                 created_at timestamptz NOT NULL DEFAULT now(),
                 updated_at timestamptz NOT NULL DEFAULT now(),
-                operation_type processing_core.operationtype NOT NULL,
-                status processing_core.operationstatus NOT NULL,
+                operation_type "{schema}".operationtype NOT NULL,
+                status "{schema}".operationstatus NOT NULL,
                 merchant_id varchar(64) NOT NULL,
                 terminal_id varchar(64) NOT NULL,
                 client_id varchar(64) NOT NULL,
@@ -312,7 +349,7 @@ with psycopg.connect(dsn, prepare_threshold=0) as conn:
                 amount bigint NOT NULL,
                 amount_settled bigint NULL DEFAULT 0,
                 currency varchar(3) NOT NULL DEFAULT 'RUB',
-                product_type processing_core.producttype NULL,
+                product_type "{schema}".producttype NULL,
                 quantity numeric(18, 3) NULL,
                 unit_price numeric(18, 3) NULL,
                 captured_amount bigint NOT NULL DEFAULT 0,
@@ -336,15 +373,15 @@ with psycopg.connect(dsn, prepare_threshold=0) as conn:
                 accounts jsonb NULL,
                 posting_result jsonb NULL,
                 risk_score double precision NULL,
-                risk_result processing_core.riskresult NULL,
+                risk_result "{schema}".riskresult NULL,
                 risk_payload json NULL,
                 CONSTRAINT uq_operations_operation_id UNIQUE (operation_id)
             )
             """
         )
         cur.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id "
-            "ON processing_core.operations (operation_id)"
+            f"CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id "
+            f'ON "{schema}".operations (operation_id)'
         )
         for index_name, columns in {
             "ix_operations_card_id": "card_id",
@@ -358,14 +395,14 @@ with psycopg.connect(dsn, prepare_threshold=0) as conn:
         }.items():
             cur.execute(
                 f"CREATE INDEX IF NOT EXISTS {index_name} "
-                f"ON processing_core.operations ({columns})"
+                f'ON "{schema}".operations ({columns})'
             )
 
-        cur.execute("select to_regclass('processing_core.operations')")
+        cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
         repaired_reg = cur.fetchone()[0]
         print(
             "[entrypoint] repair completed: "
-            f"processing_core.operations={repaired_reg}",
+            f"{schema}.operations={repaired_reg}",
             flush=True,
         )
 PY
@@ -375,11 +412,13 @@ import os
 import sys
 
 import psycopg
+from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import make_url
 
 from app.db.schema import resolve_db_schema
+from app.alembic.helpers import ALEMBIC_VERSION_TABLE
 
 resolution = resolve_db_schema()
 db_url = os.getenv("DATABASE_URL")
@@ -389,7 +428,7 @@ if not db_url:
 
 cfg = Config(os.getenv("ALEMBIC_CONFIG", "app/alembic.ini"))
 cfg.set_main_option("sqlalchemy.url", db_url)
-head_revision = ScriptDirectory.from_config(cfg).get_current_head()
+expected_heads = set(ScriptDirectory.from_config(cfg).get_heads())
 
 url = make_url(db_url)
 if url.drivername.endswith("+psycopg"):
@@ -401,57 +440,109 @@ def _quote_schema(value: str) -> str:
 
 connect_kwargs = {
     "prepare_threshold": 0,
-    "options": f"-c search_path={resolution.schema}",
+    "options": f"-c search_path={resolution.schema},public",
 }
+
+def _collect_state(cur):
+    regclasses: dict[str, str | None] = {}
+    cur.execute("select current_schema(), current_setting('search_path')")
+    current_schema, search_path = cur.fetchone()
+    cur.execute("select to_regclass(%s)", (f"{resolution.schema}.operations",))
+    processing_core_reg = cur.fetchone()[0]
+    cur.execute("select to_regclass(%s)", ("public.operations",))
+    public_reg = cur.fetchone()[0]
+    cur.execute(
+        """
+        SELECT n.nspname, c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname IN ('operations', %s)
+        ORDER BY n.nspname
+        """
+    , (ALEMBIC_VERSION_TABLE,))
+    pg_class_hits = cur.fetchall()
+    cur.execute(
+        """
+        SELECT table_schema
+        FROM information_schema.tables
+        WHERE table_name = 'operations'
+        ORDER BY table_schema
+        """
+    )
+    operations_schemas = [row[0] for row in cur.fetchall()]
+    for table in (ALEMBIC_VERSION_TABLE, "operations"):
+        qualified = f"{_quote_schema(resolution.schema)}.{table}"
+        cur.execute("select to_regclass(%s)", (qualified,))
+        regclasses[table] = cur.fetchone()[0]
+
+    version_reg = regclasses[ALEMBIC_VERSION_TABLE]
+    versions = []
+    if version_reg is not None:
+        cur.execute(f'SELECT version_num FROM "{resolution.schema}".{ALEMBIC_VERSION_TABLE}')
+        versions = [row[0] for row in cur.fetchall()]
+
+    return (
+        regclasses,
+        versions,
+        current_schema,
+        search_path,
+        processing_core_reg,
+        public_reg,
+        pg_class_hits,
+        operations_schemas,
+    )
 
 with psycopg.connect(dsn, **connect_kwargs) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
-        regclasses: dict[str, str | None] = {}
-        cur.execute("select current_schema(), current_setting('search_path')")
-        current_schema, search_path = cur.fetchone()
-        cur.execute("select to_regclass(%s)", ("processing_core.operations",))
-        processing_core_reg = cur.fetchone()[0]
-        cur.execute("select to_regclass(%s)", ("public.operations",))
-        public_reg = cur.fetchone()[0]
-        cur.execute(
-            """
-            SELECT n.nspname, c.relname
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = 'operations'
-            ORDER BY n.nspname
-            """
-        )
-        pg_class_hits = cur.fetchall()
-        cur.execute(
-            """
-            SELECT table_schema
-            FROM information_schema.tables
-            WHERE table_name = 'operations'
-            ORDER BY table_schema
-            """
-        )
-        operations_schemas = [row[0] for row in cur.fetchall()]
-        for table in ("alembic_version_core", "operations"):
-            qualified = f"{_quote_schema(resolution.schema)}.{table}"
-            cur.execute("select to_regclass(%s)", (qualified,))
-            regclasses[table] = cur.fetchone()[0]
-
-        version_reg = regclasses["alembic_version_core"]
-        versions = []
-        if version_reg is not None:
-            cur.execute(f'select version_num from "{resolution.schema}".alembic_version_core')
-            versions = [row[0] for row in cur.fetchall()]
+        (
+            regclasses,
+            versions,
+            current_schema,
+            search_path,
+            processing_core_reg,
+            public_reg,
+            pg_class_hits,
+            operations_schemas,
+        ) = _collect_state(cur)
 
 missing = [table for table, reg in regclasses.items() if reg is None]
+
+if ALEMBIC_VERSION_TABLE in missing:
+    print(
+        "[entrypoint] alembic version table missing; attempting to stamp heads: "
+        f"schema_resolved={resolution.schema} search_path={search_path} current_schema={current_schema} "
+        f"pg_class_hits={pg_class_hits}",
+        file=sys.stderr,
+        flush=True,
+    )
+    try:
+        command.stamp(cfg, "heads")
+    except Exception as exc:  # noqa: BLE001 - entrypoint diagnostics
+        print(f"[entrypoint] alembic stamp failed: {exc}", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+    with psycopg.connect(dsn, **connect_kwargs) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            (
+                regclasses,
+                versions,
+                current_schema,
+                search_path,
+                processing_core_reg,
+                public_reg,
+                pg_class_hits,
+                operations_schemas,
+            ) = _collect_state(cur)
+    missing = [table for table, reg in regclasses.items() if reg is None]
 
 if missing:
     print(
         "[entrypoint] required tables missing after migrations: "
         f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing} "
         f"current_schema={current_schema} search_path={search_path} "
-        f"processing_core.operations={processing_core_reg} public.operations={public_reg} "
+        f"{resolution.schema}.operations={processing_core_reg} public.operations={public_reg} "
         f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
         file=sys.stderr,
         flush=True,
@@ -459,11 +550,11 @@ if missing:
     sys.exit(1)
 
 unique_versions = set(versions)
-if unique_versions != {head_revision}:
+if unique_versions != expected_heads:
     print(
         "[entrypoint] alembic_version_core mismatch: "
         f"schema_resolved={resolution.schema} regclass={regclasses} "
-        f"expected={{{head_revision}}} found={sorted(unique_versions)} "
+        f"expected={sorted(expected_heads)} found={sorted(unique_versions)} "
         f"current_schema={current_schema} search_path={search_path} "
         f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
         file=sys.stderr,
@@ -473,9 +564,9 @@ if unique_versions != {head_revision}:
 
 print(
     "[entrypoint] migration check passed: "
-    f"schema_resolved={resolution.schema} regclass={regclasses} head={head_revision} "
+    f"schema_resolved={resolution.schema} regclass={regclasses} heads={sorted(expected_heads)} "
     f"current_schema={current_schema} search_path={search_path} "
-    f"processing_core.operations={processing_core_reg} public.operations={public_reg} "
+    f"{resolution.schema}.operations={processing_core_reg} public.operations={public_reg} "
     f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
     flush=True,
 )

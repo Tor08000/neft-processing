@@ -89,7 +89,18 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stub = bin_dir / "alembic"
-    stub.write_text("#!/usr/bin/env sh\nexit 0\n")
+    stub.write_text(
+        "#!/usr/bin/env sh\n"
+        "case \"$1\" in\n"
+        "  heads)\n"
+        "    echo \"dummy_head\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  *)\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "esac\n"
+    )
     stub.chmod(0o755)
 
     env = os.environ.copy()

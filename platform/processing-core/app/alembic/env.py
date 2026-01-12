@@ -21,6 +21,8 @@ except KeyError as exc:
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 schema_resolution = resolve_db_schema()
 schema = schema_resolution.schema
+config.set_main_option("version_table", ALEMBIC_VERSION_TABLE)
+config.set_main_option("version_table_schema", schema)
 
 
 def run_migrations_offline() -> None:
@@ -31,7 +33,7 @@ def run_migrations_offline() -> None:
 def _configure(connection) -> None:
     quoted_schema = quote_schema(schema)
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
-    connection.execute(text(f"SET search_path TO {quoted_schema}"))
+    connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
     context.configure(
         connection=connection,
         version_table=ALEMBIC_VERSION_TABLE,
@@ -46,7 +48,7 @@ def run_migrations_online() -> None:
         DATABASE_URL,
         future=True,
         connect_args={
-            "options": f"-c search_path={schema}",
+            "options": f"-c search_path={schema},public",
             "prepare_threshold": 0,
         },
     )

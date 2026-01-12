@@ -32,7 +32,7 @@ def ensure_connectable(db_url: str) -> Engine:
         schema = resolve_db_schema().schema
         engine_kwargs["connect_args"] = {
             "prepare_threshold": 0,
-            "options": f"-c search_path={schema}",
+            "options": f"-c search_path={schema},public",
         }
 
     connectable = sa.create_engine(db_url, **engine_kwargs)
