@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "neft")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "neft")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "neft")
 AUTH_DB_SCHEMA = os.getenv("AUTH_DB_SCHEMA", "public")
+
+logger = logging.getLogger(__name__)
 
 DSN_ASYNC = (
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
@@ -31,9 +34,28 @@ async def get_conn():
     try:
         async with conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(
-                sql.SQL("SET search_path TO {}").format(sql.Identifier(AUTH_DB_SCHEMA))
+                sql.SQL("SET search_path TO {}, public").format(sql.Identifier(AUTH_DB_SCHEMA))
             )
             yield conn, cur
+    finally:
+        if not conn.closed:
+            await conn.close()
+
+
+async def ensure_users_table() -> None:
+    conn = await psycopg.AsyncConnection.connect(DSN_ASYNC)
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name=%s AND table_schema=%s",
+                ("users", AUTH_DB_SCHEMA),
+            )
+            exists = await cur.fetchone()
+            if not exists:
+                logger.critical(
+                    "auth-host: users table missing in schema %s", AUTH_DB_SCHEMA
+                )
+                raise SystemExit(1)
     finally:
         if not conn.closed:
             await conn.close()
