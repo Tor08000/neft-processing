@@ -42,6 +42,14 @@ call :run_cmd "2.1 Migrations" "scripts\migrate.cmd" || goto finalize
 call :run_cmd "2.2 Alembic core-api current" "docker compose exec -T core-api sh -lc ^"alembic -c app/alembic.ini current^"" || goto finalize
 call :run_cmd "2.3 Alembic auth-host current" "docker compose exec -T auth-host sh -lc ^"alembic -c alembic.ini current^"" || goto finalize
 
+call :wait_endpoint "http://localhost/api/core/health" 30 2
+if errorlevel 1 (
+  call :mark_fail "2.9 Wait core-api via gateway" "core-api not ready"
+  goto finalize
+) else (
+  call :mark_ok "2.9 Wait core-api via gateway" "core-api ready"
+)
+
 call :check_endpoints "3. Health checks" ^
   "http://localhost/health" ^
   "http://localhost/api/core/health" ^
@@ -156,6 +164,23 @@ exit /b 1
 
 :append_error
 >> "%ERROR_FILE%" echo - %~1
+exit /b 0
+
+:wait_endpoint
+set "url=%~1"
+set "retries=%~2"
+set "delay=%~3"
+set /a "attempt=1"
+
+:wait_loop
+>> "%LOG_FILE%" echo [wait_endpoint] Attempt !attempt!/%retries% %url%
+curl -fsS "%url%" >NUL 2>> "%LOG_FILE%"
+if errorlevel 1 (
+  if !attempt! GEQ %retries% exit /b 1
+  timeout /t %delay% /nobreak >NUL
+  set /a "attempt+=1"
+  goto wait_loop
+)
 exit /b 0
 
 :finalize
