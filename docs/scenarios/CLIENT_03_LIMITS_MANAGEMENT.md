@@ -1,54 +1,41 @@
 # CLIENT 03 — Limits Management
 
 ## Goal
-Client admins view and manage spending limits, and verify enforcement on transactions.
+Client reviews and updates fleet fuel limits, and limits enforcement is reflected in operations.
 
 ## Actors & Roles
-- Client Owner / Client Admin
-- Regular User (view-only)
+- Client Owner / Fleet Manager
+- Ops/Admin (limit profiles)
 
 ## Prerequisites
-- Processing-core API.
-- Fleet module enabled for the client.
+- Core API running with `postgres`.
+- Limit profiles seeded via CRM or admin limits rules.
 
 ## UI Flow
 **Client portal**
-- Limits profile view → set/revoke limits.
+- Limits list → create/update limit → review breaches in operations.
 
 ## API Flow
-1. `GET /api/client/fleet/limits?scope_type=...&scope_id=...` — list limits.
-2. `POST /api/client/fleet/limits/set` — create/update limit.
+1. `GET /api/client/fleet/limits` — list current limits.
+2. `POST /api/client/fleet/limits/set` — create or update limit.
 3. `POST /api/client/fleet/limits/revoke` — revoke limit.
 
-**Offline profiles**
-1. `GET /api/client/fleet/offline-profiles` — list offline profiles (per client/card).
-2. `POST /api/client/fleet/offline-profiles` — create/update offline profile.
-3. `POST /api/client/fleet/offline-profiles/assign` — assign to card/client.
-
-**NOT IMPLEMENTED**
-- Self-service “apply preset profile” is not exposed; CRM limit profiles exist but no client UI uses them.
-
 ## DB Touchpoints
-- `fuel_limits` — active limits by scope (client/card/group).
-- `crm_limit_profiles` — CRM profiles (used by contracts, not self-service).
-- `fuel_limit_breaches` — limit breach records (if enforcement is active).
-- `fleet_offline_profiles` — offline profile definitions (daily amount/txn limits).
-- `fuel_cards.card_offline_profile_id` — card-level offline profile binding.
-- `clients.client_offline_profile_id` — client-level offline profile binding.
+- `fuel_limits` — client/card/vehicle limits.
+- `limit_configs`, `crm_limit_profiles` — limit rules and profiles.
 
 ## Events & Audit
-- `LIMIT_SET`, `LIMIT_REVOKED` — emitted as `case_events` by fleet service.
-- `FUEL_LIMIT_BREACH_DETECTED` — emitted on enforcement when limits are breached.
+- `LIMIT_SET`, `LIMIT_REVOKED` events recorded in `case_events`.
+- Limit breaches recorded as `FUEL_LIMIT_BREACH_DETECTED`.
 
 ## Security / Gates
-- Requires `client:fleet:limits:manage` permission.
+- Client permissions required (`client:fleet:*`).
 
 ## Failure modes
-- Limit set with invalid enum values → `400 invalid_limit_config`.
-- Unauthorized user → `403 forbidden`.
-- Limit breach → decline with `FUEL_LIMIT_BREACH_DETECTED` case event.
+- Limit scope mismatch or unauthorized access → `403`.
+- Invalid limit payload → `422`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (limit enforcement tests not isolated).
-- smoke cmd: `scripts/smoke_limits_apply_and_enforce.cmd` (fails with NOT IMPLEMENTED).
-- PASS: limit appears in list and enforcement produces breach record/event.
+- pytest: `platform/processing-core/app/tests/test_fleet_v1.py`, `platform/processing-core/app/tests/test_fuel_limits_engine.py`.
+- smoke cmd: `scripts/smoke_limits_apply_and_enforce.cmd` (placeholder).
+- PASS: limits list/set/revoke succeed and breach event is recorded.

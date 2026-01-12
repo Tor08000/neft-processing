@@ -1,62 +1,41 @@
-# CLIENT 07 — Reconciliation Act: Request → Generate → Sign
+# CLIENT 07 — Reconciliation Request & Sign
 
 ## Goal
-Client requests a reconciliation act, receives generated document, and acknowledges/signs it.
+Client requests reconciliation, receives generated act, and acknowledges it.
 
 ## Actors & Roles
 - Client Owner / Client Accountant
-- Admin (Ops)
+- Ops/Admin (attach result)
 
 ## Prerequisites
-- Client portal enabled.
-- Ops/admin to attach reconciliation result.
+- Core API running with `postgres` and `minio`.
 
 ## UI Flow
 **Client portal**
-- Request reconciliation → track status → download → acknowledge.
-
-**Admin**
-- Mark request in progress → attach result → mark sent.
+- Reconciliation requests list → request new reconciliation → download PDF → acknowledge.
 
 ## API Flow
-**Client portal**
 1. `POST /api/v1/client/reconciliation-requests` — create request.
 2. `GET /api/v1/client/reconciliation-requests` — list requests.
-3. `GET /api/v1/client/reconciliation-requests/{request_id}/download` — download result PDF.
-4. `POST /api/v1/client/reconciliation-requests/{request_id}/ack` — acknowledge.
-
-**Admin**
-1. `POST /api/reconciliation-requests/{request_id}/mark-in-progress`.
-2. `POST /api/reconciliation-requests/{request_id}/attach-result`.
-3. `POST /api/reconciliation-requests/{request_id}/mark-sent`.
-
-**NOT IMPLEMENTED**
-- Explicit sign endpoint (`/reconciliation/requests/{id}/sign`). Acknowledgement is the only client action.
+3. `GET /api/v1/client/reconciliation-requests/{id}/download` — download PDF.
+4. `POST /api/v1/client/reconciliation-requests/{id}/ack` — acknowledge result.
+5. `POST /api/v1/admin/reconciliation-requests/{id}/attach-result` — attach generated act (admin).
 
 ## DB Touchpoints
-- `reconciliation_requests` — request lifecycle and result object key.
-- `document_acknowledgements` — client acknowledgements.
-- `invoices` — linked to reconciliation request (for inclusion).
-- `bank_statements`, `bank_transactions` — imported statements used for reconciliation runs.
-- `bank_reconciliation_runs`, `bank_reconciliation_diffs` — reconciliation outcomes after bank import.
+- `reconciliation_requests` — requests and status.
+- `documents` — reconciliation act.
+- `document_acknowledgements` — acknowledgements.
 
 ## Events & Audit
-- `RECONCILIATION_REQUEST_CREATED` — client request creation audit event.
-- `RECONCILIATION_ACKNOWLEDGED` — client acknowledgement audit event.
-- `RECONCILIATION_GENERATED`, `RECONCILIATION_SENT` — admin-side status changes.
-- `BANK_STATEMENT_IMPORTED` — audit event on statement upload.
-- `RECONCILIATION_RUN_COMPLETED` — audit event on bank reconciliation run.
-- **NOT IMPLEMENTED**: `RECON_SIGNED` event code (signing not separate from ack).
+- `RECONCILIATION_REQUEST_CREATED`, `RECONCILIATION_GENERATED`, `RECONCILIATION_ACKNOWLEDGED`.
 
 ## Security / Gates
-- Client portal auth required; access to request scoped to client.
-- Admin endpoints require support/admin context.
+- Client portal auth required; admin actions require `admin:reconciliation:*`.
 
 ## Failure modes
-- Duplicate active request for same period → returns existing request.
-- Missing result object key/hash → download/ack blocked.
+- Request not found or mismatch client → `404` / `403`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (no end-to-end reconciliation doc tests).
-- smoke cmd: `scripts/smoke_reconciliation_request_sign.cmd` (fails with NOT IMPLEMENTED).
-- PASS: request created → result attached → client can download and acknowledge.
+- pytest: `platform/processing-core/app/tests/test_client_portal_api.py`.
+- smoke cmd: `scripts/smoke_reconciliation_request_sign.cmd` (placeholder).
+- PASS: request created, result attached, acknowledgement stored.

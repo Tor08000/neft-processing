@@ -1,49 +1,38 @@
-# CLIENT 05 — Operations List + Explain
+# CLIENT 05 — Operations & Explain
 
 ## Goal
-Client reviews operations and obtains explain/reason details for decisions.
+Client reviews operations and receives explainability for declined/flagged transactions.
 
 ## Actors & Roles
-- Client Owner / Client Admin
-- Regular User (view-only)
+- Client Owner / Accountant
 
 ## Prerequisites
-- Processing-core API.
-- Operation data ingested.
+- Core API running with `postgres`.
 
 ## UI Flow
 **Client portal**
-- Operations list → operation details → explain (reason codes / rules).
+- Operations list → operation details → explain breakdown (reasons, recommendations).
 
 ## API Flow
 1. `GET /api/v1/client/operations` — list operations.
-2. `GET /api/v1/client/operations/{operation_id}` — operation details.
-3. `GET /api/v1/core/explain?kind=operation&id={operation_id}` — explain (core API prefix).
+2. `GET /api/v1/client/operations/{id}` — operation details.
+3. `POST /api/v1/core/explain` — explain decision for operation.
 
 ## DB Touchpoints
-- `operations` — operation records.
-- `fuel_transactions` — canonical fleet operations (provider batch + content hash).
-- `fuel_provider_batches` — batch ingest status and idempotency keys.
-- `decision_memory` — decision snapshots used by explain.
-- `case_events` — `TRANSACTION_INGESTED` events from ingestion.
-
-## Fleet-specific explain
-- Fleet transactions map provider payloads to `fuel_transactions` with `provider_tx_id` and `content_hash`.
-- Replay ingest keeps `fuel_transactions` deterministic and uses `provider_batch_key` to preserve batch lineage.
+- `operations`, `transactions` — operation records.
+- `decision_memory` — explain snapshots.
 
 ## Events & Audit
-- `TRANSACTION_INGESTED` — case event emitted during fleet ingestion.
-- **NOT IMPLEMENTED**: `EXPLAIN_GENERATED` event is not emitted.
+- `TRANSACTION_INGESTED` in `case_events`.
 
 ## Security / Gates
-- Client portal endpoints require client auth context.
-- Explain endpoint requires a bearer token (admin or client) and resolves tenant scope.
+- Client permissions required (`client:operations:*`).
 
 ## Failure modes
-- Operation not found → `404 operation_not_found`.
-- Missing explain kind/id → `422 kind_required` or `id_required`.
+- Unauthorized access → `403`.
+- Explain request for missing operation → `404`.
 
 ## VERIFIED
-- pytest: **NOT IMPLEMENTED** (explain content assertions not present).
-- smoke cmd: `scripts/smoke_operations_explain.cmd` (fails with NOT IMPLEMENTED).
-- PASS: explain response contains matched rules/reasons for operation.
+- pytest: `platform/processing-core/app/tests/test_unified_explain_fuel.py`.
+- smoke cmd: `scripts/smoke_operations_explain.cmd` (placeholder).
+- PASS: explain response contains reasons/recommendations sections.

@@ -1,10 +1,12 @@
 # NEFT Platform — Local Runbook (AS-IS, Windows CMD)
 
-> **Scope:** local compose stack defined in `docker-compose.yml`.
+> **Scope:** local compose stack defined in `docker-compose.yml` (+ optional `docker-compose.smoke.yml`).
 
 ## 1) Prerequisites
 
 - Docker Desktop / Docker Engine installed.
+- Python 3.11+ available on PATH.
+- Node.js 18+ available on PATH (for Playwright UI smoke).
 - Ports available: `80`, `3000`, `4173`, `4174`, `4175`, `5432`, `6379`, `8001`, `8002`, `8003`, `8010`, `5555`, `9000`, `9001`, `9090`, `16686`, `3100`, `9080`, `4317`.
 
 ## 2) Configure environment
@@ -20,22 +22,16 @@ Edit `.env` and set at least:
 
 (See `.env.example` for full list.)
 
-### EDO (SBIS) local configuration
-
-Set secret refs for SBIS credentials and webhook secrets via environment:
-
-```cmd
-set SBIS_TEST_CREDENTIALS={"base_url":"https://sbis.test","token":"...","meta":{"send_path":"/edo/send","status_path":"/edo/status","revoke_path":"/edo/revoke"}}
-set SBIS_TEST_WEBHOOK_SECRET=supersecret
-```
-
-Create EDO account with `credentials_ref=env:SBIS_TEST_CREDENTIALS` and
-`webhook_secret_ref=env:SBIS_TEST_WEBHOOK_SECRET` via admin API.
-
 ## 3) Start the stack
 
 ```cmd
 docker compose up -d --build
+```
+
+Optional smoke profile (adds smoke helpers):
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up -d
 ```
 
 ## 4) Apply DB migrations (core-api)
@@ -50,7 +46,27 @@ Auth-host migrations are handled by its own service start; if needed:
 docker compose exec -T auth-host sh -lc "alembic -c alembic.ini upgrade head"
 ```
 
-## 5) Health checks (HTTP)
+## 5) Seed data (e2e + business seeds)
+
+Legal documents:
+
+```cmd
+python scripts\seed_legal.py
+```
+
+Billing demo seed:
+
+```cmd
+python scripts\seed_billing.py
+```
+
+End-to-end seed (auth + billing + support ticket):
+
+```cmd
+scripts\seed_e2e.cmd
+```
+
+## 6) Health checks (HTTP)
 
 Gateway + APIs:
 
@@ -87,100 +103,98 @@ curl http://localhost:3000/health
 curl http://localhost:16686/
 ```
 
-## 6) Metrics checks
+## 7) Core tests
+
+Recommended core harness:
 
 ```cmd
-curl http://localhost/metrics
-curl http://localhost:8001/metrics
-curl http://localhost:8003/metrics
-curl http://localhost:8010/metrics
-curl http://localhost:9808/metrics
+scripts\test_processing_core_docker.cmd
 ```
 
-## 6.1) Service identities (M2M tokens)
-
-Issue a service identity and token (admin JWT required):
+Full suite:
 
 ```cmd
-curl -X POST http://localhost/api/core/v1/admin/security/service-identities ^
-  -H "Authorization: Bearer <ADMIN_JWT>" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"service_name\":\"document-service\",\"description\":\"Docs\"}"
+scripts\test_processing_core_docker.cmd all
 ```
 
-```cmd
-curl -X POST http://localhost/api/core/v1/admin/security/service-identities/<ID>/tokens/issue ^
-  -H "Authorization: Bearer <ADMIN_JWT>" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"scopes\":[\"rules:evaluate\"],\"expires_at\":\"2030-01-01T00:00:00Z\",\"env\":\"test\"}"
-```
+Alternative (subset + optional full):
 
-Rotate (optional grace window) and revoke:
-
-```cmd
-curl -X POST http://localhost/api/core/v1/admin/security/service-tokens/<TOKEN_ID>/rotate ^
-  -H "Authorization: Bearer <ADMIN_JWT>" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"grace_hours\":24,\"env\":\"test\"}"
-```
-
-```cmd
-curl -X POST http://localhost/api/core/v1/admin/security/service-tokens/<TOKEN_ID>/revoke ^
-  -H "Authorization: Bearer <ADMIN_JWT>" ^
-  -H "Content-Type: application/json" ^
-  -d \"{}\"
-```
-
-## 7) Logs
-
-```cmd
-docker compose logs -f core-api
-docker compose logs -f auth-host
-docker compose logs -f integration-hub
-docker compose logs -f gateway
-```
-
-## 8) Common tasks (CMD helpers)
-
-```cmd
-scripts\get_admin_token.cmd
-scripts\test_core_api.cmd
-scripts\test_processing_core.cmd
-scripts\test_core_stack.cmd
-scripts\test_auth_host.cmd
-scripts\billing_smoke.cmd
-scripts\smoke_billing_v14.cmd
-scripts\smoke_invoice_state_machine.cmd
-scripts\smoke_legal_gate.cmd
-scripts\chaos\chaos_smoke_all.cmd
-scripts\backup\backup_postgres.cmd
-scripts\backup\backup_minio.cmd
-scripts\backup\backup_clickhouse.cmd
-scripts\backup\verify_backup.cmd
-scripts\restore\restore_postgres.cmd
-scripts\restore\restore_minio.cmd
-scripts\restore\restore_clickhouse.cmd
-scripts\release\generate_release_notes.cmd
-```
-
-**Processing-core tests (recommended):**
 ```cmd
 scripts\test_core_stack.cmd
 scripts\test_core_stack.cmd --full
 ```
 
-Processing-core tests are run inside docker compose; host runs are not supported.
-
-## 10) Chaos checks (minimal)
+## 8) Smoke tests (business flows)
 
 ```cmd
-scripts\chaos\chaos_postgres_restart.cmd
-scripts\chaos\chaos_redis_flush.cmd
-scripts\chaos\chaos_minio_down.cmd
-scripts\chaos\chaos_smoke_all.cmd
+scripts\smoke_billing_v14.cmd
+scripts\smoke_invoice_state_machine.cmd
+scripts\smoke_legal_gate.cmd
+scripts\smoke_onboarding_e2e.cmd
+scripts\smoke_onec_export.cmd
+scripts\smoke_bank_statement_import.cmd
+scripts\smoke_reconciliation_after_bank.cmd
+scripts\smoke_fuel_ingest_batch.cmd
+scripts\smoke_fuel_offline_reconcile.cmd
+scripts\smoke_fuel_replay_batch.cmd
 ```
 
-## 11) Backup / Restore
+## 9) Playwright UI smoke
+
+```cmd
+cd frontends\e2e
+npm install
+npx playwright install
+npx playwright test
+```
+
+## 10) BI (ClickHouse runtime + marts + dashboards)
+
+Enable in `.env`:
+- `BI_CLICKHOUSE_ENABLED=1`
+- `CLICKHOUSE_URL=http://clickhouse:8123`
+
+Run BI sync + dashboard smokes:
+
+```cmd
+scripts\smoke_bi_ops_dashboard.cmd
+scripts\smoke_bi_partner_dashboard.cmd
+scripts\smoke_bi_client_spend_dashboard.cmd
+scripts\smoke_bi_cfo_dashboard.cmd
+```
+
+Dashboards JSON: `docs\ops\dashboards\*.json`.
+
+## 11) EDO SBIS
+
+Set SBIS credentials and webhook secret in CMD before running EDO smokes:
+
+```cmd
+set SBIS_TEST_CREDENTIALS={"base_url":"https://sbis.test","token":"...","meta":{"send_path":"/edo/send","status_path":"/edo/status","revoke_path":"/edo/revoke"}}
+set SBIS_TEST_WEBHOOK_SECRET=supersecret
+set EDO_PROVIDER=SBIS
+set EDO_E2E_ENABLED=1
+```
+
+Create EDO account with `credentials_ref=env:SBIS_TEST_CREDENTIALS` and
+`webhook_secret_ref=env:SBIS_TEST_WEBHOOK_SECRET` via admin API. Then run:
+
+```cmd
+scripts\smoke_edo_sbis_send.cmd
+scripts\smoke_edo_sbis_wait_signed.cmd
+scripts\smoke_edo_sbis_revoke.cmd
+```
+
+## 12) Notifications (Mailpit) smoke
+
+Mailpit is in the base compose (`SMTP_HOST=mailpit`).
+
+```cmd
+scripts\smoke_notifications_invoice_email.cmd
+scripts\smoke_notifications_webhook.cmd
+```
+
+## 13) Backup / Restore
 
 Postgres:
 
@@ -204,13 +218,22 @@ scripts\backup\backup_clickhouse.cmd
 scripts\restore\restore_clickhouse.cmd
 ```
 
-## 12) Release discipline
+## 14) Chaos checks (minimal)
+
+```cmd
+scripts\chaos\chaos_postgres_restart.cmd
+scripts\chaos\chaos_redis_flush.cmd
+scripts\chaos\chaos_minio_down.cmd
+scripts\chaos\chaos_smoke_all.cmd
+```
+
+## 15) Release discipline
 
 ```cmd
 scripts\release\generate_release_notes.cmd vYYYY.MM.PATCH
 ```
 
-## 9) Known failure points
+## 16) Known failure points
 
 1) **MinIO not initialized** → check `minio-health` and `minio-init` logs. (`infra/minio-init.sh`)
 2) **Auth-host fails to start** → verify key paths and `AUTH_KEY_DIR` volume. (`docker-compose.yml`, `.env.example`)

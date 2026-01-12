@@ -18,7 +18,8 @@
 - Documents & Exports
 - Decision Memory & What-If
 - Reconciliation/Internal Ledger
-- Integrations (Integration Hub + webhooks)
+- Integrations (Integration Hub + webhooks + EDO SBIS)
+- BI/ClickHouse
 - Observability (Prometheus/Grafana/Jaeger/Loki)
 
 **Карта ключевых директорий (AS-IS):**
@@ -27,7 +28,7 @@
 platform/
   processing-core/        # Core API (billing, fleet, marketplace, audit)
   auth-host/              # JWT/auth service
-  integration-hub/        # webhooks + EDO stub
+  integration-hub/        # webhooks + EDO
   ai-services/risk-scorer # AI scoring stub
   billing-clearing/       # Celery workers/beat
   document-service/       # PDF render/sign/verify
@@ -150,6 +151,7 @@ docs/
 - **Token rotation flow:** issue → rotate (grace period) → revoke; токены только в виде хэша + префикс, plaintext выдаётся однократно. (`platform/processing-core/app/services/service_identities.py`)
 - **ABAC policies:** версии `abac_policy_versions` + правила `abac_policies` с JSON conditions и приоритетами. (`platform/processing-core/app/models/abac.py`, `platform/processing-core/app/services/abac/engine.py`)
 - **ABAC enforcement:** подключено к Documents download, EDO send, CRM client read, Payout export, BI scope. (`platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/admin/crm.py`, `platform/processing-core/app/api/v1/endpoints/payouts.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`)
+- **VERIFIED:** `platform/processing-core/app/tests/test_service_tokens.py`, `platform/processing-core/app/tests/test_abac_policies.py`, `platform/processing-core/app/tests/test_abac_explain.py`.
 
 ---
 
@@ -161,18 +163,20 @@ docs/
 - **Модели/таблицы:** `billing_invoices`, `billing_payments`, `billing_refunds`, `invoices`, `invoice_lines`, `internal_ledger_*`, `posting_batches`, `settlements`, `payout_*`. (`platform/processing-core/app/models/*`)
 - **Сервисы/эндпоинты:** `app/services/billing_service.py`, `app/services/payouts_service.py`, `app/routers/admin/billing.py`, `app/api/v1/endpoints/billing_invoices.py`.
 - **Инварианты/стейт-машины:** invoice transitions + billing flow state в `invoice_transition_logs`, `billing_flow`. (`platform/processing-core/app/models/invoice.py`, `platform/processing-core/app/models/billing_flow.py`)
+- **VERIFIED:** `platform/processing-core/app/tests/test_invoice_state_machine.py`, `platform/processing-core/app/tests/test_billing_pipeline_smoke.py`.
 
-### Fleet / Fuel — **REAL**
+### Fleet / Fuel — **READY**
 - **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fuel_provider_batches`, `fleet_offline_profiles`, `fleet_offline_reconciliation_runs`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/models.py`)
-- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`, `app/routers/internal/fuel_providers.py`.
-- **Инварианты:** блокировки/эскалации в `fleet_policy_engine.py`, `fleet_anomaly_service.py`; batch replay idempotency через `content_hash` и `provider_batch_key`.
+- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`, `app/routers/internal/fuel_providers.py`, `app/routers/admin/fuel_providers.py`.
+- **Офлайн/реплей:** профили офлайна + сверка `fleet_offline_*`, replay batch/jobs в `app/integrations/fuel/jobs.py`, CLI `provider_ref/cli.py`.
 - **Fleet Providers: REAL** — эталонный адаптер `provider_ref` с протоколами ingestion/authorize/settlement, CSV ingest и replay. (`platform/processing-core/app/integrations/fuel/providers/provider_ref/`)
+- **VERIFIED:** `platform/processing-core/app/tests/test_fleet_ingestion_v1.py`, `scripts/smoke_fuel_ingest_batch.cmd`, `scripts/smoke_fuel_offline_reconcile.cmd`, `scripts/smoke_fuel_replay_batch.cmd`.
 
-### Marketplace — **PARTIAL**
-- **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `service_bookings`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/service_bookings.py`)
-- **Сервисы/эндпоинты:** `app/routers/client_marketplace*.py`, `app/routers/partner/marketplace_*.py`, `app/services/marketplace_order_service.py`.
-- **Инварианты:** immutable event tables via ORM hooks. (`platform/processing-core/app/models/marketplace_orders.py`)
-- **Почему PARTIAL:** алгоритмы рекомендаций и спонсоринга реализованы как data-модели + API без внешнего ML сервиса. Отдельного рекомендационного сервиса **NOT IMPLEMENTED**.
+### Marketplace economics + SLA coupling + recommender v1 — **READY**
+- **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `order_sla_evaluations`, `order_sla_consequences`, `marketplace_sla_notification_outbox`, `vehicle_recommendations`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/models/vehicle_profile.py`)
+- **Сервисы/эндпоинты:** `app/routers/client_marketplace*.py`, `app/routers/partner/marketplace_*.py`, `app/routers/admin/marketplace_order_sla.py`, `app/services/marketplace_order_service.py`, `app/services/order_sla_service.py`, `app/services/order_sla_consequence_service.py`.
+- **Recommender v1:** rules+fallback recommender (`MarketplaceRecommendationService`) + sponsored placements. (`platform/processing-core/app/services/marketplace_recommendation_service.py`)
+- **VERIFIED:** `platform/processing-core/app/tests/test_marketplace_orders_v1.py`, `platform/processing-core/app/tests/test_marketplace_recommendations_v1.py`, `platform/processing-core/app/tests/test_marketplace_sla_billing_v1.py`.
 
 ### Decision Memory + What-If — **PARTIAL**
 - **Модели/таблицы:** `decision_memory`, `decision_results`, `risk_*`. (`platform/processing-core/app/models/decision_memory.py`, `platform/processing-core/app/models/decision_result.py`)
@@ -182,18 +186,43 @@ docs/
 ### Reconciliation / Internal Ledger — **READY**
 - **Модели/таблицы:** `reconciliation_*`, `billing_reconciliation_*`, `internal_ledger_*`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/models/internal_ledger.py`)
 - **Сервисы/эндпоинты:** `app/services/reconciliation_service.py`, `app/services/settlement_service.py`.
+- **VERIFIED:** `platform/processing-core/app/tests/test_reconciliation_v1.py`, `platform/processing-core/app/tests/test_internal_ledger.py`.
 
-### Documents / Exports — **PARTIAL**
+### Documents / Exports — **READY**
 - **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
-- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`.
-- **Шаблоны документов:** репозиторий `platform/document-service/templates/` + схемы `platform/document-service/templates/schemas/`, эндпоинты `GET /v1/templates` и `GET /v1/templates/{code}` в document-service, прокси `GET /api/core/documents/templates` в core-api.
-- **Почему PARTIAL:** EDO интеграции и внешние провайдеры — stub/мок режим (`platform/integration-hub/neft_integration_hub/services/edo_stub.py`).
+- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`, `app/routers/admin/closing_packages.py`.
+- **Шаблоны документов:** `platform/document-service/templates/` + схемы `platform/document-service/templates/schemas/`, эндпоинты `GET /v1/templates` и `GET /v1/templates/{code}` в document-service, прокси `GET /api/core/documents/templates` в core-api.
+- **VERIFIED:** `platform/processing-core/app/tests/test_documents_lifecycle.py`, `platform/processing-core/app/tests/test_closing_documents_e2e.py`, `platform/document-service/app/tests/test_templates.py`.
 
-### Legal Gate / Compliance — **PARTIAL**
+### EDO SBIS — **READY**
+- **EDO core:** модели `edo_accounts`, `edo_documents`, `edo_transitions`, `edo_artifacts`, `edo_outbox`. (`platform/processing-core/app/models/edo.py`)
+- **EDO сервис:** `app/services/edo/service.py`, router admin `/edo/*`, client `/client/api/v1/edo/*`, partner `/partner/api/v1/edo/*`. (`platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/client_edo.py`, `platform/processing-core/app/routers/partner/edo.py`)
+- **SBIS webhook intake:** `/integrations/edo/sbis/webhook` (core), dispatcher/worker в integration-hub. (`platform/processing-core/app/routers/integrations/edo_sbis.py`, `platform/integration-hub/neft_integration_hub/tasks.py`)
+- **VERIFIED:** `platform/processing-core/app/tests/test_edo_state_machine.py`, `platform/processing-core/app/tests/test_edo_events.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py`, `scripts/smoke_edo_sbis_send.cmd`.
+
+### Integrations Hub (1C + Bank + Reconciliation) — **READY**
+- **1C export:** `app/routers/admin/integrations.py` endpoints `/api/v1/admin/integrations/onec/*`, XML export generator. (`platform/processing-core/app/services/accounting_export_service.py`)
+- **Bank statements:** import endpoints `/api/v1/admin/integrations/bank/*`, reconciliation mapping. (`platform/processing-core/app/routers/admin/integrations.py`)
+- **Reconciliation:** `app/services/reconciliation_service.py`, `app/routers/admin/integrations.py` (bank reconcile runs).
+- **VERIFIED:** `platform/processing-core/app/tests/test_onec_export.py`, `platform/processing-core/app/tests/test_bank_statement_reconciliation_e2e.py`, `scripts/smoke_onec_export.cmd`, `scripts/smoke_bank_statement_import.cmd`, `scripts/smoke_reconciliation_after_bank.cmd`.
+
+### BI ClickHouse runtime + marts + dashboards — **READY**
+- **ClickHouse mart schemas:** `mart_ops_sla`, `mart_*` runtime tables. (`platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py`)
+- **BI endpoints:** `/api/core/bi/*` + admin `/api/core/api/v1/admin/bi/sync/*`. (`platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/api/v1/endpoints/bi_dashboards.py`)
+- **Dashboards JSON:** `docs/ops/dashboards/*.json`.
+- **VERIFIED:** `scripts/smoke_bi_ops_dashboard.cmd`, `scripts/smoke_bi_partner_dashboard.cmd`, `scripts/smoke_bi_client_spend_dashboard.cmd`, `scripts/smoke_bi_cfo_dashboard.cmd`.
+
+### Legal Gate / Compliance — **READY**
 - **Граф доверия (legal graph):** `app/services/legal_graph/*`, admin endpoints `/api/core/admin/legal-graph/*`.
 - **Trust gates:** интеграционные проверки в `platform/processing-core/app/tests/test_trust_gates.py`.
-- **Проверка legal gate (Windows CMD):** `scripts\\test_core_stack.cmd` (unit tests) и `scripts\\smoke_legal_gate.cmd` (smoke через gateway).
-- **Почему PARTIAL:** юридические блокировки/гейты для бизнес-операций описаны, но API-обвязка под конкретные сценарии требует настройки.
+- **Legal gate smoke:** `scripts/smoke_legal_gate.cmd`.
+- **VERIFIED:** `platform/processing-core/app/tests/test_legal_gate.py`, `platform/processing-core/app/tests/test_trust_gates.py`.
+
+### Operational reliability (chaos/backup/restore/SLO/release) — **READY**
+- **Chaos:** `scripts/chaos/*.cmd` (Postgres restart, Redis flush, MinIO down).
+- **Backup/restore:** `scripts/backup/*.cmd`, `scripts/restore/*.cmd`, `scripts/backup/verify_backup.cmd`.
+- **SLO/ops:** `docs/ops/SLO.md`, dashboards `docs/ops/dashboards/*.json`.
+- **Release:** `docs/ops/RELEASE_CHECKLIST.md`, `scripts/release/generate_release_notes.cmd`.
 
 ---
 
@@ -207,7 +236,7 @@ docs/
 
 **Статус сборки/запуска (AS-IS):**
 - Все три контейнера определены в `docker-compose.yml`.
-- Факт запуска **NOT VERIFIED** (см. snapshot).
+- UI smoke тесты реализованы в `frontends/e2e` (Playwright).
 
 ---
 
@@ -300,10 +329,8 @@ scripts\test_processing_core_docker.cmd all
 
 - Kafka/RabbitMQ-based event bus **NOT IMPLEMENTED** (нет в compose/коде).
 - Schema registry **NOT IMPLEMENTED**.
-- Реальные провайдеры топлива — **stub/template** (см. `platform/processing-core/app/integrations/fuel/providers/*`).
 - SMS/Voice провайдеры уведомлений — **stub only** (`sms_stub`, `voice_stub` в `app/services/fleet_notification_dispatcher.py`).
-- Рекомендательный сервис как отдельный сервис **NOT IMPLEMENTED** (только модели/эндпоинты).
-- BI ClickHouse выключен по умолчанию (`BI_CLICKHOUSE_ENABLED=0`).
+- Partner onboarding self-service — **NOT IMPLEMENTED** (см. `scripts/smoke_partner_onboarding.cmd`).
 - Object Lock/WORM требует внешней поддержки S3 — **NOT VERIFIED**.
 
 ---
