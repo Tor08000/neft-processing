@@ -53,6 +53,36 @@ Use:
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini merge -m \"merge heads (baseline)\" <head_ids...>"
 ```
 
+### 4.1) Fix orphan composite types (when migrations failed)
+
+Use the universal cleanup (drops orphan composite types without tables):
+
+```cmd
+scripts\db\fix_orphan_composite_types.cmd
+```
+
+Optional: target a different service name:
+
+```cmd
+scripts\db\fix_orphan_composite_types.cmd core-api
+```
+
+### 4.2) Frontend build verification (Docker + local)
+
+Docker builds:
+
+```cmd
+docker compose build admin-web client-web partner-web
+```
+
+Local portal builds:
+
+```cmd
+cd frontends\admin-ui && npm run build
+cd frontends\client-portal && npm run build
+cd frontends\partner-portal && npm run build
+```
+
 ## 5) Seed data (e2e + business seeds)
 
 Legal documents:

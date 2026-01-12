@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Build frontend images
+        run: docker compose build admin-web client-web partner-web
       - name: Start postgres
         run: docker compose -f docker-compose.yml -f docker-compose.smoke.yml --profile smoke up -d postgres
       - name: Check protected alembic revisions
