@@ -294,44 +294,6 @@ fi
 
 echo "[entrypoint] parsed heads: [$(printf "%s\n" "$expected_heads" | tr '\n' ' ')]"
 
-echo "[entrypoint] ensuring alembic_version_core length"
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
-DO \$\$
-DECLARE
-  current_len integer;
-BEGIN
-  IF to_regclass('${schema_resolved}.alembic_version_core') IS NULL THEN
-    RAISE NOTICE 'alembic_version_core is missing; skipping length check';
-    RETURN;
-  END IF;
-
-  SELECT character_maximum_length
-    INTO current_len
-    FROM information_schema.columns
-   WHERE table_schema = '${schema_resolved}'
-     AND table_name = 'alembic_version_core'
-     AND column_name = 'version_num';
-
-  IF current_len IS NULL THEN
-    RAISE NOTICE 'alembic_version_core.version_num missing; skipping length check';
-    RETURN;
-  END IF;
-
-  RAISE NOTICE 'alembic_version_core.version_num length=%', current_len;
-
-  IF current_len < 128 THEN
-    EXECUTE format(
-      'ALTER TABLE %I.alembic_version_core ALTER COLUMN version_num TYPE varchar(128)',
-      '${schema_resolved}'
-    );
-    RAISE NOTICE 'alembic_version_core.version_num length altered to 128';
-  ELSE
-    RAISE NOTICE 'alembic_version_core.version_num length already >= 128';
-  END IF;
-END \$\$;
-EOF
-echo "[entrypoint] alembic_version_core length check complete"
-
 echo "[entrypoint] pre-migration cleanup: schema_resolved=${schema_resolved} search_path=${schema_resolved},public"
 echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
 if [ -z "$DATABASE_URL" ]; then
