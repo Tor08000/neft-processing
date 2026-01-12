@@ -51,13 +51,10 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
-        # ВАЖНО: не стартуем implicit transaction до Alembic.
-        # Иначе на выходе получишь ROLLBACK и “tables missing”.
-        connection = connection.execution_options(isolation_level="AUTOCOMMIT")
-
         _configure(connection)
 
-        context.run_migrations()
+        with context.begin_transaction():
+            context.run_migrations()
 
     engine.dispose()
 
