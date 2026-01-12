@@ -94,19 +94,27 @@ def drop_orphan_composite_type(bind: Connection, type_name: str, schema: str = D
     bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{schema_sql}"."{type_sql}" CASCADE')
 
 
-def drop_orphan_table_type_if_exists(bind: Connection, schema: str, table_name: str) -> None:
-    _require_bind(bind, caller="drop_orphan_table_type_if_exists")
+def drop_orphan_composite_type_if_needed(
+    bind: Connection, type_name: str, schema: str = DB_SCHEMA
+) -> None:
+    _require_bind(bind, caller="drop_orphan_composite_type_if_needed")
 
-    if table_exists(bind, table_name, schema=schema):
+    if table_exists(bind, type_name, schema=schema):
         return
 
-    if composite_type_exists(bind, table_name, schema=schema):
+    if composite_type_exists(bind, type_name, schema=schema):
         logger.warning(
             "Dropping orphan composite type %s.%s before creating table",
             schema,
-            table_name,
+            type_name,
         )
-        drop_orphan_composite_type(bind, table_name, schema=schema)
+        drop_orphan_composite_type(bind, type_name, schema=schema)
+
+
+def drop_orphan_table_type_if_exists(bind: Connection, schema: str, table_name: str) -> None:
+    _require_bind(bind, caller="drop_orphan_table_type_if_exists")
+
+    drop_orphan_composite_type_if_needed(bind, table_name, schema=schema)
 
 
 def column_exists(
@@ -350,13 +358,7 @@ def create_table_if_not_exists(
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return
 
-    if composite_type_exists(bind, table_name, schema=schema):
-        logger.warning(
-            "Dropping orphan composite type %s.%s before creating table",
-            schema,
-            table_name,
-        )
-        drop_orphan_composite_type(bind, table_name, schema=schema)
+    drop_orphan_composite_type_if_needed(bind, table_name, schema=schema)
 
     operations = getattr(bind, "op_override", op)
 
