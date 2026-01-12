@@ -167,6 +167,8 @@ def drop_orphan_composite_type_if_exists(op, *, schema: str, table_name: str) ->
         text(
             f"""
             DO $$
+            DECLARE
+              v_typtype "char";
             BEGIN
               IF NOT EXISTS (
                 SELECT 1
@@ -176,15 +178,19 @@ def drop_orphan_composite_type_if_exists(op, *, schema: str, table_name: str) ->
                   AND c.relname = '{table_name}'
                   AND c.relkind IN ('r','p')
               ) THEN
-                IF EXISTS (
-                  SELECT 1
-                  FROM pg_type t
-                  JOIN pg_namespace n ON n.oid = t.typnamespace
-                  WHERE n.nspname = '{schema}'
-                    AND t.typname = '{table_name}'
-                    AND t.typtype = 'c'
-                ) THEN
-                  EXECUTE 'DROP TYPE {schema}.{table_name} CASCADE';
+                SELECT t.typtype INTO v_typtype
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = '{schema}'
+                  AND t.typname = '{table_name}'
+                LIMIT 1;
+
+                IF v_typtype IS NOT NULL THEN
+                  IF v_typtype = 'd' THEN
+                    EXECUTE 'DROP DOMAIN IF EXISTS {schema}.{table_name} CASCADE';
+                  ELSE
+                    EXECUTE 'DROP TYPE IF EXISTS {schema}.{table_name} CASCADE';
+                  END IF;
                 END IF;
               END IF;
             END $$;
