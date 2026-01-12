@@ -35,6 +35,7 @@
 
 | Smoke check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
+| All smoke scripts | `scripts\smoke_all.cmd` | full stack running | Script exits `0` |
 | Billing finance | `scripts\smoke_billing_finance.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` |
 | Billing run | `scripts\smoke_billing_run.cmd` | same as above | Script exits `0` |
 | Billing v14 | `scripts\smoke_billing_v14.cmd` | same as above | Script exits `0` |

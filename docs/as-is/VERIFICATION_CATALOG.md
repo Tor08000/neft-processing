@@ -11,6 +11,7 @@
 | `scripts\test_core_full.cmd` | System/smoke/contracts/integration suite | `postgres`, `redis`, `minio` | `scripts\test_core_full.cmd` | exit `0` | System + contracts |
 | `scripts\test_core_api.cmd` | Run pytest inside core-api container | `core-api` running | `scripts\test_core_api.cmd -q` | exit `0` | Core API targeted |
 | `scripts\test_auth_host.cmd` | Run pytest inside auth-host container | `auth-host` running | `scripts\test_auth_host.cmd -q` | exit `0` | Auth host |
+| `scripts\smoke_all.cmd` | All smoke scripts | Core stack running | `scripts\smoke_all.cmd` | exit `0` | Smoke coverage |
 | `scripts\smoke_billing_finance.cmd` | Billing + finance smoke | Core stack running | `scripts\smoke_billing_finance.cmd` | exit `0` | Billing & finance |
 | `scripts\smoke_billing_v14.cmd` | Billing v14 flow | Core stack running | `scripts\smoke_billing_v14.cmd` | exit `0` | Billing |
 | `scripts\smoke_billing_run.cmd` | Billing run smoke | Core stack running | `scripts\smoke_billing_run.cmd` | exit `0` | Billing |
