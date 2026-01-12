@@ -237,6 +237,7 @@ docker compose exec -T postgres psql -U neft -d neft -c "select version_num from
 Минимальный набор для фиксации статуса (запускать из корня репозитория):
 
 ```bat
+docker compose build --no-cache core-api
 docker compose up -d
 docker compose ps
 

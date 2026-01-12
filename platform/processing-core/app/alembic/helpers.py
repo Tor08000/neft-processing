@@ -419,12 +419,14 @@ def create_table_if_not_exists(
         return
 
     if composite_type_exists(bind, schema, table_name):
+        schema_name = schema or DB_SCHEMA
+        print(f"[alembic] dropping orphan composite type {schema_name}.{table_name}")
         logger.warning(
             "Dropping orphan composite type %s.%s before creating table",
-            schema,
+            schema_name,
             table_name,
         )
-        drop_composite_type(bind, schema, table_name)
+        drop_composite_type(bind, schema_name, table_name)
 
     operations = getattr(bind, "op_override", op)
 

@@ -20,7 +20,7 @@ def _override_create_table(conn: sa.Connection) -> None:
     setattr(conn, "op_override", SimpleNamespace(create_table=_create_table))
 
 
-def test_create_table_if_not_exists_drops_orphan_composite_type():
+def test_create_table_if_not_exists_drops_orphan_composite_type(capsys: pytest.CaptureFixture[str]):
     db_url = get_database_url()
     if not db_url.startswith("postgresql"):
         pytest.skip("Postgres required for composite type regression test")
@@ -65,3 +65,6 @@ def test_create_table_if_not_exists_drops_orphan_composite_type():
         )
 
         assert helpers.table_exists(conn, table_name, schema=schema)
+
+    output = capsys.readouterr().out
+    assert f"[alembic] dropping orphan composite type {schema}.{table_name}" in output
