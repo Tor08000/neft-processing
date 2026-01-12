@@ -115,7 +115,7 @@ with psycopg.connect(dsn, prepare_threshold=0, options=f"-c search_path={schema}
         )
 PY
 
-ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-app/alembic.ini}
+ALEMBIC_CONFIG=${ALEMBIC_CONFIG:-/app/app/alembic.ini}
 MIGRATION_LOG=${MIGRATION_LOG:-/tmp/alembic_migration.log}
 
 if [ ! -f "$ALEMBIC_CONFIG" ]; then
@@ -123,25 +123,123 @@ if [ ! -f "$ALEMBIC_CONFIG" ]; then
     exit 1
 fi
 
-echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
-heads_output=$(alembic -q -c "$ALEMBIC_CONFIG" heads 2>&1)
-if [ $? -ne 0 ]; then
-    echo "[entrypoint] alembic heads failed: $heads_output" >&2
-    exit 1
-fi
-expected_heads=$(printf "%s\n" "$heads_output" | awk 'NF{print $1}')
-if [ -z "$expected_heads" ]; then
-    echo "[entrypoint] alembic heads returned empty output" >&2
-    exit 1
-fi
-echo "[entrypoint] alembic heads resolved: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
-
-echo "[entrypoint] ensuring alembic_version_core length"
 if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for alembic version repair" >&2
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
+
+extract_heads() {
+    printf "%s\n" "$1" | awk '/\(head\)/ {print $1}' | awk 'NF' | awk '!seen[$0]++'
+}
+
+run_diag_cmd() {
+    echo "[entrypoint] diag: $*"
+    set +e
+    output=$("$@" 2>&1)
+    status=$?
+    set -e
+    if [ -n "$output" ]; then
+        printf "%s\n" "$output" | sed 's/^/[entrypoint]   /'
+    fi
+    return $status
+}
+
+echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
+heads_output=$(cd /app && alembic -c /app/app/alembic.ini heads --verbose 2>&1)
+heads_status=$?
+echo "[entrypoint] alembic heads raw output (first 5 lines):"
+printf "%s\n" "$heads_output" | head -n 5 | sed 's/^/[entrypoint]   /'
+echo "[entrypoint] alembic heads raw output line count: $(printf "%s\n" "$heads_output" | wc -l | tr -d ' ')"
+if [ "$heads_status" -ne 0 ]; then
+    echo "[entrypoint] alembic heads failed with status $heads_status" >&2
+    run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini current"
+    run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
+    run_diag_cmd ls -la /app/app/alembic.ini
+    run_diag_cmd sh -c "ls -la /app/app/alembic/versions | tail -n 50"
+    run_diag_cmd grep -E "script_location|version_locations" -n /app/app/alembic.ini
+    echo "[entrypoint] alembic heads failed output: $heads_output" >&2
+    exit 1
+fi
+
+expected_heads=$(extract_heads "$heads_output")
+if [ -z "$expected_heads" ]; then
+    echo "[entrypoint] alembic heads parsed empty; running diagnostics" >&2
+    run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini current"
+    run_diag_cmd sh -c "cd /app && alembic -c /app/app/alembic.ini history --verbose | tail -n 50"
+    run_diag_cmd ls -la /app/app/alembic.ini
+    run_diag_cmd sh -c "ls -la /app/app/alembic/versions | tail -n 50"
+    run_diag_cmd grep -E "script_location|version_locations" -n /app/app/alembic.ini
+
+    set +e
+    heads_check=$(cd /app && alembic -c /app/app/alembic.ini heads --verbose 2>&1)
+    heads_check_status=$?
+    set -e
+    if [ "$heads_check_status" -ne 0 ]; then
+        echo "[entrypoint] alembic heads failed during diagnostics: $heads_check" >&2
+        exit 1
+    fi
+
+    expected_heads=""
+    table_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+    if [ -n "$table_reg" ]; then
+        fallback_versions=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;")
+        fallback_versions=$(printf "%s\n" "$fallback_versions" | sed '/^[[:space:]]*$/d')
+        if [ -n "$fallback_versions" ]; then
+            expected_heads=$fallback_versions
+            echo "[entrypoint] fallback: using existing alembic_version_core rows as heads: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
+        fi
+    fi
+
+    if [ -z "$expected_heads" ]; then
+        fallback_heads=$(python - <<'PY'
+import ast
+import glob
+import re
+
+revisions = []
+down_revisions = set()
+
+for path in glob.glob("/app/app/alembic/versions/*.py"):
+    with open(path, "r", encoding="utf-8") as handle:
+        text = handle.read()
+    rev_match = re.search(r"^revision\s*=\s*(.+)$", text, re.M)
+    down_match = re.search(r"^down_revision\s*=\s*(.+)$", text, re.M)
+    if not rev_match:
+        continue
+    revision = ast.literal_eval(rev_match.group(1).strip())
+    revisions.append(revision)
+    if not down_match:
+        continue
+    down_raw = ast.literal_eval(down_match.group(1).strip())
+    if down_raw is None:
+        continue
+    if isinstance(down_raw, (list, tuple, set)):
+        down_revisions.update(down_raw)
+    else:
+        down_revisions.add(down_raw)
+
+heads = sorted({rev for rev in revisions if rev not in down_revisions})
+for head in heads:
+    print(head)
+PY
+)
+        fallback_heads=$(printf "%s\n" "$fallback_heads" | sed '/^[[:space:]]*$/d')
+        if [ -n "$fallback_heads" ]; then
+            expected_heads=$fallback_heads
+            echo "[entrypoint] fallback: derived heads from alembic/versions: $(printf "%s\n" "$expected_heads" | tr '\n' ' ')"
+        fi
+    fi
+
+    if [ -z "$expected_heads" ]; then
+        echo "[entrypoint] unable to resolve alembic heads after diagnostics and fallbacks" >&2
+        exit 1
+    fi
+fi
+
+echo "[entrypoint] parsed heads: [$(printf "%s\n" "$expected_heads" | tr '\n' ' ')]"
+
+echo "[entrypoint] ensuring alembic_version_core length"
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
 DECLARE
