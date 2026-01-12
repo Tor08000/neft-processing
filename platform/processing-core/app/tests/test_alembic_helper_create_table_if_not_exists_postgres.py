@@ -1,3 +1,4 @@
+import logging
 import shutil
 from types import SimpleNamespace
 
@@ -19,7 +20,7 @@ def _override_create_table(conn: sa.Connection) -> None:
     setattr(conn, "op_override", SimpleNamespace(create_table=_create_table))
 
 
-def test_create_table_if_not_exists_drops_orphan_composite_type(capsys: pytest.CaptureFixture[str]):
+def test_create_table_if_not_exists_drops_orphan_type(caplog: pytest.LogCaptureFixture):
     db_url = get_database_url()
     if not db_url.startswith("postgresql"):
         pytest.skip("Postgres required for composite type regression test")
@@ -28,12 +29,13 @@ def test_create_table_if_not_exists_drops_orphan_composite_type(capsys: pytest.C
     schema = resolve_db_schema().schema
     table_name = "client_onboarding_state"
 
+    caplog.set_level(logging.WARNING, logger="app.alembic.helpers")
     with engine.begin() as conn:
         _override_create_table(conn)
         conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{schema}"."{table_name}" CASCADE')
         conn.exec_driver_sql(f'CREATE TYPE "{schema}"."{table_name}" AS (id integer)')
         assert not helpers.table_exists_real(conn, schema, table_name)
-        assert helpers.composite_type_exists(conn, schema, table_name)
+        assert helpers.type_entry_kind(conn, schema, table_name) == "c"
 
         helpers.create_table_if_not_exists(
             conn,
@@ -46,10 +48,10 @@ def test_create_table_if_not_exists_drops_orphan_composite_type(capsys: pytest.C
         )
 
         assert helpers.table_exists(conn, table_name, schema=schema)
-
-    output = capsys.readouterr().out
-    assert f"[alembic] orphan-type self-heal enabled (helpers v{helpers.HELPERS_VERSION})" in output
-    assert f"[alembic] dropping orphan composite type {schema}.{table_name}" in output
+    assert any(
+        "Dropping orphan type" in record.message and table_name in record.message
+        for record in caplog.records
+    )
 
 
 def test_create_table_if_not_exists_recovers_from_orphan_type():
@@ -66,7 +68,7 @@ def test_create_table_if_not_exists_recovers_from_orphan_type():
         conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{schema}"."{table_name}" CASCADE')
         conn.exec_driver_sql(f'CREATE TYPE "{schema}"."{table_name}" AS (id integer)')
         assert not helpers.table_exists_real(conn, schema, table_name)
-        assert helpers.composite_type_exists(conn, schema, table_name)
+        assert helpers.type_entry_kind(conn, schema, table_name) == "c"
 
         helpers.create_table_if_not_exists(
             conn,
@@ -79,3 +81,31 @@ def test_create_table_if_not_exists_recovers_from_orphan_type():
         )
 
         assert helpers.table_exists(conn, table_name, schema=schema)
+
+
+def test_create_table_if_not_exists_drops_orphan_domain():
+    db_url = get_database_url()
+    if not db_url.startswith("postgresql"):
+        pytest.skip("Postgres required for domain regression test")
+
+    engine = ensure_connectable(db_url)
+    schema = resolve_db_schema().schema
+    table_name = "orphan_domain_table"
+
+    with engine.begin() as conn:
+        _override_create_table(conn)
+        conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{schema}"."{table_name}" CASCADE')
+        conn.exec_driver_sql(f'DROP DOMAIN IF EXISTS "{schema}"."{table_name}" CASCADE')
+        conn.exec_driver_sql(f'CREATE DOMAIN "{schema}"."{table_name}" AS text')
+        assert not helpers.table_exists_real(conn, schema, table_name)
+        assert helpers.type_entry_kind(conn, schema, table_name) == "d"
+
+        helpers.create_table_if_not_exists(
+            conn,
+            table_name,
+            schema=schema,
+            columns=(sa.Column("id", sa.Integer(), primary_key=True),),
+        )
+
+        assert helpers.table_exists(conn, table_name, schema=schema)
+        assert helpers.type_entry_kind(conn, schema, table_name) == "c"

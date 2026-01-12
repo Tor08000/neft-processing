@@ -100,69 +100,63 @@ def table_exists_real(bind: Connection, schema: str, table_name: str) -> bool:
     return table_exists(bind, table_name, schema=schema)
 
 
-def composite_type_exists(bind: Connection, schema: str, type_name: str) -> bool:
-    _require_bind(bind, caller="composite_type_exists")
+def type_entry_kind(bind: Connection, schema: str, type_name: str) -> str | None:
+    _require_bind(bind, caller="type_entry_kind")
 
     if not is_postgres(bind):
-        return False
+        return None
 
-    result = bind.execute(
+    return bind.execute(
         sa.text(
             """
-            SELECT 1
+            SELECT t.typtype
             FROM pg_type t
             JOIN pg_namespace n ON n.oid = t.typnamespace
             WHERE n.nspname = :schema
               AND t.typname = :type_name
-              AND t.typtype = 'c'
+            LIMIT 1
             """
         ),
         {"schema": schema, "type_name": type_name},
-    ).first()
-    return result is not None
+    ).scalar_one_or_none()
 
 
-def drop_composite_type(bind: Connection, schema: str, type_name: str) -> None:
-    _require_bind(bind, caller="drop_composite_type")
+def drop_type_or_domain(bind: Connection, schema: str, type_name: str, *, type_kind: str) -> None:
+    _require_bind(bind, caller="drop_type_or_domain")
 
     if not is_postgres(bind):
         return
 
     schema_sql = (schema or DB_SCHEMA).replace('"', '""')
     type_sql = type_name.replace('"', '""')
-    bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{schema_sql}"."{type_sql}" CASCADE')
+    if type_kind == "d":
+        bind.exec_driver_sql(f'DROP DOMAIN IF EXISTS "{schema_sql}"."{type_sql}" CASCADE')
+    else:
+        bind.exec_driver_sql(f'DROP TYPE IF EXISTS "{schema_sql}"."{type_sql}" CASCADE')
 
 
-def drop_orphan_composite_type_if_needed(
+def drop_orphan_type_or_domain_if_needed(
     bind: Connection, type_name: str, schema: str = DB_SCHEMA
 ) -> None:
-    _require_bind(bind, caller="drop_orphan_composite_type_if_needed")
+    _require_bind(bind, caller="drop_orphan_type_or_domain_if_needed")
 
     if table_exists_real(bind, schema, type_name):
         return
 
-    if composite_type_exists(bind, schema, type_name):
-        logger.warning(
-            "Dropping orphan composite type %s.%s before creating table",
-            schema,
-            type_name,
-        )
-        drop_composite_type(bind, schema, type_name)
+    type_kind = type_entry_kind(bind, schema, type_name)
+    if type_kind is None:
+        return
+
+    logger.warning(
+        "Dropping orphan %s %s.%s before creating table",
+        "domain" if type_kind == "d" else "type",
+        schema,
+        type_name,
+    )
+    drop_type_or_domain(bind, schema, type_name, type_kind=type_kind)
 
 
-def drop_orphan_table_type_if_exists(bind: Connection, schema: str, table_name: str) -> None:
-    _require_bind(bind, caller="drop_orphan_table_type_if_exists")
-
-    if composite_type_exists(bind, schema, table_name):
-        logger.warning(
-            "Dropping orphan composite type %s.%s before creating table",
-            schema,
-            table_name,
-        )
-        drop_composite_type(bind, schema, table_name)
-
-
-def drop_orphan_composite_type_if_exists(op, *, schema: str, table_name: str) -> None:
+def drop_orphan_type_or_domain_if_exists(op, *, schema: str, table_name: str) -> None:
     op.execute(
         text(
             f"""
@@ -466,7 +460,7 @@ def create_table_if_not_exists(
     elif not column_list:
         raise TypeError("No columns provided for table creation")
     else:
-        drop_orphan_composite_type_if_exists(operations, schema=schema, table_name=table_name)
+        drop_orphan_type_or_domain_if_needed(bind, table_name, schema=schema)
         operations.create_table(table_name, *column_list, schema=schema, **kwargs)
 
     for index_name, index_columns in index_definitions:
