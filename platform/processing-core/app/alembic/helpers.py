@@ -48,6 +48,22 @@ def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> 
         ).first()
         return result is not None
 
+    if is_postgres(bind):
+        result = bind.execute(
+            sa.text(
+                """
+                SELECT 1
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = :schema
+                  AND c.relname = :table_name
+                  AND c.relkind IN ('r', 'p')
+                """
+            ),
+            {"schema": schema, "table_name": table_name},
+        ).first()
+        return result is not None
+
     result = bind.execute(
         sa.text(
             """

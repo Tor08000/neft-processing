@@ -127,7 +127,7 @@ BEGIN
     SELECT n.nspname AS schema_name, t.typname AS type_name
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname = 'processing_core'
+    WHERE n.nspname='processing_core'
       AND t.typtype='c'
       AND NOT EXISTS (
         SELECT 1
@@ -138,6 +138,7 @@ BEGIN
           AND c.relkind IN ('r','p')
       )
   ) LOOP
+    RAISE NOTICE 'dropping orphan composite type %.% ...', r.schema_name, r.type_name;
     EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
     dropped := dropped + 1;
   END LOOP;
