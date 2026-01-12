@@ -11,10 +11,8 @@ set TEMPLATE_BODY={"code":"invoice_issued_email","event_type":"INVOICE_ISSUED","
 set PREF_BODY={"subject_type":"CLIENT","subject_id":"%SMOKE_CLIENT_ID%","event_type":"INVOICE_ISSUED","channel":"EMAIL","enabled":true,"address_override":"%SMOKE_EMAIL%"}
 set INVOICE_BODY={"client_id":"%SMOKE_CLIENT_ID%","currency":"RUB","amount_total":100,"due_at":"2025-01-01T00:00:00Z","idempotency_key":"smoke-invoice-email-1"}
 
-echo [1/6] Login to auth-host...
-curl -s -S -X POST "%AUTH_BASE%/login" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json || goto :error
-python -c "import json, pathlib; pathlib.Path('token.txt').write_text(json.load(open('token.json')).get('access_token',''))" || goto :error
-set /p TOKEN=<token.txt
+echo [1/6] Fetch admin token...
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" goto :error
 
 set AUTH_HEADER=Authorization: Bearer %TOKEN%

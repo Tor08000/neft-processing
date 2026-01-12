@@ -11,10 +11,8 @@ set TEMPLATE_BODY={"code":"webhook_test","event_type":"WEBHOOK_TEST","channel":"
 set PREF_BODY={"subject_type":"CLIENT","subject_id":"%SMOKE_CLIENT_ID%","event_type":"WEBHOOK_TEST","channel":"WEBHOOK","enabled":true,"address_override":"%SMOKE_WEBHOOK_URL%"}
 set OUTBOX_BODY={"event_type":"WEBHOOK_TEST","subject_type":"CLIENT","subject_id":"%SMOKE_CLIENT_ID%","channels":["WEBHOOK"],"template_code":"webhook_test","template_vars":{"event":"ping"},"priority":"NORMAL","dedupe_key":"smoke-webhook-1"}
 
-echo [1/6] Login to auth-host...
-curl -s -S -X POST "%AUTH_BASE%/login" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > token.json || goto :error
-python -c "import json, pathlib; pathlib.Path('token.txt').write_text(json.load(open('token.json')).get('access_token',''))" || goto :error
-set /p TOKEN=<token.txt
+echo [1/6] Fetch admin token...
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" goto :error
 
 set AUTH_HEADER=Authorization: Bearer %TOKEN%

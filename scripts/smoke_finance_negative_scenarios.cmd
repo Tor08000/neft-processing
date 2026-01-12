@@ -3,14 +3,11 @@ setlocal ENABLEDELAYEDEXPANSION
 
 echo ===== Finance negative scenarios smoke =====
 
-set AUTH_URL=http://localhost:8002/api/v1/auth/login
 set CORE_ADMIN=http://localhost/api/v1/admin
 set CORE_PUBLIC=http://localhost/api/v1
 
-echo Logging in as admin...
-curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > admin_token.json
-python -c "import json,sys; data=json.load(open('admin_token.json')); sys.stdout.write(data.get('access_token',''))" > admin_token.txt
-set /p ADMIN_TOKEN=<admin_token.txt
+echo Fetching admin token...
+for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "ADMIN_TOKEN=%%T"
 if "%ADMIN_TOKEN%"=="" (
   echo [ERROR] Failed to acquire admin token.
   goto :eof
