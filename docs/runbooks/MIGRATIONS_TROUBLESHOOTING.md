@@ -28,6 +28,20 @@ docker compose exec -T core-api sh -lc "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=
 docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini stamp heads"
 ```
 
+## `alembic_version_core.version_num` length must be 128
+
+**Symptoms**
+- `psql` errors mentioning truncation for `alembic_version_core.version_num`
+- Logs show `CREATE TABLE ... version_num VARCHAR(32)` during `alembic stamp`
+
+**Checks**
+```bash
+docker compose exec -T core-api sh -lc "psql \"$DATABASE_URL\" -Atc \"select character_maximum_length from information_schema.columns where table_schema='processing_core' and table_name='alembic_version_core' and column_name='version_num'\""
+```
+
+**Fix (automated)**
+- `platform/processing-core/app/alembic/env.py` enforces `VARCHAR(128)` for `processing_core.alembic_version_core.version_num` during `stamp` and `upgrade`.
+
 ## Orphan type/domain conflict (`DuplicateObject: type \"<table>\" already exists`)
 
 **Symptoms**

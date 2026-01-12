@@ -21,6 +21,7 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 schema_resolution = resolve_db_schema()
 schema = schema_resolution.schema
 version_table = "alembic_version_core"
+version_column_length = 128
 config.set_main_option("version_table", version_table)
 config.set_main_option("version_table_schema", schema)
 
@@ -32,7 +33,6 @@ def run_migrations_offline() -> None:
 
 def _configure(connection) -> None:
     quoted_schema = quote_schema(schema)
-    connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
     connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
     context.configure(
         connection=connection,
@@ -41,6 +41,37 @@ def _configure(connection) -> None:
         include_schemas=True,
         transaction_per_migration=True,
     )
+
+
+def _ensure_version_table(connection) -> None:
+    quoted_schema = quote_schema(schema)
+    connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS "
+            f"{quoted_schema}.{version_table} (version_num VARCHAR({version_column_length}) PRIMARY KEY)"
+        )
+    )
+    current_length = connection.execute(
+        text(
+            """
+            SELECT character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+              AND column_name = 'version_num'
+            """
+        ),
+        {"schema": schema, "table_name": version_table},
+    ).scalar()
+    if current_length is not None and current_length < version_column_length:
+        connection.execute(
+            text(
+                "ALTER TABLE "
+                f"{quoted_schema}.{version_table} "
+                f"ALTER COLUMN version_num TYPE VARCHAR({version_column_length})"
+            )
+        )
 
 
 def run_migrations_online() -> None:
@@ -54,6 +85,7 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
+        _ensure_version_table(connection)
         _configure(connection)
 
         with context.begin_transaction():
