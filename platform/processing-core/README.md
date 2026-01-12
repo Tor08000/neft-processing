@@ -47,6 +47,7 @@ docker compose exec postgres psql -U neft -d neft -c "insert into public.user_ro
 Run migration checks (for example via Docker Compose):
 
 ```bash
+docker compose build --no-cache core-api
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c ./app/alembic.ini heads"
 docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c ./app/alembic.ini upgrade head"
 docker compose exec postgres psql -U neft -d neft -c "select to_regclass('public.billing_periods');"

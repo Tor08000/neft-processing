@@ -10,6 +10,7 @@ This runbook verifies that `core-api` migrations are applied correctly and that 
 ## A) Rebuild and restart core-api with migrations
 ```cmd
 cd C:\neft-processing
+docker compose build --no-cache core-api
 docker compose up -d --build core-api
 docker compose ps core-api
 docker compose logs --tail=120 core-api
