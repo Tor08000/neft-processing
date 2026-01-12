@@ -9,6 +9,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
 from app.api.routes.processing import router as processing_router
 from app.bootstrap import seed_demo_client_account
+from app.db import ensure_users_table
 from app.metrics import metrics_middleware, metrics_response
 
 DEFAULT_API_PREFIX = "/api/auth"
@@ -87,6 +88,7 @@ app.include_router(api_prefixed_router)
 
 @app.on_event("startup")
 async def bootstrap_demo_user() -> None:
+    await ensure_users_table()
     logger.info("auth-host: bootstrap demo users start")
     await seed_demo_client_account()
     logger.info("auth-host: bootstrap demo users done")

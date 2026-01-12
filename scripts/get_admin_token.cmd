@@ -5,19 +5,13 @@ REM Defaults can be overridden in .env
 set "ENV_FILE=.env"
 set "ADMIN_EMAIL=admin@example.com"
 set "ADMIN_PASSWORD=change-me"
+set "DIRECT_BASE=http://localhost:8002"
 set "GATEWAY_BASE=http://localhost"
-set "AUTH_BASE=/api/auth"
-set "AUTH_GATEWAY_URL="
-set "AUTH_HOST_URL="
 
 if exist "%ENV_FILE%" (
     for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
         if /I "%%A"=="ADMIN_EMAIL" set "ADMIN_EMAIL=%%B"
         if /I "%%A"=="ADMIN_PASSWORD" set "ADMIN_PASSWORD=%%B"
-        if /I "%%A"=="GATEWAY_BASE" set "GATEWAY_BASE=%%B"
-        if /I "%%A"=="AUTH_BASE" set "AUTH_BASE=%%B"
-        if /I "%%A"=="AUTH_GATEWAY_URL" set "AUTH_GATEWAY_URL=%%B"
-        if /I "%%A"=="AUTH_HOST_URL" set "AUTH_HOST_URL=%%B"
     )
 )
 
@@ -28,13 +22,10 @@ set "OPENAPI_FILE=%TEMP%\\auth_openapi_%RANDOM%.tmp"
 set "TOKEN="
 set "STATUS="
 
-if "%AUTH_GATEWAY_URL%"=="" set "AUTH_GATEWAY_URL=%GATEWAY_BASE%%AUTH_BASE%"
-if "%AUTH_HOST_URL%"=="" set "AUTH_HOST_URL=%AUTH_GATEWAY_URL%"
-
-curl -sS -o "%OPENAPI_FILE%" "%AUTH_HOST_URL%/openapi.json"
+curl -sS -o "%OPENAPI_FILE%" "%DIRECT_BASE%/api/auth/openapi.json"
 if errorlevel 1 (
     set "ERROR_MESSAGE=[ERROR] Failed to fetch OpenAPI spec."
-    set "ERROR_URL=%AUTH_HOST_URL%/openapi.json"
+    set "ERROR_URL=%DIRECT_BASE%/api/auth/openapi.json"
     goto :error_fetch_openapi
 )
 for /f "usebackq delims=" %%U in (`python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=[p for p,m in paths.items() if isinstance(m,dict) and any(k.lower()=='post' for k in m.keys()) and ('login' in p.lower() or 'token' in p.lower())]; candidates=sorted(candidates); print(candidates[0] if candidates else '')"`) do set "LOGIN_PATH=%%U"
@@ -44,10 +35,8 @@ if not defined LOGIN_PATH (
 )
 
 if not "%LOGIN_PATH:~0,1%"=="/" set "LOGIN_PATH=/%LOGIN_PATH%"
-set "LOGIN_PATH_FOR_GATEWAY=%LOGIN_PATH%"
-if /I "%LOGIN_PATH_FOR_GATEWAY:~0,10%"=="/api/auth/" set "LOGIN_PATH_FOR_GATEWAY=%LOGIN_PATH_FOR_GATEWAY:~9%"
-set "GATEWAY_URL=%AUTH_GATEWAY_URL%%LOGIN_PATH_FOR_GATEWAY%"
-set "DIRECT_URL=%AUTH_HOST_URL%%LOGIN_PATH%"
+set "GATEWAY_URL=%GATEWAY_BASE%%LOGIN_PATH%"
+set "DIRECT_URL=%DIRECT_BASE%%LOGIN_PATH%"
 
 set "ERROR_LOGIN_PATH=%LOGIN_PATH%"
 set "ERROR_GATEWAY_URL=%GATEWAY_URL%"
