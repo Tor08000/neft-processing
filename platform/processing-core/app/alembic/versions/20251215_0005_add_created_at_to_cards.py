@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import column_exists, table_exists
+from alembic_helpers import column_exists, table_exists
 
 # revision identifiers, used by Alembic.
 revision = "20251215_0005_add_created_at_to_cards"

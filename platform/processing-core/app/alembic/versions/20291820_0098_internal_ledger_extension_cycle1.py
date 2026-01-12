@@ -10,8 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import column_exists, is_postgres, table_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, is_postgres, table_exists
+from db.schema import resolve_db_schema
 
 
 revision = "20291820_0098_internal_ledger_extension_cycle1"

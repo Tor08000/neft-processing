@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
 

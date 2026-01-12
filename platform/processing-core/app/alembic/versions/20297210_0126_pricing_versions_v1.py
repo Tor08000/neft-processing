@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     column_exists,
     create_index_if_not_exists,

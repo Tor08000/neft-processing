@@ -10,9 +10,9 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import ensure_pg_enum
-from app.alembic.utils import is_postgres
-from app.db.schema import resolve_db_schema
+from alembic_helpers import ensure_pg_enum
+from alembic_helpers import is_postgres
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20297125_0118_create_processing_core_enums"

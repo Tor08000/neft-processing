@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     column_exists,
     constraint_exists,

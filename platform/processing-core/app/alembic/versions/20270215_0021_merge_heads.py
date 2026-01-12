@@ -7,7 +7,7 @@ Create Date: 2027-02-15 00:00:00
 
 from __future__ import annotations
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270215_0021_merge_heads"

@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     drop_index_if_exists,
@@ -19,7 +19,7 @@ from app.alembic.helpers import (
     ensure_pg_enum,
     safe_enum,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20280315_0042_client_actions_v1"

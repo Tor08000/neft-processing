@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.helpers import DB_SCHEMA, ensure_pg_enum_value, is_postgres
+from alembic_helpers import DB_SCHEMA, ensure_pg_enum_value, is_postgres
 
 # revision identifiers, used by Alembic.
 revision = "20297150_0122_marketplace_order_event_type_enum_update"

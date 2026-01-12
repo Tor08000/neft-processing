@@ -8,7 +8,7 @@ Create Date: 2024-09-01 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     drop_table_if_exists,
@@ -16,7 +16,7 @@ from app.alembic.helpers import (
     is_sqlite,
     safe_enum,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270901_0031_partner_settlements"

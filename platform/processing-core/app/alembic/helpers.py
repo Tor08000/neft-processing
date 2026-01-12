@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Connection
 
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 logger = logging.getLogger(__name__)
 

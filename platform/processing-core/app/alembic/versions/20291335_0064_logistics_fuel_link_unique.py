@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.utils import constraint_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import constraint_exists
+from db.schema import resolve_db_schema
 
 SCHEMA = resolve_db_schema().schema
 

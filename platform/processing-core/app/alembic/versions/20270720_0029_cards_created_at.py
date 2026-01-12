@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import column_exists
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270720_0029_cards_created_at"

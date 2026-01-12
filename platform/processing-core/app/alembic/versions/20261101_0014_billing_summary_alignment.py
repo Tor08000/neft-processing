@@ -8,9 +8,9 @@ Create Date: 2026-11-01 00:00:00
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import constraint_exists, ensure_pg_enum, index_exists, safe_enum
-from app.models.operation import ProductType
-from app.db.schema import resolve_db_schema
+from alembic_helpers import constraint_exists, ensure_pg_enum, index_exists, safe_enum
+from models.operation import ProductType
+from db.schema import resolve_db_schema
 
 
 # revision identifiers, used by Alembic.

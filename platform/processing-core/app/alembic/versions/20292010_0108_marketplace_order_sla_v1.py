@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     DB_SCHEMA,
     column_exists,
     create_index_if_not_exists,
@@ -22,7 +22,7 @@ from app.alembic.helpers import (
     safe_enum,
     table_exists,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20292010_0108_marketplace_order_sla_v1"

@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.alembic.utils import (
+from alembic_helpers import (
     column_exists,
     create_index_if_not_exists,
     create_table_if_not_exists,
@@ -20,7 +20,7 @@ from app.alembic.utils import (
     drop_table_if_exists,
     is_postgres,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20251220_0006_auto_fix"

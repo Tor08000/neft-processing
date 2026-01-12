@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import column_exists, ensure_pg_enum, index_exists, safe_enum
-from app.db.schema import resolve_db_schema
+from alembic_helpers import column_exists, ensure_pg_enum, index_exists, safe_enum
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision: str = "20261205_0018_contract_limits"

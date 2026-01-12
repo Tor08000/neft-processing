@@ -12,7 +12,7 @@ from typing import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import (
+from alembic_helpers import (
     column_exists,
     ensure_pg_enum,
     ensure_pg_enum_value,
@@ -20,7 +20,7 @@ from app.alembic.utils import (
     safe_enum,
     table_exists,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
 revision = "20270710_0028_limit_config_scope_enum_fix"

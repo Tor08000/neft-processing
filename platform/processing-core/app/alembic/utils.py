@@ -7,7 +7,7 @@ import re
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
 
-from app.alembic.helpers import (  # noqa: F401,F403
+from .helpers import (  # noqa: F401,F403
     ALEMBIC_VERSION_TABLE,
     MIN_VERSION_LENGTH,
     DB_SCHEMA as SCHEMA,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.utils import SCHEMA, ensure_pg_enum_value
+from alembic_helpers import SCHEMA, ensure_pg_enum_value
 
 
 revision = "20297220_0127_subscription_event_price_version_capture"

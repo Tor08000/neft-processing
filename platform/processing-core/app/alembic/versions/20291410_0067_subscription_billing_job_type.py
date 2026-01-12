@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import SCHEMA, ensure_pg_enum, ensure_pg_enum_value, is_postgres, table_exists
+from alembic_helpers import SCHEMA, ensure_pg_enum, ensure_pg_enum_value, is_postgres, table_exists
 
 # revision identifiers, used by Alembic.
 revision = "20291410_0067_subscription_billing_job_type"

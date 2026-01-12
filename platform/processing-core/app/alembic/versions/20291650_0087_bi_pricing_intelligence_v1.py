@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 
 from alembic import op
-from app.alembic.utils import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     create_unique_index_if_not_exists,

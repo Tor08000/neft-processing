@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     DB_SCHEMA,
     create_index_if_not_exists,
     create_table_if_not_exists,
@@ -23,7 +23,7 @@ from app.alembic.helpers import (
     table_exists,
     column_exists,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 
 revision = "20294000_0110_marketplace_promotions_v1"

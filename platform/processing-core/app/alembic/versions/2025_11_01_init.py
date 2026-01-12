@@ -5,8 +5,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import create_table_if_not_exists, ensure_pg_enum, safe_enum
-from app.db.schema import resolve_db_schema
+from alembic_helpers import create_table_if_not_exists, ensure_pg_enum, safe_enum
+from db.schema import resolve_db_schema
 
 revision = "2025_11_01_init"
 down_revision = None

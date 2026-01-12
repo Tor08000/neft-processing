@@ -14,14 +14,14 @@ import uuid
 import sqlalchemy as sa
 from alembic import op
 
-from app.alembic.helpers import (
+from alembic_helpers import (
     create_index_if_not_exists,
     create_table_if_not_exists,
     create_unique_index_if_not_exists,
     ensure_pg_enum,
     safe_enum,
 )
-from app.db.schema import resolve_db_schema
+from db.schema import resolve_db_schema
 
 
 # revision identifiers, used by Alembic.

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.alembic.utils import SCHEMA, ensure_pg_enum_value, is_postgres
+from alembic_helpers import SCHEMA, ensure_pg_enum_value, is_postgres
 
 # revision identifiers, used by Alembic.
 revision = "0039_clearing_job_type"

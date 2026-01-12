@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-from app.alembic.utils import ensure_alembic_version_length
+from alembic_helpers import ensure_alembic_version_length
 
 
 # revision identifiers, used by Alembic.

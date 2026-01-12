@@ -11,14 +11,14 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from app.alembic.utils import (
+from alembic_helpers import (
     SCHEMA,
     column_exists,
     create_table_if_not_exists,
     ensure_pg_enum_value,
     is_postgres,
 )
-from app.db.types import GUID
+from db.types import GUID
 
 # revision identifiers, used by Alembic.
 revision = "0042_invoice_state_machine_v15"
