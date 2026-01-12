@@ -17,7 +17,19 @@
 
 ---
 
-## 2) Smoke scripts (business flows)
+## 2) Migration Stabilization Pack
+
+| Check | Command (Windows CMD) | Prerequisites | PASS criteria |
+| --- | --- | --- | --- |
+| Frontend docker builds | `docker compose build admin-web client-web partner-web` | Docker available | Build exits `0` |
+| Alembic heads (core-api) | `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads` | Postgres running | Output contains exactly 1 head |
+| Alembic upgrade (clean DB) | `docker compose down -v` + `docker compose up -d postgres` + `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head` | Docker available | Upgrade exits `0` |
+| Alembic upgrade (repeat) | `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head` | Previous upgrade succeeded | Upgrade exits `0` |
+| Orphan composite cleanup | `scripts\db\fix_orphan_composite_types.cmd` | core-api container running | Script exits `0` |
+
+---
+
+## 3) Smoke scripts (business flows)
 
 > Все smoke-скрипты в `scripts/smoke_*.cmd` перечислены ниже. Команды выполняются на запущенном стеке (`docker compose up -d --build`).
 
@@ -63,7 +75,7 @@
 
 ---
 
-## 3) Chaos / Backup / Restore / Release
+## 4) Chaos / Backup / Restore / Release
 
 | Check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
@@ -83,7 +95,7 @@
 
 ---
 
-## 4) UI smoke (Playwright)
+## 5) UI smoke (Playwright)
 
 | Check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
@@ -91,7 +103,7 @@
 
 ---
 
-## 5) Known limitations
+## 6) Known limitations
 
 - Smoke scripts that are explicit placeholders (currently return `NOT IMPLEMENTED`):
   - `scripts\smoke_client_users_roles.cmd`
@@ -108,4 +120,3 @@
   - `scripts\smoke_clearing_batch.cmd`
   - `scripts\smoke_reconciliation_run.cmd`
   - `scripts\smoke_dispute_refund.cmd`
-
