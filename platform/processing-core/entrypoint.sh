@@ -133,7 +133,7 @@ PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
 STAMP_FALLBACK_REVISION="20299000_0130_merge_heads_processing_core"
 
 extract_heads() {
-    printf "%s\n" "$1" | awk '/^Rev: / {print $2}' | tr -d '\r' | awk 'NF' | sort -u
+    printf "%s\n" "$1" | awk '$1 == "Rev:" {print $2}' | tr -d '\r' | awk 'NF' | sort -u
 }
 
 run_diag_cmd() {
@@ -149,8 +149,8 @@ run_diag_cmd() {
 }
 
 get_found_versions() {
-    psql "$PSQL_URL" -v ON_ERROR_STOP=1 -tA -c \
-        "SELECT version_num FROM ${schema_resolved}.alembic_version_core ORDER BY 1;" \
+    psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core ORDER BY 1;" \
         | tr -d '\r' | sed '/^[[:space:]]*$/d'
 }
 
@@ -207,6 +207,18 @@ run_alembic_stamp() {
     tail -n 30 "$stamp_log" | sed 's/^/[entrypoint]   /'
     rm -f "$stamp_log"
     return $stamp_status
+}
+
+verify_stamp_entry() {
+    head="$1"
+    stamped=$(psql "$PSQL_URL" -q -v ON_ERROR_STOP=1 -tA -c \
+        "SELECT version_num FROM \"${schema_resolved}\".alembic_version_core WHERE version_num = '${head}' LIMIT 1;")
+    stamped=$(printf "%s" "$stamped" | tr -d '\r' | sed '/^[[:space:]]*$/d')
+    if [ -z "$stamped" ]; then
+        echo "[entrypoint] alembic_version_core missing stamped head $head" >&2
+        return 1
+    fi
+    return 0
 }
 
 echo "[entrypoint] checking alembic heads via ($ALEMBIC_CONFIG)"
@@ -309,20 +321,26 @@ if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
+cleanup_dry_run="${ORPHAN_CLEANUP_DRY_RUN:-0}"
+echo "[entrypoint] orphan cleanup dry-run=${cleanup_dry_run}"
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
 DECLARE r record;
 DECLARE has_table boolean;
+DECLARE used_by_column boolean;
 DECLARE total int := 0;
 DECLARE eligible int := 0;
 DECLARE dropped int := 0;
 DECLARE skipped int := 0;
 DECLARE skip_reason text;
+DECLARE skipped_reasons jsonb := '{}'::jsonb;
+DECLARE dry_run boolean := ${cleanup_dry_run};
 BEGIN
   FOR r IN (
     SELECT n.nspname AS schema_name,
            t.typname AS type_name,
-           t.typtype AS type_kind
+           t.typtype AS type_kind,
+           t.oid AS type_oid
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
     WHERE n.nspname = '${schema_resolved}'
@@ -341,6 +359,12 @@ BEGIN
     IF has_table THEN
       skip_reason := 'table exists';
       skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
       RAISE DEBUG 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
       CONTINUE;
     END IF;
@@ -348,27 +372,75 @@ BEGIN
     IF r.type_kind NOT IN ('d', 'e') THEN
       skip_reason := format('unsupported typtype=%s', r.type_kind);
       skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
       RAISE DEBUG 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
       CONTINUE;
     END IF;
 
-    eligible := eligible + 1;
-    BEGIN
-      IF r.type_kind = 'd' THEN
-        EXECUTE format('DROP DOMAIN IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
-      ELSE
-        EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
-      END IF;
-      dropped := dropped + 1;
-      RAISE DEBUG 'orphan cleanup drop: schema=% type=% typtype=% reason=dropped', r.schema_name, r.type_name, r.type_kind;
-    EXCEPTION WHEN OTHERS THEN
-      skip_reason := SQLERRM;
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n2 ON n2.oid = c.relnamespace
+      WHERE a.atttypid = r.type_oid
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+    ) INTO used_by_column;
+
+    IF used_by_column THEN
+      skip_reason := 'type in use';
       skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
       RAISE NOTICE 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
-    END;
+      CONTINUE;
+    END IF;
+
+    eligible := eligible + 1;
+    IF dry_run THEN
+      skip_reason := 'dry-run';
+      skipped := skipped + 1;
+      skipped_reasons := jsonb_set(
+        skipped_reasons,
+        ARRAY[skip_reason],
+        to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+        true
+      );
+      RAISE NOTICE 'orphan cleanup dry-run drop: schema=% type=% typtype=%', r.schema_name, r.type_name, r.type_kind;
+    ELSE
+      BEGIN
+        IF r.type_kind = 'd' THEN
+          EXECUTE format('DROP DOMAIN IF EXISTS %I.%I', r.schema_name, r.type_name);
+        ELSE
+          EXECUTE format('DROP TYPE IF EXISTS %I.%I', r.schema_name, r.type_name);
+        END IF;
+        dropped := dropped + 1;
+        RAISE NOTICE 'orphan cleanup drop: schema=% type=% typtype=% reason=dropped', r.schema_name, r.type_name, r.type_kind;
+      EXCEPTION WHEN OTHERS THEN
+        skip_reason := SQLERRM;
+        skipped := skipped + 1;
+        skipped_reasons := jsonb_set(
+          skipped_reasons,
+          ARRAY[skip_reason],
+          to_jsonb(COALESCE((skipped_reasons ->> skip_reason)::int, 0) + 1),
+          true
+        );
+        RAISE NOTICE 'orphan cleanup skip: schema=% type=% typtype=% reason=%', r.schema_name, r.type_name, r.type_kind, skip_reason;
+      END;
+    END IF;
   END LOOP;
 
-  RAISE NOTICE 'pre-migration cleanup: orphan types/domains found_total %, eligible_to_drop %, dropped %, skipped_with_reason %', total, eligible, dropped, skipped;
+  RAISE NOTICE 'pre-migration cleanup: orphan types/domains found_total %, eligible_to_drop %, dropped %, skipped_with_reason %, skip_reasons %',
+    total, eligible, dropped, skipped, skipped_reasons;
 END
 \$\$;
 EOF
@@ -406,8 +478,7 @@ $repair_diagnostics
 EOF
 echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${schema_resolved}.alembic_version_core=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
 if [ -n "$processing_core_reg" ]; then
-    echo "[entrypoint] repair completed: ${schema_resolved}.operations=${processing_core_reg}"
-    echo "[entrypoint] post-migration schema repair completed"
+    echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${processing_core_reg} ${schema_resolved}.alembic_version_core=${alembic_version_reg}"
 else
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
 DO \$\$
@@ -529,8 +600,7 @@ repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('$
 IFS='|' read -r repaired_reg repaired_alembic_reg <<EOF
 $repaired_state
 EOF
-echo "[entrypoint] repair completed: ${schema_resolved}.operations=${repaired_reg} ${schema_resolved}.alembic_version_core=${repaired_alembic_reg}"
-echo "[entrypoint] post-migration schema repair completed"
+echo "[entrypoint] post-migration schema repair completed: ${schema_resolved}.operations=${repaired_reg} ${schema_resolved}.alembic_version_core=${repaired_alembic_reg}"
 fi
 
 echo "[entrypoint] post-migration version validation starting"
@@ -551,6 +621,10 @@ if [ -z "$found_versions" ]; then
         if ! run_alembic_stamp "$head"; then
             echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
             tail -n 200 "$MIGRATION_LOG" >&2 || true
+            exit 1
+        fi
+        if ! verify_stamp_entry "$head"; then
+            run_empty_stamp_diagnostics
             exit 1
         fi
     done
@@ -591,6 +665,10 @@ if [ "$expected_heads_sorted" != "$found_versions_sorted" ]; then
         if ! run_alembic_stamp "$head"; then
             echo "[entrypoint] alembic stamp failed for head $head; last log lines:" >&2
             tail -n 200 "$MIGRATION_LOG" >&2 || true
+            exit 1
+        fi
+        if ! verify_stamp_entry "$head"; then
+            run_empty_stamp_diagnostics
             exit 1
         fi
     done

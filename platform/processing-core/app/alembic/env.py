@@ -106,10 +106,6 @@ def run_migrations_online() -> None:
 
     with engine.connect() as connection:
         command_name = _detect_alembic_cmd()
-        if isinstance(command_name, (list, tuple)):
-            command_name = command_name[0] if command_name else "unknown"
-        if command_name is None:
-            command_name = "unknown"
         command_name = str(command_name).lower()
         preflight_connection = connection.execution_options(isolation_level="AUTOCOMMIT")
         skip_preflight = command_name in {"current", "history", "heads"}

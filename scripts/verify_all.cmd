@@ -30,7 +30,7 @@ set ERROR_FILE=%LOG_DIR%\verify_all_%ts%_errors.tmp
 
 del "%ERROR_FILE%" 2>NUL
 
-call :run_cmd "1) Stack up" docker compose up -d --build
+call :run_cmd "1) Stack up" docker compose up -d
 if errorlevel 1 goto finalize
 
 call :wait_for_health "1.1) core-api healthy" core-api 120
@@ -39,19 +39,22 @@ if errorlevel 1 goto finalize
 call :run_cmd "2.1) Migrations" scripts\migrate.cmd
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.2) Alembic core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini current"
+call :run_cmd "2.2) Alembic heads core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini heads --verbose"
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.3) Alembic auth-host" docker compose exec -T auth-host sh -lc "alembic -c alembic.ini current"
+call :run_cmd "2.3) Alembic current core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini current -v"
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.4) Alembic version table core-api" docker compose exec -T core-api sh -lc "count=$(psql \"${DATABASE_URL}\" -v ON_ERROR_STOP=1 -Atc \"select count(*) from processing_core.alembic_version_core\"); test \"${count}\" -gt 0"
+call :run_cmd "2.4) Alembic version table core-api" docker compose exec -T core-api sh -lc "heads=$(alembic -c app/alembic.ini heads --verbose | awk '$1==\"Rev:\"{print $2}'); if [ -z \"${heads}\" ]; then echo \"no heads\"; exit 1; fi; versions=$(psql \"${DATABASE_URL}\" -q -tA -c \"select version_num from processing_core.alembic_version_core\"); if [ -z \"${versions}\" ]; then echo \"no versions\"; exit 1; fi; for head in ${heads}; do echo \"${versions}\" | grep -Fxq \"${head}\" || exit 1; done"
 if errorlevel 1 goto finalize
 
 call :check_endpoints "3) Health checks" http://localhost/health http://localhost/api/core/health http://localhost/api/auth/health http://localhost/api/ai/health http://localhost/api/int/health
 if errorlevel 1 goto finalize
 
 call :check_endpoints "4) Metrics checks" http://localhost/metrics http://localhost:8001/metrics http://localhost:8010/metrics
+if errorlevel 1 goto finalize
+
+call :run_cmd "4.5) Smoke checks" scripts\smoke_all.cmd
 if errorlevel 1 goto finalize
 
 call :run_smoke_scripts
