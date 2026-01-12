@@ -162,6 +162,37 @@ def drop_orphan_table_type_if_exists(bind: Connection, schema: str, table_name: 
         drop_composite_type(bind, schema, table_name)
 
 
+def drop_orphan_composite_type_if_exists(op, *, schema: str, table_name: str) -> None:
+    op.execute(
+        text(
+            f"""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = '{schema}'
+                  AND c.relname = '{table_name}'
+                  AND c.relkind IN ('r','p')
+              ) THEN
+                IF EXISTS (
+                  SELECT 1
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                  WHERE n.nspname = '{schema}'
+                    AND t.typname = '{table_name}'
+                    AND t.typtype = 'c'
+                ) THEN
+                  EXECUTE 'DROP TYPE {schema}.{table_name} CASCADE';
+                END IF;
+              END IF;
+            END $$;
+            """
+        )
+    )
+
+
 def column_exists(
     bind: Connection, table_name: str, column_name: str, schema: str = DB_SCHEMA
 ) -> bool:
@@ -422,17 +453,6 @@ def create_table_if_not_exists(
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return
 
-    if composite_type_exists(bind, schema, table_name):
-        schema_name = schema or DB_SCHEMA
-        print(f"[alembic] orphan-type self-heal enabled (helpers v{HELPERS_VERSION})")
-        print(f"[alembic] dropping orphan composite type {schema_name}.{table_name}")
-        logger.warning(
-            "Dropping orphan composite type %s.%s before creating table",
-            schema_name,
-            table_name,
-        )
-        drop_composite_type(bind, schema_name, table_name)
-
     operations = getattr(bind, "op_override", op)
 
     if create_fn is not None:
@@ -440,6 +460,7 @@ def create_table_if_not_exists(
     elif not column_list:
         raise TypeError("No columns provided for table creation")
     else:
+        drop_orphan_composite_type_if_exists(operations, schema=schema, table_name=table_name)
         operations.create_table(table_name, *column_list, schema=schema, **kwargs)
 
     for index_name, index_columns in index_definitions:
