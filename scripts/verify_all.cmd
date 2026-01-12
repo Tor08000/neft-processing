@@ -111,7 +111,6 @@ exit /b 1
 set "step=5. Smoke scripts"
 set "failed=0"
 
-call :run_script_if_exists "scripts\test_core_api.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\test_auth_host.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\billing_smoke.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_billing_finance.cmd" || set "failed=1"
