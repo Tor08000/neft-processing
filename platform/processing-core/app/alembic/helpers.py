@@ -398,7 +398,8 @@ def create_table_if_not_exists(
 
     column_list = list(table_columns or keyword_columns or [])
     index_definitions = list(indexes or [])
-    if table_exists_real(bind, schema, table_name):
+    table_present = table_exists_real(bind, schema, table_name)
+    if table_present:
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return
 
