@@ -33,6 +33,9 @@ del "%ERROR_FILE%" 2>NUL
 call :run_cmd "1) Stack up" docker compose up -d --build
 if errorlevel 1 goto finalize
 
+call :wait_for_health "1.1) core-api healthy" core-api 120
+if errorlevel 1 goto finalize
+
 call :run_cmd "2.1) Migrations" scripts\migrate.cmd
 if errorlevel 1 goto finalize
 
@@ -75,6 +78,36 @@ if errorlevel 1 (
   call :mark_ok "!step!" "%command%"
 )
 exit /b 0
+
+:wait_for_health
+set step=%~1
+set service=%~2
+set timeout=%~3
+if "%timeout%"=="" set timeout=120
+set elapsed=0
+:health_loop
+for /f %%I in ('docker compose ps -q %service%') do set container_id=%%I
+if not defined container_id (
+  call :mark_fail "%step%" "Container ID not found for %service%"
+  exit /b 1
+)
+for /f %%H in ('docker inspect --format="{{.State.Health.Status}}" %container_id%') do set health=%%H
+echo [!step!] %service% health=!health! >> "%LOG_FILE%"
+if "!health!"=="healthy" (
+  call :mark_ok "%step%" "%service% healthy"
+  exit /b 0
+)
+if "!health!"=="unhealthy" (
+  call :mark_fail "%step%" "%service% unhealthy"
+  exit /b 1
+)
+timeout /t 2 >NUL
+set /a elapsed+=2
+if !elapsed! GEQ %timeout% (
+  call :mark_fail "%step%" "%service% health check timed out"
+  exit /b 1
+)
+goto health_loop
 
 :check_endpoints
 set step=%~1
