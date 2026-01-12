@@ -13,10 +13,12 @@ from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.alembic.utils import (
+    column_exists,
     create_index_if_not_exists,
     create_table_if_not_exists,
     drop_index_if_exists,
     drop_table_if_exists,
+    is_postgres,
 )
 from app.db.schema import resolve_db_schema
 
@@ -30,8 +32,32 @@ SCHEMA_RESOLUTION = resolve_db_schema()
 SCHEMA = SCHEMA_RESOLUTION.schema
 
 
-def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:
+def _table_exists(bind: sa.Connection, inspector: sa.Inspector, table_name: str) -> bool:
+    if is_postgres(bind):
+        result = bind.execute(
+            sa.text("SELECT to_regclass(:schema || '.' || :table_name)"),
+            {"schema": SCHEMA, "table_name": table_name},
+        ).scalar()
+        return result is not None
     return table_name in inspector.get_table_names(schema=SCHEMA)
+
+
+def _safe_create_index(
+    bind: sa.Connection,
+    index_name: str,
+    table_name: str,
+    columns: list[str],
+) -> None:
+    if not _table_exists(bind, inspect(bind), table_name):
+        print(f"skip create index {index_name}: missing table {SCHEMA}.{table_name}")
+        return
+    for column_name in columns:
+        if not column_exists(bind, table_name, column_name, schema=SCHEMA):
+            print(
+                f"skip create index {index_name}: missing column {column_name} on {SCHEMA}.{table_name}"
+            )
+            return
+    create_index_if_not_exists(bind, index_name, table_name, columns, unique=False, schema=SCHEMA)
 
 
 def upgrade() -> None:
@@ -39,7 +65,7 @@ def upgrade() -> None:
     inspector = inspect(bind)
 
     # Ensure group tables are present
-    if not _table_exists(inspector, "client_groups"):
+    if not _table_exists(bind, inspector, "client_groups"):
         create_table_if_not_exists(
             bind,
             "client_groups",
@@ -60,7 +86,7 @@ def upgrade() -> None:
             bind, "ix_client_groups_group_id", "client_groups", ["group_id"], unique=False, schema=SCHEMA
         )
 
-    if not _table_exists(inspector, "card_groups"):
+    if not _table_exists(bind, inspector, "card_groups"):
         create_table_if_not_exists(
             bind,
             "card_groups",
@@ -81,7 +107,7 @@ def upgrade() -> None:
             bind, "ix_card_groups_group_id", "card_groups", ["group_id"], unique=False, schema=SCHEMA
         )
 
-    if not _table_exists(inspector, "client_group_members"):
+    if not _table_exists(bind, inspector, "client_group_members"):
         create_table_if_not_exists(
             bind,
             "client_group_members",
@@ -103,7 +129,7 @@ def upgrade() -> None:
             schema=SCHEMA,
         )
 
-    if not _table_exists(inspector, "card_group_members"):
+    if not _table_exists(bind, inspector, "card_group_members"):
         create_table_if_not_exists(
             bind,
             "card_group_members",
@@ -126,8 +152,8 @@ def upgrade() -> None:
         )
 
     # Align operations columns
-    if _table_exists(inspector, "operations"):
-        columns = {col["name"]: col for col in inspector.get_columns("operations")}
+    if _table_exists(bind, inspector, "operations"):
+        columns = {col["name"]: col for col in inspector.get_columns("operations", schema=SCHEMA)}
 
         if "accounts" not in columns:
             op.add_column("operations", sa.Column("accounts", JSONB, nullable=True))
@@ -154,7 +180,6 @@ def upgrade() -> None:
             else:
                 op.add_column("operations", sa.Column(name, col_type, nullable=True))
 
-        existing_indexes = {idx["name"] for idx in inspector.get_indexes("operations")}
         index_mapping = {
             "ix_operations_mcc": ["mcc"],
             "ix_operations_product_category": ["product_category"],
@@ -170,11 +195,10 @@ def upgrade() -> None:
             "ix_operations_created_at": ["created_at"],
         }
         for index_name, columns_list in index_mapping.items():
-            if index_name not in existing_indexes:
-                op.create_index(index_name, "operations", columns_list)
+            _safe_create_index(bind, index_name, "operations", columns_list)
 
     # Align limits_rules table
-    limit_rules_exists = _table_exists(inspector, "limits_rules")
+    limit_rules_exists = _table_exists(bind, inspector, "limits_rules")
 
     if not limit_rules_exists:
         create_table_if_not_exists(
@@ -207,7 +231,7 @@ def upgrade() -> None:
         inspector = inspect(bind)
 
     if limit_rules_exists:
-        columns = {col["name"]: col for col in inspector.get_columns("limits_rules")}
+        columns = {col["name"]: col for col in inspector.get_columns("limits_rules", schema=SCHEMA)}
         desired_columns = {
             "phase": {
                 "type": sa.String(length=16),
@@ -265,7 +289,7 @@ def upgrade() -> None:
                     ),
                 )
 
-        existing_indexes = {idx["name"] for idx in inspector.get_indexes("limits_rules")}
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("limits_rules", schema=SCHEMA)}
         limit_rules_indexes = {
             "ix_limits_rules_client_id": ["client_id"],
             "ix_limits_rules_card_id": ["card_id"],
@@ -279,11 +303,11 @@ def upgrade() -> None:
         }
         for index_name, columns_list in limit_rules_indexes.items():
             if index_name not in existing_indexes:
-                op.create_index(index_name, "limits_rules", columns_list)
+                op.create_index(index_name, "limits_rules", columns_list, schema=SCHEMA)
 
     # Align cards table
-    if _table_exists(inspector, "cards"):
-        columns = {col["name"]: col for col in inspector.get_columns("cards")}
+    if _table_exists(bind, inspector, "cards"):
+        columns = {col["name"]: col for col in inspector.get_columns("cards", schema=SCHEMA)}
 
         # Ensure columns exist
         if "pan_masked" not in columns:
@@ -378,7 +402,7 @@ def downgrade() -> None:
     ):
         drop_index_if_exists(bind, index_name)
 
-    if _table_exists(inspector, "operations"):
+    if _table_exists(bind, inspector, "operations"):
         for index_name in (
             "ix_operations_tx_type",
             "ix_operations_product_category",
@@ -405,5 +429,7 @@ def downgrade() -> None:
             "response_code",
             "response_message",
         ):
-            if column in [col["name"] for col in inspector.get_columns("operations")]:
+            if column in [
+                col["name"] for col in inspector.get_columns("operations", schema=SCHEMA)
+            ]:
                 op.drop_column("operations", column)
