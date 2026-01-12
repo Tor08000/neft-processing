@@ -46,6 +46,12 @@ def _uuid_type(bind: sa.engine.Connection) -> sa.types.TypeEngine:
     return sa.String(36)
 
 
+def _columns_exist(
+    bind: sa.engine.Connection, table_name: str, columns: list[str], schema: str
+) -> bool:
+    return all(column_exists(bind, table_name, column, schema=schema) for column in columns)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     _ensure_schema()
@@ -98,12 +104,11 @@ def upgrade() -> None:
         ("ix_legal_documents_status", "legal_documents", ["status"]),
         ("ix_legal_documents_effective_from", "legal_documents", ["effective_from"]),
         ("ix_legal_acceptances_document_id", "legal_acceptances", ["document_id"]),
+        ("ix_legal_acceptances_doc", "legal_acceptances", ["document_code", "document_version"]),
         ("ix_legal_acceptances_subject_type", "legal_acceptances", ["subject_type"]),
         ("ix_legal_acceptances_subject_id", "legal_acceptances", ["subject_id"]),
     ]:
-        if index_name == "ix_legal_acceptances_document_id" and not column_exists(
-            bind, table, "document_id", schema=SCHEMA
-        ):
+        if not _columns_exist(bind, table, columns, schema=SCHEMA):
             continue
         create_index_if_not_exists(bind, index_name, table, columns, schema=SCHEMA)
 
