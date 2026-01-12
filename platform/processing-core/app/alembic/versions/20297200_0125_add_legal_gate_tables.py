@@ -16,6 +16,7 @@ from sqlalchemy.dialects import postgresql
 from app.alembic.helpers import is_postgres
 from app.alembic.utils import (
     SCHEMA,
+    column_exists,
     create_index_if_not_exists,
     create_table_if_not_exists,
     ensure_pg_enum,
@@ -100,6 +101,10 @@ def upgrade() -> None:
         ("ix_legal_acceptances_subject_type", "legal_acceptances", ["subject_type"]),
         ("ix_legal_acceptances_subject_id", "legal_acceptances", ["subject_id"]),
     ]:
+        if index_name == "ix_legal_acceptances_document_id" and not column_exists(
+            bind, table, "document_id", schema=SCHEMA
+        ):
+            continue
         create_index_if_not_exists(bind, index_name, table, columns, schema=SCHEMA)
 
 
