@@ -7,8 +7,6 @@ Create Date: 2025-10-01 00:01:00.000000
 
 from __future__ import annotations
 
-import os
-
 from alembic import op
 import sqlalchemy as sa
 
@@ -20,7 +18,7 @@ branch_labels = None
 depends_on = None
 
 
-AUTH_SCHEMA = os.getenv("AUTH_DB_SCHEMA", "public")
+AUTH_SCHEMA = "public"
 
 
 def _table_exists(table_name: str) -> bool:
@@ -30,6 +28,8 @@ def _table_exists(table_name: str) -> bool:
 
 
 def upgrade() -> None:
+    op.execute(sa.text("CREATE SCHEMA IF NOT EXISTS public"))
+    op.execute(sa.text("SET search_path TO public"))
     if not _table_exists("users"):
         op.create_table(
             "users",
