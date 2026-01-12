@@ -150,8 +150,12 @@ DECLARE
   current_len integer;
 BEGIN
   IF to_regclass('${schema_resolved}.alembic_version_core') IS NULL THEN
-    RAISE NOTICE 'alembic_version_core missing; skipping length check';
-    RETURN;
+    EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', '${schema_resolved}');
+    EXECUTE format(
+      'CREATE TABLE %I.alembic_version_core (version_num varchar(128) NOT NULL, CONSTRAINT alembic_version_core_pkey PRIMARY KEY (version_num))',
+      '${schema_resolved}'
+    );
+    RAISE NOTICE 'alembic_version_core created with version_num varchar(128)';
   END IF;
 
   SELECT character_maximum_length
@@ -271,6 +275,11 @@ BEGIN
 END \$\$;
 
 SET search_path TO "${schema_resolved}",public;
+
+CREATE TABLE IF NOT EXISTS "${schema_resolved}".alembic_version_core (
+    version_num varchar(128) NOT NULL,
+    CONSTRAINT alembic_version_core_pkey PRIMARY KEY (version_num)
+);
 
 DO \$\$
 BEGIN
@@ -471,6 +480,41 @@ def _collect_state(cur):
         operations_schemas,
     )
 
+def _ensure_alembic_version_length(cur, *, min_length: int = 128) -> None:
+    cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS "{schema}".{ALEMBIC_VERSION_TABLE} (
+            version_num VARCHAR({min_length}) NOT NULL,
+            CONSTRAINT {ALEMBIC_VERSION_TABLE}_pkey PRIMARY KEY (version_num)
+        )
+        """
+    )
+    cur.execute(
+        """
+        SELECT character_maximum_length
+        FROM information_schema.columns
+        WHERE table_schema = %s AND table_name = %s AND column_name = 'version_num'
+        """,
+        (schema, ALEMBIC_VERSION_TABLE),
+    )
+    row = cur.fetchone()
+    if row is None:
+        cur.execute(
+            f"""
+            ALTER TABLE "{schema}".{ALEMBIC_VERSION_TABLE}
+            ADD COLUMN version_num VARCHAR({min_length}) NOT NULL
+            """
+        )
+        current_length = None
+    else:
+        current_length = row[0]
+    if current_length is None or current_length < min_length:
+        cur.execute(
+            f'ALTER TABLE "{schema}".{ALEMBIC_VERSION_TABLE} '
+            f'ALTER COLUMN version_num TYPE VARCHAR({min_length})'
+        )
+
 with psycopg.connect(dsn, **connect_kwargs) as conn:
     conn.autocommit = True
     with conn.cursor() as cur:
@@ -496,6 +540,10 @@ if ALEMBIC_VERSION_TABLE in missing:
         flush=True,
     )
     try:
+        with psycopg.connect(dsn, **connect_kwargs) as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                _ensure_alembic_version_length(cur)
         command.stamp(cfg, "heads")
     except Exception as exc:  # noqa: BLE001 - entrypoint diagnostics
         print(f"[entrypoint] alembic stamp failed: {exc}", file=sys.stderr, flush=True)
