@@ -10,7 +10,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { useI18n } from "../i18n";
-import { BrandHeader, BrandSidebar, PageShell } from "../../shared/brand/components";
+import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 
 export function Layout() {
   const { user, logout } = useAuth();

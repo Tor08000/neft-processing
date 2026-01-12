@@ -12,7 +12,10 @@
     "jsx": "react-jsx",
     "strict": true,
     "types": ["vite/client", "react", "react-dom", "./types/vitest"],
-    "baseUrl": "./src"
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    }
   },
   "include": ["src", "types", "../shared/brand"],
   "references": [{ "path": "./tsconfig.node.json" }]
