@@ -138,6 +138,41 @@ if [ "$heads_count" -ne 1 ]; then
     exit 1
 fi
 
+echo "[entrypoint] ensuring alembic_version_core length"
+python - <<'PY'
+import os
+import sys
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
+
+from app.alembic.helpers import MIN_VERSION_LENGTH, ensure_alembic_version_length
+
+db_url = os.getenv("DATABASE_URL")
+schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
+if not db_url:
+    print("[entrypoint] DATABASE_URL is not set for alembic version repair", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+url = make_url(db_url)
+if url.drivername.endswith("+psycopg"):
+    url = url.set(drivername="postgresql")
+dsn = url.render_as_string(hide_password=False)
+
+engine = create_engine(
+    dsn,
+    future=True,
+    connect_args={
+        "options": f"-c search_path={schema},public",
+        "prepare_threshold": 0,
+    },
+)
+with engine.begin() as connection:
+    ensure_alembic_version_length(connection, min_length=MIN_VERSION_LENGTH)
+engine.dispose()
+print("[entrypoint] alembic_version_core length check complete", flush=True)
+PY
+
 echo "[entrypoint] pre-migration cleanup: schema_resolved=${schema_resolved} search_path=${schema_resolved},public"
 echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
 if [ -z "$DATABASE_URL" ]; then
