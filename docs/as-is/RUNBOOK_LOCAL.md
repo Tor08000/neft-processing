@@ -46,6 +46,13 @@ Auth-host migrations are handled by its own service start; if needed:
 docker compose exec -T auth-host sh -lc "alembic -c alembic.ini upgrade head"
 ```
 
+If `alembic -c app/alembic.ini heads` shows more than one head for processing-core, you must create a merge revision and commit it before starting the stack (entrypoint enforces a single head as a gate).
+Use:
+
+```cmd
+docker compose run --rm --entrypoint "" core-api sh -lc "alembic -c app/alembic.ini merge -m \"merge heads (baseline)\" <head_ids...>"
+```
+
 ## 5) Seed data (e2e + business seeds)
 
 Legal documents:
