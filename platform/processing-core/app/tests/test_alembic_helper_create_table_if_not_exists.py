@@ -44,7 +44,7 @@ def test_create_table_if_not_exists_spreads_keyword_columns(monkeypatch: pytest.
     assert created_indexes == [("ix_sample_table_id", ("id",), "billing")]
 
 
-def test_create_table_if_not_exists_adds_indexes_when_table_exists(monkeypatch: pytest.MonkeyPatch):
+def test_create_table_if_not_exists_skips_indexes_when_table_exists(monkeypatch: pytest.MonkeyPatch):
     created_tables: list[tuple[str, tuple, dict]] = []
     created_indexes: list[tuple[str, tuple[str, ...], str | None]] = []
 
@@ -73,7 +73,4 @@ def test_create_table_if_not_exists_adds_indexes_when_table_exists(monkeypatch: 
     )
 
     assert not created_tables
-    assert created_indexes == [
-        ("ix_sample_table_id", ("id",), "billing"),
-        ("ix_sample_table_other", ("id", "name"), "billing"),
-    ]
+    assert not created_indexes
