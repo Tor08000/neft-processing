@@ -348,16 +348,24 @@ def create_table_if_not_exists(
     index_definitions = list(indexes or [])
     if table_exists(bind, table_name, schema=schema):
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
-    else:
-        drop_orphan_table_type_if_exists(bind, schema, table_name)
-        operations = getattr(bind, "op_override", op)
+        return
 
-        if create_fn is not None:
-            create_fn()
-        elif not column_list:
-            raise TypeError("No columns provided for table creation")
-        else:
-            operations.create_table(table_name, *column_list, schema=schema, **kwargs)
+    if composite_type_exists(bind, table_name, schema=schema):
+        logger.warning(
+            "Dropping orphan composite type %s.%s before creating table",
+            schema,
+            table_name,
+        )
+        drop_orphan_composite_type(bind, table_name, schema=schema)
+
+    operations = getattr(bind, "op_override", op)
+
+    if create_fn is not None:
+        create_fn()
+    elif not column_list:
+        raise TypeError("No columns provided for table creation")
+    else:
+        operations.create_table(table_name, *column_list, schema=schema, **kwargs)
 
     for index_name, index_columns in index_definitions:
         create_index_if_not_exists(bind, index_name, table_name, index_columns, schema=schema)

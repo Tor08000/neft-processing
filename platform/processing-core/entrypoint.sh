@@ -112,6 +112,80 @@ if [ "$heads_count" -ne 1 ]; then
     exit 1
 fi
 
+echo "[entrypoint] dropping orphan composite types (pre-migration cleanup)"
+python - <<'PY'
+import os
+import pathlib
+import sys
+
+import psycopg
+from sqlalchemy.engine import make_url
+
+db_url = os.getenv("DATABASE_URL")
+schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
+
+if not db_url:
+    print("[entrypoint] DATABASE_URL is not set for orphan cleanup", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+url = make_url(db_url)
+if url.drivername.endswith("+psycopg"):
+    url = url.set(drivername="postgresql")
+dsn = url.render_as_string(hide_password=False)
+
+tables = [
+    "client_onboarding_events",
+    "client_onboarding_state",
+    "crm_client_profiles",
+    "crm_deal_events",
+    "crm_deals",
+    "crm_feature_flags",
+    "crm_clients",
+    "crm_contracts",
+    "crm_leads",
+    "crm_limit_profiles",
+    "crm_risk_profiles",
+    "crm_subscriptions",
+    "crm_tariff_plans",
+    "crm_tasks",
+    "crm_ticket_links",
+]
+
+sql_path = pathlib.Path("app/alembic/sql/drop_orphan_table_types.sql")
+if not sql_path.exists():
+    raise SystemExit(f"[entrypoint] missing orphan type cleanup script: {sql_path}")
+sql_script = sql_path.read_text(encoding="utf-8")
+
+with psycopg.connect(dsn, prepare_threshold=0) as conn:
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        for table in tables:
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s AND table_name = %s
+                """,
+                (schema, table),
+            )
+            if cur.fetchone():
+                continue
+            cur.execute(
+                """
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = %s
+                  AND t.typname = %s
+                  AND t.typtype = 'c'
+                """,
+                (schema, table),
+            )
+            if cur.fetchone():
+                cur.execute(f'DROP TYPE IF EXISTS "{schema}"."{table}" CASCADE')
+        cur.execute(sql_script)
+PY
+
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then
     echo "[entrypoint] migration validation failed; last log lines:" >&2
