@@ -12,7 +12,7 @@ import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
-import { BrandHeader, BrandSidebar, PageShell } from "../../../shared/brand/components";
+import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 import { getInitialTheme, toggleTheme } from "../lib/theme";
 
 interface LayoutProps {

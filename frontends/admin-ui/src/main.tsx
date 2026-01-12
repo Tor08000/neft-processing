@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
-import "../../shared/brand/brand.css";
+import "@shared/brand/brand.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
 
 const base = import.meta.env.BASE_URL || "/admin/";

@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
-import { AppLogo } from "../../../shared/brand/components";
+import { AppLogo } from "@shared/brand/components";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();

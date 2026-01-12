@@ -7,6 +7,11 @@ export default defineConfig(() => {
   return {
     base: "/client/",
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@shared": resolve(__dirname, "../shared"),
+      },
+    },
     server: {
       port: 4174,
       fs: {
