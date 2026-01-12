@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-ROOT_DIR = Path(__file__).resolve().parents[4]
+from ._path_root import find_repo_root
+
+ROOT_DIR = find_repo_root(Path(__file__).resolve())
 SHARED_PATH = ROOT_DIR / "shared" / "python"
 if SHARED_PATH.exists():
     sys.path.append(str(SHARED_PATH))

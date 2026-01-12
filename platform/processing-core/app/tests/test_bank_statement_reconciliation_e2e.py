@@ -19,7 +19,10 @@ from app.models.invoice import Invoice, InvoiceLine
 from app.models.audit_log import ActorType
 from app.services.audit_service import RequestContext
 
-FIXTURES = Path(__file__).resolve().parents[4] / "fixtures" / "bank"
+from ._path_root import find_repo_root
+
+ROOT = find_repo_root(Path(__file__).resolve())
+FIXTURES = ROOT / "fixtures" / "bank"
 
 
 @pytest.fixture(autouse=True)
