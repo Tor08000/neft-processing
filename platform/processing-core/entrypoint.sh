@@ -5,18 +5,11 @@ echo "[entrypoint] core-api starting"
 
 export PYTHONPATH="/opt/python:/app:${PYTHONPATH}"
 
-DB_SCHEMA=$(python - <<'PY'
-import os
-from app.db.schema import resolve_db_schema
-
-resolution = resolve_db_schema()
-db_url = os.getenv("DATABASE_URL")
-print(resolution.schema)
-if not db_url:
-    raise SystemExit("[entrypoint] DATABASE_URL is not set")
-PY
-)
-schema_resolved=$DB_SCHEMA
+schema_resolved="${DB_SCHEMA:-${SCHEMA:-processing_core}}"
+if [ -z "$schema_resolved" ]; then
+    schema_resolved="processing_core"
+fi
+export NEFT_DB_SCHEMA="${NEFT_DB_SCHEMA:-$schema_resolved}"
 echo "[entrypoint] schema_resolved=${schema_resolved}"
 
 python - <<'PY'
@@ -100,8 +93,6 @@ import sys
 
 import psycopg
 from sqlalchemy.engine import make_url
-
-from app.db.schema import resolve_db_schema
 
 db_url = os.getenv("DATABASE_URL")
 schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
@@ -216,202 +207,141 @@ reset_engine()
 print("[entrypoint] engine cache reset", flush=True)
 PY
 
-python - <<'PY'
-import os
-import sys
+echo "[entrypoint] post-migration schema repair starting..."
+echo "[entrypoint] schema_resolved=${schema_resolved}"
+post_migration_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path');" | tail -n 1)
+post_migration_current_schema=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $1}')
+post_migration_search_path=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $2}')
+echo "[entrypoint] schema_resolved=${schema_resolved} current_schema=${post_migration_current_schema} search_path=${post_migration_search_path}"
+repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
+IFS='|' read -r diag_current_schema diag_search_path processing_core_reg pg_class_hits operations_schemas <<EOF
+$repair_diagnostics
+EOF
+echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
+if [ -n "$processing_core_reg" ]; then
+    echo "[entrypoint] repair completed: ${schema_resolved}.operations=${processing_core_reg}"
+    echo "[entrypoint] post-migration schema repair completed"
+else
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 --set=schema_resolved="$schema_resolved" <<'EOF'
+DO $$
+BEGIN
+  EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', :'schema_resolved');
+END $$;
 
-import psycopg
-from sqlalchemy.engine import make_url
+SET search_path TO :"schema_resolved",public;
 
-db_url = os.getenv("DATABASE_URL")
-if not db_url:
-    print("[entrypoint] DATABASE_URL is not set for schema repair", file=sys.stderr, flush=True)
-    sys.exit(1)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = :'schema_resolved'
+      AND t.typname = 'operationtype'
+  ) THEN
+    EXECUTE format('CREATE TYPE %I.operationtype AS ENUM (%s)', :'schema_resolved',
+      '''AUTH'',''HOLD'',''COMMIT'',''REVERSE'',''REFUND'',''DECLINE'',''CAPTURE'',''REVERSAL'''
+    );
+  END IF;
 
-schema = resolve_db_schema().schema
-url = make_url(db_url)
-if url.drivername.endswith("+psycopg"):
-    url = url.set(drivername="postgresql")
-dsn = url.render_as_string(hide_password=False)
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = :'schema_resolved'
+      AND t.typname = 'operationstatus'
+  ) THEN
+    EXECUTE format('CREATE TYPE %I.operationstatus AS ENUM (%s)', :'schema_resolved',
+      '''PENDING'',''AUTHORIZED'',''HELD'',''COMPLETED'',''REVERSED'',''REFUNDED'',''DECLINED'',''CANCELLED'',''CAPTURED'',''OPEN'''
+    );
+  END IF;
 
-def _quote_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = :'schema_resolved'
+      AND t.typname = 'producttype'
+  ) THEN
+    EXECUTE format('CREATE TYPE %I.producttype AS ENUM (%s)', :'schema_resolved',
+      '''DIESEL'',''AI92'',''AI95'',''AI98'',''GAS'',''OTHER'''
+    );
+  END IF;
 
-def _ensure_enum(cur, schema: str, name: str, values: list[str]) -> None:
-    joined = ", ".join(_quote_literal(value) for value in values)
-    schema_sql = schema.replace('"', '""')
-    name_sql = name.replace('"', '""')
-    cur.execute(
-        f"""
-        DO $$
-        BEGIN
-            CREATE TYPE "{schema_sql}"."{name_sql}" AS ENUM ({joined});
-        EXCEPTION
-            WHEN duplicate_object THEN NULL;
-        END $$;
-        """
-    )
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = :'schema_resolved'
+      AND t.typname = 'riskresult'
+  ) THEN
+    EXECUTE format('CREATE TYPE %I.riskresult AS ENUM (%s)', :'schema_resolved',
+      '''LOW'',''MEDIUM'',''HIGH'',''BLOCK'',''MANUAL_REVIEW'''
+    );
+  END IF;
+END $$;
 
-operation_type_values = [
-    "AUTH",
-    "HOLD",
-    "COMMIT",
-    "REVERSE",
-    "REFUND",
-    "DECLINE",
-    "CAPTURE",
-    "REVERSAL",
-]
-operation_status_values = [
-    "PENDING",
-    "AUTHORIZED",
-    "HELD",
-    "COMPLETED",
-    "REVERSED",
-    "REFUNDED",
-    "DECLINED",
-    "CANCELLED",
-    "CAPTURED",
-    "OPEN",
-]
-product_type_values = [
-    "DIESEL",
-    "AI92",
-    "AI95",
-    "AI98",
-    "GAS",
-    "OTHER",
-]
-risk_result_values = [
-    "LOW",
-    "MEDIUM",
-    "HIGH",
-    "BLOCK",
-    "MANUAL_REVIEW",
-]
+CREATE TABLE IF NOT EXISTS :"schema_resolved".operations (
+    id uuid PRIMARY KEY NOT NULL,
+    operation_id varchar(64) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    operation_type :"schema_resolved".operationtype NOT NULL,
+    status :"schema_resolved".operationstatus NOT NULL,
+    merchant_id varchar(64) NOT NULL,
+    terminal_id varchar(64) NOT NULL,
+    client_id varchar(64) NOT NULL,
+    card_id varchar(64) NOT NULL,
+    tariff_id varchar(64) NULL,
+    product_id varchar(64) NULL,
+    amount bigint NOT NULL,
+    amount_settled bigint NULL DEFAULT 0,
+    currency varchar(3) NOT NULL DEFAULT 'RUB',
+    product_type :"schema_resolved".producttype NULL,
+    quantity numeric(18, 3) NULL,
+    unit_price numeric(18, 3) NULL,
+    captured_amount bigint NOT NULL DEFAULT 0,
+    refunded_amount bigint NOT NULL DEFAULT 0,
+    daily_limit bigint NULL,
+    limit_per_tx bigint NULL,
+    used_today bigint NULL,
+    new_used_today bigint NULL,
+    limit_profile_id varchar(64) NULL,
+    limit_check_result json NULL,
+    authorized boolean NOT NULL DEFAULT false,
+    response_code varchar(8) NOT NULL DEFAULT '00',
+    response_message varchar(255) NOT NULL DEFAULT 'OK',
+    auth_code varchar(32) NULL,
+    parent_operation_id varchar(64) NULL,
+    reason varchar(255) NULL,
+    mcc varchar(8) NULL,
+    product_code varchar(32) NULL,
+    product_category varchar(32) NULL,
+    tx_type varchar(16) NULL,
+    accounts jsonb NULL,
+    posting_result jsonb NULL,
+    risk_score double precision NULL,
+    risk_result :"schema_resolved".riskresult NULL,
+    risk_payload json NULL,
+    CONSTRAINT uq_operations_operation_id UNIQUE (operation_id)
+);
 
-with psycopg.connect(
-    dsn,
-    prepare_threshold=0,
-    options=f"-c search_path={schema},public",
-) as conn:
-    conn.autocommit = True
-    with conn.cursor() as cur:
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-        cur.execute(f'SET search_path TO "{schema}", public')
-        cur.execute("select current_schema(), current_setting('search_path')")
-        current_schema, search_path = cur.fetchone()
-        cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
-        processing_core_reg = cur.fetchone()[0]
-        cur.execute(
-            """
-            SELECT n.nspname, c.relname
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = 'operations'
-            ORDER BY n.nspname
-            """
-        )
-        pg_class_hits = cur.fetchall()
-        cur.execute(
-            """
-            SELECT table_schema
-            FROM information_schema.tables
-            WHERE table_name = 'operations'
-            ORDER BY table_schema
-            """
-        )
-        operations_schemas = [row[0] for row in cur.fetchall()]
-        print(
-            "[entrypoint] repair diagnostics: "
-            f"current_schema={current_schema} search_path={search_path} "
-            f"{schema}.operations={processing_core_reg} "
-            f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
-            flush=True,
-        )
-        if processing_core_reg is not None:
-            sys.exit(0)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id
+  ON :"schema_resolved".operations (operation_id);
 
-        _ensure_enum(cur, schema, "operationtype", operation_type_values)
-        _ensure_enum(cur, schema, "operationstatus", operation_status_values)
-        _ensure_enum(cur, schema, "producttype", product_type_values)
-        _ensure_enum(cur, schema, "riskresult", risk_result_values)
-
-        cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".operations (
-                id uuid PRIMARY KEY NOT NULL,
-                operation_id varchar(64) NOT NULL,
-                created_at timestamptz NOT NULL DEFAULT now(),
-                updated_at timestamptz NOT NULL DEFAULT now(),
-                operation_type "{schema}".operationtype NOT NULL,
-                status "{schema}".operationstatus NOT NULL,
-                merchant_id varchar(64) NOT NULL,
-                terminal_id varchar(64) NOT NULL,
-                client_id varchar(64) NOT NULL,
-                card_id varchar(64) NOT NULL,
-                tariff_id varchar(64) NULL,
-                product_id varchar(64) NULL,
-                amount bigint NOT NULL,
-                amount_settled bigint NULL DEFAULT 0,
-                currency varchar(3) NOT NULL DEFAULT 'RUB',
-                product_type "{schema}".producttype NULL,
-                quantity numeric(18, 3) NULL,
-                unit_price numeric(18, 3) NULL,
-                captured_amount bigint NOT NULL DEFAULT 0,
-                refunded_amount bigint NOT NULL DEFAULT 0,
-                daily_limit bigint NULL,
-                limit_per_tx bigint NULL,
-                used_today bigint NULL,
-                new_used_today bigint NULL,
-                limit_profile_id varchar(64) NULL,
-                limit_check_result json NULL,
-                authorized boolean NOT NULL DEFAULT false,
-                response_code varchar(8) NOT NULL DEFAULT '00',
-                response_message varchar(255) NOT NULL DEFAULT 'OK',
-                auth_code varchar(32) NULL,
-                parent_operation_id varchar(64) NULL,
-                reason varchar(255) NULL,
-                mcc varchar(8) NULL,
-                product_code varchar(32) NULL,
-                product_category varchar(32) NULL,
-                tx_type varchar(16) NULL,
-                accounts jsonb NULL,
-                posting_result jsonb NULL,
-                risk_score double precision NULL,
-                risk_result "{schema}".riskresult NULL,
-                risk_payload json NULL,
-                CONSTRAINT uq_operations_operation_id UNIQUE (operation_id)
-            )
-            """
-        )
-        cur.execute(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id "
-            f'ON "{schema}".operations (operation_id)'
-        )
-        for index_name, columns in {
-            "ix_operations_card_id": "card_id",
-            "ix_operations_client_id": "client_id",
-            "ix_operations_merchant_id": "merchant_id",
-            "ix_operations_terminal_id": "terminal_id",
-            "ix_operations_created_at": "created_at",
-            "ix_operations_operation_id": "operation_id",
-            "ix_operations_operation_type": "operation_type",
-            "ix_operations_status": "status",
-        }.items():
-            cur.execute(
-                f"CREATE INDEX IF NOT EXISTS {index_name} "
-                f'ON "{schema}".operations ({columns})'
-            )
-
-        cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
-        repaired_reg = cur.fetchone()[0]
-        print(
-            "[entrypoint] repair completed: "
-            f"{schema}.operations={repaired_reg}",
-            flush=True,
-        )
-PY
+CREATE INDEX IF NOT EXISTS ix_operations_card_id ON :"schema_resolved".operations (card_id);
+CREATE INDEX IF NOT EXISTS ix_operations_client_id ON :"schema_resolved".operations (client_id);
+CREATE INDEX IF NOT EXISTS ix_operations_merchant_id ON :"schema_resolved".operations (merchant_id);
+CREATE INDEX IF NOT EXISTS ix_operations_terminal_id ON :"schema_resolved".operations (terminal_id);
+CREATE INDEX IF NOT EXISTS ix_operations_created_at ON :"schema_resolved".operations (created_at);
+CREATE INDEX IF NOT EXISTS ix_operations_operation_id ON :"schema_resolved".operations (operation_id);
+CREATE INDEX IF NOT EXISTS ix_operations_operation_type ON :"schema_resolved".operations (operation_type);
+CREATE INDEX IF NOT EXISTS ix_operations_status ON :"schema_resolved".operations (status);
+EOF
+repaired_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations');" | tail -n 1)
+echo "[entrypoint] repair completed: ${schema_resolved}.operations=${repaired_reg}"
+echo "[entrypoint] post-migration schema repair completed"
+fi
 
 python - <<'PY'
 import os
@@ -423,11 +353,9 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy.engine import make_url
 
-from app.db.schema import resolve_db_schema
-from app.alembic.helpers import ALEMBIC_VERSION_TABLE
-
-resolution = resolve_db_schema()
 db_url = os.getenv("DATABASE_URL")
+schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
+ALEMBIC_VERSION_TABLE = "alembic_version_core"
 if not db_url:
     print("[entrypoint] DATABASE_URL is not set for post-migration verification", file=sys.stderr, flush=True)
     sys.exit(1)
@@ -446,14 +374,14 @@ def _quote_schema(value: str) -> str:
 
 connect_kwargs = {
     "prepare_threshold": 0,
-    "options": f"-c search_path={resolution.schema},public",
+    "options": f"-c search_path={schema},public",
 }
 
 def _collect_state(cur):
     regclasses: dict[str, str | None] = {}
     cur.execute("select current_schema(), current_setting('search_path')")
     current_schema, search_path = cur.fetchone()
-    cur.execute("select to_regclass(%s)", (f"{resolution.schema}.operations",))
+    cur.execute("select to_regclass(%s)", (f"{schema}.operations",))
     processing_core_reg = cur.fetchone()[0]
     cur.execute("select to_regclass(%s)", ("public.operations",))
     public_reg = cur.fetchone()[0]
@@ -477,14 +405,14 @@ def _collect_state(cur):
     )
     operations_schemas = [row[0] for row in cur.fetchall()]
     for table in (ALEMBIC_VERSION_TABLE, "operations"):
-        qualified = f"{_quote_schema(resolution.schema)}.{table}"
+        qualified = f"{_quote_schema(schema)}.{table}"
         cur.execute("select to_regclass(%s)", (qualified,))
         regclasses[table] = cur.fetchone()[0]
 
     version_reg = regclasses[ALEMBIC_VERSION_TABLE]
     versions = []
     if version_reg is not None:
-        cur.execute(f'SELECT version_num FROM "{resolution.schema}".{ALEMBIC_VERSION_TABLE}')
+        cur.execute(f'SELECT version_num FROM "{schema}".{ALEMBIC_VERSION_TABLE}')
         versions = [row[0] for row in cur.fetchall()]
 
     return (
@@ -517,7 +445,7 @@ missing = [table for table, reg in regclasses.items() if reg is None]
 if ALEMBIC_VERSION_TABLE in missing:
     print(
         "[entrypoint] alembic version table missing; attempting to stamp heads: "
-        f"schema_resolved={resolution.schema} search_path={search_path} current_schema={current_schema} "
+        f"schema_resolved={schema} search_path={search_path} current_schema={current_schema} "
         f"pg_class_hits={pg_class_hits}",
         file=sys.stderr,
         flush=True,
@@ -546,9 +474,9 @@ if ALEMBIC_VERSION_TABLE in missing:
 if missing:
     print(
         "[entrypoint] required tables missing after migrations: "
-        f"schema_resolved={resolution.schema} regclass={regclasses} missing={missing} "
+        f"schema_resolved={schema} regclass={regclasses} missing={missing} "
         f"current_schema={current_schema} search_path={search_path} "
-        f"{resolution.schema}.operations={processing_core_reg} public.operations={public_reg} "
+        f"{schema}.operations={processing_core_reg} public.operations={public_reg} "
         f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
         file=sys.stderr,
         flush=True,
@@ -559,7 +487,7 @@ unique_versions = set(versions)
 if unique_versions != expected_heads:
     print(
         "[entrypoint] alembic_version_core mismatch: "
-        f"schema_resolved={resolution.schema} regclass={regclasses} "
+        f"schema_resolved={schema} regclass={regclasses} "
         f"expected={sorted(expected_heads)} found={sorted(unique_versions)} "
         f"current_schema={current_schema} search_path={search_path} "
         f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
@@ -570,9 +498,9 @@ if unique_versions != expected_heads:
 
 print(
     "[entrypoint] migration check passed: "
-    f"schema_resolved={resolution.schema} regclass={regclasses} heads={sorted(expected_heads)} "
+    f"schema_resolved={schema} regclass={regclasses} heads={sorted(expected_heads)} "
     f"current_schema={current_schema} search_path={search_path} "
-    f"{resolution.schema}.operations={processing_core_reg} public.operations={public_reg} "
+    f"{schema}.operations={processing_core_reg} public.operations={public_reg} "
     f"pg_class_hits={pg_class_hits} operations_schemas={operations_schemas}",
     flush=True,
 )
