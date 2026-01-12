@@ -61,11 +61,15 @@ def table_exists(bind: Connection, table_name: str, schema: str = DB_SCHEMA) -> 
     return result is not None
 
 
-def composite_type_exists(bind: Connection, type_name: str, schema: str = DB_SCHEMA) -> bool:
+def composite_type_exists(bind: Connection, schema: str, type_name: str | None = None) -> bool:
     _require_bind(bind, caller="composite_type_exists")
 
     if not is_postgres(bind):
         return False
+
+    if type_name is None:
+        type_name = schema
+        schema = DB_SCHEMA
 
     result = bind.execute(
         sa.text(
@@ -83,8 +87,8 @@ def composite_type_exists(bind: Connection, type_name: str, schema: str = DB_SCH
     return result is not None
 
 
-def drop_orphan_composite_type(bind: Connection, type_name: str, schema: str = DB_SCHEMA) -> None:
-    _require_bind(bind, caller="drop_orphan_composite_type")
+def drop_composite_type(bind: Connection, schema: str, type_name: str) -> None:
+    _require_bind(bind, caller="drop_composite_type")
 
     if not is_postgres(bind):
         return
@@ -102,19 +106,25 @@ def drop_orphan_composite_type_if_needed(
     if table_exists(bind, type_name, schema=schema):
         return
 
-    if composite_type_exists(bind, type_name, schema=schema):
+    if composite_type_exists(bind, schema, type_name):
         logger.warning(
             "Dropping orphan composite type %s.%s before creating table",
             schema,
             type_name,
         )
-        drop_orphan_composite_type(bind, type_name, schema=schema)
+        drop_composite_type(bind, schema, type_name)
 
 
 def drop_orphan_table_type_if_exists(bind: Connection, schema: str, table_name: str) -> None:
     _require_bind(bind, caller="drop_orphan_table_type_if_exists")
 
-    drop_orphan_composite_type_if_needed(bind, table_name, schema=schema)
+    if composite_type_exists(bind, schema, table_name):
+        logger.warning(
+            "Dropping orphan composite type %s.%s before creating table",
+            schema,
+            table_name,
+        )
+        drop_composite_type(bind, schema, table_name)
 
 
 def column_exists(
@@ -358,7 +368,13 @@ def create_table_if_not_exists(
         logger.info("Table %s.%s already exists, skipping creation", schema, table_name)
         return
 
-    drop_orphan_composite_type_if_needed(bind, table_name, schema=schema)
+    if composite_type_exists(bind, schema, table_name):
+        logger.warning(
+            "Dropping orphan composite type %s.%s before creating table",
+            schema,
+            table_name,
+        )
+        drop_composite_type(bind, schema, table_name)
 
     operations = getattr(bind, "op_override", op)
 

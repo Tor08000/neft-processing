@@ -53,6 +53,7 @@ def upgrade() -> None:
         ("ix_legal_documents_status", "legal_documents", ["status"]),
         ("ix_legal_documents_effective_from", "legal_documents", ["effective_from"]),
         ("ix_legal_acceptances_doc", "legal_acceptances", ["document_code", "document_version"]),
+        ("ix_legal_acceptances_document_id", "legal_acceptances", ["document_id"]),
         ("ix_legal_acceptances_subject_type", "legal_acceptances", ["subject_type"]),
         ("ix_legal_acceptances_subject_id", "legal_acceptances", ["subject_id"]),
     ]:
