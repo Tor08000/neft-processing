@@ -33,7 +33,7 @@ set ERROR_FILE=%LOG_DIR%\verify_all_%ts%_errors.tmp
 
 del "%ERROR_FILE%" 2>NUL
 
-call :run_cmd "1. Stack up" docker compose up -d
+call :run_cmd "1. Stack up" docker compose up -d --build
 if errorlevel 1 goto finalize
 
 call :wait_for_health "1.1. core-api healthy" core-api 120
