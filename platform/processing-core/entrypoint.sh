@@ -213,33 +213,33 @@ post_migration_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path
 post_migration_current_schema=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $1}')
 post_migration_search_path=$(printf '%s' "$post_migration_state" | awk -F'|' '{print $2}')
 echo "[entrypoint] schema_resolved=${schema_resolved} current_schema=${post_migration_current_schema} search_path=${post_migration_search_path}"
-repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
-IFS='|' read -r diag_current_schema diag_search_path processing_core_reg pg_class_hits operations_schemas <<EOF
+repair_diagnostics=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "SET search_path TO \"${schema_resolved}\",public; select current_schema(), current_setting('search_path'), to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core'), (SELECT array_agg((n.nspname, c.relname)) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'operations'), (SELECT array_agg(table_schema) FROM information_schema.tables WHERE table_name = 'operations');" | tail -n 1)
+IFS='|' read -r diag_current_schema diag_search_path processing_core_reg alembic_version_reg pg_class_hits operations_schemas <<EOF
 $repair_diagnostics
 EOF
-echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
+echo "[entrypoint] repair diagnostics: current_schema=${diag_current_schema} search_path=${diag_search_path} ${schema_resolved}.operations=${processing_core_reg} ${schema_resolved}.alembic_version_core=${alembic_version_reg} pg_class_hits=${pg_class_hits} operations_schemas=${operations_schemas}"
 if [ -n "$processing_core_reg" ]; then
     echo "[entrypoint] repair completed: ${schema_resolved}.operations=${processing_core_reg}"
     echo "[entrypoint] post-migration schema repair completed"
 else
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 --set=schema_resolved="$schema_resolved" <<'EOF'
-DO $$
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
+DO \$\$
 BEGIN
-  EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', :'schema_resolved');
-END $$;
+  EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', '${schema_resolved}');
+END \$\$;
 
-SET search_path TO :"schema_resolved",public;
+SET search_path TO "${schema_resolved}",public;
 
-DO $$
+DO \$\$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = :'schema_resolved'
+    WHERE n.nspname = '${schema_resolved}'
       AND t.typname = 'operationtype'
   ) THEN
-    EXECUTE format('CREATE TYPE %I.operationtype AS ENUM (%s)', :'schema_resolved',
+    EXECUTE format('CREATE TYPE %I.operationtype AS ENUM (%s)', '${schema_resolved}',
       '''AUTH'',''HOLD'',''COMMIT'',''REVERSE'',''REFUND'',''DECLINE'',''CAPTURE'',''REVERSAL'''
     );
   END IF;
@@ -248,10 +248,10 @@ BEGIN
     SELECT 1
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = :'schema_resolved'
+    WHERE n.nspname = '${schema_resolved}'
       AND t.typname = 'operationstatus'
   ) THEN
-    EXECUTE format('CREATE TYPE %I.operationstatus AS ENUM (%s)', :'schema_resolved',
+    EXECUTE format('CREATE TYPE %I.operationstatus AS ENUM (%s)', '${schema_resolved}',
       '''PENDING'',''AUTHORIZED'',''HELD'',''COMPLETED'',''REVERSED'',''REFUNDED'',''DECLINED'',''CANCELLED'',''CAPTURED'',''OPEN'''
     );
   END IF;
@@ -260,10 +260,10 @@ BEGIN
     SELECT 1
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = :'schema_resolved'
+    WHERE n.nspname = '${schema_resolved}'
       AND t.typname = 'producttype'
   ) THEN
-    EXECUTE format('CREATE TYPE %I.producttype AS ENUM (%s)', :'schema_resolved',
+    EXECUTE format('CREATE TYPE %I.producttype AS ENUM (%s)', '${schema_resolved}',
       '''DIESEL'',''AI92'',''AI95'',''AI98'',''GAS'',''OTHER'''
     );
   END IF;
@@ -272,22 +272,22 @@ BEGIN
     SELECT 1
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = :'schema_resolved'
+    WHERE n.nspname = '${schema_resolved}'
       AND t.typname = 'riskresult'
   ) THEN
-    EXECUTE format('CREATE TYPE %I.riskresult AS ENUM (%s)', :'schema_resolved',
+    EXECUTE format('CREATE TYPE %I.riskresult AS ENUM (%s)', '${schema_resolved}',
       '''LOW'',''MEDIUM'',''HIGH'',''BLOCK'',''MANUAL_REVIEW'''
     );
   END IF;
-END $$;
+END \$\$;
 
-CREATE TABLE IF NOT EXISTS :"schema_resolved".operations (
+CREATE TABLE IF NOT EXISTS "${schema_resolved}".operations (
     id uuid PRIMARY KEY NOT NULL,
     operation_id varchar(64) NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    operation_type :"schema_resolved".operationtype NOT NULL,
-    status :"schema_resolved".operationstatus NOT NULL,
+    operation_type "${schema_resolved}".operationtype NOT NULL,
+    status "${schema_resolved}".operationstatus NOT NULL,
     merchant_id varchar(64) NOT NULL,
     terminal_id varchar(64) NOT NULL,
     client_id varchar(64) NOT NULL,
@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS :"schema_resolved".operations (
     amount bigint NOT NULL,
     amount_settled bigint NULL DEFAULT 0,
     currency varchar(3) NOT NULL DEFAULT 'RUB',
-    product_type :"schema_resolved".producttype NULL,
+    product_type "${schema_resolved}".producttype NULL,
     quantity numeric(18, 3) NULL,
     unit_price numeric(18, 3) NULL,
     captured_amount bigint NOT NULL DEFAULT 0,
@@ -321,25 +321,28 @@ CREATE TABLE IF NOT EXISTS :"schema_resolved".operations (
     accounts jsonb NULL,
     posting_result jsonb NULL,
     risk_score double precision NULL,
-    risk_result :"schema_resolved".riskresult NULL,
+    risk_result "${schema_resolved}".riskresult NULL,
     risk_payload json NULL,
     CONSTRAINT uq_operations_operation_id UNIQUE (operation_id)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_operations_operation_id
-  ON :"schema_resolved".operations (operation_id);
+  ON "${schema_resolved}".operations (operation_id);
 
-CREATE INDEX IF NOT EXISTS ix_operations_card_id ON :"schema_resolved".operations (card_id);
-CREATE INDEX IF NOT EXISTS ix_operations_client_id ON :"schema_resolved".operations (client_id);
-CREATE INDEX IF NOT EXISTS ix_operations_merchant_id ON :"schema_resolved".operations (merchant_id);
-CREATE INDEX IF NOT EXISTS ix_operations_terminal_id ON :"schema_resolved".operations (terminal_id);
-CREATE INDEX IF NOT EXISTS ix_operations_created_at ON :"schema_resolved".operations (created_at);
-CREATE INDEX IF NOT EXISTS ix_operations_operation_id ON :"schema_resolved".operations (operation_id);
-CREATE INDEX IF NOT EXISTS ix_operations_operation_type ON :"schema_resolved".operations (operation_type);
-CREATE INDEX IF NOT EXISTS ix_operations_status ON :"schema_resolved".operations (status);
+CREATE INDEX IF NOT EXISTS ix_operations_card_id ON "${schema_resolved}".operations (card_id);
+CREATE INDEX IF NOT EXISTS ix_operations_client_id ON "${schema_resolved}".operations (client_id);
+CREATE INDEX IF NOT EXISTS ix_operations_merchant_id ON "${schema_resolved}".operations (merchant_id);
+CREATE INDEX IF NOT EXISTS ix_operations_terminal_id ON "${schema_resolved}".operations (terminal_id);
+CREATE INDEX IF NOT EXISTS ix_operations_created_at ON "${schema_resolved}".operations (created_at);
+CREATE INDEX IF NOT EXISTS ix_operations_operation_id ON "${schema_resolved}".operations (operation_id);
+CREATE INDEX IF NOT EXISTS ix_operations_operation_type ON "${schema_resolved}".operations (operation_type);
+CREATE INDEX IF NOT EXISTS ix_operations_status ON "${schema_resolved}".operations (status);
 EOF
-repaired_reg=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations');" | tail -n 1)
-echo "[entrypoint] repair completed: ${schema_resolved}.operations=${repaired_reg}"
+repaired_state=$(psql "$PSQL_URL" -v ON_ERROR_STOP=1 -Atc "select to_regclass('${schema_resolved}.operations'), to_regclass('${schema_resolved}.alembic_version_core');" | tail -n 1)
+IFS='|' read -r repaired_reg repaired_alembic_reg <<EOF
+$repaired_state
+EOF
+echo "[entrypoint] repair completed: ${schema_resolved}.operations=${repaired_reg} ${schema_resolved}.alembic_version_core=${repaired_alembic_reg}"
 echo "[entrypoint] post-migration schema repair completed"
 fi
 
