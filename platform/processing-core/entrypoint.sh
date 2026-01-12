@@ -117,8 +117,7 @@ if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
-PSQL_URL=${DATABASE_URL}
-PSQL_URL=${PSQL_URL/+psycopg/}
+PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
 psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE r record;
