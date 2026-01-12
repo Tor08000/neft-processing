@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine, text
+from sqlalchemy import engine_from_config, text
 
 from app.db.schema import quote_schema, resolve_db_schema
 
@@ -75,19 +76,31 @@ def _ensure_version_table(connection) -> None:
         )
 
 
-def _get_command_name() -> str | None:
-    alembic_context = context.get_context()
-    command_opts = getattr(alembic_context, "command_opts", None)
+def _detect_alembic_cmd() -> str | None:
+    command_opts = getattr(config, "cmd_opts", None)
     command_name = getattr(command_opts, "cmd", None)
     if command_name:
         return command_name
-    config_opts = getattr(getattr(alembic_context, "config", None), "cmd_opts", None)
-    return getattr(config_opts, "cmd", None)
+    known_commands = {
+        "upgrade",
+        "downgrade",
+        "stamp",
+        "current",
+        "history",
+        "heads",
+        "revision",
+    }
+    for arg in sys.argv[1:]:
+        if arg in known_commands:
+            return arg
+    return None
 
 
 def run_migrations_online() -> None:
-    engine = create_engine(
-        DATABASE_URL,
+    engine = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        pool_pre_ping=True,
         future=True,
         connect_args={
             "options": f"-c search_path={schema},public",
@@ -96,9 +109,13 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
+        command_name = _detect_alembic_cmd()
         preflight_connection = connection.execution_options(isolation_level="AUTOCOMMIT")
-        _ensure_version_table(preflight_connection)
-        command_name = _get_command_name()
+        if command_name not in {"current", "history", "heads"}:
+            _ensure_version_table(preflight_connection)
+        else:
+            quoted_schema = quote_schema(schema)
+            preflight_connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
         _configure(connection, command_name)
         if command_name in {"current", "history", "heads", "branches", "show"}:
             context.run_migrations()
