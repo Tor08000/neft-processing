@@ -18,6 +18,7 @@ MIN_VERSION_LENGTH = 128
 SCHEMA_RESOLUTION = resolve_db_schema()
 DB_SCHEMA = SCHEMA_RESOLUTION.schema
 ALEMBIC_VERSION_TABLE = "alembic_version_core"
+HELPERS_VERSION = "2025-03-16-orphan-type-self-heal"
 
 
 # Dialect helpers
@@ -405,6 +406,7 @@ def create_table_if_not_exists(
 
     if composite_type_exists(bind, schema, table_name):
         schema_name = schema or DB_SCHEMA
+        print(f"[alembic] orphan-type self-heal enabled (helpers v{HELPERS_VERSION})")
         print(f"[alembic] dropping orphan composite type {schema_name}.{table_name}")
         logger.warning(
             "Dropping orphan composite type %s.%s before creating table",

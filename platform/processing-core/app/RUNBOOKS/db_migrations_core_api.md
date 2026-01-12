@@ -2,6 +2,12 @@
 
 Все команды используют единый DSN из переменной окружения `DATABASE_URL`. В docker-compose для `core-api` он задан как `postgresql+psycopg://neft:neft@postgres:5432/neft` и совпадает с настройками приложения.
 
+Если меняли Alembic-хелперы (например, `app/alembic/helpers.py`), обязательно пересоберите образ без кэша:
+
+```bash
+docker compose build --no-cache core-api
+```
+
 ## Полный сценарий восстановления
 
 1. Предзагрузить базовые образы, чтобы сборка не падала на `load metadata for ...`:

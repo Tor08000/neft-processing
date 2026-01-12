@@ -122,6 +122,7 @@ psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE r record;
 DECLARE rk char;
+DECLARE has_table boolean;
 DECLARE dropped int := 0;
 BEGIN
   FOR r IN (
@@ -136,10 +137,20 @@ BEGIN
     JOIN pg_namespace n2 ON n2.oid=c.relnamespace
     WHERE n2.nspname=r.schema_name
       AND c.relname=r.type_name
+    ORDER BY c.relkind
     LIMIT 1;
 
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_class c
+      JOIN pg_namespace n2 ON n2.oid=c.relnamespace
+      WHERE n2.nspname=r.schema_name
+        AND c.relname=r.type_name
+        AND c.relkind IN ('r','p')
+    ) INTO has_table;
+
     RAISE NOTICE 'composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
-    IF rk IS NULL OR rk NOT IN ('r','p') THEN
+    IF NOT has_table THEN
       RAISE NOTICE 'dropping orphan composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
       EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
       dropped := dropped + 1;

@@ -48,6 +48,7 @@ def test_create_table_if_not_exists_drops_orphan_composite_type(capsys: pytest.C
         assert helpers.table_exists(conn, table_name, schema=schema)
 
     output = capsys.readouterr().out
+    assert f"[alembic] orphan-type self-heal enabled (helpers v{helpers.HELPERS_VERSION})" in output
     assert f"[alembic] dropping orphan composite type {schema}.{table_name}" in output
 
 
