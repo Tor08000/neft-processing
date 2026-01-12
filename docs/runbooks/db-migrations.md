@@ -16,8 +16,9 @@ cd platform/processing-core
 PYTHONPATH=$(pwd) alembic -c app/alembic.ini upgrade head
 ```
 
-If you change Alembic helper logic (for example, `app/alembic/helpers.py`), rebuild the
-container without cache before running migrations:
+If you change Alembic helper logic (for example, `app/alembic/helpers.py`), you must
+rebuild the container without cache before running migrations (mandatory to avoid stale
+helper code in the image):
 
 ```bash
 docker compose build --no-cache core-api
