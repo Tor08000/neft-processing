@@ -154,8 +154,8 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<SQL
-DO $$
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<EOF
+DO \$\$
 DECLARE r record;
 DECLARE has_table boolean;
 DECLARE total int := 0;
@@ -191,9 +191,10 @@ BEGIN
   END LOOP;
 
   RAISE NOTICE 'pre-migration cleanup: orphan types/domains found %, dropped %', total, dropped;
-END $$;
-SQL
-echo "[entrypoint] pre-migration cleanup completed"
+END
+\$\$;
+EOF
+echo "[entrypoint] cleanup completed"
 
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then

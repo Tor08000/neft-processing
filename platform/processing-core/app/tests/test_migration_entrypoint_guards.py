@@ -1,5 +1,6 @@
 import os
 import subprocess
+import uuid
 from pathlib import Path
 
 import pytest
@@ -125,3 +126,41 @@ def test_entrypoint_rejects_missing_version_table(tmp_path):
     assert "required tables missing after migrations" in result.stderr
 
     connectable.dispose()
+
+
+@pytest.mark.skipif(
+    get_database_url().startswith("sqlite"), reason="Smoke test requires Postgres"
+)
+@pytest.mark.integration
+def test_entrypoint_smoke_empty_schema(tmp_path):
+    db_url = get_database_url()
+    connectable = ensure_connectable(db_url)
+    schema = f"entrypoint_smoke_{uuid.uuid4().hex[:8]}"
+
+    with connectable.begin() as connection:
+        connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": db_url,
+            "NEFT_DB_SCHEMA": schema,
+            "ALEMBIC_CONFIG": "app/alembic.ini",
+            "ENTRYPOINT_SKIP_APP": "1",
+        }
+    )
+
+    try:
+        result = subprocess.run(
+            ["sh", str(Path(__file__).parents[2] / "entrypoint.sh")],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    finally:
+        with connectable.begin() as connection:
+            connection.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        connectable.dispose()
+
+    assert result.returncode == 0, result.stdout + result.stderr
