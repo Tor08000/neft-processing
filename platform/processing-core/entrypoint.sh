@@ -128,17 +128,16 @@ BEGIN
     SELECT n.nspname AS schema_name, t.typname AS type_name
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname = 'processing_core'
-      AND t.typtype = 'c'
+    WHERE n.nspname='processing_core'
+      AND t.typtype='c'
   ) LOOP
     SELECT c.relkind INTO rk
     FROM pg_class c
-    JOIN pg_namespace n2 ON n2.oid = c.relnamespace
-    WHERE n2.nspname = r.schema_name
-      AND c.relname = r.type_name
+    JOIN pg_namespace n2 ON n2.oid=c.relnamespace
+    WHERE n2.nspname=r.schema_name
+      AND c.relname=r.type_name
     LIMIT 1;
 
-    -- orphan if there is no table/partitioned-table relation
     IF rk IS NULL OR rk NOT IN ('r','p') THEN
       RAISE NOTICE 'dropping orphan composite type %.% (relkind=%)', r.schema_name, r.type_name, rk;
       EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
