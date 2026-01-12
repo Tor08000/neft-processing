@@ -3,17 +3,20 @@
 ================================================================================
 = ОБЩАЯ ИНФОРМАЦИЯ
 ================================================================================
-Текущее время: 2025-12-03T08:33:54.563272
+Версия скрипта: inspect_neft_repo.py v0.3.0
+Текущее время: 2026-01-12T17:37:52.947127
 Корень репозитория: /workspace/neft-processing
-Текущий файл диагностики: /workspace/neft-processing/docs/diag/inspect_neft_repo.py
+Имя папки: neft-processing
 
 Проверка ключевых директорий:
+[OK ] platform/processing-core
+[OK ] platform/auth-host
+[OK ] platform/ai-services/risk-scorer
+[OK ] platform/billing-clearing
+[OK ] frontends/admin-ui
+[OK ] frontends/client-portal
 [OK ] services
-[OK ] services/core-api
-[OK ] services/auth-host
-[OK ] services/admin-web
-[OK ] services/ai-service
-[OK ] services/workers
+[OK ] services/flower
 [OK ] shared/python/neft_shared
 [OK ] db
 [OK ] nginx
@@ -26,27 +29,24 @@
 ================================================================================
 Текущая ветка: work
 Незакоммиченные изменения:
-M CHANGELOG.md
- M README.md
-?? docs/releases/
+M docs/diag/neft_state_2025-12-02.txt
 Последний коммит:
-bd3968c Merge pull request #91 from Tor08000/codex/fix-typescript-interfaces-for-date-filters
+1e5e28d4 Merge pull request #883 from Tor08000/codex/fix-verify_all.cmd-script-sfncbz
 
 ================================================================================
 = .ENV ФАЙЛЫ
 ================================================================================
-[NOK] .env
+[OK ] .env
 [OK ] .env.example
-[WARN] .env отсутствует, переменные проверить невозможно
 
 ================================================================================
 = DOCKER COMPOSE
 ================================================================================
-Файл docker-compose.yml: OK
-[FAIL] docker compose недоступен: EXCEPTION: [Errno 2] No such file or directory: 'docker'
+[SKIP] docker compose недоступен: Docker CLI недоступен или демон не запущен.
+       Проверьте установку Docker Desktop и запустите Docker перед диагностикой.
 
 ================================================================================
-= СЕРВИСЫ (core-api, auth-host, workers, ai-service, admin-web)
+= СЕРВИСЫ (platform и frontends)
 ================================================================================
 
 --- core-api ---
@@ -54,7 +54,7 @@ bd3968c Merge pull request #91 from Tor08000/codex/fix-typescript-interfaces-for
 [OK] pyproject.toml
 [OK] requirements.txt
 [OK] app/
-main.py найден в app/: services/core-api/app/main.py
+main.py найден в app/: platform/processing-core/app/main.py
    [OK] app/api
    [OK] app/schemas
    [OK] app/models
@@ -66,23 +66,11 @@ main.py найден в app/: services/core-api/app/main.py
 [OK] pyproject.toml
 [OK] requirements.txt
 [OK] app/
-main.py найден в app/: services/auth-host/app/main.py
+main.py найден в app/: platform/auth-host/app/main.py
    [OK] app/api
    [OK] app/schemas
    [OK] app/models
    [OK] app/services
-   [OK] app/tests
-
---- workers ---
-[OK] Dockerfile
-[OK] pyproject.toml
-[OK] requirements.txt
-[OK] app/
-main.py найден в app/: services/workers/app/main.py
-   [  ] app/api
-   [  ] app/schemas
-   [  ] app/models
-   [  ] app/services
    [OK] app/tests
 
 --- ai-service ---
@@ -90,67 +78,586 @@ main.py найден в app/: services/workers/app/main.py
 [OK] pyproject.toml
 [OK] requirements.txt
 [OK] app/
-main.py найден в app/: services/ai-service/app/main.py
+main.py найден в app/: platform/ai-services/risk-scorer/app/main.py
    [OK] app/api
    [OK] app/schemas
    [  ] app/models
    [  ] app/services
    [OK] app/tests
 
+--- billing-clearing ---
+[OK] Dockerfile
+[OK] pyproject.toml
+[OK] requirements.txt
+[OK] app/
+main.py найден в app/: platform/billing-clearing/app/main.py
+   [  ] app/api
+   [  ] app/schemas
+   [  ] app/models
+   [  ] app/services
+   [OK] app/tests
+
 --- admin-web ---
 [OK] Dockerfile
-[  ] pyproject.toml
-[  ] requirements.txt
-[!!] app/
+[OK] package.json
+[OK] src/
+[OK] src/main.tsx
+[OK] src/App.tsx
+
+--- client-web ---
+[OK] Dockerfile
+[OK] package.json
+[OK] src/
+[OK] src/main.tsx
+[OK] src/App.tsx
+
+[SKIP] legacy каталоги services/* отсутствуют — пропускаем проверки старой структуры
 
 ================================================================================
 = ALEMBIC-МИГРАЦИИ core-api
 ================================================================================
-Всего миграций: 13
+Всего миграций: 179
+- 0039_billing_finance_idempotency.py
+- 0039_clearing_job_type.py
+- 0040_merge_heads.py
+- 0041_invoice_lifecycle_hardening.py
+- 0042_audit_log.py
+- 0042_invoice_state_machine_v15.py
+- 0043_client_actions_enterprise.py
+- 0044_documents_registry.py
+- 0044_invoice_payments_external_ref.py
+- 0045_invoice_payments_provider.py
+- 0046_invoice_payments_provider_external_ref_unique.py
+- 0046_invoice_refunds.py
+- 0047_merge_heads.py
+- 20250115_0082_decision_memory_v1.py
+- 20250210_0043_billing_invoice_clearing_batch_fields.py
+- 20250220_0103_fuel_fleet_v1.py
+- 20250320_0106_audit_signing_keys_object_lock.py
 - 20251112_0001_core.py
 - 20251118_0002_operations_journal.py
 - 20251120_0003_limits_rules_v2.py
+- 20251121_0003a_extend_alembic_version_len.py
 - 20251124_0003_merchants_terminals_cards.py
 - 20251206_0004_operations_product_fields.py
+- 20251208_0004a_bootstrap_clients_cards_partners.py
 - 20251215_0005_add_created_at_to_cards.py
 - 20251220_0006_auto_fix.py
 - 20251230_0007_add_capture_refund_fields_to_operations.py
 - 2025_11_01_init.py
 - 20260101_0008_billing_summary.py
 - 20260110_0009_billing_summary_extend.py
+- 20260110_0009_create_clearing_table.py
 - 20260110_0010_clearing.py
+- 20260115_0011_operations_indexes.py
+- 20260201_0104_fleet_ingestion_v1.py
+- 20261010_0012_client_ids_uuid.py
+- 20261020_0013_operations_limits_alignment.py
+- 20261020_0013a_operations_limits_alignment_alias.py
+- 20261101_0014_billing_summary_alignment.py
+- 20261120_0015_risk_rules.py
+- 20261125_0016_risk_rule_audit.py
+- 20261201_0017_accounts_and_ledger.py
+- 20261201_0017_unified_rules.py
+- 20261205_0018_contract_limits.py
+- 20270101_0019_external_request_logs.py
+- 20270115_0020_invoices.py
+- 20270201_0020_tariff_prices.py
+- 20270215_0021_merge_heads.py
+- 20270301_0022_extend_alembic_version_len.py
+- 20270520_0023_billing_summary_status_enum_fix.py
+- 20270601_0024_bootstrap_schema.py
+- 20270620_0025_ledger_entries_operation_id_nullable.py
+- 20270625_0026_add_accounts_to_operations.py
+- 20270626_0027_add_posting_result_to_operations.py
+- 20270710_0028_limit_config_scope_enum_fix.py
+- 20270720_0029_cards_created_at.py
+- 20270831_0030_billing_state_machine.py
+- 20270901_0031_partner_settlements.py
+- 20270901_0031_tariff_commission_rules.py
+- 20271015_0032_operational_scenarios_v1.py
+- 20271020_0033_billing_periods.py
+- 20271030_0034_billing_hardening_v11.py
+- 20271101_0035_billing_period_type_adhoc.py
+- 20271120_0036_billing_job_runs_and_invoice_fields.py
+- 20271205_0037_billing_pdf_and_tasks.py
+- 20271220_0038_finance_invoice_extensions.py
+- 20271230_0039_payout_batches.py
+- 20280115_0040_payout_exports.py
+- 20280301_0041_payout_exports_bank_format.py
+- 20280315_0042_client_actions_v1.py
+- 20280401_0043_invoice_settlement_allocations.py
+- 20280415_0044_accounting_export_batches.py
+- 20280420_0045_decision_results.py
+- 20290501_0045_document_status_lifecycle.py
+- 20290510_0046_accounting_export_erp_ack.py
+- 20290520_0046_risk_scores.py
+- 20290601_0046a_documents_bootstrap.py
+- 20290601_0047_document_chain_reconciliation.py
+- 20290615_0048_merge_heads.py
+- 20290620_0049_fix_settlement_period_id_type.py
+- 20290625_0050_fix_invoices_reconciliation_request_id_type.py
+- 20290701_0051_risk_engine_v3.py
+- 20291001_0052_risk_engine_v4.py
+- 20291010_0053_risk_engine_v5.py
+- 20291015_0054_document_type_offer.py
+- 20291101_0055_legal_integrations_v2.py
+- 20291201_0056_internal_ledger_v1.py
+- 20291215_0057_legal_graph_v1.py
+- 20291220_0058_legal_graph_enum_updates.py
+- 20291301_0059_fuel_domain_v1.py
+- 20291320_0060_fuel_domain_v2.py
+- 20291320_0061_fuel_hardening_v2.py
+- 20291325_0062_logistics_core_v1.py
+- 20291330_0063_logistics_core_v2.py
+- 20291335_0064_logistics_fuel_link_unique.py
+- 20291401_0065_crm_core_v1.py
+- 20291405_0066_crm_subscriptions_v1.py
+- 20291410_0067_subscription_billing_job_type.py
+- 20291415_0068_merge_heads_0046_0067.py
+- 20291420_0071_subscriptions_v2_segments_and_rules.py
+- 20291420_0072_money_flow_link_node_types.py
+- 20291430_0073_crm_feature_flag_subscription_meter_fuel.py
+- 20291501_0069_fuel_antifraud_v3.py
+- 20291510_0070_money_flow_v2.py
+- 20291520_0074_logistics_navigator_core.py
+- 20291530_0075_ops_escalations.py
+- 20291540_0076_ops_workflow_v1.py
+- 20291550_0077_ops_workflow_v1_1_crm_contract_version.py
+- 20291560_0078_ops_reason_codes.py
+- 20291570_0079_fleet_intelligence_v1.py
+- 20291580_0080_fleet_intelligence_trends_v2.py
+- 20291590_0081_fleet_control_v3.py
+- 20291600_0082_scheduler_job_runs.py
+- 20291610_0083_document_signature_chain.py
+- 20291620_0084_document_edo_status.py
+- 20291630_0085_erp_accounting_exports.py
+- 20291640_0086_bi_mart_v1.py
+- 20291650_0087_bi_exports_v1_1.py
+- 20291650_0087_bi_pricing_intelligence_v1.py
+- 20291660_0088_support_requests.py
+- 20291720_0089_cases_v1.py
+- 20291730_0090_cases_escalations.py
+- 20291740_0091_subscription_system_v1.py
+- 20291750_0092_gamification_v1.py
+- 20291760_0093_seed_subscription_packages_v1.py
+- 20291770_0094_case_events_hash_chain.py
+- 20291780_0095_audit_retention_worm.py
+- 20291790_0096_case_event_signatures.py
+- 20291800_0095_audit_exports_storage.py
+- 20291810_0097_decision_memory_audit.py
+- 20291820_0098_internal_ledger_extension_cycle1.py
+- 20291910_0099_reconciliation_v1.py
+- 20291920_0100_billing_flows_v1.py
+- 20291930_0101_settlement_v1.py
+- 20291940_0102_marketplace_contracts_v1.py
+- 20291950_0103_fleet_policy_actions_v1.py
+- 20291960_0104_fleet_notifications_v2.py
+- 20291970_0105_fleet_telegram_notifications_v1.py
+- 20291980_0106_fuel_provider_integrations_v1.py
+- 20292000_0107_marketplace_catalog_v1.py
+- 20292010_0108_marketplace_order_sla_v1.py
+- 20292010_0108_marketplace_orders_v1.py
+- 20292020_0109_marketplace_promotions_v1.py
+- 20292020_0109_marketplace_recommendations_v1.py
+- 20293000_0109_marketplace_partner_subscriptions_analytics_v1.py
+- 20293010_0110_marketplace_sponsored_v1.py
+- 20294000_0110_marketplace_promotions_v1.py
+- 20295000_0111_marketplace_gamification_v1.py
+- 20295010_0112_vehicle_profile_v1.py
+- 20295100_0113_vehicle_maintenance_v1.py
+- 20296000_0113_service_bookings_v1.py
+- 20296000_0113_service_completion_proofs_v1.py
+- 20297000_0114_bank_erp_stub_v1.py
+- 20297000_0114_marketplace_moderation_v1.py
+- 20297000_0114_webhook_hmac_sms_voice_stub_v1.py
+- 20297100_0115_merge_heads.py
+- 20297115_0116_create_money_flow_link_type_enum.py
+- 20297120_0117_create_core_base_tables_v1.py
+- 20297125_0118_create_processing_core_enums.py
+- 20297130_0119_fix_invoices_reconciliation_request_id_uuid.py
+- 20297135_0120_fix_reconciliation_requests_id_uuid.py
+- 20297140_0121_fix_fk_type_mismatches_v1.py
+- 20297140_0121_fix_vehicle_recommendations_partner_id_type.py
+- 20297150_0122_marketplace_order_event_type_enum_update.py
+- 20297155_0123_ensure_core_operations_table.py
+- 20297160_0124_fix_operations_client_id_type.py
+- 20297170_0125_crm_onboarding_v1.py
+- 20297170_0125_legal_docs_registry.py
+- 20297200_0125_add_legal_gate_tables.py
+- 20297200_0126_notifications_v1.py
+- 20297210_0126_pricing_versions_v1.py
+- 20297220_0127_subscription_event_price_version_capture.py
+- 20297230_0128_edo_v2.py
+- 20297230_0128_integrations_hub_v1.py
+- 20297240_0129_bi_runtime_marts_v1.py
+- 20298010_0129_security_service_identities_abac.py
+- 20299000_0130_merge_heads_processing_core.py
+- 76e4bcb5869e_merge_heads_decision_memory_crm_flags_.py
 - __init__.py
-[FAIL] Не удалось выполнить 'alembic heads': без подробностей
+- b1f4572ed8d3_merge_heads_baseline.py
+[FAIL] Не удалось выполнить 'alembic heads': Traceback (most recent call last):
+  File "/root/.pyenv/versions/3.11.12/bin/alembic", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 636, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 626, in main
+    self.run_cmd(cfg, options)
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 603, in run_cmd
+    fn(
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/command.py", line 568, in heads
+    heads = script.get_revisions(script.get_heads())
+                                 ^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 410, in get_heads
+    return list(self.revision_map.heads)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 1141, in __get__
+    obj.__dict__[self.__name__] = result = self.fget(obj)
+                                           ^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/revision.py", line 155, in heads
+    self._revision_map
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 1141, in __get__
+    obj.__dict__[self.__name__] = result = self.fget(obj)
+                                           ^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/revision.py", line 209, in _revision_map
+    for revision in self._generator():
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 154, in _load_revisions
+    script = Script._from_filename(self, dir_name, filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 1044, in _from_filename
+    module = util.load_python_file(dir_, filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 95, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 113, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/workspace/neft-processing/platform/processing-core/app/alembic/versions/0039_billing_finance_idempotency.py", line 12, in <module>
+    from app.alembic.utils import (
+ModuleNotFoundError: No module named 'app'
 
 ================================================================================
 = ТЕСТЫ
 ================================================================================
 
 --- core-api tests ---
-Количество файлов тестов: 11
+Количество файлов тестов: 287
+- test_abac_explain.py
+- test_abac_policies.py
+- test_accounting_export_mappers.py
+- test_accounting_export_serializer.py
+- test_accounting_export_sla.py
+- test_accounting_exports.py
+- test_accounts_and_ledger.py
+- test_achievements_summary_endpoint.py
+- test_admin_accounts_api.py
 - test_admin_auth.py
+- test_admin_billing_api_tariffs_invoices.py
+- test_admin_billing_summary_api.py
+- test_admin_clearing_api.py
+- test_admin_clearing_run.py
 - test_admin_dashboard_api.py
+- test_admin_invoice_status_transitions.py
 - test_admin_limits.py
 - test_admin_limits_api.py
 - test_admin_merchants_api.py
 - test_admin_operations_api.py
+- test_admin_policies_api.py
+- test_admin_risk_rules_api.py
+- test_ai_risk_endpoint.py
+- test_alembic_config_percent_escape.py
+- test_alembic_config_settings.py
+- test_alembic_enums_idempotent.py
+- test_alembic_env_configuration.py
+- test_alembic_helper_create_table_if_not_exists.py
+- test_alembic_helper_create_table_if_not_exists_postgres.py
+- test_alembic_index_exists_helpers.py
+- test_alembic_migration_contracts.py
+- test_alembic_models_import.py
+- test_alembic_single_head_local.py
+- test_alembic_upgrade_docker.py
+- test_alembic_version_table.py
+- test_app_smoke.py
+- test_audit_log.py
+- test_audit_retention.py
+- test_audit_signing_health.py
+- test_audit_signing_kms.py
+- test_audit_signing_vault.py
+- test_bank_statement_reconciliation_e2e.py
+- test_bi_exports_v1_1.py
 - test_billing_clearing_e2e.py
+- test_billing_engine.py
+- test_billing_flows_v1.py
+- test_billing_hardening_invariants.py
+- test_billing_idempotency.py
+- test_billing_idempotency_v141.py
+- test_billing_invoice_pdf_e2e.py
+- test_billing_invoices.py
+- test_billing_jobs.py
+- test_billing_metrics.py
+- test_billing_payments_e2e.py
+- test_billing_pdf_task.py
+- test_billing_periods.py
+- test_billing_pipeline_smoke.py
+- test_billing_refunds_e2e.py
+- test_billing_run_smoke.py
+- test_billing_service.py
+- test_billing_task_links.py
+- test_bootstrap_schema_migration.py
+- test_case_escalation_classification.py
+- test_case_escalation_evaluate.py
+- test_case_events_hash_chain.py
+- test_case_events_signatures.py
+- test_case_exports_storage.py
+- test_cases_create.py
+- test_cases_create_applies_queue_and_sla.py
+- test_cases_list.py
+- test_cases_list_filters_queue_sla_escalation.py
+- test_cases_permissions.py
+- test_cases_update.py
+- test_celery_import_app.py
+- test_clearing_service.py
+- test_client_portal_api.py
+- test_closing_documents_e2e.py
+- test_commission_split.py
+- test_conftest_import_clean.py
+- test_contractual_limits.py
+- test_crm_clients.py
+- test_crm_contract_version.py
+- test_crm_contracts.py
+- test_crm_decision_context.py
+- test_crm_integration_flags.py
+- test_crm_onboarding.py
+- test_crm_subscriptions.py
+- test_crm_tariffs.py
+- test_database_url_validation.py
+- test_decision_choice_benchmark.py
+- test_decision_choice_explain.py
+- test_decision_choice_ranking.py
+- test_decision_engine.py
+- test_decision_engine_integration.py
+- test_decision_engine_scoring.py
+- test_decision_memory_audit.py
+- test_decision_memory_cooldown.py
+- test_decision_memory_decay.py
+- test_decision_memory_integration_choice.py
+- test_decision_memory_store.py
+- test_disputes.py
+- test_document_service_integration.py
+- test_document_signing.py
+- test_documents_lifecycle.py
+- test_edo_events.py
+- test_edo_state_machine.py
+- test_entitlements_pricing_versions.py
+- test_erp_mapping_service.py
+- test_erp_reconciliation_service.py
+- test_exec_driver_sql_guard.py
+- test_explain_accountant_view.py
+- test_explain_actions_endpoint.py
+- test_explain_crm_section.py
+- test_explain_diff_endpoint.py
+- test_explain_fleet_view.py
+- test_explain_money_summary.py
+- test_explain_primary_reason_consistency.py
+- test_explain_v2_endpoint.py
+- test_financial_invariants.py
+- test_fleet_advanced_analytics_v1.py
+- test_fleet_assistant_benchmarks_v1_2.py
+- test_fleet_assistant_projections_v1_1.py
+- test_fleet_control_actions_v3.py
+- test_fleet_control_confidence_decay_v3_2.py
+- test_fleet_control_effects_v3.py
+- test_fleet_control_insights_v3.py
+- test_fleet_control_unified_explain_v3.py
+- test_fleet_ingestion_v1.py
+- test_fleet_intelligence_actionable.py
+- test_fleet_intelligence_driver_score.py
+- test_fleet_intelligence_risk_enrich.py
+- test_fleet_intelligence_station_trust.py
+- test_fleet_intelligence_trends_risk_enrich.py
+- test_fleet_intelligence_trends_unified_explain.py
+- test_fleet_intelligence_trends_v2.py
+- test_fleet_intelligence_vehicle_efficiency.py
+- test_fleet_notifications_telegram_v1.py
+- test_fleet_notifications_v2.py
+- test_fleet_policy_actions_v1.py
+- test_fleet_policy_bundles_v4_1.py
+- test_fleet_v1.py
+- test_fuel_authorize_flow.py
+- test_fuel_billing_feed.py
+- test_fuel_fraud_signals.py
+- test_fuel_intelligence_trend_overlay_v1_1.py
+- test_fuel_legal_graph.py
+- test_fuel_limits_engine.py
+- test_fuel_provider_framework_v1.py
+- test_fuel_risk_integration.py
+- test_fuel_settle_ledger.py
 - test_health.py
+- test_immutability_enforcement.py
+- test_import_stability.py
+- test_integration_intake.py
+- test_integration_monitoring_backend.py
+- test_internal_ledger.py
+- test_invoice_pdf_service.py
+- test_invoice_state_machine.py
+- test_kpi_summary_endpoint.py
+- test_ledger_posting_engine.py
+- test_legal_gate.py
+- test_legal_graph.py
+- test_legal_integrations.py
 - test_limits_v2.py
+- test_logistics_admin_health_v2.py
+- test_logistics_deviation_v2.py
+- test_logistics_eta.py
+- test_logistics_eta_accuracy_v2.py
+- test_logistics_fuel_linker_v2.py
+- test_logistics_navigator_core.py
+- test_logistics_orders.py
+- test_logistics_risk_signals_v2.py
+- test_logistics_routes.py
+- test_logistics_service_integration.py
+- test_logistics_tracking.py
+- test_marketplace_catalog_v1.py
+- test_marketplace_commissions_v1.py
+- test_marketplace_contracts_v1.py
+- test_marketplace_orders_v1.py
+- test_marketplace_pricing_v1.py
+- test_marketplace_recommendations_v1.py
+- test_marketplace_sla_billing_consequence.py
+- test_marketplace_sla_billing_v1.py
+- test_metadata_smoke.py
+- test_metrics_endpoint.py
+- test_migration_accounts_and_ledger_enum_idempotent.py
+- test_migration_billing_job_runs_invoice_fields.py
+- test_migration_billing_period_type_enum.py
+- test_migration_billing_summary_alignment_index_signature.py
+- test_migration_billing_summary_enum.py
+- test_migration_billing_summary_product_type_enum_created.py
+- test_migration_clearing_idempotent.py
+- test_migration_client_ids_uuid_safe.py
+- test_migration_entrypoint_guards.py
+- test_migration_fuel_schema.py
+- test_migration_inventory.py
+- test_migration_invoice_finance_extensions.py
+- test_migration_invoices_idempotent.py
+- test_migration_limit_config_scope_enum.py
+- test_migration_operations_limits_alignment_alias.py
+- test_migration_operations_limits_alignment_idempotent.py
+- test_migration_operations_operation_type_enum_cast.py
+- test_migration_operations_required_columns.py
+- test_migration_operations_status_enum_cast.py
+- test_migration_operations_status_index_predicate_immutable.py
+- test_migration_probe.py
+- test_migration_revision_graph.py
+- test_migration_risk_rule_audit_enum_idempotent.py
+- test_migration_smoke_bootstrap_schema.py
+- test_money_flow_engine.py
+- test_money_flow_graph_v3.py
+- test_money_flow_negative_scenarios_v3.py
+- test_money_flow_replay_fuel.py
+- test_money_flow_replay_v3.py
+- test_money_flow_snapshots_v3.py
+- test_notification_stub_providers.py
+- test_notifications_invoice_email.py
+- test_notifications_webhook.py
+- test_onec_export.py
+- test_openapi_unique_operation_ids.py
+- test_operations_model_alignment.py
+- test_ops_escalations.py
+- test_ops_sla_report.py
+- test_ops_workflow_reason_required.py
+- test_ops_workflow_snapshot_immutability.py
+- test_ops_workflow_transitions.py
+- test_ownership_checks.py
+- test_payout_exports_e2e.py
+- test_payout_exports_xlsx_e2e.py
+- test_payouts_e2e.py
+- test_policy_engine.py
+- test_portal_api.py
+- test_postgres_schema_bootstrap.py
+- test_posting_engine.py
+- test_pricing_service.py
+- test_primary_reason_consistency.py
+- test_primary_reason_resolution.py
+- test_rbac_permissions.py
+- test_rbac_portals.py
+- test_reconciliation_v1.py
+- test_redaction_regression.py
+- test_refunds.py
 - test_reports_billing.py
+- test_reversals.py
+- test_risk_adapter.py
+- test_risk_blocking.py
+- test_risk_engine_v3.py
+- test_risk_engine_v4.py
+- test_risk_explainability.py
+- test_risk_rules_repository.py
+- test_risk_v5_regression.py
+- test_risk_v5_shadow.py
+- test_rules_sandbox.py
+- test_schema_operations_columns.py
+- test_schema_resolution.py
+- test_schema_smoke.py
+- test_schema_smoke_required_tables.py
+- test_service_tokens.py
+- test_settlement_allocations.py
+- test_settlement_v1.py
+- test_settlements.py
+- test_stub_providers_e2e.py
+- test_subscription_invoice_idempotency_v2.py
+- test_subscription_midcycle_change_v2.py
+- test_subscription_proration_v2.py
+- test_subscription_tariff_rules_v2.py
+- test_support_requests.py
+- test_tariff_resolver.py
+- test_telegram_bind_flow.py
+- test_telegram_sender.py
+- test_transactions_api_new.py
+- test_transactions_authorization_mapping.py
+- test_transactions_pipeline.py
+- test_transactions_postgres_integration.py
 - test_transactions_service.py
+- test_trust_gates.py
+- test_unified_explain_fuel.py
+- test_unified_explain_logistics.py
+- test_unified_explain_money.py
+- test_unified_explain_snapshot.py
+- test_unified_rules_regression.py
+- test_unified_rules_windows_property.py
+- test_virtual_fuel_network_provider.py
+- test_webhook_outbound.py
+- test_webhook_signature_v1.py
+- test_what_if_simulator_determinism_v1.py
+- test_what_if_simulator_v1.py
 
 --- auth-host tests ---
-Количество файлов тестов: 4
+Количество файлов тестов: 10
 - test_auth.py
+- test_auth_integration.py
 - test_auth_me.py
+- test_bootstrap.py
+- test_bootstrap_unit.py
+- test_health.py
 - test_keys.py
+- test_metrics.py
+- test_migrations_smoke.py
 - test_processing.py
 
 --- ai-service tests ---
-Количество файлов тестов: 2
+Количество файлов тестов: 3
 - test_health.py
+- test_risk_score_v2.py
 - test_score.py
+
+--- billing-clearing tests ---
+Количество файлов тестов: 3
+- test_beat_schedule.py
+- test_job_evidence_integration.py
+- test_tasks_smoke.py
 
 --- workers tasks ---
 Файлы задач Celery (5):
@@ -163,16 +670,7 @@ main.py найден в app/: services/ai-service/app/main.py
 ================================================================================
 = HEALTH-CHECK СЕРВИСОВ
 ================================================================================
-
---- auth ---
-[FAIL] URLError: [Errno 111] Connection refused
-
---- core ---
-[FAIL] URLError: [Errno 111] Connection refused
-
---- admin ---
-[FAIL] URLError: [Errno 111] Connection refused
-[FAIL] Проблемы с сервисами: auth, core, admin
+[SKIP] health-checks: HTTP-проверки пропущены, т.к. Docker недоступен или стек не запущен.
 
 ================================================================================
 = ЗАПУСК ТЕСТОВ
@@ -180,17 +678,21 @@ main.py найден в app/: services/ai-service/app/main.py
 Флаг --run-tests не передан, пропускаем запуск pytest
 
 ================================================================================
-= ENDPOINTS core-api (api/v1/endpoints)
+= ENDPOINTS core-api (app/api/routes)
 ================================================================================
-- FILE admin_billing.py
-- FILE admin_clearing.py
-- FILE admin_dashboard.py
-- FILE admin_limits.py
-- FILE admin_merchants.py
-- FILE admin_operations.py
-- FILE operations_read.py
-- FILE reports_billing.py
+- FILE __init__.py
+- FILE auth.py
+- FILE cards.py
+- FILE clients.py
+- FILE health.py
+- FILE internal_ledger.py
+- FILE limits.py
+- FILE merchants.py
+- FILE prices.py
+- FILE rules.py
+- FILE terminals.py
 - FILE transactions.py
+- FILE transactions_log.py
 
 ================================================================================
 = DB INIT СКРИПТЫ (db/init)
@@ -202,11 +704,54 @@ main.py найден в app/: services/ai-service/app/main.py
 ================================================================================
 = ИТОГОВЫЙ ОТЧЁТ
 ================================================================================
-[FAIL] docker compose
-[FAIL] alembic heads
-[FAIL] health-checks
-[SKIP] pytest
+[OK] .env
+[SKIP] docker compose: Docker CLI недоступен или демон не запущен
+[FAIL] alembic heads: Traceback (most recent call last):
+  File "/root/.pyenv/versions/3.11.12/bin/alembic", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 636, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 626, in main
+    self.run_cmd(cfg, options)
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/config.py", line 603, in run_cmd
+    fn(
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/command.py", line 568, in heads
+    heads = script.get_revisions(script.get_heads())
+                                 ^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 410, in get_heads
+    return list(self.revision_map.heads)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 1141, in __get__
+    obj.__dict__[self.__name__] = result = self.fget(obj)
+                                           ^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/revision.py", line 155, in heads
+    self._revision_map
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 1141, in __get__
+    obj.__dict__[self.__name__] = result = self.fget(obj)
+                                           ^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/revision.py", line 209, in _revision_map
+    for revision in self._generator():
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 154, in _load_revisions
+    script = Script._from_filename(self, dir_name, filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/script/base.py", line 1044, in _from_filename
+    module = util.load_python_file(dir_, filename)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 95, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.pyenv/versions/3.11.12/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 113, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/workspace/neft-processing/platform/processing-core/app/alembic/versions/0039_billing_finance_idempotency.py", line 12, in <module>
+    from app.alembic.utils import (
+ModuleNotFoundError: No module named 'app'
+[SKIP] health-checks: Docker недоступен или стек не запущен
+[SKIP] pytest: pytest пропущен по флагу
 
-[ИТОГ] Есть проблемы в проверках
+[ИТОГ] Есть проблемы в репозитории — требуется исправление конфигурации или кода
 
 [СОХРАНЕНО] Отчёт будет записан в docs/diag/neft_state_2025-12-03.txt
