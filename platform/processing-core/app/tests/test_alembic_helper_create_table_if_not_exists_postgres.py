@@ -31,7 +31,7 @@ def test_create_table_if_not_exists_drops_orphan_composite_type():
         conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{schema}"."{table_name}" CASCADE')
         conn.exec_driver_sql(f'CREATE TYPE "{schema}"."{table_name}" AS (id integer)')
         assert not helpers.table_exists(conn, table_name, schema=schema)
-        assert helpers.composite_type_exists(conn, table_name, schema=schema)
+        assert helpers.composite_type_exists(conn, schema, table_name)
 
         helpers.create_table_if_not_exists(
             conn,
