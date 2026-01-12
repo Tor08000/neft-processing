@@ -113,50 +113,22 @@ if [ "$heads_count" -ne 1 ]; then
 fi
 
 echo "[entrypoint] dropping orphan composite types (pre-migration cleanup)"
-python - <<'PY'
-import os
-import sys
-
-import psycopg
-from sqlalchemy.engine import make_url
-
-db_url = os.getenv("DATABASE_URL")
-schema = os.getenv("NEFT_DB_SCHEMA", "processing_core").strip() or "processing_core"
-
-if not db_url:
-    print("[entrypoint] DATABASE_URL is not set for orphan cleanup", file=sys.stderr, flush=True)
-    sys.exit(1)
-
-url = make_url(db_url)
-if url.drivername.endswith("+psycopg"):
-    url = url.set(drivername="postgresql")
-dsn = url.render_as_string(hide_password=False)
-
-schema_sql = schema.replace("'", "''")
-count_sql = f"""
-SELECT COUNT(*)
-FROM pg_type t
-JOIN pg_namespace n ON n.oid = t.typnamespace
-WHERE n.nspname = '{schema_sql}'
-  AND t.typtype = 'c'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM pg_class c
-    JOIN pg_namespace n2 ON n2.oid = c.relnamespace
-    WHERE n2.nspname = n.nspname
-      AND c.relname = t.typname
-      AND c.relkind = 'r'
-  );
-"""
-cleanup_sql = f"""
+if [ -z "$DATABASE_URL" ]; then
+    echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
+    exit 1
+fi
+PSQL_URL=${DATABASE_URL}
+PSQL_URL=${PSQL_URL/+psycopg/}
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE r record;
+DECLARE dropped int := 0;
 BEGIN
   FOR r IN (
     SELECT n.nspname AS schema_name, t.typname AS type_name
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname = '{schema_sql}'
+    WHERE n.nspname = 'processing_core'
       AND t.typtype='c'
       AND NOT EXISTS (
         SELECT 1
@@ -164,22 +136,15 @@ BEGIN
         JOIN pg_namespace n2 ON n2.oid=c.relnamespace
         WHERE n2.nspname=n.nspname
           AND c.relname=t.typname
-          AND c.relkind='r'
+          AND c.relkind IN ('r','p')
       )
   ) LOOP
     EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', r.schema_name, r.type_name);
+    dropped := dropped + 1;
   END LOOP;
+  RAISE NOTICE 'dropped % orphan composite types', dropped;
 END $$;
-"""
-
-with psycopg.connect(dsn, prepare_threshold=0) as conn:
-    conn.autocommit = True
-    with conn.cursor() as cur:
-        cur.execute(count_sql)
-        drop_count = cur.fetchone()[0]
-        cur.execute(cleanup_sql)
-        print(f"[entrypoint] dropped {drop_count} orphan composite types in schema {schema}", flush=True)
-PY
+SQL
 
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then
