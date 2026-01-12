@@ -1,0 +1,180 @@
+/* NEFT Design Tokens v1.0 */
+/* Usage: import this once in app root (index.css / globals.css) */
+
+:root {
+  /* Typography */
+  --neft-font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Radii */
+  --neft-radius-sm: 10px;
+  --neft-radius-md: 12px;
+
+  /* Spacing */
+  --neft-space-1: 4px;
+  --neft-space-2: 8px;
+  --neft-space-3: 12px;
+  --neft-space-4: 16px;
+  --neft-space-6: 24px;
+
+  /* Surfaces (LIGHT defaults) */
+  --neft-bg: #F3F6F9;
+  --neft-surface: #FFFFFF;
+  --neft-card: #FFFFFF;
+  --neft-border: #D7DEE6;
+
+  /* Text (LIGHT) */
+  --neft-text: #0B1F2A;
+  --neft-text-secondary: #334155;
+  --neft-text-muted: #64748B;
+
+  /* Brand + States */
+  --neft-primary: #15A1C7;
+  --neft-info: #3B82F6;
+  --neft-success: #0EE8A8;
+  --neft-warning: #FFB020;
+  --neft-error: #E5484D;
+
+  /* Focus */
+  --neft-focus: rgba(21, 161, 199, 0.35);
+
+  /* Shadows (LIGHT) */
+  --neft-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --neft-shadow-2: 0 8px 24px rgba(15, 23, 42, 0.10);
+
+  /* Table */
+  --neft-table-hover: rgba(21, 161, 199, 0.08);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  /* Surfaces */
+  --neft-bg: #0B1F2A;         /* Core Dark */
+  --neft-surface: #111827;    /* Surface */
+  --neft-card: #1F2937;       /* Card */
+  --neft-border: #2C3E50;     /* Border */
+
+  /* Text */
+  --neft-text: #E5E7EB;
+  --neft-text-secondary: #9CA3AF;
+  --neft-text-muted: #6B7280;
+
+  /* Focus */
+  --neft-focus: rgba(21, 161, 199, 0.35);
+
+  /* Shadows (DARK) */
+  --neft-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --neft-shadow-2: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  /* Table */
+  --neft-table-hover: rgba(21, 161, 199, 0.12);
+}
+
+/* Base application styling helpers (optional) */
+.neft-app {
+  font-family: var(--neft-font-sans);
+  background: var(--neft-bg);
+  color: var(--neft-text);
+}
+
+.neft-card {
+  background: var(--neft-card);
+  border: 1px solid var(--neft-border);
+  border-radius: var(--neft-radius-md);
+  box-shadow: var(--neft-shadow-1);
+}
+
+.neft-divider {
+  border-top: 1px solid var(--neft-border);
+}
+
+/* Buttons */
+.neft-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform .06s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+
+.neft-btn:active { transform: translateY(1px); }
+
+.neft-btn-primary {
+  background: var(--neft-primary);
+  color: #0B1F2A;
+}
+
+.neft-btn-outline {
+  background: transparent;
+  border-color: var(--neft-border);
+  color: var(--neft-text);
+}
+
+.neft-btn-outline:hover {
+  border-color: var(--neft-primary);
+}
+
+/* Inputs */
+.neft-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface);
+  color: var(--neft-text);
+  padding: 10px 12px;
+  outline: none;
+}
+
+.neft-input:focus {
+  box-shadow: 0 0 0 4px var(--neft-focus);
+  border-color: var(--neft-primary);
+}
+
+/* Table */
+.neft-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: var(--neft-radius-md);
+  border: 1px solid var(--neft-border);
+}
+
+.neft-table th, .neft-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--neft-border);
+  font-size: 13.5px;
+}
+
+.neft-table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--neft-text-secondary);
+  background: rgba(255,255,255,0.02);
+}
+
+.neft-table tr:hover td {
+  background: var(--neft-table-hover);
+}
+
+/* Chips */
+.neft-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--neft-border);
+}
+
+.neft-chip-ok { background: rgba(14, 232, 168, 0.14); color: var(--neft-text); border-color: rgba(14, 232, 168, 0.35); }
+.neft-chip-info { background: rgba(59, 130, 246, 0.14); color: var(--neft-text); border-color: rgba(59, 130, 246, 0.35); }
+.neft-chip-warn { background: rgba(255, 176, 32, 0.14); color: var(--neft-text); border-color: rgba(255, 176, 32, 0.35); }
+.neft-chip-err { background: rgba(229, 72, 77, 0.14); color: var(--neft-text); border-color: rgba(229, 72, 77, 0.35); }
+.neft-chip-muted { background: rgba(156, 163, 175, 0.10); color: var(--neft-text-secondary); }

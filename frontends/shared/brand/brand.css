@@ -1,4 +1,4 @@
-@import "../../../brand/v1/neft/colors/tokens.css";
+@import "./v1/neft/colors/tokens.css";
 
 :root {
   --neft-header-height: 64px;
