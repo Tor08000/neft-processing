@@ -16,7 +16,8 @@ if not db_url:
     raise SystemExit("[entrypoint] DATABASE_URL is not set")
 PY
 )
-echo "[entrypoint] schema_resolved=${DB_SCHEMA}"
+schema_resolved=$DB_SCHEMA
+echo "[entrypoint] schema_resolved=${schema_resolved}"
 
 python - <<'PY'
 import os
@@ -146,16 +147,18 @@ if [ "$heads_count" -ne 1 ]; then
     exit 1
 fi
 
+echo "[entrypoint] pre-migration cleanup: schema_resolved=${schema_resolved} search_path=${schema_resolved},public"
 echo "[entrypoint] dropping orphan types/domains (pre-migration cleanup)"
 if [ -z "$DATABASE_URL" ]; then
     echo "[entrypoint] DATABASE_URL is not set for orphan cleanup" >&2
     exit 1
 fi
 PSQL_URL=$(printf '%s' "$DATABASE_URL" | sed 's/+psycopg//')
-psql "$PSQL_URL" -v ON_ERROR_STOP=1 -v schema="$DB_SCHEMA" <<'SQL'
+psql "$PSQL_URL" -v ON_ERROR_STOP=1 <<SQL
 DO $$
 DECLARE r record;
 DECLARE has_table boolean;
+DECLARE total int := 0;
 DECLARE dropped int := 0;
 BEGIN
   FOR r IN (
@@ -164,9 +167,10 @@ BEGIN
            t.typtype AS type_kind
     FROM pg_type t
     JOIN pg_namespace n ON n.oid=t.typnamespace
-    WHERE n.nspname = :'schema'
+    WHERE n.nspname = '${schema_resolved}'
       AND t.typname NOT LIKE '\_%'
   ) LOOP
+    total := total + 1;
     SELECT EXISTS (
       SELECT 1
       FROM pg_class c
@@ -186,9 +190,10 @@ BEGIN
     END IF;
   END LOOP;
 
-  RAISE NOTICE 'dropped % orphan types/domains', dropped;
+  RAISE NOTICE 'pre-migration cleanup: orphan types/domains found %, dropped %', total, dropped;
 END $$;
 SQL
+echo "[entrypoint] pre-migration cleanup completed"
 
 echo "[entrypoint] applying migrations via alembic ($ALEMBIC_CONFIG)"
 if ! alembic -c "$ALEMBIC_CONFIG" upgrade head >"$MIGRATION_LOG" 2>&1; then
