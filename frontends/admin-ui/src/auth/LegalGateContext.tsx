@@ -17,6 +17,11 @@ interface LegalRequiredItem {
   accepted_at: string | null;
 }
 
+type LegalRequiredResponse = {
+  required: LegalRequiredItem[];
+  is_blocked: boolean;
+};
+
 interface LegalGateContextValue {
   required: LegalRequiredItem[];
   isBlocked: boolean;
@@ -45,8 +50,8 @@ export const LegalGateProvider: React.FC<React.PropsWithChildren> = ({ children 
       }
       setIsLoading(true);
       try {
-        const data = await fetchLegalRequired(accessToken);
-        setRequired((data.required as LegalRequiredItem[]) ?? []);
+        const data = (await fetchLegalRequired(accessToken)) as LegalRequiredResponse;
+        setRequired(data.required ?? []);
         setIsBlocked(Boolean(data.is_blocked));
         setLastFetched(now);
       } finally {
@@ -61,8 +66,8 @@ export const LegalGateProvider: React.FC<React.PropsWithChildren> = ({ children 
       if (!accessToken) return;
       setIsLoading(true);
       try {
-        const data = await acceptLegalDocument(accessToken, { code, version, locale });
-        setRequired((data.required as LegalRequiredItem[]) ?? []);
+        const data = (await acceptLegalDocument(accessToken, { code, version, locale })) as LegalRequiredResponse;
+        setRequired(data.required ?? []);
         setIsBlocked(Boolean(data.is_blocked));
         setLastFetched(Date.now());
       } finally {
