@@ -6,7 +6,7 @@ set "CORE_ADMIN=%BASE_URL%/api/core/api/v1/admin"
 set "CORE_BI=%BASE_URL%/api/core/bi"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin123"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
 if "%CLIENT_ID%"=="" set "CLIENT_ID=client-1"
 
 echo [1/4] Fetch admin token...

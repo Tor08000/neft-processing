@@ -110,7 +110,7 @@ class Settings(SharedSettings):
     )
     bootstrap_admin_password: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "change-me", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
         fallback_keys=("AUTH_ADMIN_PASSWORD",),
     )
     bootstrap_admin_full_name: str = _env_or_default(
@@ -121,7 +121,7 @@ class Settings(SharedSettings):
     bootstrap_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
             "NEFT_BOOTSTRAP_ADMIN_ROLES",
-            _roles_env("NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)),
+            _roles_env("NEFT_DEMO_ADMIN_ROLES", ["ADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)),
             fallback_keys=("AUTH_ADMIN_ROLES",),
         )
     )
@@ -193,7 +193,7 @@ class Settings(SharedSettings):
     )
     bootstrap_admin_password: str = _env_or_default(
         "AUTH_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("AUTH_ADMIN_PASSWORD", "admin123"),
+        _env_or_default("AUTH_ADMIN_PASSWORD", "change-me"),
         fallback_keys=("ADMIN_PASSWORD",),
     )
     bootstrap_admin_full_name: str = _env_or_default(
@@ -204,7 +204,7 @@ class Settings(SharedSettings):
     bootstrap_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
             "AUTH_BOOTSTRAP_ADMIN_ROLES",
-            ["ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"],
+            ["ADMIN"],
             fallback_keys=("AUTH_ADMIN_ROLES", "ADMIN_ROLES"),
         )
     )

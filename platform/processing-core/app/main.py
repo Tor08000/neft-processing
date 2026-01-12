@@ -902,6 +902,14 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     return "\n".join(lines) + "\n"
 
 
+core_prefixed_router.add_api_route(
+    "/metrics",
+    metrics,
+    response_class=PlainTextResponse,
+    methods=["GET"],
+)
+
+
 @app.get("/metric", response_class=PlainTextResponse, include_in_schema=False)
 def metric_alias() -> str:  # pragma: no cover - compatibility alias
     """Backward-compatible alias for the metrics endpoint."""
@@ -912,17 +920,12 @@ def metric_alias() -> str:  # pragma: no cover - compatibility alias
 # -----------------------------------------------------------------------------
 # HEALTH
 # -----------------------------------------------------------------------------
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, response_model_exclude_none=True)
 def health() -> HealthResponse:
-    signing_service = AuditSigningService()
-    return HealthResponse(
-        status="ok",
-        audit_signing=get_audit_signing_health(),
-        audit_signing_mode=signing_service.mode,
-    )
+    return HealthResponse(status="ok")
 
 
-@app.get("/health/db", response_model=HealthResponse)
+@app.get("/health/db", response_model=HealthResponse, response_model_exclude_none=True)
 def health_db(db: Session = Depends(get_db)) -> HealthResponse:
     try:
         db.execute("SELECT 1")
@@ -932,7 +935,7 @@ def health_db(db: Session = Depends(get_db)) -> HealthResponse:
         raise HTTPException(status_code=503, detail="db unavailable")
 
 
-@app.get("/health/celery", response_model=HealthResponse)
+@app.get("/health/celery", response_model=HealthResponse, response_model_exclude_none=True)
 def health_celery() -> HealthResponse:
     if not celery_app:
         raise HTTPException(status_code=503, detail="celery disabled")
@@ -948,18 +951,21 @@ core_prefixed_router.add_api_route(
     "/health",
     health,
     response_model=HealthResponse,
+    response_model_exclude_none=True,
     methods=["GET"],
 )
 core_prefixed_router.add_api_route(
     "/health/db",
     health_db,
     response_model=HealthResponse,
+    response_model_exclude_none=True,
     methods=["GET"],
 )
 core_prefixed_router.add_api_route(
     "/health/celery",
     health_celery,
     response_model=HealthResponse,
+    response_model_exclude_none=True,
     methods=["GET"],
 )
 
@@ -1000,6 +1006,7 @@ if API_PREFIX_CORE != CORE_API_PREFIX:
         f"{API_PREFIX_CORE}/health",
         health,
         response_model=HealthResponse,
+        response_model_exclude_none=True,
         methods=["GET"],
     )
 
