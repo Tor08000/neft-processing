@@ -1,4 +1,6 @@
 @echo off
+REM IMPORTANT:
+REM Do not use ')' or other CMD special chars in step names.
 setlocal EnableExtensions EnableDelayedExpansion
 
 for /f "tokens=2 delims==" %%I in ('wmic os get LocalDateTime /value') do set dt=%%I
@@ -30,31 +32,31 @@ set ERROR_FILE=%LOG_DIR%\verify_all_%ts%_errors.tmp
 
 del "%ERROR_FILE%" 2>NUL
 
-call :run_cmd "1) Stack up" docker compose up -d
+call :run_cmd "1. Stack up" docker compose up -d
 if errorlevel 1 goto finalize
 
-call :wait_for_health "1.1) core-api healthy" core-api 120
+call :wait_for_health "1.1. core-api healthy" core-api 120
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.1) Migrations" scripts\migrate.cmd
+call :run_cmd "2.1. Migrations" scripts\migrate.cmd
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.2) Alembic heads core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini heads --verbose"
+call :run_cmd "2.2. Alembic heads core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini heads --verbose"
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.3) Alembic current core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini current -v"
+call :run_cmd "2.3. Alembic current core-api" docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini current -v"
 if errorlevel 1 goto finalize
 
-call :run_cmd "2.4) Alembic version table core-api" docker compose exec -T core-api sh -lc "heads=$(alembic -c app/alembic.ini heads --verbose | awk '$1==\"Rev:\"{print $2}'); if [ -z \"${heads}\" ]; then echo \"no heads\"; exit 1; fi; versions=$(psql \"${DATABASE_URL}\" -q -tA -c \"select version_num from processing_core.alembic_version_core\"); if [ -z \"${versions}\" ]; then echo \"no versions\"; exit 1; fi; for head in ${heads}; do echo \"${versions}\" | grep -Fxq \"${head}\" || exit 1; done"
+call :run_cmd "2.4. Alembic version table core-api" docker compose exec -T core-api sh -lc "heads=$(alembic -c app/alembic.ini heads --verbose | awk '$1==\"Rev:\"{print $2}'); if [ -z \"${heads}\" ]; then echo \"no heads\"; exit 1; fi; versions=$(psql \"${DATABASE_URL}\" -q -tA -c \"select version_num from processing_core.alembic_version_core\"); if [ -z \"${versions}\" ]; then echo \"no versions\"; exit 1; fi; for head in ${heads}; do echo \"${versions}\" | grep -Fxq \"${head}\" || exit 1; done"
 if errorlevel 1 goto finalize
 
-call :check_endpoints "3) Health checks" http://localhost/health http://localhost/api/core/health http://localhost/api/auth/health http://localhost/api/ai/health http://localhost/api/int/health
+call :check_endpoints "3. Health checks" http://localhost/health http://localhost/api/core/health http://localhost/api/auth/health http://localhost/api/ai/health http://localhost/api/int/health
 if errorlevel 1 goto finalize
 
-call :check_endpoints "4) Metrics checks" http://localhost/metrics http://localhost:8001/metrics http://localhost:8010/metrics
+call :check_endpoints "4. Metrics checks" http://localhost/metrics http://localhost:8001/metrics http://localhost:8010/metrics
 if errorlevel 1 goto finalize
 
-call :run_cmd "4.5) Smoke checks" scripts\smoke_all.cmd
+call :run_cmd "4.5. Smoke checks" scripts\smoke_all.cmd
 if errorlevel 1 goto finalize
 
 call :run_smoke_scripts
@@ -69,10 +71,8 @@ goto finalize
 set step=%~1
 shift
 set command=%*
-(
-  echo.
-  echo [!step!] %command%
-) >> "%LOG_FILE%"
+echo. >> "%LOG_FILE%"
+echo [!step!] %command% >> "%LOG_FILE%"
 %command% >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
   call :mark_fail "!step!" "%command%"
@@ -132,7 +132,7 @@ call :mark_fail "!step!" "One or more endpoints failed"
 exit /b 1
 
 :run_smoke_scripts
-set step=5) Smoke scripts
+set step=5. Smoke scripts
 set failed=0
 call :run_script_if_exists scripts\test_core_api.cmd
 call :run_script_if_exists scripts\test_auth_host.cmd
@@ -153,38 +153,38 @@ if not exist "%script%" (
   call :append_error "Missing smoke script: %script%"
   exit /b 0
 )
-call :run_cmd "5.x) %script%" "%script%"
+call :run_cmd "5.x. %script%" "%script%"
 if errorlevel 1 set failed=1
 exit /b 0
 
 :run_pytest_subset
-set step=6) Pytest smoke subset
-call :run_cmd "6.1) test_transactions_pipeline.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_transactions_pipeline.py"
+set step=6. Pytest smoke subset
+call :run_cmd "6.1. test_transactions_pipeline.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_transactions_pipeline.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
 )
-call :run_cmd "6.2) test_invoice_state_machine.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_invoice_state_machine.py"
+call :run_cmd "6.2. test_invoice_state_machine.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_invoice_state_machine.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
 )
-call :run_cmd "6.3) test_settlement_v1.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_settlement_v1.py"
+call :run_cmd "6.3. test_settlement_v1.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_settlement_v1.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
 )
-call :run_cmd "6.4) test_reconciliation_v1.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_reconciliation_v1.py"
+call :run_cmd "6.4. test_reconciliation_v1.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_reconciliation_v1.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
 )
-call :run_cmd "6.5) test_documents_lifecycle.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_documents_lifecycle.py"
+call :run_cmd "6.5. test_documents_lifecycle.py" docker compose exec -T core-api sh -lc "pytest app/tests/test_documents_lifecycle.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
 )
-call :run_cmd "6.6) test_webhooks.py" docker compose exec -T integration-hub sh -lc "pytest neft_integration_hub/tests/test_webhooks.py"
+call :run_cmd "6.6. test_webhooks.py" docker compose exec -T integration-hub sh -lc "pytest neft_integration_hub/tests/test_webhooks.py"
 if errorlevel 1 (
   call :mark_fail "%step%" "pytest subset failed"
   exit /b 1
