@@ -6,7 +6,6 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, text
 
-from app.alembic.helpers import ALEMBIC_VERSION_TABLE
 from app.db.schema import quote_schema, resolve_db_schema
 
 config = context.config
@@ -21,7 +20,8 @@ except KeyError as exc:
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 schema_resolution = resolve_db_schema()
 schema = schema_resolution.schema
-config.set_main_option("version_table", ALEMBIC_VERSION_TABLE)
+version_table = "alembic_version_core"
+config.set_main_option("version_table", version_table)
 config.set_main_option("version_table_schema", schema)
 
 
@@ -36,7 +36,7 @@ def _configure(connection) -> None:
     connection.execute(text(f"SET search_path TO {quoted_schema}, public"))
     context.configure(
         connection=connection,
-        version_table=ALEMBIC_VERSION_TABLE,
+        version_table=version_table,
         version_table_schema=schema,
         include_schemas=True,
         transaction_per_migration=True,
