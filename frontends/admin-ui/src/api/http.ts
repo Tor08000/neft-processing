@@ -40,6 +40,16 @@ export class LegalRequiredError extends Error {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 const buildHeaders = (token?: string | null): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
@@ -102,7 +112,7 @@ export async function request<T>(
   }
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(details || `Request failed with status ${response.status}`);
+    throw new ApiError(details || `Request failed with status ${response.status}`, response.status);
   }
 
   return response.json() as Promise<T>;

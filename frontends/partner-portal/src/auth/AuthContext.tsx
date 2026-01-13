@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchMe, login, UnauthorizedError, ValidationError } from "../api/auth";
+import { ApiError, fetchMe, login, UnauthorizedError, ValidationError } from "../api/auth";
 import type { AuthSession } from "../api/types";
 
 interface AuthContextValue {
@@ -129,15 +129,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         persist(normalized);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          setError("Неверный логин или пароль");
+          setError("Неверный email или пароль");
           return;
         }
         if (err instanceof ValidationError) {
-          setError("Некорректные данные для входа");
+          setError("Проверьте email и пароль");
+          return;
+        }
+        if (err instanceof ApiError && err.status >= 500) {
+          setError("Сервис временно недоступен");
+          return;
+        }
+        if (err instanceof TypeError) {
+          setError("Сервис временно недоступен");
           return;
         }
         console.error("Ошибка авторизации", err);
-        setError("Ошибка авторизации, попробуйте позже");
+        setError("Сервис временно недоступен");
       }
     },
     [logout, persist],
