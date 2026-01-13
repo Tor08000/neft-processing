@@ -1,369 +1,361 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Page } from "@playwright/test";
-import { test } from "@playwright/test";
-import { CREDENTIALS, getRunId, resolveBaseUrls } from "./utils/ui_snapshot";
+import { test, type Page } from "@playwright/test";
+import { ADMIN_BASE_URL, CLIENT_BASE_URL, PARTNER_BASE_URL, loginAdmin, loginClient, loginPartner } from "./utils";
+import { getRunId } from "./utils/ui_snapshot";
 
 type AppName = "admin" | "client" | "partner";
 
-type CrawlError = {
+type CrawlEntry = {
   url: string;
-  type: string;
-  note?: string;
-  screenshot?: string;
+  result: "OK" | "FAIL";
+  reason?: string;
+  httpErrors: string[];
+  consoleErrors: string[];
+  screenshot: string;
 };
 
-type CrawlState = {
-  visited: string[];
-  errors: CrawlError[];
+type CrawlReport = Record<AppName, CrawlEntry[]>;
+
+type CrawlTracker = {
+  start: () => void;
+  stop: () => { consoleErrors: string[]; responseErrors: string[]; pageErrors: string[] };
 };
 
-type CrawlReport = {
-  runId: string;
-  baseUrls: Record<AppName, string>;
-  apps: Record<AppName, CrawlState>;
-};
+const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
+const MAX_DEPTH = Number(process.env.MAX_DEPTH ?? 4);
 
-const MAX_VISITED = 200;
+const RUN_ID = getRunId();
+const OUTPUT_ROOT = path.join(process.cwd(), "frontends", "ui-audit", RUN_ID);
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
-function normalizeUrl(url: string) {
-  const parsed = new URL(url);
+function slugify(value: string) {
+  return value
+    .replace(/https?:\/\//g, "")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase()
+    .slice(0, 80);
+}
+
+function normalizeUrl(rawUrl: string) {
+  const parsed = new URL(rawUrl);
   parsed.hash = "";
   return parsed.toString();
 }
 
-function slugifyUrl(url: string) {
-  const parsed = new URL(url);
-  const raw = `${parsed.pathname}${parsed.search}`;
-  const cleaned = raw.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return cleaned.length > 0 ? cleaned.slice(0, 80) : "home";
+function isAssetPath(pathname: string) {
+  const lower = pathname.toLowerCase();
+  if (lower.includes("/assets/") || lower.includes("/brand/")) {
+    return true;
+  }
+  return [".png", ".css", ".js"].some((ext) => lower.endsWith(ext));
 }
 
-async function isVisible(locator: ReturnType<Page["locator"]>) {
-  return (await locator.count()) > 0 && (await locator.first().isVisible());
-}
-
-async function isAppShellVisible(page: Page) {
-  const sidebar = page.locator(".brand-sidebar, .sidebar, [role='navigation']");
-  const header = page.locator(".brand-header, .topbar, header");
-  const logoutButton = page.getByRole("button", { name: /выход|logout/i });
-  return (await isVisible(sidebar)) && (await isVisible(header)) && (await isVisible(logoutButton));
-}
-
-async function takeScreenshot(page: Page, outputDir: string, fileName: string) {
-  ensureDir(outputDir);
-  const filePath = path.join(outputDir, `${fileName}.png`);
-  await page.screenshot({ path: filePath, fullPage: true });
-  return filePath;
-}
-
-async function login(page: Page, baseUrl: string, email: string, password: string) {
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(300);
-
-  const emailInput = page.locator(
-    'input[type="email"], input[name="email"], input[placeholder*="mail" i], input[autocomplete="username"]',
+function isDisallowedHref(href: string) {
+  return (
+    href.startsWith("mailto:") ||
+    href.startsWith("tel:") ||
+    href.startsWith("#") ||
+    href.startsWith("javascript:")
   );
-  const passInput = page.locator(
-    'input[type="password"], input[name="password"], input[placeholder*="password" i], input[autocomplete="current-password"]',
-  );
-  const submitButton = page.locator(
-    'button[type="submit"], button:has-text("Sign in"), button:has-text("Login"), button:has-text("Войти")',
-  );
+}
 
-  if ((await emailInput.count()) === 0 || (await passInput.count()) === 0) {
+function isWithinApp(url: URL, baseUrl: URL, app: AppName) {
+  if (url.origin !== baseUrl.origin) {
     return false;
   }
-
-  await emailInput.first().fill(email);
-  await passInput.first().fill(password);
-  await submitButton.first().click();
-  await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(300);
-  return !page.url().includes("/login") && (await isAppShellVisible(page));
+  const pathname = url.pathname;
+  const basePath = baseUrl.pathname.replace(/\/+$/, "") || "/";
+  const appPrefix = `/${app}`;
+  if (basePath !== "/" && pathname.startsWith(basePath)) {
+    return true;
+  }
+  return pathname.startsWith(appPrefix) || basePath === "/";
 }
 
-async function getFailureReason({
-  page,
-  responseStatus,
-  jsErrors,
-  requireShell,
-}: {
-  page: Page;
-  responseStatus?: number;
-  jsErrors: string[];
-  requireShell: boolean;
-}) {
-  const currentUrl = page.url();
-  if (currentUrl.includes("/login")) {
-    return "REDIRECT_LOGIN";
+async function hasVisibleText(page: Page, text: string) {
+  const locator = page.getByText(text, { exact: false });
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible()) {
+      return true;
+    }
   }
-
-  const notFoundText = page.getByText("Страница не найдена", { exact: false });
-  if ((await notFoundText.count()) > 0 || responseStatus === 404) {
-    return "NOT_FOUND";
-  }
-
-  const rbacText = page.getByText("нет прав", { exact: false });
-  if (responseStatus === 403 || (await rbacText.count()) > 0) {
-    return "RBAC_DENY";
-  }
-
-  if (jsErrors.length > 0) {
-    return "JS_ERROR";
-  }
-
-  if (requireShell && !(await isAppShellVisible(page))) {
-    return "APP_SHELL_MISSING";
-  }
-
-  if (responseStatus && responseStatus >= 400) {
-    return `HTTP_${responseStatus}`;
-  }
-
-  return null;
+  return false;
 }
 
-async function collectLinks(page: Page, baseOrigin: string, basePath: string, currentUrl: string) {
-  const rawLinks = await page.$$eval("a[href]", (anchors) =>
-    anchors.map((anchor) => anchor.getAttribute("href") || "").filter(Boolean),
+function createTracker(page: Page): CrawlTracker {
+  let consoleErrors: string[] = [];
+  let responseErrors: string[] = [];
+  let pageErrors: string[] = [];
+  let tracking = false;
+
+  page.on("console", (message) => {
+    if (tracking && message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+
+  page.on("pageerror", (error) => {
+    if (tracking) {
+      pageErrors.push(error.message);
+      consoleErrors.push(error.message);
+    }
+  });
+
+  page.on("response", (response) => {
+    if (tracking && response.status() >= 400) {
+      responseErrors.push(`${response.status()} ${response.url()}`);
+    }
+  });
+
+  return {
+    start: () => {
+      consoleErrors = [];
+      responseErrors = [];
+      pageErrors = [];
+      tracking = true;
+    },
+    stop: () => {
+      tracking = false;
+      return { consoleErrors, responseErrors, pageErrors };
+    },
+  };
+}
+
+async function collectAnchorLinks(page: Page) {
+  return page.$$eval("nav a[href], aside a[href], header a[href], main a[href]", (elements) =>
+    elements.map((element) => element.getAttribute("href") || "").filter(Boolean),
   );
-  const nextLinks = new Set<string>();
-  for (const href of rawLinks) {
-    if (href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
-      continue;
+}
+
+async function collectClickableLinks(page: Page) {
+  const clickable = page.locator(
+    "nav button, aside button, header button, nav [role='menuitem'], aside [role='menuitem'], header [role='menuitem'], nav [role='button'], aside [role='button'], header [role='button']",
+  );
+  const count = await clickable.count();
+  const discovered: string[] = [];
+  const originalUrl = page.url();
+
+  for (let index = 0; index < count; index += 1) {
+    const element = clickable.nth(index);
+    try {
+      await element.click({ timeout: 2000 });
+      await page.waitForTimeout(300);
+      const newUrl = page.url();
+      if (newUrl !== originalUrl) {
+        discovered.push(newUrl);
+        await page.goto(originalUrl, { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(200);
+      }
+    } catch {
+      await page.goto(originalUrl, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(200);
     }
-    if (href.startsWith("javascript:")) {
-      continue;
-    }
-    const resolved = new URL(href, currentUrl);
-    if (resolved.origin !== baseOrigin) {
-      continue;
-    }
-    if (!resolved.pathname.startsWith(basePath)) {
-      continue;
-    }
-    if (/\/logout|signout/i.test(resolved.pathname)) {
-      continue;
-    }
-    if (/\.(png|jpe?g|svg|gif|webp|ico|css|js|map|json|xml|pdf|zip|csv|xlsx?)$/i.test(resolved.pathname)) {
-      continue;
-    }
-    resolved.hash = "";
-    nextLinks.add(resolved.toString());
   }
-  return [...nextLinks];
+
+  return discovered;
+}
+
+function evaluateResult(
+  pageUrl: string,
+  responseErrors: string[],
+  consoleErrors: string[],
+  pageErrors: string[],
+  redirectLogin: boolean,
+  notFound: boolean,
+) {
+  if (redirectLogin) {
+    return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
+  }
+  if (notFound) {
+    return { result: "FAIL" as const, reason: "NOT_FOUND" };
+  }
+  if (responseErrors.some((error) => error.startsWith("403 "))) {
+    return { result: "FAIL" as const, reason: "RBAC_DENY" };
+  }
+  if (pageErrors.length > 0) {
+    return { result: "FAIL" as const, reason: "JS_ERROR" };
+  }
+  if (responseErrors.length > 0) {
+    return { result: "FAIL" as const, reason: "HTTP_ERROR" };
+  }
+  if (consoleErrors.length > 0) {
+    return { result: "FAIL" as const, reason: "CONSOLE_ERROR" };
+  }
+  if (pageUrl.includes("/login")) {
+    return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
+  }
+  return { result: "OK" as const };
 }
 
 async function crawlApp({
   page,
   app,
   baseUrl,
-  credentials,
+  login,
   report,
 }: {
   page: Page;
   app: AppName;
   baseUrl: string;
-  credentials: { email: string; password: string };
+  login: (page: Page) => Promise<void>;
   report: CrawlReport;
 }) {
-  const runId = getRunId();
-  const outputDir = path.join(process.cwd(), "ui-audit", runId, "crawl", app);
-  const baseOrigin = new URL(baseUrl).origin;
-  const basePath = new URL(baseUrl).pathname.replace(/\/$/, "");
-
-  const jsErrors: string[] = [];
-  const onConsole = (msg: { type: () => string; text: () => string }) => {
-    if (msg.type() === "error") {
-      jsErrors.push(`console: ${msg.text()}`);
-    }
-  };
-  const onPageError = (error: Error) => {
-    jsErrors.push(`pageerror: ${error.message}`);
-  };
-  page.on("console", onConsole);
-  page.on("pageerror", onPageError);
-
-  const loggedIn = await login(page, baseUrl, credentials.email, credentials.password);
-  if (!loggedIn) {
-    const screenshot = await takeScreenshot(page, outputDir, "login__FAIL");
-    report.apps[app].errors.push({
-      url: page.url(),
-      type: "REDIRECT_LOGIN",
-      note: "Login failed or app shell missing",
-      screenshot,
-    });
-    page.off("console", onConsole);
-    page.off("pageerror", onPageError);
-    return;
-  }
-
-  const queue: string[] = [normalizeUrl(baseUrl)];
+  const tracker = createTracker(page);
+  const base = new URL(baseUrl);
+  const queue: Array<{ url: string; depth: number }> = [];
   const visited = new Set<string>();
+  let index = 0;
 
-  while (queue.length > 0 && visited.size < MAX_VISITED) {
-    const nextUrl = queue.shift();
-    if (!nextUrl || visited.has(nextUrl)) {
+  await login(page);
+  queue.push({ url: baseUrl, depth: 0 });
+
+  while (queue.length > 0 && visited.size < MAX_PAGES) {
+    const current = queue.shift();
+    if (!current) {
       continue;
     }
-    visited.add(nextUrl);
+    if (current.depth > MAX_DEPTH) {
+      continue;
+    }
 
-    jsErrors.length = 0;
-    let responseStatus: number | undefined;
+    const normalized = normalizeUrl(current.url);
+    if (visited.has(normalized)) {
+      continue;
+    }
+    visited.add(normalized);
+
+    tracker.start();
+    let navigationError: string | null = null;
     try {
-      const response = await page.goto(nextUrl, { waitUntil: "domcontentloaded" });
-      responseStatus = response?.status();
-      await page.waitForTimeout(250);
+      await page.goto(normalized, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(400);
     } catch (error) {
-      report.apps[app].errors.push({
-        url: nextUrl,
-        type: "NAV_ERROR",
-        note: (error as Error).message,
-      });
-      continue;
+      navigationError = (error as Error).message;
     }
+    const { consoleErrors, responseErrors, pageErrors } = tracker.stop();
 
-    const failureReason = await getFailureReason({
-      page,
-      responseStatus,
-      jsErrors,
-      requireShell: true,
+    const redirectLogin = page.url().includes("/login") || (await hasVisibleText(page, "Войти"));
+    const notFound = await hasVisibleText(page, "Страница не найдена");
+    const { result, reason } = evaluateResult(
+      page.url(),
+      responseErrors,
+      consoleErrors,
+      pageErrors,
+      redirectLogin,
+      notFound,
+    );
+
+    ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
+    const slug = slugify(page.url());
+    const screenshotPath = path.join(
+      OUTPUT_ROOT,
+      "crawl",
+      app,
+      `${String(index).padStart(3, "0")}_${slug || "page"}.png`,
+    );
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+
+    report[app].push({
+      url: page.url(),
+      result: navigationError ? "FAIL" : result,
+      reason: navigationError ? "NAV_ERROR" : reason,
+      httpErrors: responseErrors,
+      consoleErrors,
+      screenshot: path.relative(path.join(process.cwd(), "frontends"), screenshotPath),
     });
 
-    if (failureReason) {
-      const screenshot = await takeScreenshot(
-        page,
-        outputDir,
-        `${visited.size.toString().padStart(3, "0")}_${slugifyUrl(nextUrl)}__FAIL_${failureReason}`,
-      );
-      report.apps[app].errors.push({
-        url: page.url(),
-        type: failureReason,
-        note: jsErrors.length ? jsErrors.join(" | ") : undefined,
-        screenshot,
-      });
+    index += 1;
+    if (navigationError) {
       continue;
     }
 
-    if (jsErrors.length > 0) {
-      report.apps[app].errors.push({
-        url: page.url(),
-        type: "CONSOLE_ERROR",
-        note: jsErrors.join(" | "),
-      });
-    }
-
-    report.apps[app].visited.push(page.url());
-
-    const newLinks = await collectLinks(page, baseOrigin, basePath, page.url());
-    for (const link of newLinks) {
-      const normalized = normalizeUrl(link);
-      if (!visited.has(normalized)) {
-        queue.push(normalized);
+    const anchorLinks = await collectAnchorLinks(page);
+    const clickableLinks = await collectClickableLinks(page);
+    const rawLinks = [...anchorLinks, ...clickableLinks];
+    for (const href of rawLinks) {
+      if (!href || isDisallowedHref(href)) {
+        continue;
+      }
+      const linkUrl = new URL(href, page.url());
+      if (isAssetPath(linkUrl.pathname)) {
+        continue;
+      }
+      if (!isWithinApp(linkUrl, base, app)) {
+        continue;
+      }
+      const normalizedLink = normalizeUrl(linkUrl.toString());
+      if (!visited.has(normalizedLink)) {
+        queue.push({ url: normalizedLink, depth: current.depth + 1 });
       }
     }
   }
-
-  page.off("console", onConsole);
-  page.off("pageerror", onPageError);
 }
 
-function writeReport(report: CrawlReport) {
-  const outputRoot = path.join(process.cwd(), "ui-audit", report.runId);
-  ensureDir(outputRoot);
-  const reportPath = path.join(outputRoot, "LINK_REPORT.md");
+function writeLinkReport(report: CrawlReport) {
+  ensureDir(OUTPUT_ROOT);
+  const reportPath = path.join(OUTPUT_ROOT, "LINK_REPORT.md");
   const lines: string[] = [];
   lines.push("# UI Link Crawl Report");
   lines.push("");
-  lines.push(`Run: ${report.runId}`);
+  lines.push(`Run: ${RUN_ID}`);
   lines.push(`Generated: ${new Date().toISOString()}`);
   lines.push("");
-  lines.push("## Base URLs");
-  lines.push(`- Admin: ${report.baseUrls.admin}`);
-  lines.push(`- Client: ${report.baseUrls.client}`);
-  lines.push(`- Partner: ${report.baseUrls.partner}`);
-  lines.push("");
 
-  const writeAppSection = (app: AppName) => {
+  (["admin", "client", "partner"] as AppName[]).forEach((app) => {
     lines.push(`## ${app}`);
     lines.push("");
-    lines.push("### Visited");
-    if (report.apps[app].visited.length === 0) {
-      lines.push("- (none)");
-    } else {
-      for (const url of report.apps[app].visited) {
-        lines.push(`- ${url}`);
-      }
+    lines.push("| URL | Result | Reason | HTTP errors | Console errors | Screenshot |");
+    lines.push("| --- | ------ | ------ | ----------- | -------------- | ---------- |");
+    for (const entry of report[app]) {
+      lines.push(
+        `| ${entry.url} | ${entry.result} | ${entry.reason ?? ""} | ${entry.httpErrors.join("<br>")} | ${entry.consoleErrors.join("<br>")} | ${entry.screenshot} |`,
+      );
     }
     lines.push("");
-    lines.push("### Errors");
-    if (report.apps[app].errors.length === 0) {
-      lines.push("- (none)");
-    } else {
-      for (const error of report.apps[app].errors) {
-        const detail = error.note ? ` — ${error.note}` : "";
-        const screenshot = error.screenshot ? ` (screenshot: ${error.screenshot})` : "";
-        lines.push(`- ${error.type}: ${error.url}${detail}${screenshot}`);
-      }
-    }
-    lines.push("");
-  };
-
-  writeAppSection("admin");
-  writeAppSection("client");
-  writeAppSection("partner");
-
-  fs.writeFileSync(reportPath, lines.join("\n"));
-  return reportPath;
-}
-
-test.describe.serial("UI Link Crawl", () => {
-  const baseUrls = resolveBaseUrls();
-  const report: CrawlReport = {
-    runId: getRunId(),
-    baseUrls,
-    apps: {
-      admin: { visited: [], errors: [] },
-      client: { visited: [], errors: [] },
-      partner: { visited: [], errors: [] },
-    },
-  };
-
-  test.afterAll(() => {
-    writeReport(report);
   });
 
-  test("Admin link crawl", async ({ page }) => {
+  fs.writeFileSync(reportPath, lines.join("\n"));
+}
+
+test.describe.serial("UI Link Crawler", () => {
+  const report: CrawlReport = { admin: [], client: [], partner: [] };
+
+  test.afterAll(() => {
+    writeLinkReport(report);
+  });
+
+  test("Admin UI link crawl", async ({ page }) => {
     await crawlApp({
       page,
       app: "admin",
-      baseUrl: baseUrls.admin,
-      credentials: CREDENTIALS.admin,
+      baseUrl: ADMIN_BASE_URL,
+      login: loginAdmin,
       report,
     });
   });
 
-  test("Client link crawl", async ({ page }) => {
+  test("Client UI link crawl", async ({ page }) => {
     await crawlApp({
       page,
       app: "client",
-      baseUrl: baseUrls.client,
-      credentials: CREDENTIALS.client,
+      baseUrl: CLIENT_BASE_URL,
+      login: loginClient,
       report,
     });
   });
 
-  test("Partner link crawl", async ({ page }) => {
+  test("Partner UI link crawl", async ({ page }) => {
     await crawlApp({
       page,
       app: "partner",
-      baseUrl: baseUrls.partner,
-      credentials: CREDENTIALS.partner,
+      baseUrl: PARTNER_BASE_URL,
+      login: loginPartner,
       report,
     });
   });
