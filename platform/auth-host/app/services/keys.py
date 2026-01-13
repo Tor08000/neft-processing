@@ -23,6 +23,10 @@ _PRIVATE_KEY_PATH = Path(settings.auth_private_key_path or (_DEFAULT_KEY_DIR / "
 _PUBLIC_KEY_PATH = Path(settings.auth_public_key_path or (_DEFAULT_KEY_DIR / "jwt_public.pem"))
 
 
+class InvalidRSAKeyError(RuntimeError):
+    pass
+
+
 def _generate_rsa_key_pair() -> tuple[str, str]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     private_pem = private_key.private_bytes(
@@ -37,6 +41,39 @@ def _generate_rsa_key_pair() -> tuple[str, str]:
     return private_pem, public_pem
 
 
+def _validate_private_key(private_pem: str) -> rsa.RSAPrivateKey:
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_pem.encode("utf-8"), password=None
+        )
+    except Exception as exc:  # pragma: no cover - defensive logging only
+        raise InvalidRSAKeyError("invalid_rsa_private_key") from exc
+    if not isinstance(private_key, rsa.RSAPrivateKey):
+        raise InvalidRSAKeyError("invalid_rsa_private_key")
+    if private_key.key_size < 2048:
+        raise InvalidRSAKeyError("rsa_key_too_small")
+    return private_key
+
+
+def _validate_public_key(public_pem: str) -> rsa.RSAPublicKey:
+    try:
+        public_key = serialization.load_pem_public_key(public_pem.encode("utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive logging only
+        raise InvalidRSAKeyError("invalid_rsa_public_key") from exc
+    if not isinstance(public_key, rsa.RSAPublicKey):
+        raise InvalidRSAKeyError("invalid_rsa_public_key")
+    if public_key.key_size < 2048:
+        raise InvalidRSAKeyError("rsa_key_too_small")
+    return public_key
+
+
+def _validate_key_pair(private_pem: str, public_pem: str) -> None:
+    private_key = _validate_private_key(private_pem)
+    public_key = _validate_public_key(public_pem)
+    if private_key.public_key().public_numbers() != public_key.public_numbers():
+        raise InvalidRSAKeyError("rsa_keypair_mismatch")
+
+
 def _load_from_env() -> tuple[str | None, str | None]:
     private_key_env = os.getenv("AUTH_JWT_PRIVATE_KEY") or os.getenv("AUTH_PRIVATE_KEY")
     public_key_env = os.getenv("AUTH_JWT_PUBLIC_KEY") or os.getenv("AUTH_PUBLIC_KEY")
@@ -44,31 +81,19 @@ def _load_from_env() -> tuple[str | None, str | None]:
 
 
 def _load_from_files() -> tuple[str | None, str | None]:
-    private_key_file: str | None = None
-    public_key_file: str | None = None
+    if not _PRIVATE_KEY_PATH.exists() or not _PUBLIC_KEY_PATH.exists():
+        return None, None
 
     try:
-        if _PRIVATE_KEY_PATH.exists():
-            private_key_file = _PRIVATE_KEY_PATH.read_text()
-
-        if _PUBLIC_KEY_PATH.exists():
-            public_key_file = _PUBLIC_KEY_PATH.read_text()
-
-        if private_key_file and not public_key_file:
-            private_key = serialization.load_pem_private_key(
-                private_key_file.encode("utf-8"), password=None
-            )
-            public_key_file = private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            ).decode("utf-8")
-
-        if private_key_file and public_key_file:
-            return private_key_file, public_key_file
+        private_key_file = _PRIVATE_KEY_PATH.read_text()
+        public_key_file = _PUBLIC_KEY_PATH.read_text()
+        _validate_key_pair(private_key_file, public_key_file)
+        return private_key_file, public_key_file
+    except InvalidRSAKeyError:
+        raise
     except Exception as exc:  # pragma: no cover - defensive logging only
         logger.warning("Failed to load JWT keypair from disk: %s", exc)
-
-    return None, None
+        return None, None
 
 
 def _persist_to_files(private_pem: str, public_pem: str) -> None:
@@ -91,28 +116,31 @@ def _ensure_keys_loaded() -> None:
             return
 
         env_private, env_public = _load_from_env()
-        if env_private:
-            _PRIVATE_KEY_PEM = env_private
+        if env_private or env_public:
+            if not env_private:
+                raise InvalidRSAKeyError("missing_private_key")
+            private_key = _validate_private_key(env_private)
             if env_public:
+                _validate_key_pair(env_private, env_public)
                 _PUBLIC_KEY_PEM = env_public
             else:
-                private_key = serialization.load_pem_private_key(
-                    env_private.encode("utf-8"), password=None
-                )
                 _PUBLIC_KEY_PEM = private_key.public_key().public_bytes(
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PublicFormat.SubjectPublicKeyInfo,
                 ).decode("utf-8")
+            _PRIVATE_KEY_PEM = env_private
             return
 
         file_private, file_public = _load_from_files()
         if file_private and file_public:
             _PRIVATE_KEY_PEM = file_private
             _PUBLIC_KEY_PEM = file_public
+            logger.info("[keys] keys already exist at %s", _PRIVATE_KEY_PATH.parent)
             return
 
         _PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM = _generate_rsa_key_pair()
         _persist_to_files(_PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM)
+        logger.info("[keys] generated RSA keypair at %s", _PRIVATE_KEY_PATH.parent)
 
 
 def get_private_key_pem() -> str:
@@ -125,3 +153,23 @@ def get_public_key_pem() -> str:
     _ensure_keys_loaded()
     assert _PUBLIC_KEY_PEM is not None
     return _PUBLIC_KEY_PEM
+
+
+def initialize_keys() -> None:
+    _ensure_keys_loaded()
+
+
+def validate_keypair_files() -> tuple[bool, str | None]:
+    if not _PRIVATE_KEY_PATH.exists() or not _PUBLIC_KEY_PATH.exists():
+        return False, None
+
+    try:
+        private_pem = _PRIVATE_KEY_PATH.read_text()
+        public_pem = _PUBLIC_KEY_PATH.read_text()
+        _validate_key_pair(private_pem, public_pem)
+    except InvalidRSAKeyError:
+        return False, "invalid_rsa_keys"
+    except Exception:
+        return False, "invalid_rsa_keys"
+
+    return True, None

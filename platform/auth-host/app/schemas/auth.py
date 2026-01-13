@@ -14,6 +14,7 @@ def _normalize_email(value: str) -> str:
 class HealthResponse(BaseModel):
     status: str
     service: str
+    reason: str | None = None
 
 
 class RegisterRequest(BaseModel):

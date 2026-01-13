@@ -217,6 +217,11 @@ async def ensure_user(
         await conn.commit()
 
         logger.info(
+            "[bootstrap] %s password reset = %s",
+            normalized_email,
+            str(password_reset).lower(),
+        )
+        logger.info(
             "demo user sync: email=%s password_reset=%s roles_changed=%s active_reset=%s full_name_updated=%s",
             normalized_email,
             password_reset,
