@@ -54,7 +54,7 @@ export const LoginPage: React.FC = () => {
         </div>
         <h1>NEFT Platform</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
-        <div className="login-demo">
+        <div className="login-demo muted small">
           <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
           <CopyChip label="Demo" value="admin" onCopy={() => showToast("success", "Скопировано")} />
         </div>

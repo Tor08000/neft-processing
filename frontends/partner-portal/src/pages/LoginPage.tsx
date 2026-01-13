@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AppLogo } from "@shared/brand/components";
+import { CopyChip } from "../components/common/CopyChip";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
@@ -39,8 +40,11 @@ export function LoginPage() {
           <AppLogo variant="full" size={72} />
         </div>
         <h1>NEFT Platform</h1>
-        <p>Используйте учётные данные партнёра для доступа.</p>
-        <div className="login-demo muted small">Demo: partner@neft.local / partner</div>
+        <p className="muted">Используйте учётные данные партнёра для доступа.</p>
+        <div className="login-demo muted small">
+          <CopyChip label="Demo" value="partner@neft.local" />
+          <CopyChip label="Demo" value="partner" />
+        </div>
         {error ? (
           <div className="error" role="alert">
             {error}
