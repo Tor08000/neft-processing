@@ -5,7 +5,7 @@ if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
 set "AUTH_BASE=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
-set "CORE_BASE=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
+set "CORE_BASE=%GATEWAY_BASE%%CORE_BASE%/v1/admin"
 
 echo [1/10] Fetch admin token...
 set "TOKEN="
