@@ -18,7 +18,10 @@ NEFT_BOOTSTRAP_PARTNER_PASSWORD
 ```
 NEFT_BOOTSTRAP_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
+NEFT_BOOTSTRAP_PASSWORD_VERSION=1
 ```
+
+Ключи RSA `auth-host` хранятся в volume `auth-keys` (`/data/keys`). Чтобы пересоздать ключи: `docker compose down -v`. Чтобы сохранить ключи между рестартами: `docker compose down` без `-v`.
 
 ### Admin login
 
@@ -57,13 +60,18 @@ curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
 scripts/smoke_auth_host.sh
 ```
 
+Windows CMD:
+
+```bat
+scripts\smoke_auth_host.cmd
+```
+
 Скрипт проверяет `/api/auth/health`, логины admin/client/partner и `/api/auth/v1/auth/public-key`. Возвращает `0` при успехе.
 
 ## 2) UI Snapshot (ui_snapshot.cmd)
 
 ```bat
-cd frontends
-scripts\ui_snapshot.cmd
+frontends\scripts\ui_snapshot.cmd
 ```
 
 Ожидаемая строка в stdout:
@@ -80,8 +88,7 @@ UI audit saved to: ui-audit/<RUN_ID>
 ## 3) UI Link Crawl (ui_link_crawl.spec.ts)
 
 ```bat
-cd frontends
-scripts\ui_link_crawl.cmd
+frontends\scripts\ui_link_crawl.cmd
 ```
 
 Выходные файлы:

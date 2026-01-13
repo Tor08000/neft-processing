@@ -102,8 +102,8 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ### Хранение ключей и файлов
 
-* Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. После `docker compose down -v` ключи пересоздаются автоматически.
-* Для повторного принудительного сброса демо-паролей удалите записи в `bootstrap_meta` (например, `DELETE FROM bootstrap_meta WHERE key LIKE 'password_reset:%';`) и перезапустите auth-host.
+* Ключи RSA для `auth-host` сохраняются в volume `auth-keys` (`/data/keys`), поэтому перезапуск без `-v` не ломает уже выданные токены. Чтобы пересоздать ключи: `docker compose down -v`; чтобы сохранить ключи: `docker compose down`.
+* Для повторного принудительного сброса демо-паролей увеличьте `NEFT_BOOTSTRAP_PASSWORD_VERSION` (по умолчанию `1`). При старте `auth-host` пароли будут сброшены один раз на пользователя, если `users.bootstrap_password_version` меньше указанной версии. Режим сброса управляется `DEMO_SEED_FORCE_PASSWORD_RESET` (0/1): при `0` версия не применяется.
 * Данные MinIO лежат в `minio-data`; бакеты создаются при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`, включена идемпотентная настройка версиирования и политик доступа). `minio-init` — одноразовый job: после сообщения `init complete` контейнер корректно завершается со статусом `Exited (0)`. Зелёный статус в `docker compose ps` важен для `minio-health` (который проверяет `http://minio:9000/minio/health/ready`); сам контейнер `minio` может быть без healthcheck, это нормально.
 
 ### Вход в админ-панель

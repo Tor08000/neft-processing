@@ -2,7 +2,7 @@
 set -e
 
 # На всякий случай ещё раз прописываем PYTHONPATH
-export PYTHONPATH="/opt/python:${PYTHONPATH}"
+export PYTHONPATH="/app:/opt/python:${PYTHONPATH}"
 
 echo "[entrypoint] auth-host starting"
 if [ ! -f "/app/alembic.ini" ]; then

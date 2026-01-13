@@ -76,10 +76,10 @@ NEFT_BOOTSTRAP_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
 ```
 
-Password resets are tracked in the `bootstrap_meta` table. To re-run a forced reset deterministically:
+Password resets are tracked in `users.bootstrap_password_version`. To re-run a forced reset deterministically, bump the version (при `DEMO_SEED_FORCE_PASSWORD_RESET=1`):
 
-```sql
-DELETE FROM bootstrap_meta WHERE key LIKE 'password_reset:%';
+```env
+NEFT_BOOTSTRAP_PASSWORD_VERSION=2
 ```
 
 ## Smoke test

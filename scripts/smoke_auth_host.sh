@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 AUTH_BASE_URL="${AUTH_BASE_URL:-http://localhost:8000}"
 
-require_env() {
-  local name="$1"
-  if [ -z "${!name:-}" ]; then
-    echo "missing required env: ${name}" >&2
-    exit 1
-  fi
-}
-
-require_env NEFT_BOOTSTRAP_ADMIN_EMAIL
-require_env NEFT_BOOTSTRAP_ADMIN_PASSWORD
-require_env NEFT_BOOTSTRAP_CLIENT_EMAIL
-require_env NEFT_BOOTSTRAP_CLIENT_PASSWORD
-require_env NEFT_BOOTSTRAP_PARTNER_EMAIL
-require_env NEFT_BOOTSTRAP_PARTNER_PASSWORD
+NEFT_BOOTSTRAP_ADMIN_EMAIL="${NEFT_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
+NEFT_BOOTSTRAP_ADMIN_PASSWORD="${NEFT_BOOTSTRAP_ADMIN_PASSWORD:-admin}"
+NEFT_BOOTSTRAP_CLIENT_EMAIL="${NEFT_BOOTSTRAP_CLIENT_EMAIL:-client@neft.local}"
+NEFT_BOOTSTRAP_CLIENT_PASSWORD="${NEFT_BOOTSTRAP_CLIENT_PASSWORD:-client}"
+NEFT_BOOTSTRAP_PARTNER_EMAIL="${NEFT_BOOTSTRAP_PARTNER_EMAIL:-partner@neft.local}"
+NEFT_BOOTSTRAP_PARTNER_PASSWORD="${NEFT_BOOTSTRAP_PARTNER_PASSWORD:-partner}"
 
 echo ">>> auth health"
 curl -sS -o /tmp/auth_health.json -w "%{http_code}" "${AUTH_BASE_URL}/api/auth/health" | {

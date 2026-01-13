@@ -8,6 +8,8 @@ sys.path.insert(0, str(ROOT / "platform" / "processing-core"))
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("NEFT_AUTO_CREATE_SCHEMA", "true")
 
+import pytest  # noqa: E402
+
 from app.db import get_sessionmaker, init_db, reset_engine  # noqa: E402
 from app.integrations.fuel.providers.adapter_registry import load_default_providers, get_provider  # noqa: E402
 from app.integrations.fuel.providers.protocols import IngestBatchRequest  # noqa: E402
@@ -19,6 +21,7 @@ def _load_fixture() -> bytes:
     return Path("tests_host/fixtures/fuel/provider_ref_transactions.csv").read_bytes()
 
 
+@pytest.mark.processing_core_required
 def test_fuel_provider_replay_batch():
     reset_engine()
     init_db()
