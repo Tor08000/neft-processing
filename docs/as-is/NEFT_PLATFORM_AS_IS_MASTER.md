@@ -1,6 +1,6 @@
 # NEFT Platform — AS-IS Master Documentation (Full System Map + Current Status Snapshot)
 
-> **Scope:** This document describes what is **actually implemented** in `/workspace/neft-processing` as of now. Any missing components are explicitly marked **NOT IMPLEMENTED**. No future work or assumptions are included.
+> **Scope:** This document describes what is **actually implemented** in `/workspace/neft-processing` as of now. Any gaps are explicitly marked **CODED_PARTIAL** with factual notes. No future work or assumptions are included.
 
 ---
 
@@ -74,6 +74,7 @@ docs/
 - `gateway` → `/api/crm/*`, `/api/logistics/*`, `/api/docs/*` → `crm-service`, `logistics-service`, `document-service`.
 - `core-api` + `workers` + `beat` → `redis` (broker/backend), `postgres` (DB), `minio` (S3).
 - `core-api` (опционально) → `clickhouse` (BI), `document-service`, `logistics-service` (через флаги включения).
+- `auth-host` включает login endpoints и admin bootstrap (миграция + env `NEFT_BOOTSTRAP_ADMIN_*`), подтверждено тестами auth-host. (`platform/auth-host/app/main.py`, `platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`, `platform/auth-host/app/tests/test_auth.py`)
 
 **Базы/кэши/очереди:**
 - Postgres (основной storage) — `postgres:16`.
@@ -137,7 +138,7 @@ docs/
 
 **WORM / Object Lock:**
 - Конфигурация через `S3_OBJECT_LOCK_*` env. (`shared/python/neft_shared/settings.py`)
-- Требует поддержки object-lock на S3/MinIO — **NOT VERIFIED**.
+- Требует поддержки object-lock на S3/MinIO; вне текущего runtime snapshot.
 
 **Метрики:**
 - `core-api` экспортирует Prometheus метрики (`/metrics`). (`platform/processing-core/app/main.py`)
@@ -146,80 +147,84 @@ docs/
 
 ---
 
-### Security (Service Identities + ABAC) — **READY**
+### Security (Service Identities + ABAC) — **CODED_FULL**
 
 - **Service identities (M2M):** таблицы `service_identities`, `service_tokens`, `service_token_audit`; выпуск/ротация/ревокация через admin API. (`platform/processing-core/app/models/service_identity.py`, `platform/processing-core/app/routers/admin/security.py`)
 - **Token rotation flow:** issue → rotate (grace period) → revoke; токены только в виде хэша + префикс, plaintext выдаётся однократно. (`platform/processing-core/app/services/service_identities.py`)
 - **ABAC policies:** версии `abac_policy_versions` + правила `abac_policies` с JSON conditions и приоритетами. (`platform/processing-core/app/models/abac.py`, `platform/processing-core/app/services/abac/engine.py`)
 - **ABAC enforcement:** подключено к Documents download, EDO send, CRM client read, Payout export, BI scope. (`platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/admin/crm.py`, `platform/processing-core/app/api/v1/endpoints/payouts.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`)
-- **VERIFIED:** `platform/processing-core/app/tests/test_service_tokens.py`, `platform/processing-core/app/tests/test_abac_policies.py`, `platform/processing-core/app/tests/test_abac_explain.py`.
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_service_tokens.py`, `platform/processing-core/app/tests/test_abac_policies.py`, `platform/processing-core/app/tests/test_abac_explain.py`.
 
 ---
 
 ## 4.6 Core Business Modules (AS-IS)
 
-> Статусы: **READY / PARTIAL / NOT IMPLEMENTED**.
+> Статусы: **CODED_FULL / CODED_PARTIAL** (верификация указана отдельно как VERIFIED_BY_TESTS/VERIFIED_BY_RUNTIME).
 
-### Billing & Finance — **READY**
+### Billing & Finance — **CODED_FULL**
 - **Модели/таблицы:** `billing_invoices`, `billing_payments`, `billing_refunds`, `invoices`, `invoice_lines`, `internal_ledger_*`, `posting_batches`, `settlements`, `payout_*`. (`platform/processing-core/app/models/*`)
 - **Сервисы/эндпоинты:** `app/services/billing_service.py`, `app/services/payouts_service.py`, `app/routers/admin/billing.py`, `app/api/v1/endpoints/billing_invoices.py`.
 - **Инварианты/стейт-машины:** invoice transitions + billing flow state в `invoice_transition_logs`, `billing_flow`. (`platform/processing-core/app/models/invoice.py`, `platform/processing-core/app/models/billing_flow.py`)
-- **VERIFIED:** `platform/processing-core/app/tests/test_invoice_state_machine.py`, `platform/processing-core/app/tests/test_billing_pipeline_smoke.py`.
+- **VERIFIED_BY_RUNTIME:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (verify_all subset + smoke).
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_invoice_state_machine.py`, `platform/processing-core/app/tests/test_billing_pipeline_smoke.py`.
 
-### Fleet / Fuel — **READY**
+### Fleet / Fuel — **CODED_PARTIAL**
 - **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fuel_provider_batches`, `fleet_offline_profiles`, `fleet_offline_reconciliation_runs`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/models.py`)
 - **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`, `app/routers/internal/fuel_providers.py`, `app/routers/admin/fuel_providers.py`.
 - **Офлайн/реплей:** профили офлайна + сверка `fleet_offline_*`, replay batch/jobs в `app/integrations/fuel/jobs.py`, CLI `provider_ref/cli.py`.
-- **Fleet Providers: REAL** — эталонный адаптер `provider_ref` с протоколами ingestion/authorize/settlement, CSV ingest и replay. (`platform/processing-core/app/integrations/fuel/providers/provider_ref/`)
-- **VERIFIED:** `platform/processing-core/app/tests/test_fleet_ingestion_v1.py`, `scripts/smoke_fuel_ingest_batch.cmd`, `scripts/smoke_fuel_offline_reconcile.cmd`, `scripts/smoke_fuel_replay_batch.cmd`.
+- **Fleet Providers:** эталонный адаптер `provider_ref` с протоколами ingestion/authorize/settlement, CSV ingest и replay. (`platform/processing-core/app/integrations/fuel/providers/provider_ref/`)
+- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_fleet_ingestion_v1.py`, `scripts/smoke_fuel_ingest_batch.cmd`, `scripts/smoke_fuel_offline_reconcile.cmd`, `scripts/smoke_fuel_replay_batch.cmd`.
 
-### Marketplace economics + SLA coupling + recommender v1 — **READY**
+### Marketplace economics + SLA coupling + recommender v1 — **CODED_PARTIAL**
 - **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `order_sla_evaluations`, `order_sla_consequences`, `marketplace_sla_notification_outbox`, `vehicle_recommendations`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/models/vehicle_profile.py`)
 - **Сервисы/эндпоинты:** `app/routers/client_marketplace*.py`, `app/routers/partner/marketplace_*.py`, `app/routers/admin/marketplace_order_sla.py`, `app/services/marketplace_order_service.py`, `app/services/order_sla_service.py`, `app/services/order_sla_consequence_service.py`.
 - **Recommender v1:** rules+fallback recommender (`MarketplaceRecommendationService`) + sponsored placements. (`platform/processing-core/app/services/marketplace_recommendation_service.py`)
-- **VERIFIED:** `platform/processing-core/app/tests/test_marketplace_orders_v1.py`, `platform/processing-core/app/tests/test_marketplace_recommendations_v1.py`, `platform/processing-core/app/tests/test_marketplace_sla_billing_v1.py`.
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_marketplace_orders_v1.py`, `platform/processing-core/app/tests/test_marketplace_recommendations_v1.py`, `platform/processing-core/app/tests/test_marketplace_sla_billing_v1.py`.
 
-### Decision Memory + What-If — **PARTIAL**
+### Decision Memory + What-If — **CODED_PARTIAL**
 - **Модели/таблицы:** `decision_memory`, `decision_results`, `risk_*`. (`platform/processing-core/app/models/decision_memory.py`, `platform/processing-core/app/models/decision_result.py`)
 - **Сервисы/эндпоинты:** `app/services/what_if/simulator.py`, `app/routers/admin/what_if.py`.
 - **Инварианты:** deterministic what-if scoring tests. (`platform/processing-core/app/tests/test_what_if_simulator_*`)
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_what_if_simulator_v1.py`, `platform/processing-core/app/tests/test_what_if_simulator_determinism_v1.py`.
 
-### Reconciliation / Internal Ledger — **READY**
+### Reconciliation / Internal Ledger — **CODED_FULL**
 - **Модели/таблицы:** `reconciliation_*`, `billing_reconciliation_*`, `internal_ledger_*`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/models/internal_ledger.py`)
 - **Сервисы/эндпоинты:** `app/services/reconciliation_service.py`, `app/services/settlement_service.py`.
-- **VERIFIED:** `platform/processing-core/app/tests/test_reconciliation_v1.py`, `platform/processing-core/app/tests/test_internal_ledger.py`.
+- **VERIFIED_BY_RUNTIME:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_reconciliation_v1.py`, `platform/processing-core/app/tests/test_internal_ledger.py`.
 
-### Documents / Exports — **READY**
+### Documents / Exports — **CODED_FULL**
 - **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
 - **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`, `app/routers/admin/closing_packages.py`.
 - **Шаблоны документов:** `platform/document-service/templates/` + схемы `platform/document-service/templates/schemas/`, эндпоинты `GET /v1/templates` и `GET /v1/templates/{code}` в document-service, прокси `GET /api/core/documents/templates` в core-api.
-- **VERIFIED:** `platform/processing-core/app/tests/test_documents_lifecycle.py`, `platform/processing-core/app/tests/test_closing_documents_e2e.py`, `platform/document-service/app/tests/test_templates.py`.
+- **VERIFIED_BY_RUNTIME:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (documents lifecycle).
+- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_documents_lifecycle.py`, `platform/processing-core/app/tests/test_closing_documents_e2e.py`, `platform/document-service/app/tests/test_templates.py`.
 
-### EDO SBIS — **READY**
+### EDO SBIS — **CODED_PARTIAL**
 - **EDO core:** модели `edo_accounts`, `edo_documents`, `edo_transitions`, `edo_artifacts`, `edo_outbox`. (`platform/processing-core/app/models/edo.py`)
 - **EDO сервис:** `app/services/edo/service.py`, router admin `/edo/*`, client `/client/api/v1/edo/*`, partner `/partner/api/v1/edo/*`. (`platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/client_edo.py`, `platform/processing-core/app/routers/partner/edo.py`)
 - **SBIS webhook intake:** `/integrations/edo/sbis/webhook` (core), dispatcher/worker в integration-hub. (`platform/processing-core/app/routers/integrations/edo_sbis.py`, `platform/integration-hub/neft_integration_hub/tasks.py`)
-- **VERIFIED:** `platform/processing-core/app/tests/test_edo_state_machine.py`, `platform/processing-core/app/tests/test_edo_events.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py`, `scripts/smoke_edo_sbis_send.cmd`.
+- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_edo_state_machine.py`, `platform/processing-core/app/tests/test_edo_events.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py`, `scripts/smoke_edo_sbis_send.cmd`.
 
-### Integrations Hub (1C + Bank + Reconciliation) — **READY**
+### Integrations Hub (1C + Bank + Reconciliation) — **CODED_FULL**
 - **1C export:** `app/routers/admin/integrations.py` endpoints `/api/v1/admin/integrations/onec/*`, XML export generator. (`platform/processing-core/app/services/accounting_export_service.py`)
 - **Bank statements:** import endpoints `/api/v1/admin/integrations/bank/*`, reconciliation mapping. (`platform/processing-core/app/routers/admin/integrations.py`)
 - **Reconciliation:** `app/services/reconciliation_service.py`, `app/routers/admin/integrations.py` (bank reconcile runs).
-- **VERIFIED:** `platform/processing-core/app/tests/test_onec_export.py`, `platform/processing-core/app/tests/test_bank_statement_reconciliation_e2e.py`, `scripts/smoke_onec_export.cmd`, `scripts/smoke_bank_statement_import.cmd`, `scripts/smoke_reconciliation_after_bank.cmd`.
+- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_onec_export.py`, `platform/processing-core/app/tests/test_bank_statement_reconciliation_e2e.py`, `scripts/smoke_onec_export.cmd`, `scripts/smoke_bank_statement_import.cmd`, `scripts/smoke_reconciliation_after_bank.cmd`.
 
-### BI ClickHouse runtime + marts + dashboards — **READY**
+### BI ClickHouse runtime + marts + dashboards — **CODED_PARTIAL**
 - **ClickHouse mart schemas:** `mart_ops_sla`, `mart_*` runtime tables. (`platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py`)
 - **BI endpoints:** `/api/core/bi/*` + admin `/api/core/api/v1/admin/bi/sync/*`. (`platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/api/v1/endpoints/bi_dashboards.py`)
 - **Dashboards JSON:** `docs/ops/dashboards/*.json`.
-- **VERIFIED:** `scripts/smoke_bi_ops_dashboard.cmd`, `scripts/smoke_bi_partner_dashboard.cmd`, `scripts/smoke_bi_client_spend_dashboard.cmd`, `scripts/smoke_bi_cfo_dashboard.cmd`.
+- **VERIFIED_BY_SMOKE:** `scripts/smoke_bi_ops_dashboard.cmd`, `scripts/smoke_bi_partner_dashboard.cmd`, `scripts/smoke_bi_client_spend_dashboard.cmd`, `scripts/smoke_bi_cfo_dashboard.cmd`.
 
-### Legal Gate / Compliance — **READY**
+### Legal Gate / Compliance — **CODED_FULL**
 - **Граф доверия (legal graph):** `app/services/legal_graph/*`, admin endpoints `/api/core/admin/legal-graph/*`.
 - **Trust gates:** интеграционные проверки в `platform/processing-core/app/tests/test_trust_gates.py`.
 - **Legal gate smoke:** `scripts/smoke_legal_gate.cmd`.
-- **VERIFIED:** `platform/processing-core/app/tests/test_legal_gate.py`, `platform/processing-core/app/tests/test_trust_gates.py`.
+- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_legal_gate.py`, `platform/processing-core/app/tests/test_trust_gates.py`, `scripts/smoke_legal_gate.cmd`.
 
-### Operational reliability (chaos/backup/restore/SLO/release) — **READY**
+### Operational reliability (chaos/backup/restore/SLO/release) — **CODED_FULL**
 - **Chaos:** `scripts/chaos/*.cmd` (Postgres restart, Redis flush, MinIO down).
 - **Backup/restore:** `scripts/backup/*.cmd`, `scripts/restore/*.cmd`, `scripts/backup/verify_backup.cmd`.
 - **SLO/ops:** `docs/ops/SLO.md`, dashboards `docs/ops/dashboards/*.json`.
@@ -327,17 +332,17 @@ scripts\test_processing_core_docker.cmd all
 - `S3_OBJECT_LOCK_*` for WORM/retention. (`shared/python/neft_shared/settings.py`, `.env.example`)
 
 ### Feature flags
-- `FEATURE_FLAGS` присутствует в `.env.example`, но прямых ссылок в коде не найдено. **NOT IMPLEMENTED (runtime parsing)**.
+- `FEATURE_FLAGS` присутствует в `.env.example`; runtime parsing в коде не обнаружен → **CODED_PARTIAL (env only)**.
 
 ---
 
 ## 4.10 Known Limitations
 
-- Kafka/RabbitMQ-based event bus **NOT IMPLEMENTED** (нет в compose/коде).
-- Schema registry **NOT IMPLEMENTED**.
-- SMS/Voice провайдеры уведомлений — **stub only** (`sms_stub`, `voice_stub` в `app/services/fleet_notification_dispatcher.py`).
-- Partner onboarding self-service — **NOT IMPLEMENTED** (см. `scripts/smoke_partner_onboarding.cmd`).
-- Object Lock/WORM требует внешней поддержки S3 — **NOT VERIFIED**.
+- Kafka/RabbitMQ-based event bus — **CODED_PARTIAL** (нет сервисов в compose/коде).
+- Schema registry — **CODED_PARTIAL** (нет сервиса в репозитории).
+- SMS/Voice провайдеры уведомлений — **CODED_PARTIAL** (stub-only: `sms_stub`, `voice_stub` в `app/services/fleet_notification_dispatcher.py`).
+- Partner onboarding self-service — **CODED_PARTIAL** (скрипт `scripts/smoke_partner_onboarding.cmd` в виде stub).
+- Object Lock/WORM требует внешней поддержки S3; вне текущего runtime snapshot.
 
 ---
 

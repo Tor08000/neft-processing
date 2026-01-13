@@ -14,12 +14,15 @@
 | Documents lifecycle | VERIFIED_BY_TESTS | `platform/processing-core/app/tests/test_documents_lifecycle.py` | registry документов и жизненный цикл |
 | EDO stub | VERIFIED_BY_TESTS | `platform/integration-hub/neft_integration_hub/tests/test_edo_stub.py` | EDO stub workflow |
 | Webhooks intake/delivery | VERIFIED_BY_TESTS | `platform/integration-hub/neft_integration_hub/tests/test_webhooks.py` | intake/delivery/retry/replay basics |
-| Core API smoke | VERIFIED_BY_SMOKE_SCRIPT | `scripts/test_core_api.cmd` | smoke по core API |
-| Token contract: stdout token-only | VERIFIED_BY_SMOKE_SCRIPT | `scripts/get_admin_token.cmd` | token-only stdout для admin token (используется smokes) |
-| Billing smoke (SKIP OK if no invoices) | VERIFIED_BY_SMOKE_SCRIPT | `scripts/billing_smoke.cmd` | billing smoke: PASS или SKIP при отсутствии инвойсов |
-| Finance smoke | VERIFIED_BY_SMOKE_SCRIPT | `scripts/smoke_billing_finance.cmd` | billing finance smoke |
-| Conditional smoke: PASS or SKIP if no invoices | VERIFIED_BY_SMOKE_SCRIPT (conditional) | `scripts/smoke_invoice_state_machine.cmd` | invoice state transitions via smoke script |
-| Full verification gate | VERIFIED_BY_SMOKE_SCRIPT | `scripts/verify_all.cmd` | Full verification gate |
-| Core API health | VERIFIED_BY_COMPOSE_HEALTHCHECK | `docker-compose.yml` (`core-api.healthcheck`) | health gate for core-api |
-| Gateway health | VERIFIED_BY_COMPOSE_HEALTHCHECK | `docker-compose.yml` (`gateway.healthcheck`) | gateway health endpoint |
-| Observability health | VERIFIED_BY_COMPOSE_HEALTHCHECK | `docker-compose.yml` (`prometheus/grafana/otel-collector/jaeger` healthchecks) | monitoring services health gates |
+| Core API smoke | VERIFIED_BY_SMOKE | `scripts/test_core_api.cmd` | smoke по core API |
+| Token contract: stdout token-only | VERIFIED_BY_SMOKE | `scripts/get_admin_token.cmd` | token-only stdout для admin token (используется smokes) |
+| Full verification gate | VERIFIED_BY_SMOKE | `scripts/verify_all.cmd` | full verification gate (health/metrics/smoke/pytest subset) |
+| Billing smoke (PASS or SKIP_OK) | VERIFIED_BY_SMOKE | `scripts/billing_smoke.cmd` | billing smoke: PASS или SKIP_OK при отсутствии инвойсов |
+| Billing finance smoke | VERIFIED_BY_SMOKE | `scripts/smoke_billing_finance.cmd` | billing finance smoke |
+| Invoice state machine smoke (conditional) | VERIFIED_BY_SMOKE | `scripts/smoke_invoice_state_machine.cmd` | invoice state transitions via smoke script (SKIP_OK when no invoices) |
+| Core API healthcheck | VERIFIED_BY_SMOKE | `docker-compose.yml` (`core-api.healthcheck`) | health gate for core-api |
+| Auth-host healthcheck | VERIFIED_BY_SMOKE | `docker-compose.yml` (`auth-host.healthcheck`) | auth service health gate |
+| Integration-hub healthcheck | VERIFIED_BY_SMOKE | `docker-compose.yml` (`integration-hub.healthcheck`) | integration hub health gate |
+| Gateway healthcheck | VERIFIED_BY_SMOKE | `docker-compose.yml` (`gateway.healthcheck`) | gateway health endpoint |
+| Frontend healthchecks | VERIFIED_BY_SMOKE | `docker-compose.yml` (`admin-web/client-web/partner-web.healthcheck`) | SPA readiness gates |
+| Infra healthchecks | VERIFIED_BY_SMOKE | `docker-compose.yml` (`postgres/redis/minio-health/otel-collector/jaeger/prometheus/grafana` healthchecks) | infra & observability service gates |

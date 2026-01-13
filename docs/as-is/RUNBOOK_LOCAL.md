@@ -103,9 +103,9 @@ End-to-end seed (auth + billing + support ticket):
 scripts\seed_e2e.cmd
 ```
 
-## 6) Health checks (HTTP)
+## 6) Health & metrics checks (HTTP)
 
-Gateway + APIs:
+Актуальные gateway URLs (используются в verify_all/runtime):
 
 ```cmd
 curl http://localhost/health
@@ -113,31 +113,9 @@ curl http://localhost/api/core/health
 curl http://localhost/api/auth/health
 curl http://localhost/api/ai/health
 curl http://localhost/api/int/health
-```
-
-Direct service ports:
-
-```cmd
-curl http://localhost:8001/api/core/health
-curl http://localhost:8002/api/auth/health
-curl http://localhost:8003/api/v1/health
-curl http://localhost:8010/health
-```
-
-Frontends:
-
-```cmd
-curl http://localhost:4173/health
-curl http://localhost:4174/health
-curl http://localhost:4175/health
-```
-
-Observability:
-
-```cmd
-curl http://localhost:9090/-/healthy
-curl http://localhost:3000/health
-curl http://localhost:16686/
+curl http://localhost/metrics
+curl http://localhost/api/core/metrics
+curl http://localhost:8010/metrics
 ```
 
 ## 7) Core tests

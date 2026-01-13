@@ -9,8 +9,8 @@
 
 | Step | Status | Details |
 | --- | --- | --- |
-| verify_all.cmd | OK | Full verification gate completed |
-| smoke_invoice_state_machine.cmd | SKIP | No invoices found. State machine not applicable. (SKIP = OK) |
+| verify_all.cmd | PASS | Full verification gate completed |
+| smoke_invoice_state_machine.cmd | SKIP (OK) | No invoices found. State machine not applicable. (SKIP = OK) |
 
 ## Errors
 
