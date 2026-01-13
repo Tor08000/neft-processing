@@ -13,6 +13,13 @@ NEFT_BOOTSTRAP_PARTNER_EMAIL
 NEFT_BOOTSTRAP_PARTNER_PASSWORD
 ```
 
+Также для авто-сидинга:
+
+```
+DEMO_SEED_ENABLED=1
+DEMO_SEED_FORCE_PASSWORD_RESET=1
+```
+
 ### Admin login
 
 ```bash
@@ -38,12 +45,23 @@ curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
 ```
 
 Ожидаемый результат: стабильные успешные ответы 10/10 раз (без 502 от gateway).
+Типичный успешный ответ содержит `access_token` и `token_type`:
+
+```json
+{ "access_token": "<jwt>", "token_type": "bearer" }
+```
 
 ## 2) UI Snapshot (ui_snapshot.cmd)
 
 ```bat
 cd frontends
 scripts\ui_snapshot.cmd
+```
+
+Ожидаемая строка в stdout:
+
+```
+UI snapshot report: <path>/frontends/ui-audit/<RUN_ID>/REPORT.md
 ```
 
 Выходные файлы:

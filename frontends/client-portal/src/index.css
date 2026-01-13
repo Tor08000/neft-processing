@@ -162,7 +162,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   padding: 0.15rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -403,7 +403,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: var(--neft-surface2);
   font-size: 12px;
@@ -423,7 +423,7 @@ textarea:focus-visible {
 
 .table-density__button {
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -478,7 +478,7 @@ textarea:focus-visible {
   background: var(--neft-surface2);
   color: var(--neft-text);
   padding: 0.4rem 0.85rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-weight: 700;
   border: 1px solid var(--neft-border);
 }
@@ -613,7 +613,7 @@ textarea:focus-visible {
 .kpi-card__explain {
   margin-left: auto;
   padding: 0.2rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid currentColor;
   font-size: 0.65rem;
 }
@@ -627,7 +627,7 @@ textarea:focus-visible {
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.2rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--neft-text-muted);
@@ -654,7 +654,7 @@ textarea:focus-visible {
 .kpi-card__progress {
   position: relative;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(182, 255, 59, 0.16);
   overflow: hidden;
 }
@@ -664,7 +664,7 @@ textarea:focus-visible {
   inset: 0;
   width: 0;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .kpi-card__targets {
@@ -777,7 +777,7 @@ textarea:focus-visible {
   border: 1px solid var(--neft-border);
   background: transparent;
   color: var(--neft-text-muted);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   width: 1.25rem;
   height: 1.25rem;
   display: inline-flex;
@@ -821,7 +821,7 @@ textarea:focus-visible {
 .achievement-badge__progress {
   position: relative;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(182, 255, 59, 0.16);
   overflow: hidden;
 }
@@ -831,7 +831,7 @@ textarea:focus-visible {
   inset: 0;
   width: 0;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .achievement-badge__remaining {
@@ -871,7 +871,7 @@ textarea:focus-visible {
 .streak-dot {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(148, 163, 184, 0.25);
 }
 
@@ -1026,7 +1026,7 @@ textarea:focus-visible {
 .pill {
   display: inline-flex;
   padding: 0.15rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 0.85rem;
   font-weight: 700;
   border: 1px solid var(--neft-border);
@@ -1181,7 +1181,7 @@ textarea:focus-visible {
 
 .skeleton-line {
   height: 16px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
@@ -1201,7 +1201,7 @@ textarea:focus-visible {
 
 .table-skeleton__cell {
   height: 12px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: linear-gradient(90deg, #1f2a3a 0%, #182131 50%, #1f2a3a 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
@@ -1250,7 +1250,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   padding: 0.15rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1307,7 +1307,7 @@ textarea:focus-visible {
 
 .summary-chip {
   padding: 0.35rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(148, 163, 184, 0.16);
   border: 1px solid var(--neft-border);
   font-weight: 600;
@@ -1557,14 +1557,14 @@ textarea:focus-visible {
   width: 10px;
   height: 10px;
   margin-top: 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: var(--neft-accent);
   box-shadow: 0 0 0 4px var(--neft-accent-soft);
 }
 
 .tab {
   padding: 0.5rem 0.9rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: var(--neft-surface2);
   cursor: pointer;
@@ -1779,7 +1779,7 @@ textarea:focus-visible {
 
 .chart-bar {
   background: var(--neft-border);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   height: 8px;
   overflow: hidden;
 }
@@ -1788,7 +1788,7 @@ textarea:focus-visible {
   display: block;
   height: 100%;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .bars {
@@ -1801,7 +1801,7 @@ textarea:focus-visible {
 
 .bar {
   background: var(--neft-border);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   height: 8px;
   overflow: hidden;
   margin-top: 0.35rem;
@@ -1811,7 +1811,7 @@ textarea:focus-visible {
   display: block;
   height: 100%;
   background: var(--neft-info);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .analytics-kpi-grid {
@@ -1991,7 +1991,7 @@ textarea:focus-visible {
 
 .explain-tree__count {
   background: rgba(148, 163, 184, 0.2);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   padding: 0.1rem 0.4rem;
   font-size: 0.65rem;
   color: var(--neft-text-muted);
@@ -2000,7 +2000,7 @@ textarea:focus-visible {
 .explain-tree__selected {
   font-size: 0.6rem;
   padding: 0.1rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid rgba(59, 130, 246, 0.4);
   color: #60a5fa;
 }
@@ -2211,7 +2211,7 @@ textarea:focus-visible {
   background: var(--neft-surface2);
   color: var(--neft-text);
   padding: 0.3rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 0.75rem;
 }
 

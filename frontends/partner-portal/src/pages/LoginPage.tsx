@@ -55,9 +55,10 @@ export function LoginPage() {
             {fieldError}
           </div>
         ) : null}
-        <label>
+        <label htmlFor="partner-email">
           Email
           <input
+            id="partner-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -68,9 +69,10 @@ export function LoginPage() {
           />
         </label>
 
-        <label>
+        <label htmlFor="partner-password">
           Пароль
           <input
+            id="partner-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

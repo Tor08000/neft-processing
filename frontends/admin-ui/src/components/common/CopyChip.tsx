@@ -31,7 +31,11 @@ export const CopyChip: React.FC<CopyChipProps> = ({ label, value, onCopy }) => {
       <span className="copy-chip__value" title={value}>
         {value}
       </span>
-      <button type="button" className="copy-chip__button neft-btn-outline neft-focus-ring" onClick={handleCopy}>
+      <button
+        type="button"
+        className="copy-chip__button neft-btn-secondary neft-btn-outline neft-focus-ring"
+        onClick={handleCopy}
+      >
         {copied ? "Скопировано" : "Копировать"}
       </button>
     </div>

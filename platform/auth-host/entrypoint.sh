@@ -10,6 +10,18 @@ if [ ! -f "/app/alembic.ini" ]; then
     exit 1
 fi
 
+required_envs=(
+    NEFT_BOOTSTRAP_ADMIN_PASSWORD
+    NEFT_BOOTSTRAP_CLIENT_PASSWORD
+    NEFT_BOOTSTRAP_PARTNER_PASSWORD
+)
+for env_name in "${required_envs[@]}"; do
+    if [ -z "${!env_name:-}" ]; then
+        echo "[entrypoint] missing required env: ${env_name}" >&2
+        exit 1
+    fi
+done
+
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_DB="${POSTGRES_DB:-neft}"
@@ -92,11 +104,30 @@ PY
 
 if [ "${DEMO_SEED_ENABLED:-0}" = "1" ]; then
     echo "[entrypoint] auth-host demo seed enabled"
-    if [ "${DEMO_SEED_FORCE_PASSWORD_RESET:-1}" != "1" ]; then
-        echo "[entrypoint] error: DEMO_SEED_FORCE_PASSWORD_RESET must be 1 when DEMO_SEED_ENABLED=1" >&2
-        exit 1
+    DEMO_RESET_FLAG="${DEMO_SEED_FORCE_PASSWORD_RESET:-0}"
+    if [ "${DEMO_RESET_FLAG}" = "1" ]; then
+        DEMO_FORCE_ARGS="--force"
+        DEMO_RESET_STATUS="reset"
+    else
+        DEMO_FORCE_ARGS=""
+        DEMO_RESET_STATUS="no-reset"
     fi
-    python -m app.cli.reset_passwords --demo --force
+    python - <<'PY'
+import os
+
+demo_users = [
+    ("admin", "NEFT_BOOTSTRAP_ADMIN_EMAIL", "NEFT_BOOTSTRAP_ADMIN_PASSWORD"),
+    ("client", "NEFT_BOOTSTRAP_CLIENT_EMAIL", "NEFT_BOOTSTRAP_CLIENT_PASSWORD"),
+    ("partner", "NEFT_BOOTSTRAP_PARTNER_EMAIL", "NEFT_BOOTSTRAP_PARTNER_PASSWORD"),
+]
+reset_status = "reset" if os.getenv("DEMO_SEED_FORCE_PASSWORD_RESET", "0") == "1" else "no-reset"
+for role, email_key, password_key in demo_users:
+    print(
+        f"[entrypoint] demo seed role={role} email={os.getenv(email_key)} "
+        f"action={reset_status} source_env={password_key}"
+    )
+PY
+    python -m app.cli.reset_passwords --demo ${DEMO_FORCE_ARGS}
 else
     echo "[entrypoint] auth-host demo seed disabled"
 fi

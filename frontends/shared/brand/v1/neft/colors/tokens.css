@@ -17,7 +17,8 @@
   --neft-space-6: 24px;
 
   /* Surfaces */
-  --neft-bg: #0B1F2A;
+  --neft-bg-core: #0B1F2A;
+  --neft-bg: var(--neft-bg-core);
   --neft-surface: #111827;
   --neft-card: #1F2937;
   --neft-border: #2C3E50;
@@ -28,6 +29,7 @@
   --neft-text-muted: #6B7280;
 
   /* Brand + States */
+  --neft-accent: #15A1C7;
   --neft-primary: #15A1C7;
   --neft-info: #3B82F6;
   --neft-success: #0EE8A8;
@@ -48,7 +50,8 @@
 /* Dark theme */
 [data-theme="dark"] {
   /* Surfaces */
-  --neft-bg: #0B1F2A;         /* Core Dark */
+  --neft-bg-core: #0B1F2A;         /* Core Dark */
+  --neft-bg: var(--neft-bg-core);
   --neft-surface: #111827;    /* Surface */
   --neft-card: #1F2937;       /* Card */
   --neft-border: #2C3E50;     /* Border */
@@ -167,7 +170,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 12px;
   font-weight: 700;
   border: 1px solid var(--neft-border);
