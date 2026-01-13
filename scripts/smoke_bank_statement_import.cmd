@@ -8,7 +8,7 @@ set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
 set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
 set "TOKEN="
 set "AUTH_HEADER="

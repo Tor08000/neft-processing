@@ -6,7 +6,7 @@ This matrix captures feature flags and related toggles discovered in the repo, a
 
 | Flag | Domain | Default | Where configured | Effect | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `AUTH_BOOTSTRAP_ENABLED` | auth/bootstrap | `1` (true) | env (`.env.example`) | Enables initial admin bootstrap flow for auth-host. | **Backend.** Safe for prod if bootstrap flow is desired; disable after initial provisioning to prevent re-seeding. Depends on auth-host startup. |
+| `NEFT_BOOTSTRAP_ENABLED` | auth/bootstrap | `1` (true) | env (`.env.example`) | Enables initial admin bootstrap flow for auth-host. | **Backend.** Safe for prod if bootstrap flow is desired; disable after initial provisioning to prevent re-seeding. Depends on auth-host startup. |
 | `AI_RISK_ENABLED` | ai/risk | `true` | env (`shared/python/neft_shared/settings.py`) | Enables AI risk scoring integration. | **Backend.** Requires `ai-service` reachable; safe if service available. |
 | `LOGISTICS_NAVIGATOR_ENABLED` | logistics/navigator | `true` | env (`shared/python/neft_shared/settings.py`) | Enables logistics navigator features. | **Backend.** Requires navigator provider configuration (`LOGISTICS_NAVIGATOR_PROVIDER`). |
 | `LOGISTICS_SERVICE_ENABLED` | logistics | `false` | env (`shared/python/neft_shared/settings.py`) | Enables calls to `logistics-service`. | **Backend.** Requires `logistics-service` running. |

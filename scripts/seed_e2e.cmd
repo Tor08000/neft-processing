@@ -9,7 +9,7 @@ set "CORE_ADMIN_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 set "CORE_CLIENT_URL=%GATEWAY_BASE%%CORE_BASE%/client/api/v1"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 if "%CLIENT_EMAIL%"=="" set "CLIENT_EMAIL=client@neft.local"
 if "%CLIENT_PASSWORD%"=="" set "CLIENT_PASSWORD=client"
 

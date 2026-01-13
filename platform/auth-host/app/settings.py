@@ -104,26 +104,23 @@ class Settings(SharedSettings):
         )
     )
     demo_seed_force_password_reset: bool = _env_bool("DEMO_SEED_FORCE_PASSWORD_RESET", True)
+    bootstrap_enabled: bool = _env_bool("NEFT_BOOTSTRAP_ENABLED", True)
     bootstrap_admin_email: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
         _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
-        fallback_keys=("AUTH_ADMIN_EMAIL",),
     )
     bootstrap_admin_password: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "change-me", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
-        fallback_keys=("AUTH_ADMIN_PASSWORD",),
+        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
     )
     bootstrap_admin_full_name: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
         _env_or_default("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin", fallback_keys=("DEMO_ADMIN_FULL_NAME",)),
-        fallback_keys=("AUTH_ADMIN_FULL_NAME",),
     )
     bootstrap_admin_roles: list[str] = field(
         default_factory=lambda: _roles_env(
             "NEFT_BOOTSTRAP_ADMIN_ROLES",
             _roles_env("NEFT_DEMO_ADMIN_ROLES", ["ADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)),
-            fallback_keys=("AUTH_ADMIN_ROLES",),
         )
     )
 
@@ -176,42 +173,19 @@ class Settings(SharedSettings):
             "DEMO_SEED_FORCE_PASSWORD_RESET", self.demo_seed_force_password_reset
         )
 
+        self.bootstrap_enabled = _env_bool("NEFT_BOOTSTRAP_ENABLED", self.bootstrap_enabled)
         self.bootstrap_admin_email = _env_or_default(
-            "NEFT_BOOTSTRAP_ADMIN_EMAIL", self.bootstrap_admin_email, fallback_keys=("AUTH_ADMIN_EMAIL",)
+            "NEFT_BOOTSTRAP_ADMIN_EMAIL", self.bootstrap_admin_email
         )
         self.bootstrap_admin_password = _env_or_default(
-            "NEFT_BOOTSTRAP_ADMIN_PASSWORD", self.bootstrap_admin_password, fallback_keys=("AUTH_ADMIN_PASSWORD",)
+            "NEFT_BOOTSTRAP_ADMIN_PASSWORD", self.bootstrap_admin_password
         )
         self.bootstrap_admin_full_name = _env_or_default(
-            "NEFT_BOOTSTRAP_ADMIN_FULL_NAME", self.bootstrap_admin_full_name, fallback_keys=("AUTH_ADMIN_FULL_NAME",)
+            "NEFT_BOOTSTRAP_ADMIN_FULL_NAME", self.bootstrap_admin_full_name
         )
         self.bootstrap_admin_roles = _roles_env(
-            "NEFT_BOOTSTRAP_ADMIN_ROLES", self.bootstrap_admin_roles, fallback_keys=("AUTH_ADMIN_ROLES",)
+            "NEFT_BOOTSTRAP_ADMIN_ROLES", self.bootstrap_admin_roles
         )
-
-    bootstrap_enabled: bool = _env_bool("AUTH_BOOTSTRAP_ENABLED", True)
-    bootstrap_admin_email: str = _env_or_default(
-        "AUTH_BOOTSTRAP_ADMIN_EMAIL",
-        _env_or_default("AUTH_ADMIN_EMAIL", "admin@example.com"),
-        fallback_keys=("ADMIN_EMAIL",),
-    )
-    bootstrap_admin_password: str = _env_or_default(
-        "AUTH_BOOTSTRAP_ADMIN_PASSWORD",
-        _env_or_default("AUTH_ADMIN_PASSWORD", "change-me"),
-        fallback_keys=("ADMIN_PASSWORD",),
-    )
-    bootstrap_admin_full_name: str = _env_or_default(
-        "AUTH_BOOTSTRAP_ADMIN_FULL_NAME",
-        "Bootstrap Admin",
-        fallback_keys=("ADMIN_FULL_NAME",),
-    )
-    bootstrap_admin_roles: list[str] = field(
-        default_factory=lambda: _roles_env(
-            "AUTH_BOOTSTRAP_ADMIN_ROLES",
-            ["ADMIN"],
-            fallback_keys=("AUTH_ADMIN_ROLES", "ADMIN_ROLES"),
-        )
-    )
 
 
 def get_settings() -> Settings:

@@ -6,7 +6,7 @@ set "CORE_ADMIN=%BASE_URL%/api/core/api/v1/admin"
 set "CORE_BI=%BASE_URL%/api/core/bi"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
 echo [1/4] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"

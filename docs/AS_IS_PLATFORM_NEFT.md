@@ -292,7 +292,7 @@ docker compose exec -T document-service wget -qO- http://localhost:8000/health
 | Сервис | Назначение (факт) | Порты / health / metrics | Key env vars | Зависимости | Статус |
 | --- | --- | --- | --- | --- | --- |
 | core-api | Основная бизнес-логика: processing, billing, clearing, payouts, explain, BI API | `8001→8000`, `/api/core/health`, `/metrics` | `DATABASE_URL`, `DOCUMENT_SERVICE_ENABLED`, `DOCUMENT_SERVICE_URL`, `LOGISTICS_SERVICE_ENABLED`, `LOGISTICS_SERVICE_URL`, `BI_CLICKHOUSE_ENABLED`, `CLICKHOUSE_URL` | postgres, redis, minio, clickhouse (опц.), document-service (опц.), logistics-service (опц.) | ✅ |
-| auth-host | Авторизация пользователей, JWT, bootstrap admin | `8002→8000`, `/api/auth/health`, `/metrics` | `DATABASE_URL`, `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`, `AUTH_*`, `NEFT_BOOTSTRAP_ADMIN_*` | postgres, redis | 🟡 (без миграций) |
+| auth-host | Авторизация пользователей, JWT, bootstrap admin | `8002→8000`, `/api/auth/health`, `/metrics` | `DATABASE_URL`, `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`, `NEFT_BOOTSTRAP_*`, `NEFT_BOOTSTRAP_ENABLED`, `DEMO_SEED_*` | postgres, redis | 🟡 (без миграций) |
 | document-service | Render HTML→PDF + S3, sign/verify | internal `8000`, `/health`, `/metrics` | `S3_ENDPOINT`, `S3_KEY`, `S3_SECRET`, `S3_BUCKET_DOCS` | minio | ✅ |
 | integration-hub | EDO + webhooks v1.1 (replay/SLA/alerts) | `8010→8000`, `/health`, `/metrics` | `INTEGRATION_HUB_DATABASE_URL`, `WEBHOOK_*`, `DIADOK_*` | redis, DB, minio | ✅ |
 | logistics-service | ETA/deviation/explain + providers mock/OSRM | internal `8000`, `/health`, `/metrics` | `LOGISTICS_PROVIDER`, `OSRM_BASE_URL`, `OSRM_TIMEOUT_SECONDS` | внешн. OSRM (опц.) | ✅ |

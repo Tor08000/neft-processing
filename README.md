@@ -14,7 +14,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
    - Windows CMD: `if not exist .env copy .env.example .env`
    - Linux/macOS: `cp -n .env.example .env`
 2. В файле `.env` замените плейсхолдеры `change-me` (например, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `NEFT_S3_ACCESS_KEY`, `NEFT_S3_SECRET_KEY`) на реальные значения.
-3. Заполните демо-доступы в `.env` (значения хранятся только локально):
+3. Проверьте демо-доступы в `.env` (по умолчанию `admin` / `client` / `partner`):
    - `NEFT_BOOTSTRAP_ADMIN_EMAIL`, `NEFT_BOOTSTRAP_ADMIN_PASSWORD`
    - `NEFT_BOOTSTRAP_CLIENT_EMAIL`, `NEFT_BOOTSTRAP_CLIENT_PASSWORD`
    - `NEFT_BOOTSTRAP_PARTNER_EMAIL`, `NEFT_BOOTSTRAP_PARTNER_PASSWORD`
@@ -118,7 +118,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 ### Админский токен для локальной разработки
 
-1) Убедитесь, что в `.env` прописаны `ADMIN_EMAIL` и `ADMIN_PASSWORD` (например, `admin@example.com` / `change-me`).
+1) Убедитесь, что в `.env` прописаны `NEFT_BOOTSTRAP_ADMIN_EMAIL` и `NEFT_BOOTSTRAP_ADMIN_PASSWORD` (например, `admin@example.com` / `admin`).
 2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 

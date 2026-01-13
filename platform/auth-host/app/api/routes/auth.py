@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -38,8 +37,8 @@ def _admin_credentials() -> tuple[str, str]:
     If not set, returns empty values.
     """
     settings = get_settings()
-    email = os.getenv("AUTH_ADMIN_EMAIL") or settings.bootstrap_admin_email or settings.demo_admin_email
-    password = os.getenv("AUTH_ADMIN_PASSWORD") or settings.bootstrap_admin_password or ""
+    email = settings.bootstrap_admin_email or settings.demo_admin_email
+    password = settings.bootstrap_admin_password or ""
     return email, password
 
 

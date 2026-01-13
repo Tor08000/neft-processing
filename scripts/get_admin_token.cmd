@@ -4,12 +4,14 @@ setlocal enabledelayedexpansion
 REM Defaults can be overridden in .env
 set "ENV_FILE=.env"
 set "ADMIN_EMAIL=admin@example.com"
-set "ADMIN_PASSWORD=change-me"
+set "ADMIN_PASSWORD=admin"
 set "DIRECT_BASE=http://localhost:8002"
 set "GATEWAY_BASE=http://localhost"
 
 if exist "%ENV_FILE%" (
     for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
+        if /I "%%A"=="NEFT_BOOTSTRAP_ADMIN_EMAIL" set "ADMIN_EMAIL=%%B"
+        if /I "%%A"=="NEFT_BOOTSTRAP_ADMIN_PASSWORD" set "ADMIN_PASSWORD=%%B"
         if /I "%%A"=="ADMIN_EMAIL" set "ADMIN_EMAIL=%%B"
         if /I "%%A"=="ADMIN_PASSWORD" set "ADMIN_PASSWORD=%%B"
     )
