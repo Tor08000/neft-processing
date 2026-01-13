@@ -40,7 +40,7 @@ scripts\\smoke_finance_negative_scenarios.cmd
 set AUTH_URL=http://localhost:8002/api/v1/auth/login
 
 rem Admin token
-curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}" > admin_token.json
+curl -s -X POST "%AUTH_URL%" -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}" > admin_token.json
 python -c "import json,sys; data=json.load(open('admin_token.json')); sys.stdout.write(data.get('access_token',''))" > admin_token.txt
 set /p ADMIN_TOKEN=<admin_token.txt
 

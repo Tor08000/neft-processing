@@ -12,7 +12,7 @@ if "%API_BASE%"=="" set "API_BASE=%CORE_URL%"
 set "INVOICES_URL=%GATEWAY_BASE%/api/core/v1/admin/billing/invoices"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
 set "TOKEN="
 set "AUTH_HEADER="

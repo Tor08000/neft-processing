@@ -11,7 +11,7 @@
 ## Step-by-step / Пошагово
 1. Получите admin-токен (используйте значения из `.env`):
    ```cmd
-   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"change-me\"}"
+   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
    ```
    Скопируйте `access_token` из ответа.
 

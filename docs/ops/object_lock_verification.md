@@ -33,7 +33,7 @@
 
 3. Получите admin-токен:
    ```cmd
-   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"change-me\"}"
+   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
    ```
 
 4. Создайте тестовый кейс и экспорт (создаёт S3-объект):

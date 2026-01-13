@@ -12,7 +12,7 @@ if "%TOKEN%"=="" (
   echo Сначала залогинься и установи токен вручную:
   echo   curl -s -X POST "http://localhost:8002/api/v1/auth/login" ^
        -H "Content-Type: application/json" ^
-       -d "{\"email\":\"admin@example.com\",\"password\":\"admin123\"}"
+      -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
   echo.
   echo Потом в этом же окне CMD:
   echo   set TOKEN=СКОПИРОВАННЫЙ_ACCESS_TOKEN

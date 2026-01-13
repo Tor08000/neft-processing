@@ -30,7 +30,7 @@
 
 2. Получите admin-токен:
    ```cmd
-   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"change-me\"}"
+   curl -X POST http://localhost/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
    ```
 
 3. Создайте тестовый кейс (генерирует `case_events`):

@@ -5,7 +5,7 @@ set "BASE_URL=http://localhost"
 set "CORE_URL=%BASE_URL%/api/core/api/v1/admin"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
 set "TOKEN="
 set "AUTH_HEADER="

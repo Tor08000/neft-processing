@@ -9,7 +9,7 @@ set "CORE_ROOT=%GATEWAY_BASE%%CORE_BASE%"
 set "ADMIN_URL=%CORE_ROOT%/api/v1/admin"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
-if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
+if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
 set "TOKEN="
 set "AUTH_HEADER="

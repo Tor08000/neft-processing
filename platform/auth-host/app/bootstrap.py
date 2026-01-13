@@ -78,7 +78,7 @@ async def bootstrap_admin_account_with_seed(
 async def bootstrap_admin(settings: Settings | None = None) -> None:
     settings = settings or get_settings()
     if not settings.bootstrap_enabled:
-        logger.info("auth bootstrap: disabled via AUTH_BOOTSTRAP_ENABLED")
+        logger.info("auth bootstrap: disabled via NEFT_BOOTSTRAP_ENABLED")
         return
 
     email = (settings.bootstrap_admin_email or "").strip()
