@@ -90,4 +90,11 @@ from app.bootstrap import bootstrap_admin
 asyncio.run(bootstrap_admin())
 PY
 
+if [ "${DEMO_SEED_ENABLED:-0}" = "1" ]; then
+    echo "[entrypoint] auth-host demo seed enabled"
+    python -m app.cli.reset_passwords --demo --force
+else
+    echo "[entrypoint] auth-host demo seed disabled"
+fi
+
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

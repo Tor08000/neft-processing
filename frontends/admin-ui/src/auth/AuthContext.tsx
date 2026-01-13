@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { login as apiLogin, me } from "../api/auth";
-import { ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
+import { ApiError, ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
 import type { AuthSession, AuthUser } from "../types/auth";
 import { hasAdminRole } from "./roles";
 
@@ -110,7 +110,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         persist({ ...session, email: profile.email, roles: profile.roles });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          setError("Неверный логин или пароль");
+          setError("Неверный email или пароль");
           return;
         }
         if (err instanceof ForbiddenError) {
@@ -118,11 +118,19 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           return;
         }
         if (err instanceof ValidationError) {
-          setError("Проверьте введённые данные");
+          setError("Проверьте email и пароль");
+          return;
+        }
+        if (err instanceof ApiError && err.status >= 500) {
+          setError("Сервис временно недоступен");
+          return;
+        }
+        if (err instanceof TypeError) {
+          setError("Сервис временно недоступен");
           return;
         }
         console.error("Ошибка авторизации", err);
-        setError("Ошибка авторизации, попробуйте позже");
+        setError("Сервис временно недоступен");
       }
     },
     [logout, persist],

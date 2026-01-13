@@ -49,6 +49,9 @@ Partner
 - Client UI: `client@neft.local` / `client`.【F:frontends/client-portal/src/pages/LoginPage.tsx†L14-L17】
 - Partner UI: `partner@neft.local` / `partner`.【F:frontends/partner-portal/src/pages/LoginPage.tsx†L11-L14】
 
+В dev окружении эти пользователи детерминированно сидятся через auth-host seed/CLI — см. runbook
+`docs/runbooks/DEMO_USERS_AND_LOGIN.md`.
+
 ## Примечание про override доступов
 
 В e2e сценариях логины можно переопределять через переменные окружения:
@@ -57,3 +60,5 @@ Partner
 - `PARTNER_EMAIL`, `PARTNER_PASSWORD`
 
 Это используется в e2e-утилитах при логине.【F:frontends/e2e/tests/utils.ts†L3-L28】
+
+Эти же переменные учитываются auth-host seed/CLI для детерминированного сброса демо-паролей.
