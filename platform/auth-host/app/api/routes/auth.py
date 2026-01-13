@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.db import get_conn
@@ -24,6 +25,7 @@ from app.security import (
     security_scheme,
     verify_password,
 )
+from app.healthcheck import build_health_response
 from app.services.keys import get_public_key_pem
 from app.settings import get_settings
 
@@ -69,7 +71,10 @@ async def _get_roles_for_user(user_id: str) -> list[str]:
 
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="auth-host")
+    response, status_code = build_health_response()
+    if status_code != status.HTTP_200_OK:
+        return JSONResponse(status_code=status_code, content=response.model_dump())
+    return response
 
 
 @router.get("/public-key", response_class=PlainTextResponse)
