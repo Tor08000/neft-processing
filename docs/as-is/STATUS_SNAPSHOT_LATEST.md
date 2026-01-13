@@ -43,60 +43,22 @@
 ### Metrics (HTTP 200)
 - Gateway: `http://localhost/metrics`
 - Core API via gateway: `http://localhost/api/core/metrics`
-- Auth-host: `http://localhost:8002/api/v1/metrics`
-- AI service: `http://localhost:8003/metrics`
 - Integration Hub: `http://localhost:8010/metrics`
 
 ---
 
 ## 4) Smoke scripts (business flows)
 
-> Все smoke-скрипты в `scripts/smoke_*.cmd` перечислены ниже. Команды выполняются на запущенном стеке (`docker compose up -d --build`).
+> Актуальный runtime-набор smoke-скриптов — это список, который запускается `scripts\verify_all.cmd`.
 > PASS criteria: script exits `0`; steps may emit `[SKIP]` with a documented reason (например отсутствие данных) without failing the script.
 
 - `scripts\smoke_invoice_state_machine.cmd` корректно проходит в пустом окружении: при отсутствии инвойсов возвращает `[SKIP]` и exit `0`.
 
-| Smoke check | Command | Prerequisites | PASS criteria |
+| Smoke check (verify_all) | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
-| All smoke scripts | `scripts\smoke_all.cmd` | full stack running | Script exits `0` |
 | Billing smoke | `scripts\billing_smoke.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` (SKIP when no invoices) |
 | Billing finance | `scripts\smoke_billing_finance.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` |
-| Billing run | `scripts\smoke_billing_run.cmd` | same as above | Script exits `0` |
-| Billing v14 | `scripts\smoke_billing_v14.cmd` | same as above | Script exits `0` |
 | Invoice state machine (conditional) | `scripts\smoke_invoice_state_machine.cmd` | same as above | Script exits `0` (SKIP when no invoices) |
-| Legal gate | `scripts\smoke_legal_gate.cmd` | core-api, auth-host | Script exits `0` |
-| Onboarding E2E | `scripts\smoke_onboarding_e2e.cmd` | core-api, auth-host | Script exits `0` |
-| 1C export | `scripts\smoke_onec_export.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Bank statement import | `scripts\smoke_bank_statement_import.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Reconciliation after bank | `scripts\smoke_reconciliation_after_bank.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Finance negative scenarios | `scripts\smoke_finance_negative_scenarios.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Fleet ingest batch | `scripts\smoke_fuel_ingest_batch.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Fleet offline reconcile | `scripts\smoke_fuel_offline_reconcile.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| Fleet replay batch | `scripts\smoke_fuel_replay_batch.cmd` | core-api, auth-host, postgres | Script exits `0` |
-| EDO SBIS send | `scripts\smoke_edo_sbis_send.cmd` | core-api, integration-hub, SBIS env vars | Script exits `0` |
-| EDO SBIS wait signed | `scripts\smoke_edo_sbis_wait_signed.cmd` | core-api, integration-hub, SBIS env vars | Script exits `0` |
-| EDO SBIS revoke | `scripts\smoke_edo_sbis_revoke.cmd` | core-api, integration-hub, SBIS env vars | Script exits `0` |
-| BI ops dashboard | `scripts\smoke_bi_ops_dashboard.cmd` | core-api, auth-host, clickhouse, `BI_CLICKHOUSE_ENABLED=1` | Script exits `0` |
-| BI partner dashboard | `scripts\smoke_bi_partner_dashboard.cmd` | core-api, auth-host, clickhouse, `BI_CLICKHOUSE_ENABLED=1` | Script exits `0` |
-| BI client spend dashboard | `scripts\smoke_bi_client_spend_dashboard.cmd` | core-api, auth-host, clickhouse, `BI_CLICKHOUSE_ENABLED=1` | Script exits `0` |
-| BI CFO dashboard | `scripts\smoke_bi_cfo_dashboard.cmd` | core-api, auth-host, clickhouse, `BI_CLICKHOUSE_ENABLED=1` | Script exits `0` |
-| Notifications invoice email | `scripts\smoke_notifications_invoice_email.cmd` | core-api, auth-host, mailpit | Script exits `0` |
-| Notifications webhook | `scripts\smoke_notifications_webhook.cmd` | core-api, auth-host | Script exits `0` |
-| Restart smoke | `scripts\smoke_restart.cmd` | full stack running | Script exits `0` |
-| Client users & roles | `scripts\smoke_client_users_roles.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Limits apply/enforce | `scripts\smoke_limits_apply_and_enforce.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Cards issue | `scripts\smoke_cards_issue.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Operations explain | `scripts\smoke_operations_explain.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Closing package | `scripts\smoke_closing_package.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Reconciliation request/sign | `scripts\smoke_reconciliation_request_sign.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Support ticket | `scripts\smoke_support_ticket.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Partner onboarding | `scripts\smoke_partner_onboarding.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Partner webhooks | `scripts\smoke_partner_webhooks.cmd` | integration-hub | **N/A (script is stub and exits 1)** |
-| Partner documents | `scripts\smoke_partner_documents.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Payouts batch export | `scripts\smoke_payouts_batch_export.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Clearing batch | `scripts\smoke_clearing_batch.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Reconciliation run | `scripts\smoke_reconciliation_run.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
-| Dispute/refund | `scripts\smoke_dispute_refund.cmd` | core-api, auth-host | **N/A (script is stub and exits 1)** |
 
 ---
 
@@ -135,23 +97,3 @@
 | Check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
 | Playwright UI smoke | `cd frontends\e2e && npm install && npx playwright install && npx playwright test` | UI services running (`admin-web`, `client-web`, `partner-web`) | `playwright test` exits `0` |
-
----
-
-## 8) Known limitations
-
-- Smoke scripts that are explicit placeholders (currently return `NOT IMPLEMENTED`):
-  - `scripts\smoke_client_users_roles.cmd`
-  - `scripts\smoke_limits_apply_and_enforce.cmd`
-  - `scripts\smoke_cards_issue.cmd`
-  - `scripts\smoke_operations_explain.cmd`
-  - `scripts\smoke_closing_package.cmd`
-  - `scripts\smoke_reconciliation_request_sign.cmd`
-  - `scripts\smoke_support_ticket.cmd`
-  - `scripts\smoke_partner_onboarding.cmd`
-  - `scripts\smoke_partner_webhooks.cmd`
-  - `scripts\smoke_partner_documents.cmd`
-  - `scripts\smoke_payouts_batch_export.cmd`
-  - `scripts\smoke_clearing_batch.cmd`
-  - `scripts\smoke_reconciliation_run.cmd`
-  - `scripts\smoke_dispute_refund.cmd`

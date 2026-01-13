@@ -24,6 +24,16 @@
 ### integration-hub
 - No Alembic migrations are present. Schema is created via SQLAlchemy models on startup. (`platform/integration-hub/neft_integration_hub/db.py`)
 
+## 2.1) Enforced invariants (examples)
+
+> Примеры реально заданных ограничений (unique/index) в моделях и миграциях.
+
+- `invoice`/`billing` уникальные ключи по scope (invoice number, period, tenant). (`platform/processing-core/app/models/invoice.py`)
+- `internal_ledger_accounts` уникальные ключи по account scope. (`platform/processing-core/app/models/internal_ledger.py`)
+- Legal graph: уникальность узлов и рёбер по tenant + scope. (`platform/processing-core/app/models/legal_graph.py`)
+- `case_events` уникальное упорядочивание `case_id + seq`. (`platform/processing-core/app/models/cases.py`)
+- `audit_log` индексированные поля для неизменяемого аудита. (`platform/processing-core/app/models/audit_log.py`)
+
 ## 3) processing_core — key tables by domain
 
 > **Note:** This list focuses on tables that define domain boundaries. For a full list, see `platform/processing-core/app/models/`.
