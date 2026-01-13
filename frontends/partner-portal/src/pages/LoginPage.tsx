@@ -26,7 +26,7 @@ export function LoginPage() {
       navigate(returnUrl, { replace: true });
     } catch (err) {
       console.error("Ошибка входа", err);
-      setFieldError("Ошибка авторизации, попробуйте позже");
+      setFieldError("Сервис временно недоступен");
     } finally {
       setIsSubmitting(false);
     }
@@ -40,6 +40,7 @@ export function LoginPage() {
         </div>
         <h1>NEFT Platform</h1>
         <p>Используйте учётные данные партнёра для доступа.</p>
+        <div className="login-demo muted small">Demo: partner@neft.local / partner</div>
         {error ? (
           <div className="error" role="alert">
             {error}

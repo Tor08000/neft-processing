@@ -33,8 +33,8 @@ export function LoginPage() {
       navigate(returnUrl, { replace: true });
     } catch (err) {
       console.error("Ошибка входа", err);
-      setFieldError("Ошибка авторизации, попробуйте позже");
-      showToast("error", "Ошибка входа");
+      setFieldError("Сервис временно недоступен");
+      showToast("error", "Сервис временно недоступен");
     } finally {
       setIsSubmitting(false);
     }

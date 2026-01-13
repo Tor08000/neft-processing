@@ -65,6 +65,24 @@ function normalizeBaseUrl(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
+function normalizeCredential(value: string | undefined, fallback: string) {
+  if (value && value.trim() !== "") {
+    return value;
+  }
+  return fallback;
+}
+
+async function isVisible(locator: ReturnType<Page["locator"]>) {
+  return (await locator.count()) > 0 && (await locator.first().isVisible());
+}
+
+async function isAppShellVisible(page: Page) {
+  const sidebar = page.locator(".brand-sidebar, .sidebar, [role='navigation']");
+  const header = page.locator(".brand-header, .topbar, header");
+  const logoutButton = page.getByRole("button", { name: /выход|logout/i });
+  return (await isVisible(sidebar)) && (await isVisible(header)) && (await isVisible(logoutButton));
+}
+
 export function resolveBaseUrls() {
   const base = normalizeBaseUrl(process.env.E2E_BASE_URL || "http://localhost");
   return {
@@ -93,8 +111,16 @@ function buildUrl(baseUrl: string, routePath: string) {
   return new URL(normalizedPath, normalizeBaseUrl(baseUrl)).toString();
 }
 
-export async function login(page: Page, baseUrl: string, credentials: Credentials, report: ReportState, app: AppName) {
+export async function login(
+  page: Page,
+  baseUrl: string,
+  credentials: Credentials,
+  report: ReportState,
+  app: AppName,
+  jsErrors: string[],
+) {
   try {
+    jsErrors.length = 0;
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(300);
 
@@ -109,20 +135,30 @@ export async function login(page: Page, baseUrl: string, credentials: Credential
     );
 
     if ((await emailInput.count()) === 0 || (await passInput.count()) === 0) {
-      return;
+      report.errors.push(`[${app}] login form not found at ${page.url()}`);
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_FORM_MISSING");
+      report.errors.push(`[${app}] login screenshot: ${screenshot}`);
+      return false;
     }
 
     await emailInput.first().fill(credentials.email);
     await passInput.first().fill(credentials.password);
     await submitButton.first().click();
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15000 });
-    const shell = page.locator(
-      "header, [data-testid='header'], [data-testid='sidebar'], .sidebar, .app-sidebar, .app-header",
-    );
-    await shell.first().waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForTimeout(300);
+    const failureReason = await getFailureReason({ page, jsErrors, requireShell: true });
+    if (failureReason) {
+      const screenshot = await takeScreenshot(page, report, app, `login__FAIL_${failureReason}`);
+      report.errors.push(`[${app}] login failed: ${failureReason} (${page.url()})`);
+      report.errors.push(`[${app}] login screenshot: ${screenshot}`);
+      return false;
+    }
+    return true;
   } catch (error) {
     report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
+    const screenshot = await takeScreenshot(page, report, app, "login__FAIL_EXCEPTION");
+    report.errors.push(`[${app}] login screenshot: ${screenshot}`);
+    return false;
   }
 }
 
@@ -137,7 +173,17 @@ async function takeScreenshot(page: Page, report: ReportState, app: AppName, fil
   return relativePath;
 }
 
-async function getFailureReason(page: Page, responseStatus?: number) {
+async function getFailureReason({
+  page,
+  responseStatus,
+  jsErrors = [],
+  requireShell = false,
+}: {
+  page: Page;
+  responseStatus?: number;
+  jsErrors?: string[];
+  requireShell?: boolean;
+}) {
   const currentUrl = page.url();
   if (currentUrl.includes("/login")) {
     return "REDIRECT_LOGIN";
@@ -157,6 +203,14 @@ async function getFailureReason(page: Page, responseStatus?: number) {
     return "RBAC_DENY";
   }
 
+  if (jsErrors.length > 0) {
+    return "JS_ERROR";
+  }
+
+  if (requireShell && !(await isAppShellVisible(page))) {
+    return "APP_SHELL_MISSING";
+  }
+
   if (responseStatus && responseStatus >= 400) {
     return `HTTP_${responseStatus}`;
   }
@@ -171,6 +225,7 @@ async function visitAndSnap({
   route,
   url,
   responseStatus,
+  jsErrors,
 }: {
   page: Page;
   app: AppName;
@@ -178,12 +233,18 @@ async function visitAndSnap({
   route: RouteConfig;
   url: string;
   responseStatus?: number;
+  jsErrors: string[];
 }) {
-  const failureReason = await getFailureReason(page, responseStatus);
+  const failureReason = await getFailureReason({ page, responseStatus, jsErrors, requireShell: true });
   if (failureReason) {
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
+    if (failureReason === "JS_ERROR" && jsErrors.length > 0) {
+      report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
+    }
+    const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     return {
       status: `FAIL (${failureReason})` as const,
+      screenshot,
     };
   }
 
@@ -253,7 +314,19 @@ export async function runSnapshots({
   routes: RouteConfig[];
   report: ReportState;
 }) {
-  await login(page, baseUrl, credentials, report, app);
+  const jsErrors: string[] = [];
+  const onConsole = (msg: { type: () => string; text: () => string }) => {
+    if (msg.type() === "error") {
+      jsErrors.push(`console: ${msg.text()}`);
+    }
+  };
+  const onPageError = (error: Error) => {
+    jsErrors.push(`pageerror: ${error.message}`);
+  };
+  page.on("console", onConsole);
+  page.on("pageerror", onPageError);
+
+  await login(page, baseUrl, credentials, report, app, jsErrors);
 
   for (const route of routes) {
     const url = buildUrl(baseUrl, route.path);
@@ -265,6 +338,7 @@ export async function runSnapshots({
     };
 
     try {
+      jsErrors.length = 0;
       const response = await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(400);
 
@@ -276,6 +350,7 @@ export async function runSnapshots({
         route,
         url,
         responseStatus: statusCode,
+        jsErrors,
       });
       routeResult.status = snapResult.status;
       routeResult.screenshot = snapResult.screenshot;
@@ -297,6 +372,9 @@ export async function runSnapshots({
 
     report.routes[app].push(routeResult);
   }
+
+  page.off("console", onConsole);
+  page.off("pageerror", onPageError);
 }
 
 export function writeReport(report: ReportState) {
@@ -397,15 +475,24 @@ export const PARTNER_ROUTES: RouteConfig[] = [
 
 export const CREDENTIALS = {
   admin: {
-    email: process.env.ADMIN_EMAIL || "admin@example.com",
-    password: process.env.ADMIN_PASSWORD || "admin",
+    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL || "admin@example.com"),
+    password: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD || "admin123"),
   },
   client: {
-    email: process.env.CLIENT_EMAIL || "client@neft.local",
-    password: process.env.CLIENT_PASSWORD || "client",
+    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL || "client@neft.local"),
+    password: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD,
+      process.env.CLIENT_PASSWORD || "client",
+    ),
   },
   partner: {
-    email: process.env.PARTNER_EMAIL || "partner@neft.local",
-    password: process.env.PARTNER_PASSWORD || "partner",
+    email: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL,
+      process.env.PARTNER_EMAIL || "partner@neft.local",
+    ),
+    password: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD,
+      process.env.PARTNER_PASSWORD || "partner",
+    ),
   },
 } satisfies Record<AppName, Credentials>;

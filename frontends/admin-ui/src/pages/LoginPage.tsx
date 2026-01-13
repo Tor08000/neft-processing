@@ -9,7 +9,7 @@ import { AppLogo } from "@shared/brand/components";
 export const LoginPage: React.FC = () => {
   const { login, error, user } = useAuth();
   const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin");
+  const [password, setPassword] = useState("admin123");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
@@ -29,8 +29,8 @@ export const LoginPage: React.FC = () => {
       await login(email, password);
     } catch (err) {
       console.error("Ошибка входа", err);
-      setLocalError("Не удалось выполнить вход, попробуйте позже");
-      showToast("error", "Ошибка входа");
+      setLocalError("Сервис временно недоступен");
+      showToast("error", "Сервис временно недоступен");
     } finally {
       setSubmitting(false);
     }
@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
         <div className="login-demo">
           <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
-          <CopyChip label="Demo" value="admin" onCopy={() => showToast("success", "Скопировано")} />
+          <CopyChip label="Demo" value="admin123" onCopy={() => showToast("success", "Скопировано")} />
         </div>
         <form onSubmit={handleSubmit} className="login-form">
           <label htmlFor="admin-email">
@@ -85,7 +85,7 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))}
               onBlur={() => setCapsLockOn(false)}
-              placeholder="admin"
+              placeholder="admin123"
               required
               autoComplete="current-password"
               disabled={submitting}
