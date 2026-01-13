@@ -32,7 +32,8 @@ echo [4/14] Generate draft invoice for transitions...
 set "CODE="
 for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{\"period_from\":\"2024-01-01\",\"period_to\":\"2024-01-31\",\"status\":\"DRAFT\"}" -X POST -o generate_invoice.json "%CORE_URL%/billing/invoices/generate"`) do set "CODE=%%c"
 if "%CODE%"=="202" (
-  for /f "usebackq tokens=*" %%i in (`python -c "import json,sys; data=json.load(open('generate_invoice.json')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')"`) do set "INVOICE_ID=%%i"
+  python -c "import json,sys; data=json.load(open('generate_invoice.json')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')" > invoice_id.txt
+  set /p INVOICE_ID=<invoice_id.txt
 ) else (
   echo [WARN] Generation returned %CODE%, will reuse existing invoice if present.
 )
@@ -59,7 +60,8 @@ if "%INVOICE_ID%"=="" (
     echo [FAIL] Invoices list returned %CODE%.
     goto :fail
   )
-  for /f "usebackq tokens=*" %%i in (`python -c "import json,sys; data=json.load(open('invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')"`) do set "INVOICE_ID=%%i"
+  python -c "import json,sys; data=json.load(open('invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')" > invoice_id.txt
+  set /p INVOICE_ID=<invoice_id.txt
   if "%INVOICE_ID%"=="" (
     set /a EMPTY_ATTEMPT+=1
     if !EMPTY_ATTEMPT! LEQ 5 (
@@ -85,13 +87,12 @@ if not "%CODE%"=="200" (
   echo [FAIL] Invoice detail returned %CODE%.
   goto :fail
 )
-for /f "usebackq tokens=*" %%t in (`python -c "import json; d=json.load(open('invoice_detail.json')); print(d.get('total_with_tax') or d.get('total_amount') or 0)"`) do set "TOTAL_WITH_TAX=%%t"
-for /f "usebackq tokens=*" %%p in (`python -c "import json; data=json.load(open('invoice_detail.json')); total=int(data.get('total_with_tax') or data.get('total_amount') or 0); partial=max(1,total//2) if total else 0; remaining=max(total-partial,0); print(partial); print(remaining)"`) do (
-  if "!PARTIAL_AMOUNT!"=="" (
-    set "PARTIAL_AMOUNT=%%p"
-  ) else (
-    set "REMAINING_AMOUNT=%%p"
-  )
+python -c "import json; d=json.load(open('invoice_detail.json')); print(d.get('total_with_tax') or d.get('total_amount') or 0)" > invoice_total.txt
+set /p TOTAL_WITH_TAX=<invoice_total.txt
+python -c "import json; data=json.load(open('invoice_detail.json')); total=int(data.get('total_with_tax') or data.get('total_amount') or 0); partial=max(1,total//2) if total else 0; remaining=max(total-partial,0); print(str(partial) + ' ' + str(remaining))" > invoice_amounts.txt
+for /f "usebackq tokens=1,2" %%p in ("invoice_amounts.txt") do (
+  set "PARTIAL_AMOUNT=%%p"
+  set "REMAINING_AMOUNT=%%q"
 )
 if "%PARTIAL_AMOUNT%"=="" set "PARTIAL_AMOUNT=1"
 if "%REMAINING_AMOUNT%"=="" set "REMAINING_AMOUNT=1"
