@@ -20,10 +20,7 @@ set "REMAINING_AMOUNT="
 echo [1/14] Fetch admin token...
 set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [FAIL] No access_token returned. 1>&2
-  goto :fail
-)
+if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 echo [OK] Token acquired.
 

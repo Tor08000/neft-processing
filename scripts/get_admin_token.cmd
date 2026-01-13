@@ -16,7 +16,7 @@ if exist "%ENV_FILE%" (
 )
 
 set "HEADER_FILE=%TEMP%\\admin_login_headers_%RANDOM%.tmp"
-set "BODY_FILE=%TEMP%\\admin_login_body_%RANDOM%.tmp"
+set "BODY_FILE=%TEMP%\\auth_body.json"
 set "OPENAPI_FILE=%TEMP%\\auth_openapi_%RANDOM%.tmp"
 
 set "TOKEN="
@@ -61,7 +61,7 @@ if not "%REQUEST_RESULT%"=="0" (
 )
 
 if not defined TOKEN (
-    echo [ERROR] No access_token returned. 1>&2
+    1>&2 echo [ERROR] No access_token returned.
     exit /b 1
 )
 
@@ -70,23 +70,23 @@ endlocal & echo %TOKEN%
 exit /b 0
 
 :error_fetch_openapi
-echo %ERROR_MESSAGE% 1>&2
-echo URL: %ERROR_URL% 1>&2
+1>&2 echo %ERROR_MESSAGE%
+1>&2 echo URL: %ERROR_URL%
 exit /b 1
 
 :error_openapi_login
-echo %ERROR_MESSAGE% 1>&2
+1>&2 echo %ERROR_MESSAGE%
 python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=sorted(p for p,m in paths.items() if isinstance(m,dict) and any(k.lower()=='post' for k in m.keys())); print('\n'.join(candidates))" 1>&2
 exit /b 1
 
 :error_request_token
-echo %ERROR_MESSAGE% 1>&2
-if defined ERROR_LOGIN_PATH echo LOGIN_PATH: %ERROR_LOGIN_PATH% 1>&2
-if defined ERROR_GATEWAY_URL echo GATEWAY_URL: %ERROR_GATEWAY_URL% 1>&2
-if defined ERROR_DIRECT_URL echo DIRECT_URL: %ERROR_DIRECT_URL% 1>&2
-if defined ERROR_URL echo URL: %ERROR_URL% 1>&2
-if defined ERROR_EMAIL echo Email: %ERROR_EMAIL% 1>&2
-if defined ERROR_STATUS echo HTTP status: %ERROR_STATUS% 1>&2
+1>&2 echo %ERROR_MESSAGE%
+if defined ERROR_LOGIN_PATH 1>&2 echo LOGIN_PATH: %ERROR_LOGIN_PATH%
+if defined ERROR_GATEWAY_URL 1>&2 echo GATEWAY_URL: %ERROR_GATEWAY_URL%
+if defined ERROR_DIRECT_URL 1>&2 echo DIRECT_URL: %ERROR_DIRECT_URL%
+if defined ERROR_URL 1>&2 echo URL: %ERROR_URL%
+if defined ERROR_EMAIL 1>&2 echo Email: %ERROR_EMAIL%
+if defined ERROR_STATUS 1>&2 echo HTTP status: %ERROR_STATUS%
 if defined ERROR_BODY_FILE (
     if exist "%ERROR_BODY_FILE%" type "%ERROR_BODY_FILE%" 1>&2
 )
@@ -120,7 +120,7 @@ if not "%STATUS%"=="200" (
     exit /b 1
 )
 
-for /f "usebackq delims=" %%T in (`python -c "import json;print(json.load(open(r'%BODY_FILE%','r',encoding='utf-8')).get('access_token',''))"`) do set "TOKEN=%%T"
+for /f "usebackq delims=" %%T in (`python -c "import json; print(json.load(open(r'%TEMP%\\auth_body.json','r',encoding='utf-8')).get('access_token',''))"`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
     set "ERROR_MESSAGE=[ERROR] No access_token returned."
     set "ERROR_URL=%LOGIN_URL%"
