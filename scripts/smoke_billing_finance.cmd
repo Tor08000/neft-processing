@@ -10,10 +10,7 @@ set "CORE_BASE=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 echo [1/10] Fetch admin token...
 set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [ERROR] No access_token returned 1>&2
-  exit /b 1
-)
+if "%TOKEN%"=="" exit /b 1
 
 echo [2/10] Check /auth/me...
 curl -s -o NUL -w "%%{http_code}" "%AUTH_BASE%/me" -H "Authorization: Bearer %TOKEN%" | findstr 200 >NUL || goto :error
