@@ -1,6 +1,7 @@
 import logging
 import os
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 
@@ -10,6 +11,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.processing import router as processing_router
 from app.bootstrap import seed_demo_client_account
 from app.db import ensure_users_table
+from app.healthcheck import build_health_response
 from app.metrics import metrics_middleware, metrics_response
 
 DEFAULT_API_PREFIX = "/api/auth"
@@ -59,7 +61,10 @@ api_prefixed_router.include_router(processing_router)
 @app.get("/health")
 @app.get(f"{API_PREFIX_AUTH}/health")
 def health_root():
-    return {"status": "ok", "service": "auth-host"}
+    response, status_code = build_health_response()
+    if status_code != status.HTTP_200_OK:
+        return JSONResponse(status_code=status_code, content=response.model_dump())
+    return response.model_dump()
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -70,7 +75,10 @@ def metrics_root():
 
 @api_prefixed_router.get("/health")
 def prefixed_health_root():
-    return {"status": "ok", "service": "auth-host"}
+    response, status_code = build_health_response()
+    if status_code != status.HTTP_200_OK:
+        return JSONResponse(status_code=status_code, content=response.model_dump())
+    return response.model_dump()
 
 
 @app.get("/api/auth/openapi.json", include_in_schema=False)

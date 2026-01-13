@@ -10,6 +10,20 @@ if [ ! -f "/app/alembic.ini" ]; then
     exit 1
 fi
 
+AUTH_PRIVATE_KEY_PATH="${AUTH_PRIVATE_KEY_PATH:-/data/keys/private.pem}"
+AUTH_PUBLIC_KEY_PATH="${AUTH_PUBLIC_KEY_PATH:-/data/keys/public.pem}"
+export AUTH_PRIVATE_KEY_PATH
+export AUTH_PUBLIC_KEY_PATH
+
+if [ ! -f "${AUTH_PRIVATE_KEY_PATH}" ] || [ ! -f "${AUTH_PUBLIC_KEY_PATH}" ]; then
+    mkdir -p "$(dirname "${AUTH_PRIVATE_KEY_PATH}")"
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${AUTH_PRIVATE_KEY_PATH}"
+    openssl rsa -pubout -in "${AUTH_PRIVATE_KEY_PATH}" -out "${AUTH_PUBLIC_KEY_PATH}"
+    chmod 600 "${AUTH_PRIVATE_KEY_PATH}"
+    chmod 644 "${AUTH_PUBLIC_KEY_PATH}"
+    echo "[entrypoint] generated dev rsa keys"
+fi
+
 required_envs=(
     NEFT_BOOTSTRAP_ADMIN_PASSWORD
     NEFT_BOOTSTRAP_CLIENT_PASSWORD

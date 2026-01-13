@@ -216,6 +216,15 @@ async def ensure_user(
 
         await conn.commit()
 
+        logger.info(
+            "demo user sync: email=%s password_reset=%s roles_changed=%s active_reset=%s full_name_updated=%s",
+            normalized_email,
+            password_reset,
+            roles_changed,
+            active_reset,
+            full_name_updated,
+        )
+
         if not existing_user:
             return "created"
 
