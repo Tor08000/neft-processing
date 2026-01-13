@@ -93,8 +93,131 @@ function buildUrl(baseUrl: string, routePath: string) {
   return new URL(normalizedPath, normalizeBaseUrl(baseUrl)).toString();
 }
 
-export async function login(page: Page, baseUrl: string, credentials: Credentials, report: ReportState, app: AppName) {
+type NavigationSignals = {
+  pageErrors: string[];
+  responseStatuses: number[];
+};
+
+type NavigationTracker = {
+  start: () => void;
+  stop: () => NavigationSignals;
+};
+
+function createNavigationTracker(page: Page): NavigationTracker {
+  let pageErrors: string[] = [];
+  let responseStatuses: number[] = [];
+  let tracking = false;
+
+  page.on("pageerror", (error) => {
+    if (tracking) {
+      pageErrors.push(error.message);
+    }
+  });
+
+  page.on("response", (response) => {
+    if (!tracking) {
+      return;
+    }
+    responseStatuses.push(response.status());
+  });
+
+  return {
+    start: () => {
+      pageErrors = [];
+      responseStatuses = [];
+      tracking = true;
+    },
+    stop: () => {
+      tracking = false;
+      return { pageErrors, responseStatuses };
+    },
+  };
+}
+
+async function hasVisibleText(page: Page, text: string) {
+  const locator = page.getByText(text, { exact: false });
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function hasAppShell(page: Page) {
+  const locator = page.locator(
+    "nav, aside, [data-testid='app-shell'], [data-testid='user-menu'], [data-testid='profile-menu'], header, [data-testid='header'], [data-testid='topbar'], button:has-text('Выйти'), a:has-text('Выйти')",
+  );
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function getFailureReason({
+  page,
+  responseStatus,
+  signals,
+}: {
+  page: Page;
+  responseStatus?: number;
+  signals?: NavigationSignals;
+}) {
+  const currentUrl = page.url();
+  if (currentUrl.includes("/login")) {
+    return "REDIRECT_LOGIN";
+  }
+
+  if (await hasVisibleText(page, "Войти")) {
+    return "REDIRECT_LOGIN";
+  }
+
+  if (await hasVisibleText(page, "Страница не найдена")) {
+    return "NOT_FOUND";
+  }
+
+  if (responseStatus === 404 || signals?.responseStatuses.includes(404)) {
+    return "NOT_FOUND";
+  }
+
+  if (responseStatus === 403 || signals?.responseStatuses.includes(403)) {
+    return "RBAC_DENY";
+  }
+
+  if (signals?.pageErrors.length) {
+    return "JS_ERROR";
+  }
+
+  if (!(await hasAppShell(page))) {
+    return "APP_SHELL_MISSING";
+  }
+
+  if (responseStatus && responseStatus >= 400) {
+    return `HTTP_${responseStatus}`;
+  }
+
+  const errorStatus = signals?.responseStatuses.find((status) => status >= 400);
+  if (errorStatus) {
+    return `HTTP_${errorStatus}`;
+  }
+
+  return null;
+}
+
+export async function login(
+  page: Page,
+  baseUrl: string,
+  credentials: Credentials,
+  report: ReportState,
+  app: AppName,
+  tracker: NavigationTracker,
+) {
   try {
+    tracker.start();
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(300);
 
@@ -109,6 +232,7 @@ export async function login(page: Page, baseUrl: string, credentials: Credential
     );
 
     if ((await emailInput.count()) === 0 || (await passInput.count()) === 0) {
+      tracker.stop();
       return;
     }
 
@@ -117,11 +241,15 @@ export async function login(page: Page, baseUrl: string, credentials: Credential
     await submitButton.first().click();
     await page.waitForLoadState("domcontentloaded");
     await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15000 });
-    const shell = page.locator(
-      "header, [data-testid='header'], [data-testid='sidebar'], .sidebar, .app-sidebar, .app-header",
-    );
-    await shell.first().waitFor({ state: "visible", timeout: 15000 });
+    await page.waitForTimeout(300);
+    const signals = tracker.stop();
+    const failureReason = await getFailureReason({ page, signals });
+    if (failureReason) {
+      const screenshot = await takeScreenshot(page, report, app, `login__FAIL_${failureReason}`);
+      report.errors.push(`[${app}] login validation failed: ${failureReason} (${screenshot})`);
+    }
   } catch (error) {
+    tracker.stop();
     report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
   }
 }
@@ -137,33 +265,6 @@ async function takeScreenshot(page: Page, report: ReportState, app: AppName, fil
   return relativePath;
 }
 
-async function getFailureReason(page: Page, responseStatus?: number) {
-  const currentUrl = page.url();
-  if (currentUrl.includes("/login")) {
-    return "REDIRECT_LOGIN";
-  }
-
-  const notFoundText = page.getByText("Страница не найдена", { exact: false });
-  if ((await notFoundText.count()) > 0) {
-    return "NOT_FOUND";
-  }
-
-  if (responseStatus === 404) {
-    return "NOT_FOUND";
-  }
-
-  const rbacText = page.getByText("нет прав", { exact: false });
-  if (responseStatus === 403 || (await rbacText.count()) > 0) {
-    return "RBAC_DENY";
-  }
-
-  if (responseStatus && responseStatus >= 400) {
-    return `HTTP_${responseStatus}`;
-  }
-
-  return null;
-}
-
 async function visitAndSnap({
   page,
   app,
@@ -171,6 +272,7 @@ async function visitAndSnap({
   route,
   url,
   responseStatus,
+  signals,
 }: {
   page: Page;
   app: AppName;
@@ -178,12 +280,15 @@ async function visitAndSnap({
   route: RouteConfig;
   url: string;
   responseStatus?: number;
+  signals?: NavigationSignals;
 }) {
-  const failureReason = await getFailureReason(page, responseStatus);
+  const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
+    const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
     return {
       status: `FAIL (${failureReason})` as const,
+      screenshot,
     };
   }
 
@@ -253,7 +358,8 @@ export async function runSnapshots({
   routes: RouteConfig[];
   report: ReportState;
 }) {
-  await login(page, baseUrl, credentials, report, app);
+  const tracker = createNavigationTracker(page);
+  await login(page, baseUrl, credentials, report, app, tracker);
 
   for (const route of routes) {
     const url = buildUrl(baseUrl, route.path);
@@ -265,8 +371,10 @@ export async function runSnapshots({
     };
 
     try {
+      tracker.start();
       const response = await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(400);
+      const signals = tracker.stop();
 
       const statusCode = response?.status();
       const snapResult = await visitAndSnap({
@@ -276,6 +384,7 @@ export async function runSnapshots({
         route,
         url,
         responseStatus: statusCode,
+        signals,
       });
       routeResult.status = snapResult.status;
       routeResult.screenshot = snapResult.screenshot;
@@ -290,7 +399,9 @@ export async function runSnapshots({
         routeResult.emptyStateScreenshot = emptyStateScreenshot;
       }
     } catch (error) {
+      tracker.stop();
       routeResult.status = "FAIL (NAV_ERROR)";
+      routeResult.screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_NAV_ERROR`);
       routeResult.note = (error as Error).message;
       report.errors.push(`[${app}] ${route.label}: navigation failed: ${(error as Error).message}`);
     }
