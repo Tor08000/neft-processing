@@ -119,7 +119,7 @@ docs/
 **Alembic:**
 - Core API heads: `20261201_0017_accounts_and_ledger`, `20297100_0115_merge_heads`. (`platform/processing-core/app/alembic/versions/`)
 - Auth-host head: `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/`)
-- `alembic current` **NOT VERIFIED** (требует запущенной БД).
+- `alembic current` **VERIFIED_BY_RUNTIME** (см. `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`).
 
 ---
 
@@ -142,6 +142,7 @@ docs/
 **Метрики:**
 - `core-api` экспортирует Prometheus метрики (`/metrics`). (`platform/processing-core/app/main.py`)
 - Gateway метрика `gateway_up` на `/metrics`. (`gateway/nginx.conf`)
+- Health/metrics endpoints подтверждены runtime snapshot (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`).
 
 ---
 
@@ -257,6 +258,11 @@ curl http://localhost/api/auth/health
 curl http://localhost/api/ai/health
 curl http://localhost/api/int/health
 ```
+
+**Единая верификация (runtime evidence):**
+- `scripts/verify_all.cmd` → `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (stack, миграции, health/metrics, smoke subset).
+- Auth login/token выдаётся через `scripts/get_admin_token.cmd` (stdout token-only).
+- Актуальность readiness/service docs фиксируется в `docs/as-is/NEFT_PLATFORM_READINESS_MAP.md`.
 
 **Логи:**
 ```cmd

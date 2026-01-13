@@ -15,11 +15,11 @@
 ### processing-core
 - **Heads (from migration graph):** `20261201_0017_accounts_and_ledger`, `20297100_0115_merge_heads`. (`platform/processing-core/app/alembic/versions`)
 - **Merge point:** `20297100_0115_merge_heads` merges nine branches listed in its `down_revision` tuple. (`platform/processing-core/app/alembic/versions/20297100_0115_merge_heads.py`)
-- **Current (DB runtime):** **NOT VERIFIED** (requires running DB and `alembic current`).
+- **Current (DB runtime):** **VERIFIED_BY_RUNTIME** via `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
 
 ### auth-host
 - **Head:** `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
-- **Current (DB runtime):** **NOT VERIFIED**.
+- **Current (DB runtime):** **VERIFIED_BY_RUNTIME** via `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
 
 ### integration-hub
 - No Alembic migrations are present. Schema is created via SQLAlchemy models on startup. (`platform/integration-hub/neft_integration_hub/db.py`)
