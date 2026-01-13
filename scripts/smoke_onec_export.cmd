@@ -16,10 +16,8 @@ set "EXPORT_ID="
 
 echo [1/5] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [FAIL] No access_token returned.
-  goto :fail
-)
+if errorlevel 1 exit /b 1
+if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 
 echo [2/5] Create 1C export...

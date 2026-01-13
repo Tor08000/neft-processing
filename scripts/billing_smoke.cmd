@@ -9,6 +9,7 @@ set "CORE_BILLING=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin/billing"
 
 set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
+if errorlevel 1 exit /b 1
 if "%TOKEN%"=="" exit /b 1
 
 echo Token acquired.

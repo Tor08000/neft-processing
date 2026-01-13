@@ -20,10 +20,8 @@ if not exist fixtures\bank\statement.csv (
 
 echo [1/4] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [FAIL] No access_token returned.
-  goto :fail
-)
+if errorlevel 1 exit /b 1
+if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 
 python -c "import json; content=open('fixtures/bank/statement.csv','r',encoding='utf-8').read(); payload={\"bank_code\":\"TEST\",\"period_start\":\"2026-01-01T00:00:00+00:00\",\"period_end\":\"2026-01-31T00:00:00+00:00\",\"file_name\":\"statement.csv\",\"content_type\":\"text/csv\",\"content\":content}; open('bank_payload.json','w',encoding='utf-8').write(json.dumps(payload, ensure_ascii=False))"

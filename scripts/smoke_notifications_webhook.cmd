@@ -16,7 +16,8 @@ set OUTBOX_BODY={"event_type":"WEBHOOK_TEST","subject_type":"CLIENT","subject_id
 
 echo [1/6] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" goto :error
+if errorlevel 1 exit /b 1
+if "%TOKEN%"=="" exit /b 1
 
 set AUTH_HEADER=Authorization: Bearer %TOKEN%
 
