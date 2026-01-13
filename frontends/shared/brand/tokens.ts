@@ -20,9 +20,9 @@ export const brandTokens = {
     neutral: "#9CA3AF",
   },
   radii: {
-    card: "16px",
+    card: "12px",
     control: "12px",
-    pill: "999px",
+    pill: "12px",
   },
   shadows: {
     sm: "0 1px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.25)",

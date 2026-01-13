@@ -401,14 +401,16 @@ export async function runSnapshots({
   const tracker = createNavigationTracker(page);
   const jsErrors: string[] = [];
   const consoleErrors: string[] = [];
+  let onConsole: ((msg: ConsoleMessage) => void) | null = null;
+  let onPageError: ((err: Error) => void) | null = null;
 
-  const onConsole = (msg: ConsoleMessage) => {
+  onConsole = (msg: ConsoleMessage) => {
     if (msg.type() === "error") {
       consoleErrors.push(msg.text());
     }
   };
 
-  const onPageError = (err: Error) => {
+  onPageError = (err: Error) => {
     jsErrors.push(String(err));
   };
 

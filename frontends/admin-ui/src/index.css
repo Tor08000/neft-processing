@@ -92,7 +92,7 @@ textarea {
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: var(--neft-surface);
   font-size: 12px;
@@ -112,7 +112,7 @@ textarea {
 
 .table-density__button {
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
@@ -165,7 +165,7 @@ textarea {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 12px;
   font-weight: 600;
   background: rgba(156, 163, 175, 0.10);
@@ -389,7 +389,7 @@ p {
 
 .table-skeleton__cell {
   height: 12px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: linear-gradient(90deg, var(--neft-border) 0%, var(--neft-surface) 50%, var(--neft-border) 100%);
   background-size: 200% 100%;
   animation: skeleton 1.2s ease-in-out infinite;
@@ -488,7 +488,7 @@ p {
   background: var(--neft-surface);
   color: var(--neft-text);
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-weight: 700;
   border: 1px solid var(--neft-border);
 }
@@ -610,7 +610,7 @@ p {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: var(--neft-card);
   font-weight: 600;
@@ -676,7 +676,7 @@ p {
 
 .audit-filter {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: var(--neft-surface);
 }
@@ -732,7 +732,7 @@ p {
 .audit-item__icon {
   width: 24px;
   height: 24px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: var(--neft-surface);
   border: 1px solid var(--neft-border);
   display: flex;
@@ -1081,7 +1081,7 @@ p {
 .kpi-card {
   background: var(--neft-surface2);
   border: 1px solid var(--neft-border);
-  border-radius: 14px;
+  border-radius: var(--neft-radius-md);
   padding: 14px;
   display: grid;
   gap: 8px;
@@ -1114,7 +1114,7 @@ p {
   font-size: 12px;
   font-weight: 700;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--neft-text-muted);
@@ -1141,7 +1141,7 @@ p {
 .kpi-card__progress {
   position: relative;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(182, 255, 59, 0.15);
   overflow: hidden;
 }
@@ -1151,7 +1151,7 @@ p {
   inset: 0;
   width: 0;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .kpi-card__targets {
@@ -1171,7 +1171,7 @@ p {
 .kpi-card__explain {
   margin-left: auto;
   padding: 2px 6px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   font-size: 11px;
   text-decoration: none;
@@ -1193,7 +1193,7 @@ p {
   z-index: 15;
   background: var(--neft-surface1);
   border: 1px solid var(--neft-border);
-  border-radius: 14px;
+  border-radius: var(--neft-radius-md);
   padding: 12px 16px;
   display: grid;
   gap: 12px;
@@ -1274,7 +1274,7 @@ p {
   width: 96px;
   height: 6px;
   background: rgba(148, 163, 184, 0.25);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   overflow: hidden;
 }
 
@@ -1283,7 +1283,7 @@ p {
   inset: 0;
   width: 0;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .explain-control-bar__mastery-details {
@@ -1329,7 +1329,7 @@ p {
   gap: 6px;
   align-items: center;
   padding: 4px 6px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
   background: rgba(148, 163, 184, 0.08);
 }
@@ -1378,7 +1378,7 @@ p {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid transparent;
   font-size: 12px;
   font-weight: 700;
@@ -1416,7 +1416,7 @@ p {
 .explain-metric__bar {
   width: 72px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(148, 163, 184, 0.2);
   overflow: hidden;
 }
@@ -1436,7 +1436,7 @@ p {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid transparent;
   font-weight: 700;
   font-size: 12px;
@@ -1465,7 +1465,7 @@ p {
   gap: 6px;
   background: var(--neft-surface2);
   padding: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid var(--neft-border);
 }
 
@@ -1473,7 +1473,7 @@ p {
   border: none;
   background: transparent;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 12px;
   color: var(--neft-text-muted);
   cursor: pointer;
@@ -1508,7 +1508,7 @@ p {
   background: var(--neft-surface2);
   color: var(--neft-text);
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 12px;
 }
 
@@ -1730,7 +1730,7 @@ p {
 
 .explain-tree__count {
   background: rgba(148, 163, 184, 0.2);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   padding: 2px 6px;
   font-size: 11px;
   color: var(--neft-text-muted);
@@ -1739,7 +1739,7 @@ p {
 .explain-tree__selected {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   border: 1px solid rgba(59, 130, 246, 0.4);
   color: #60a5fa;
 }
@@ -1947,7 +1947,7 @@ p {
 
 .explain-whatif-banner {
   padding: 8px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(59, 130, 246, 0.1);
   color: #60a5fa;
   font-size: 12px;
@@ -2045,7 +2045,7 @@ p {
   background: var(--neft-surface2);
   color: var(--neft-text);
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   font-size: 12px;
 }
 
@@ -2237,7 +2237,7 @@ p {
   border: 1px solid var(--neft-border);
   background: transparent;
   color: var(--neft-text-muted);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   width: 20px;
   height: 20px;
   display: inline-flex;
@@ -2281,7 +2281,7 @@ p {
 .achievement-badge__progress {
   position: relative;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(182, 255, 59, 0.15);
   overflow: hidden;
 }
@@ -2291,7 +2291,7 @@ p {
   inset: 0;
   width: 0;
   background: var(--neft-accent);
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
 }
 
 .achievement-streak {
@@ -2325,7 +2325,7 @@ p {
 .streak-dot {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--neft-radius-md);
   background: rgba(148, 163, 184, 0.25);
 }
 

@@ -14,7 +14,7 @@
   --neft-text-faint: var(--neft-text-muted);
   --neft-radius-card: var(--neft-radius-md);
   --neft-radius-control: var(--neft-radius-sm);
-  --neft-radius-pill: 999px;
+  --neft-radius-pill: var(--neft-radius-md);
   --neft-shadow-sm: var(--neft-shadow-1);
   --neft-shadow-md: var(--neft-shadow-2);
   --neft-shadow-lg: var(--neft-shadow-2);

@@ -1,35 +1,35 @@
 :root {
-  --neft-bg: #0B0F14;
-  --neft-bg2: #0F1621;
-  --neft-surface: #121B27;
-  --neft-surface2: #162235;
-  --neft-border: #243247;
-  --neft-border2: #2E3F5C;
+  --neft-bg: #0B1F2A;
+  --neft-bg2: #111827;
+  --neft-surface: #111827;
+  --neft-surface2: #1F2937;
+  --neft-border: #2C3E50;
+  --neft-border2: #243447;
 
-  --neft-text: #EAF0F8;
-  --neft-text-muted: #A9B4C4;
-  --neft-text-faint: #7B879A;
+  --neft-text: #E5E7EB;
+  --neft-text-muted: #9CA3AF;
+  --neft-text-faint: #6B7280;
 
-  --neft-accent: #B6FF3B;
-  --neft-accent-hover: #A6F72A;
-  --neft-accent-soft: rgba(182, 255, 59, 0.14);
-  --neft-accent-glow: rgba(182, 255, 59, 0.28);
+  --neft-accent: #15A1C7;
+  --neft-accent-hover: #15A1C7;
+  --neft-accent-soft: rgba(21, 161, 199, 0.18);
+  --neft-accent-glow: rgba(21, 161, 199, 0.32);
 
-  --neft-success: #2FEA9B;
+  --neft-success: #0EE8A8;
   --neft-warning: #FFB020;
-  --neft-danger: #FF4D4D;
-  --neft-info: #4DA3FF;
-  --neft-neutral: #94A3B8;
+  --neft-danger: #E5484D;
+  --neft-info: #3B82F6;
+  --neft-neutral: #9CA3AF;
 
-  --neft-radius-card: 16px;
+  --neft-radius-card: 12px;
   --neft-radius-control: 12px;
-  --neft-radius-pill: 999px;
+  --neft-radius-pill: 12px;
 
-  --neft-shadow-sm: 0 1px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.25);
-  --neft-shadow-md: 0 2px 0 rgba(0,0,0,0.35), 0 14px 28px rgba(0,0,0,0.32);
-  --neft-shadow-lg: 0 3px 0 rgba(0,0,0,0.40), 0 20px 42px rgba(0,0,0,0.40);
+  --neft-shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --neft-shadow-md: 0 8px 24px rgba(0,0,0,0.45);
+  --neft-shadow-lg: 0 10px 30px rgba(0,0,0,0.5);
 
-  --neft-focus-ring: 0 0 0 3px var(--neft-accent-soft), 0 0 0 1px var(--neft-accent);
+  --neft-focus-ring: 0 0 0 4px var(--neft-accent-soft);
 
   --neft-font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
   --neft-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -46,9 +46,7 @@ html, body {
 ::selection { background: var(--neft-accent-soft); }
 
 .neft-page {
-  background: radial-gradient(1200px 600px at 15% 10%, rgba(182,255,59,0.06), transparent 55%),
-              radial-gradient(900px 500px at 85% 0%, rgba(77,163,255,0.06), transparent 50%),
-              var(--neft-bg);
+  background: var(--neft-bg);
   min-height: 100vh;
 }
 

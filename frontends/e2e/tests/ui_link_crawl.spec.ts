@@ -24,7 +24,8 @@ type CrawlTracker = {
 
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
 const MAX_DEPTH = Number(process.env.MAX_DEPTH ?? 4);
-const CRAWL_TIMEOUT_MS = 60_000;
+const CRAWL_TIMEOUT_MS = 5_000;
+const LOGIN_TIMEOUT_MS = 15_000;
 
 const RUN_ID = getRunId();
 const OUTPUT_ROOT = getOutputRoot();
@@ -214,6 +215,41 @@ async function crawlApp({
   let index = 0;
 
   await login(page);
+  try {
+    await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: LOGIN_TIMEOUT_MS });
+  } catch (error) {
+    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_failed.png`);
+    ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    report[app].push({
+      url: page.url(),
+      result: "FAIL",
+      reason: `LOGIN_REDIRECT ${String((error as Error).message ?? "timeout")}`,
+      httpErrors: [],
+      consoleErrors: [],
+      screenshot: path.relative(process.cwd(), screenshotPath),
+    });
+    return;
+  }
+
+  const loginForm = page.locator("form:has(input[type='password']), form:has(input[type='email'])");
+  const loginFormVisible =
+    (await loginForm.count()) > 0 && (await loginForm.first().isVisible().catch(() => false));
+  if (page.url().includes("/login") || loginFormVisible) {
+    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_form.png`);
+    ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    report[app].push({
+      url: page.url(),
+      result: "FAIL",
+      reason: "LOGIN_FORM_VISIBLE",
+      httpErrors: [],
+      consoleErrors: [],
+      screenshot: path.relative(process.cwd(), screenshotPath),
+    });
+    return;
+  }
+
   queue.push({ url: baseUrl, depth: 0 });
 
   while (queue.length > 0 && visited.size < MAX_PAGES) {

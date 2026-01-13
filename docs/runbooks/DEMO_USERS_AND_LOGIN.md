@@ -26,6 +26,8 @@ Payload:
 
 The seed is deterministic and idempotent; it creates missing users, re-activates existing ones,
 syncs roles, and updates passwords to the fixed demo values from required environment variables.
+When `DEMO_SEED_FORCE_PASSWORD_RESET=1`, the seed **always** rehashes passwords on startup even
+if the user already exists.
 
 | User | Email | Password | Roles |
 | --- | --- | --- | --- |
@@ -43,6 +45,11 @@ Demo credentials are required (used by the seed/CLI):
 * `NEFT_BOOTSTRAP_ADMIN_EMAIL`, `NEFT_BOOTSTRAP_ADMIN_PASSWORD`, `NEFT_BOOTSTRAP_ADMIN_FULL_NAME`
 * `NEFT_BOOTSTRAP_CLIENT_EMAIL`, `NEFT_BOOTSTRAP_CLIENT_PASSWORD`, `NEFT_BOOTSTRAP_CLIENT_FULL_NAME`, `CLIENT_UUID`
 * `NEFT_BOOTSTRAP_PARTNER_EMAIL`, `NEFT_BOOTSTRAP_PARTNER_PASSWORD`, `NEFT_BOOTSTRAP_PARTNER_FULL_NAME`
+
+Seed controls:
+
+* `DEMO_SEED_ENABLED=1` — run demo seed on auth-host startup.
+* `DEMO_SEED_FORCE_PASSWORD_RESET=1` — rehash passwords on every startup.
 
 ## CLI reset tool
 
@@ -69,7 +76,11 @@ DEMO_SEED_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
 ```
 
-`platform/auth-host/entrypoint.sh` runs the demo reset after migrations if the flag is enabled.
+`platform/auth-host/entrypoint.sh` runs the demo reset after migrations if the flag is enabled and logs:
+
+* email
+* reset vs no-reset
+* source env key
 
 ## Smoke test
 
