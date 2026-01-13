@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,7 @@ from app.security import (
     verify_password,
 )
 from app.healthcheck import build_health_response
-from app.services.keys import get_public_key_pem
+from app.services.keys import InvalidRSAKeyError, get_public_key_pem
 from app.settings import get_settings
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -81,7 +82,10 @@ async def health() -> HealthResponse:
 async def public_key() -> str:
     """Возвращаем публичный ключ для проверки JWT."""
 
-    return get_public_key_pem()
+    try:
+        return get_public_key_pem()
+    except InvalidRSAKeyError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -159,11 +163,15 @@ async def login(payload: LoginRequest) -> TokenResponse:
 
     settings = get_settings()
     expires_in = settings.access_token_expires_min * 60
-    token = create_access_token(
-        user_email,
-        roles=roles,
-        subject_type=subject_type,
-    )
+    try:
+        token = create_access_token(
+            user_email,
+            roles=roles,
+            subject_type=subject_type,
+        )
+    except InvalidRSAKeyError:
+        logger.error("RSA keys unavailable during login", extra={"email": normalized_email})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
 
     return TokenResponse(
         access_token=token,

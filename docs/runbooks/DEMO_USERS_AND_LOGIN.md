@@ -26,8 +26,8 @@ Payload:
 
 The seed is deterministic and idempotent; it creates missing users, re-activates existing ones,
 syncs roles, and updates passwords to the fixed demo values from required environment variables.
-When `DEMO_SEED_FORCE_PASSWORD_RESET=1`, the seed **always** rehashes passwords on startup even
-if the user already exists.
+When `DEMO_SEED_FORCE_PASSWORD_RESET=1`, existing users get a **one-time** password reset on the
+first bootstrap run; subsequent restarts keep the same password unless you explicitly reset it.
 
 | User | Email | Password | Roles |
 | --- | --- | --- | --- |
@@ -48,8 +48,8 @@ Demo credentials are required (used by the seed/CLI):
 
 Seed controls:
 
-* `DEMO_SEED_ENABLED=1` — run demo seed on auth-host startup.
-* `DEMO_SEED_FORCE_PASSWORD_RESET=1` — rehash passwords on every startup.
+* `NEFT_BOOTSTRAP_ENABLED=1` — run demo seed on auth-host startup.
+* `DEMO_SEED_FORCE_PASSWORD_RESET=1` — rehash passwords once per user on the first bootstrap run.
 
 ## CLI reset tool
 
@@ -72,15 +72,15 @@ The command prints `created`, `updated`, or `skipped` per user.
 `docker-compose.yml` enables demo seeding in dev via:
 
 ```
-DEMO_SEED_ENABLED=1
+NEFT_BOOTSTRAP_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
 ```
 
-`platform/auth-host/entrypoint.sh` runs the demo reset after migrations if the flag is enabled and logs:
+Password resets are tracked in the `bootstrap_meta` table. To re-run a forced reset deterministically:
 
-* email
-* reset vs no-reset
-* source env key
+```sql
+DELETE FROM bootstrap_meta WHERE key LIKE 'password_reset:%';
+```
 
 ## Smoke test
 

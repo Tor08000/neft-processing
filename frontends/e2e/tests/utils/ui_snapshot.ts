@@ -248,33 +248,33 @@ export async function login(
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(300);
 
-    const emailInput = page.locator(
-      'input[type="email"], input[name="email"], input[placeholder*="mail" i], input[autocomplete="username"]',
-    );
-    const passInput = page.locator(
-      'input[type="password"], input[name="password"], input[placeholder*="password" i], input[autocomplete="current-password"]',
-    );
-    const submitButton = page.locator(
-      'button[type="submit"], button:has-text("Sign in"), button:has-text("Login"), button:has-text("Войти")',
-    );
+    const emailInput = page.getByLabel(/email/i);
+    const passInput = page.getByLabel(/пароль|password/i);
+    const submitButton = page.getByRole("button", { name: /sign in|login|войти/i });
+    const onLoginPage = page.url().includes("/login");
+    const emailVisible = await isVisible(emailInput);
+    const passVisible = await isVisible(passInput);
 
-    if ((await emailInput.count()) === 0 || (await passInput.count()) === 0) {
+    if (!onLoginPage || !emailVisible || !passVisible || !(await isVisible(submitButton))) {
       tracker.stop();
-      return;
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_REDIRECT_LOGIN");
+      report.errors.push(`[${app}] login page validation failed: FAIL_REDIRECT_LOGIN (${screenshot})`);
+      return false;
     }
 
     await emailInput.first().fill(credentials.email);
     await passInput.first().fill(credentials.password);
     await submitButton.first().click();
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15000 });
     await page.waitForTimeout(300);
     const signals = tracker.stop();
     const failureReason = await getFailureReason({ page, signals });
     if (failureReason) {
       const screenshot = await takeScreenshot(page, report, app, `login__${failureReason}`);
       report.errors.push(`[${app}] login validation failed: ${failureReason} (${screenshot})`);
+      return false;
     }
+    return true;
   } catch (error) {
     tracker.stop();
     report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
@@ -401,16 +401,13 @@ export async function runSnapshots({
   const tracker = createNavigationTracker(page);
   const jsErrors: string[] = [];
   const consoleErrors: string[] = [];
-  let onConsole: ((msg: ConsoleMessage) => void) | null = null;
-  let onPageError: ((err: Error) => void) | null = null;
-
-  onConsole = (msg: ConsoleMessage) => {
+  const onConsole = (msg: ConsoleMessage) => {
     if (msg.type() === "error") {
       consoleErrors.push(msg.text());
     }
   };
 
-  onPageError = (err: Error) => {
+  const onPageError = (err: Error) => {
     jsErrors.push(String(err));
   };
 
@@ -418,7 +415,10 @@ export async function runSnapshots({
   page.on("pageerror", onPageError);
 
   try {
-    await login(page, baseUrl, credentials, report, app, tracker);
+    const loggedIn = await login(page, baseUrl, credentials, report, app, tracker);
+    if (!loggedIn) {
+      return;
+    }
 
     for (const route of routes) {
       const url = buildUrl(baseUrl, route.path);
@@ -473,12 +473,8 @@ export async function runSnapshots({
       report.routes[app].push(routeResult);
     }
   } finally {
-    if (onConsole) {
-      page.off("console", onConsole);
-    }
-    if (onPageError) {
-      page.off("pageerror", onPageError);
-    }
+    page.off("console", onConsole);
+    page.off("pageerror", onPageError);
   }
 }
 
@@ -543,6 +539,7 @@ export function writeReport(report: ReportState) {
   }
 
   fs.writeFileSync(reportPath, lines.join("\n"));
+  console.log(`UI audit saved to: ui-audit/${report.runId}`);
   return reportPath;
 }
 
