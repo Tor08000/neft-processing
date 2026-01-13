@@ -74,7 +74,7 @@ if "%INVOICES_URL%"=="" (
   echo [FATAL] Empty invoices URL
   exit /b 1
 )
-set "LIST_URL=%INVOICES_URL%?limit=1&offset=0"
+set "LIST_URL=%INVOICES_URL%?limit=1^&offset=0"
 echo [DEBUG] GET %LIST_URL%
 curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%LIST_URL%" > "%TEMP%\invoice_list.code"
 set /p CODE=<"%TEMP%\invoice_list.code"
@@ -96,8 +96,7 @@ goto :invoice_list_retry
 :invoice_list_empty
 set /a EMPTY_ATTEMPT+=1
 if %EMPTY_ATTEMPT% LEQ 5 goto :invoice_list_retry_wait
-echo [WARN] No invoices present.
-echo [SMOKE] No invoices found; skipping state transitions.
+echo [WARN] No invoices found, skipping state transitions.
 exit /b 0
 
 :invoice_list_retry_wait
