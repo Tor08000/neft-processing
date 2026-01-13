@@ -29,7 +29,27 @@
 
 ---
 
-## 3) Smoke scripts (business flows)
+## 3) Health & metrics endpoints (source-of-truth paths)
+
+> Актуальные пути из `gateway/nginx.conf` и сервисных `main.py`. Эти URL используются в verify_all/runtime.
+
+### Health (HTTP 200)
+- Gateway: `http://localhost/health`
+- Core API via gateway: `http://localhost/api/core/health`
+- Auth via gateway: `http://localhost/api/auth/health`
+- AI via gateway: `http://localhost/api/ai/health`
+- Integration Hub via gateway: `http://localhost/api/int/health`
+
+### Metrics (HTTP 200)
+- Gateway: `http://localhost/metrics`
+- Core API via gateway: `http://localhost/api/core/metrics`
+- Auth-host: `http://localhost:8002/api/v1/metrics`
+- AI service: `http://localhost:8003/metrics`
+- Integration Hub: `http://localhost:8010/metrics`
+
+---
+
+## 4) Smoke scripts (business flows)
 
 > Все smoke-скрипты в `scripts/smoke_*.cmd` перечислены ниже. Команды выполняются на запущенном стеке (`docker compose up -d --build`).
 > PASS criteria: script exits `0`; steps may emit `[SKIP]` with a documented reason (например отсутствие данных) without failing the script.
@@ -39,6 +59,7 @@
 | Smoke check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
 | All smoke scripts | `scripts\smoke_all.cmd` | full stack running | Script exits `0` |
+| Billing smoke | `scripts\billing_smoke.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` (SKIP when no invoices) |
 | Billing finance | `scripts\smoke_billing_finance.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` |
 | Billing run | `scripts\smoke_billing_run.cmd` | same as above | Script exits `0` |
 | Billing v14 | `scripts\smoke_billing_v14.cmd` | same as above | Script exits `0` |
@@ -79,7 +100,17 @@
 
 ---
 
-## 4) Chaos / Backup / Restore / Release
+## 5) Pytest subset (verify_all gate)
+
+| Check | Command | Prerequisites | PASS criteria |
+| --- | --- | --- | --- |
+| Auth-host health/metrics tests | `docker compose exec -T auth-host pytest app/tests/test_health.py app/tests/test_metrics.py -q` | auth-host running | pytest exits `0` |
+| Core API tests subset | `docker compose exec -T core-api sh -lc "pytest app/tests/test_transactions_pipeline.py app/tests/test_invoice_state_machine.py app/tests/test_settlement_v1.py app/tests/test_reconciliation_v1.py app/tests/test_documents_lifecycle.py"` | core-api running | pytest exits `0` |
+| Integration-hub webhooks | `docker compose exec -T integration-hub sh -lc "pytest neft_integration_hub/tests/test_webhooks.py"` | integration-hub running | pytest exits `0` |
+
+---
+
+## 6) Chaos / Backup / Restore / Release
 
 | Check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
@@ -99,7 +130,7 @@
 
 ---
 
-## 5) UI smoke (Playwright)
+## 7) UI smoke (Playwright)
 
 | Check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
@@ -107,7 +138,7 @@
 
 ---
 
-## 6) Known limitations
+## 8) Known limitations
 
 - Smoke scripts that are explicit placeholders (currently return `NOT IMPLEMENTED`):
   - `scripts\smoke_client_users_roles.cmd`

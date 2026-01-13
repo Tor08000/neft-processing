@@ -25,9 +25,11 @@
 - **VERIFIED_BY_TESTS** — есть тесты в repo (pytest/npm) и указан файл теста
 - **VERIFIED_BY_SMOKE_SCRIPT** — есть `scripts/*.cmd` и указан скрипт
 - **VERIFIED_BY_COMPOSE_HEALTHCHECK** — есть healthcheck в compose и указан путь
+- **VERIFIED_BY_RUNTIME** — есть runtime snapshot в `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`
 - **NOT_VERIFIED** — нет артефактов проверки в repo
 
 **Важно:** VERIFIED определяется **только** артефактами в repo (tests/scripts/healthchecks), а не тем, выполнялись ли команды в этом чате.
+**SKIP ≠ FAIL:** если smoke-скрипт возвращает SKIP из-за отсутствия данных, это считается PASS (см. runtime snapshot).
 
 ---
 
@@ -53,7 +55,17 @@
 
 | Stage | Status | Evidence |
 | --- | --- | --- |
-| Stage 0 — Stabilization & Verification Hardening | **VERIFIED** | `scripts/verify_all.cmd`, `docs/as-is/STATUS_SNAPSHOT_RUNTIME_2026-01-13.md` |
+| Stage 0 — Stabilization & Verification Hardening | **CLOSED / VERIFIED** | `scripts/verify_all.cmd`, `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` |
+
+### 2.2 Stage 0 verification controls (runtime-verified)
+
+| Check | Status | Evidence |
+| --- | --- | --- |
+| Docker compose stack (up + health gates) | **VERIFIED_BY_RUNTIME** | `scripts/verify_all.cmd` → `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` |
+| Core API migrations (alembic current) | **VERIFIED_BY_RUNTIME** | `scripts/verify_all.cmd` → `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` |
+| Auth-host migrations + `users` table | **VERIFIED_BY_RUNTIME** | `platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`, `scripts/verify_all.cmd` |
+| Health/metrics endpoints | **VERIFIED_BY_RUNTIME** | `scripts/verify_all.cmd`, `gateway/nginx.conf` |
+| Smoke suite: `billing_smoke`, `smoke_billing_finance`, `smoke_invoice_state_machine` | **VERIFIED_BY_RUNTIME** | `scripts/verify_all.cmd`, `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` |
 
 ---
 

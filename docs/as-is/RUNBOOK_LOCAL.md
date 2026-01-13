@@ -161,7 +161,33 @@ scripts\test_core_stack.cmd
 scripts\test_core_stack.cmd --full
 ```
 
-## 8) Smoke tests (business flows)
+## 8) Единая проверка системы
+
+```cmd
+scripts\verify_all.cmd
+```
+
+> Проверка включает docker compose stack, миграции, health/metrics и smoke subset. SKIP в smoke из-за пустых данных считается PASS.
+
+## 9) Как получить admin token
+
+```cmd
+scripts\get_admin_token.cmd
+```
+
+> Скрипт печатает токен **только в stdout** (для подстановки в smoke).
+
+## 10) Smoke suite
+
+```cmd
+scripts\billing_smoke.cmd
+scripts\smoke_billing_finance.cmd
+scripts\smoke_invoice_state_machine.cmd
+```
+
+> Если smoke-скрипт возвращает `[SKIP]` из-за отсутствия данных (например invoices=0), это считается PASS.
+
+## 11) Smoke tests (business flows)
 
 ```cmd
 scripts\smoke_billing_v14.cmd
@@ -176,7 +202,7 @@ scripts\smoke_fuel_offline_reconcile.cmd
 scripts\smoke_fuel_replay_batch.cmd
 ```
 
-## 9) Playwright UI smoke
+## 12) Playwright UI smoke
 
 ```cmd
 cd frontends\e2e
@@ -185,7 +211,7 @@ npx playwright install
 npx playwright test
 ```
 
-## 10) BI (ClickHouse runtime + marts + dashboards)
+## 13) BI (ClickHouse runtime + marts + dashboards)
 
 Enable in `.env`:
 - `BI_CLICKHOUSE_ENABLED=1`
@@ -202,7 +228,7 @@ scripts\smoke_bi_cfo_dashboard.cmd
 
 Dashboards JSON: `docs\ops\dashboards\*.json`.
 
-## 11) EDO SBIS
+## 14) EDO SBIS
 
 Set SBIS credentials and webhook secret in CMD before running EDO smokes:
 
@@ -222,7 +248,7 @@ scripts\smoke_edo_sbis_wait_signed.cmd
 scripts\smoke_edo_sbis_revoke.cmd
 ```
 
-## 12) Notifications (Mailpit) smoke
+## 15) Notifications (Mailpit) smoke
 
 Mailpit is in the base compose (`SMTP_HOST=mailpit`).
 
@@ -231,7 +257,7 @@ scripts\smoke_notifications_invoice_email.cmd
 scripts\smoke_notifications_webhook.cmd
 ```
 
-## 13) Backup / Restore
+## 16) Backup / Restore
 
 Postgres:
 
