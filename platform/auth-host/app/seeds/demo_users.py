@@ -7,7 +7,7 @@ from typing import Iterable
 from uuid import UUID, uuid4
 
 from app.db import get_conn
-from app.security import hash_password, verify_password
+from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ async def ensure_user(
                 active_reset = True
 
             existing_hash = existing_user.get("password_hash")
-            if force_password or not existing_hash or not verify_password(demo_user.password, existing_hash):
+            if force_password:
                 await cur.execute(
                     "UPDATE users SET password_hash = %s WHERE id = %s",
                     (password_hash, user_id),
