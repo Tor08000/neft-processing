@@ -27,17 +27,7 @@ copy .env.example .env
 
 ---
 
-## 3) Start stack (manual)
-
-```cmd
-docker compose up -d --build
-```
-
-> Этот шаг выполняется автоматически внутри `scripts\verify_all.cmd`.
-
----
-
-## 4) Единая проверка системы (runtime gate)
+## 3) Единая проверка системы (runtime gate)
 
 ```cmd
 scripts\verify_all.cmd
@@ -51,12 +41,12 @@ scripts\verify_all.cmd
 
 **PASS/FAIL правила:**
 - Любой шаг с exit code ≠ 0 → **FAIL**.
-- Если скрипт выводит строку с `[SKIP]`, verify_all помечает шаг как **SKIP** и не падает.
+- Если скрипт выводит строку с `[SKIP]`, verify_all помечает шаг как **SKIP_OK** и не падает.
 - **SKIP_OK:** `scripts\billing_smoke.cmd` и `scripts\smoke_invoice_state_machine.cmd` возвращают `[SKIP]` при отсутствии инвойсов (это допустимый PASS по логике скрипта).
 
 ---
 
-## 5) Health & metrics endpoints (gateway)
+## 4) Health & metrics endpoints (gateway)
 
 Актуальные URL из `gateway/nginx.conf` и `scripts/verify_all.cmd`:
 
@@ -81,7 +71,7 @@ curl http://localhost/api/docs/health
 
 ---
 
-## 6) Admin token helper
+## 5) Admin token helper
 
 ```cmd
 scripts\get_admin_token.cmd
@@ -91,7 +81,7 @@ scripts\get_admin_token.cmd
 
 ---
 
-## 7) Pytest entrypoints (по необходимости)
+## 6) Pytest entrypoints (по необходимости)
 
 ```cmd
 scripts\test_core_api.cmd -q
@@ -105,10 +95,10 @@ scripts\test_processing_core_docker.cmd all
 
 ---
 
-## 8) Smoke scripts (standalone)
+## 7) Smoke scripts (standalone)
 
 > Все smoke-скрипты находятся в `scripts\smoke_*.cmd` и `scripts\billing_smoke.cmd`.
-> Некоторые сценарии могут вернуть `[SKIP]` при отсутствии данных.
+> Некоторые сценарии могут вернуть `[SKIP]` при отсутствии данных — это **SKIP_OK**.
 
 Примеры:
 ```cmd
@@ -125,7 +115,7 @@ scripts\smoke_notifications_webhook.cmd
 
 ---
 
-## 9) UI smoke (Playwright)
+## 8) UI smoke (Playwright)
 
 ```cmd
 cd frontends\e2e
@@ -136,8 +126,7 @@ npx playwright test
 
 ---
 
-## 10) Runtime snapshots
+## 9) Runtime snapshots
 
 - **Latest pointer:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`
 - **Generated snapshots:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_<timestamp>.md`
-
