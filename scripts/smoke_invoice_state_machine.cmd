@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
@@ -31,56 +31,84 @@ call :check_get "[3/14] Billing periods" "%CORE_URL%/billing/periods?limit=1" "%
 echo [4/14] Generate draft invoice for transitions...
 set "CODE="
 set "INVOICE_ID="
+set "CONTENT_TYPE="
+set "GEN_BODY=%TEMP%\invoice_gen.json"
+set "GEN_HDR=%TEMP%\invoice_gen.hdr"
+set "GEN_CODE=%TEMP%\invoice_gen.code"
+set "INVOICE_ID_FILE=%TEMP%\invoice_id.txt"
 setlocal DisableDelayedExpansion
-curl -s -w "%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{\"period_from\":\"2024-01-01\",\"period_to\":\"2024-01-31\",\"status\":\"DRAFT\"}" -X POST -o generate_invoice.json "%CORE_URL%/billing/invoices/generate" > generate_invoice_code.txt
+curl -s -D "%GEN_HDR%" -o "%GEN_BODY%" -w "%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{\"period_from\":\"2024-01-01\",\"period_to\":\"2024-01-31\",\"status\":\"DRAFT\"}" -X POST "%CORE_URL%/billing/invoices/generate" > "%GEN_CODE%"
 endlocal
-set /p CODE=<generate_invoice_code.txt
-if "%CODE%"=="202" goto :step4_parse
+set /p CODE=<"%GEN_CODE%"
+if "%CODE%"=="202" goto :step4_check_type
 echo [WARN] Generation returned %CODE%, will reuse existing invoice if present.
-goto :step4_done
+goto :step4_list
+:step4_check_type
+python -c "import re; h=open(r'%GEN_HDR%','r',encoding='utf-8',errors='ignore').read(); m=re.search(r'^content-type:\\s*([^;\\r\\n]+)', h, re.I|re.M); print(m.group(1).strip() if m else '')" > "%TEMP%\invoice_gen_content.txt"
+set /p CONTENT_TYPE=<"%TEMP%\invoice_gen_content.txt"
+if /i "%CONTENT_TYPE%"=="application/json" goto :step4_parse
+echo [WARN] Generation returned Content-Type %CONTENT_TYPE%, will reuse existing invoice if present.
+goto :step4_list
 :step4_parse
-python -c "import json,sys; data=json.load(open('generate_invoice.json')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')" > invoice_id.txt
-set /p INVOICE_ID=<invoice_id.txt
+python -c "import json; data=json.load(open(r'%GEN_BODY%')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')" > "%INVOICE_ID_FILE%"
+set /p INVOICE_ID=<"%INVOICE_ID_FILE%"
+if not "%INVOICE_ID%"=="" goto :step4_done
+goto :step4_list
+
+:step4_list
+echo [5/14] List invoices to obtain id...
+set "POLL_ATTEMPT=0"
+set "EMPTY_ATTEMPT=0"
+:invoice_list_retry
+set "CODE="
+set "INVOICE_ID="
+curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%CORE_URL%/billing/invoices?limit=1&offset=0" > "%TEMP%\invoice_list.code"
+set /p CODE=<"%TEMP%\invoice_list.code"
+if "%CODE%"=="202" goto :invoice_list_202
+if not "%CODE%"=="200" goto :invoice_list_fail
+python -c "import json; data=json.load(open(r'%TEMP%\\invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')" > "%INVOICE_ID_FILE%"
+set /p INVOICE_ID=<"%INVOICE_ID_FILE%"
+if "%INVOICE_ID%"=="" goto :invoice_list_empty
+goto :step4_done
+
+:invoice_list_202
+set /a POLL_ATTEMPT+=1
+if %POLL_ATTEMPT% GEQ 30 goto :invoice_list_timeout
+echo [WARN] Invoices list returned 202, retrying in 2s (%POLL_ATTEMPT%/30)...
+timeout /t 2 /nobreak >NUL
+goto :invoice_list_retry
+
+:invoice_list_empty
+set /a EMPTY_ATTEMPT+=1
+if %EMPTY_ATTEMPT% LEQ 5 goto :invoice_list_retry_wait
+goto :invoice_list_fail_empty
+
+:invoice_list_retry_wait
+echo [WARN] Invoices list empty, retrying in 2s (%EMPTY_ATTEMPT%/5)...
+timeout /t 2 /nobreak >NUL
+goto :invoice_list_retry
+
+:invoice_list_timeout
+echo [FAIL] Invoices list still returns 202 after 30 attempts.
+goto :fail
+
+:invoice_list_fail
+echo [FAIL] Invoices list returned %CODE%.
+goto :fail
+
+:invoice_list_fail_empty
+echo [FAIL] Invoices list returned no items.
+goto :fail
+
 :step4_done
+if "%INVOICE_ID%"=="" goto :step4_fail
+goto :step4_continue
 
-if "%INVOICE_ID%"=="" (
-  echo [5/14] List invoices to obtain id...
-  set "POLL_ATTEMPT=0"
-  set "EMPTY_ATTEMPT=0"
-  :invoice_list_retry
-  set "CODE="
-  set "INVOICE_ID="
-  for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -o invoices.json "%CORE_URL%/billing/invoices?limit=1&offset=0"`) do set "CODE=%%c"
-  if "%CODE%"=="202" (
-    set /a POLL_ATTEMPT+=1
-    if !POLL_ATTEMPT! GEQ 30 (
-      echo [FAIL] Invoices list still returns 202 after 30 attempts.
-      goto :fail
-    )
-    echo [WARN] Invoices list returned 202, retrying in 2s (!POLL_ATTEMPT!/30)...
-    timeout /t 2 /nobreak >NUL
-    goto :invoice_list_retry
-  )
-  if not "%CODE%"=="200" (
-    echo [FAIL] Invoices list returned %CODE%.
-    goto :fail
-  )
-  python -c "import json,sys; data=json.load(open('invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')" > invoice_id.txt
-  set /p INVOICE_ID=<invoice_id.txt
-  if "%INVOICE_ID%"=="" (
-    set /a EMPTY_ATTEMPT+=1
-    if !EMPTY_ATTEMPT! LEQ 5 (
-      echo [WARN] Invoices list empty, retrying in 2s (!EMPTY_ATTEMPT!/5)...
-      timeout /t 2 /nobreak >NUL
-      goto :invoice_list_retry
-    )
-  )
-)
+:step4_fail
+echo [FAIL] Could not resolve invoice id.
+goto :fail
 
-if "%INVOICE_ID%"=="" (
-  echo [FAIL] Could not resolve invoice id.
-  goto :fail
-)
+:step4_continue
 
 call :post_step "[6/14] Mark invoice ISSUED" "%CORE_URL%/billing/invoices/%INVOICE_ID%/status" "{\"status\":\"ISSUED\",\"reason\":\"smoke\"}" "%AUTH_HEADER%" "200" "" || goto :fail
 call :post_step "[7/14] Mark invoice SENT" "%CORE_URL%/billing/invoices/%INVOICE_ID%/status" "{\"status\":\"SENT\",\"reason\":\"smoke\"}" "%AUTH_HEADER%" "200" "" || goto :fail
