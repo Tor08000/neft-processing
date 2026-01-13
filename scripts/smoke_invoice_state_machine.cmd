@@ -1,9 +1,11 @@
 @echo off
 setlocal
 
-if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
+if "%BASE%"=="" set "BASE=http://localhost"
+if "%CORE_PREFIX%"=="" set "CORE_PREFIX=/api/core"
+if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=%BASE%"
 if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
-if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
+if "%CORE_BASE%"=="" set "CORE_BASE=%CORE_PREFIX%"
 set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
 set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/v1/admin"
 
@@ -62,7 +64,12 @@ set "EMPTY_ATTEMPT=0"
 :invoice_list_retry
 set "CODE="
 set "INVOICE_ID="
-curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%CORE_URL%/billing/invoices?limit=1&offset=0" > "%TEMP%\invoice_list.code"
+set "INVOICES_URL=%CORE_URL%/billing/invoices?limit=1&offset=0"
+if "%INVOICES_URL%"=="" (
+  echo [FAIL] Invoices list URL is empty. Check BASE/CORE_PREFIX/GATEWAY_BASE/CORE_BASE.
+  goto :fail
+)
+curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%INVOICES_URL%" > "%TEMP%\invoice_list.code"
 set /p CODE=<"%TEMP%\invoice_list.code"
 if "%CODE%"=="202" goto :invoice_list_202
 if not "%CODE%"=="200" goto :invoice_list_fail
