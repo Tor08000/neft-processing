@@ -7,6 +7,7 @@
 | Step | Status | Details |
 | --- | --- | --- |
 | verify_all.cmd | SKIP | runtime not executed in repo context |
+| smoke_invoice_state_machine.cmd | SKIP | No invoices found. State machine not applicable. |
 
 ## Errors
 

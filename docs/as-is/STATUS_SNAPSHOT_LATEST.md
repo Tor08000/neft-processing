@@ -34,13 +34,15 @@
 > Все smoke-скрипты в `scripts/smoke_*.cmd` перечислены ниже. Команды выполняются на запущенном стеке (`docker compose up -d --build`).
 > PASS criteria: script exits `0`; steps may emit `[SKIP]` with a documented reason (например отсутствие данных) without failing the script.
 
+- `scripts\smoke_invoice_state_machine.cmd` корректно проходит в пустом окружении: при отсутствии инвойсов возвращает `[SKIP]` и exit `0`.
+
 | Smoke check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |
 | All smoke scripts | `scripts\smoke_all.cmd` | full stack running | Script exits `0` |
 | Billing finance | `scripts\smoke_billing_finance.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` |
 | Billing run | `scripts\smoke_billing_run.cmd` | same as above | Script exits `0` |
 | Billing v14 | `scripts\smoke_billing_v14.cmd` | same as above | Script exits `0` |
-| Invoice state machine | `scripts\smoke_invoice_state_machine.cmd` | same as above | Script exits `0` |
+| Invoice state machine (conditional) | `scripts\smoke_invoice_state_machine.cmd` | same as above | Script exits `0` (SKIP when no invoices) |
 | Legal gate | `scripts\smoke_legal_gate.cmd` | core-api, auth-host | Script exits `0` |
 | Onboarding E2E | `scripts\smoke_onboarding_e2e.cmd` | core-api, auth-host | Script exits `0` |
 | 1C export | `scripts\smoke_onec_export.cmd` | core-api, auth-host, postgres | Script exits `0` |
