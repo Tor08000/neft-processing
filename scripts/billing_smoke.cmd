@@ -5,7 +5,7 @@ echo ===== Billing smoke =====
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
-set "CORE_BILLING=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin/billing"
+set "CORE_BILLING=%GATEWAY_BASE%%CORE_BASE%/v1/admin/billing"
 
 set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
@@ -26,7 +26,9 @@ echo Fetching invoices...
 curl -s -H "Authorization: Bearer %TOKEN%" "%CORE_BILLING%/invoices" > invoices.json
 type invoices.json
 
-for /f %%A in ('powershell -NoLogo -Command "(Get-Content invoices.json | ConvertFrom-Json).items[0].id"') do set INVOICE_ID=%%A
+if exist invoice_id.txt del invoice_id.txt
+python -c "import json, pathlib; data=json.load(open('invoices.json')); items=data.get('items') or []; pathlib.Path('invoice_id.txt').write_text(items[0]['id']) if items else None"
+if exist invoice_id.txt set /p INVOICE_ID=<invoice_id.txt
 
 if "%INVOICE_ID%"=="" (
   echo [WARN] No invoices found to generate PDF for.
