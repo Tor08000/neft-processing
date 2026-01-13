@@ -98,8 +98,8 @@
 
 | Table | Purpose | File |
 |---|---|---|
-| `users` | Auth users | `platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py` |
-| `user_roles` | User roles map | `platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py` |
+| `users` | Auth users | `platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py` |
+| `user_roles` | User roles map | `platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py` |
 
 ## 6) Key enum types (purpose + usage)
 

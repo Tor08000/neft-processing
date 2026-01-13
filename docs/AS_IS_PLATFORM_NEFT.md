@@ -2887,7 +2887,7 @@ flowchart LR
 ### Таблицы auth-host (создаются при старте)
 
 * `users` — id(UUID), email(unique), full_name, password_hash, is_active, created_at.
-* `user_roles` — (user_id, role) с FK на users.
+* `user_roles` — (user_id, role_code) с FK на users.
 
 ### Странности/несоответствия (по факту в коде)
 

@@ -58,7 +58,7 @@ class _FakeCursor:
             self._rows = []
         elif "from user_roles" in q:
             user_id = str(params[0])
-            rows = [{"role": role} for uid, role in self.state.roles if str(uid) == user_id]
+            rows = [{"role_code": role} for uid, role in self.state.roles if str(uid) == user_id]
             self._rows = rows
         elif q.startswith("insert into user_roles"):
             user_id, role = params

@@ -149,18 +149,18 @@ async def _ensure_demo_user(
                 password_reset = True
 
         await cur.execute(
-            "SELECT role FROM user_roles WHERE user_id = %s",
+            "SELECT role_code FROM user_roles WHERE user_id = %s",
             (user_id,),
         )
-        existing_roles = {row["role"] for row in await cur.fetchall()}
+        existing_roles = {row["role_code"] for row in await cur.fetchall()}
         missing_roles = [role for role in roles if role not in existing_roles]
 
         for role in missing_roles:
             await cur.execute(
                 """
-                INSERT INTO user_roles (user_id, role)
+                INSERT INTO user_roles (user_id, role_code)
                 VALUES (%s, %s)
-                ON CONFLICT (user_id, role) DO NOTHING
+                ON CONFLICT (user_id, role_code) DO NOTHING
                 """,
                 (user_id, role),
             )
