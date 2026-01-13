@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, type Page } from "@playwright/test";
 import { ADMIN_BASE_URL, CLIENT_BASE_URL, PARTNER_BASE_URL, loginAdmin, loginClient, loginPartner } from "./utils";
-import { getRunId } from "./utils/ui_snapshot";
+import { getOutputRoot, getRunId } from "./utils/ui_snapshot";
 
 type AppName = "admin" | "client" | "partner";
 
@@ -26,7 +26,7 @@ const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
 const MAX_DEPTH = Number(process.env.MAX_DEPTH ?? 4);
 
 const RUN_ID = getRunId();
-const OUTPUT_ROOT = path.join(process.cwd(), "frontends", "ui-audit", RUN_ID);
+const OUTPUT_ROOT = getOutputRoot();
 
 function ensureDir(dirPath: string) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -267,7 +267,7 @@ async function crawlApp({
       reason: navigationError ? "NAV_ERROR" : reason,
       httpErrors: responseErrors,
       consoleErrors,
-      screenshot: path.relative(path.join(process.cwd(), "frontends"), screenshotPath),
+      screenshot: path.relative(process.cwd(), screenshotPath),
     });
 
     index += 1;

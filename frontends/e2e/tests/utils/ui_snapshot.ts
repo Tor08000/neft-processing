@@ -305,15 +305,14 @@ async function visitAndSnap({
 }) {
   const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
-    const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
+    const failScreenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
     if (failureReason === "JS_ERROR" && jsErrors.length > 0) {
       report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
     }
-    const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     return {
       status: `FAIL (${failureReason})` as const,
-      screenshot,
+      screenshot: failScreenshot,
     };
   }
 

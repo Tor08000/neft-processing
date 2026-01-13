@@ -103,6 +103,7 @@ class Settings(SharedSettings):
             "NEFT_DEMO_ADMIN_ROLES", ["ADMIN", "SUPERADMIN"], fallback_keys=("DEMO_ADMIN_ROLES",)
         )
     )
+    demo_seed_force_password_reset: bool = _env_bool("DEMO_SEED_FORCE_PASSWORD_RESET", True)
     bootstrap_admin_email: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
         _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
@@ -170,6 +171,9 @@ class Settings(SharedSettings):
         )
         self.demo_admin_roles = _roles_env(
             "NEFT_DEMO_ADMIN_ROLES", self.demo_admin_roles, fallback_keys=("DEMO_ADMIN_ROLES",)
+        )
+        self.demo_seed_force_password_reset = _env_bool(
+            "DEMO_SEED_FORCE_PASSWORD_RESET", self.demo_seed_force_password_reset
         )
 
         self.bootstrap_admin_email = _env_or_default(

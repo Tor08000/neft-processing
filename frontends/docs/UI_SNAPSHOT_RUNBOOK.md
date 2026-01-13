@@ -21,10 +21,11 @@ cd C:\neft-processing\frontends
 scripts\ui_snapshot.cmd
 ```
 
-The script prints the output folder at the end, for example:
+The script prints the output folder and full report path at the end, for example:
 
 ```
 frontends\ui-audit\2025-01-31_1420
+C:\neft-processing\frontends\ui-audit\2025-01-31_1420\REPORT.md
 ```
 
 ## Output Structure
@@ -44,6 +45,19 @@ frontends/ui-audit/<run>/
     010_prices.png
     ...
   REPORT.md
+```
+
+## Link Crawl (Windows CMD)
+
+```cmd
+cd C:\neft-processing\frontends
+scripts\ui_link_crawl.cmd
+```
+
+The script prints the full path to `LINK_REPORT.md`, for example:
+
+```
+C:\neft-processing\frontends\ui-audit\2025-01-31_1420\LINK_REPORT.md
 ```
 
 ## Environment Variables

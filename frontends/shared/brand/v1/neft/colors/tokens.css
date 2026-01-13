@@ -3,7 +3,7 @@
 
 :root {
   /* Typography */
-  --neft-font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --neft-font-sans: Inter, system-ui, "Segoe UI", sans-serif;
 
   /* Radii */
   --neft-radius-sm: 10px;
@@ -16,16 +16,16 @@
   --neft-space-4: 16px;
   --neft-space-6: 24px;
 
-  /* Surfaces (LIGHT defaults) */
-  --neft-bg: #F3F6F9;
-  --neft-surface: #FFFFFF;
-  --neft-card: #FFFFFF;
-  --neft-border: #D7DEE6;
+  /* Surfaces */
+  --neft-bg: #0B1F2A;
+  --neft-surface: #111827;
+  --neft-card: #1F2937;
+  --neft-border: #2C3E50;
 
-  /* Text (LIGHT) */
-  --neft-text: #0B1F2A;
-  --neft-text-secondary: #334155;
-  --neft-text-muted: #64748B;
+  /* Text */
+  --neft-text: #E5E7EB;
+  --neft-text-secondary: #9CA3AF;
+  --neft-text-muted: #6B7280;
 
   /* Brand + States */
   --neft-primary: #15A1C7;
@@ -145,7 +145,7 @@
 }
 
 .neft-table th, .neft-table td {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--neft-border);
   font-size: 13.5px;
 }

@@ -20,7 +20,11 @@ async def seed_demo_client_account(settings: Settings | None = None) -> None:
 
 async def _ensure_demo_accounts(settings: Settings) -> None:
     await bootstrap_demo_client(settings=settings)
-    await bootstrap_admin_account(settings=settings)
+    await bootstrap_admin_account_with_seed(
+        settings=settings,
+        force_password_reset=settings.demo_seed_force_password_reset,
+        ensure_password=False,
+    )
 
 
 async def bootstrap_demo_client(settings: Settings | None = None) -> None:
@@ -32,14 +36,29 @@ async def bootstrap_demo_client(settings: Settings | None = None) -> None:
         roles=["CLIENT_OWNER"],
         label="demo client",
         preferred_id=_safe_uuid(settings.demo_client_uuid),
+        force_password_reset=settings.demo_seed_force_password_reset,
     )
 
 
 async def bootstrap_demo_admin(settings: Settings | None = None) -> None:
-    await bootstrap_admin_account(settings=settings)
+    settings = settings or get_settings()
+    await bootstrap_admin_account_with_seed(
+        settings=settings,
+        force_password_reset=settings.demo_seed_force_password_reset,
+        ensure_password=False,
+    )
 
 
 async def bootstrap_admin_account(settings: Settings | None = None) -> None:
+    await bootstrap_admin_account_with_seed(settings=settings)
+
+
+async def bootstrap_admin_account_with_seed(
+    settings: Settings | None = None,
+    *,
+    force_password_reset: bool = False,
+    ensure_password: bool = True,
+) -> None:
     settings = settings or get_settings()
     email = (settings.bootstrap_admin_email or settings.demo_admin_email).strip()
     password = settings.bootstrap_admin_password or settings.demo_admin_password
@@ -51,7 +70,8 @@ async def bootstrap_admin_account(settings: Settings | None = None) -> None:
         full_name=full_name,
         roles=roles,
         label="bootstrap admin",
-        ensure_password=True,
+        force_password_reset=force_password_reset,
+        ensure_password=ensure_password,
     )
 
 
@@ -97,6 +117,7 @@ async def _ensure_demo_user(
     label: str,
     preferred_id: UUID | None = None,
     ensure_password: bool = False,
+    force_password_reset: bool = False,
 ) -> str:
     normalized_email = email.strip().lower()
     password_hash = hash_password(password)
@@ -135,13 +156,13 @@ async def _ensure_demo_user(
                     (user_id,),
                 )
             existing_hash = existing_user.get("password_hash")
-            if not existing_hash:
+            if force_password_reset:
                 await cur.execute(
                     "UPDATE users SET password_hash = %s WHERE id = %s",
                     (password_hash, user_id),
                 )
                 password_reset = True
-            elif ensure_password and not verify_password(password, existing_hash):
+            elif ensure_password and (not existing_hash or not verify_password(password, existing_hash)):
                 await cur.execute(
                     "UPDATE users SET password_hash = %s WHERE id = %s",
                     (password_hash, user_id),

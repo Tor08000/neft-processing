@@ -12,4 +12,5 @@ npx playwright test e2e/tests/ui_snapshot.spec.ts
 set EXIT_CODE=%ERRORLEVEL%
 
 echo UI snapshot artifacts: %OUTPUT_DIR%
+echo UI snapshot report: %OUTPUT_DIR%\REPORT.md
 exit /b %EXIT_CODE%
