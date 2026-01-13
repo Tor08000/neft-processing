@@ -13,13 +13,14 @@
 ## 2) Alembic state (AS-IS)
 
 ### processing-core
-- **Heads (from migration graph):** `20261201_0017_accounts_and_ledger`, `20297100_0115_merge_heads`. (`platform/processing-core/app/alembic/versions`)
-- **Merge point:** `20297100_0115_merge_heads` merges nine branches listed in its `down_revision` tuple. (`platform/processing-core/app/alembic/versions/20297100_0115_merge_heads.py`)
-- **Current (DB runtime):** **VERIFIED_BY_RUNTIME** via `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
+- **Head (merge revision):** `20299000_0130_merge_heads_processing_core`. (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
+- **Merged heads:** `b1f4572ed8d3` and `76e4bcb5869e` (merged by the head revision above). (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
+- **Current (DB runtime):** **NOT VERIFIED** — runtime snapshot shows `verify_all` was not executed. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### auth-host
-- **Head:** `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
-- **Current (DB runtime):** **VERIFIED_BY_RUNTIME** via `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
+- **Head:** `20251002_0001_create_auth_tables`. (`platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py`)
+- **Bootstrap migration:** `20251001_0001_auth_bootstrap` sets up roles and initial admin. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
+- **Current (DB runtime):** **NOT VERIFIED** — runtime snapshot shows `verify_all` was not executed. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### integration-hub
 - No Alembic migrations are present. Schema is created via SQLAlchemy models on startup. (`platform/integration-hub/neft_integration_hub/db.py`)

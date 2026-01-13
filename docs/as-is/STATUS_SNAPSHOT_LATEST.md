@@ -1,6 +1,8 @@
 # STATUS SNAPSHOT — LATEST (Evidence-based)
 
 > Этот snapshot фиксирует **актуальные проверки и артефакты** в репозитории: docker harness, smoke/chaos/backup/restore, UI smoke (Playwright), BI/notifications smoke. Все команды — Windows CMD.
+>
+> Runtime-статус см. отдельно в `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (на момент текущего снапшота verify_all не выполнен).
 
 ---
 

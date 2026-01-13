@@ -7,7 +7,7 @@
 - Docker Desktop / Docker Engine installed.
 - Python 3.11+ available on PATH.
 - Node.js 18+ available on PATH (for Playwright UI smoke).
-- Ports available: `80`, `3000`, `4173`, `4174`, `4175`, `5432`, `6379`, `8001`, `8002`, `8003`, `8010`, `5555`, `9000`, `9001`, `9090`, `16686`, `3100`, `9080`, `4317`.
+- Ports available: `80`, `3000`, `4173`, `4174`, `4175`, `5432`, `6379`, `8001`, `8002`, `8003`, `8010`, `5555`, `8123`, `9000`, `9001`, `9002`, `9090`, `16686`, `3100`, `9080`, `1025`, `8025`, `4317`, `4318`, `9464`.
 
 ## 2) Configure environment
 
@@ -113,6 +113,9 @@ curl http://localhost/api/core/health
 curl http://localhost/api/auth/health
 curl http://localhost/api/ai/health
 curl http://localhost/api/int/health
+curl http://localhost/api/crm/health
+curl http://localhost/api/logistics/health
+curl http://localhost/api/docs/health
 curl http://localhost/metrics
 curl http://localhost/api/core/metrics
 curl http://localhost:8010/metrics
@@ -259,7 +262,7 @@ scripts\backup\backup_clickhouse.cmd
 scripts\restore\restore_clickhouse.cmd
 ```
 
-## 14) Chaos checks (minimal)
+## 17) Chaos checks (minimal)
 
 ```cmd
 scripts\chaos\chaos_postgres_restart.cmd
@@ -268,13 +271,13 @@ scripts\chaos\chaos_minio_down.cmd
 scripts\chaos\chaos_smoke_all.cmd
 ```
 
-## 15) Release discipline
+## 18) Release discipline
 
 ```cmd
 scripts\release\generate_release_notes.cmd vYYYY.MM.PATCH
 ```
 
-## 16) Known failure points
+## 19) Known failure points
 
 1) **MinIO not initialized** → check `minio-health` and `minio-init` logs. (`infra/minio-init.sh`)
 2) **Auth-host fails to start** → verify key paths and `AUTH_KEY_DIR` volume. (`docker-compose.yml`, `.env.example`)
