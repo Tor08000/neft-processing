@@ -7,6 +7,7 @@ if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
 set "CORE_BILLING=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin/billing"
 
+set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
   echo [ERROR] No access_token returned 1>&2
