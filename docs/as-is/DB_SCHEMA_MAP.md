@@ -1,60 +1,43 @@
 # NEFT Platform — DB Schema Map (AS-IS)
 
-> **Source of truth:** SQLAlchemy models and Alembic migrations in `platform/processing-core/app/models`, `platform/processing-core/app/alembic/versions`, `platform/auth-host/app/alembic/versions`, `platform/integration-hub/neft_integration_hub/models`.
+> **Source of truth:** SQLAlchemy models and Alembic migrations in repo.
 
-## 1) Database schemas in use
+## 1) Schemas in use
 
 | Schema | Used by | How configured | Notes |
 |---|---|---|---|
-| `processing_core` | Core API (`core-api`) | `NEFT_DB_SCHEMA` env (default `processing_core`) | Main schema for domain data. (`platform/processing-core/app/db/schema.py`, `docker-compose.yml`) |
-| `public` (default) | auth-host | `AUTH_DB_SCHEMA` env (default `public`) | Auth tables live in configured schema. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`) |
-| integration-hub (SQLite by default) | integration-hub | `INTEGRATION_HUB_DATABASE_URL` env (fallback `DATABASE_URL` or SQLite) | Not schema-based if SQLite; uses SQLAlchemy Base metadata. (`platform/integration-hub/neft_integration_hub/settings.py`, `platform/integration-hub/neft_integration_hub/db.py`) |
+| `processing_core` | core-api | `NEFT_DB_SCHEMA` (default `processing_core`) | Основная доменная схема. (`platform/processing-core/app/db/schema.py`) |
+| `public` (default) / `AUTH_DB_SCHEMA` | auth-host | `AUTH_DB_SCHEMA` (default `public`) | Auth tables живут в указанной схеме. (`platform/auth-host/app/db.py`, `platform/auth-host/app/alembic/env.py`) |
+| integration-hub DB | integration-hub | `INTEGRATION_HUB_DATABASE_URL` (fallback `DATABASE_URL` или SQLite `integration-hub.db`) | Schema не применяется при SQLite. (`platform/integration-hub/neft_integration_hub/settings.py`) |
 
 ## 2) Alembic state (AS-IS)
 
 ### processing-core
 - **Head (merge revision):** `20299000_0130_merge_heads_processing_core`. (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
-- **Merged heads:** `b1f4572ed8d3` and `76e4bcb5869e` (merged by the head revision above). (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
-- **Current (DB runtime):** **NOT VERIFIED** — runtime snapshot shows `verify_all` was not executed. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
+- **Merged heads:** `b1f4572ed8d3`, `76e4bcb5869e`. (см. merge revision выше)
+- **Runtime current:** **NOT VERIFIED** — runtime verify не выполнялся. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### auth-host
 - **Head:** `20251002_0001_create_auth_tables`. (`platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py`)
-- **Bootstrap migration:** `20251001_0001_auth_bootstrap` sets up roles and initial admin. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
-- **Current (DB runtime):** **NOT VERIFIED** — runtime snapshot shows `verify_all` was not executed. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
+- **Bootstrap:** `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
+- **Runtime current:** **NOT VERIFIED** — runtime verify не выполнялся. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### integration-hub
-- No Alembic migrations are present. Schema is created via SQLAlchemy models on startup. (`platform/integration-hub/neft_integration_hub/db.py`)
+- Alembic отсутствует; schema создаётся моделями SQLAlchemy на старте. (`platform/integration-hub/neft_integration_hub/db.py`)
 
-## 2.1) Enforced invariants (examples)
+---
 
-> Примеры реально заданных ограничений (unique/index) в моделях и миграциях.
+## 3) processing_core — ключевые таблицы по доменам
 
-- `invoice`/`billing` уникальные ключи по scope (invoice number, period, tenant). (`platform/processing-core/app/models/invoice.py`)
-- `internal_ledger_accounts` уникальные ключи по account scope. (`platform/processing-core/app/models/internal_ledger.py`)
-- Legal graph: уникальность узлов и рёбер по tenant + scope. (`platform/processing-core/app/models/legal_graph.py`)
-- `case_events` уникальное упорядочивание `case_id + seq`. (`platform/processing-core/app/models/cases.py`)
-- `audit_log` индексированные поля для неизменяемого аудита. (`platform/processing-core/app/models/audit_log.py`)
-
-## 3) processing_core — key tables by domain
-
-> **Note:** This list focuses on tables that define domain boundaries. For a full list, see `platform/processing-core/app/models/`.
+> **Не полный список.** Фокус на таблицах, которые задают границы доменов.
 
 ### Audit & immutability
-- `audit_log` (hash-chain audit log). (`platform/processing-core/app/models/audit_log.py`)
-- `audit_signing_keys` (public key registry). (`platform/processing-core/app/models/audit_signing_keys.py`)
-- `audit_legal_holds`, `audit_purge_log` (retention). (`platform/processing-core/app/models/audit_retention.py`)
-- `external_request_logs` (external call audit). (`platform/processing-core/app/models/external_request_log.py`)
-
-**Key indexes/constraints**
-- `audit_log` indexes: `ix_audit_log_ts_desc`, `ix_audit_log_entity`, `ix_audit_log_event_ts`, `ix_audit_log_tenant_ts`, `ix_audit_log_external_refs_gin`. (`platform/processing-core/app/models/audit_log.py`)
+- `audit_log`, `audit_signing_keys`, `audit_legal_holds`, `audit_purge_log`, `external_request_logs`. (`platform/processing-core/app/models/audit_log.py`, `platform/processing-core/app/models/audit_signing_keys.py`, `platform/processing-core/app/models/audit_retention.py`, `platform/processing-core/app/models/external_request_log.py`)
 
 ### Cases & decision memory
 - `cases`, `case_events`, `case_comments`, `case_snapshots`. (`platform/processing-core/app/models/cases.py`)
 - `decision_memory`, `decision_outcomes`, `decision_action_stats_daily`, `decision_results`. (`platform/processing-core/app/models/decision_memory.py`, `platform/processing-core/app/models/decision_result.py`)
-- Risk tables: `risk_decisions`, `risk_scores`, `risk_rules`, `risk_rule_versions`, `risk_rule_audits`, `risk_policies`, `risk_thresholds`, `risk_threshold_sets`, `risk_v5_*`. (`platform/processing-core/app/models/risk_*.py`)
-
-**Key indexes/constraints**
-- `case_events` unique constraint `ux_case_events_case_seq` for sequencing. (`platform/processing-core/app/models/cases.py`)
+- `risk_*` (rules/decisions/thresholds). (`platform/processing-core/app/models/risk_*.py`)
 
 ### Billing & finance
 - Billing flows: `billing_invoices`, `billing_payments`, `billing_refunds`, `billing_job_runs`, `billing_periods`, `billing_summary`. (`platform/processing-core/app/models/billing_flow.py`, `platform/processing-core/app/models/billing_job_run.py`, `platform/processing-core/app/models/billing_period.py`)
@@ -92,6 +75,8 @@
 - `support_requests`. (`platform/processing-core/app/models/support_request.py`)
 - `ops_escalations`. (`platform/processing-core/app/models/ops.py`)
 
+---
+
 ## 4) integration-hub — tables
 
 | Table | Purpose | File |
@@ -112,14 +97,15 @@
 | `users` | Auth users | `platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py` |
 | `user_roles` | User roles map | `platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py` |
 
-## 6) Key enum types (purpose + usage)
+---
+
+## 6) Key enum types (examples)
 
 > **Not exhaustive.** Only enums that define module behavior.
 
 | Enum | Purpose | File |
 |---|---|---|
-| `CaseEventType` | Case lifecycle + domain events | `platform/processing-core/app/models/cases.py` |
-| `CaseStatus` / `CasePriority` / `CaseQueue` | Case workflow | `platform/processing-core/app/models/cases.py` |
+| `CaseEventType` / `CaseStatus` / `CasePriority` / `CaseQueue` | Case workflow | `platform/processing-core/app/models/cases.py` |
 | `audit_actor_type` | Audit actor typing | `platform/processing-core/app/alembic/versions/0042_audit_log.py` |
 | `MoneyFlowEventType` | Money flow state transitions | `platform/processing-core/app/services/money_flow/events.py` |
 | `MarketplaceOrderEventType` | Marketplace order transitions | `platform/processing-core/app/models/marketplace_orders.py` |

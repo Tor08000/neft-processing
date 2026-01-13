@@ -1,11 +1,9 @@
-# STATUS SNAPSHOT — RUNTIME LATEST (2026-01-13)
+# STATUS SNAPSHOT — RUNTIME LATEST
 
-**Generated:** 2026-01-13
-**Commit:** ca9ae1b02d64632114cf8842d651a4edc97c3806
-**Summary:** verify_all SKIP (runtime not executed)
-**Source:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_2026-01-13.md`
+**Runtime status:** verify_all not executed in this repo.
+**Latest available runtime snapshot file:** `docs/as-is/STATUS_SNAPSHOT_RUNTIME_2026-01-13.md`
 
-## Steps
+## Steps (from latest available runtime snapshot)
 
 | Step | Status | Details |
 | --- | --- | --- |

@@ -1,101 +1,76 @@
-# STATUS SNAPSHOT — LATEST (Evidence-based)
+# STATUS SNAPSHOT — LATEST (Evidence-based, no runtime)
 
-> Этот snapshot фиксирует **актуальные проверки и артефакты** в репозитории: docker harness, smoke/chaos/backup/restore, UI smoke (Playwright), BI/notifications smoke. Все команды — Windows CMD.
->
-> Runtime-статус см. отдельно в `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (на момент текущего снапшота verify_all не выполнен).
+> Этот snapshot фиксирует **актуальные проверки и артефакты**, которые реально есть в репозитории.
+> **Runtime-статус** см. в `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
+> Без выполнения runtime **НЕ** проставляется VERIFIED_RUNTIME.
 
 ---
 
-## 1) Core docker harness tests
+## 1) verify_all gate (актуальные шаги из scripts/verify_all.cmd)
 
-| Check | Command (Windows CMD) | Prerequisites | PASS criteria |
+| Step | Command (Windows CMD) | Expected result | Evidence status |
 | --- | --- | --- | --- |
-| Processing-core default suite | `scripts\test_processing_core_docker.cmd` | `docker compose up` dependencies (`postgres`, `redis`, `minio`) | Script exits `0` and pytest passes |
-| Processing-core full suite | `scripts\test_processing_core_docker.cmd all` | same as above | Script exits `0` and pytest passes |
-| Core stack smoke + optional full | `scripts\test_core_stack.cmd` / `scripts\test_core_stack.cmd --full` | `postgres`, `redis`, `minio` running | Script exits `0` |
-| Core full (system/smoke/contracts/integration) | `scripts\test_core_full.cmd` | `postgres`, `redis`, `minio`, `minio-health`, `minio-init` | Script exits `0` |
-| Core API pytest (inside container) | `scripts\test_core_api.cmd -q` | `core-api` container running | pytest exits `0` |
-| Auth-host pytest (inside container) | `scripts\test_auth_host.cmd -q` | `auth-host` container running | pytest exits `0` |
+| Stack up | `docker compose up -d --build` | PASS | NOT VERIFIED |
+| Core migrations | `scripts\migrate.cmd` | PASS | NOT VERIFIED |
+| Alembic current (core-api) | `docker compose exec -T core-api sh -lc "alembic -c app/alembic.ini current"` | PASS | NOT VERIFIED |
+| Alembic current (auth-host) | `docker compose exec -T auth-host sh -lc "alembic -c alembic.ini current"` | PASS | NOT VERIFIED |
+| Health checks | `curl http://localhost/health` + `/api/core/health` + `/api/auth/health` + `/api/ai/health` + `/api/int/health` | PASS | NOT VERIFIED |
+| Metrics checks | `curl http://localhost/metrics` + `/api/core/metrics` + `http://localhost:8010/metrics` | PASS | NOT VERIFIED |
+| Smoke subset | `scripts\billing_smoke.cmd`, `scripts\smoke_billing_finance.cmd`, `scripts\smoke_invoice_state_machine.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Pytest subset (auth-host) | `docker compose exec -T auth-host pytest app/tests/test_health.py app/tests/test_metrics.py -q` | PASS | NOT VERIFIED |
+| Pytest subset (core-api) | `docker compose exec -T core-api sh -lc "pytest app/tests/test_transactions_pipeline.py app/tests/test_invoice_state_machine.py app/tests/test_settlement_v1.py app/tests/test_reconciliation_v1.py app/tests/test_documents_lifecycle.py"` | PASS | NOT VERIFIED |
+| Pytest subset (integration-hub) | `docker compose exec -T integration-hub sh -lc "pytest neft_integration_hub/tests/test_webhooks.py"` | PASS | NOT VERIFIED |
+
+**SKIP_OK правила:** если smoke-скрипт пишет `[SKIP]`, verify_all помечает шаг как SKIP и не падает.
 
 ---
 
-## 2) Migration Stabilization Pack
+## 2) Дополнительные smoke scripts (standalone)
 
-| Check | Command (Windows CMD) | Prerequisites | PASS criteria |
+| Smoke script | Command | Expected result | Evidence status |
 | --- | --- | --- | --- |
-| Frontend docker builds | `docker compose build admin-web client-web partner-web` | Docker available | Build exits `0` |
-| Alembic heads (core-api) | `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini heads` | Postgres running | Output contains exactly 1 head |
-| Alembic upgrade (clean DB) | `docker compose down -v` + `docker compose up -d postgres` + `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head` | Docker available | Upgrade exits `0` |
-| Alembic upgrade (repeat) | `docker compose run --rm --entrypoint "" core-api alembic -c app/alembic.ini upgrade head` | Previous upgrade succeeded | Upgrade exits `0` |
-| Orphan composite cleanup | `scripts\db\fix_orphan_composite_types.cmd` | core-api container running | Script exits `0` |
+| Smoke aggregator | `scripts\smoke_all.cmd` | PASS | NOT VERIFIED |
+| Bank statement import | `scripts\smoke_bank_statement_import.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| BI dashboards (ops/partner/client/cfo) | `scripts\smoke_bi_ops_dashboard.cmd`, `scripts\smoke_bi_partner_dashboard.cmd`, `scripts\smoke_bi_client_spend_dashboard.cmd`, `scripts\smoke_bi_cfo_dashboard.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Billing run | `scripts\smoke_billing_run.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Billing v14 | `scripts\smoke_billing_v14.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Cards issue | `scripts\smoke_cards_issue.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Clearing batch | `scripts\smoke_clearing_batch.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Client users/roles | `scripts\smoke_client_users_roles.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Closing package | `scripts\smoke_closing_package.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Dispute refund | `scripts\smoke_dispute_refund.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| EDO SBIS (send/wait/revoke) | `scripts\smoke_edo_sbis_send.cmd`, `scripts\smoke_edo_sbis_wait_signed.cmd`, `scripts\smoke_edo_sbis_revoke.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Finance negative scenarios | `scripts\smoke_finance_negative_scenarios.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Fuel ingest/offline/replay | `scripts\smoke_fuel_ingest_batch.cmd`, `scripts\smoke_fuel_offline_reconcile.cmd`, `scripts\smoke_fuel_replay_batch.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Legal gate | `scripts\smoke_legal_gate.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Limits apply/enforce | `scripts\smoke_limits_apply_and_enforce.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Notifications | `scripts\smoke_notifications_invoice_email.cmd`, `scripts\smoke_notifications_webhook.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Onboarding | `scripts\smoke_onboarding_e2e.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| 1C export | `scripts\smoke_onec_export.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Operations explain | `scripts\smoke_operations_explain.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Partner docs/onboarding/webhooks | `scripts\smoke_partner_documents.cmd`, `scripts\smoke_partner_onboarding.cmd`, `scripts\smoke_partner_webhooks.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Payout export | `scripts\smoke_payouts_batch_export.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Reconciliation | `scripts\smoke_reconciliation_after_bank.cmd`, `scripts\smoke_reconciliation_request_sign.cmd`, `scripts\smoke_reconciliation_run.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Restart | `scripts\smoke_restart.cmd` | PASS / SKIP_OK | NOT VERIFIED |
+| Support ticket | `scripts\smoke_support_ticket.cmd` | PASS / SKIP_OK | NOT VERIFIED |
 
 ---
 
-## 3) Health & metrics endpoints (source-of-truth paths)
+## 3) Pytest entrypoints (standalone)
 
-> Актуальные пути из `gateway/nginx.conf` и сервисных `main.py`. Эти URL используются в verify_all/runtime.
-
-### Health (HTTP 200)
-- Gateway: `http://localhost/health`
-- Core API via gateway: `http://localhost/api/core/health`
-- Auth via gateway: `http://localhost/api/auth/health`
-- AI via gateway: `http://localhost/api/ai/health`
-- Integration Hub via gateway: `http://localhost/api/int/health`
-
-### Metrics (HTTP 200)
-- Gateway: `http://localhost/metrics`
-- Core API via gateway: `http://localhost/api/core/metrics`
-- Integration Hub: `http://localhost:8010/metrics`
-
----
-
-## 4) Smoke scripts (business flows)
-
-> Актуальный runtime-набор smoke-скриптов — это список, который запускается `scripts\verify_all.cmd`.
-> PASS criteria: script exits `0`; steps may emit `[SKIP]` with a documented reason (например отсутствие данных) without failing the script.
-
-- `scripts\smoke_invoice_state_machine.cmd` корректно проходит в пустом окружении: при отсутствии инвойсов возвращает `[SKIP]` и exit `0`.
-
-| Smoke check (verify_all) | Command | Prerequisites | PASS criteria |
+| Check | Command | Expected result | Evidence status |
 | --- | --- | --- | --- |
-| Billing smoke | `scripts\billing_smoke.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` (SKIP when no invoices) |
-| Billing finance | `scripts\smoke_billing_finance.cmd` | core-api, auth-host, postgres, redis, minio | Script exits `0` |
-| Invoice state machine (conditional) | `scripts\smoke_invoice_state_machine.cmd` | same as above | Script exits `0` (SKIP when no invoices) |
+| Core API pytest | `scripts\test_core_api.cmd -q` | PASS | NOT VERIFIED |
+| Auth-host pytest | `scripts\test_auth_host.cmd -q` | PASS | NOT VERIFIED |
+| Core stack subset/full | `scripts\test_core_stack.cmd` / `scripts\test_core_stack.cmd --full` | PASS | NOT VERIFIED |
+| Core full suite | `scripts\test_core_full.cmd` | PASS | NOT VERIFIED |
+| Processing-core docker runner | `scripts\test_processing_core_docker.cmd` / `scripts\test_processing_core_docker.cmd all` | PASS | NOT VERIFIED |
 
 ---
 
-## 5) Pytest subset (verify_all gate)
+## 4) UI smoke (Playwright)
 
-| Check | Command | Prerequisites | PASS criteria |
+| Check | Command | Expected result | Evidence status |
 | --- | --- | --- | --- |
-| Auth-host health/metrics tests | `docker compose exec -T auth-host pytest app/tests/test_health.py app/tests/test_metrics.py -q` | auth-host running | pytest exits `0` |
-| Core API tests subset | `docker compose exec -T core-api sh -lc "pytest app/tests/test_transactions_pipeline.py app/tests/test_invoice_state_machine.py app/tests/test_settlement_v1.py app/tests/test_reconciliation_v1.py app/tests/test_documents_lifecycle.py"` | core-api running | pytest exits `0` |
-| Integration-hub webhooks | `docker compose exec -T integration-hub sh -lc "pytest neft_integration_hub/tests/test_webhooks.py"` | integration-hub running | pytest exits `0` |
+| Playwright UI smoke | `cd frontends\e2e && npm install && npx playwright install && npx playwright test` | PASS | NOT VERIFIED |
 
----
-
-## 6) Chaos / Backup / Restore / Release
-
-| Check | Command | Prerequisites | PASS criteria |
-| --- | --- | --- | --- |
-| Chaos: Postgres restart | `scripts\chaos\chaos_postgres_restart.cmd` | full stack running | Script exits `0` |
-| Chaos: Redis flush | `scripts\chaos\chaos_redis_flush.cmd` | full stack running | Script exits `0` |
-| Chaos: MinIO down | `scripts\chaos\chaos_minio_down.cmd` | full stack running | Script exits `0` |
-| Chaos: full smoke | `scripts\chaos\chaos_smoke_all.cmd` | full stack running | Script exits `0` |
-| Backup Postgres | `scripts\backup\backup_postgres.cmd` | postgres running | Script exits `0` |
-| Backup MinIO | `scripts\backup\backup_minio.cmd` | minio running | Script exits `0` |
-| Backup ClickHouse | `scripts\backup\backup_clickhouse.cmd` | clickhouse running | Script exits `0` |
-| Verify backups | `scripts\backup\verify_backup.cmd` | backups created | Script exits `0` |
-| Backup+restore smoke | `scripts\backup\backup_restore_smoke.cmd` | postgres/minio/clickhouse | Script exits `0` |
-| Restore Postgres | `scripts\restore\restore_postgres.cmd` | postgres running | Script exits `0` |
-| Restore MinIO | `scripts\restore\restore_minio.cmd` | minio running | Script exits `0` |
-| Restore ClickHouse | `scripts\restore\restore_clickhouse.cmd` | clickhouse running | Script exits `0` |
-| Release notes generator | `scripts\release\generate_release_notes.cmd vYYYY.MM.PATCH` | git history available | Script exits `0` |
-
----
-
-## 7) UI smoke (Playwright)
-
-| Check | Command | Prerequisites | PASS criteria |
-| --- | --- | --- | --- |
-| Playwright UI smoke | `cd frontends\e2e && npm install && npx playwright install && npx playwright test` | UI services running (`admin-web`, `client-web`, `partner-web`) | `playwright test` exits `0` |
