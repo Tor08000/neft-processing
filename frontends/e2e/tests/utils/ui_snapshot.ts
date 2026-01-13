@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { ConsoleMessage, Page } from "@playwright/test";
 
 type AppName = "admin" | "client" | "partner";
 
@@ -294,6 +294,8 @@ async function visitAndSnap({
   url,
   responseStatus,
   signals,
+  jsErrors,
+  consoleErrors,
 }: {
   page: Page;
   app: AppName;
@@ -302,6 +304,8 @@ async function visitAndSnap({
   url: string;
   responseStatus?: number;
   signals?: NavigationSignals;
+  jsErrors: string[];
+  consoleErrors: string[];
 }) {
   const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
@@ -309,6 +313,9 @@ async function visitAndSnap({
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
     if (failureReason === "JS_ERROR" && jsErrors.length > 0) {
       report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
+    }
+    if (failureReason === "JS_ERROR" && consoleErrors.length > 0) {
+      report.errors.push(`[${app}] ${route.label}: console errors: ${consoleErrors.join(" | ")}`);
     }
     return {
       status: `FAIL (${failureReason})` as const,
@@ -383,58 +390,81 @@ export async function runSnapshots({
   report: ReportState;
 }) {
   const tracker = createNavigationTracker(page);
-  await login(page, baseUrl, credentials, report, app, tracker);
+  const jsErrors: string[] = [];
+  const consoleErrors: string[] = [];
 
-  for (const route of routes) {
-    const url = buildUrl(baseUrl, route.path);
-    const routeResult: RouteResult = {
-      id: route.id,
-      path: route.path,
-      label: route.label,
-      status: "OK",
-    };
-
-    try {
-      tracker.start();
-      const response = await page.goto(url, { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(400);
-      const signals = tracker.stop();
-
-      const statusCode = response?.status();
-      const snapResult = await visitAndSnap({
-        page,
-        app,
-        report,
-        route,
-        url,
-        responseStatus: statusCode,
-        signals,
-      });
-      routeResult.status = snapResult.status;
-      routeResult.screenshot = snapResult.screenshot;
-      if (snapResult.status !== "OK") {
-        report.routes[app].push(routeResult);
-        continue;
-      }
-
-      if (route.details) {
-        const { detailsScreenshot, emptyStateScreenshot } = await tryCaptureDetails(page, report, app, route);
-        routeResult.detailsScreenshot = detailsScreenshot;
-        routeResult.emptyStateScreenshot = emptyStateScreenshot;
-      }
-    } catch (error) {
-      tracker.stop();
-      routeResult.status = "FAIL (NAV_ERROR)";
-      routeResult.screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_NAV_ERROR`);
-      routeResult.note = (error as Error).message;
-      report.errors.push(`[${app}] ${route.label}: navigation failed: ${(error as Error).message}`);
+  const onConsole = (msg: ConsoleMessage) => {
+    if (msg.type() === "error") {
+      consoleErrors.push(msg.text());
     }
+  };
 
-    report.routes[app].push(routeResult);
+  const onPageError = (err: Error) => {
+    jsErrors.push(String(err));
+  };
+
+  page.on("console", onConsole);
+  page.on("pageerror", onPageError);
+
+  try {
+    await login(page, baseUrl, credentials, report, app, tracker);
+
+    for (const route of routes) {
+      const url = buildUrl(baseUrl, route.path);
+      const routeResult: RouteResult = {
+        id: route.id,
+        path: route.path,
+        label: route.label,
+        status: "OK",
+      };
+
+      jsErrors.length = 0;
+      consoleErrors.length = 0;
+
+      try {
+        tracker.start();
+        const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(400);
+        const signals = tracker.stop();
+
+        const statusCode = response?.status();
+        const snapResult = await visitAndSnap({
+          page,
+          app,
+          report,
+          route,
+          url,
+          responseStatus: statusCode,
+          signals,
+          jsErrors,
+          consoleErrors,
+        });
+        routeResult.status = snapResult.status;
+        routeResult.screenshot = snapResult.screenshot;
+        if (snapResult.status !== "OK") {
+          report.routes[app].push(routeResult);
+          continue;
+        }
+
+        if (route.details) {
+          const { detailsScreenshot, emptyStateScreenshot } = await tryCaptureDetails(page, report, app, route);
+          routeResult.detailsScreenshot = detailsScreenshot;
+          routeResult.emptyStateScreenshot = emptyStateScreenshot;
+        }
+      } catch (error) {
+        tracker.stop();
+        routeResult.status = "FAIL (NAV_ERROR)";
+        routeResult.screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_NAV_ERROR`);
+        routeResult.note = (error as Error).message;
+        report.errors.push(`[${app}] ${route.label}: navigation failed: ${(error as Error).message}`);
+      }
+
+      report.routes[app].push(routeResult);
+    }
+  } finally {
+    page.off("console", onConsole);
+    page.off("pageerror", onPageError);
   }
-
-  page.off("console", onConsole);
-  page.off("pageerror", onPageError);
 }
 
 export function writeReport(report: ReportState) {
