@@ -61,11 +61,11 @@ async def _get_user_from_db(email: str) -> User | None:
 async def _get_roles_for_user(user_id: str) -> list[str]:
     async with get_conn() as (_conn, cur):
         await cur.execute(
-            "SELECT role FROM user_roles WHERE user_id = %s",
+            "SELECT role_code FROM user_roles WHERE user_id = %s",
             (user_id,),
         )
         roles_rows = await cur.fetchall()
-    return [row["role"] for row in roles_rows]
+    return [row["role_code"] for row in roles_rows]
 
 
 @router.get("/health", response_model=HealthResponse)

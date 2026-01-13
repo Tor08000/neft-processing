@@ -34,16 +34,16 @@ async def test_migrations_and_bootstrap_creates_demo_user():
         row = await cur.fetchone()
 
         await cur.execute(
-            "SELECT role FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
+            "SELECT role_code FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
             ("client@neft.local",),
         )
-        client_roles = [r["role"] for r in await cur.fetchall()]
+        client_roles = [r["role_code"] for r in await cur.fetchall()]
 
         await cur.execute(
-            "SELECT role FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
+            "SELECT role_code FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE lower(u.email)=lower(%s)",
             ("admin@example.com",),
         )
-        admin_roles = [r["role"] for r in await cur.fetchall()]
+        admin_roles = [r["role_code"] for r in await cur.fetchall()]
 
     assert row is not None
     assert row["email"].lower() == "client@neft.local"
@@ -86,10 +86,10 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
         first_hash = first_row["password_hash"]
 
         await cur.execute(
-            "SELECT role FROM user_roles WHERE user_id = %s",
+            "SELECT role_code FROM user_roles WHERE user_id = %s",
             (first_row["id"],),
         )
-        roles_after_first = [r["role"] for r in await cur.fetchall()]
+        roles_after_first = [r["role_code"] for r in await cur.fetchall()]
 
     updated_settings = Settings(
         bootstrap_admin_email="admin@example.com",
@@ -115,10 +115,10 @@ async def test_bootstrap_admin_is_idempotent_and_updates_password():
         updated_row = await cur.fetchone()
 
         await cur.execute(
-            "SELECT role FROM user_roles WHERE lower(user_id::text)=lower(%s)",
+            "SELECT role_code FROM user_roles WHERE lower(user_id::text)=lower(%s)",
             (str(first_row["id"]),),
         )
-        roles_after_second = [r["role"] for r in await cur.fetchall()]
+        roles_after_second = [r["role_code"] for r in await cur.fetchall()]
 
     assert user_count == 1
     assert verify_password("initial", updated_row["password_hash"])

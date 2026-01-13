@@ -33,11 +33,11 @@ BEGIN
 
     UPDATE users SET is_active = TRUE WHERE id = v_user_id;
 
-    INSERT INTO user_roles (user_id, role)
+    INSERT INTO user_roles (user_id, role_code)
     VALUES (v_user_id, 'ADMIN')
-    ON CONFLICT (user_id, role) DO NOTHING;
+    ON CONFLICT (user_id, role_code) DO NOTHING;
 
-    INSERT INTO user_roles (user_id, role)
+    INSERT INTO user_roles (user_id, role_code)
     VALUES (v_user_id, 'SUPERADMIN')
-    ON CONFLICT (user_id, role) DO NOTHING;
+    ON CONFLICT (user_id, role_code) DO NOTHING;
 END $$;

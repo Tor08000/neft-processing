@@ -33,7 +33,7 @@ Each service has isolated test dependencies. Run tests from the service root or 
 Auth endpoints require an `ADMIN` role in the JWT. You can grant it directly in Postgres (works from Windows CMD as well):
 
 ```cmd
-docker compose exec postgres psql -U neft -d neft -c "insert into public.user_roles(user_id, role) select id, 'ADMIN' from public.users where email='admin2@neft.local' on conflict do nothing;"
+docker compose exec postgres psql -U neft -d neft -c "insert into public.user_roles(user_id, role_code) select id, 'ADMIN' from public.users where email='admin2@neft.local' on conflict do nothing;"
 ```
 
 ## GUID/UUID conventions

@@ -35,11 +35,11 @@ async def _require_admin(
 async def _fetch_roles(user_id: str) -> list[str]:
     async with get_conn() as (_conn, cur):
         await cur.execute(
-            "SELECT role FROM user_roles WHERE user_id = %s ORDER BY role",
+            "SELECT role_code FROM user_roles WHERE user_id = %s ORDER BY role_code",
             (user_id,),
         )
         rows = await cur.fetchall()
-    return [row["role"] for row in rows]
+    return [row["role_code"] for row in rows]
 
 
 @router.get("", response_model=list[AdminUserResponse])
@@ -48,7 +48,7 @@ async def list_users(_admin=Depends(_require_admin)) -> list[AdminUserResponse]:
         await cur.execute(
             """
             SELECT u.id, u.email, u.full_name, u.is_active, u.created_at,
-                   COALESCE(array_agg(ur.role ORDER BY ur.role), ARRAY[]::text[]) AS roles
+                   COALESCE(array_agg(ur.role_code ORDER BY ur.role_code), ARRAY[]::text[]) AS roles
             FROM users u
             LEFT JOIN user_roles ur ON ur.user_id = u.id
             GROUP BY u.id, u.email, u.full_name, u.is_active, u.created_at
@@ -87,7 +87,7 @@ async def create_user(
 
         for role in payload.roles:
             await cur.execute(
-                "INSERT INTO user_roles (user_id, role) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (user_id, role),
             )
 
@@ -130,7 +130,7 @@ async def update_user(
             await cur.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
             for role in payload.roles:
                 await cur.execute(
-                    "INSERT INTO user_roles (user_id, role) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (user_id, role),
                 )
 
