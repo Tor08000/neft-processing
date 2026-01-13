@@ -20,7 +20,7 @@ type RouteResult = {
   id: string;
   path: string;
   label: string;
-  status: "OK" | "NOT FOUND / NAV FAIL";
+  status: "OK" | `FAIL (${string})`;
   screenshot?: string;
   detailsScreenshot?: string;
   emptyStateScreenshot?: string;
@@ -116,7 +116,11 @@ export async function login(page: Page, baseUrl: string, credentials: Credential
     await passInput.first().fill(credentials.password);
     await submitButton.first().click();
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(800);
+    await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15000 });
+    const shell = page.locator(
+      "header, [data-testid='header'], [data-testid='sidebar'], .sidebar, .app-sidebar, .app-header",
+    );
+    await shell.first().waitFor({ state: "visible", timeout: 15000 });
   } catch (error) {
     report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
   }
@@ -131,6 +135,63 @@ async function takeScreenshot(page: Page, report: ReportState, app: AppName, fil
   const relativePath = path.join(app, `${fileName}.png`);
   report.screenshots.push(relativePath);
   return relativePath;
+}
+
+async function getFailureReason(page: Page, responseStatus?: number) {
+  const currentUrl = page.url();
+  if (currentUrl.includes("/login")) {
+    return "REDIRECT_LOGIN";
+  }
+
+  const notFoundText = page.getByText("Страница не найдена", { exact: false });
+  if ((await notFoundText.count()) > 0) {
+    return "NOT_FOUND";
+  }
+
+  if (responseStatus === 404) {
+    return "NOT_FOUND";
+  }
+
+  const rbacText = page.getByText("нет прав", { exact: false });
+  if (responseStatus === 403 || (await rbacText.count()) > 0) {
+    return "RBAC_DENY";
+  }
+
+  if (responseStatus && responseStatus >= 400) {
+    return `HTTP_${responseStatus}`;
+  }
+
+  return null;
+}
+
+async function visitAndSnap({
+  page,
+  app,
+  report,
+  route,
+  url,
+  responseStatus,
+}: {
+  page: Page;
+  app: AppName;
+  report: ReportState;
+  route: RouteConfig;
+  url: string;
+  responseStatus?: number;
+}) {
+  const failureReason = await getFailureReason(page, responseStatus);
+  if (failureReason) {
+    report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
+    return {
+      status: `FAIL (${failureReason})` as const,
+    };
+  }
+
+  const screenshot = await takeScreenshot(page, report, app, route.id);
+  return {
+    status: "OK" as const,
+    screenshot,
+  };
 }
 
 async function findFirstRow(page: Page) {
@@ -208,15 +269,20 @@ export async function runSnapshots({
       await page.waitForTimeout(400);
 
       const statusCode = response?.status();
-      if (statusCode && statusCode >= 400) {
-        routeResult.status = "NOT FOUND / NAV FAIL";
-        routeResult.note = `HTTP ${statusCode}`;
-        report.errors.push(`[${app}] ${route.label}: HTTP ${statusCode} (${url})`);
+      const snapResult = await visitAndSnap({
+        page,
+        app,
+        report,
+        route,
+        url,
+        responseStatus: statusCode,
+      });
+      routeResult.status = snapResult.status;
+      routeResult.screenshot = snapResult.screenshot;
+      if (snapResult.status !== "OK") {
         report.routes[app].push(routeResult);
         continue;
       }
-
-      routeResult.screenshot = await takeScreenshot(page, report, app, route.id);
 
       if (route.details) {
         const { detailsScreenshot, emptyStateScreenshot } = await tryCaptureDetails(page, report, app, route);
@@ -224,7 +290,7 @@ export async function runSnapshots({
         routeResult.emptyStateScreenshot = emptyStateScreenshot;
       }
     } catch (error) {
-      routeResult.status = "NOT FOUND / NAV FAIL";
+      routeResult.status = "FAIL (NAV_ERROR)";
       routeResult.note = (error as Error).message;
       report.errors.push(`[${app}] ${route.label}: navigation failed: ${(error as Error).message}`);
     }
