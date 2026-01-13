@@ -39,12 +39,35 @@ if "%CODE%"=="202" (
 
 if "%INVOICE_ID%"=="" (
   echo [5/14] List invoices to obtain id...
+  set "POLL_ATTEMPT=0"
+  set "EMPTY_ATTEMPT=0"
+  :invoice_list_retry
+  set "CODE="
+  set "INVOICE_ID="
   for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -o invoices.json "%CORE_URL%/billing/invoices?limit=1&offset=0"`) do set "CODE=%%c"
+  if "%CODE%"=="202" (
+    set /a POLL_ATTEMPT+=1
+    if !POLL_ATTEMPT! GEQ 30 (
+      echo [FAIL] Invoices list still returns 202 after 30 attempts.
+      goto :fail
+    )
+    echo [WARN] Invoices list returned 202, retrying in 2s (!POLL_ATTEMPT!/30)...
+    timeout /t 2 /nobreak >NUL
+    goto :invoice_list_retry
+  )
   if not "%CODE%"=="200" (
     echo [FAIL] Invoices list returned %CODE%.
     goto :fail
   )
   for /f "usebackq tokens=*" %%i in (`python -c "import json,sys; data=json.load(open('invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')"`) do set "INVOICE_ID=%%i"
+  if "%INVOICE_ID%"=="" (
+    set /a EMPTY_ATTEMPT+=1
+    if !EMPTY_ATTEMPT! LEQ 5 (
+      echo [WARN] Invoices list empty, retrying in 2s (!EMPTY_ATTEMPT!/5)...
+      timeout /t 2 /nobreak >NUL
+      goto :invoice_list_retry
+    )
+  )
 )
 
 if "%INVOICE_ID%"=="" (
