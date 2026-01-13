@@ -104,6 +104,7 @@ class Settings(SharedSettings):
         )
     )
     demo_seed_force_password_reset: bool = _env_bool("DEMO_SEED_FORCE_PASSWORD_RESET", True)
+    bootstrap_password_version: int = int(_env_or_default("NEFT_BOOTSTRAP_PASSWORD_VERSION", "1"))
     bootstrap_enabled: bool = _env_bool("NEFT_BOOTSTRAP_ENABLED", True)
     bootstrap_admin_email: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
@@ -173,6 +174,9 @@ class Settings(SharedSettings):
             "DEMO_SEED_FORCE_PASSWORD_RESET", self.demo_seed_force_password_reset
         )
 
+        self.bootstrap_password_version = int(
+            _env_or_default("NEFT_BOOTSTRAP_PASSWORD_VERSION", str(self.bootstrap_password_version))
+        )
         self.bootstrap_enabled = _env_bool("NEFT_BOOTSTRAP_ENABLED", self.bootstrap_enabled)
         self.bootstrap_admin_email = _env_or_default(
             "NEFT_BOOTSTRAP_ADMIN_EMAIL", self.bootstrap_admin_email

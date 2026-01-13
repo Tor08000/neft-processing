@@ -184,7 +184,7 @@ def validate_keypair_files() -> tuple[bool, str | None]:
     if _KEY_ERROR:
         return False, "invalid_rsa_keys"
     if not _PRIVATE_KEY_PATH.exists() or not _PUBLIC_KEY_PATH.exists():
-        return False, None
+        return False, "rsa_keys_missing"
 
     try:
         private_pem = _PRIVATE_KEY_PATH.read_text()

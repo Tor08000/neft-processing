@@ -32,6 +32,7 @@ async def bootstrap_required_users(settings: Settings | None = None) -> None:
             force_password=settings.demo_seed_force_password_reset,
             sync_roles=True,
             reset_password_once=True,
+            bootstrap_password_version=settings.bootstrap_password_version,
         )
         logger.info(
             "auth bootstrap: required user sync finished",

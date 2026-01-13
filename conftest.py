@@ -1,9 +1,16 @@
 import os
+import sys
 from pathlib import Path
+import pytest
 
 
 def pytest_configure():  # type: ignore[override]
     os.environ.setdefault("NEFT_AUTO_CREATE_SCHEMA", "false")
+    repo_root = Path(__file__).resolve().parent
+    shared_path = repo_root / "shared" / "python"
+    shared_path_str = str(shared_path)
+    if shared_path.exists() and shared_path_str not in sys.path:
+        sys.path.insert(0, shared_path_str)
 
 
 def _item_path(item) -> Path | None:
@@ -43,3 +50,11 @@ def pytest_collection_modifyitems(config, items):  # type: ignore[override]
             item.add_marker("contracts")
         if not any(item.get_closest_marker(mark) for mark in known_marks):
             item.add_marker("unit")
+
+        if item.get_closest_marker("processing_core_required"):
+            if os.environ.get("NEFT_PROCESSING_CORE_TESTS") != "1":
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="processing-core tests disabled (set NEFT_PROCESSING_CORE_TESTS=1)"
+                    )
+                )

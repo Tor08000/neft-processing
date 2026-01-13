@@ -251,9 +251,10 @@ export async function login(
     const emailInput = page.getByLabel(/email/i);
     const passInput = page.getByLabel(/пароль|password/i);
     const submitButton = page.getByRole("button", { name: /sign in|login|войти/i });
-    const onLoginPage = page.url().includes("/login");
+    const passwordField = page.locator('input[type="password"]');
+    const onLoginPage = page.url().includes("/login") || (await isVisible(passwordField));
     const emailVisible = await isVisible(emailInput);
-    const passVisible = await isVisible(passInput);
+    const passVisible = (await isVisible(passInput)) || (await isVisible(passwordField));
 
     if (!onLoginPage || !emailVisible || !passVisible || !(await isVisible(submitButton))) {
       tracker.stop();
