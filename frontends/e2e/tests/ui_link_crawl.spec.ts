@@ -366,6 +366,7 @@ test.describe.serial("UI Link Crawler", () => {
 
   test.afterAll(() => {
     const reportPath = writeLinkReport(report);
+    console.log(`UI audit saved to: ui-audit/${RUN_ID}`);
     console.log(`LINK_REPORT: ${reportPath}`);
   });
 

@@ -16,7 +16,7 @@ NEFT_BOOTSTRAP_PARTNER_PASSWORD
 Также для авто-сидинга:
 
 ```
-DEMO_SEED_ENABLED=1
+NEFT_BOOTSTRAP_ENABLED=1
 DEMO_SEED_FORCE_PASSWORD_RESET=1
 ```
 
@@ -51,6 +51,14 @@ curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
 { "access_token": "<jwt>", "token_type": "bearer" }
 ```
 
+### Быстрый smoke auth-host
+
+```bash
+scripts/smoke_auth_host.sh
+```
+
+Скрипт проверяет `/api/auth/health`, логины admin/client/partner и `/api/auth/v1/auth/public-key`. Возвращает `0` при успехе.
+
 ## 2) UI Snapshot (ui_snapshot.cmd)
 
 ```bat
@@ -61,7 +69,7 @@ scripts\ui_snapshot.cmd
 Ожидаемая строка в stdout:
 
 ```
-UI snapshot report: <path>/frontends/ui-audit/<RUN_ID>/REPORT.md
+UI audit saved to: ui-audit/<RUN_ID>
 ```
 
 Выходные файлы:

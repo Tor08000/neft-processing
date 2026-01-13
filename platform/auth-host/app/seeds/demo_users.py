@@ -11,6 +11,44 @@ from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
+BOOTSTRAP_META_TABLE = "bootstrap_meta"
+
+
+async def _ensure_bootstrap_meta_table(cur) -> None:
+    await cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {BOOTSTRAP_META_TABLE} (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+
+
+def _password_reset_key(email: str) -> str:
+    return f"password_reset:{email}"
+
+
+async def _is_password_reset_done(cur, email: str) -> bool:
+    await cur.execute(
+        f"SELECT value FROM {BOOTSTRAP_META_TABLE} WHERE key = %s",
+        (_password_reset_key(email),),
+    )
+    row = await cur.fetchone()
+    return bool(row and row.get("value") == "true")
+
+
+async def _mark_password_reset_done(cur, email: str) -> None:
+    await cur.execute(
+        f"""
+        INSERT INTO {BOOTSTRAP_META_TABLE} (key, value)
+        VALUES (%s, %s)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        """,
+        (_password_reset_key(email), "true"),
+    )
+
 
 def _env_or_default(key: str, default: str, *, fallback_keys: Iterable[str] = ()) -> str:
     for candidate in (key, *fallback_keys):
@@ -130,12 +168,15 @@ async def ensure_user(
     *,
     force_password: bool,
     sync_roles: bool,
+    reset_password_once: bool = False,
 ) -> str:
     normalized_email = demo_user.email.strip().lower()
     password_hash = hash_password(demo_user.password)
     demo_user_id = demo_user.preferred_id or uuid4()
 
     async with get_conn() as (conn, cur):
+        if reset_password_once and force_password:
+            await _ensure_bootstrap_meta_table(cur)
         await cur.execute(
             """
             SELECT id, email, full_name, password_hash, is_active
@@ -174,11 +215,17 @@ async def ensure_user(
 
             existing_hash = existing_user.get("password_hash")
             if force_password:
-                await cur.execute(
-                    "UPDATE users SET password_hash = %s WHERE id = %s",
-                    (password_hash, user_id),
-                )
-                password_reset = True
+                should_reset = True
+                if reset_password_once:
+                    should_reset = not await _is_password_reset_done(cur, normalized_email)
+                if should_reset:
+                    await cur.execute(
+                        "UPDATE users SET password_hash = %s WHERE id = %s",
+                        (password_hash, user_id),
+                    )
+                    password_reset = True
+                    if reset_password_once:
+                        await _mark_password_reset_done(cur, normalized_email)
 
             if demo_user.full_name and demo_user.full_name != existing_user.get("full_name"):
                 await cur.execute(
@@ -213,6 +260,9 @@ async def ensure_user(
             )
 
         roles_changed = bool(missing_roles or extra_roles)
+
+        if not existing_user and reset_password_once and force_password:
+            await _mark_password_reset_done(cur, normalized_email)
 
         await conn.commit()
 

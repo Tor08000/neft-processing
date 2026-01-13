@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 _PRIVATE_KEY_PEM: Optional[str] = None
 _PUBLIC_KEY_PEM: Optional[str] = None
+_KEY_ERROR: Optional[str] = None
 _KEY_LOCK = threading.Lock()
 
 settings = get_settings()
@@ -101,56 +102,76 @@ def _persist_to_files(private_pem: str, public_pem: str) -> None:
         _PRIVATE_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
         _PRIVATE_KEY_PATH.write_text(private_pem)
         _PUBLIC_KEY_PATH.write_text(public_pem)
+        _PRIVATE_KEY_PATH.chmod(0o600)
+        _PUBLIC_KEY_PATH.chmod(0o644)
     except OSError as exc:  # pragma: no cover - persistence best-effort
         logger.warning("Failed to persist JWT keypair to disk: %s", exc)
 
 
 def _ensure_keys_loaded() -> None:
-    global _PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM
+    global _PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM, _KEY_ERROR
 
     if _PRIVATE_KEY_PEM and _PUBLIC_KEY_PEM:
+        return
+    if _KEY_ERROR:
         return
 
     with _KEY_LOCK:
         if _PRIVATE_KEY_PEM and _PUBLIC_KEY_PEM:
             return
+        if _KEY_ERROR:
+            return
 
         env_private, env_public = _load_from_env()
         if env_private or env_public:
-            if not env_private:
-                raise InvalidRSAKeyError("missing_private_key")
-            private_key = _validate_private_key(env_private)
-            if env_public:
-                _validate_key_pair(env_private, env_public)
-                _PUBLIC_KEY_PEM = env_public
-            else:
-                _PUBLIC_KEY_PEM = private_key.public_key().public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                ).decode("utf-8")
-            _PRIVATE_KEY_PEM = env_private
-            return
+            try:
+                if not env_private:
+                    raise InvalidRSAKeyError("missing_private_key")
+                private_key = _validate_private_key(env_private)
+                if env_public:
+                    _validate_key_pair(env_private, env_public)
+                    _PUBLIC_KEY_PEM = env_public
+                else:
+                    _PUBLIC_KEY_PEM = private_key.public_key().public_bytes(
+                        encoding=serialization.Encoding.PEM,
+                        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                    ).decode("utf-8")
+                _PRIVATE_KEY_PEM = env_private
+                return
+            except InvalidRSAKeyError as exc:
+                _KEY_ERROR = str(exc)
+                logger.error("auth-host: invalid RSA keys from env: %s", exc)
+                return
 
-        file_private, file_public = _load_from_files()
-        if file_private and file_public:
-            _PRIVATE_KEY_PEM = file_private
-            _PUBLIC_KEY_PEM = file_public
-            logger.info("[keys] keys already exist at %s", _PRIVATE_KEY_PATH.parent)
+        try:
+            file_private, file_public = _load_from_files()
+            if file_private and file_public:
+                _PRIVATE_KEY_PEM = file_private
+                _PUBLIC_KEY_PEM = file_public
+                logger.info("[keys] keys already exist at %s", _PRIVATE_KEY_PATH.parent)
+                return
+        except InvalidRSAKeyError as exc:
+            _KEY_ERROR = str(exc)
+            logger.error("auth-host: invalid RSA keypair at %s", _PRIVATE_KEY_PATH.parent)
             return
 
         _PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM = _generate_rsa_key_pair()
         _persist_to_files(_PRIVATE_KEY_PEM, _PUBLIC_KEY_PEM)
-        logger.info("[keys] generated RSA keypair at %s", _PRIVATE_KEY_PATH.parent)
+        logger.info("auth-host: generated RSA keypair at %s", _PRIVATE_KEY_PATH.parent)
 
 
 def get_private_key_pem() -> str:
     _ensure_keys_loaded()
+    if _KEY_ERROR:
+        raise InvalidRSAKeyError(_KEY_ERROR)
     assert _PRIVATE_KEY_PEM is not None
     return _PRIVATE_KEY_PEM
 
 
 def get_public_key_pem() -> str:
     _ensure_keys_loaded()
+    if _KEY_ERROR:
+        raise InvalidRSAKeyError(_KEY_ERROR)
     assert _PUBLIC_KEY_PEM is not None
     return _PUBLIC_KEY_PEM
 
@@ -160,6 +181,8 @@ def initialize_keys() -> None:
 
 
 def validate_keypair_files() -> tuple[bool, str | None]:
+    if _KEY_ERROR:
+        return False, "invalid_rsa_keys"
     if not _PRIVATE_KEY_PATH.exists() or not _PUBLIC_KEY_PATH.exists():
         return False, None
 

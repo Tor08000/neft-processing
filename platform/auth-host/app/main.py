@@ -9,7 +9,7 @@ from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
 from app.api.routes.processing import router as processing_router
-from app.bootstrap import bootstrap_required_users, seed_demo_client_account
+from app.bootstrap import bootstrap_required_users
 from app.db import ensure_users_table
 from app.healthcheck import build_health_response
 from app.services.keys import initialize_keys
@@ -107,5 +107,5 @@ async def bootstrap_demo_user() -> None:
     if settings.bootstrap_enabled:
         await bootstrap_required_users(settings)
     else:
-        await seed_demo_client_account(settings)
+        logger.info("auth-host: bootstrap disabled; skipping demo seed")
     logger.info("auth-host: bootstrap done")

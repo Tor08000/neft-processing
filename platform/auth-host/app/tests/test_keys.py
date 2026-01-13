@@ -62,6 +62,7 @@ def _reset_keys_module(monkeypatch: pytest.MonkeyPatch, key_dir: Path | None = N
     sys.modules["app.services"] = app_services
     keys._PRIVATE_KEY_PEM = None
     keys._PUBLIC_KEY_PEM = None
+    keys._KEY_ERROR = None
     sys.modules["app.services.keys"] = keys
 
 
