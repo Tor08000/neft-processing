@@ -25,14 +25,17 @@ set "STATUS="
 
 curl -sS -o "%OPENAPI_FILE%" "%DIRECT_BASE%/api/auth/openapi.json"
 if errorlevel 1 (
-    set "ERROR_MESSAGE=[ERROR] Failed to fetch OpenAPI spec."
+    set "ERROR_MESSAGE=Failed to fetch OpenAPI spec."
     set "ERROR_URL=%DIRECT_BASE%/api/auth/openapi.json"
-    goto :error_fetch_openapi
+    set "ERROR_STATUS="
+    goto :emit_error_json
 )
 for /f "usebackq delims=" %%U in (`python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=[p for p,m in paths.items() if isinstance(m,dict) and any(k.lower()=='post' for k in m.keys()) and ('login' in p.lower() or 'token' in p.lower())]; candidates=sorted(candidates); print(candidates[0] if candidates else '')"`) do set "LOGIN_PATH=%%U"
 if not defined LOGIN_PATH (
-    set "ERROR_MESSAGE=[ERROR] Login endpoint not found in OpenAPI spec."
-    goto :error_openapi_login
+    set "ERROR_MESSAGE=Login endpoint not found in OpenAPI spec."
+    set "ERROR_URL=%DIRECT_BASE%/api/auth/openapi.json"
+    set "ERROR_STATUS="
+    goto :emit_error_json
 )
 
 if not "%LOGIN_PATH:~0,1%"=="/" set "LOGIN_PATH=/%LOGIN_PATH%"
@@ -50,40 +53,36 @@ if "%REQUEST_RESULT%"=="2" (
     set "REQUEST_RESULT=%ERRORLEVEL%"
 )
 if "%REQUEST_RESULT%"=="2" (
-    set "ERROR_MESSAGE=[ERROR] Login endpoint returned 404 on gateway and direct."
+    set "ERROR_MESSAGE=Login endpoint returned 404 on gateway and direct."
     set "ERROR_URL=%DIRECT_URL%"
     set "ERROR_EMAIL=%ADMIN_EMAIL%"
     set "ERROR_STATUS=404"
     set "ERROR_BODY_FILE=%BODY_FILE%"
-    goto :error_request_token
+    goto :emit_error_json
 )
 if not "%REQUEST_RESULT%"=="0" (
-    goto :error_request_token
+    goto :emit_error_json
 )
 
 endlocal & echo %TOKEN%
 
 exit /b 0
 
-:error_fetch_openapi
-1>&2 echo %ERROR_MESSAGE%
-1>&2 echo URL: %ERROR_URL%
-exit /b 1
-
-:error_openapi_login
-1>&2 echo %ERROR_MESSAGE%
-python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=sorted(p for p,m in paths.items() if isinstance(m,dict) and any(k.lower()=='post' for k in m.keys())); print('\n'.join(candidates))" 1>&2
-exit /b 1
-
-:error_request_token
-1>&2 echo %ERROR_MESSAGE%
-if defined ERROR_LOGIN_PATH 1>&2 echo LOGIN_PATH: %ERROR_LOGIN_PATH%
-if defined ERROR_URL 1>&2 echo URL: %ERROR_URL%
-if defined ERROR_EMAIL 1>&2 echo Email: %ERROR_EMAIL%
-if defined ERROR_STATUS 1>&2 echo HTTP status: %ERROR_STATUS%
-if defined ERROR_BODY_FILE (
-    if exist "%ERROR_BODY_FILE%" python -c "from pathlib import Path; text=Path(r'%ERROR_BODY_FILE%').read_text(encoding='utf-8',errors='ignore'); max_len=int(r'%MAX_BODY_CHARS%'); print(text[:max_len])" 1>&2
-)
+:emit_error_json
+python -c "import json, os; from pathlib import Path; max_len=int(os.environ.get('MAX_BODY_CHARS','1000')); body_file=os.environ.get('ERROR_BODY_FILE') or ''; body_excerpt=''; \
+path=Path(body_file) if body_file else None; \
+body_excerpt=path.read_text(encoding='utf-8',errors='ignore')[:max_len] if path and path.exists() else ''; \
+data={ \
+    'message': os.environ.get('ERROR_MESSAGE'), \
+    'url': os.environ.get('ERROR_URL'), \
+    'status': os.environ.get('ERROR_STATUS'), \
+    'email': os.environ.get('ERROR_EMAIL'), \
+    'login_path': os.environ.get('ERROR_LOGIN_PATH'), \
+    'gateway_url': os.environ.get('ERROR_GATEWAY_URL'), \
+    'direct_url': os.environ.get('ERROR_DIRECT_URL'), \
+    'body_excerpt': body_excerpt or None \
+}; \
+print(json.dumps(data, ensure_ascii=False))" 1>&2
 exit /b 1
 
 :request_token

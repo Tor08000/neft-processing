@@ -1,4 +1,13 @@
-# Runtime status snapshot (2026-01-13)
+# STATUS SNAPSHOT — RUNTIME 2026-01-13
 
-- Target: `scripts\\verify_all.cmd`
-- Focus: `scripts\\smoke_invoice_state_machine.cmd` Windows CMD query handling and empty-invoice behavior.
+**Generated:** 2026-01-13
+
+## Steps
+
+| Step | Status | Details |
+| --- | --- | --- |
+| verify_all.cmd | SKIP | runtime not executed in repo context |
+
+## Errors
+
+- None

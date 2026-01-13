@@ -84,14 +84,22 @@ set "cmdline=%~2"
 >> "%LOG_FILE%" echo [%step%] %cmdline%
 
 REM Execute safely via CALL so quoted strings work
-call %cmdline% >> "%LOG_FILE%" 2>&1
-if errorlevel 1 (
+set "TMP_OUT=%TEMP%\verify_all_step_%RANDOM%.log"
+call %cmdline% > "%TMP_OUT%" 2>&1
+set "CMD_ERRORLEVEL=%ERRORLEVEL%"
+type "%TMP_OUT%" >> "%LOG_FILE%"
+set "SKIP_LINE="
+for /f "usebackq delims=" %%L in (`findstr /c:"[SKIP]" "%TMP_OUT%"`) do if not defined SKIP_LINE set "SKIP_LINE=%%L"
+if "%CMD_ERRORLEVEL%" NEQ "0" (
   call :mark_fail "%step%" "%cmdline%"
   exit /b 1
-) else (
-  call :mark_ok "%step%" "%cmdline%"
+)
+if defined SKIP_LINE (
+  call :mark_skip "%step%" "%SKIP_LINE%"
   exit /b 0
 )
+call :mark_ok "%step%" "%cmdline%"
+exit /b 0
 
 :check_endpoints
 set "step=%~1"
@@ -165,6 +173,12 @@ set "details=%~2"
 >> "%SNAPSHOT_FILE%" echo ^| %step% ^| FAIL ^| %details% ^|
 call :append_error "%step% failed: %details%"
 exit /b 1
+
+:mark_skip
+set "step=%~1"
+set "details=%~2"
+>> "%SNAPSHOT_FILE%" echo ^| %step% ^| SKIP ^| %details% ^|
+exit /b 0
 
 :append_error
 >> "%ERROR_FILE%" echo - %~1

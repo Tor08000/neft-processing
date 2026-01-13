@@ -32,6 +32,7 @@
 ## 3) Smoke scripts (business flows)
 
 > Все smoke-скрипты в `scripts/smoke_*.cmd` перечислены ниже. Команды выполняются на запущенном стеке (`docker compose up -d --build`).
+> PASS criteria: script exits `0`; steps may emit `[SKIP]` with a documented reason (например отсутствие данных) without failing the script.
 
 | Smoke check | Command | Prerequisites | PASS criteria |
 | --- | --- | --- | --- |

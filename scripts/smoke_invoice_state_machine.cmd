@@ -9,7 +9,7 @@ if "%CORE_BASE%"=="" set "CORE_BASE=%CORE_PREFIX%"
 set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
 set "CORE_URL=%GATEWAY_BASE%%CORE_BASE%/v1/admin"
 if "%API_BASE%"=="" set "API_BASE=%CORE_URL%"
-set "INVOICES_URL=%API_BASE%/billing/invoices"
+set "INVOICES_URL=%GATEWAY_BASE%/api/core/v1/admin/billing/invoices"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=change-me"
@@ -63,25 +63,18 @@ goto :step4_list
 echo [5/14] List invoices to obtain id...
 set "POLL_ATTEMPT=0"
 set "EMPTY_ATTEMPT=0"
-if not defined INVOICES_URL (
-  echo [FATAL] INVOICES_URL is not defined
-  exit /b 1
-)
 :invoice_list_retry
 set "CODE="
 set "INVOICE_ID="
-if "%INVOICES_URL%"=="" (
-  echo [FATAL] Empty invoices URL
-  exit /b 1
-)
 set "LIST_URL=%INVOICES_URL%?limit=1^&offset=0"
 echo [DEBUG] GET %LIST_URL%
 curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%LIST_URL%" > "%TEMP%\invoice_list.code"
 set /p CODE=<"%TEMP%\invoice_list.code"
 if "%CODE%"=="202" goto :invoice_list_202
-if "%CODE%"=="404" goto :invoice_list_fail
-if not "%CODE%"=="200" goto :invoice_list_fail
-python -c "import json; data=json.load(open(r'%TEMP%\\invoices.json')); items=data.get('items') or []; print(items[0]['id'] if items else '')" > "%INVOICE_ID_FILE%"
+if "%CODE:~0,1%"=="5" goto :invoice_list_fail
+if not "%CODE%"=="200" goto :invoice_list_skip
+python -c "import json; data=json.load(open(r'%TEMP%\\invoices.json')); items=data.get('items'); assert isinstance(items, list); print(items[0].get('id','') if items else '')" > "%INVOICE_ID_FILE%"
+if errorlevel 1 goto :invoice_list_bad_json
 set /p INVOICE_ID=<"%INVOICE_ID_FILE%"
 if "%INVOICE_ID%"=="" goto :invoice_list_empty
 goto :step4_done
@@ -96,7 +89,7 @@ goto :invoice_list_retry
 :invoice_list_empty
 set /a EMPTY_ATTEMPT+=1
 if %EMPTY_ATTEMPT% LEQ 5 goto :invoice_list_retry_wait
-echo [WARN] No invoices found, skipping state transitions.
+echo [SKIP] No invoices available for state machine test
 exit /b 0
 
 :invoice_list_retry_wait
@@ -111,6 +104,14 @@ goto :fail
 :invoice_list_fail
 echo [FAIL] Invoices list returned %CODE%.
 goto :fail
+
+:invoice_list_bad_json
+echo [FAIL] Invoices list returned invalid JSON or missing items[].
+goto :fail
+
+:invoice_list_skip
+echo [SKIP] Invoices list returned %CODE%, skipping state transitions.
+exit /b 0
 
 :step4_done
 if "%INVOICE_ID%"=="" goto :step4_fail

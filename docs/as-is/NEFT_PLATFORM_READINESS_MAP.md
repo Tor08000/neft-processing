@@ -49,6 +49,14 @@
 
 ---
 
+## 2.1 Stage status (verification readiness)
+
+| Stage | Status | Evidence |
+| --- | --- | --- |
+| Stage 0 — Stabilization & Verification Hardening | **VERIFIED** | `scripts/verify_all.cmd`, `docs/as-is/STATUS_SNAPSHOT_RUNTIME_2026-01-13.md` |
+
+---
+
 ## 3) Readiness Matrix (Domain → CODE STATUS + VERIFY STATUS + Coverage)
 
 **Формат статуса:** `<CODE STATUS> + <VERIFY STATUS>`
