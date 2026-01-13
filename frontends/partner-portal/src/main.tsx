@@ -8,6 +8,7 @@ import "./index.css";
 import "@shared/brand/brand.css";
 
 const base = import.meta.env.BASE_URL || "/partner/";
+document.documentElement.setAttribute("data-theme", "dark");
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

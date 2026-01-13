@@ -27,6 +27,12 @@ def _safe_uuid(value: str | None) -> UUID:
         return uuid4()
 
 
+def _parse_roles(raw_value: str | None, default: list[str]) -> list[str]:
+    if raw_value is None or raw_value.strip() == "":
+        return default
+    return [role.strip() for role in raw_value.split(",") if role.strip()]
+
+
 @dataclass(frozen=True)
 class DemoUser:
     email: str
@@ -38,58 +44,106 @@ class DemoUser:
 
 def get_demo_users() -> list[DemoUser]:
     admin_email = _env_or_default(
-        "ADMIN_EMAIL",
-        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
+        "NEFT_BOOTSTRAP_ADMIN_EMAIL",
+        _env_or_default(
+            "ADMIN_EMAIL",
+            _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
+        ),
     )
     admin_password = _env_or_default(
-        "ADMIN_PASSWORD",
-        _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
+        _env_or_default(
+            "ADMIN_PASSWORD",
+            _env_or_default("NEFT_DEMO_ADMIN_PASSWORD", "admin123", fallback_keys=("DEMO_ADMIN_PASSWORD",)),
+        ),
     )
     admin_full_name = _env_or_default(
-        "ADMIN_FULL_NAME",
-        _env_or_default("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin", fallback_keys=("DEMO_ADMIN_FULL_NAME",)),
+        "NEFT_BOOTSTRAP_ADMIN_FULL_NAME",
+        _env_or_default(
+            "ADMIN_FULL_NAME",
+            _env_or_default("NEFT_DEMO_ADMIN_FULL_NAME", "Platform Admin", fallback_keys=("DEMO_ADMIN_FULL_NAME",)),
+        ),
+    )
+    admin_roles = _parse_roles(
+        _env_or_default(
+            "NEFT_BOOTSTRAP_ADMIN_ROLES",
+            _env_or_default("ADMIN_ROLES", "ADMIN,PLATFORM_ADMIN,SUPERADMIN"),
+        ),
+        ["PLATFORM_ADMIN"],
     )
 
     client_email = _env_or_default(
-        "CLIENT_EMAIL",
-        _env_or_default("NEFT_DEMO_CLIENT_EMAIL", "client@neft.local", fallback_keys=("DEMO_CLIENT_EMAIL",)),
+        "NEFT_BOOTSTRAP_CLIENT_EMAIL",
+        _env_or_default(
+            "CLIENT_EMAIL",
+            _env_or_default("NEFT_DEMO_CLIENT_EMAIL", "client@neft.local", fallback_keys=("DEMO_CLIENT_EMAIL",)),
+        ),
     )
     client_password = _env_or_default(
-        "CLIENT_PASSWORD",
-        _env_or_default("NEFT_DEMO_CLIENT_PASSWORD", "client", fallback_keys=("DEMO_CLIENT_PASSWORD",)),
+        "NEFT_BOOTSTRAP_CLIENT_PASSWORD",
+        _env_or_default(
+            "CLIENT_PASSWORD",
+            _env_or_default("NEFT_DEMO_CLIENT_PASSWORD", "client", fallback_keys=("DEMO_CLIENT_PASSWORD",)),
+        ),
     )
     client_full_name = _env_or_default(
-        "CLIENT_FULL_NAME",
-        _env_or_default("NEFT_DEMO_CLIENT_FULL_NAME", "Demo Client", fallback_keys=("DEMO_CLIENT_FULL_NAME",)),
+        "NEFT_BOOTSTRAP_CLIENT_FULL_NAME",
+        _env_or_default(
+            "CLIENT_FULL_NAME",
+            _env_or_default("NEFT_DEMO_CLIENT_FULL_NAME", "Demo Client", fallback_keys=("DEMO_CLIENT_FULL_NAME",)),
+        ),
     )
     client_uuid = _env_or_default(
         "CLIENT_UUID",
         _env_or_default("NEFT_DEMO_CLIENT_UUID", "00000000-0000-0000-0000-000000000001", fallback_keys=("DEMO_CLIENT_UUID",)),
     )
+    client_roles = _parse_roles(
+        _env_or_default(
+            "NEFT_BOOTSTRAP_CLIENT_ROLES",
+            _env_or_default("CLIENT_ROLES", "CLIENT_OWNER"),
+        ),
+        ["CLIENT_OWNER"],
+    )
 
-    partner_email = _env_or_default("PARTNER_EMAIL", "partner@neft.local")
-    partner_password = _env_or_default("PARTNER_PASSWORD", "partner")
-    partner_full_name = _env_or_default("PARTNER_FULL_NAME", "Demo Partner")
+    partner_email = _env_or_default(
+        "NEFT_BOOTSTRAP_PARTNER_EMAIL",
+        _env_or_default("PARTNER_EMAIL", "partner@neft.local"),
+    )
+    partner_password = _env_or_default(
+        "NEFT_BOOTSTRAP_PARTNER_PASSWORD",
+        _env_or_default("PARTNER_PASSWORD", "partner"),
+    )
+    partner_full_name = _env_or_default(
+        "NEFT_BOOTSTRAP_PARTNER_FULL_NAME",
+        _env_or_default("PARTNER_FULL_NAME", "Demo Partner"),
+    )
+    partner_roles = _parse_roles(
+        _env_or_default(
+            "NEFT_BOOTSTRAP_PARTNER_ROLES",
+            _env_or_default("PARTNER_ROLES", "PARTNER_OWNER"),
+        ),
+        ["PARTNER_OWNER"],
+    )
 
     return [
         DemoUser(
             email=admin_email,
             password=admin_password,
             full_name=admin_full_name,
-            roles=["PLATFORM_ADMIN"],
+            roles=admin_roles,
         ),
         DemoUser(
             email=client_email,
             password=client_password,
             full_name=client_full_name,
-            roles=["CLIENT_OWNER"],
+            roles=client_roles,
             preferred_id=_safe_uuid(client_uuid),
         ),
         DemoUser(
             email=partner_email,
             password=partner_password,
             full_name=partner_full_name,
-            roles=["PARTNER_OWNER"],
+            roles=partner_roles,
         ),
     ]
 

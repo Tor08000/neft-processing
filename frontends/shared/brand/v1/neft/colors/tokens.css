@@ -42,7 +42,7 @@
   --neft-shadow-2: 0 8px 24px rgba(15, 23, 42, 0.10);
 
   /* Table */
-  --neft-table-hover: rgba(21, 161, 199, 0.08);
+  --neft-table-hover: #243447;
 }
 
 /* Dark theme */
@@ -66,7 +66,7 @@
   --neft-shadow-2: 0 10px 30px rgba(0, 0, 0, 0.45);
 
   /* Table */
-  --neft-table-hover: rgba(21, 161, 199, 0.12);
+  --neft-table-hover: #243447;
 }
 
 /* Base application styling helpers (optional) */

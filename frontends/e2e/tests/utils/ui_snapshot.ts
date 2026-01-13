@@ -65,6 +65,24 @@ function normalizeBaseUrl(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
+function normalizeCredential(value: string | undefined, fallback: string) {
+  if (value && value.trim() !== "") {
+    return value;
+  }
+  return fallback;
+}
+
+async function isVisible(locator: ReturnType<Page["locator"]>) {
+  return (await locator.count()) > 0 && (await locator.first().isVisible());
+}
+
+async function isAppShellVisible(page: Page) {
+  const sidebar = page.locator(".brand-sidebar, .sidebar, [role='navigation']");
+  const header = page.locator(".brand-header, .topbar, header");
+  const logoutButton = page.getByRole("button", { name: /выход|logout/i });
+  return (await isVisible(sidebar)) && (await isVisible(header)) && (await isVisible(logoutButton));
+}
+
 export function resolveBaseUrls() {
   const base = normalizeBaseUrl(process.env.E2E_BASE_URL || "http://localhost");
   return {
@@ -251,6 +269,9 @@ export async function login(
   } catch (error) {
     tracker.stop();
     report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
+    const screenshot = await takeScreenshot(page, report, app, "login__FAIL_EXCEPTION");
+    report.errors.push(`[${app}] login screenshot: ${screenshot}`);
+    return false;
   }
 }
 
@@ -286,6 +307,10 @@ async function visitAndSnap({
   if (failureReason) {
     const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
+    if (failureReason === "JS_ERROR" && jsErrors.length > 0) {
+      report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
+    }
+    const screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
     return {
       status: `FAIL (${failureReason})` as const,
       screenshot,
@@ -408,6 +433,9 @@ export async function runSnapshots({
 
     report.routes[app].push(routeResult);
   }
+
+  page.off("console", onConsole);
+  page.off("pageerror", onPageError);
 }
 
 export function writeReport(report: ReportState) {
@@ -508,15 +536,24 @@ export const PARTNER_ROUTES: RouteConfig[] = [
 
 export const CREDENTIALS = {
   admin: {
-    email: process.env.ADMIN_EMAIL || "admin@example.com",
-    password: process.env.ADMIN_PASSWORD || "admin",
+    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL || "admin@example.com"),
+    password: normalizeCredential(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD || "admin123"),
   },
   client: {
-    email: process.env.CLIENT_EMAIL || "client@neft.local",
-    password: process.env.CLIENT_PASSWORD || "client",
+    email: normalizeCredential(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL || "client@neft.local"),
+    password: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD,
+      process.env.CLIENT_PASSWORD || "client",
+    ),
   },
   partner: {
-    email: process.env.PARTNER_EMAIL || "partner@neft.local",
-    password: process.env.PARTNER_PASSWORD || "partner",
+    email: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL,
+      process.env.PARTNER_EMAIL || "partner@neft.local",
+    ),
+    password: normalizeCredential(
+      process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD,
+      process.env.PARTNER_PASSWORD || "partner",
+    ),
   },
 } satisfies Record<AppName, Credentials>;
