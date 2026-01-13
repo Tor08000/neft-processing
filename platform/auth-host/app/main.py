@@ -9,9 +9,11 @@ from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
 from app.api.routes.processing import router as processing_router
-from app.bootstrap import seed_demo_client_account
+from app.bootstrap import bootstrap_required_users, seed_demo_client_account
 from app.db import ensure_users_table
 from app.healthcheck import build_health_response
+from app.services.keys import initialize_keys
+from app.settings import get_settings
 from app.metrics import metrics_middleware, metrics_response
 
 DEFAULT_API_PREFIX = "/api/auth"
@@ -62,9 +64,10 @@ api_prefixed_router.include_router(processing_router)
 @app.get(f"{API_PREFIX_AUTH}/health")
 def health_root():
     response, status_code = build_health_response()
+    content = response.model_dump(exclude_none=True)
     if status_code != status.HTTP_200_OK:
-        return JSONResponse(status_code=status_code, content=response.model_dump())
-    return response.model_dump()
+        return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content)
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -76,9 +79,10 @@ def metrics_root():
 @api_prefixed_router.get("/health")
 def prefixed_health_root():
     response, status_code = build_health_response()
+    content = response.model_dump(exclude_none=True)
     if status_code != status.HTTP_200_OK:
-        return JSONResponse(status_code=status_code, content=response.model_dump())
-    return response.model_dump()
+        return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content)
 
 
 @app.get("/api/auth/openapi.json", include_in_schema=False)
@@ -97,6 +101,11 @@ app.include_router(api_prefixed_router)
 @app.on_event("startup")
 async def bootstrap_demo_user() -> None:
     await ensure_users_table()
-    logger.info("auth-host: bootstrap demo users start")
-    await seed_demo_client_account()
-    logger.info("auth-host: bootstrap demo users done")
+    logger.info("auth-host: bootstrap start")
+    initialize_keys()
+    settings = get_settings()
+    if settings.bootstrap_enabled:
+        await bootstrap_required_users(settings)
+    else:
+        await seed_demo_client_account(settings)
+    logger.info("auth-host: bootstrap done")

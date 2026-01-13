@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from app.db import get_conn
 from app.security import hash_password, verify_password
 from app.settings import Settings, get_settings
+from app.seeds.demo_users import ensure_user, get_demo_users
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,25 @@ async def seed_demo_client_account(settings: Settings | None = None) -> None:
         await _ensure_demo_accounts(settings)
     except Exception:
         logger.warning("Demo bootstrap failed; continuing without demo users", exc_info=True)
+
+
+async def bootstrap_required_users(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    if not settings.bootstrap_enabled:
+        logger.info("auth bootstrap: disabled via NEFT_BOOTSTRAP_ENABLED")
+        return
+
+    demo_users = get_demo_users()
+    for demo_user in demo_users:
+        status = await ensure_user(
+            demo_user,
+            force_password=settings.demo_seed_force_password_reset,
+            sync_roles=True,
+        )
+        logger.info(
+            "auth bootstrap: required user sync finished",
+            extra={"email": demo_user.email, "status": status},
+        )
 
 
 async def _ensure_demo_accounts(settings: Settings) -> None:

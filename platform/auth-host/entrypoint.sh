@@ -15,26 +15,22 @@ AUTH_PUBLIC_KEY_PATH="${AUTH_PUBLIC_KEY_PATH:-/data/keys/public.pem}"
 export AUTH_PRIVATE_KEY_PATH
 export AUTH_PUBLIC_KEY_PATH
 
-if [ ! -f "${AUTH_PRIVATE_KEY_PATH}" ] || [ ! -f "${AUTH_PUBLIC_KEY_PATH}" ]; then
-    mkdir -p "$(dirname "${AUTH_PRIVATE_KEY_PATH}")"
-    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${AUTH_PRIVATE_KEY_PATH}"
-    openssl rsa -pubout -in "${AUTH_PRIVATE_KEY_PATH}" -out "${AUTH_PUBLIC_KEY_PATH}"
-    chmod 600 "${AUTH_PRIVATE_KEY_PATH}"
-    chmod 644 "${AUTH_PUBLIC_KEY_PATH}"
-    echo "[entrypoint] generated dev rsa keys"
+bootstrap_enabled="${NEFT_BOOTSTRAP_ENABLED:-1}"
+bootstrap_enabled="$(echo "${bootstrap_enabled}" | tr '[:upper:]' '[:lower:]')"
+if [ "${bootstrap_enabled}" != "0" ] && [ "${bootstrap_enabled}" != "false" ] \
+    && [ "${bootstrap_enabled}" != "no" ] && [ "${bootstrap_enabled}" != "off" ]; then
+    required_envs=(
+        NEFT_BOOTSTRAP_ADMIN_PASSWORD
+        NEFT_BOOTSTRAP_CLIENT_PASSWORD
+        NEFT_BOOTSTRAP_PARTNER_PASSWORD
+    )
+    for env_name in "${required_envs[@]}"; do
+        if [ -z "${!env_name:-}" ]; then
+            echo "[entrypoint] missing required env: ${env_name}" >&2
+            exit 1
+        fi
+    done
 fi
-
-required_envs=(
-    NEFT_BOOTSTRAP_ADMIN_PASSWORD
-    NEFT_BOOTSTRAP_CLIENT_PASSWORD
-    NEFT_BOOTSTRAP_PARTNER_PASSWORD
-)
-for env_name in "${required_envs[@]}"; do
-    if [ -z "${!env_name:-}" ]; then
-        echo "[entrypoint] missing required env: ${env_name}" >&2
-        exit 1
-    fi
-done
 
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
@@ -106,44 +102,5 @@ with psycopg.connect(dsn) as conn:
             sys.exit(1)
 print("[entrypoint] migration check: public.users exists")
 PY
-
-echo "[entrypoint] auth-host bootstrap admin"
-python - <<'PY'
-import asyncio
-
-from app.bootstrap import bootstrap_admin
-
-asyncio.run(bootstrap_admin())
-PY
-
-if [ "${DEMO_SEED_ENABLED:-0}" = "1" ]; then
-    echo "[entrypoint] auth-host demo seed enabled"
-    DEMO_RESET_FLAG="${DEMO_SEED_FORCE_PASSWORD_RESET:-0}"
-    if [ "${DEMO_RESET_FLAG}" = "1" ]; then
-        DEMO_FORCE_ARGS="--force"
-        DEMO_RESET_STATUS="reset"
-    else
-        DEMO_FORCE_ARGS=""
-        DEMO_RESET_STATUS="no-reset"
-    fi
-    python - <<'PY'
-import os
-
-demo_users = [
-    ("admin", "NEFT_BOOTSTRAP_ADMIN_EMAIL", "NEFT_BOOTSTRAP_ADMIN_PASSWORD"),
-    ("client", "NEFT_BOOTSTRAP_CLIENT_EMAIL", "NEFT_BOOTSTRAP_CLIENT_PASSWORD"),
-    ("partner", "NEFT_BOOTSTRAP_PARTNER_EMAIL", "NEFT_BOOTSTRAP_PARTNER_PASSWORD"),
-]
-reset_status = "reset" if os.getenv("DEMO_SEED_FORCE_PASSWORD_RESET", "0") == "1" else "no-reset"
-for role, email_key, password_key in demo_users:
-    print(
-        f"[entrypoint] demo seed role={role} email={os.getenv(email_key)} "
-        f"action={reset_status} source_env={password_key}"
-    )
-PY
-    python -m app.cli.reset_passwords --demo ${DEMO_FORCE_ARGS}
-else
-    echo "[entrypoint] auth-host demo seed disabled"
-fi
 
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

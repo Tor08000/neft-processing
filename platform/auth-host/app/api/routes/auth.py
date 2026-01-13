@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -72,9 +71,10 @@ async def _get_roles_for_user(user_id: str) -> list[str]:
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     response, status_code = build_health_response()
+    content = response.model_dump(exclude_none=True)
     if status_code != status.HTTP_200_OK:
-        return JSONResponse(status_code=status_code, content=response.model_dump())
-    return response
+        return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content)
 
 
 @router.get("/public-key", response_class=PlainTextResponse)
@@ -158,7 +158,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
     user_email = user.email
 
     settings = get_settings()
-    expires_in = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", settings.access_token_expires_min * 60))
+    expires_in = settings.access_token_expires_min * 60
     token = create_access_token(
         user_email,
         roles=roles,
