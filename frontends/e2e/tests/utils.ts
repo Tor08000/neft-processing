@@ -10,37 +10,46 @@ const defaultWaitOptions = { timeout: 20_000 };
 
 export async function loginClient(page: Page) {
   await page.goto(`${CLIENT_BASE_URL}/login`);
+  const email = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail" i]').first();
+  const pass = page
+    .locator('input[type="password"], input[name="password"], input[placeholder*="password" i], input[placeholder*="парол" i]')
+    .first();
+  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL ?? "client@neft.local"));
+  await pass.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "client"));
   await page
-    .getByLabel(/email/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL ?? "client@neft.local"));
-  await page
-    .getByLabel(/пароль|password/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "client"));
-  await page.getByRole("button", { name: /войти|sign in|login/i }).click();
+    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
+    .first()
+    .click();
   await page.waitForURL((url) => !url.pathname.endsWith("/login"), defaultWaitOptions);
 }
 
 export async function loginPartner(page: Page) {
   await page.goto(`${PARTNER_BASE_URL}/login`);
+  const email = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail" i]').first();
+  const pass = page
+    .locator('input[type="password"], input[name="password"], input[placeholder*="password" i], input[placeholder*="парол" i]')
+    .first();
+  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL, process.env.PARTNER_EMAIL ?? "partner@neft.local"));
+  await pass.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "partner"));
   await page
-    .getByLabel(/email/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL, process.env.PARTNER_EMAIL ?? "partner@neft.local"));
-  await page
-    .getByLabel(/пароль|password/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "partner"));
-  await page.getByRole("button", { name: /войти|sign in|login/i }).click();
+    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
+    .first()
+    .click();
   await page.waitForURL((url) => !url.pathname.endsWith("/login"), defaultWaitOptions);
 }
 
 export async function loginAdmin(page: Page) {
   await page.goto(`${ADMIN_BASE_URL}/login`);
+  const email = page.locator('input[type="email"], input[name="email"], input[placeholder*="mail" i]').first();
+  const pass = page
+    .locator('input[type="password"], input[name="password"], input[placeholder*="password" i], input[placeholder*="парол" i]')
+    .first();
+  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@example.com"));
+  await pass.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD ?? "admin"));
   await page
-    .getByLabel(/email/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@example.com"));
-  await page
-    .getByLabel(/пароль|password/i)
-    .fill(resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, process.env.ADMIN_PASSWORD ?? "admin123"));
-  await page.getByRole("button", { name: /войти|sign in|login/i }).click();
+    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
+    .first()
+    .click();
   await page.waitForURL((url) => !url.pathname.endsWith("/login"), defaultWaitOptions);
 }
 
