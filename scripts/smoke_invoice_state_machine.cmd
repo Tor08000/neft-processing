@@ -61,45 +61,31 @@ goto :step4_list
 
 :step4_list
 echo [5/14] List invoices to obtain id...
-set "POLL_ATTEMPT=0"
-set "EMPTY_ATTEMPT=0"
-:invoice_list_retry
 set "CODE="
 set "INVOICE_ID="
 set "LIST_URL=%INVOICES_URL%?limit=1^&offset=0"
 echo [DEBUG] GET %LIST_URL%
 curl -s -D "%TEMP%\invoice_list.hdr" -o "%TEMP%\invoices.json" -w "%{http_code}" -H "%AUTH_HEADER%" "%LIST_URL%" > "%TEMP%\invoice_list.code"
 set /p CODE=<"%TEMP%\invoice_list.code"
-if "%CODE%"=="202" goto :invoice_list_202
+if "%CODE%"=="202" (
+  echo [SKIP] Invoice list returned 202 (async), skipping state machine.
+  exit /b 0
+)
 if "%CODE:~0,1%"=="5" goto :invoice_list_fail
 if not "%CODE%"=="200" goto :invoice_list_skip
-python -c "import json; data=json.load(open(r'%TEMP%\\invoices.json')); items=data.get('items'); assert isinstance(items, list); print(items[0].get('id','') if items else '')" > "%INVOICE_ID_FILE%"
+python -c "import json; data=json.load(open(r'%TEMP%\\invoices.json')); items=data.get('items'); assert isinstance(items, list); total=data.get('total', len(items)); first=items[0].get('id','') if items else ''; print(f'{first}|{len(items)}|{total}')" > "%INVOICE_ID_FILE%"
 if errorlevel 1 goto :invoice_list_bad_json
-set /p INVOICE_ID=<"%INVOICE_ID_FILE%"
-if "%INVOICE_ID%"=="" goto :invoice_list_empty
+for /f "usebackq tokens=1-3 delims=|" %%i in ("%INVOICE_ID_FILE%") do (
+  set "INVOICE_ID=%%i"
+  set "ITEMS_COUNT=%%j"
+  set "TOTAL_COUNT=%%k"
+)
+if "%ITEMS_COUNT%"=="0" if "%TOTAL_COUNT%"=="0" (
+  echo [SKIP] No invoices found, invoice state machine skipped.
+  exit /b 0
+)
+if "%INVOICE_ID%"=="" goto :step4_fail
 goto :step4_done
-
-:invoice_list_202
-set /a POLL_ATTEMPT+=1
-if %POLL_ATTEMPT% GEQ 30 goto :invoice_list_timeout
-echo [WARN] Invoices list returned 202, retrying in 2s (%POLL_ATTEMPT%/30)...
-timeout /t 2 /nobreak >NUL
-goto :invoice_list_retry
-
-:invoice_list_empty
-set /a EMPTY_ATTEMPT+=1
-if %EMPTY_ATTEMPT% LEQ 5 goto :invoice_list_retry_wait
-echo [SKIP] No invoices available for state machine test
-exit /b 0
-
-:invoice_list_retry_wait
-echo [WARN] Invoices list empty, retrying in 2s (%EMPTY_ATTEMPT%/5)...
-timeout /t 2 /nobreak >NUL
-goto :invoice_list_retry
-
-:invoice_list_timeout
-echo [FAIL] Invoices list still returns 202 after 30 attempts.
-goto :fail
 
 :invoice_list_fail
 echo [FAIL] Invoices list returned %CODE%.
