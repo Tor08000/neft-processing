@@ -1,38 +1,28 @@
-# NEFT Platform — AS-IS Master Documentation (Full System Map + Current Status Snapshot)
+# NEFT Platform — AS-IS Master Documentation (фактическое состояние репозитория)
 
-> **Scope:** This document describes what is **actually implemented** in `/workspace/neft-processing` as of now. Any gaps are explicitly marked **CODED_PARTIAL**, **STUB**, or **NOT IMPLEMENTED** with factual notes. No future work or assumptions are included.
+> **Источник истины:** код, конфигурации и скрипты в репозитории `/workspace/neft-processing`.
+> **Верификация:** runtime-verify не выполнен; доступные скрипты/тесты перечислены как артефакты, без статуса PASS. См. `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`.
 
 ---
 
-## 4.1 Overview
+## 1) Общее описание (AS-IS)
 
-**Назначение платформы (AS-IS):**
-- Мультисервисная платформа для финансовой обработки (billing, settlement), флота/топлива, маркетплейса, документов и аудита.
-- Основной API — `core-api` (`platform/processing-core/`) + вспомогательные сервисы `auth-host`, `integration-hub`, `ai-service`, `document-service`, `logistics-service`, `crm-service` (stub).
+**Фактически реализованный стек:**
+- Мультисервисная платформа с основным API `core-api` (`platform/processing-core`) и вспомогательными сервисами: `auth-host`, `integration-hub`, `ai-service`, `document-service`, `logistics-service`, `crm-service` (stub). Состав и параметры определены в `docker-compose.yml`.
+- Gateway (nginx) маршрутизирует API и SPA фронтенды. (`gateway/nginx.conf`)
+- Асинхронная обработка: Celery worker/beat (`platform/billing-clearing`).
+- Инфраструктура: Postgres, Redis, MinIO, ClickHouse (опционально), observability (OTel, Jaeger, Prometheus, Grafana, Loki/Promtail).
 
-**Основные контуры (по факту кода):**
-- Core/Trust & Audit
-- Billing & Finance
-- Fleet/Fuel
-- Marketplace & Partner Services
-- Documents & Exports
-- Decision Memory & What-If
-- Reconciliation/Internal Ledger
-- Integrations (Integration Hub + webhooks + EDO stub)
-- BI/ClickHouse (опционально)
-- Observability (Prometheus/Grafana/Jaeger/Loki)
-
-**Карта ключевых директорий (AS-IS):**
-
+**Карта ключевых директорий:**
 ```
 platform/
-  processing-core/        # Core API (billing, fleet, marketplace, audit)
-  auth-host/              # JWT/auth service
+  processing-core/        # Core API + доменные модели/сервисы
+  auth-host/              # JWT/auth сервис
   integration-hub/        # webhooks + EDO stub
-  ai-services/risk-scorer # AI scoring service (local heuristic)
-  billing-clearing/       # Celery workers/beat
+  ai-services/risk-scorer # эвристический risk scorer
+  billing-clearing/       # Celery worker/beat
   document-service/       # PDF render/sign/verify
-  logistics-service/      # ETA/deviation/explain service
+  logistics-service/      # ETA/Deviation/Explain
   crm-service/            # CRM stub (health/metrics)
 frontends/
   admin-ui/
@@ -40,312 +30,107 @@ frontends/
   partner-portal/
   shared/
 gateway/
-services/
-  flower/
 infra/
-  prometheus.yml, grafana/, otel-collector-config.yaml, loki/, promtail/
 shared/
-  python/                 # shared settings/logging
-  contracts/
-docs/
-  as-is/                  # текущий AS-IS пакет
 ```
 
-**Краткая карта сервисов (AS-IS):**
-- Gateway (nginx) → core-api, auth-host, ai-service, integration-hub, crm-service, logistics-service, document-service + SPA frontends. (`gateway/nginx.conf`)
-- Core API + Celery workers → Postgres, Redis, MinIO, optional ClickHouse. (`docker-compose.yml`, `shared/python/neft_shared/settings.py`)
+---
+
+## 2) Runtime architecture (из docker-compose + gateway)
+
+### 2.1 Сервисы (docker-compose)
+
+| Service | Назначение | Код | Health endpoint |
+|---|---|---|---|
+| gateway | API + SPA routing | `gateway/` | `/health` |
+| core-api | Core domain API | `platform/processing-core/` | `/api/core/health` (через gateway) |
+| auth-host | Auth/JWT | `platform/auth-host/` | `/api/auth/health` (через gateway) |
+| ai-service | Risk scoring API | `platform/ai-services/risk-scorer/` | `/api/ai/health` (через gateway) |
+| integration-hub | Webhooks + EDO stub | `platform/integration-hub/` | `/api/int/health` (через gateway) |
+| crm-service | CRM stub | `platform/crm-service/` | `/api/crm/health` (через gateway) |
+| logistics-service | ETA/Deviation/Explain | `platform/logistics-service/` | `/api/logistics/health` (через gateway) |
+| document-service | PDF render/sign/verify | `platform/document-service/` | `/api/docs/health` (через gateway) |
+| admin-web | Admin SPA | `frontends/admin-ui/` | `/health` |
+| client-web | Client SPA | `frontends/client-portal/` | `/health` |
+| partner-web | Partner SPA | `frontends/partner-portal/` | `/health` |
+| workers/beat | Celery worker/scheduler | `platform/billing-clearing/` | compose healthchecks |
+| flower | Celery monitoring UI | `services/flower/` | `/api/workers` |
+| observability | OTel/Jaeger/Prometheus/Grafana/Loki/Promtail | `infra/` | compose healthchecks |
+
+### 2.2 Gateway routing (nginx)
+
+Фактические маршруты (из `gateway/nginx.conf`):
+- `/api/core/*` → `core-api`
+- `/api/auth/*` → `auth-host`
+- `/api/ai/*` → `ai-service`
+- `/api/int/*` и `/api/integrations/*` → `integration-hub`
+- `/api/crm/*` → `crm-service`
+- `/api/logistics/*` → `logistics-service`
+- `/api/docs/*` → `document-service`
+- `/api/v1/*` → legacy passthrough to `core-api`
+- `/admin/`, `/client/`, `/partner/` → SPA фронтенды
 
 ---
 
-## 4.2 Runtime Architecture (AS-IS)
+## 3) Data layer (AS-IS)
 
-**Сервисы (по docker-compose):**
-- API: `core-api`, `auth-host`, `ai-service`, `integration-hub`, `crm-service` (stub), `logistics-service`, `document-service`.
-- Frontends: `admin-web`, `client-web`, `partner-web`.
-- Infra: `postgres`, `redis`, `mailpit`, `minio`, `minio-health`, `minio-init`, `clickhouse`.
-- Async: `workers`, `beat`, `flower`, `celery-exporter`.
-- Observability: `otel-collector`, `jaeger`, `prometheus`, `grafana`, `loki`, `promtail`.
-
-**Основные связи (AS-IS):**
-- `gateway` → `/api/core/*` → `core-api` (`platform/processing-core/app/main.py`).
-- `gateway` → `/api/auth/*` → `auth-host` (`platform/auth-host/app/main.py`).
-- `gateway` → `/api/ai/*` → `ai-service` (`platform/ai-services/risk-scorer/app/main.py`).
-- `gateway` → `/api/int/*` и `/api/integrations/*` → `integration-hub` (`platform/integration-hub/neft_integration_hub/main.py`).
-- `gateway` → `/api/crm/*` → `crm-service` (stub) (`platform/crm-service/app/main.py`).
-- `gateway` → `/api/logistics/*` → `logistics-service` (`platform/logistics-service/neft_logistics_service/main.py`).
-- `gateway` → `/api/docs/*` → `document-service` (`platform/document-service/app/main.py`).
-- `core-api` + `workers` + `beat` → `redis` (broker/backend), `postgres` (DB), `minio` (S3).
-- `core-api` (опционально) → `clickhouse` (BI), `document-service`, `logistics-service` (через флаги включения).
-
-**Базы/кэши/очереди:**
-- Postgres (основной storage) — `postgres:16`.
-- Redis (cache + Celery broker/backend) — `redis:7.4-alpine`.
-- MinIO (S3) — `quay.io/minio/minio`.
-- ClickHouse (BI) — `clickhouse/clickhouse-server:24.6` (по флагу `BI_CLICKHOUSE_ENABLED`).
-
-**Observability:**
-- OTel Collector (OTLP 4317/4318) + Jaeger UI 16686.
-- Prometheus + Grafana.
-- Loki + Promtail (лог-агрегация). (`infra/loki/`, `infra/promtail/`)
+- **Postgres** — основной storage для `processing-core` и `auth-host`.
+- **Schema `processing_core`** определяется `NEFT_DB_SCHEMA` (default `processing_core`). (`platform/processing-core/app/db/schema.py`)
+- **Auth-host schema** определяется `AUTH_DB_SCHEMA` (default `public`). (`platform/auth-host/app/db.py`, `platform/auth-host/app/alembic/env.py`)
+- **Integration-hub DB** — URL из `INTEGRATION_HUB_DATABASE_URL` (fallback `DATABASE_URL` или SQLite). (`platform/integration-hub/neft_integration_hub/settings.py`)
+- **Подробная карта схем и таблиц:** `docs/as-is/DB_SCHEMA_MAP.md`.
 
 ---
 
-## 4.3 Service Catalog (кратко)
+## 4) Домены и модули (AS-IS по коду)
 
-Подробный каталог: **[docs/as-is/SERVICE_CATALOG.md](SERVICE_CATALOG.md)**
+> Статусы здесь отражают **наличие кода**. Верификация по runtime отсутствует (см. `STATUS_SNAPSHOT_RUNTIME_LATEST.md`).
 
-| Service | Purpose | Port(s) | Health | Metrics |
-|---|---|---|---|---|
-| gateway | API + SPA routing | `80` | `/health` | `/metrics` |
-| core-api | Core domain API | `8001` | `/api/core/health` | `/metrics` |
-| auth-host | Auth/JWT | `8002` | `/api/auth/health` | `/api/v1/metrics` |
-| ai-service | Risk scoring API | `8003` | `/api/ai/health` | `/metrics` |
-| integration-hub | Webhooks + EDO stub | `8010` | `/health` | `/metrics` |
-| crm-service | CRM stub | internal | `/health` | `/metrics` |
-| logistics-service | ETA/Deviation | internal | `/health` | `/metrics` |
-| document-service | PDF render/sign | internal | `/health` | `/metrics` |
-| admin-web | Admin SPA | `4173` | `/health` | n/a |
-| client-web | Client SPA | `4174` | `/health` | n/a |
-| partner-web | Partner SPA | `4175` | `/health` | n/a |
-| workers/beat | Celery worker + scheduler | internal | compose healthchecks | n/a |
-| flower | Celery monitoring UI | `5555` | `/api/workers` | n/a |
-
----
-
-## 4.4 Data Layer (AS-IS)
-
-Подробная карта: **[docs/as-is/DB_SCHEMA_MAP.md](DB_SCHEMA_MAP.md)**
-
-**Схемы БД:**
-- `processing_core` — доменные данные core-api. (`platform/processing-core/app/db/schema.py`)
-- `public` (или `AUTH_DB_SCHEMA`) — auth-host. (`platform/auth-host/app/alembic/env.py`)
-- Integration Hub DB — SQLite по умолчанию, или Postgres по `INTEGRATION_HUB_DATABASE_URL`.
-
-**Alembic:**
-- Core API head: `20299000_0130_merge_heads_processing_core`. (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
-- Auth-host head: `20251002_0001_create_auth_tables`. (`platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py`)
-- **Runtime verification:** `STATUS_SNAPSHOT_RUNTIME_LATEST.md` фиксирует `verify_all` как SKIP (runtime не выполнялся).
+| Domain (baseline) | Status | AS-IS coverage (факт) | Key code evidence |
+|---|---|---|---|
+| Identity & Access | PARTIAL | auth-host JWT + RBAC/ABAC + service identities в core | `platform/auth-host/app/main.py`, `platform/processing-core/app/security/rbac/`, `platform/processing-core/app/services/abac/`, `platform/processing-core/app/models/service_identity.py` |
+| Processing & Transactions lifecycle | DONE | операции/транзакции + lifecycle в core | `platform/processing-core/app/services/transactions.py`, `platform/processing-core/app/api/routes/transactions.py` |
+| Pricing | PARTIAL | базовые прайсы/версии/marketplace pricing | `platform/processing-core/app/models/pricing.py`, `platform/processing-core/app/api/routes/prices.py`, `platform/processing-core/app/services/marketplace_pricing_service.py` |
+| Rules/Limits | PARTIAL | лимиты/правила/политики в core | `platform/processing-core/app/api/routes/limits.py`, `platform/processing-core/app/models/limit_rule.py` |
+| Billing | DONE | биллинг/инвойсы/платежи/рефанды | `platform/processing-core/app/services/billing_service.py`, `platform/processing-core/app/models/invoice.py` |
+| Clearing/Settlement/Payouts | DONE | clearing + settlement + payouts | `platform/processing-core/app/models/clearing.py`, `platform/processing-core/app/services/settlement_service.py` |
+| Reconciliation | DONE | reconciliation runs/discrepancies | `platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/services/reconciliation_service.py` |
+| Documents | DONE | реестр документов + PDF render/sign/verify | `platform/processing-core/app/models/documents.py`, `platform/document-service/app/main.py` |
+| EDO | PARTIAL | EDO модель/роутеры + stub/интеграционный хаб | `platform/processing-core/app/models/edo.py`, `platform/integration-hub/neft_integration_hub/models/edo_stub.py` |
+| Audit / Trust | DONE | audit log + signing/retention | `platform/processing-core/app/models/audit_log.py`, `platform/processing-core/app/services/audit_signing.py` |
+| Integrations hub | PARTIAL | webhooks intake/delivery/retry/replay | `platform/integration-hub/neft_integration_hub/services/webhooks.py` |
+| Fleet/Fuel | PARTIAL | fleet ingestion + fuel models/providers | `platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/` |
+| Marketplace | PARTIAL | marketplace orders/SLA/promotions | `platform/processing-core/app/models/marketplace_orders.py`, `platform/processing-core/app/services/marketplace_order_service.py` |
+| Logistics | PARTIAL | ETA/Deviation/Explain сервис + core модели | `platform/logistics-service/neft_logistics_service/main.py`, `platform/processing-core/app/models/logistics.py` |
+| CRM | PARTIAL | CRM модели/роутеры + отдельный stub сервис | `platform/processing-core/app/models/crm.py`, `platform/crm-service/app/main.py` |
+| Analytics/BI | PARTIAL | BI endpoints + optional ClickHouse marts | `platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py` |
+| Notifications | PARTIAL | email/webhook notifications | `platform/processing-core/app/services/notifications_v1.py`, `platform/processing-core/app/tests/test_notifications_webhook.py` |
+| Frontends | PARTIAL | Admin/Client/Partner SPA | `frontends/admin-ui/`, `frontends/client-portal/`, `frontends/partner-portal/` |
+| Observability | PARTIAL | OTel/Prometheus/Grafana/Loki configs | `infra/otel-collector-config.yaml`, `infra/prometheus.yml`, `infra/loki/` |
 
 ---
 
-## 4.5 Eventing & Audit (AS-IS)
+## 5) Верификация (runtime status)
 
-Подробный каталог: **[docs/as-is/EVENT_CATALOG.md](EVENT_CATALOG.md)**
-
-**Audit log и hash-chain:**
-- `audit_log` хранит хэш-цепочку и метаданные запросов. (`platform/processing-core/app/models/audit_log.py`)
-- `case_events` также содержит `prev_hash/hash/signature` поля. (`platform/processing-core/app/models/cases.py`)
-
-**Signing mode (local) и варианты:**
-- `AUDIT_SIGNING_MODE` по умолчанию `local`. (`shared/python/neft_shared/settings.py`)
-- Поддерживаются `local`, `aws_kms`, `vault_transit` (реализации в `app/services/audit_signing.py`).
-
-**WORM / Object Lock:**
-- Конфигурация через `S3_OBJECT_LOCK_*` env. (`shared/python/neft_shared/settings.py`)
-- Требует поддержки object-lock на S3/MinIO; вне текущего runtime snapshot.
-
-**Метрики:**
-- `core-api` экспортирует Prometheus метрики (`/metrics`). (`platform/processing-core/app/main.py`)
-- Gateway метрика `gateway_up` на `/metrics`. (`gateway/nginx.conf`)
+- **verify_all** существует, но не выполнялся в текущем репозитории. (`scripts/verify_all.cmd`, `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
+- **Smoke/pytest** перечислены в `docs/as-is/STATUS_SNAPSHOT_LATEST.md` и `docs/as-is/VERIFY_EVIDENCE_INDEX.md` как артефакты, без статуса PASS.
+- **SKIP_OK логика:** `scripts/billing_smoke.cmd` и `scripts/smoke_invoice_state_machine.cmd` помечают отсутствие данных как `[SKIP]` и возвращают exit `0`. Эти SKIP учитываются как PASS **только при фактическом выполнении**.
 
 ---
 
-### Security (Service Identities + ABAC) — **CODED_FULL**
+## 6) Известные ограничения (AS-IS)
 
-- **Service identities (M2M):** таблицы `service_identities`, `service_tokens`, `service_token_audit`; выпуск/ротация/ревокация через admin API. (`platform/processing-core/app/models/service_identity.py`, `platform/processing-core/app/routers/admin/security.py`)
-- **Token rotation flow:** issue → rotate (grace period) → revoke; токены только в виде хэша + префикс, plaintext выдаётся однократно. (`platform/processing-core/app/services/service_identities.py`)
-- **ABAC policies:** версии `abac_policy_versions` + правила `abac_policies` с JSON conditions и приоритетами. (`platform/processing-core/app/models/abac.py`, `platform/processing-core/app/services/abac/engine.py`)
-- **ABAC enforcement:** подключено к Documents download, EDO send, CRM client read, Payout export, BI scope. (`platform/processing-core/app/routers/client_documents.py`, `platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/admin/crm.py`, `platform/processing-core/app/api/v1/endpoints/payouts.py`, `platform/processing-core/app/api/v1/endpoints/bi.py`)
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_service_tokens.py`, `platform/processing-core/app/tests/test_abac_policies.py`, `platform/processing-core/app/tests/test_abac_explain.py`.
-
----
-
-## 4.6 Core Business Modules (AS-IS)
-
-> Статусы: **CODED_FULL / CODED_PARTIAL / STUB** (верификация указана отдельно как VERIFIED_BY_TESTS/VERIFIED_BY_SMOKE). Runtime verification отсутствует (см. `STATUS_SNAPSHOT_RUNTIME_LATEST.md`).
-
-### Billing & Finance — **CODED_FULL**
-- **Модели/таблицы:** `billing_invoices`, `billing_payments`, `billing_refunds`, `invoices`, `invoice_lines`, `internal_ledger_*`, `posting_batches`, `settlements`, `payout_*`. (`platform/processing-core/app/models/*`)
-- **Сервисы/эндпоинты:** `app/services/billing_service.py`, `app/services/payouts_service.py`, `app/routers/admin/billing.py`, `app/api/v1/endpoints/billing_invoices.py`.
-- **Инварианты/стейт-машины:** invoice transitions + billing flow state в `invoice_transition_logs`, `billing_flow`. (`platform/processing-core/app/models/invoice.py`, `platform/processing-core/app/models/billing_flow.py`)
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_invoice_state_machine.py`, `platform/processing-core/app/tests/test_billing_pipeline_smoke.py`.
-- **VERIFIED_BY_SMOKE:** `scripts/billing_smoke.cmd`, `scripts/smoke_billing_finance.cmd`.
-
-### Fleet / Fuel — **CODED_PARTIAL**
-- **Модели/таблицы:** `fuel_cards`, `fuel_transactions`, `fuel_provider_batches`, `fleet_offline_profiles`, `fleet_offline_reconciliation_runs`. (`platform/processing-core/app/models/fuel.py`, `platform/processing-core/app/integrations/fuel/models.py`)
-- **Сервисы/эндпоинты:** `app/services/fleet_service.py`, `app/services/fleet_ingestion_service.py`, `app/routers/client_fleet.py`, `app/routers/internal/fuel_providers.py`, `app/routers/admin/fuel_providers.py`.
-- **Офлайн/реплей:** профили офлайна + сверка `fleet_offline_*`, replay batch/jobs в `app/integrations/fuel/jobs.py`, CLI `provider_ref/cli.py`.
-- **Fleet Providers:** эталонный адаптер `provider_ref` с протоколами ingestion/authorize/settlement, CSV ingest и replay. (`platform/processing-core/app/integrations/fuel/providers/provider_ref/`)
-- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_fleet_ingestion_v1.py`, `scripts/smoke_fuel_ingest_batch.cmd`, `scripts/smoke_fuel_offline_reconcile.cmd`, `scripts/smoke_fuel_replay_batch.cmd`.
-
-### Marketplace economics + SLA coupling + recommender v1 — **CODED_PARTIAL**
-- **Модели/таблицы:** `marketplace_products`, `marketplace_orders`, `marketplace_promotions`, `marketplace_events`, `sponsored_events`, `order_sla_evaluations`, `order_sla_consequences`, `marketplace_sla_notification_outbox`, `vehicle_recommendations`. (`platform/processing-core/app/models/marketplace_*.py`, `platform/processing-core/app/models/marketplace_order_sla.py`, `platform/processing-core/app/models/vehicle_profile.py`)
-- **Сервисы/эндпоинты:** `app/routers/client_marketplace*.py`, `app/routers/partner/marketplace_*.py`, `app/routers/admin/marketplace_order_sla.py`, `app/services/marketplace_order_service.py`, `app/services/order_sla_service.py`, `app/services/order_sla_consequence_service.py`.
-- **Recommender v1:** rules+fallback recommender (`MarketplaceRecommendationService`) + sponsored placements. (`platform/processing-core/app/services/marketplace_recommendation_service.py`)
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_marketplace_orders_v1.py`, `platform/processing-core/app/tests/test_marketplace_recommendations_v1.py`, `platform/processing-core/app/tests/test_marketplace_sla_billing_v1.py`.
-
-### Decision Memory + What-If — **CODED_PARTIAL**
-- **Модели/таблицы:** `decision_memory`, `decision_results`, `risk_*`. (`platform/processing-core/app/models/decision_memory.py`, `platform/processing-core/app/models/decision_result.py`)
-- **Сервисы/эндпоинты:** `app/services/what_if/simulator.py`, `app/routers/admin/what_if.py`.
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_what_if_simulator_v1.py`, `platform/processing-core/app/tests/test_what_if_simulator_determinism_v1.py`.
-
-### Reconciliation / Internal Ledger — **CODED_FULL**
-- **Модели/таблицы:** `reconciliation_*`, `billing_reconciliation_*`, `internal_ledger_*`. (`platform/processing-core/app/models/reconciliation.py`, `platform/processing-core/app/models/internal_ledger.py`)
-- **Сервисы/эндпоинты:** `app/services/reconciliation_service.py`, `app/services/settlement_service.py`.
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_reconciliation_v1.py`, `platform/processing-core/app/tests/test_internal_ledger.py`.
-
-### Documents / Exports — **CODED_FULL**
-- **Модели/таблицы:** `documents`, `document_files`, `closing_packages`, `accounting_export_batches`, `erp_exports`. (`platform/processing-core/app/models/documents.py`, `platform/processing-core/app/models/accounting_export_batch.py`, `platform/processing-core/app/models/erp_exports.py`)
-- **Сервисы/эндпоинты:** `platform/document-service/app/main.py`, `app/services/documents_generator.py`, `app/routers/client_documents.py`, `app/routers/admin/closing_packages.py`.
-- **Шаблоны документов:** `platform/document-service/templates/` + схемы `platform/document-service/templates/schemas/`, эндпоинты `GET /v1/templates` и `GET /v1/templates/{code}` в document-service, прокси `GET /api/core/documents/templates` в core-api.
-- **VERIFIED_BY_TESTS:** `platform/processing-core/app/tests/test_documents_lifecycle.py`, `platform/processing-core/app/tests/test_closing_documents_e2e.py`, `platform/document-service/app/tests/test_templates.py`.
-
-### EDO SBIS — **CODED_PARTIAL**
-- **EDO core:** модели `edo_accounts`, `edo_documents`, `edo_transitions`, `edo_artifacts`, `edo_outbox`. (`platform/processing-core/app/models/edo.py`)
-- **EDO сервис:** `app/services/edo/service.py`, router admin `/edo/*`, client `/client/api/v1/edo/*`, partner `/partner/api/v1/edo/*`. (`platform/processing-core/app/routers/admin/edo.py`, `platform/processing-core/app/routers/client_edo.py`, `platform/processing-core/app/routers/partner/edo.py`)
-- **SBIS webhook intake:** `/integrations/edo/sbis/webhook` (core), dispatcher/worker в integration-hub. (`platform/processing-core/app/routers/integrations/edo_sbis.py`, `platform/integration-hub/neft_integration_hub/tasks.py`)
-- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_edo_state_machine.py`, `platform/processing-core/app/tests/test_edo_events.py`, `platform/processing-core/app/tests/integration/test_edo_sbis_webhook_signature.py`, `scripts/smoke_edo_sbis_send.cmd`.
-- **NOTE:** реальные провайдеры EDO отсутствуют → **STUB** на уровне внешней интеграции.
-
-### Integrations Hub (1C + Bank + Reconciliation) — **CODED_FULL**
-- **1C export:** `app/routers/admin/integrations.py` endpoints `/api/v1/admin/integrations/onec/*`, XML export generator. (`platform/processing-core/app/services/accounting_export_service.py`)
-- **Bank statements:** import endpoints `/api/v1/admin/integrations/bank/*`, reconciliation mapping. (`platform/processing-core/app/routers/admin/integrations.py`)
-- **Reconciliation:** `app/services/reconciliation_service.py`, `app/routers/admin/integrations.py` (bank reconcile runs).
-- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_onec_export.py`, `platform/processing-core/app/tests/test_bank_statement_reconciliation_e2e.py`, `scripts/smoke_onec_export.cmd`, `scripts/smoke_bank_statement_import.cmd`, `scripts/smoke_reconciliation_after_bank.cmd`.
-
-### BI ClickHouse runtime + marts + dashboards — **CODED_PARTIAL**
-- **ClickHouse mart schemas:** `mart_ops_sla`, `mart_*` runtime tables. (`platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py`)
-- **BI endpoints:** `/api/core/bi/*` + admin `/api/core/api/v1/admin/bi/sync/*`. (`platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/api/v1/endpoints/bi_dashboards.py`)
-- **Dashboards JSON:** `docs/ops/dashboards/*.json`.
-- **VERIFIED_BY_SMOKE:** `scripts/smoke_bi_ops_dashboard.cmd`, `scripts/smoke_bi_partner_dashboard.cmd`, `scripts/smoke_bi_client_spend_dashboard.cmd`, `scripts/smoke_bi_cfo_dashboard.cmd`.
-
-### Legal Gate / Compliance — **CODED_FULL**
-- **Граф доверия (legal graph):** `app/services/legal_graph/*`, admin endpoints `/api/core/admin/legal-graph/*`.
-- **Trust gates:** интеграционные проверки в `platform/processing-core/app/tests/test_trust_gates.py`.
-- **Legal gate smoke:** `scripts/smoke_legal_gate.cmd`.
-- **VERIFIED_BY_TESTS/SMOKE:** `platform/processing-core/app/tests/test_legal_gate.py`, `platform/processing-core/app/tests/test_trust_gates.py`, `scripts/smoke_legal_gate.cmd`.
-
-### Operational reliability (chaos/backup/restore/SLO/release) — **CODED_FULL**
-- **Chaos:** `scripts/chaos/*.cmd` (Postgres restart, Redis flush, MinIO down).
-- **Backup/restore:** `scripts/backup/*.cmd`, `scripts/restore/*.cmd`, `scripts/backup/verify_backup.cmd`.
-- **SLO/ops:** `docs/ops/SLO.md`, dashboards `docs/ops/dashboards/*.json`.
-- **Release:** `docs/ops/RELEASE_CHECKLIST.md`, `scripts/release/generate_release_notes.cmd`.
+- **CRM service** — stub (health/metrics, без бизнес-логики). (`platform/crm-service/app/main.py`)
+- **EDO провайдеры** — stub/mocked, реальных внешних коннекторов нет. (`platform/integration-hub/neft_integration_hub/settings.py`, `platform/integration-hub/neft_integration_hub/models/edo_stub.py`)
+- **AI scoring** — эвристическая модель без внешних ML моделей. (`platform/ai-services/risk-scorer/app/model_provider.py`)
+- **Logistics provider** — по умолчанию `mock` через `LOGISTICS_PROVIDER`. (`platform/logistics-service/neft_logistics_service/settings.py`)
+- **ClickHouse/BI** — опционально, runtime не подтверждён. (`docker-compose.yml`, `platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py`)
 
 ---
 
-## 4.7 Frontends / Portals
+## 7) Актуальные ссылки
 
-- **Admin Web:** `frontends/admin-ui/`, контейнер `admin-web`, gateway путь `/admin/`.
-- **Client Web:** `frontends/client-portal/`, контейнер `client-web`, gateway путь `/client/`.
-- **Partner Web:** `frontends/partner-portal/`, контейнер `partner-web`, gateway путь `/partner/`.
-
-**Gateway routing:** `gateway/nginx.conf` (upstreams `admin_web`, `client_web`, `partner_web`).
-
-**Статус сборки/запуска (AS-IS):**
-- Все три контейнера определены в `docker-compose.yml`.
-- UI smoke тесты реализованы в `frontends/e2e` (Playwright).
-
----
-
-## 4.8 Operations
-
-Подробный runbook: **[docs/as-is/RUNBOOK_LOCAL.md](RUNBOOK_LOCAL.md)**
-
-**Запуск (Windows CMD):**
-```cmd
-docker compose up -d --build
-```
-
-**Проверка:**
-```cmd
-curl http://localhost/health
-curl http://localhost/api/core/health
-curl http://localhost/api/auth/health
-curl http://localhost/api/ai/health
-curl http://localhost/api/int/health
-```
-
-**Единая верификация (runtime evidence):**
-- `scripts/verify_all.cmd` → `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md` (stack, миграции, health/metrics, smoke subset).
-- Auth login/token выдаётся через `scripts/get_admin_token.cmd` (stdout token-only).
-- Актуальность readiness/service docs фиксируется в `docs/as-is/NEFT_PLATFORM_READINESS_MAP.md`.
-
-**Логи:**
-```cmd
-docker compose logs -f core-api
-docker compose logs -f auth-host
-docker compose logs -f gateway
-```
-
-**How to run core tests (processing-core):**
-```cmd
-scripts\test_processing_core_docker.cmd
-```
-
-All processing-core tests:
-```cmd
-scripts\test_processing_core_docker.cmd all
-```
-
-**Типовые ошибки (минимум 5):**
-1) **MinIO init не проходит** → проверьте `MINIO_ROOT_USER/PASSWORD` и `minio-init` логи. (`infra/minio-init.sh`)
-2) **Auth-host не стартует** → проверьте ключи и `AUTH_KEY_DIR` volume. (`docker-compose.yml`, `.env.example`)
-3) **502 от gateway** → убедитесь в `service_healthy` upstream. (`gateway/nginx.conf`, `docker-compose.yml`)
-4) **Celery workers unhealthy** → проверьте `CELERY_BROKER_URL` и Redis. (`docker-compose.yml`)
-5) **Нет метрик в Prometheus** → проверьте target в `infra/prometheus.yml`.
-
----
-
-## 4.9 Flags / Configuration Matrix
-
-> Только реальные env vars из compose и `.env.example`.
-
-### core-api
-- `NEFT_DB_SCHEMA` (schema), `NEFT_S3_*` (S3), `NEFT_PDF_AUTO_GENERATE`.
-- `BI_CLICKHOUSE_ENABLED`, `CLICKHOUSE_URL`.
-- `DOCUMENT_SERVICE_ENABLED`, `DOCUMENT_SERVICE_URL`.
-- `LOGISTICS_SERVICE_ENABLED`, `LOGISTICS_SERVICE_URL`.
-- `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`.
-- `SMTP_*` (Mailpit, уведомления). (`docker-compose.yml`, `.env.example`)
-
-### auth-host
-- `AUTH_KEY_DIR`, `AUTH_PRIVATE_KEY_PATH`, `AUTH_PUBLIC_KEY_PATH`.
-- `NEFT_BOOTSTRAP_ADMIN_*` (bootstrap admin).
-- `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE`.
-
-### integration-hub
-- `INTEGRATION_HUB_DATABASE_URL`, `WEBHOOK_INTAKE_SECRET`, `WEBHOOK_ALLOW_UNSIGNED`.
-- `DIADOK_MODE`, `DIADOK_BASE_URL`, `DIADOK_API_TOKEN` (mock/real). (`platform/integration-hub/neft_integration_hub/settings.py`)
-
-### workers/beat
-- `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_DEFAULT_QUEUE`.
-- S3 + ClickHouse envs (same as core-api).
-
-### Observability
-- OTel collector config in `infra/otel-collector-config.yaml`.
-- Prometheus targets in `infra/prometheus.yml`.
-
-### Audit signing / security
-- `AUDIT_SIGNING_MODE`, `AUDIT_SIGNING_REQUIRED`, `AUDIT_SIGNING_ALG`.
-- `AUDIT_SIGNING_PRIVATE_KEY_B64`, `AUDIT_SIGNING_PUBLIC_KEYS_JSON`.
-- `S3_OBJECT_LOCK_*` for WORM/retention. (`shared/python/neft_shared/settings.py`, `.env.example`)
-
-### Feature flags
-- `FEATURE_FLAGS` присутствует в `.env.example`; runtime parsing в backend не обнаружен → **CODED_PARTIAL (env only)**.
-
----
-
-## 4.10 Known Limitations
-
-- **Kafka/RabbitMQ event bus** — **NOT IMPLEMENTED** (упоминаний/кода нет в repo).
-- **Schema registry** — **NOT IMPLEMENTED** (сервиса нет в repo).
-- **CRM service** — **STUB** (только health/metrics, бизнес-логики нет). (`platform/crm-service/app/main.py`)
-- **EDO провайдеры** — **STUB** (внешние интеграции отсутствуют, есть stub и mock). (`platform/integration-hub/neft_integration_hub/settings.py`)
-- **AI scoring** — локальный heuristic provider, без внешних ML моделей. (`platform/ai-services/risk-scorer/app/model_provider.py`)
-- **Object Lock/WORM** требует внешней поддержки S3; вне текущего runtime snapshot.
-
----
-
-## 4.11 Status Snapshot 2026-01-03
-
-Снимок статуса: **[docs/as-is/STATUS_SNAPSHOT_2026-01-03.md](STATUS_SNAPSHOT_2026-01-03.md)**
+- Readiness map: `docs/as-is/NEFT_PLATFORM_READINESS_MAP.md`
+- Evidence index: `docs/as-is/VERIFY_EVIDENCE_INDEX.md`
+- Latest checks snapshot: `docs/as-is/STATUS_SNAPSHOT_LATEST.md`
+- Runtime snapshot: `docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`
