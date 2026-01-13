@@ -15,12 +15,12 @@
 ### processing-core
 - **Head (merge revision):** `20299000_0130_merge_heads_processing_core`. (`platform/processing-core/app/alembic/versions/20299000_0130_merge_heads_processing_core.py`)
 - **Merged heads:** `b1f4572ed8d3`, `76e4bcb5869e`. (см. merge revision выше)
-- **Runtime current:** **NOT VERIFIED** — runtime verify не выполнялся. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
+- **Runtime current:** **VERIFIED_RUNTIME** — `alembic current` выполнен в `verify_all`. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### auth-host
 - **Head:** `20251002_0001_create_auth_tables`. (`platform/auth-host/app/alembic/versions/20251002_0001_create_auth_tables.py`)
 - **Bootstrap:** `20251001_0001_auth_bootstrap`. (`platform/auth-host/app/alembic/versions/20251001_0001_auth_bootstrap.py`)
-- **Runtime current:** **NOT VERIFIED** — runtime verify не выполнялся. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
+- **Runtime current:** **VERIFIED_RUNTIME** — `alembic current` выполнен в `verify_all`. (`docs/as-is/STATUS_SNAPSHOT_RUNTIME_LATEST.md`)
 
 ### integration-hub
 - Alembic отсутствует; schema создаётся моделями SQLAlchemy на старте. (`platform/integration-hub/neft_integration_hub/db.py`)
