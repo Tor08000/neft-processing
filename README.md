@@ -4,6 +4,10 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 * Master doc: `docs/as-is/NEFT_PLATFORM_AS_IS_MASTER.md`
 
+## Runbooks
+
+* Auth + UI testing: `docs/runbooks/AUTH_AND_UI_TESTING.md`
+
 ## Как поднять систему локально
 
 1. Скопируйте переменные окружения:

@@ -288,10 +288,10 @@ p {
   background: var(--neft-card);
   width: 100%;
   max-width: 420px;
-  padding: 28px;
+  padding: 24px;
   border-radius: var(--neft-radius-md);
-  box-shadow: var(--neft-shadow-2);
   border: 1px solid var(--neft-border);
+  box-shadow: none;
 }
 
 .login-card h1 {
@@ -306,7 +306,7 @@ p {
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .login-form label {
@@ -342,7 +342,7 @@ p {
 .login-demo {
   display: grid;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .copy-chip {
@@ -350,11 +350,10 @@ p {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(22, 34, 53, 0.9);
+  border-radius: 10px;
+  background: transparent;
   border: 1px solid var(--neft-border);
-  color: var(--neft-text);
-  box-shadow: var(--neft-shadow-sm);
+  color: var(--neft-text-muted);
 }
 
 .copy-chip__label {
@@ -368,12 +367,15 @@ p {
 .copy-chip__value {
   font-family: var(--neft-font-mono);
   font-size: 13px;
+  color: var(--neft-text-muted);
 }
 
 .copy-chip__button {
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 6px 10px;
   font-size: 12px;
+  color: var(--neft-text-muted);
+  border-color: var(--neft-border);
 }
 
 .capslock-hint {

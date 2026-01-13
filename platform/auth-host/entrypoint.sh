@@ -92,11 +92,11 @@ PY
 
 if [ "${DEMO_SEED_ENABLED:-0}" = "1" ]; then
     echo "[entrypoint] auth-host demo seed enabled"
-    if [ "${DEMO_SEED_FORCE_PASSWORD_RESET:-1}" = "1" ]; then
-        python -m app.cli.reset_passwords --demo --force
-    else
-        python -m app.cli.reset_passwords --demo
+    if [ "${DEMO_SEED_FORCE_PASSWORD_RESET:-1}" != "1" ]; then
+        echo "[entrypoint] error: DEMO_SEED_FORCE_PASSWORD_RESET must be 1 when DEMO_SEED_ENABLED=1" >&2
+        exit 1
     fi
+    python -m app.cli.reset_passwords --demo --force
 else
     echo "[entrypoint] auth-host demo seed disabled"
 fi

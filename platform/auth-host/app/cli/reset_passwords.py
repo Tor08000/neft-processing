@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 
 from app.seeds.demo_users import DemoUser, ensure_user, get_demo_users
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -25,8 +29,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 async def _run_demo(force: bool) -> int:
-    users = get_demo_users()
+    try:
+        users = get_demo_users()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     for user in users:
+        logger.info("[bootstrap] %s password set from ENV", user.email)
         status = await ensure_user(user, force_password=force, sync_roles=True)
         print(f"{user.email}: {status}")
     return 0

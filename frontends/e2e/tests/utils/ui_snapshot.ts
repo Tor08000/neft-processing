@@ -16,11 +16,20 @@ type RouteConfig = {
   details?: boolean;
 };
 
+type FailureStatus =
+  | "FAIL_REDIRECT_LOGIN"
+  | "FAIL_NOT_FOUND"
+  | "FAIL_JS_ERROR"
+  | "FAIL_RBAC_DENY"
+  | "FAIL_APP_SHELL_MISSING"
+  | "FAIL_NAV_ERROR"
+  | `FAIL_HTTP_${number}`;
+
 type RouteResult = {
   id: string;
   path: string;
   label: string;
-  status: "OK" | `FAIL (${string})`;
+  status: "OK" | FailureStatus;
   screenshot?: string;
   detailsScreenshot?: string;
   emptyStateScreenshot?: string;
@@ -184,43 +193,43 @@ async function getFailureReason({
   page: Page;
   responseStatus?: number;
   signals?: NavigationSignals;
-}) {
+}): Promise<FailureStatus | null> {
   const currentUrl = page.url();
   if (currentUrl.includes("/login")) {
-    return "REDIRECT_LOGIN";
+    return "FAIL_REDIRECT_LOGIN";
   }
 
   if (await hasVisibleText(page, "Войти")) {
-    return "REDIRECT_LOGIN";
+    return "FAIL_REDIRECT_LOGIN";
   }
 
   if (await hasVisibleText(page, "Страница не найдена")) {
-    return "NOT_FOUND";
+    return "FAIL_NOT_FOUND";
   }
 
   if (responseStatus === 404 || signals?.responseStatuses.includes(404)) {
-    return "NOT_FOUND";
+    return "FAIL_NOT_FOUND";
   }
 
   if (responseStatus === 403 || signals?.responseStatuses.includes(403)) {
-    return "RBAC_DENY";
+    return "FAIL_RBAC_DENY";
   }
 
   if (signals?.pageErrors.length) {
-    return "JS_ERROR";
+    return "FAIL_JS_ERROR";
   }
 
   if (!(await hasAppShell(page))) {
-    return "APP_SHELL_MISSING";
+    return "FAIL_APP_SHELL_MISSING";
   }
 
   if (responseStatus && responseStatus >= 400) {
-    return `HTTP_${responseStatus}`;
+    return `FAIL_HTTP_${responseStatus}`;
   }
 
   const errorStatus = signals?.responseStatuses.find((status) => status >= 400);
   if (errorStatus) {
-    return `HTTP_${errorStatus}`;
+    return `FAIL_HTTP_${errorStatus}`;
   }
 
   return null;
@@ -263,7 +272,7 @@ export async function login(
     const signals = tracker.stop();
     const failureReason = await getFailureReason({ page, signals });
     if (failureReason) {
-      const screenshot = await takeScreenshot(page, report, app, `login__FAIL_${failureReason}`);
+      const screenshot = await takeScreenshot(page, report, app, `login__${failureReason}`);
       report.errors.push(`[${app}] login validation failed: ${failureReason} (${screenshot})`);
     }
   } catch (error) {
@@ -309,16 +318,16 @@ async function visitAndSnap({
 }) {
   const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
-    const failScreenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_${failureReason}`);
+    const failScreenshot = await takeScreenshot(page, report, app, `${route.id}__${failureReason}`);
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
-    if (failureReason === "JS_ERROR" && jsErrors.length > 0) {
+    if (failureReason === "FAIL_JS_ERROR" && jsErrors.length > 0) {
       report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
     }
-    if (failureReason === "JS_ERROR" && consoleErrors.length > 0) {
+    if (failureReason === "FAIL_JS_ERROR" && consoleErrors.length > 0) {
       report.errors.push(`[${app}] ${route.label}: console errors: ${consoleErrors.join(" | ")}`);
     }
     return {
-      status: `FAIL (${failureReason})` as const,
+      status: failureReason,
       screenshot: failScreenshot,
     };
   }
@@ -453,7 +462,7 @@ export async function runSnapshots({
         }
       } catch (error) {
         tracker.stop();
-        routeResult.status = "FAIL (NAV_ERROR)";
+        routeResult.status = "FAIL_NAV_ERROR";
         routeResult.screenshot = await takeScreenshot(page, report, app, `${route.id}__FAIL_NAV_ERROR`);
         routeResult.note = (error as Error).message;
         report.errors.push(`[${app}] ${route.label}: navigation failed: ${(error as Error).message}`);
@@ -462,8 +471,12 @@ export async function runSnapshots({
       report.routes[app].push(routeResult);
     }
   } finally {
-    page.off("console", onConsole);
-    page.off("pageerror", onPageError);
+    if (onConsole) {
+      page.off("console", onConsole);
+    }
+    if (onPageError) {
+      page.off("pageerror", onPageError);
+    }
   }
 }
 

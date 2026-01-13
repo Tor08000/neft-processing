@@ -13,7 +13,7 @@ These are the building blocks used by the demo seed and reset CLI.
 Gateway endpoint:
 
 ```
-POST /api/auth/v1/auth/login
+POST /api/auth/api/v1/auth/login
 ```
 
 Payload:
@@ -25,26 +25,24 @@ Payload:
 ## Demo users (seeded)
 
 The seed is deterministic and idempotent; it creates missing users, re-activates existing ones,
-syncs roles, and updates passwords to the fixed demo values.
+syncs roles, and updates passwords to the fixed demo values from required environment variables.
 
 | User | Email | Password | Roles |
 | --- | --- | --- | --- |
-| Admin | `admin@example.com` | `admin` | `PLATFORM_ADMIN` |
-| Client | `client@neft.local` | `client` | `CLIENT_OWNER` |
-| Partner | `partner@neft.local` | `partner` | `PARTNER_OWNER` |
+| Admin | `${NEFT_BOOTSTRAP_ADMIN_EMAIL}` | `${NEFT_BOOTSTRAP_ADMIN_PASSWORD}` | `PLATFORM_ADMIN` |
+| Client | `${NEFT_BOOTSTRAP_CLIENT_EMAIL}` | `${NEFT_BOOTSTRAP_CLIENT_PASSWORD}` | `CLIENT_OWNER` |
+| Partner | `${NEFT_BOOTSTRAP_PARTNER_EMAIL}` | `${NEFT_BOOTSTRAP_PARTNER_PASSWORD}` | `PARTNER_OWNER` |
 
 > Note: `PARTNER_OWNER` is required by the partner portal role checks. Auth-host stores role codes as strings
 > and does not currently validate partner-specific roles in its admin schemas.
 
 ## Environment overrides
 
-Demo credentials can be overridden via environment variables (used by the seed/CLI):
+Demo credentials are required (used by the seed/CLI):
 
-* `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`
-* `CLIENT_EMAIL`, `CLIENT_PASSWORD`, `CLIENT_FULL_NAME`, `CLIENT_UUID`
-* `PARTNER_EMAIL`, `PARTNER_PASSWORD`, `PARTNER_FULL_NAME`
-
-These fall back to the existing `NEFT_DEMO_*` / `DEMO_*` environment variables when present.
+* `NEFT_BOOTSTRAP_ADMIN_EMAIL`, `NEFT_BOOTSTRAP_ADMIN_PASSWORD`, `NEFT_BOOTSTRAP_ADMIN_FULL_NAME`
+* `NEFT_BOOTSTRAP_CLIENT_EMAIL`, `NEFT_BOOTSTRAP_CLIENT_PASSWORD`, `NEFT_BOOTSTRAP_CLIENT_FULL_NAME`, `CLIENT_UUID`
+* `NEFT_BOOTSTRAP_PARTNER_EMAIL`, `NEFT_BOOTSTRAP_PARTNER_PASSWORD`, `NEFT_BOOTSTRAP_PARTNER_FULL_NAME`
 
 ## CLI reset tool
 
@@ -68,6 +66,7 @@ The command prints `created`, `updated`, or `skipped` per user.
 
 ```
 DEMO_SEED_ENABLED=1
+DEMO_SEED_FORCE_PASSWORD_RESET=1
 ```
 
 `platform/auth-host/entrypoint.sh` runs the demo reset after migrations if the flag is enabled.
@@ -75,7 +74,7 @@ DEMO_SEED_ENABLED=1
 ## Smoke test
 
 ```bash
-curl -i -X POST http://localhost/api/auth/v1/auth/login \
+curl -i -X POST http://localhost/api/auth/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"admin"}'
+  -d "{\"email\":\"${NEFT_BOOTSTRAP_ADMIN_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_ADMIN_PASSWORD}\"}"
 ```

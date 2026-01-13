@@ -24,6 +24,7 @@ type CrawlTracker = {
 
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
 const MAX_DEPTH = Number(process.env.MAX_DEPTH ?? 4);
+const CRAWL_TIMEOUT_MS = 60_000;
 
 const RUN_ID = getRunId();
 const OUTPUT_ROOT = getOutputRoot();
@@ -233,7 +234,7 @@ async function crawlApp({
     tracker.start();
     let navigationError: string | null = null;
     try {
-      await page.goto(normalized, { waitUntil: "domcontentloaded" });
+      await page.goto(normalized, { waitUntil: "domcontentloaded", timeout: CRAWL_TIMEOUT_MS });
       await page.waitForTimeout(400);
     } catch (error) {
       navigationError = (error as Error).message;
@@ -321,13 +322,15 @@ function writeLinkReport(report: CrawlReport) {
   });
 
   fs.writeFileSync(reportPath, lines.join("\n"));
+  return reportPath;
 }
 
 test.describe.serial("UI Link Crawler", () => {
   const report: CrawlReport = { admin: [], client: [], partner: [] };
 
   test.afterAll(() => {
-    writeLinkReport(report);
+    const reportPath = writeLinkReport(report);
+    console.log(`LINK_REPORT: ${reportPath}`);
   });
 
   test("Admin UI link crawl", async ({ page }) => {

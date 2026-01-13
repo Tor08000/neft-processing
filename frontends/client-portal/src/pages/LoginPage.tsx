@@ -57,8 +57,8 @@ export function LoginPage() {
           <AppLogo variant="full" size={72} />
         </div>
         <h1>NEFT Platform</h1>
-        <p>Используйте демо-учётные данные, чтобы продолжить работу.</p>
-        <div className="login-demo">
+        <p className="muted">Используйте демо-учётные данные, чтобы продолжить работу.</p>
+        <div className="login-demo muted small">
           <CopyChip label="Demo" value="client@neft.local" onCopy={() => showToast("success", "Скопировано")} />
           <CopyChip label="Demo" value="client" onCopy={() => showToast("success", "Скопировано")} />
         </div>
