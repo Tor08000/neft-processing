@@ -30,13 +30,18 @@ call :check_get "[3/14] Billing periods" "%CORE_URL%/billing/periods?limit=1" "%
 
 echo [4/14] Generate draft invoice for transitions...
 set "CODE="
-for /f "usebackq tokens=*" %%c in (`curl -s -w "%%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{\"period_from\":\"2024-01-01\",\"period_to\":\"2024-01-31\",\"status\":\"DRAFT\"}" -X POST -o generate_invoice.json "%CORE_URL%/billing/invoices/generate"`) do set "CODE=%%c"
-if "%CODE%"=="202" (
-  python -c "import json,sys; data=json.load(open('generate_invoice.json')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')" > invoice_id.txt
-  set /p INVOICE_ID=<invoice_id.txt
-) else (
-  echo [WARN] Generation returned %CODE%, will reuse existing invoice if present.
-)
+set "INVOICE_ID="
+setlocal DisableDelayedExpansion
+curl -s -w "%{http_code}" -H "%AUTH_HEADER%" -H "Content-Type: application/json" -d "{\"period_from\":\"2024-01-01\",\"period_to\":\"2024-01-31\",\"status\":\"DRAFT\"}" -X POST -o generate_invoice.json "%CORE_URL%/billing/invoices/generate" > generate_invoice_code.txt
+endlocal
+set /p CODE=<generate_invoice_code.txt
+if "%CODE%"=="202" goto :step4_parse
+echo [WARN] Generation returned %CODE%, will reuse existing invoice if present.
+goto :step4_done
+:step4_parse
+python -c "import json,sys; data=json.load(open('generate_invoice.json')); ids=data.get('created_ids') or []; print(ids[0] if ids else '')" > invoice_id.txt
+set /p INVOICE_ID=<invoice_id.txt
+:step4_done
 
 if "%INVOICE_ID%"=="" (
   echo [5/14] List invoices to obtain id...
