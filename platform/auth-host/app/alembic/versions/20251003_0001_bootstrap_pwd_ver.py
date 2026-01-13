@@ -1,6 +1,6 @@
 """Add bootstrap password version to users.
 
-Revision ID: 20251003_0001_add_bootstrap_password_version
+Revision ID: 20251003_0001_bootstrap_pwd_ver
 Revises: 20251002_0001_create_auth_tables
 Create Date: 2025-10-03 00:01:00.000000
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20251003_0001_add_bootstrap_password_version"
+revision = "20251003_0001_bootstrap_pwd_ver"
 down_revision = "20251002_0001_create_auth_tables"
 branch_labels = None
 depends_on = None
