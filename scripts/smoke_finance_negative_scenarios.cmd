@@ -8,10 +8,8 @@ set CORE_PUBLIC=http://localhost/api/v1
 
 echo Fetching admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "ADMIN_TOKEN=%%T"
-if "%ADMIN_TOKEN%"=="" (
-  echo [ERROR] Failed to acquire admin token.
-  goto :eof
-)
+if errorlevel 1 exit /b 1
+if "%ADMIN_TOKEN%"=="" exit /b 1
 
 echo Seeding demo billing data...
 curl -s -H "Authorization: Bearer %ADMIN_TOKEN%" -X POST "%CORE_ADMIN%/billing/seed" > seed.json

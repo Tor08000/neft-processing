@@ -16,10 +16,8 @@ set "AUTH_HEADER="
 
 echo [1/6] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [FAIL] No access_token returned.
-  goto :fail
-)
+if errorlevel 1 exit /b 1
+if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 
 set "CREATE_BODY={\"code\":\"LEGAL_SMOKE\",\"version\":\"1\",\"title\":\"Legal Smoke\",\"locale\":\"ru\",\"effective_from\":\"2025-01-01T00:00:00Z\",\"content_type\":\"MARKDOWN\",\"content\":\"TBD\"}"

@@ -11,10 +11,8 @@ if "%CLIENT_ID%"=="" set "CLIENT_ID=client-1"
 
 echo [1/4] Fetch admin token...
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-  echo [FAIL] No access_token returned.
-  exit /b 1
-)
+if errorlevel 1 exit /b 1
+if "%TOKEN%"=="" exit /b 1
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 
 call :post_step "[2/4] BI sync init" "%CORE_ADMIN%/bi/sync/init" "" "%AUTH_HEADER%" "200" || exit /b 1

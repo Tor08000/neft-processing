@@ -18,6 +18,7 @@ if exist "%ENV_FILE%" (
 set "HEADER_FILE=%TEMP%\\admin_login_headers_%RANDOM%.tmp"
 set "BODY_FILE=%TEMP%\\auth_body.json"
 set "OPENAPI_FILE=%TEMP%\\auth_openapi_%RANDOM%.tmp"
+set "MAX_BODY_CHARS=1000"
 
 set "TOKEN="
 set "STATUS="
@@ -60,11 +61,6 @@ if not "%REQUEST_RESULT%"=="0" (
     goto :error_request_token
 )
 
-if not defined TOKEN (
-    1>&2 echo [ERROR] No access_token returned.
-    exit /b 1
-)
-
 endlocal & echo %TOKEN%
 
 exit /b 0
@@ -82,13 +78,11 @@ exit /b 1
 :error_request_token
 1>&2 echo %ERROR_MESSAGE%
 if defined ERROR_LOGIN_PATH 1>&2 echo LOGIN_PATH: %ERROR_LOGIN_PATH%
-if defined ERROR_GATEWAY_URL 1>&2 echo GATEWAY_URL: %ERROR_GATEWAY_URL%
-if defined ERROR_DIRECT_URL 1>&2 echo DIRECT_URL: %ERROR_DIRECT_URL%
 if defined ERROR_URL 1>&2 echo URL: %ERROR_URL%
 if defined ERROR_EMAIL 1>&2 echo Email: %ERROR_EMAIL%
 if defined ERROR_STATUS 1>&2 echo HTTP status: %ERROR_STATUS%
 if defined ERROR_BODY_FILE (
-    if exist "%ERROR_BODY_FILE%" type "%ERROR_BODY_FILE%" 1>&2
+    if exist "%ERROR_BODY_FILE%" python -c "from pathlib import Path; text=Path(r'%ERROR_BODY_FILE%').read_text(encoding='utf-8',errors='ignore'); max_len=int(r'%MAX_BODY_CHARS%'); print(text[:max_len])" 1>&2
 )
 exit /b 1
 
@@ -99,7 +93,7 @@ set "TOKEN="
 
 curl -sS -D "%HEADER_FILE%" -o "%BODY_FILE%" -X POST -H "Content-Type: application/json" -d "{\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\"}" "%LOGIN_URL%"
 if errorlevel 1 (
-    set "ERROR_MESSAGE=[ERROR] Failed to request admin token."
+    set "ERROR_MESSAGE=Failed to request admin token."
     set "ERROR_URL=%LOGIN_URL%"
     set "ERROR_EMAIL=%ADMIN_EMAIL%"
     set "ERROR_STATUS=!STATUS!"
@@ -108,26 +102,15 @@ if errorlevel 1 (
 )
 
 for /f "usebackq delims=" %%A in (`python -c "import re;from pathlib import Path;data=Path(r'%HEADER_FILE%').read_text(encoding='utf-8',errors='ignore');matches=re.findall(r'^HTTP/\\S+\\s+(\\d+)', data, flags=re.M);print(matches[-1] if matches else '')"`) do set "STATUS=%%A"
-if "%STATUS%"=="404" (
-    exit /b 2
-)
-if not "%STATUS%"=="200" (
-    set "ERROR_MESSAGE=[ERROR] Admin token request failed."
-    set "ERROR_URL=%LOGIN_URL%"
-    set "ERROR_EMAIL=%ADMIN_EMAIL%"
-    set "ERROR_STATUS=%STATUS%"
-    set "ERROR_BODY_FILE=%BODY_FILE%"
-    exit /b 1
-)
 
-for /f "usebackq delims=" %%T in (`python -c "import json; print(json.load(open(r'%TEMP%\\auth_body.json','r',encoding='utf-8')).get('access_token',''))"`) do set "TOKEN=%%T"
-if "%TOKEN%"=="" (
-    set "ERROR_MESSAGE=[ERROR] No access_token returned."
-    set "ERROR_URL=%LOGIN_URL%"
-    set "ERROR_EMAIL=%ADMIN_EMAIL%"
-    set "ERROR_STATUS=%STATUS%"
-    set "ERROR_BODY_FILE=%BODY_FILE%"
-    exit /b 1
-)
+for /f "usebackq delims=" %%T in (`python -c "import json;from pathlib import Path; p=Path(r'%BODY_FILE%');\ntry:\n    data=json.loads(p.read_text(encoding='utf-8',errors='ignore'))\nexcept Exception:\n    data={}\nprint(data.get('access_token',''))"`) do set "TOKEN=%%T"
+if not "%TOKEN%"=="" exit /b 0
+if "%STATUS%"=="404" exit /b 2
+set "ERROR_MESSAGE=Admin token request failed."
+set "ERROR_URL=%LOGIN_URL%"
+set "ERROR_EMAIL=%ADMIN_EMAIL%"
+set "ERROR_STATUS=%STATUS%"
+set "ERROR_BODY_FILE=%BODY_FILE%"
+exit /b 1
 
 exit /b 0
