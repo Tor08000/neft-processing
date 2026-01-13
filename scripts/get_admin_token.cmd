@@ -60,7 +60,10 @@ if not "%REQUEST_RESULT%"=="0" (
     goto :error_request_token
 )
 
-if not defined TOKEN exit /b 1
+if not defined TOKEN (
+    echo [ERROR] No access_token returned. 1>&2
+    exit /b 1
+)
 
 endlocal & echo %TOKEN%
 

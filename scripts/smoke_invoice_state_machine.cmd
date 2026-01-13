@@ -18,6 +18,7 @@ set "PARTIAL_AMOUNT="
 set "REMAINING_AMOUNT="
 
 echo [1/14] Fetch admin token...
+set "TOKEN="
 for /f "usebackq delims=" %%T in (`scripts\\get_admin_token.cmd`) do set "TOKEN=%%T"
 if "%TOKEN%"=="" (
   echo [FAIL] No access_token returned. 1>&2
