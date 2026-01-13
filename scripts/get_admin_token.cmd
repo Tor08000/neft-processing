@@ -103,7 +103,7 @@ if errorlevel 1 (
 
 for /f "usebackq delims=" %%A in (`python -c "import re;from pathlib import Path;data=Path(r'%HEADER_FILE%').read_text(encoding='utf-8',errors='ignore');matches=re.findall(r'^HTTP/\\S+\\s+(\\d+)', data, flags=re.M);print(matches[-1] if matches else '')"`) do set "STATUS=%%A"
 
-for /f "usebackq delims=" %%T in (`python -c "import json;from pathlib import Path; p=Path(r'%BODY_FILE%');\ntry:\n    data=json.loads(p.read_text(encoding='utf-8',errors='ignore'))\nexcept Exception:\n    data={}\nprint(data.get('access_token',''))"`) do set "TOKEN=%%T"
+for /f "usebackq delims=" %%T in (`python -c "import json;from pathlib import Path; p=Path(r'%BODY_FILE%'); data=json.loads(p.read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "TOKEN=%%T"
 if not "%TOKEN%"=="" exit /b 0
 if "%STATUS%"=="404" exit /b 2
 set "ERROR_MESSAGE=Admin token request failed."
