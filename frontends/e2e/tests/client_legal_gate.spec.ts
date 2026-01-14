@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { CLIENT_BASE_URL, expectHeading, loginClient } from "./utils";
+import { CLIENT_BASE_URL, expectHeading, loginClient } from "./helpers";
 
 test("client legal page is reachable", async ({ page }) => {
   await loginClient(page);

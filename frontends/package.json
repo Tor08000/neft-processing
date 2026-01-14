@@ -2,8 +2,9 @@
   "name": "neft-frontends",
   "private": true,
   "scripts": {
-    "ui:snapshot": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Snapshot\"",
-    "ui:link-crawl": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Link Crawler\""
+    "ui:snapshot": "node -e \"const fs=require('fs');const path='e2e/node_modules';if(fs.existsSync(path)){fs.rmSync(path,{recursive:true,force:true});console.log('removed e2e/node_modules');}\" && playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Snapshot\"",
+    "ui:link-crawl": "node -e \"const fs=require('fs');const path='e2e/node_modules';if(fs.existsSync(path)){fs.rmSync(path,{recursive:true,force:true});console.log('removed e2e/node_modules');}\" && playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Link Crawler\"",
+    "ui:debug:imports": "node -e \"require('@playwright/test'); console.log('ok');\""
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"

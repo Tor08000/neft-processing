@@ -48,9 +48,9 @@ type ReportState = {
 };
 
 type LoginStateSummary = {
-  state: "AUTHENTICATED" | "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "ERROR";
+  state: "LOGIN_OK" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "ERROR";
   authUrl: string;
-  screenshot?: string;
+  notes?: string;
 };
 
 let cachedRunId: string | null = null;
@@ -268,13 +268,11 @@ export async function login(
     });
     report.loginStates[app] = {
       state:
-        loginState === "ALREADY_AUTHENTICATED"
-          ? "AUTHENTICATED"
-          : loginState === "LOGIN_READY"
-            ? "LOGIN_READY"
-            : loginState === "LOGIN_SERVICE_DOWN"
-              ? "LOGIN_SERVICE_DOWN"
-              : "LOGIN_INPUTS_NOT_FOUND",
+        loginState === "ALREADY_AUTHENTICATED" || loginState === "LOGIN_READY"
+          ? "LOGIN_OK"
+          : loginState === "LOGIN_SERVICE_DOWN"
+            ? "LOGIN_SERVICE_DOWN"
+            : "LOGIN_INPUTS_NOT_FOUND",
       authUrl,
     };
     tracker.stop();
@@ -286,7 +284,12 @@ export async function login(
       return true;
     }
     if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
-      await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
+      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
+      report.loginStates[app] = {
+        state: "LOGIN_INPUTS_NOT_FOUND",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
       return false;
     }
     if (loginState === "LOGIN_SERVICE_DOWN") {
@@ -294,7 +297,7 @@ export async function login(
       report.loginStates[app] = {
         state: "LOGIN_SERVICE_DOWN",
         authUrl,
-        screenshot,
+        notes: `screenshot: ${screenshot}`,
       };
       report.errors.push(
         `[${app}] login page validation failed: LOGIN_SERVICE_DOWN (auth: ${authUrl}) (${screenshot})`,
@@ -308,6 +311,7 @@ export async function login(
     report.loginStates[app] = {
       state: "ERROR",
       authUrl,
+      notes: (error as Error).message,
     };
     report.errors.push(`[${app}] login failed: ${(error as Error).message} (auth: ${authUrl})`);
     const screenshot = await takeScreenshot(page, report, app, "login__FAIL_EXCEPTION");
@@ -528,15 +532,15 @@ export function writeReport(report: ReportState) {
   lines.push("");
   lines.push("## Login State Summary");
   lines.push("");
-  lines.push("| App | State | Auth URL | Screenshot |");
-  lines.push("| --- | ----- | -------- | ---------- |");
+  lines.push("| App | State | Auth URL | Notes |");
+  lines.push("| --- | ----- | -------- | ----- |");
   (["admin", "client", "partner"] as AppName[]).forEach((app) => {
     const state = report.loginStates[app];
     if (!state) {
       lines.push(`| ${app} | NOT_EVALUATED | - | - |`);
       return;
     }
-    lines.push(`| ${app} | ${state.state} | ${state.authUrl} | ${state.screenshot ?? "—"} |`);
+    lines.push(`| ${app} | ${state.state} | ${state.authUrl} | ${state.notes ?? "—"} |`);
   });
   lines.push("");
   lines.push("## Routes");

@@ -14,6 +14,7 @@ export type LoginSignals = {
   hasSubmit: boolean;
   hasAuthenticatedShell: boolean;
   hasAuthCookie: boolean;
+  hasAppShell: boolean;
 };
 
 const resolveEnv = (value: string | undefined, fallback: string) => (value && value.trim() !== "" ? value : fallback);
@@ -52,6 +53,19 @@ const submitSelector = [
   'button:has-text("Login")',
   'button:has-text("Sign in")',
 ].join(", ");
+
+async function hasAppShell(page: Page) {
+  const shell = page.locator(
+    "nav, aside, [data-testid='app-shell'], [data-testid='layout'], header, [data-testid='header'], [data-testid='topbar'], [role='navigation']",
+  );
+  const count = await shell.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await shell.nth(index).isVisible().catch(() => false)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 async function resolvePasswordInput(page: Page) {
   const pass = page.locator(passwordSelector).first();
@@ -101,6 +115,39 @@ async function hasLoggedInShell(page: Page) {
   return false;
 }
 
+async function checkAuthAvailability(page: Page) {
+  try {
+    const response = await page.request.fetch(ADMIN_AUTH_URL, { method: "GET", timeout: 5_000 });
+    return response.status() < 500;
+  } catch {
+    return false;
+  }
+}
+
+async function isAuthServiceDown(page: Page, authResult?: { type: "response"; status: number } | { type: "failed" } | null) {
+  if (authResult?.type === "failed") {
+    return true;
+  }
+  if (authResult?.type === "response") {
+    return authResult.status >= 500;
+  }
+  return !(await checkAuthAvailability(page));
+}
+
+async function resolveLoginState(page: Page, signals: LoginSignals, authResult?: { type: "response"; status: number } | { type: "failed" } | null): Promise<LoginState> {
+  if (signals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (signals.hasEmailInput && signals.hasPasswordInput) {
+    return "LOGIN_READY";
+  }
+  if (signals.hasAppShell) {
+    return "LOGIN_INPUTS_NOT_FOUND";
+  }
+  const authDown = await isAuthServiceDown(page, authResult);
+  return authDown ? "LOGIN_SERVICE_DOWN" : "LOGIN_INPUTS_NOT_FOUND";
+}
+
 async function hasVisibleLocator(locator: ReturnType<Page["locator"]>) {
   if ((await locator.count()) === 0) {
     return false;
@@ -124,18 +171,13 @@ export async function getLoginSignals(page: Page): Promise<LoginSignals> {
   const hasSubmit = await hasVisibleLocator(submit);
   const hasAuthCookie = await hasAuthCookie(page);
   const hasAuthenticatedShell = (await hasLoggedInShell(page)) || hasAuthCookie;
-  return { hasEmailInput, hasPasswordInput, hasSubmit, hasAuthenticatedShell, hasAuthCookie };
+  const hasShell = await hasAppShell(page);
+  return { hasEmailInput, hasPasswordInput, hasSubmit, hasAuthenticatedShell, hasAuthCookie, hasAppShell: hasShell };
 }
 
 export async function detectLoginState(page: Page): Promise<LoginState> {
   const signals = await getLoginSignals(page);
-  if (signals.hasAuthenticatedShell) {
-    return "ALREADY_AUTHENTICATED";
-  }
-  if (signals.hasEmailInput && signals.hasPasswordInput && signals.hasSubmit) {
-    return "LOGIN_READY";
-  }
-  return "LOGIN_INPUTS_NOT_FOUND";
+  return resolveLoginState(page, signals);
 }
 
 async function waitForAuthResult(page: Page) {
@@ -169,8 +211,11 @@ export async function loginViaUi({
   if (initialSignals.hasAuthenticatedShell) {
     return "ALREADY_AUTHENTICATED";
   }
-  if (!initialSignals.hasEmailInput || !initialSignals.hasPasswordInput || !initialSignals.hasSubmit) {
-    return "LOGIN_INPUTS_NOT_FOUND";
+  if (!initialSignals.hasEmailInput || !initialSignals.hasPasswordInput) {
+    return resolveLoginState(page, initialSignals);
+  }
+  if (!initialSignals.hasSubmit) {
+    return "LOGIN_READY";
   }
 
   const email = page.locator(emailSelector).first();
@@ -187,14 +232,7 @@ export async function loginViaUi({
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(800);
   const postSignals = await getLoginSignals(page);
-  if (postSignals.hasAuthenticatedShell) {
-    return "ALREADY_AUTHENTICATED";
-  }
-  if (postSignals.hasEmailInput && postSignals.hasPasswordInput && postSignals.hasSubmit) {
-    const authDown = authResult?.type === "failed" || (authResult?.type === "response" && authResult.status >= 500);
-    return authDown ? "LOGIN_SERVICE_DOWN" : "LOGIN_READY";
-  }
-  return "LOGIN_INPUTS_NOT_FOUND";
+  return resolveLoginState(page, postSignals, authResult ?? null);
 }
 
 async function performLogin({

@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { ADMIN_BASE_URL, expectHeading, loginAdmin } from "./utils";
+import { ADMIN_BASE_URL, expectHeading, loginAdmin } from "./helpers";
 
 test("admin billing overview loads", async ({ page }) => {
   await loginAdmin(page);
