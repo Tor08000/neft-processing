@@ -17,4 +17,11 @@ describe("joinUrl", () => {
   it("supports relative base paths", () => {
     expect(joinUrl("/api", "/auth/v1/auth/login")).toBe("/api/auth/v1/auth/login");
   });
+
+  it("avoids duplicating api segments", () => {
+    expect(joinUrl("/api", "/api/auth/v1/auth/login")).toBe("/api/auth/v1/auth/login");
+    expect(joinUrl("http://localhost/api", "api/auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+  });
 });
