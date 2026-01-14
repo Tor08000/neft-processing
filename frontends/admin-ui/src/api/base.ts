@@ -26,7 +26,7 @@ const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): str
 };
 
 export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "core");
-export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "auth");
+export const AUTH_API_BASE = normalizeBase(import.meta.env.VITE_AUTH_API_BASE ?? "/api/auth");
 export const AI_API_BASE = buildBase(import.meta.env.VITE_AI_API_BASE, "ai");
 export const ADMIN_BASE_URL = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/+$/, "") || "/";
 export const API_BASE_URL = API_BASE;

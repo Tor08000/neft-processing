@@ -187,11 +187,8 @@ function evaluateResult(
   if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
     return { result: "SKIP" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
   }
-  if (loginState === "FAIL_AUTH_HTML_RESPONSE") {
-    return { result: "FAIL" as const, reason: "FAIL_AUTH_HTML_RESPONSE" };
-  }
-  if (loginState === "FAIL_UI_REDIRECT_MISSING") {
-    return { result: "FAIL" as const, reason: "FAIL_UI_REDIRECT_MISSING" };
+  if (loginState === "LOGIN_BAD_ROUTE") {
+    return { result: "FAIL" as const, reason: "LOGIN_BAD_ROUTE" };
   }
   if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
     return { result: "FAIL" as const, reason: "FAIL_AUTH_TOKEN_NOT_STORED" };
@@ -274,16 +271,13 @@ async function crawlApp({
       url: loginUrl,
       result: "FAIL",
       reason:
-        loginState === "FAIL_AUTH_HTML_RESPONSE"
-          ? `FAIL_AUTH_HTML_RESPONSE (auth: ${ADMIN_AUTH_URL})`
-          : loginState === "FAIL_UI_REDIRECT_MISSING"
-            ? `FAIL_UI_REDIRECT_MISSING (auth: ${ADMIN_AUTH_URL})`
+        loginState === "LOGIN_BAD_ROUTE"
+          ? `LOGIN_BAD_ROUTE (auth: ${ADMIN_AUTH_URL})`
           : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
             ? `FAIL_AUTH_TOKEN_NOT_STORED (auth: ${ADMIN_AUTH_URL})`
-          :
-        loginState === "LOGIN_STUCK_ON_LOGIN"
-          ? `FAIL_LOGIN_STUCK_ON_LOGIN (auth: ${ADMIN_AUTH_URL})`
-          : `FAIL_REDIRECT_LOGIN (auth: ${ADMIN_AUTH_URL})`,
+            : loginState === "LOGIN_STUCK_ON_LOGIN"
+              ? `FAIL_LOGIN_STUCK_ON_LOGIN (auth: ${ADMIN_AUTH_URL})`
+              : `FAIL_REDIRECT_LOGIN (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),

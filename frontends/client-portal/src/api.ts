@@ -54,7 +54,7 @@ async function parseJsonOrThrow(response: Response, errorMessage: string) {
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
-  const response = await fetch(`${AUTH_API_BASE}/login`, {
+  const response = await fetch(`${AUTH_API_BASE}/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -94,7 +94,7 @@ function authHeaders(token: string): HeadersInit {
 }
 
 export async function fetchMe(token: string): Promise<ClientUser> {
-  const response = await fetch(`${AUTH_API_BASE}/me`, { headers: authHeaders(token) });
+  const response = await fetch(`${AUTH_API_BASE}/v1/auth/me`, { headers: authHeaders(token) });
   const body = await parseJsonOrThrow(response, "Не удалось загрузить профиль");
   return {
     id: body.subject,

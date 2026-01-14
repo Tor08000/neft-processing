@@ -54,10 +54,9 @@ type LoginStateSummary = {
     | "LOGIN_OK"
     | "LOGIN_READY"
     | "LOGIN_SERVICE_DOWN"
+    | "LOGIN_BAD_ROUTE"
     | "LOGIN_INPUTS_NOT_FOUND"
     | "LOGIN_STUCK_ON_LOGIN"
-    | "FAIL_AUTH_HTML_RESPONSE"
-    | "FAIL_UI_REDIRECT_MISSING"
     | "FAIL_AUTH_TOKEN_NOT_STORED"
     | "ERROR";
   authUrl: string;
@@ -295,12 +294,10 @@ export async function login(
         ? "LOGIN_READY"
       : loginState === "LOGIN_SERVICE_DOWN"
         ? "LOGIN_SERVICE_DOWN"
+      : loginState === "LOGIN_BAD_ROUTE"
+        ? "LOGIN_BAD_ROUTE"
       : loginState === "LOGIN_STUCK_ON_LOGIN"
         ? "LOGIN_STUCK_ON_LOGIN"
-      : loginState === "FAIL_AUTH_HTML_RESPONSE"
-        ? "FAIL_AUTH_HTML_RESPONSE"
-      : loginState === "FAIL_UI_REDIRECT_MISSING"
-        ? "FAIL_UI_REDIRECT_MISSING"
       : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
         ? "FAIL_AUTH_TOKEN_NOT_STORED"
       : "LOGIN_INPUTS_NOT_FOUND";
@@ -331,14 +328,14 @@ export async function login(
       };
       return false;
     }
-    if (loginState === "FAIL_AUTH_HTML_RESPONSE") {
-      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_AUTH_HTML_RESPONSE");
+    if (loginState === "LOGIN_BAD_ROUTE") {
+      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_BAD_ROUTE");
       report.loginStates[app] = {
-        state: "FAIL_AUTH_HTML_RESPONSE",
+        state: "LOGIN_BAD_ROUTE",
         authUrl,
         notes: `screenshot: ${screenshot}`,
       };
-      report.errors.push(`[${app}] login failed: FAIL_AUTH_HTML_RESPONSE (auth: ${authUrl}) (${screenshot})`);
+      report.errors.push(`[${app}] login failed: LOGIN_BAD_ROUTE (auth: ${authUrl}) (${screenshot})`);
       return false;
     }
     if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
@@ -349,16 +346,6 @@ export async function login(
         notes: `screenshot: ${screenshot}`,
       };
       report.errors.push(`[${app}] login failed: FAIL_AUTH_TOKEN_NOT_STORED (auth: ${authUrl}) (${screenshot})`);
-      return false;
-    }
-    if (loginState === "FAIL_UI_REDIRECT_MISSING") {
-      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_UI_REDIRECT_MISSING");
-      report.loginStates[app] = {
-        state: "FAIL_UI_REDIRECT_MISSING",
-        authUrl,
-        notes: `screenshot: ${screenshot}`,
-      };
-      report.errors.push(`[${app}] login failed: FAIL_UI_REDIRECT_MISSING (auth: ${authUrl}) (${screenshot})`);
       return false;
     }
     if (loginState === "LOGIN_SERVICE_DOWN") {
