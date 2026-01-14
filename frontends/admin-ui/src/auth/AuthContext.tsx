@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { login as apiLogin, me } from "../api/auth";
-import { ApiError, ForbiddenError, UnauthorizedError, ValidationError } from "../api/http";
+import { ApiError, ForbiddenError, HtmlResponseError, UnauthorizedError, ValidationError } from "../api/http";
 import type { AuthSession, AuthUser } from "../types/auth";
 import { hasAdminRole } from "./roles";
 
@@ -119,6 +119,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         }
         if (err instanceof ValidationError) {
           setError("Проверьте email и пароль");
+          return;
+        }
+        if (err instanceof HtmlResponseError) {
+          setError("Ошибка маршрутизации gateway (HTML вместо JSON)");
           return;
         }
         if (err instanceof ApiError && err.status >= 500) {

@@ -190,6 +190,12 @@ function evaluateResult(
   if (loginState === "LOGIN_BAD_ROUTE") {
     return { result: "FAIL" as const, reason: "LOGIN_BAD_ROUTE" };
   }
+  if (loginState === "FAIL_LOGIN_NOT_COMPLETED") {
+    return { result: "FAIL" as const, reason: "FAIL_LOGIN_NOT_COMPLETED" };
+  }
+  if (loginState === "FAIL_AUTH_URL_DUPLICATED") {
+    return { result: "FAIL" as const, reason: "FAIL_AUTH_URL_DUPLICATED" };
+  }
   if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
     return { result: "FAIL" as const, reason: "FAIL_AUTH_TOKEN_NOT_STORED" };
   }
@@ -273,6 +279,10 @@ async function crawlApp({
       reason:
         loginState === "LOGIN_BAD_ROUTE"
           ? `LOGIN_BAD_ROUTE (auth: ${ADMIN_AUTH_URL})`
+          : loginState === "FAIL_LOGIN_NOT_COMPLETED"
+            ? `FAIL_LOGIN_NOT_COMPLETED (auth: ${ADMIN_AUTH_URL})`
+            : loginState === "FAIL_AUTH_URL_DUPLICATED"
+              ? `FAIL_AUTH_URL_DUPLICATED (auth: ${ADMIN_AUTH_URL})`
           : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
             ? `FAIL_AUTH_TOKEN_NOT_STORED (auth: ${ADMIN_AUTH_URL})`
             : loginState === "LOGIN_STUCK_ON_LOGIN"

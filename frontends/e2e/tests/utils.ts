@@ -14,7 +14,9 @@ export type LoginState =
   | "LOGIN_INPUTS_NOT_FOUND"
   | "LOGIN_OK"
   | "LOGIN_STUCK_ON_LOGIN"
-  | "FAIL_AUTH_TOKEN_NOT_STORED";
+  | "FAIL_AUTH_TOKEN_NOT_STORED"
+  | "FAIL_LOGIN_NOT_COMPLETED"
+  | "FAIL_AUTH_URL_DUPLICATED";
 
 export type LoginSignals = {
   hasEmailInput: boolean;
@@ -33,6 +35,7 @@ export type TokenFound = {
 
 export type AuthProbeResult = {
   authRequestSent: boolean;
+  authBaseEnv: string;
   authEffectiveUrl: string | null;
   authResponseStatus: number | null;
   authResponseContentType: string | null;
@@ -154,6 +157,17 @@ async function hasLoggedInShell(page: Page) {
   }
   if ((await logoutButton.count()) > 0 && (await logoutButton.first().isVisible().catch(() => false))) {
     return true;
+  }
+  return false;
+}
+
+async function waitForAppShell(page: Page, timeoutMs = 6_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await hasLoggedInShell(page)) || (await hasAppShell(page))) {
+      return true;
+    }
+    await page.waitForTimeout(300);
   }
   return false;
 }
@@ -424,6 +438,7 @@ async function buildAuthProbe({
   const storageKeys = storageProbe ? sliceKeysForReport(storageProbe.combinedKeys, storageKeyLimit) : [];
   const probeResult: AuthProbeResult = {
     authRequestSent,
+    authBaseEnv: ADMIN_AUTH_URL,
     authEffectiveUrl,
     authResponseStatus,
     authResponseContentType,
@@ -491,6 +506,9 @@ export async function loginViaUi({
     await authProbe.onProbe(probeResult);
   }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  if (probeResult.authEffectiveUrl?.includes("/api/api")) {
+    return "FAIL_AUTH_URL_DUPLICATED";
+  }
   if (probeResult.authResponseContentType?.includes("text/html") || probeResult.authResponseStatus === 404) {
     return "LOGIN_BAD_ROUTE";
   }
@@ -502,6 +520,9 @@ export async function loginViaUi({
   }
   if (authSuccess) {
     if (loginOutcome) {
+      if (!(await waitForAppShell(page))) {
+        return "FAIL_LOGIN_NOT_COMPLETED";
+      }
       return "LOGIN_OK";
     }
     if (probeResult.tokenFound.kind !== "none") {
@@ -510,6 +531,9 @@ export async function loginViaUi({
     return "FAIL_AUTH_TOKEN_NOT_STORED";
   }
   if (loginOutcome) {
+    if (!(await waitForAppShell(page))) {
+      return "FAIL_LOGIN_NOT_COMPLETED";
+    }
     return "LOGIN_OK";
   }
   await page.waitForLoadState("domcontentloaded");
@@ -560,6 +584,14 @@ async function performLogin({
   if (result === "LOGIN_BAD_ROUTE") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_BAD_ROUTE`);
     throw new Error(await buildLoginDiagnostics(page, `LOGIN_BAD_ROUTE (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_LOGIN_NOT_COMPLETED") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_LOGIN_NOT_COMPLETED`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_LOGIN_NOT_COMPLETED (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_AUTH_URL_DUPLICATED") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_URL_DUPLICATED`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_AUTH_URL_DUPLICATED (screenshot: ${screenshotPath})`));
   }
   if (result === "FAIL_AUTH_TOKEN_NOT_STORED") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_TOKEN_NOT_STORED`);

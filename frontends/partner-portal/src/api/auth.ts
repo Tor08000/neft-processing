@@ -1,7 +1,7 @@
-import { AUTH_API_BASE, request, ApiError, UnauthorizedError, ValidationError } from "./http";
+import { AUTH_API_BASE, request, ApiError, HtmlResponseError, UnauthorizedError, ValidationError } from "./http";
 import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./types";
 
-export { ApiError, UnauthorizedError, ValidationError };
+export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(

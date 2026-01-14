@@ -35,6 +35,31 @@ export class ApiError extends Error {
   }
 }
 
+export class HtmlResponseError extends Error {
+  status: number;
+  url: string;
+  contentType: string;
+  bodySnippet: string;
+  correlationId: string | null;
+
+  constructor(
+    message: string,
+    status: number,
+    url: string,
+    contentType: string,
+    bodySnippet: string,
+    correlationId: string | null,
+  ) {
+    super(message);
+    this.name = "HtmlResponseError";
+    this.status = status;
+    this.url = url;
+    this.contentType = contentType;
+    this.bodySnippet = bodySnippet;
+    this.correlationId = correlationId;
+  }
+}
+
 export class LegalRequiredError extends ApiError {
   details: unknown;
 
@@ -80,19 +105,43 @@ export async function request<T>(
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers });
+  const url = `${apiBase}${path}`;
+  const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  const isAuthLogin = base === "auth" && path.includes("/v1/auth/login");
+  const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
+  let responseText: string | null = null;
+
+  const readResponseText = async () => {
+    if (responseText !== null) {
+      return responseText;
+    }
+    responseText = await response.text().catch(() => "");
+    return responseText;
+  };
+
+  if (shouldLogAuth) {
+    const snippet = isJson ? "" : (await readResponseText()).slice(0, 200);
+    console.info("[auth-login]", {
+      url,
+      status: response.status,
+      contentType,
+      bodySnippet: snippet || null,
+    });
+  }
 
   if (response.status === 401) {
     window.dispatchEvent(new Event("client-auth-logout"));
     throw new UnauthorizedError();
   }
   if (response.status === 422) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     throw new ValidationError("Ошибка валидации", details);
   }
   if (response.status === 428) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
     throw new LegalRequiredError(
       "Legal documents must be accepted before performing this action.",
@@ -101,8 +150,19 @@ export async function request<T>(
       details,
     );
   }
+  if (contentType.includes("text/html")) {
+    const body = await readResponseText();
+    throw new HtmlResponseError(
+      "HTML response from gateway",
+      response.status,
+      url,
+      contentType,
+      body.slice(0, 200),
+      correlationId,
+    );
+  }
   if (!response.ok) {
-    const text = await response.text();
+    const text = await readResponseText();
     throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
   }
 
@@ -110,7 +170,7 @@ export async function request<T>(
     return {} as T;
   }
 
-  return response.json() as Promise<T>;
+  return isJson ? (response.json() as Promise<T>) : ({} as Promise<T>);
 }
 
 export interface ApiResponse<T> {
@@ -139,19 +199,31 @@ export async function requestWithMeta<T>(
 
   const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers });
+  const url = `${apiBase}${path}`;
+  const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  let responseText: string | null = null;
+
+  const readResponseText = async () => {
+    if (responseText !== null) {
+      return responseText;
+    }
+    responseText = await response.text().catch(() => "");
+    return responseText;
+  };
 
   if (response.status === 401) {
     window.dispatchEvent(new Event("client-auth-logout"));
     throw new UnauthorizedError();
   }
   if (response.status === 422) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     throw new ValidationError("Ошибка валидации", details);
   }
   if (response.status === 428) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
     throw new LegalRequiredError(
       "Legal documents must be accepted before performing this action.",
@@ -160,8 +232,19 @@ export async function requestWithMeta<T>(
       details,
     );
   }
+  if (contentType.includes("text/html")) {
+    const body = await readResponseText();
+    throw new HtmlResponseError(
+      "HTML response from gateway",
+      response.status,
+      url,
+      contentType,
+      body.slice(0, 200),
+      correlationId,
+    );
+  }
   if (!response.ok) {
-    const text = await response.text();
+    const text = await readResponseText();
     throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
   }
 
@@ -169,6 +252,6 @@ export async function requestWithMeta<T>(
     return { data: {} as T, correlationId, status: response.status };
   }
 
-  const data = (await response.json()) as T;
+  const data = isJson ? ((await response.json()) as T) : ({} as T);
   return { data, correlationId, status: response.status };
 }

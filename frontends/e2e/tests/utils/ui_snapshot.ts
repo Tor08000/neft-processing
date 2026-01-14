@@ -58,6 +58,8 @@ type LoginStateSummary = {
     | "LOGIN_INPUTS_NOT_FOUND"
     | "LOGIN_STUCK_ON_LOGIN"
     | "FAIL_AUTH_TOKEN_NOT_STORED"
+    | "FAIL_LOGIN_NOT_COMPLETED"
+    | "FAIL_AUTH_URL_DUPLICATED"
     | "ERROR";
   authUrl: string;
   notes?: string;
@@ -300,6 +302,10 @@ export async function login(
         ? "LOGIN_STUCK_ON_LOGIN"
       : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
         ? "FAIL_AUTH_TOKEN_NOT_STORED"
+      : loginState === "FAIL_LOGIN_NOT_COMPLETED"
+        ? "FAIL_LOGIN_NOT_COMPLETED"
+      : loginState === "FAIL_AUTH_URL_DUPLICATED"
+        ? "FAIL_AUTH_URL_DUPLICATED"
       : "LOGIN_INPUTS_NOT_FOUND";
     report.loginStates[app] = { state: resolvedState, authUrl };
     tracker.stop();
@@ -336,6 +342,26 @@ export async function login(
         notes: `screenshot: ${screenshot}`,
       };
       report.errors.push(`[${app}] login failed: LOGIN_BAD_ROUTE (auth: ${authUrl}) (${screenshot})`);
+      return false;
+    }
+    if (loginState === "FAIL_LOGIN_NOT_COMPLETED") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_LOGIN_NOT_COMPLETED");
+      report.loginStates[app] = {
+        state: "FAIL_LOGIN_NOT_COMPLETED",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_LOGIN_NOT_COMPLETED (auth: ${authUrl}) (${screenshot})`);
+      return false;
+    }
+    if (loginState === "FAIL_AUTH_URL_DUPLICATED") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_AUTH_URL_DUPLICATED");
+      report.loginStates[app] = {
+        state: "FAIL_AUTH_URL_DUPLICATED",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_AUTH_URL_DUPLICATED (auth: ${authUrl}) (${screenshot})`);
       return false;
     }
     if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
@@ -609,6 +635,7 @@ export function writeReport(report: ReportState) {
       return;
     }
     lines.push(`- auth_request_sent: ${probe.authRequestSent}`);
+    lines.push(`- auth_base_env: ${probe.authBaseEnv ?? "null"}`);
     lines.push(`- auth_effective_url: ${probe.authEffectiveUrl ?? "null"}`);
     lines.push(`- auth_response_status: ${probe.authResponseStatus ?? "null"}`);
     lines.push(`- auth_response_body_snippet: ${probe.authResponseBodySnippet ?? "null"}`);

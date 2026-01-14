@@ -50,6 +50,22 @@ export class ApiError extends Error {
   }
 }
 
+export class HtmlResponseError extends Error {
+  status: number;
+  url: string;
+  contentType: string;
+  bodySnippet: string;
+
+  constructor(message: string, status: number, url: string, contentType: string, bodySnippet: string) {
+    super(message);
+    this.name = "HtmlResponseError";
+    this.status = status;
+    this.url = url;
+    this.contentType = contentType;
+    this.bodySnippet = bodySnippet;
+  }
+}
+
 const buildHeaders = (token?: string | null): HttpHeaders => {
   const headers: HttpHeaders = {
     "Content-Type": "application/json",
@@ -92,8 +108,31 @@ export async function request<T>(
   };
 
   const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
+  const url = `${apiBase}${path}`;
+  const response = await fetch(url, { ...init, headers });
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  const isAuthLogin = base === "auth" && path.includes("/v1/auth/login");
+  const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
+  let responseText: string | null = null;
 
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers });
+  const readResponseText = async () => {
+    if (responseText !== null) {
+      return responseText;
+    }
+    responseText = await response.text().catch(() => "");
+    return responseText;
+  };
+
+  if (shouldLogAuth) {
+    const snippet = isJson ? "" : (await readResponseText()).slice(0, 200);
+    console.info("[auth-login]", {
+      url,
+      status: response.status,
+      contentType,
+      bodySnippet: snippet || null,
+    });
+  }
 
   if (response.status === 401) {
     throw new UnauthorizedError();
@@ -102,18 +141,22 @@ export async function request<T>(
     throw new ForbiddenError();
   }
   if (response.status === 422) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     throw new ValidationError("Ошибка валидации", details);
   }
   if (response.status === 428) {
-    const details = await response.json().catch(() => undefined);
+    const details = isJson ? await response.json().catch(() => undefined) : await readResponseText();
     window.dispatchEvent(new CustomEvent("legal-required", { detail: details }));
     throw new LegalRequiredError("Legal documents must be accepted before performing this action.", 428, details);
   }
+  if (contentType.includes("text/html")) {
+    const body = await readResponseText();
+    throw new HtmlResponseError("HTML response from gateway", response.status, url, contentType, body.slice(0, 200));
+  }
   if (!response.ok) {
-    const details = await response.text();
+    const details = await readResponseText();
     throw new ApiError(details || `Request failed with status ${response.status}`, response.status);
   }
 
-  return response.json() as Promise<T>;
+  return isJson ? (response.json() as Promise<T>) : ({} as Promise<T>);
 }
