@@ -50,7 +50,16 @@ type ReportState = {
 };
 
 type LoginStateSummary = {
-  state: "LOGIN_OK" | "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "LOGIN_STUCK_ON_LOGIN" | "ERROR";
+  state:
+    | "LOGIN_OK"
+    | "LOGIN_READY"
+    | "LOGIN_SERVICE_DOWN"
+    | "LOGIN_INPUTS_NOT_FOUND"
+    | "LOGIN_STUCK_ON_LOGIN"
+    | "FAIL_AUTH_HTML_RESPONSE"
+    | "FAIL_UI_REDIRECT_MISSING"
+    | "FAIL_AUTH_TOKEN_NOT_STORED"
+    | "ERROR";
   authUrl: string;
   notes?: string;
 };
@@ -280,19 +289,22 @@ export async function login(
       },
     });
     const loginOk = loginState === "ALREADY_AUTHENTICATED" || loginState === "LOGIN_OK";
-    report.loginStates[app] = {
-      state:
-        loginOk
-          ? "LOGIN_OK"
-          : loginState === "LOGIN_READY"
-            ? "LOGIN_READY"
-          : loginState === "LOGIN_SERVICE_DOWN"
-            ? "LOGIN_SERVICE_DOWN"
-            : loginState === "LOGIN_STUCK_ON_LOGIN"
-              ? "LOGIN_STUCK_ON_LOGIN"
-            : "LOGIN_INPUTS_NOT_FOUND",
-      authUrl,
-    };
+    const resolvedState = loginOk
+      ? "LOGIN_OK"
+      : loginState === "LOGIN_READY"
+        ? "LOGIN_READY"
+      : loginState === "LOGIN_SERVICE_DOWN"
+        ? "LOGIN_SERVICE_DOWN"
+      : loginState === "LOGIN_STUCK_ON_LOGIN"
+        ? "LOGIN_STUCK_ON_LOGIN"
+      : loginState === "FAIL_AUTH_HTML_RESPONSE"
+        ? "FAIL_AUTH_HTML_RESPONSE"
+      : loginState === "FAIL_UI_REDIRECT_MISSING"
+        ? "FAIL_UI_REDIRECT_MISSING"
+      : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
+        ? "FAIL_AUTH_TOKEN_NOT_STORED"
+      : "LOGIN_INPUTS_NOT_FOUND";
+    report.loginStates[app] = { state: resolvedState, authUrl };
     tracker.stop();
 
     if (loginOk) {
@@ -317,6 +329,36 @@ export async function login(
         authUrl,
         notes: `screenshot: ${screenshot}`,
       };
+      return false;
+    }
+    if (loginState === "FAIL_AUTH_HTML_RESPONSE") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_AUTH_HTML_RESPONSE");
+      report.loginStates[app] = {
+        state: "FAIL_AUTH_HTML_RESPONSE",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_AUTH_HTML_RESPONSE (auth: ${authUrl}) (${screenshot})`);
+      return false;
+    }
+    if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_AUTH_TOKEN_NOT_STORED");
+      report.loginStates[app] = {
+        state: "FAIL_AUTH_TOKEN_NOT_STORED",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_AUTH_TOKEN_NOT_STORED (auth: ${authUrl}) (${screenshot})`);
+      return false;
+    }
+    if (loginState === "FAIL_UI_REDIRECT_MISSING") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_UI_REDIRECT_MISSING");
+      report.loginStates[app] = {
+        state: "FAIL_UI_REDIRECT_MISSING",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_UI_REDIRECT_MISSING (auth: ${authUrl}) (${screenshot})`);
       return false;
     }
     if (loginState === "LOGIN_SERVICE_DOWN") {

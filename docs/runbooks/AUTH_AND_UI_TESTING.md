@@ -101,6 +101,36 @@ UI audit saved to: ui-audit/<RUN_ID>
 npm run ui:snapshot
 ```
 
+## 2.1) Smoke: gateway UI assets + SPA fallback (curl)
+
+Проверьте, что SPA корни и ассеты отвечают корректно:
+
+```bash
+curl -I http://localhost/admin/
+curl -I http://localhost/admin/assets/
+curl -I http://localhost/client/
+curl -I http://localhost/client/assets/
+curl -I http://localhost/partner/
+curl -I http://localhost/partner/assets/
+```
+
+Проверьте, что JS/CSS ассеты не возвращают HTML:
+
+```bash
+curl -I http://localhost/admin/assets/index-*.js
+curl -I http://localhost/admin/assets/index-*.css
+curl -I http://localhost/client/assets/index-*.js
+curl -I http://localhost/client/assets/index-*.css
+curl -I http://localhost/partner/assets/index-*.js
+curl -I http://localhost/partner/assets/index-*.css
+```
+
+Ожидания:
+
+- HTTP 200.
+- `Content-Type: application/javascript` (или `text/javascript`) для JS.
+- `Content-Type: text/css` для CSS.
+
 ## 3) UI Link Crawl (ui_link_crawl.spec.ts)
 
 ```bat

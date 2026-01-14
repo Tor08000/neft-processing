@@ -12,7 +12,10 @@ export type LoginState =
   | "ALREADY_AUTHENTICATED"
   | "LOGIN_INPUTS_NOT_FOUND"
   | "LOGIN_OK"
-  | "LOGIN_STUCK_ON_LOGIN";
+  | "LOGIN_STUCK_ON_LOGIN"
+  | "FAIL_AUTH_HTML_RESPONSE"
+  | "FAIL_UI_REDIRECT_MISSING"
+  | "FAIL_AUTH_TOKEN_NOT_STORED";
 
 export type LoginSignals = {
   hasEmailInput: boolean;
@@ -33,6 +36,7 @@ export type AuthProbeResult = {
   authRequestSent: boolean;
   authEffectiveUrl: string | null;
   authResponseStatus: number | null;
+  authResponseContentType: string | null;
   authResponseBodySnippet: string | null;
   authRequestFailedError: string | null;
   storageKeys: string[];
@@ -56,7 +60,7 @@ const requireEnv = (value: string | undefined, name: string) => {
 
 const loginWaitOptions = { timeout: 15_000 };
 const authProbeTimeoutMs = 8_000;
-const authEndpointPattern = /\/auth\/login(?:\?|$)/;
+const authEndpointPattern = /\/api(?:\/auth)?\/v1\/auth\/login(?:\?|$)/;
 
 const emailSelector = [
   'input[type="email"]',
@@ -375,6 +379,7 @@ async function buildAuthProbe({
   let authRequestSent = false;
   let authEffectiveUrl: string | null = null;
   let authResponseStatus: number | null = null;
+  let authResponseContentType: string | null = null;
   let authResponseBodySnippet: string | null = null;
   let authRequestFailedError: string | null = null;
   let hasAccessToken = false;
@@ -384,10 +389,11 @@ async function buildAuthProbe({
     authRequestSent = true;
     authEffectiveUrl = authEvent.response.url();
     authResponseStatus = authEvent.response.status();
+    authResponseContentType = authEvent.response.headers()["content-type"] ?? null;
     authResult = { type: "response", status: authResponseStatus };
     const bodyText = await authEvent.response.text().catch(() => "");
     if (bodyText) {
-      authResponseBodySnippet = bodyText.slice(0, 200);
+      authResponseBodySnippet = bodyText.slice(0, 400);
       if (authResponseStatus === 200) {
         try {
           const json = JSON.parse(bodyText) as { access_token?: string };
@@ -421,6 +427,7 @@ async function buildAuthProbe({
     authRequestSent,
     authEffectiveUrl,
     authResponseStatus,
+    authResponseContentType,
     authResponseBodySnippet,
     authRequestFailedError,
     storageKeys,
@@ -485,8 +492,14 @@ export async function loginViaUi({
     await authProbe.onProbe(probeResult);
   }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  if (probeResult.authResponseContentType?.includes("text/html")) {
+    return "FAIL_AUTH_HTML_RESPONSE";
+  }
   if (authSuccess) {
-    return "LOGIN_OK";
+    if (loginOutcome) {
+      return "LOGIN_OK";
+    }
+    return probeResult.tokenFound.kind === "none" ? "FAIL_AUTH_TOKEN_NOT_STORED" : "FAIL_UI_REDIRECT_MISSING";
   }
   if (loginOutcome) {
     return "LOGIN_OK";
@@ -532,6 +545,18 @@ async function performLogin({
   if (result === "LOGIN_STUCK_ON_LOGIN") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_STUCK_ON_LOGIN`);
     throw new Error(await buildLoginDiagnostics(page, `FAIL_LOGIN_STUCK_ON_LOGIN (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_AUTH_HTML_RESPONSE") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_HTML_RESPONSE`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_AUTH_HTML_RESPONSE (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_AUTH_TOKEN_NOT_STORED") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_TOKEN_NOT_STORED`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_AUTH_TOKEN_NOT_STORED (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_UI_REDIRECT_MISSING") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_UI_REDIRECT_MISSING`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_UI_REDIRECT_MISSING (screenshot: ${screenshotPath})`));
   }
   const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_REDIRECT_LOGIN`);
   throw new Error(await buildLoginDiagnostics(page, `FAIL_REDIRECT_LOGIN (screenshot: ${screenshotPath})`));

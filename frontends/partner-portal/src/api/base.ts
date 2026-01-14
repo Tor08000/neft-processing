@@ -1,58 +1,35 @@
-const normalizePrefix = (raw: string): string => {
-  const value = raw.startsWith("/") ? raw : `/${raw}`;
-  return value.replace(/\/+$/, "");
+const normalizeBase = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (/^https?:\/\//.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/+$/, "");
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
-const partnerBase = (import.meta.env.BASE_URL ?? "/partner/").replace(/\/+$/, "");
+const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api";
+const API_BASE = normalizeBase(rawApiBase && rawApiBase.trim() !== "" ? rawApiBase : "/api");
+const partnerBase = normalizeBase(import.meta.env.BASE_URL ?? "/partner/");
 
-const joinBase = (base: string, raw: string): string => {
-  const normalized = normalizePrefix(raw);
-  if (base.endsWith(normalized)) {
+const joinPath = (base: string, suffix: string): string => {
+  const trimmedSuffix = suffix.replace(/^\/+/, "");
+  if (!trimmedSuffix) {
     return base;
   }
-  if (base.endsWith("/api/auth") && normalized.startsWith("/api/auth/")) {
-    return `${base}${normalized.replace(/^\/api\/auth/, "")}`;
-  }
-  return `${base}${normalized}`;
+  return `${base}/${trimmedSuffix}`;
 };
 
-const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): string => {
-  const fallback = canonicalSuffix.startsWith("/") ? canonicalSuffix : `/${canonicalSuffix}`;
-  const raw = (legacyPrefix ?? (API_BASE ? `${API_BASE}${fallback}` : fallback)).replace(/\/+$/, "");
-
-  if (/^https?:\/\//.test(raw)) {
-    return raw;
+const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
+  if (legacyPrefix && legacyPrefix.trim() !== "") {
+    return normalizeBase(legacyPrefix);
   }
-
-  if (API_BASE) {
-    return joinBase(API_BASE, raw);
-  }
-
-  return raw.startsWith("/") ? raw : `/${raw}`;
-};
-
-const normalizeAuthBase = (base: string): string => {
-  const trimmed = base.replace(/\/+$/, "");
-  if (trimmed.endsWith("/v1/auth")) {
-    return trimmed;
-  }
-  if (trimmed.endsWith("/api/v1/auth")) {
-    return trimmed.replace(/\/api\/v1\/auth$/, "/v1/auth");
-  }
-  if (trimmed.endsWith("/api/auth")) {
-    return `${trimmed}/v1/auth`;
-  }
-  return `${trimmed}/api/v1/auth`;
+  return joinPath(API_BASE, defaultSuffix);
 };
 
 export const CORE_API_BASE =
-  `${buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core")}${partnerBase}/api/v1`.replace(/\/+$/, "");
-export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core").replace(/\/+$/, "");
-export const AUTH_API_BASE = normalizeAuthBase(buildBase(import.meta.env.VITE_AUTH_API_BASE, "/api/auth")).replace(
-  /\/+$/,
-  "",
-);
-export const AI_API_BASE = `${buildBase(import.meta.env.VITE_AI_API_BASE, "/api/ai")}/api/v1`.replace(/\/+$/, "");
+  `${buildBase(import.meta.env.VITE_CORE_API_BASE, "core")}${partnerBase}/api/v1`.replace(/\/+$/, "");
+export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "core").replace(/\/+$/, "");
+export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "auth").replace(/\/+$/, "");
+export const AI_API_BASE = `${buildBase(import.meta.env.VITE_AI_API_BASE, "ai")}/api/v1`.replace(/\/+$/, "");
 export const PARTNER_BASE_PATH = partnerBase;
 export const API_BASE_URL = API_BASE;
