@@ -93,10 +93,18 @@ services:
     build:
       context: .
       dockerfile: frontends/admin-ui/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_CORE_API_BASE: /api/core
+        VITE_AUTH_API_BASE: /api/auth
+        VITE_AI_API_BASE: /api/ai
     container_name: neft-processing-admin-web-1
     environment:
       SERVICE_NAME: admin-web
       VITE_API_BASE_URL: /api
+      VITE_CORE_API_BASE: /api/core
+      VITE_AUTH_API_BASE: /api/auth
+      VITE_AI_API_BASE: /api/ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -109,10 +117,18 @@ services:
     build:
       context: .
       dockerfile: frontends/client-portal/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_CORE_API_BASE: /api/core
+        VITE_AUTH_API_BASE: /api/auth
+        VITE_AI_API_BASE: /api/ai
     container_name: neft-processing-client-web-1
     environment:
       SERVICE_NAME: client-web
       VITE_API_BASE_URL: /api
+      VITE_CORE_API_BASE: /api/core
+      VITE_AUTH_API_BASE: /api/auth
+      VITE_AI_API_BASE: /api/ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -125,10 +141,18 @@ services:
     build:
       context: .
       dockerfile: frontends/partner-portal/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_CORE_API_BASE: /api/core
+        VITE_AUTH_API_BASE: /api/auth
+        VITE_AI_API_BASE: /api/ai
     container_name: neft-processing-partner-web-1
     environment:
       SERVICE_NAME: partner-web
       VITE_API_BASE_URL: /api
+      VITE_CORE_API_BASE: /api/core
+      VITE_AUTH_API_BASE: /api/auth
+      VITE_AI_API_BASE: /api/ai
     depends_on:
       - gateway
     healthcheck:

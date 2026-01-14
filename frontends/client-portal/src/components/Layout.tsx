@@ -7,7 +7,7 @@ import {
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { useLegalGate } from "../auth/LegalGateContext";
-import { CLIENT_BASE_PATH } from "../api/base";
+import { API_BASE_URL, CLIENT_BASE_PATH } from "../api/base";
 import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
@@ -42,7 +42,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { t } = useI18n();
   const location = useLocation();
   const [theme, setTheme] = useState(getInitialTheme());
-  const isApiBaseMissing = !import.meta.env.VITE_API_BASE && !import.meta.env.VITE_API_BASE_URL;
+  const isApiBaseMissing = !API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
   const navItems: NavItem[] = [
