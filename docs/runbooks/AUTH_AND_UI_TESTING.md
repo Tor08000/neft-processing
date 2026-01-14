@@ -23,6 +23,14 @@ NEFT_BOOTSTRAP_PASSWORD_VERSION=1
 
 Ключи RSA `auth-host` хранятся в volume `auth-keys` (`/data/keys`). Чтобы пересоздать ключи: `docker compose down -v`. Чтобы сохранить ключи между рестартами: `docker compose down` без `-v`.
 
+### Быстрая проверка (должно вернуть 200)
+
+```bash
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
 ### Admin login
 
 ```bash

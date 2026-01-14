@@ -22,12 +22,26 @@ const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): s
   return raw.startsWith("/") ? raw : `/${raw}`;
 };
 
+const normalizeAuthBase = (base: string): string => {
+  const trimmed = base.replace(/\/+$/, "");
+  if (trimmed.endsWith("/v1/auth")) {
+    return trimmed;
+  }
+  if (trimmed.endsWith("/api/v1/auth")) {
+    return trimmed.replace(/\/api\/v1\/auth$/, "/v1/auth");
+  }
+  if (trimmed.endsWith("/api/auth")) {
+    return `${trimmed}/v1/auth`;
+  }
+  return `${trimmed}/api/v1/auth`;
+};
+
 export const CORE_API_BASE = `${buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core")}${clientBase}/api/v1`.replace(
   /\/+$/,
   "",
 );
 export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core").replace(/\/+$/, "");
-export const AUTH_API_BASE = `${buildBase(import.meta.env.VITE_AUTH_API_BASE, "/api/auth")}/api/v1/auth`.replace(
+export const AUTH_API_BASE = normalizeAuthBase(buildBase(import.meta.env.VITE_AUTH_API_BASE, "/api/auth")).replace(
   /\/+$/,
   "",
 );

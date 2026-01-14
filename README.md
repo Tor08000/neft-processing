@@ -159,6 +159,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 
 * Запуск окружения с фронтом: `docker compose up -d --build gateway client-web` (или полный стек `docker compose up -d --build`).
 * Открыть в браузере: `http://localhost/client/` (или напрямую через контейнер client-web: `http://localhost:4174/client/`).
+  **Важно:** в браузере нельзя использовать `http://gateway` — это внутренний docker-host, доступен только контейнерам.
 
 ### Клиентский кабинет (реальные данные)
 
@@ -183,7 +184,8 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `/api/auth/*` → auth-host
   * `/api/ai/*` → ai-service
 * Админские и клиентские SPA остаются на путях `/admin/` и `/client/`, но их API-запросы идут через новые namespace'ы `/api/core/...` и `/api/auth/...`.
-* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://gateway`, `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
+* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://localhost` (или пусто для относительных путей),
+  `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
 
 ### Smoke-проверки (gateway, health, DB, merge markers)
 
