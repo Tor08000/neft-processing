@@ -10,12 +10,7 @@ export const joinUrl = (base: string, path: string): string => {
   if (!b) {
     return rawPath ? `/${rawPath}` : "";
   }
-  const isApiBase = /\/api$/.test(b);
-  let p = rawPath;
-  if (isApiBase && (p === "api" || p.startsWith("api/"))) {
-    p = p.replace(/^api\/?/, "");
-  }
-  return p ? `${b}/${p}` : b;
+  return rawPath ? `${b}/${rawPath}` : b;
 };
 
 const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
