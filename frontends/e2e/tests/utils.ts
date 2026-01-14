@@ -1,12 +1,18 @@
 import path from "node:path";
 import type { Page } from "playwright";
 
-export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost:4174";
-export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost:4175";
-export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost:4173";
+export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost/client/";
+export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost/partner/";
+export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost/admin/";
 export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
 
-export type LoginState = "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "ALREADY_AUTHENTICATED" | "LOGIN_INPUTS_NOT_FOUND";
+export type LoginState =
+  | "LOGIN_READY"
+  | "LOGIN_SERVICE_DOWN"
+  | "ALREADY_AUTHENTICATED"
+  | "LOGIN_INPUTS_NOT_FOUND"
+  | "LOGIN_OK"
+  | "LOGIN_STUCK_ON_LOGIN";
 
 export type LoginSignals = {
   hasEmailInput: boolean;
@@ -14,6 +20,7 @@ export type LoginSignals = {
   hasSubmit: boolean;
   hasAuthenticatedShell: boolean;
   hasAuthCookie: boolean;
+  hasAuthStorageToken: boolean;
   hasAppShell: boolean;
 };
 
@@ -86,6 +93,23 @@ async function resolvePasswordInput(page: Page) {
 async function hasAuthCookie(page: Page) {
   const cookies = await page.context().cookies();
   return cookies.some((cookie) => /auth|token|session/i.test(cookie.name));
+}
+
+async function hasAuthStorageToken(page: Page) {
+  try {
+    return await page.evaluate(() => {
+      const keys = ["access_token", "token", "neft_token", "auth_token"];
+      for (const key of keys) {
+        const value = localStorage.getItem(key) || sessionStorage.getItem(key);
+        if (value && value.length > 10) {
+          return true;
+        }
+      }
+      return false;
+    });
+  } catch {
+    return false;
+  }
 }
 
 async function buildLoginDiagnostics(page: Page, reason: string) {
@@ -170,7 +194,8 @@ export async function getLoginSignals(page: Page): Promise<LoginSignals> {
   const hasPasswordInput = await hasVisibleLocator(pass);
   const hasSubmit = await hasVisibleLocator(submit);
   const authCookiePresent = await hasAuthCookie(page);
-  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || authCookiePresent;
+  const authStorageToken = await hasAuthStorageToken(page);
+  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || authCookiePresent || authStorageToken;
   const hasShell = await hasAppShell(page);
   return {
     hasEmailInput,
@@ -178,6 +203,7 @@ export async function getLoginSignals(page: Page): Promise<LoginSignals> {
     hasSubmit,
     hasAuthenticatedShell,
     hasAuthCookie: authCookiePresent,
+    hasAuthStorageToken: authStorageToken,
     hasAppShell: hasShell,
   };
 }
@@ -200,6 +226,20 @@ async function waitForAuthResult(page: Page) {
   return Promise.race([authResponsePromise, authFailurePromise]);
 }
 
+async function waitForLoginOutcome(page: Page, initialUrl: string, timeoutMs = 7_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const signals = await getLoginSignals(page);
+    const currentUrl = page.url();
+    const urlChanged = currentUrl !== initialUrl && !currentUrl.includes("/login");
+    if (signals.hasAuthenticatedShell || signals.hasAuthStorageToken || urlChanged) {
+      return true;
+    }
+    await page.waitForTimeout(300);
+  }
+  return false;
+}
+
 export async function loginViaUi({
   page,
   baseUrl,
@@ -213,7 +253,7 @@ export async function loginViaUi({
 }): Promise<LoginState> {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(500);
   const initialSignals = await getLoginSignals(page);
   if (initialSignals.hasAuthenticatedShell) {
     return "ALREADY_AUTHENTICATED";
@@ -233,13 +273,25 @@ export async function loginViaUi({
   await submit.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
   await email.fill(emailValue);
   await pass.fill(passwordValue);
+  const initialUrl = page.url();
   const authResultPromise = waitForAuthResult(page);
   await submit.click();
   const authResult = await authResultPromise;
+  const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  if (loginOutcome) {
+    return "LOGIN_OK";
+  }
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(500);
   const postSignals = await getLoginSignals(page);
-  return resolveLoginState(page, postSignals, authResult ?? null);
+  const resolved = await resolveLoginState(page, postSignals, authResult ?? null);
+  if (resolved === "ALREADY_AUTHENTICATED") {
+    return "LOGIN_OK";
+  }
+  if (resolved === "LOGIN_READY") {
+    return "LOGIN_STUCK_ON_LOGIN";
+  }
+  return resolved;
 }
 
 async function performLogin({
@@ -256,7 +308,7 @@ async function performLogin({
   appLabel: string;
 }) {
   const result = await loginViaUi({ page, baseUrl, emailValue, passwordValue });
-  if (result === "ALREADY_AUTHENTICATED") {
+  if (result === "ALREADY_AUTHENTICATED" || result === "LOGIN_OK") {
     return;
   }
   if (result === "LOGIN_INPUTS_NOT_FOUND") {
@@ -266,6 +318,10 @@ async function performLogin({
   if (result === "LOGIN_SERVICE_DOWN") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_SERVICE_DOWN`);
     throw new Error(await buildLoginDiagnostics(page, `LOGIN_SERVICE_DOWN (screenshot: ${screenshotPath})`));
+  }
+  if (result === "LOGIN_STUCK_ON_LOGIN") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_STUCK_ON_LOGIN`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_LOGIN_STUCK_ON_LOGIN (screenshot: ${screenshotPath})`));
   }
   const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_REDIRECT_LOGIN`);
   throw new Error(await buildLoginDiagnostics(page, `FAIL_REDIRECT_LOGIN (screenshot: ${screenshotPath})`));

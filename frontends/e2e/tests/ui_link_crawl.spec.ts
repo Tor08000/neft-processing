@@ -187,7 +187,7 @@ function evaluateResult(
   if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
     return { result: "SKIP" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
   }
-  if (loginState === "LOGIN_READY") {
+  if (loginState === "LOGIN_READY" || loginState === "LOGIN_STUCK_ON_LOGIN") {
     return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
   }
   if (notFound) {
@@ -228,7 +228,7 @@ async function crawlApp({
   let index = 0;
 
   const loginState = await login(page);
-  const loginUrl = new URL("login", baseUrl).toString();
+  const loginUrl = baseUrl;
   if (loginState === "LOGIN_SERVICE_DOWN") {
     const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_service_down.png`);
     ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
@@ -257,14 +257,17 @@ async function crawlApp({
     });
     return;
   }
-  if (loginState !== "ALREADY_AUTHENTICATED") {
+  if (loginState !== "ALREADY_AUTHENTICATED" && loginState !== "LOGIN_OK") {
     const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_not_confirmed.png`);
     ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
       url: loginUrl,
       result: "FAIL",
-      reason: `FAIL_REDIRECT_LOGIN (auth: ${ADMIN_AUTH_URL})`,
+      reason:
+        loginState === "LOGIN_STUCK_ON_LOGIN"
+          ? `FAIL_LOGIN_STUCK_ON_LOGIN (auth: ${ADMIN_AUTH_URL})`
+          : `FAIL_REDIRECT_LOGIN (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
