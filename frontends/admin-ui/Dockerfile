@@ -3,6 +3,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app/frontends/admin-ui
 
+ARG VITE_API_BASE_URL=/api
+ARG VITE_CORE_API_BASE=/api/core
+ARG VITE_AUTH_API_BASE=/api/auth
+ARG VITE_AI_API_BASE=/api/ai
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_CORE_API_BASE=$VITE_CORE_API_BASE
+ENV VITE_AUTH_API_BASE=$VITE_AUTH_API_BASE
+ENV VITE_AI_API_BASE=$VITE_AI_API_BASE
+
 COPY frontends/admin-ui/package*.json ./
 RUN npm ci
 RUN mkdir -p /app/frontends && ln -sf /app/frontends/admin-ui/node_modules /app/frontends/node_modules

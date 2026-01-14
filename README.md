@@ -192,7 +192,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
   * `/api/auth/*` → auth-host
   * `/api/ai/*` → ai-service
 * Админские и клиентские SPA остаются на путях `/admin/` и `/client/`, но их API-запросы идут через новые namespace'ы `/api/core/...` и `/api/auth/...`.
-* Admin Web/Client Web собираются с `VITE_API_BASE_URL=http://localhost` (или пусто для относительных путей),
+* Admin Web/Client Web собираются с `VITE_API_BASE_URL=/api` (или `http://localhost` для абсолютной схемы),
   `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
 
 ### Smoke-проверки (gateway, health, DB, merge markers)

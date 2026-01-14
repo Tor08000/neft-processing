@@ -31,12 +31,24 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
 ```
 
+Windows CMD (одной строкой, без `\`):
+
+```bat
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
 ### Admin login
 
 ```bash
 curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_ADMIN_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_ADMIN_PASSWORD}\"}"
+```
+
+Windows CMD:
+
+```bat
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" -H "Content-Type: application/json" -d "{\"email\":\"%NEFT_BOOTSTRAP_ADMIN_EMAIL%\",\"password\":\"%NEFT_BOOTSTRAP_ADMIN_PASSWORD%\"}"
 ```
 
 ### Client login
@@ -47,12 +59,24 @@ curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_CLIENT_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_CLIENT_PASSWORD}\"}"
 ```
 
+Windows CMD:
+
+```bat
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" -H "Content-Type: application/json" -d "{\"email\":\"%NEFT_BOOTSTRAP_CLIENT_EMAIL%\",\"password\":\"%NEFT_BOOTSTRAP_CLIENT_PASSWORD%\"}"
+```
+
 ### Partner login
 
 ```bash
 curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_PARTNER_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_PARTNER_PASSWORD}\"}"
+```
+
+Windows CMD:
+
+```bat
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" -H "Content-Type: application/json" -d "{\"email\":\"%NEFT_BOOTSTRAP_PARTNER_EMAIL%\",\"password\":\"%NEFT_BOOTSTRAP_PARTNER_PASSWORD%\"}"
 ```
 
 Ожидаемый результат: стабильные успешные ответы 10/10 раз (без 502 от gateway).
@@ -215,6 +239,12 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
 ```
 
+Windows CMD:
+
+```bat
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
 Ожидание:
 
 - HTTP/1.1 200
@@ -223,6 +253,13 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
 ## 2.4) Обязательные smoke-проверки
 
 ```bash
+curl -I http://localhost/admin/assets/index-XXXX.js
+curl -I http://localhost/client/assets/index-XXXX.css
+```
+
+Windows CMD:
+
+```bat
 curl -I http://localhost/admin/assets/index-XXXX.js
 curl -I http://localhost/client/assets/index-XXXX.css
 ```
@@ -238,6 +275,11 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
 ```
 
+Windows CMD:
+
+```bat
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
 Ожидание:
 
 - HTTP 200.

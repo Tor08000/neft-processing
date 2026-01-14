@@ -39,4 +39,15 @@ describe("joinUrl", () => {
       "http://localhost/api/auth/v1/auth/login",
     );
   });
+
+  it("handles required joinUrl cases without duplicating segments", () => {
+    expect(joinUrl("http://localhost", "/api/auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+    expect(joinUrl("/api", "/auth/v1/auth/login")).toBe("/api/auth/v1/auth/login");
+    expect(joinUrl("/api/auth", "/v1/auth/login")).toBe("/api/auth/v1/auth/login");
+    expect(joinUrl("http://localhost/api", "/auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+  });
 });

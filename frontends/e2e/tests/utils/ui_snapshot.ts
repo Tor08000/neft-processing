@@ -314,6 +314,15 @@ export async function login(
     tracker.stop();
 
     if (loginOk) {
+      const shellVisible = await hasAppShell(page);
+      if (!shellVisible) {
+        report.loginStates[app] = {
+          state: "FAIL_LOGIN_NOT_COMPLETED",
+          authUrl,
+          notes: "app shell missing after login",
+        };
+        return false;
+      }
       return true;
     }
     if (loginState === "LOGIN_READY") {
@@ -450,6 +459,13 @@ async function visitAndSnap({
   const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
     const failScreenshot = await takeScreenshot(page, report, app, `${route.id}__${failureReason}`);
+    if (failureReason === "FAIL_APP_SHELL_MISSING" && report.loginStates[app]?.state === "LOGIN_OK") {
+      report.loginStates[app] = {
+        state: "FAIL_LOGIN_NOT_COMPLETED",
+        authUrl: report.loginStates[app]?.authUrl ?? "http://localhost/api/auth/v1/auth/login",
+        notes: "app shell missing after login",
+      };
+    }
     report.errors.push(`[${app}] ${route.label}: ${failureReason} (${url})`);
     if (failureReason === "FAIL_JS_ERROR" && jsErrors.length > 0) {
       report.errors.push(`[${app}] ${route.label}: js errors: ${jsErrors.join(" | ")}`);
@@ -651,13 +667,19 @@ export function writeReport(report: ReportState) {
     lines.push(`- auth_base_env: ${probe.authBaseEnv ?? "null"}`);
     lines.push(`- auth_effective_url: ${probe.authEffectiveUrl ?? "null"}`);
     lines.push(`- auth_response_status: ${probe.authResponseStatus ?? "null"}`);
+    lines.push(`- auth_response_content_type: ${probe.authResponseContentType ?? "null"}`);
+    lines.push(`- auth_response_token_type: ${probe.authResponseTokenType ?? "null"}`);
     lines.push(`- auth_response_body_snippet: ${probe.authResponseBodySnippet ?? "null"}`);
     lines.push(`- auth_request_failed_error: ${probe.authRequestFailedError ?? "null"}`);
-    if (probe.authResponseStatus !== null && probe.authResponseStatus !== 200) {
+    const isAuthFailureContext =
+      probe.authResponseStatus !== null &&
+      (probe.authResponseStatus !== 200 || (probe.authResponseContentType?.includes("text/html") ?? false));
+    if (isAuthFailureContext) {
       lines.push(
         `- auth_failure_context: ${JSON.stringify({
           auth_effective_url: probe.authEffectiveUrl ?? null,
           status: probe.authResponseStatus,
+          content_type: probe.authResponseContentType ?? null,
           body_snippet: probe.authResponseBodySnippet ?? null,
         })}`,
       );
