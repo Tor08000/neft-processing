@@ -1,11 +1,18 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
 // https://vitejs.dev/config/
-export default defineConfig(() => {
+const resolveBasePath = (env: Record<string, string>, fallback: string) => {
+  const rawBase = env.VITE_PUBLIC_BASE || env.VITE_BASE_PATH || fallback;
+  return rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+};
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
   return {
-    base: "/partner/",
+    base: resolveBasePath(env, "/partner/"),
     plugins: [react()],
     resolve: {
       alias: {
