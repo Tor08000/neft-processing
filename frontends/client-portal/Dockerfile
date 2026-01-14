@@ -19,6 +19,7 @@ ENV npm_config_audit=false
 
 COPY frontends/client-portal/package.json frontends/client-portal/package-lock.json ./
 RUN npm ci
+RUN mkdir -p /app/frontends && ln -sf /app/frontends/client-portal/node_modules /app/frontends/node_modules
 
 COPY frontends/client-portal/ ./
 COPY frontends/shared/ /app/frontends/shared/
