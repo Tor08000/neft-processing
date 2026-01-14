@@ -1,38 +1,32 @@
-const normalizePrefix = (raw: string): string => {
-  const value = raw.startsWith("/") ? raw : `/${raw}`;
-  return value.replace(/\/+$/, "");
+const normalizeBase = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (/^https?:\/\//.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/+$/, "");
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
+const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api";
+const API_BASE = normalizeBase(rawApiBase && rawApiBase.trim() !== "" ? rawApiBase : "/api");
 
-const joinBase = (base: string, raw: string): string => {
-  const normalized = normalizePrefix(raw);
-  if (base.endsWith(normalized)) {
+const joinPath = (base: string, suffix: string): string => {
+  const trimmedSuffix = suffix.replace(/^\/+/, "");
+  if (!trimmedSuffix) {
     return base;
   }
-  if (base.endsWith("/api/auth") && normalized.startsWith("/api/auth/")) {
-    return `${base}${normalized.replace(/^\/api\/auth/, "")}`;
-  }
-  return `${base}${normalized}`;
+  return `${base}/${trimmedSuffix}`;
 };
 
-const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): string => {
-  const fallback = canonicalSuffix.startsWith("/") ? canonicalSuffix : `/${canonicalSuffix}`;
-  const raw = (legacyPrefix ?? (API_BASE ? `${API_BASE}${fallback}` : fallback)).replace(/\/+$/, "");
-
-  if (/^https?:\/\//.test(raw)) {
-    return raw;
+const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
+  if (legacyPrefix && legacyPrefix.trim() !== "") {
+    return normalizeBase(legacyPrefix);
   }
-
-  if (API_BASE) {
-    return joinBase(API_BASE, raw);
-  }
-
-  return raw.startsWith("/") ? raw : `/${raw}`;
+  return joinPath(API_BASE, defaultSuffix);
 };
 
-export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "/api/core");
-export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "/api/auth");
-export const AI_API_BASE = buildBase(import.meta.env.VITE_AI_API_BASE, "/api/ai");
+export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "core");
+export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "auth");
+export const AI_API_BASE = buildBase(import.meta.env.VITE_AI_API_BASE, "ai");
 export const ADMIN_BASE_URL = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/+$/, "") || "/";
 export const API_BASE_URL = API_BASE;
