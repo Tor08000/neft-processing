@@ -1,47 +1,13 @@
-const normalizeBase = (raw: string): string => {
-  const trimmed = raw.trim();
-  if (/^https?:\/\//.test(trimmed)) {
-    return trimmed.replace(/\/+$/, "");
-  }
-  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  return withLeading.replace(/\/+$/, "");
-};
+const normalizeBase = (raw: string): string => raw.trim().replace(/\/+$/, "");
 
-const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api";
-const API_BASE = normalizeBase(rawApiBase && rawApiBase.trim() !== "" ? rawApiBase : "/api");
+const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "";
+const API_BASE = rawApiBase && rawApiBase.trim() !== "" ? rawApiBase : "";
 const clientBase = normalizeBase(import.meta.env.BASE_URL ?? "/client/");
 
-const splitBase = (base: string) => {
-  if (/^https?:\/\//.test(base)) {
-    const url = new URL(base);
-    const basePath = url.pathname.replace(/\/+$/, "");
-    return {
-      origin: `${url.protocol}//${url.host}`,
-      path: basePath === "/" ? "" : basePath,
-    };
-  }
-  return { origin: "", path: base.replace(/\/+$/, "") };
-};
-
-const stripDuplicateSegment = (basePath: string, path: string, segment: string) => {
-  if (!basePath.endsWith(`/${segment}`)) {
-    return path;
-  }
-  return path.replace(new RegExp(`^${segment}(\\/|$)`), "");
-};
-
-export const joinUrl = (base: string, suffix: string): string => {
-  const normalizedBase = normalizeBase(base);
-  const trimmedSuffix = suffix.trim().replace(/^\/+/, "");
-  if (!trimmedSuffix) {
-    return normalizedBase;
-  }
-  const { origin, path: basePath } = splitBase(normalizedBase);
-  let normalizedSuffix = trimmedSuffix;
-  normalizedSuffix = stripDuplicateSegment(basePath, normalizedSuffix, "api");
-  normalizedSuffix = stripDuplicateSegment(basePath, normalizedSuffix, "auth");
-  const combinedPath = basePath ? `${basePath}/${normalizedSuffix}` : `/${normalizedSuffix}`;
-  return origin ? `${origin}${combinedPath}` : combinedPath;
+export const joinUrl = (base: string, path: string): string => {
+  const b = normalizeBase(base);
+  const p = path.replace(/^\/+/, "");
+  return `${b}/${p}`;
 };
 
 const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
