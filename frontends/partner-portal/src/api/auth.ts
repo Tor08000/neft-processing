@@ -5,7 +5,7 @@ export { ApiError, UnauthorizedError, ValidationError };
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
-    "/login",
+    "/v1/auth/login",
     { method: "POST", body: JSON.stringify(payload) },
     { base: "auth" },
   );
@@ -20,5 +20,5 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function fetchMe(token: string): Promise<MeResponse> {
-  return request<MeResponse>("/me", { method: "GET" }, { token, base: "auth" });
+  return request<MeResponse>("/v1/auth/me", { method: "GET" }, { token, base: "auth" });
 }

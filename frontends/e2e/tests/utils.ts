@@ -9,12 +9,11 @@ export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/ap
 export type LoginState =
   | "LOGIN_READY"
   | "LOGIN_SERVICE_DOWN"
+  | "LOGIN_BAD_ROUTE"
   | "ALREADY_AUTHENTICATED"
   | "LOGIN_INPUTS_NOT_FOUND"
   | "LOGIN_OK"
   | "LOGIN_STUCK_ON_LOGIN"
-  | "FAIL_AUTH_HTML_RESPONSE"
-  | "FAIL_UI_REDIRECT_MISSING"
   | "FAIL_AUTH_TOKEN_NOT_STORED";
 
 export type LoginSignals = {
@@ -60,7 +59,7 @@ const requireEnv = (value: string | undefined, name: string) => {
 
 const loginWaitOptions = { timeout: 15_000 };
 const authProbeTimeoutMs = 8_000;
-const authEndpointPattern = /\/api(?:\/auth)?\/v1\/auth\/login(?:\?|$)/;
+const authEndpointPattern = /\/api(?:\/api)*\/auth\/v1\/auth\/login(?:\?|$)/;
 
 const emailSelector = [
   'input[type="email"]',
@@ -492,14 +491,23 @@ export async function loginViaUi({
     await authProbe.onProbe(probeResult);
   }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
-  if (probeResult.authResponseContentType?.includes("text/html")) {
-    return "FAIL_AUTH_HTML_RESPONSE";
+  if (probeResult.authResponseContentType?.includes("text/html") || probeResult.authResponseStatus === 404) {
+    return "LOGIN_BAD_ROUTE";
+  }
+  if (probeResult.authResponseStatus !== null && probeResult.authResponseStatus >= 500) {
+    return "LOGIN_SERVICE_DOWN";
+  }
+  if (authEvent === null) {
+    return "LOGIN_SERVICE_DOWN";
   }
   if (authSuccess) {
     if (loginOutcome) {
       return "LOGIN_OK";
     }
-    return probeResult.tokenFound.kind === "none" ? "FAIL_AUTH_TOKEN_NOT_STORED" : "FAIL_UI_REDIRECT_MISSING";
+    if (probeResult.tokenFound.kind !== "none") {
+      return "LOGIN_STUCK_ON_LOGIN";
+    }
+    return "FAIL_AUTH_TOKEN_NOT_STORED";
   }
   if (loginOutcome) {
     return "LOGIN_OK";
@@ -512,7 +520,10 @@ export async function loginViaUi({
     return "LOGIN_OK";
   }
   if (resolved === "LOGIN_READY") {
-    return "LOGIN_STUCK_ON_LOGIN";
+    if (probeResult.authResponseStatus === 200 && probeResult.tokenFound.kind !== "none") {
+      return "LOGIN_STUCK_ON_LOGIN";
+    }
+    return "LOGIN_READY";
   }
   return resolved;
 }
@@ -546,17 +557,13 @@ async function performLogin({
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_STUCK_ON_LOGIN`);
     throw new Error(await buildLoginDiagnostics(page, `FAIL_LOGIN_STUCK_ON_LOGIN (screenshot: ${screenshotPath})`));
   }
-  if (result === "FAIL_AUTH_HTML_RESPONSE") {
-    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_HTML_RESPONSE`);
-    throw new Error(await buildLoginDiagnostics(page, `FAIL_AUTH_HTML_RESPONSE (screenshot: ${screenshotPath})`));
+  if (result === "LOGIN_BAD_ROUTE") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_BAD_ROUTE`);
+    throw new Error(await buildLoginDiagnostics(page, `LOGIN_BAD_ROUTE (screenshot: ${screenshotPath})`));
   }
   if (result === "FAIL_AUTH_TOKEN_NOT_STORED") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_AUTH_TOKEN_NOT_STORED`);
     throw new Error(await buildLoginDiagnostics(page, `FAIL_AUTH_TOKEN_NOT_STORED (screenshot: ${screenshotPath})`));
-  }
-  if (result === "FAIL_UI_REDIRECT_MISSING") {
-    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_UI_REDIRECT_MISSING`);
-    throw new Error(await buildLoginDiagnostics(page, `FAIL_UI_REDIRECT_MISSING (screenshot: ${screenshotPath})`));
   }
   const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_REDIRECT_LOGIN`);
   throw new Error(await buildLoginDiagnostics(page, `FAIL_REDIRECT_LOGIN (screenshot: ${screenshotPath})`));

@@ -29,7 +29,7 @@ const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): str
 export const CORE_API_BASE =
   `${buildBase(import.meta.env.VITE_CORE_API_BASE, "core")}${partnerBase}/api/v1`.replace(/\/+$/, "");
 export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "core").replace(/\/+$/, "");
-export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "auth").replace(/\/+$/, "");
+export const AUTH_API_BASE = normalizeBase(import.meta.env.VITE_AUTH_API_BASE ?? "/api/auth");
 export const AI_API_BASE = `${buildBase(import.meta.env.VITE_AI_API_BASE, "ai")}/api/v1`.replace(/\/+$/, "");
 export const PARTNER_BASE_PATH = partnerBase;
 export const API_BASE_URL = API_BASE;
