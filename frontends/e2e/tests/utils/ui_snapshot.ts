@@ -32,7 +32,7 @@ type RouteResult = {
   id: string;
   path: string;
   label: string;
-  status: "OK" | FailureStatus;
+  status: "OK" | "NOT_IMPLEMENTED" | FailureStatus;
   screenshot?: string;
   detailsScreenshot?: string;
   emptyStateScreenshot?: string;
@@ -225,11 +225,19 @@ async function getFailureReason({
   page: Page;
   responseStatus?: number;
   signals?: NavigationSignals;
-}): Promise<FailureStatus | null> {
+}): Promise<FailureStatus | "NOT_IMPLEMENTED" | null> {
   await page.waitForTimeout(800);
   const loginState = await detectLoginState(page);
   if (loginState === "LOGIN_SERVICE_DOWN") {
     return "FAIL_LOGIN_SERVICE_DOWN";
+  }
+
+  if (
+    (await hasVisibleText(page, "В разработке")) ||
+    (await hasVisibleText(page, "Not implemented")) ||
+    (await hasVisibleText(page, "Coming soon"))
+  ) {
+    return "NOT_IMPLEMENTED";
   }
 
   if (await hasVisibleText(page, "Страница не найдена")) {
@@ -458,6 +466,14 @@ async function visitAndSnap({
 }) {
   const failureReason = await getFailureReason({ page, responseStatus, signals });
   if (failureReason) {
+    if (failureReason === "NOT_IMPLEMENTED") {
+      const infoScreenshot = await takeScreenshot(page, report, app, `${route.id}__NOT_IMPLEMENTED`);
+      return {
+        status: "NOT_IMPLEMENTED",
+        screenshot: infoScreenshot,
+        note: "NOT_IMPLEMENTED",
+      };
+    }
     const failScreenshot = await takeScreenshot(page, report, app, `${route.id}__${failureReason}`);
     if (failureReason === "FAIL_APP_SHELL_MISSING" && report.loginStates[app]?.state === "LOGIN_OK") {
       report.loginStates[app] = {
@@ -599,6 +615,7 @@ export async function runSnapshots({
         });
         routeResult.status = snapResult.status;
         routeResult.screenshot = snapResult.screenshot;
+        routeResult.note = snapResult.note;
         if (snapResult.status !== "OK") {
           report.routes[app].push(routeResult);
           continue;

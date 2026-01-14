@@ -137,7 +137,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         if (err instanceof HtmlResponseError) {
-          setError("Ошибка маршрутизации gateway (HTML вместо JSON)");
+          console.error("Gateway returned HTML during login", {
+            url: err.url,
+            status: err.status,
+            contentType: err.contentType,
+            snippet: err.bodySnippet,
+          });
+          setError("Gateway returned HTML (wrong endpoint or SPA fallback)");
           return;
         }
         if (err instanceof ApiError && err.status >= 500) {

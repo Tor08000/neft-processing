@@ -27,7 +27,8 @@ const extractPathname = (value: string): string => {
   return value;
 };
 
-const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "";
+const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
+const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : "/api";
 const API_BASE = normalizeApiBase(rawApiBase);
 
 export const joinUrl = (base: string, path: string): string => {

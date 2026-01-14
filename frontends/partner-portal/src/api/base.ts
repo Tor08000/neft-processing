@@ -27,7 +27,8 @@ const extractPathname = (value: string): string => {
   return value;
 };
 
-const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "";
+const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
+const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : "/api";
 const API_BASE = normalizeApiBase(rawApiBase);
 const partnerBase = normalizeBase(import.meta.env.BASE_URL ?? "/partner/");
 
@@ -64,10 +65,7 @@ const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): str
   return joinUrl(API_BASE, defaultSuffix);
 };
 
-export const CORE_API_BASE = joinUrl(
-  buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core"),
-  `${partnerBase}/api/v1`,
-);
+export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core");
 export const CORE_ROOT_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core").replace(/\/+$/, "");
 export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "api/auth");
 export const AI_API_BASE = joinUrl(buildBase(import.meta.env.VITE_AI_API_BASE, "api/ai"), "/api/v1");

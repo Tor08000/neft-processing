@@ -1,4 +1,4 @@
-import { CORE_ROOT_API_BASE } from "../../api/base";
+import { CORE_ROOT_API_BASE, joinUrl } from "../../api/base";
 
 export type AchievementStatus = "locked" | "in_progress" | "unlocked" | "blocked";
 
@@ -30,7 +30,8 @@ export interface AchievementsSummary {
 }
 
 const buildUrl = (path: string, params?: Record<string, number>) => {
-  const url = new URL(`${CORE_ROOT_API_BASE}${path}`);
+  const baseOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const url = new URL(joinUrl(CORE_ROOT_API_BASE, path), baseOrigin);
   if (params) {
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)));
   }

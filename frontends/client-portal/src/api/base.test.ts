@@ -45,6 +45,8 @@ describe("joinUrl", () => {
       "http://localhost/api/auth/v1/auth/login",
     );
     expect(joinUrl("/api", "/auth/v1/auth/login")).toBe("/api/auth/v1/auth/login");
+    expect(joinUrl("/api", "/core/health")).toBe("/api/core/health");
+    expect(joinUrl("/api/core", "/client/fleet/groups")).toBe("/api/core/client/fleet/groups");
     expect(joinUrl("/api/auth", "/v1/auth/login")).toBe("/api/auth/v1/auth/login");
     expect(joinUrl("http://localhost/api", "/auth/v1/auth/login")).toBe(
       "http://localhost/api/auth/v1/auth/login",
