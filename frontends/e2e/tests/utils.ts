@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Page } from "playwright";
+import type { Page, Request, Response } from "playwright";
 
 export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost/client/";
 export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost/partner/";
@@ -24,6 +24,27 @@ export type LoginSignals = {
   hasAppShell: boolean;
 };
 
+export type TokenFound = {
+  kind: "localStorage" | "sessionStorage" | "cookie" | "none";
+  key: string | null;
+};
+
+export type AuthProbeResult = {
+  authRequestSent: boolean;
+  authResponseStatus: number | null;
+  authResponseBodySnippet: string | null;
+  authRequestFailedError: string | null;
+  storageKeys: string[];
+  cookieNames: string[];
+  tokenFound: TokenFound;
+  afterClickScreenshot?: string;
+};
+
+type AuthProbeOptions = {
+  onProbe?: (result: AuthProbeResult) => void | Promise<void>;
+  afterClickScreenshot?: (page: Page) => Promise<string>;
+};
+
 const resolveEnv = (value: string | undefined, fallback: string) => (value && value.trim() !== "" ? value : fallback);
 const requireEnv = (value: string | undefined, name: string) => {
   if (!value || value.trim() === "") {
@@ -33,6 +54,8 @@ const requireEnv = (value: string | undefined, name: string) => {
 };
 
 const loginWaitOptions = { timeout: 15_000 };
+const authProbeTimeoutMs = 8_000;
+const authEndpointFragment = "/api/auth/v1/auth/login";
 
 const emailSelector = [
   'input[type="email"]',
@@ -97,16 +120,8 @@ async function hasAuthCookie(page: Page) {
 
 async function hasAuthStorageToken(page: Page) {
   try {
-    return await page.evaluate(() => {
-      const keys = ["access_token", "token", "neft_token", "auth_token"];
-      for (const key of keys) {
-        const value = localStorage.getItem(key) || sessionStorage.getItem(key);
-        if (value && value.length > 10) {
-          return true;
-        }
-      }
-      return false;
-    });
+    const probe = await probeStorage(page);
+    return probe.tokenFound.kind !== "none";
   } catch {
     return false;
   }
@@ -158,7 +173,11 @@ async function isAuthServiceDown(page: Page, authResult?: { type: "response"; st
   return !(await checkAuthAvailability(page));
 }
 
-async function resolveLoginState(page: Page, signals: LoginSignals, authResult?: { type: "response"; status: number } | { type: "failed" } | null): Promise<LoginState> {
+async function resolveLoginState(
+  page: Page,
+  signals: LoginSignals,
+  authResult?: { type: "response"; status: number } | { type: "failed" } | null,
+): Promise<LoginState> {
   if (signals.hasAuthenticatedShell) {
     return "ALREADY_AUTHENTICATED";
   }
@@ -213,15 +232,22 @@ export async function detectLoginState(page: Page): Promise<LoginState> {
   return resolveLoginState(page, signals);
 }
 
-async function waitForAuthResult(page: Page) {
-  const authPattern = /\/api\/auth\/v1\/auth\/login/i;
+function isAuthRequest(request: Request) {
+  return request.url().includes(authEndpointFragment) && request.method() === "POST";
+}
+
+function isAuthResponse(response: Response) {
+  return response.url().includes(authEndpointFragment) && response.request().method() === "POST";
+}
+
+async function waitForAuthEvent(page: Page) {
   const authResponsePromise = page
-    .waitForResponse((response) => authPattern.test(response.url()), { timeout: 5_000 })
-    .then((response) => ({ type: "response" as const, status: response.status() }))
+    .waitForResponse((response) => isAuthResponse(response), { timeout: authProbeTimeoutMs })
+    .then((response) => ({ type: "response" as const, response }))
     .catch(() => null);
   const authFailurePromise = page
-    .waitForEvent("requestfailed", { predicate: (request) => authPattern.test(request.url()), timeout: 5_000 })
-    .then(() => ({ type: "failed" as const }))
+    .waitForEvent("requestfailed", { predicate: (request) => isAuthRequest(request), timeout: authProbeTimeoutMs })
+    .then((request) => ({ type: "failed" as const, request }))
     .catch(() => null);
   return Promise.race([authResponsePromise, authFailurePromise]);
 }
@@ -240,16 +266,179 @@ async function waitForLoginOutcome(page: Page, initialUrl: string, timeoutMs = 7
   return false;
 }
 
+type StorageProbe = {
+  localKeys: string[];
+  sessionKeys: string[];
+  combinedKeys: string[];
+  tokenFound: TokenFound;
+  tokenFoundByShortlist: boolean;
+};
+
+async function probeStorage(page: Page): Promise<StorageProbe> {
+  return page.evaluate(() => {
+    const shortlist = ["access_token", "token", "neft_token", "auth_token"];
+    const localKeys = Object.keys(localStorage);
+    const sessionKeys = Object.keys(sessionStorage);
+    const combinedKeys = [
+      ...localKeys.map((key) => `localStorage:${key}`),
+      ...sessionKeys.map((key) => `sessionStorage:${key}`),
+    ];
+    const jwtRegex = /[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
+    const looksLikeJwt = (value: string | null) => {
+      if (!value) {
+        return false;
+      }
+      const match = value.match(jwtRegex);
+      if (!match) {
+        return false;
+      }
+      const candidate = match[0];
+      const parts = candidate.split(".");
+      return parts.length === 3 && parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part));
+    };
+    const checkShortlist = (
+      storage: Storage,
+      keys: string[],
+      kind: "localStorage" | "sessionStorage",
+    ): TokenFound | null => {
+      for (const key of keys) {
+        if (!shortlist.includes(key)) {
+          continue;
+        }
+        const value = storage.getItem(key);
+        if (value && value.length > 10) {
+          return { kind, key };
+        }
+      }
+      return null;
+    };
+    let tokenFound =
+      checkShortlist(localStorage, localKeys, "localStorage") ??
+      checkShortlist(sessionStorage, sessionKeys, "sessionStorage");
+    const tokenFoundByShortlist = Boolean(tokenFound);
+    if (!tokenFound) {
+      for (const key of localKeys) {
+        if (looksLikeJwt(localStorage.getItem(key))) {
+          tokenFound = { kind: "localStorage", key };
+          break;
+        }
+      }
+    }
+    if (!tokenFound) {
+      for (const key of sessionKeys) {
+        if (looksLikeJwt(sessionStorage.getItem(key))) {
+          tokenFound = { kind: "sessionStorage", key };
+          break;
+        }
+      }
+    }
+    return {
+      localKeys,
+      sessionKeys,
+      combinedKeys,
+      tokenFound: tokenFound ?? { kind: "none", key: null },
+      tokenFoundByShortlist,
+    };
+  });
+}
+
+function sliceKeysForReport(keys: string[], limit: number) {
+  return keys.slice(0, limit);
+}
+
+function looksLikeJwt(value: string | null) {
+  if (!value) {
+    return false;
+  }
+  const match = value.match(/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+  if (!match) {
+    return false;
+  }
+  const parts = match[0].split(".");
+  return parts.length === 3 && parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part));
+}
+
+async function buildAuthProbe({
+  page,
+  authEvent,
+  afterClickScreenshot,
+}: {
+  page: Page;
+  authEvent: Awaited<ReturnType<typeof waitForAuthEvent>> | null;
+  afterClickScreenshot?: string;
+}) {
+  let authRequestSent = false;
+  let authResponseStatus: number | null = null;
+  let authResponseBodySnippet: string | null = null;
+  let authRequestFailedError: string | null = null;
+  let hasAccessToken = false;
+  let authResult: { type: "response"; status: number } | { type: "failed" } | null = null;
+
+  if (authEvent?.type === "response") {
+    authRequestSent = true;
+    authResponseStatus = authEvent.response.status();
+    authResult = { type: "response", status: authResponseStatus };
+    const bodyText = await authEvent.response.text().catch(() => "");
+    if (bodyText) {
+      authResponseBodySnippet = bodyText.slice(0, 200);
+      if (authResponseStatus === 200) {
+        try {
+          const json = JSON.parse(bodyText) as { access_token?: string };
+          hasAccessToken = typeof json.access_token === "string" && json.access_token.length > 0;
+        } catch {
+          hasAccessToken = false;
+        }
+      }
+    }
+  } else if (authEvent?.type === "failed") {
+    authRequestSent = true;
+    authRequestFailedError = authEvent.request.failure()?.errorText ?? "request failed";
+    authResult = { type: "failed" };
+  }
+
+  await page.waitForTimeout(250);
+  const storageProbe = await probeStorage(page).catch(() => null);
+  const cookieJar = await page.context().cookies().catch(() => []);
+  const cookieNames = cookieJar.map((cookie) => cookie.name);
+  let tokenFound: TokenFound = storageProbe?.tokenFound ?? { kind: "none", key: null };
+  if (tokenFound.kind === "none") {
+    const cookieWithJwt = cookieJar.find((cookie) => looksLikeJwt(cookie.value));
+    if (cookieWithJwt) {
+      tokenFound = { kind: "cookie", key: cookieWithJwt.name };
+    }
+  }
+  const storageKeyLimit = storageProbe?.tokenFoundByShortlist ? 20 : 50;
+  const storageKeys = storageProbe ? sliceKeysForReport(storageProbe.combinedKeys, storageKeyLimit) : [];
+  const probeResult: AuthProbeResult = {
+    authRequestSent,
+    authResponseStatus,
+    authResponseBodySnippet,
+    authRequestFailedError,
+    storageKeys,
+    cookieNames: sliceKeysForReport(cookieNames, 20),
+    tokenFound,
+    afterClickScreenshot,
+  };
+
+  return {
+    authResult,
+    authSuccess: authResponseStatus === 200 && hasAccessToken,
+    probeResult,
+  };
+}
+
 export async function loginViaUi({
   page,
   baseUrl,
   emailValue,
   passwordValue,
+  authProbe,
 }: {
   page: Page;
   baseUrl: string;
   emailValue: string;
   passwordValue: string;
+  authProbe?: AuthProbeOptions;
 }): Promise<LoginState> {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
   await page.waitForLoadState("domcontentloaded");
@@ -274,10 +463,22 @@ export async function loginViaUi({
   await email.fill(emailValue);
   await pass.fill(passwordValue);
   const initialUrl = page.url();
-  const authResultPromise = waitForAuthResult(page);
+  const authEventPromise = waitForAuthEvent(page);
   await submit.click();
-  const authResult = await authResultPromise;
+  const afterClickScreenshot = await authProbe?.afterClickScreenshot?.(page);
+  const authEvent = await authEventPromise;
+  const { authResult, authSuccess, probeResult } = await buildAuthProbe({
+    page,
+    authEvent,
+    afterClickScreenshot,
+  });
+  if (authProbe?.onProbe) {
+    await authProbe.onProbe(probeResult);
+  }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  if (authSuccess) {
+    return "LOGIN_OK";
+  }
   if (loginOutcome) {
     return "LOGIN_OK";
   }
