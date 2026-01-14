@@ -8,6 +8,15 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 
 * Auth + UI testing: `docs/runbooks/AUTH_AND_UI_TESTING.md`
 
+## UI Snapshot & Link Crawl (эталонный запуск)
+
+```bat
+cd frontends
+npm install
+npm run ui:snapshot
+npm run ui:link-crawl
+```
+
 ## Как поднять систему локально
 
 1. Скопируйте переменные окружения:
@@ -121,7 +130,7 @@ NEFT Processing — локальная среда: Postgres, Redis, Core API, Au
 ### Админский токен для локальной разработки
 
 1) Убедитесь, что в `.env` прописаны `NEFT_BOOTSTRAP_ADMIN_EMAIL` и `NEFT_BOOTSTRAP_ADMIN_PASSWORD` (например, `admin@example.com` / `admin`).
-2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/api/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
+2) Выполните в PowerShell/cmd: `scripts\get_admin_token.cmd`. Скрипт запросит `access_token` у auth-host через gateway (`/api/auth/v1/auth/login`), сохранит его в `.admin_token` и выведет команду `set TOKEN=...`.
 3) Пример запроса к защищённой ручке через gateway:
 
 ```
@@ -141,7 +150,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * После входа:
  * Отобразится журнал операций с пагинацией.
   * Все запросы идут через gateway:
-    * `/api/auth/api/v1/auth/login`
+    * `/api/auth/v1/auth/login`
     * `/api/core/api/v1/admin/operations`
 * Клиент использует React Query для кэширования (операции: `staleTime=30s`, дашборд: `staleTime=5s`) и динамическую
   подгрузку страниц/тяжёлых компонентов через `React.lazy + Suspense`, чтобы ускорить initial load.
@@ -163,7 +172,7 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * Навигация включает "Дашборд", "Операции" и "Лимиты"; все запросы уходят на `/api/core/client/api/v1/...` через gateway.
 * Для демо-доступа используется единый аккаунт клиента. Креды задаются через
   переменные окружения `NEFT_BOOTSTRAP_CLIENT_EMAIL` и `NEFT_BOOTSTRAP_CLIENT_PASSWORD` в `.env`.
-* Авторизация клиентских API защищена JWT: логин по пути `/api/auth/api/v1/auth/login`, последующие запросы к `/api/core/client/api/v1/client/*`
+* Авторизация клиентских API защищена JWT: логин по пути `/api/auth/v1/auth/login`, последующие запросы к `/api/core/client/api/v1/client/*`
   выполняются с заголовком `Authorization: Bearer <token>`; при 401/403 клиент сбрасывает токен и возвращает пользователя на экран логина.
 * Базовый сценарий: форма логина → получение токена `auth-host` → загрузка дашборда и списков операций/лимитов по организации.
 

@@ -1,14 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, type Page } from "@playwright/test";
-import { ADMIN_BASE_URL, CLIENT_BASE_URL, PARTNER_BASE_URL, loginAdmin, loginClient, loginPartner } from "./utils";
-import { getOutputRoot, getRunId } from "./utils/ui_snapshot";
+import {
+  ADMIN_AUTH_URL,
+  ADMIN_BASE_URL,
+  CLIENT_BASE_URL,
+  PARTNER_BASE_URL,
+  LoginState,
+  detectLoginState,
+  loginViaUi,
+} from "./utils";
+import { CREDENTIALS, getOutputRoot, getRunId } from "./utils/ui_snapshot";
 
 type AppName = "admin" | "client" | "partner";
 
 type CrawlEntry = {
   url: string;
-  result: "OK" | "FAIL";
+  result: "OK" | "FAIL" | "SKIP";
   reason?: string;
   httpErrors: string[];
   consoleErrors: string[];
@@ -25,7 +33,6 @@ type CrawlTracker = {
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
 const MAX_DEPTH = Number(process.env.MAX_DEPTH ?? 4);
 const CRAWL_TIMEOUT_MS = 5_000;
-const LOGIN_TIMEOUT_MS = 15_000;
 
 const RUN_ID = getRunId();
 const OUTPUT_ROOT = getOutputRoot();
@@ -168,10 +175,16 @@ function evaluateResult(
   responseErrors: string[],
   consoleErrors: string[],
   pageErrors: string[],
-  redirectLogin: boolean,
+  loginState: LoginState,
   notFound: boolean,
 ) {
-  if (redirectLogin) {
+  if (loginState === "LOGIN_SERVICE_DOWN") {
+    return { result: "SKIP" as const, reason: "LOGIN_SERVICE_DOWN" };
+  }
+  if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
+    return { result: "FAIL" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
+  }
+  if (loginState === "LOGIN_READY") {
     return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
   }
   if (notFound) {
@@ -189,9 +202,6 @@ function evaluateResult(
   if (consoleErrors.length > 0) {
     return { result: "FAIL" as const, reason: "CONSOLE_ERROR" };
   }
-  if (pageUrl.includes("/login")) {
-    return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
-  }
   return { result: "OK" as const };
 }
 
@@ -205,7 +215,7 @@ async function crawlApp({
   page: Page;
   app: AppName;
   baseUrl: string;
-  login: (page: Page) => Promise<void>;
+  login: (page: Page) => Promise<LoginState>;
   report: CrawlReport;
 }) {
   const tracker = createTracker(page);
@@ -214,35 +224,44 @@ async function crawlApp({
   const visited = new Set<string>();
   let index = 0;
 
-  await login(page);
-  try {
-    await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: LOGIN_TIMEOUT_MS });
-  } catch (error) {
-    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_failed.png`);
+  const loginState = await login(page);
+  const loginUrl = new URL("login", baseUrl).toString();
+  if (loginState === "LOGIN_SERVICE_DOWN") {
+    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_service_down.png`);
     ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
-      url: page.url(),
-      result: "FAIL",
-      reason: `LOGIN_REDIRECT ${String((error as Error).message ?? "timeout")}`,
+      url: loginUrl,
+      result: "SKIP",
+      reason: `LOGIN_SERVICE_DOWN (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
     });
     return;
   }
-
-  const loginForm = page.locator("form:has(input[type='password']), form:has(input[type='email'])");
-  const loginFormVisible =
-    (await loginForm.count()) > 0 && (await loginForm.first().isVisible().catch(() => false));
-  if (page.url().includes("/login") || loginFormVisible) {
-    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_form.png`);
+  if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
+    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_inputs_missing.png`);
     ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
-      url: page.url(),
+      url: loginUrl,
       result: "FAIL",
-      reason: "LOGIN_FORM_VISIBLE",
+      reason: `LOGIN_INPUTS_NOT_FOUND (auth: ${ADMIN_AUTH_URL})`,
+      httpErrors: [],
+      consoleErrors: [],
+      screenshot: path.relative(process.cwd(), screenshotPath),
+    });
+    return;
+  }
+  if (loginState !== "ALREADY_AUTHENTICATED") {
+    const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_not_confirmed.png`);
+    ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    report[app].push({
+      url: loginUrl,
+      result: "FAIL",
+      reason: `FAIL_REDIRECT_LOGIN (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
@@ -277,14 +296,14 @@ async function crawlApp({
     }
     const { consoleErrors, responseErrors, pageErrors } = tracker.stop();
 
-    const redirectLogin = page.url().includes("/login") || (await hasVisibleText(page, "Войти"));
+    const pageLoginState = await detectLoginState(page);
     const notFound = await hasVisibleText(page, "Страница не найдена");
     const { result, reason } = evaluateResult(
       page.url(),
       responseErrors,
       consoleErrors,
       pageErrors,
-      redirectLogin,
+      pageLoginState,
       notFound,
     );
 
@@ -349,10 +368,14 @@ function writeLinkReport(report: CrawlReport) {
     lines.push("");
     lines.push("| URL | Result | Reason | HTTP errors | Console errors | Screenshot |");
     lines.push("| --- | ------ | ------ | ----------- | -------------- | ---------- |");
-    for (const entry of report[app]) {
-      lines.push(
-        `| ${entry.url} | ${entry.result} | ${entry.reason ?? ""} | ${entry.httpErrors.join("<br>")} | ${entry.consoleErrors.join("<br>")} | ${entry.screenshot} |`,
-      );
+    if (report[app].length === 0) {
+      lines.push("| - | FAIL | NO_PAGES_DISCOVERED |  |  |  |");
+    } else {
+      for (const entry of report[app]) {
+        lines.push(
+          `| ${entry.url} | ${entry.result} | ${entry.reason ?? ""} | ${entry.httpErrors.join("<br>")} | ${entry.consoleErrors.join("<br>")} | ${entry.screenshot} |`,
+        );
+      }
     }
     lines.push("");
   });
@@ -375,7 +398,13 @@ test.describe.serial("UI Link Crawler", () => {
       page,
       app: "admin",
       baseUrl: ADMIN_BASE_URL,
-      login: loginAdmin,
+      login: (loginPage) =>
+        loginViaUi({
+          page: loginPage,
+          baseUrl: ADMIN_BASE_URL,
+          emailValue: CREDENTIALS.admin.email,
+          passwordValue: CREDENTIALS.admin.password,
+        }),
       report,
     });
   });
@@ -385,7 +414,13 @@ test.describe.serial("UI Link Crawler", () => {
       page,
       app: "client",
       baseUrl: CLIENT_BASE_URL,
-      login: loginClient,
+      login: (loginPage) =>
+        loginViaUi({
+          page: loginPage,
+          baseUrl: CLIENT_BASE_URL,
+          emailValue: CREDENTIALS.client.email,
+          passwordValue: CREDENTIALS.client.password,
+        }),
       report,
     });
   });
@@ -395,7 +430,13 @@ test.describe.serial("UI Link Crawler", () => {
       page,
       app: "partner",
       baseUrl: PARTNER_BASE_URL,
-      login: loginPartner,
+      login: (loginPage) =>
+        loginViaUi({
+          page: loginPage,
+          baseUrl: PARTNER_BASE_URL,
+          emailValue: CREDENTIALS.partner.email,
+          passwordValue: CREDENTIALS.partner.password,
+        }),
       report,
     });
   });

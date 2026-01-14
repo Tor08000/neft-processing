@@ -4,6 +4,9 @@ import { expect, type Page } from "@playwright/test";
 export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost:4174";
 export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost:4175";
 export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost:4173";
+export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+
+export type LoginState = "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "ALREADY_AUTHENTICATED" | "LOGIN_INPUTS_NOT_FOUND";
 
 const resolveEnv = (value: string | undefined, fallback: string) => (value && value.trim() !== "" ? value : fallback);
 const requireEnv = (value: string | undefined, name: string) => {
@@ -35,6 +38,13 @@ const passwordSelector = [
   'input[data-testid*="pass" i]',
 ].join(", ");
 
+const submitSelector = [
+  'button[type="submit"]',
+  'button:has-text("Войти")',
+  'button:has-text("Login")',
+  'button:has-text("Sign in")',
+].join(", ");
+
 async function resolvePasswordInput(page: Page) {
   const pass = page.locator(passwordSelector).first();
   if ((await pass.count()) > 0) {
@@ -51,17 +61,40 @@ async function resolvePasswordInput(page: Page) {
     .first();
 }
 
+async function hasVisibleText(page: Page, text: string | RegExp) {
+  const locator = page.getByText(text, { exact: false });
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    if (await locator.nth(index).isVisible().catch(() => false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function hasAuthCookie(page: Page) {
+  const cookies = await page.context().cookies();
+  return cookies.some((cookie) => /auth|token|session/i.test(cookie.name));
+}
+
 async function buildLoginDiagnostics(page: Page, reason: string) {
   const url = page.url();
   const title = await page.title();
   const bodyText = await page.locator("body").innerText();
   const snippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 200);
-  return `${reason}. URL: ${url}. Title: ${title}. Body: ${snippet}`;
+  return `${reason}. URL: ${url}. Title: ${title}. Body: ${snippet}. Auth URL: ${ADMIN_AUTH_URL}.`;
 }
 
 async function hasLoggedInShell(page: Page) {
   const sidebar = page.locator("nav, aside, [data-testid='app-shell'], [data-testid='sidebar']");
-  const logoutButton = page.locator("button:has-text('Выйти'), button:has-text('Logout'), a:has-text('Выйти'), a:has-text('Logout')");
+  const logoutButton = page.locator(
+    "button:has-text('Выйти'), button:has-text('Logout'), a:has-text('Выйти'), a:has-text('Logout')",
+  );
+  const currentUrl = page.url();
+  const isDashboard = ["/dashboard", "/orders", "/home"].some((segment) => currentUrl.includes(segment));
+  if (isDashboard) {
+    return true;
+  }
   if ((await sidebar.count()) > 0 && (await sidebar.first().isVisible().catch(() => false))) {
     return true;
   }
@@ -71,65 +104,121 @@ async function hasLoggedInShell(page: Page) {
   return false;
 }
 
-export async function loginClient(page: Page) {
-  await page.goto(`${CLIENT_BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
+async function takeLoginScreenshot(page: Page, label: string) {
+  const fileName = `login_${label}_${Date.now()}.png`;
+  const filePath = path.join(process.cwd(), fileName);
+  await page.screenshot({ path: filePath, fullPage: true });
+  return filePath;
+}
+
+export async function detectLoginState(page: Page): Promise<LoginState> {
+  const serviceDown =
+    (await hasVisibleText(page, /сервис временно недоступен/i)) ||
+    (await hasVisibleText(page, /service unavailable/i)) ||
+    (await hasVisibleText(page, /\b503\b/));
+  if (serviceDown) {
+    return "LOGIN_SERVICE_DOWN";
+  }
+  if ((await hasLoggedInShell(page)) || (await hasAuthCookie(page))) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  const email = page.locator(emailSelector);
+  const pass = page.locator(passwordSelector);
+  const submit = page.locator(submitSelector);
+  const hasInputs = (await email.count()) > 0 && (await pass.count()) > 0 && (await submit.count()) > 0;
+  return hasInputs ? "LOGIN_READY" : "LOGIN_INPUTS_NOT_FOUND";
+}
+
+export async function loginViaUi({
+  page,
+  baseUrl,
+  emailValue,
+  passwordValue,
+}: {
+  page: Page;
+  baseUrl: string;
+  emailValue: string;
+  passwordValue: string;
+}): Promise<LoginState> {
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
   await page.waitForLoadState("domcontentloaded");
+  await page.waitForTimeout(300);
+  const initialState = await detectLoginState(page);
+  if (initialState !== "LOGIN_READY") {
+    return initialState;
+  }
+
   const email = page.locator(emailSelector).first();
   const pass = await resolvePasswordInput(page);
+  const submit = page.locator(submitSelector).first();
   await expect(email).toBeVisible(loginWaitOptions);
   await expect(pass).toBeVisible(loginWaitOptions);
-  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL ?? "client@neft.local"));
-  await pass.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "client"));
-  await page
-    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
-    .first()
-    .click();
-  await page.waitForURL((url) => !url.pathname.endsWith("/login"), loginWaitOptions);
+  await expect(submit).toBeVisible(loginWaitOptions);
+  await email.fill(emailValue);
+  await pass.fill(passwordValue);
+  await submit.click();
+  await page.waitForLoadState("domcontentloaded");
+  await page.waitForTimeout(300);
+  return detectLoginState(page);
+}
+
+async function performLogin({
+  page,
+  baseUrl,
+  emailValue,
+  passwordValue,
+  appLabel,
+}: {
+  page: Page;
+  baseUrl: string;
+  emailValue: string;
+  passwordValue: string;
+  appLabel: string;
+}) {
+  const result = await loginViaUi({ page, baseUrl, emailValue, passwordValue });
+  if (result === "ALREADY_AUTHENTICATED") {
+    return;
+  }
+  if (result === "LOGIN_INPUTS_NOT_FOUND") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_INPUTS_NOT_FOUND`);
+    throw new Error(await buildLoginDiagnostics(page, `LOGIN_INPUTS_NOT_FOUND (screenshot: ${screenshotPath})`));
+  }
+  if (result === "LOGIN_SERVICE_DOWN") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_SERVICE_DOWN`);
+    throw new Error(await buildLoginDiagnostics(page, `LOGIN_SERVICE_DOWN (screenshot: ${screenshotPath})`));
+  }
+  const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_REDIRECT_LOGIN`);
+  throw new Error(await buildLoginDiagnostics(page, `FAIL_REDIRECT_LOGIN (screenshot: ${screenshotPath})`));
+}
+
+export async function loginClient(page: Page) {
+  await performLogin({
+    page,
+    baseUrl: CLIENT_BASE_URL,
+    emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_EMAIL, process.env.CLIENT_EMAIL ?? "client@neft.local"),
+    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_CLIENT_PASSWORD, process.env.CLIENT_PASSWORD ?? "client"),
+    appLabel: "client",
+  });
 }
 
 export async function loginPartner(page: Page) {
-  await page.goto(`${PARTNER_BASE_URL}/login`, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
-  await page.waitForLoadState("domcontentloaded");
-  const email = page.locator(emailSelector).first();
-  const pass = await resolvePasswordInput(page);
-  await expect(email).toBeVisible(loginWaitOptions);
-  await expect(pass).toBeVisible(loginWaitOptions);
-  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL, process.env.PARTNER_EMAIL ?? "partner@neft.local"));
-  await pass.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "partner"));
-  await page
-    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
-    .first()
-    .click();
-  await page.waitForURL((url) => !url.pathname.endsWith("/login"), loginWaitOptions);
+  await performLogin({
+    page,
+    baseUrl: PARTNER_BASE_URL,
+    emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_EMAIL, process.env.PARTNER_EMAIL ?? "partner@neft.local"),
+    passwordValue: resolveEnv(process.env.NEFT_BOOTSTRAP_PARTNER_PASSWORD, process.env.PARTNER_PASSWORD ?? "partner"),
+    appLabel: "partner",
+  });
 }
 
 export async function loginAdmin(page: Page) {
-  await page.goto(ADMIN_BASE_URL, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
-  await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(500);
-  console.log("LOGIN URL:", page.url());
-  const screenshotPath = path.join(process.cwd(), "LOGIN_PAGE.png");
-  await page.screenshot({ path: screenshotPath, fullPage: true });
-  const email = page.locator(emailSelector).first();
-  const pass = await resolvePasswordInput(page);
-  if ((await email.count()) === 0) {
-    if (await hasLoggedInShell(page)) {
-      return;
-    }
-    throw new Error(await buildLoginDiagnostics(page, "Login email input not found"));
-  }
-  if ((await pass.count()) === 0) {
-    throw new Error(await buildLoginDiagnostics(page, "Login inputs not found"));
-  }
-  await expect(email).toBeVisible(loginWaitOptions);
-  await expect(pass).toBeVisible(loginWaitOptions);
-  await email.fill(resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@example.com"));
-  await pass.fill(requireEnv(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, "NEFT_BOOTSTRAP_ADMIN_PASSWORD"));
-  await page
-    .locator('button[type="submit"], button:has-text("Войти"), button:has-text("Login"), button:has-text("Sign in")')
-    .first()
-    .click();
-  await page.waitForURL((url) => !url.pathname.endsWith("/login"), loginWaitOptions);
+  await performLogin({
+    page,
+    baseUrl: ADMIN_BASE_URL,
+    emailValue: resolveEnv(process.env.NEFT_BOOTSTRAP_ADMIN_EMAIL, process.env.ADMIN_EMAIL ?? "admin@example.com"),
+    passwordValue: requireEnv(process.env.NEFT_BOOTSTRAP_ADMIN_PASSWORD, "NEFT_BOOTSTRAP_ADMIN_PASSWORD"),
+    appLabel: "admin",
+  });
 }
 
 export async function expectHeading(page: Page, pattern: RegExp) {

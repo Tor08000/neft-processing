@@ -2,7 +2,8 @@
   "name": "neft-frontends",
   "private": true,
   "scripts": {
-    "ui:snapshot": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Snapshot\""
+    "ui:snapshot": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Snapshot\"",
+    "ui:link-crawl": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Link Crawler\""
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"

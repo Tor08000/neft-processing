@@ -30,7 +30,7 @@ describe("api client caching and auth", () => {
 
     fetchMock.mockImplementation((url, init) => {
       const target = typeof url === "string" ? url : String(url);
-      if (target.includes("/api/auth/api/v1/auth/login")) {
+      if (target.includes("/api/auth/v1/auth/login")) {
         return Promise.resolve(
           buildResponse({ access_token: "new-token", expires_in: 3600, email: "demo@example.com", roles: [] }),
         );

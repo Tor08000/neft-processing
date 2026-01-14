@@ -13,7 +13,7 @@ These are the building blocks used by the demo seed and reset CLI.
 Gateway endpoint:
 
 ```
-POST /api/auth/api/v1/auth/login
+POST /api/auth/v1/auth/login
 ```
 
 Payload:
@@ -85,7 +85,7 @@ NEFT_BOOTSTRAP_PASSWORD_VERSION=2
 ## Smoke test
 
 ```bash
-curl -i -X POST http://localhost/api/auth/api/v1/auth/login \
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_ADMIN_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_ADMIN_PASSWORD}\"}"
 ```

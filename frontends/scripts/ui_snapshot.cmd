@@ -7,8 +7,8 @@ if not exist "playwright.config.ts" (
   echo ERROR: config not found: playwright.config.ts
   exit /b 2
 )
-if not exist "e2e\tests\ui_snapshot.spec.ts" (
-  echo ERROR: test file not found: e2e\tests\ui_snapshot.spec.ts
+if not exist "package.json" (
+  echo ERROR: package.json not found
   exit /b 2
 )
 
@@ -16,6 +16,8 @@ echo NODE:
 where node
 echo NPX:
 where npx
+echo PWD:
+cd
 echo PLAYWRIGHT CONFIG EXISTS:
 dir /b playwright.config.ts
 echo TESTDIR LIST:
@@ -27,8 +29,6 @@ set UI_SNAPSHOT_RUN_ID=%RUN_ID%
 set OUTPUT_DIR=%CD%\ui-audit\%RUN_ID%
 if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 
-echo PWD:
-cd
 echo Running UI snapshot Playwright tests...
 call npm run ui:snapshot
 set EXIT_CODE=%ERRORLEVEL%
