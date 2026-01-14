@@ -31,6 +31,7 @@ export type TokenFound = {
 
 export type AuthProbeResult = {
   authRequestSent: boolean;
+  authEffectiveUrl: string | null;
   authResponseStatus: number | null;
   authResponseBodySnippet: string | null;
   authRequestFailedError: string | null;
@@ -368,6 +369,7 @@ async function buildAuthProbe({
   afterClickScreenshot?: string;
 }) {
   let authRequestSent = false;
+  let authEffectiveUrl: string | null = null;
   let authResponseStatus: number | null = null;
   let authResponseBodySnippet: string | null = null;
   let authRequestFailedError: string | null = null;
@@ -376,6 +378,7 @@ async function buildAuthProbe({
 
   if (authEvent?.type === "response") {
     authRequestSent = true;
+    authEffectiveUrl = authEvent.response.url();
     authResponseStatus = authEvent.response.status();
     authResult = { type: "response", status: authResponseStatus };
     const bodyText = await authEvent.response.text().catch(() => "");
@@ -392,6 +395,7 @@ async function buildAuthProbe({
     }
   } else if (authEvent?.type === "failed") {
     authRequestSent = true;
+    authEffectiveUrl = authEvent.request.url();
     authRequestFailedError = authEvent.request.failure()?.errorText ?? "request failed";
     authResult = { type: "failed" };
   }
@@ -411,6 +415,7 @@ async function buildAuthProbe({
   const storageKeys = storageProbe ? sliceKeysForReport(storageProbe.combinedKeys, storageKeyLimit) : [];
   const probeResult: AuthProbeResult = {
     authRequestSent,
+    authEffectiveUrl,
     authResponseStatus,
     authResponseBodySnippet,
     authRequestFailedError,

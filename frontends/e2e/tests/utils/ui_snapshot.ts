@@ -580,9 +580,19 @@ export function writeReport(report: ReportState) {
       return;
     }
     lines.push(`- auth_request_sent: ${probe.authRequestSent}`);
+    lines.push(`- auth_effective_url: ${probe.authEffectiveUrl ?? "null"}`);
     lines.push(`- auth_response_status: ${probe.authResponseStatus ?? "null"}`);
     lines.push(`- auth_response_body_snippet: ${probe.authResponseBodySnippet ?? "null"}`);
     lines.push(`- auth_request_failed_error: ${probe.authRequestFailedError ?? "null"}`);
+    if (probe.authResponseStatus !== null && probe.authResponseStatus !== 200) {
+      lines.push(
+        `- auth_failure_context: ${JSON.stringify({
+          auth_effective_url: probe.authEffectiveUrl ?? null,
+          status: probe.authResponseStatus,
+          body_snippet: probe.authResponseBodySnippet ?? null,
+        })}`,
+      );
+    }
     lines.push(`- storage_keys: ${JSON.stringify(probe.storageKeys)}`);
     lines.push(`- cookie_names: ${JSON.stringify(probe.cookieNames)}`);
     lines.push(`- token_found: ${JSON.stringify(probe.tokenFound)}`);
