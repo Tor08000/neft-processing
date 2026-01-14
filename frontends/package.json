@@ -2,7 +2,7 @@
   "name": "neft-frontends",
   "private": true,
   "scripts": {
-    "ui:snapshot": "playwright test e2e/tests/ui_snapshot.spec.ts"
+    "ui:snapshot": "playwright test --config playwright.config.ts --project=chromium --reporter=list --grep \"UI Snapshot\""
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"
