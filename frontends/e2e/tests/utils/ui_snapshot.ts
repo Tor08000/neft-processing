@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ConsoleMessage, Page } from "playwright";
-import { detectLoginState, getLoginSignals, loginViaUi } from "../utils";
+import { detectLoginState, loginViaUi } from "../utils";
 
 type AppName = "admin" | "client" | "partner";
 
@@ -48,13 +48,9 @@ type ReportState = {
 };
 
 type LoginStateSummary = {
-  hasEmailInput: boolean;
-  hasPasswordInput: boolean;
-  hasSubmit: boolean;
-  hasAuthenticatedShell: boolean;
-  hasAuthCookie: boolean;
-  backendReachable: boolean;
-  status: "OK" | "FAIL";
+  state: "AUTHENTICATED" | "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "ERROR";
+  authUrl: string;
+  screenshot?: string;
 };
 
 let cachedRunId: string | null = null;
@@ -212,6 +208,7 @@ async function getFailureReason({
   responseStatus?: number;
   signals?: NavigationSignals;
 }): Promise<FailureStatus | null> {
+  await page.waitForTimeout(800);
   const loginState = await detectLoginState(page);
   if (loginState === "LOGIN_SERVICE_DOWN") {
     return "FAIL_LOGIN_SERVICE_DOWN";
@@ -269,18 +266,16 @@ export async function login(
       emailValue: credentials.email,
       passwordValue: credentials.password,
     });
-    const signals = await getLoginSignals(page);
-    const status =
-      !signals.hasEmailInput &&
-      !signals.hasPasswordInput &&
-      !signals.hasSubmit &&
-      !signals.hasAuthenticatedShell
-        ? "FAIL"
-        : "OK";
     report.loginStates[app] = {
-      ...signals,
-      backendReachable: loginState !== "LOGIN_SERVICE_DOWN",
-      status,
+      state:
+        loginState === "ALREADY_AUTHENTICATED"
+          ? "AUTHENTICATED"
+          : loginState === "LOGIN_READY"
+            ? "LOGIN_READY"
+            : loginState === "LOGIN_SERVICE_DOWN"
+              ? "LOGIN_SERVICE_DOWN"
+              : "LOGIN_INPUTS_NOT_FOUND",
+      authUrl,
     };
     tracker.stop();
 
@@ -291,14 +286,16 @@ export async function login(
       return true;
     }
     if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
-      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
-      report.errors.push(
-        `[${app}] login page validation failed: LOGIN_INPUTS_NOT_FOUND (auth: ${authUrl}) (${screenshot})`,
-      );
+      await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
       return false;
     }
     if (loginState === "LOGIN_SERVICE_DOWN") {
       const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_SERVICE_DOWN");
+      report.loginStates[app] = {
+        state: "LOGIN_SERVICE_DOWN",
+        authUrl,
+        screenshot,
+      };
       report.errors.push(
         `[${app}] login page validation failed: LOGIN_SERVICE_DOWN (auth: ${authUrl}) (${screenshot})`,
       );
@@ -308,6 +305,10 @@ export async function login(
   } catch (error) {
     tracker.stop();
     const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+    report.loginStates[app] = {
+      state: "ERROR",
+      authUrl,
+    };
     report.errors.push(`[${app}] login failed: ${(error as Error).message} (auth: ${authUrl})`);
     const screenshot = await takeScreenshot(page, report, app, "login__FAIL_EXCEPTION");
     report.errors.push(`[${app}] login screenshot: ${screenshot}`);
@@ -525,22 +526,18 @@ export function writeReport(report: ReportState) {
   lines.push(`- Client: ${report.baseUrls.client}`);
   lines.push(`- Partner: ${report.baseUrls.partner}`);
   lines.push("");
-  lines.push("## Login state");
-  const loginStateLines = (app: AppName) => {
+  lines.push("## Login State Summary");
+  lines.push("");
+  lines.push("| App | State | Auth URL | Screenshot |");
+  lines.push("| --- | ----- | -------- | ---------- |");
+  (["admin", "client", "partner"] as AppName[]).forEach((app) => {
     const state = report.loginStates[app];
     if (!state) {
-      lines.push(`- ${app}: (not evaluated)`);
+      lines.push(`| ${app} | NOT_EVALUATED | - | - |`);
       return;
     }
-    const inputsPresent = state.hasEmailInput && state.hasPasswordInput && state.hasSubmit;
-    lines.push(`- ${app}: status=${state.status}`);
-    lines.push(`  - inputs: ${inputsPresent ? "present" : "absent"}`);
-    lines.push(`  - shell: ${state.hasAuthenticatedShell ? "present" : "absent"}`);
-    lines.push(`  - backend: ${state.backendReachable ? "reachable" : "unreachable"}`);
-  };
-  loginStateLines("admin");
-  loginStateLines("client");
-  loginStateLines("partner");
+    lines.push(`| ${app} | ${state.state} | ${state.authUrl} | ${state.screenshot ?? "—"} |`);
+  });
   lines.push("");
   lines.push("## Routes");
 

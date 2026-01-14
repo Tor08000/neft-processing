@@ -135,10 +135,20 @@ export async function detectLoginState(page: Page): Promise<LoginState> {
   if (signals.hasEmailInput && signals.hasPasswordInput && signals.hasSubmit) {
     return "LOGIN_READY";
   }
-  if (!signals.hasEmailInput && !signals.hasPasswordInput && !signals.hasSubmit && !signals.hasAuthenticatedShell) {
-    return "LOGIN_SERVICE_DOWN";
-  }
   return "LOGIN_INPUTS_NOT_FOUND";
+}
+
+async function waitForAuthResult(page: Page) {
+  const authPattern = /\/api\/auth\/v1\/auth\/login/i;
+  const authResponsePromise = page
+    .waitForResponse((response) => authPattern.test(response.url()), { timeout: 5_000 })
+    .then((response) => ({ type: "response" as const, status: response.status() }))
+    .catch(() => null);
+  const authFailurePromise = page
+    .waitForEvent("requestfailed", { predicate: (request) => authPattern.test(request.url()), timeout: 5_000 })
+    .then(() => ({ type: "failed" as const }))
+    .catch(() => null);
+  return Promise.race([authResponsePromise, authFailurePromise]);
 }
 
 export async function loginViaUi({
@@ -154,10 +164,13 @@ export async function loginViaUi({
 }): Promise<LoginState> {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(300);
-  const initialState = await detectLoginState(page);
-  if (initialState !== "LOGIN_READY") {
-    return initialState;
+  await page.waitForTimeout(800);
+  const initialSignals = await getLoginSignals(page);
+  if (initialSignals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (!initialSignals.hasEmailInput || !initialSignals.hasPasswordInput || !initialSignals.hasSubmit) {
+    return "LOGIN_INPUTS_NOT_FOUND";
   }
 
   const email = page.locator(emailSelector).first();
@@ -168,10 +181,20 @@ export async function loginViaUi({
   await submit.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
   await email.fill(emailValue);
   await pass.fill(passwordValue);
+  const authResultPromise = waitForAuthResult(page);
   await submit.click();
+  const authResult = await authResultPromise;
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(300);
-  return detectLoginState(page);
+  await page.waitForTimeout(800);
+  const postSignals = await getLoginSignals(page);
+  if (postSignals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (postSignals.hasEmailInput && postSignals.hasPasswordInput && postSignals.hasSubmit) {
+    const authDown = authResult?.type === "failed" || (authResult?.type === "response" && authResult.status >= 500);
+    return authDown ? "LOGIN_SERVICE_DOWN" : "LOGIN_READY";
+  }
+  return "LOGIN_INPUTS_NOT_FOUND";
 }
 
 async function performLogin({
