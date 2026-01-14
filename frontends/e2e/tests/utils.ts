@@ -56,7 +56,7 @@ const requireEnv = (value: string | undefined, name: string) => {
 
 const loginWaitOptions = { timeout: 15_000 };
 const authProbeTimeoutMs = 8_000;
-const authEndpointFragment = "/api/auth/v1/auth/login";
+const authEndpointPattern = /\/auth\/login(?:\?|$)/;
 
 const emailSelector = [
   'input[type="email"]',
@@ -233,12 +233,16 @@ export async function detectLoginState(page: Page): Promise<LoginState> {
   return resolveLoginState(page, signals);
 }
 
+function matchesAuthEndpoint(url: string) {
+  return authEndpointPattern.test(url);
+}
+
 function isAuthRequest(request: Request) {
-  return request.url().includes(authEndpointFragment) && request.method() === "POST";
+  return matchesAuthEndpoint(request.url()) && request.method() === "POST";
 }
 
 function isAuthResponse(response: Response) {
-  return response.url().includes(authEndpointFragment) && response.request().method() === "POST";
+  return matchesAuthEndpoint(response.url()) && response.request().method() === "POST";
 }
 
 async function waitForAuthEvent(page: Page) {

@@ -6,6 +6,17 @@ const normalizePrefix = (raw: string): string => {
 const API_BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
 const clientBase = (import.meta.env.BASE_URL ?? "/client/").replace(/\/+$/, "");
 
+const joinBase = (base: string, raw: string): string => {
+  const normalized = normalizePrefix(raw);
+  if (base.endsWith(normalized)) {
+    return base;
+  }
+  if (base.endsWith("/api/auth") && normalized.startsWith("/api/auth/")) {
+    return `${base}${normalized.replace(/^\/api\/auth/, "")}`;
+  }
+  return `${base}${normalized}`;
+};
+
 const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): string => {
   const fallback = canonicalSuffix.startsWith("/") ? canonicalSuffix : `/${canonicalSuffix}`;
   const raw = (legacyPrefix ?? (API_BASE ? `${API_BASE}${fallback}` : fallback)).replace(/\/+$/, "");
@@ -15,8 +26,7 @@ const buildBase = (legacyPrefix: string | undefined, canonicalSuffix: string): s
   }
 
   if (API_BASE) {
-    const normalized = normalizePrefix(raw);
-    return `${API_BASE}${normalized}`;
+    return joinBase(API_BASE, raw);
   }
 
   return raw.startsWith("/") ? raw : `/${raw}`;
