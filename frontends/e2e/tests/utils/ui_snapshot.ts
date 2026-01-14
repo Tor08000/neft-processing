@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ConsoleMessage, Page } from "playwright";
+import type { AuthProbeResult } from "../utils";
 import { detectLoginState, loginViaUi } from "../utils";
 
 type AppName = "admin" | "client" | "partner";
@@ -45,6 +46,7 @@ type ReportState = {
   screenshots: string[];
   errors: string[];
   loginStates: Record<AppName, LoginStateSummary | null>;
+  authProbes: Record<AppName, AuthProbeResult | null>;
 };
 
 type LoginStateSummary = {
@@ -122,6 +124,11 @@ export function createReportState(baseUrls: Record<AppName, string>): ReportStat
     screenshots: [],
     errors: [],
     loginStates: {
+      admin: null,
+      client: null,
+      partner: null,
+    },
+    authProbes: {
       admin: null,
       client: null,
       partner: null,
@@ -265,6 +272,12 @@ export async function login(
       baseUrl,
       emailValue: credentials.email,
       passwordValue: credentials.password,
+      authProbe: {
+        onProbe: (probe) => {
+          report.authProbes[app] = probe;
+        },
+        afterClickScreenshot: (probePage) => takeScreenshot(probePage, report, app, "login__AFTER_CLICK"),
+      },
     });
     const loginOk = loginState === "ALREADY_AUTHENTICATED" || loginState === "LOGIN_OK";
     report.loginStates[app] = {
@@ -555,6 +568,27 @@ export function writeReport(report: ReportState) {
       return;
     }
     lines.push(`| ${app} | ${state.state} | ${state.authUrl} | ${state.notes ?? "—"} |`);
+  });
+  lines.push("");
+  lines.push("## Auth probe");
+  (["admin", "client", "partner"] as AppName[]).forEach((app) => {
+    const probe = report.authProbes[app];
+    lines.push("");
+    lines.push(`### ${app}`);
+    if (!probe) {
+      lines.push("- (no auth probe captured)");
+      return;
+    }
+    lines.push(`- auth_request_sent: ${probe.authRequestSent}`);
+    lines.push(`- auth_response_status: ${probe.authResponseStatus ?? "null"}`);
+    lines.push(`- auth_response_body_snippet: ${probe.authResponseBodySnippet ?? "null"}`);
+    lines.push(`- auth_request_failed_error: ${probe.authRequestFailedError ?? "null"}`);
+    lines.push(`- storage_keys: ${JSON.stringify(probe.storageKeys)}`);
+    lines.push(`- cookie_names: ${JSON.stringify(probe.cookieNames)}`);
+    lines.push(`- token_found: ${JSON.stringify(probe.tokenFound)}`);
+    if (probe.afterClickScreenshot) {
+      lines.push(`- after_click_screenshot: ${probe.afterClickScreenshot}`);
+    }
   });
   lines.push("");
   lines.push("## Routes");
