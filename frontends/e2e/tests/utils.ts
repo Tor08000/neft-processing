@@ -63,6 +63,7 @@ const requireEnv = (value: string | undefined, name: string) => {
 const loginWaitOptions = { timeout: 15_000 };
 const authProbeTimeoutMs = 8_000;
 const authEndpointPattern = /\/api(?:\/api)*\/auth\/v1\/auth\/login(?:\?|$)/;
+const strictAuthEndpointPattern = /\/api\/auth\/v1\/auth\/login(?:\?|$)/;
 
 const emailSelector = [
   'input[type="email"]',
@@ -252,6 +253,10 @@ export async function detectLoginState(page: Page): Promise<LoginState> {
 
 function matchesAuthEndpoint(url: string) {
   return authEndpointPattern.test(url);
+}
+
+function matchesStrictAuthEndpoint(url: string) {
+  return strictAuthEndpointPattern.test(url);
 }
 
 function isAuthRequest(request: Request) {
@@ -486,9 +491,15 @@ export async function loginViaUi({
   await pass.fill(passwordValue);
   const initialUrl = page.url();
   const authEventPromise = waitForAuthEvent(page);
-  await submit.click();
+  const authSuccessPromise = page
+    .waitForResponse(
+      (response) => matchesStrictAuthEndpoint(response.url()) && response.request().method() === "POST" && response.status() === 200,
+      { timeout: authProbeTimeoutMs },
+    )
+    .catch(() => null);
+  await Promise.all([authSuccessPromise, submit.click()]);
   const afterClickScreenshot = await authProbe?.afterClickScreenshot?.(page);
-  const authEvent = await authEventPromise;
+  const [authEvent, authSuccessResponse] = await Promise.all([authEventPromise, authSuccessPromise]);
   const { authResult, probeResult } = await buildAuthProbe({
     page,
     authEvent,
@@ -498,20 +509,28 @@ export async function loginViaUi({
     await authProbe.onProbe(probeResult);
   }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  const appShellVisible = await waitForAppShell(page);
   const postSignals = await getLoginSignals(page);
   const hasSession =
     postSignals.hasAuthCookie || postSignals.hasAuthStorageToken || probeResult.tokenFound.kind !== "none";
-  const hasShell = postSignals.hasAuthenticatedShell || postSignals.hasAppShell;
+  const hasShell = postSignals.hasAuthenticatedShell || postSignals.hasAppShell || appShellVisible;
   const urlChanged = page.url() !== initialUrl && !page.url().includes("/login");
-  const authStatusOk = probeResult.authResponseStatus === 200;
+  const authResponseStatus = probeResult.authResponseStatus ?? authSuccessResponse?.status() ?? null;
+  const authResponseContentType =
+    probeResult.authResponseContentType ?? authSuccessResponse?.headers()["content-type"] ?? null;
+  const authStatusOk = authResponseStatus === 200;
+  const authContentTypeOk = authResponseContentType?.includes("application/json") ?? false;
   const loginConfirmed = authStatusOk && hasSession && (hasShell || urlChanged);
   if (probeResult.authEffectiveUrl?.includes("/api/api")) {
     return "FAIL_AUTH_URL_DUPLICATED";
   }
-  if (probeResult.authResponseContentType?.includes("text/html") || probeResult.authResponseStatus === 404) {
+  if (probeResult.authEffectiveUrl?.includes("/auth/auth")) {
+    return "FAIL_AUTH_URL_DUPLICATED";
+  }
+  if ((authResponseStatus === 200 && !authContentTypeOk) || authResponseStatus === 404) {
     return "LOGIN_BAD_ROUTE";
   }
-  if (probeResult.authResponseStatus !== null && probeResult.authResponseStatus >= 500) {
+  if (authResponseStatus !== null && authResponseStatus >= 500) {
     return "LOGIN_SERVICE_DOWN";
   }
   if (authEvent === null) {
@@ -537,7 +556,7 @@ export async function loginViaUi({
     return "LOGIN_OK";
   }
   if (resolved === "LOGIN_READY") {
-    if (probeResult.authResponseStatus === 200 && probeResult.tokenFound.kind !== "none") {
+    if (authResponseStatus === 200 && probeResult.tokenFound.kind !== "none") {
       return "LOGIN_STUCK_ON_LOGIN";
     }
     return "LOGIN_READY";
