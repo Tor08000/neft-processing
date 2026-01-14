@@ -15,7 +15,21 @@ test.describe.serial("UI Snapshot (Gateway/Direct)", () => {
   const report = createReportState(baseUrls);
 
   test.afterAll(() => {
-    writeReport(report);
+    const reportPath = writeReport(report);
+    const failedRoutes = (["admin", "client", "partner"] as const).flatMap((app) =>
+      report.routes[app].filter((route) => route.status.startsWith("FAIL")),
+    );
+    if (report.errors.length > 0 || failedRoutes.length > 0) {
+      const details = [
+        report.errors.length > 0 ? `Errors: ${report.errors.join("; ")}` : null,
+        failedRoutes.length > 0
+          ? `Failed routes: ${failedRoutes.map((route) => `${route.id} (${route.status})`).join(", ")}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      throw new Error(`UI snapshot failures detected. See ${reportPath}.\n${details}`);
+    }
   });
 
   test("Admin UI snapshots", async ({ page }) => {
