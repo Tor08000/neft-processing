@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import type { Page } from "playwright";
 
 export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost:4174";
 export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost:4175";
@@ -163,9 +163,9 @@ export async function loginViaUi({
   const email = page.locator(emailSelector).first();
   const pass = await resolvePasswordInput(page);
   const submit = page.locator(submitSelector).first();
-  await expect(email).toBeVisible(loginWaitOptions);
-  await expect(pass).toBeVisible(loginWaitOptions);
-  await expect(submit).toBeVisible(loginWaitOptions);
+  await email.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
+  await pass.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
+  await submit.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
   await email.fill(emailValue);
   await pass.fill(passwordValue);
   await submit.click();
@@ -234,14 +234,14 @@ export async function loginAdmin(page: Page) {
 }
 
 export async function expectHeading(page: Page, pattern: RegExp) {
-  await expect(page.getByRole("heading", { name: pattern })).toBeVisible();
+  await page.getByRole("heading", { name: pattern }).waitFor({ state: "visible" });
 }
 
 export async function expectTableOrEmptyState(page: Page) {
   const table = page.locator("table");
   if ((await table.count()) > 0) {
-    await expect(table.first()).toBeVisible();
+    await table.first().waitFor({ state: "visible" });
   } else {
-    await expect(page.locator(".empty-state").first()).toBeVisible();
+    await page.locator(".empty-state").first().waitFor({ state: "visible" });
   }
 }

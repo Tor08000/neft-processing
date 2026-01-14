@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ConsoleMessage, Page } from "@playwright/test";
+import type { ConsoleMessage, Page } from "playwright";
 import { detectLoginState, getLoginSignals, loginViaUi } from "../utils";
 
 type AppName = "admin" | "client" | "partner";
