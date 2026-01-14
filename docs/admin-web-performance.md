@@ -13,8 +13,8 @@
 - Heavier widgets (tables and filters) are also loaded lazily inside pages to keep the initial bundle light.
 - Result: the initial JS payload shrinks, and secondary pages load their chunks on demand.
 
-## Asset preload and preconnect
-- `index.html` establishes an early `preconnect` to `/admin/assets/` and preloads the entry script. Vite continues to emit `modulepreload` hints for hashed chunks automatically.
+## Asset preconnect
+- `index.html` establishes an early `preconnect` to `/admin/assets/` to speed up asset discovery. Vite continues to emit `modulepreload` hints for hashed chunks automatically.
 
 ## Debugging chunk loading
 - Use the browser DevTools network tab to verify that route-level chunks are fetched only when navigating to the corresponding page.

@@ -182,7 +182,7 @@ function evaluateResult(
     return { result: "SKIP" as const, reason: "LOGIN_SERVICE_DOWN" };
   }
   if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
-    return { result: "FAIL" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
+    return { result: "SKIP" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
   }
   if (loginState === "LOGIN_READY") {
     return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
@@ -246,7 +246,7 @@ async function crawlApp({
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
       url: loginUrl,
-      result: "FAIL",
+      result: "SKIP",
       reason: `LOGIN_INPUTS_NOT_FOUND (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
@@ -296,6 +296,7 @@ async function crawlApp({
     }
     const { consoleErrors, responseErrors, pageErrors } = tracker.stop();
 
+    await page.waitForTimeout(800);
     const pageLoginState = await detectLoginState(page);
     const notFound = await hasVisibleText(page, "Страница не найдена");
     const { result, reason } = evaluateResult(

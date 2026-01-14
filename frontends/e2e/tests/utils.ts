@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import type { Page } from "playwright";
 
 export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost:4174";
 export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost:4175";
@@ -7,6 +7,14 @@ export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost:
 export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
 
 export type LoginState = "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "ALREADY_AUTHENTICATED" | "LOGIN_INPUTS_NOT_FOUND";
+
+export type LoginSignals = {
+  hasEmailInput: boolean;
+  hasPasswordInput: boolean;
+  hasSubmit: boolean;
+  hasAuthenticatedShell: boolean;
+  hasAuthCookie: boolean;
+};
 
 const resolveEnv = (value: string | undefined, fallback: string) => (value && value.trim() !== "" ? value : fallback);
 const requireEnv = (value: string | undefined, name: string) => {
@@ -61,17 +69,6 @@ async function resolvePasswordInput(page: Page) {
     .first();
 }
 
-async function hasVisibleText(page: Page, text: string | RegExp) {
-  const locator = page.getByText(text, { exact: false });
-  const count = await locator.count();
-  for (let index = 0; index < count; index += 1) {
-    if (await locator.nth(index).isVisible().catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function hasAuthCookie(page: Page) {
   const cookies = await page.context().cookies();
   return cookies.some((cookie) => /auth|token|session/i.test(cookie.name));
@@ -104,6 +101,13 @@ async function hasLoggedInShell(page: Page) {
   return false;
 }
 
+async function hasVisibleLocator(locator: ReturnType<Page["locator"]>) {
+  if ((await locator.count()) === 0) {
+    return false;
+  }
+  return locator.first().isVisible().catch(() => false);
+}
+
 async function takeLoginScreenshot(page: Page, label: string) {
   const fileName = `login_${label}_${Date.now()}.png`;
   const filePath = path.join(process.cwd(), fileName);
@@ -111,22 +115,40 @@ async function takeLoginScreenshot(page: Page, label: string) {
   return filePath;
 }
 
-export async function detectLoginState(page: Page): Promise<LoginState> {
-  const serviceDown =
-    (await hasVisibleText(page, /сервис временно недоступен/i)) ||
-    (await hasVisibleText(page, /service unavailable/i)) ||
-    (await hasVisibleText(page, /\b503\b/));
-  if (serviceDown) {
-    return "LOGIN_SERVICE_DOWN";
-  }
-  if ((await hasLoggedInShell(page)) || (await hasAuthCookie(page))) {
-    return "ALREADY_AUTHENTICATED";
-  }
+export async function getLoginSignals(page: Page): Promise<LoginSignals> {
   const email = page.locator(emailSelector);
   const pass = page.locator(passwordSelector);
   const submit = page.locator(submitSelector);
-  const hasInputs = (await email.count()) > 0 && (await pass.count()) > 0 && (await submit.count()) > 0;
-  return hasInputs ? "LOGIN_READY" : "LOGIN_INPUTS_NOT_FOUND";
+  const hasEmailInput = await hasVisibleLocator(email);
+  const hasPasswordInput = await hasVisibleLocator(pass);
+  const hasSubmit = await hasVisibleLocator(submit);
+  const hasAuthCookie = await hasAuthCookie(page);
+  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || hasAuthCookie;
+  return { hasEmailInput, hasPasswordInput, hasSubmit, hasAuthenticatedShell, hasAuthCookie };
+}
+
+export async function detectLoginState(page: Page): Promise<LoginState> {
+  const signals = await getLoginSignals(page);
+  if (signals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (signals.hasEmailInput && signals.hasPasswordInput && signals.hasSubmit) {
+    return "LOGIN_READY";
+  }
+  return "LOGIN_INPUTS_NOT_FOUND";
+}
+
+async function waitForAuthResult(page: Page) {
+  const authPattern = /\/api\/auth\/v1\/auth\/login/i;
+  const authResponsePromise = page
+    .waitForResponse((response) => authPattern.test(response.url()), { timeout: 5_000 })
+    .then((response) => ({ type: "response" as const, status: response.status() }))
+    .catch(() => null);
+  const authFailurePromise = page
+    .waitForEvent("requestfailed", { predicate: (request) => authPattern.test(request.url()), timeout: 5_000 })
+    .then(() => ({ type: "failed" as const }))
+    .catch(() => null);
+  return Promise.race([authResponsePromise, authFailurePromise]);
 }
 
 export async function loginViaUi({
@@ -142,24 +164,37 @@ export async function loginViaUi({
 }): Promise<LoginState> {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: loginWaitOptions.timeout });
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(300);
-  const initialState = await detectLoginState(page);
-  if (initialState !== "LOGIN_READY") {
-    return initialState;
+  await page.waitForTimeout(800);
+  const initialSignals = await getLoginSignals(page);
+  if (initialSignals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (!initialSignals.hasEmailInput || !initialSignals.hasPasswordInput || !initialSignals.hasSubmit) {
+    return "LOGIN_INPUTS_NOT_FOUND";
   }
 
   const email = page.locator(emailSelector).first();
   const pass = await resolvePasswordInput(page);
   const submit = page.locator(submitSelector).first();
-  await expect(email).toBeVisible(loginWaitOptions);
-  await expect(pass).toBeVisible(loginWaitOptions);
-  await expect(submit).toBeVisible(loginWaitOptions);
+  await email.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
+  await pass.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
+  await submit.waitFor({ state: "visible", timeout: loginWaitOptions.timeout });
   await email.fill(emailValue);
   await pass.fill(passwordValue);
+  const authResultPromise = waitForAuthResult(page);
   await submit.click();
+  const authResult = await authResultPromise;
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForTimeout(300);
-  return detectLoginState(page);
+  await page.waitForTimeout(800);
+  const postSignals = await getLoginSignals(page);
+  if (postSignals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (postSignals.hasEmailInput && postSignals.hasPasswordInput && postSignals.hasSubmit) {
+    const authDown = authResult?.type === "failed" || (authResult?.type === "response" && authResult.status >= 500);
+    return authDown ? "LOGIN_SERVICE_DOWN" : "LOGIN_READY";
+  }
+  return "LOGIN_INPUTS_NOT_FOUND";
 }
 
 async function performLogin({
@@ -222,14 +257,14 @@ export async function loginAdmin(page: Page) {
 }
 
 export async function expectHeading(page: Page, pattern: RegExp) {
-  await expect(page.getByRole("heading", { name: pattern })).toBeVisible();
+  await page.getByRole("heading", { name: pattern }).waitFor({ state: "visible" });
 }
 
 export async function expectTableOrEmptyState(page: Page) {
   const table = page.locator("table");
   if ((await table.count()) > 0) {
-    await expect(table.first()).toBeVisible();
+    await table.first().waitFor({ state: "visible" });
   } else {
-    await expect(page.locator(".empty-state").first()).toBeVisible();
+    await page.locator(".empty-state").first().waitFor({ state: "visible" });
   }
 }

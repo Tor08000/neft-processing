@@ -50,7 +50,13 @@ curl -i http://localhost/client/api/v1/auth/health || true
 - Console: ошибки CORS/404 на JS/CSS.
 - Проверить, что `VITE_API_BASE_URL` в собранном bundle указывает на gateway (не на `http://localhost` внутри контейнера).
 
-## 6. Быстрый сброс и повтор
+## 6. Preload data URI (Chrome warning)
+
+Источником предупреждения был ручной `<link rel="preload" href="/src/main.tsx" as="script">` в `frontends/admin-ui/index.html`.
+Vite в production преобразовывал этот preload в data URI, из-за чего Chrome ругался на "preload data:... not used".
+Тег удалён — entrypoint грузится только через `<script type="module" src="/src/main.tsx">`, без data URI preloading.
+
+## 7. Быстрый сброс и повтор
 
 ```bash
 docker compose down -v
