@@ -170,6 +170,28 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
 - HTTP/1.1 200
 - Content-Type: application/json
 
+## 2.4) Обязательные smoke-проверки
+
+```bash
+curl -I http://localhost/admin/assets/index-XXXX.js
+curl -I http://localhost/client/assets/index-XXXX.css
+```
+
+Ожидания:
+
+- JS отдаёт `Content-Type: application/javascript`.
+- CSS отдаёт `Content-Type: text/css`.
+
+```bash
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
+Ожидание:
+
+- HTTP 200.
+
 ## 3) UI Link Crawl (ui_link_crawl.spec.ts)
 
 ```bat

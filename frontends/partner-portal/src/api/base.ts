@@ -6,8 +6,16 @@ const partnerBase = normalizeBase(import.meta.env.BASE_URL ?? "/partner/");
 
 export const joinUrl = (base: string, path: string): string => {
   const b = normalizeBase(base);
-  const p = path.replace(/^\/+/, "");
-  return `${b}/${p}`;
+  const rawPath = path.replace(/^\/+/, "");
+  if (!b) {
+    return rawPath ? `/${rawPath}` : "";
+  }
+  const isApiBase = /\/api$/.test(b);
+  let p = rawPath;
+  if (isApiBase && (p === "api" || p.startsWith("api/"))) {
+    p = p.replace(/^api\/?/, "");
+  }
+  return p ? `${b}/${p}` : b;
 };
 
 const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {

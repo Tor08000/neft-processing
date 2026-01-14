@@ -30,7 +30,12 @@ type CrawlReport = Record<AppName, CrawlEntry[]>;
 
 type CrawlTracker = {
   start: () => void;
-  stop: () => { consoleErrors: string[]; responseErrors: string[]; pageErrors: string[] };
+  stop: () => {
+    consoleErrors: string[];
+    responseErrors: string[];
+    pageErrors: string[];
+    assetHtmlErrors: string[];
+  };
 };
 
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 200);
@@ -104,6 +109,7 @@ function createTracker(page: Page): CrawlTracker {
   let consoleErrors: string[] = [];
   let responseErrors: string[] = [];
   let pageErrors: string[] = [];
+  let assetHtmlErrors: string[] = [];
   let tracking = false;
 
   page.on("console", (message) => {
@@ -120,6 +126,17 @@ function createTracker(page: Page): CrawlTracker {
   });
 
   page.on("response", (response) => {
+    if (tracking) {
+      try {
+        const url = new URL(response.url());
+        const contentType = response.headers()["content-type"] ?? "";
+        if (isAssetPath(url.pathname) && contentType.includes("text/html")) {
+          assetHtmlErrors.push(`${contentType} ${response.url()}`);
+        }
+      } catch {
+        // Ignore invalid URLs
+      }
+    }
     if (tracking && response.status() >= 400) {
       responseErrors.push(`${response.status()} ${response.url()}`);
     }
@@ -130,11 +147,12 @@ function createTracker(page: Page): CrawlTracker {
       consoleErrors = [];
       responseErrors = [];
       pageErrors = [];
+      assetHtmlErrors = [];
       tracking = true;
     },
     stop: () => {
       tracking = false;
-      return { consoleErrors, responseErrors, pageErrors };
+      return { consoleErrors, responseErrors, pageErrors, assetHtmlErrors };
     },
   };
 }
@@ -178,6 +196,7 @@ function evaluateResult(
   responseErrors: string[],
   consoleErrors: string[],
   pageErrors: string[],
+  assetHtmlErrors: string[],
   loginState: LoginState,
   notFound: boolean,
 ) {
@@ -199,11 +218,17 @@ function evaluateResult(
   if (loginState === "FAIL_AUTH_TOKEN_NOT_STORED") {
     return { result: "FAIL" as const, reason: "FAIL_AUTH_TOKEN_NOT_STORED" };
   }
-  if (loginState === "LOGIN_READY" || loginState === "LOGIN_STUCK_ON_LOGIN") {
+  if (loginState === "LOGIN_STUCK_ON_LOGIN") {
+    return { result: "FAIL" as const, reason: "FAIL_LOGIN_STUCK_ON_LOGIN" };
+  }
+  if (loginState === "LOGIN_READY") {
     return { result: "FAIL" as const, reason: "REDIRECT_LOGIN" };
   }
   if (notFound) {
     return { result: "FAIL" as const, reason: "NOT_FOUND" };
+  }
+  if (assetHtmlErrors.length > 0) {
+    return { result: "FAIL" as const, reason: "FAIL_STATIC_ASSET_HTML" };
   }
   if (responseErrors.some((error) => error.startsWith("403 "))) {
     return { result: "FAIL" as const, reason: "RBAC_DENY" };
@@ -320,7 +345,7 @@ async function crawlApp({
     } catch (error) {
       navigationError = (error as Error).message;
     }
-    const { consoleErrors, responseErrors, pageErrors } = tracker.stop();
+    const { consoleErrors, responseErrors, pageErrors, assetHtmlErrors } = tracker.stop();
 
     await page.waitForTimeout(800);
     const pageLoginState = await detectLoginState(page);
@@ -330,6 +355,7 @@ async function crawlApp({
       responseErrors,
       consoleErrors,
       pageErrors,
+      assetHtmlErrors,
       pageLoginState,
       notFound,
     );

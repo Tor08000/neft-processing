@@ -280,7 +280,9 @@ async function waitForLoginOutcome(page: Page, initialUrl: string, timeoutMs = 7
     const signals = await getLoginSignals(page);
     const currentUrl = page.url();
     const urlChanged = currentUrl !== initialUrl && !currentUrl.includes("/login");
-    if (signals.hasAuthenticatedShell || signals.hasAuthStorageToken || urlChanged) {
+    const hasSession = signals.hasAuthCookie || signals.hasAuthStorageToken;
+    const hasShell = signals.hasAuthenticatedShell || signals.hasAppShell;
+    if (hasSession && (hasShell || urlChanged)) {
       return true;
     }
     await page.waitForTimeout(300);
@@ -395,7 +397,6 @@ async function buildAuthProbe({
   let authResponseContentType: string | null = null;
   let authResponseBodySnippet: string | null = null;
   let authRequestFailedError: string | null = null;
-  let hasAccessToken = false;
   let authResult: { type: "response"; status: number } | { type: "failed" } | null = null;
 
   if (authEvent?.type === "response") {
@@ -407,14 +408,6 @@ async function buildAuthProbe({
     const bodyText = await authEvent.response.text().catch(() => "");
     if (bodyText) {
       authResponseBodySnippet = bodyText.slice(0, 400);
-      if (authResponseStatus === 200) {
-        try {
-          const json = JSON.parse(bodyText) as { access_token?: string };
-          hasAccessToken = typeof json.access_token === "string" && json.access_token.length > 0;
-        } catch {
-          hasAccessToken = false;
-        }
-      }
     }
   } else if (authEvent?.type === "failed") {
     authRequestSent = true;
@@ -452,7 +445,6 @@ async function buildAuthProbe({
 
   return {
     authResult,
-    authSuccess: authResponseStatus === 200 && hasAccessToken,
     probeResult,
   };
 }
@@ -497,7 +489,7 @@ export async function loginViaUi({
   await submit.click();
   const afterClickScreenshot = await authProbe?.afterClickScreenshot?.(page);
   const authEvent = await authEventPromise;
-  const { authResult, authSuccess, probeResult } = await buildAuthProbe({
+  const { authResult, probeResult } = await buildAuthProbe({
     page,
     authEvent,
     afterClickScreenshot,
@@ -506,6 +498,13 @@ export async function loginViaUi({
     await authProbe.onProbe(probeResult);
   }
   const loginOutcome = await waitForLoginOutcome(page, initialUrl);
+  const postSignals = await getLoginSignals(page);
+  const hasSession =
+    postSignals.hasAuthCookie || postSignals.hasAuthStorageToken || probeResult.tokenFound.kind !== "none";
+  const hasShell = postSignals.hasAuthenticatedShell || postSignals.hasAppShell;
+  const urlChanged = page.url() !== initialUrl && !page.url().includes("/login");
+  const authStatusOk = probeResult.authResponseStatus === 200;
+  const loginConfirmed = authStatusOk && hasSession && (hasShell || urlChanged);
   if (probeResult.authEffectiveUrl?.includes("/api/api")) {
     return "FAIL_AUTH_URL_DUPLICATED";
   }
@@ -518,28 +517,22 @@ export async function loginViaUi({
   if (authEvent === null) {
     return "LOGIN_SERVICE_DOWN";
   }
-  if (authSuccess) {
-    if (loginOutcome) {
-      if (!(await waitForAppShell(page))) {
-        return "FAIL_LOGIN_NOT_COMPLETED";
-      }
-      return "LOGIN_OK";
-    }
-    if (probeResult.tokenFound.kind !== "none") {
-      return "LOGIN_STUCK_ON_LOGIN";
-    }
+  if (loginConfirmed) {
+    return "LOGIN_OK";
+  }
+  if (authStatusOk && hasSession) {
+    return "LOGIN_STUCK_ON_LOGIN";
+  }
+  if (authStatusOk) {
     return "FAIL_AUTH_TOKEN_NOT_STORED";
   }
   if (loginOutcome) {
-    if (!(await waitForAppShell(page))) {
-      return "FAIL_LOGIN_NOT_COMPLETED";
-    }
-    return "LOGIN_OK";
+    return "FAIL_LOGIN_NOT_COMPLETED";
   }
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(500);
-  const postSignals = await getLoginSignals(page);
-  const resolved = await resolveLoginState(page, postSignals, authResult ?? null);
+  const finalSignals = await getLoginSignals(page);
+  const resolved = await resolveLoginState(page, finalSignals, authResult ?? null);
   if (resolved === "ALREADY_AUTHENTICATED") {
     return "LOGIN_OK";
   }
