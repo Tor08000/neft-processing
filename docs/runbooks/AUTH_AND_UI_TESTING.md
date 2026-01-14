@@ -26,7 +26,7 @@ NEFT_BOOTSTRAP_PASSWORD_VERSION=1
 ### Admin login
 
 ```bash
-curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_ADMIN_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_ADMIN_PASSWORD}\"}"
 ```
@@ -34,7 +34,7 @@ curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
 ### Client login
 
 ```bash
-curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_CLIENT_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_CLIENT_PASSWORD}\"}"
 ```
@@ -42,7 +42,7 @@ curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
 ### Partner login
 
 ```bash
-curl -s -X POST "http://localhost/api/auth/api/v1/auth/login" \
+curl -s -X POST "http://localhost/api/auth/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"${NEFT_BOOTSTRAP_PARTNER_EMAIL}\",\"password\":\"${NEFT_BOOTSTRAP_PARTNER_PASSWORD}\"}"
 ```
@@ -71,7 +71,9 @@ scripts\smoke_auth_host.cmd
 ## 2) UI Snapshot (ui_snapshot.cmd)
 
 ```bat
-frontends\scripts\ui_snapshot.cmd
+cd frontends
+npm install
+scripts\ui_snapshot.cmd
 ```
 
 Ожидаемая строка в stdout:
@@ -85,10 +87,18 @@ UI audit saved to: ui-audit/<RUN_ID>
 - `frontends/ui-audit/<RUN_ID>/REPORT.md`
 - Скриншоты: `frontends/ui-audit/<RUN_ID>/<app>/*.png`
 
+Эталонный запуск из `frontends`:
+
+```bat
+npm run ui:snapshot
+```
+
 ## 3) UI Link Crawl (ui_link_crawl.spec.ts)
 
 ```bat
-frontends\scripts\ui_link_crawl.cmd
+cd frontends
+npm install
+scripts\ui_link_crawl.cmd
 ```
 
 Выходные файлы:

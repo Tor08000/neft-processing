@@ -3,7 +3,7 @@ import type { AuthSession, AuthUser, LoginRequest, LoginResponse, MeResponse } f
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
-    "/api/v1/auth/login",
+    "/v1/auth/login",
     { method: "POST", body: JSON.stringify(payload) },
     { base: "auth" },
   );
@@ -16,7 +16,7 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function me(token: string): Promise<AuthUser> {
-  const body = await request<MeResponse>("/api/v1/auth/me", { method: "GET" }, { token, base: "auth" });
+  const body = await request<MeResponse>("/v1/auth/me", { method: "GET" }, { token, base: "auth" });
   return {
     id: body.subject,
     email: body.email,

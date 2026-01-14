@@ -7,11 +7,11 @@ This runbook describes how to capture automated UI screenshots for Admin, Client
 ## Prerequisites
 
 - Gateway (or direct frontends) running locally.
-- From `frontends/`, install Playwright dependencies:
+- From `frontends/`, install dependencies:
 
 ```cmd
-npm ci
-npx playwright --version
+npm install
+npm run ui:snapshot -- --list
 ```
 
 ## Quick Start (Windows CMD)
@@ -95,5 +95,5 @@ Defaults are used unless overridden:
 ```cmd
 cd C:\neft-processing\frontends
 set UI_SNAPSHOT_RUN_ID=2025-01-31_1420
-npx playwright test e2e/tests/ui_snapshot.spec.ts
+npm run ui:snapshot
 ```

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ConsoleMessage, Page } from "@playwright/test";
+import { detectLoginState, loginViaUi } from "../utils";
 
 type AppName = "admin" | "client" | "partner";
 
@@ -23,6 +24,7 @@ type FailureStatus =
   | "FAIL_RBAC_DENY"
   | "FAIL_APP_SHELL_MISSING"
   | "FAIL_NAV_ERROR"
+  | "FAIL_LOGIN_SERVICE_DOWN"
   | `FAIL_HTTP_${number}`;
 
 type RouteResult = {
@@ -194,12 +196,11 @@ async function getFailureReason({
   responseStatus?: number;
   signals?: NavigationSignals;
 }): Promise<FailureStatus | null> {
-  const currentUrl = page.url();
-  if (currentUrl.includes("/login")) {
-    return "FAIL_REDIRECT_LOGIN";
+  const loginState = await detectLoginState(page);
+  if (loginState === "LOGIN_SERVICE_DOWN") {
+    return "FAIL_LOGIN_SERVICE_DOWN";
   }
-
-  if (await hasVisibleText(page, "Войти")) {
+  if (loginState === "LOGIN_READY" && !(await hasAppShell(page))) {
     return "FAIL_REDIRECT_LOGIN";
   }
 
@@ -248,37 +249,40 @@ export async function login(
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(300);
 
-    const emailInput = page.getByLabel(/email/i);
-    const passInput = page.getByLabel(/пароль|password/i);
-    const submitButton = page.getByRole("button", { name: /sign in|login|войти/i });
-    const passwordField = page.locator('input[type="password"]');
-    const onLoginPage = page.url().includes("/login") || (await isVisible(passwordField));
-    const emailVisible = await isVisible(emailInput);
-    const passVisible = (await isVisible(passInput)) || (await isVisible(passwordField));
+    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+    const loginState = await loginViaUi({
+      page,
+      baseUrl,
+      emailValue: credentials.email,
+      passwordValue: credentials.password,
+    });
+    tracker.stop();
 
-    if (!onLoginPage || !emailVisible || !passVisible || !(await isVisible(submitButton))) {
-      tracker.stop();
-      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_REDIRECT_LOGIN");
-      report.errors.push(`[${app}] login page validation failed: FAIL_REDIRECT_LOGIN (${screenshot})`);
+    if (loginState === "ALREADY_AUTHENTICATED") {
+      return true;
+    }
+    if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
+      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
+      report.errors.push(
+        `[${app}] login page validation failed: LOGIN_INPUTS_NOT_FOUND (auth: ${authUrl}) (${screenshot})`,
+      );
+      return false;
+    }
+    if (loginState === "LOGIN_SERVICE_DOWN") {
+      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_SERVICE_DOWN");
+      report.errors.push(
+        `[${app}] login page validation failed: LOGIN_SERVICE_DOWN (auth: ${authUrl}) (${screenshot})`,
+      );
       return false;
     }
 
-    await emailInput.first().fill(credentials.email);
-    await passInput.first().fill(credentials.password);
-    await submitButton.first().click();
-    await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(300);
-    const signals = tracker.stop();
-    const failureReason = await getFailureReason({ page, signals });
-    if (failureReason) {
-      const screenshot = await takeScreenshot(page, report, app, `login__${failureReason}`);
-      report.errors.push(`[${app}] login validation failed: ${failureReason} (${screenshot})`);
-      return false;
-    }
-    return true;
+    const screenshot = await takeScreenshot(page, report, app, "login__FAIL_REDIRECT_LOGIN");
+    report.errors.push(`[${app}] login validation failed: FAIL_REDIRECT_LOGIN (auth: ${authUrl}) (${screenshot})`);
+    return false;
   } catch (error) {
     tracker.stop();
-    report.errors.push(`[${app}] login failed: ${(error as Error).message}`);
+    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+    report.errors.push(`[${app}] login failed: ${(error as Error).message} (auth: ${authUrl})`);
     const screenshot = await takeScreenshot(page, report, app, "login__FAIL_EXCEPTION");
     report.errors.push(`[${app}] login screenshot: ${screenshot}`);
     return false;
