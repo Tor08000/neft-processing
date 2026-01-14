@@ -13,10 +13,12 @@ ENV VITE_CORE_API_BASE=$VITE_CORE_API_BASE
 ENV VITE_AUTH_API_BASE=$VITE_AUTH_API_BASE
 ENV VITE_AI_API_BASE=$VITE_AI_API_BASE
 ENV VITE_PUBLIC_BASE=$VITE_PUBLIC_BASE
+ENV npm_config_optional=true
+ENV npm_config_fund=false
+ENV npm_config_audit=false
 
-COPY frontends/partner-portal/package*.json ./
+COPY frontends/partner-portal/package.json frontends/partner-portal/package-lock.json ./
 RUN npm ci
-RUN mkdir -p /app/frontends && ln -sf /app/frontends/partner-portal/node_modules /app/frontends/node_modules
 
 COPY frontends/partner-portal/ ./
 COPY frontends/shared/ /app/frontends/shared/
