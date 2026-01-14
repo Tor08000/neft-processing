@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { CLIENT_BASE_URL, expectHeading, expectTableOrEmptyState, loginClient } from "./utils";
+import { CLIENT_BASE_URL, expectHeading, expectTableOrEmptyState, loginClient } from "./helpers";
 
 test("client support requests list loads", async ({ page }) => {
   await loginClient(page);

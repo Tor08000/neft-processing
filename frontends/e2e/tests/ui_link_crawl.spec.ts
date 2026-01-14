@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { test, type Page } from "@playwright/test";
+import { test } from "@playwright/test";
+import type { Page } from "playwright";
 import {
   ADMIN_AUTH_URL,
   ADMIN_BASE_URL,
@@ -9,8 +10,10 @@ import {
   LoginState,
   detectLoginState,
   loginViaUi,
-} from "./utils";
-import { CREDENTIALS, getOutputRoot, getRunId } from "./utils/ui_snapshot";
+  CREDENTIALS,
+  getOutputRoot,
+  getRunId,
+} from "./helpers";
 
 type AppName = "admin" | "client" | "partner";
 

@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { PARTNER_BASE_URL, expectHeading, expectTableOrEmptyState, loginPartner } from "./utils";
+import { PARTNER_BASE_URL, expectHeading, expectTableOrEmptyState, loginPartner } from "./helpers";
 
 test("partner payouts page loads", async ({ page }) => {
   await loginPartner(page);

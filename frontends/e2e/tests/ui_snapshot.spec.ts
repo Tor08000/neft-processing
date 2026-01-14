@@ -8,7 +8,7 @@ import {
   resolveBaseUrls,
   runSnapshots,
   writeReport,
-} from "./utils/ui_snapshot";
+} from "./helpers";
 
 test.describe.serial("UI Snapshot (Gateway/Direct)", () => {
   const baseUrls = resolveBaseUrls();

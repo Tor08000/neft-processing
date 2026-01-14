@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { CLIENT_BASE_URL, expectHeading, loginClient } from "./utils";
+import { CLIENT_BASE_URL, expectHeading, loginClient } from "./helpers";
 
 test("client dashboard opens with summary or empty state", async ({ page }) => {
   await loginClient(page);
