@@ -42,6 +42,7 @@ npm run ui:link-crawl
   - AI через gateway: `http://localhost/api/ai/api/v1/health`
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
+  - ⚠️ В браузере используйте только `http://localhost/*` (адрес `http://gateway` доступен только изнутри docker-сети).
 5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
    - Проверка Prometheus targets из контейнера: `make prometheus-smoke`
    - Мини-проверка DOWN targets: `curl http://localhost:9090/api/v1/targets | findstr /C:"\"health\":\"down\""` (не должно быть вывода)
@@ -108,6 +109,13 @@ npm run ui:link-crawl
 * Auth через gateway: `GET http://localhost/api/auth/health` (Swagger: `http://localhost/api/auth/docs`)
 * AI через gateway: `GET http://localhost/api/ai/api/v1/health` (Swagger: `http://localhost/api/ai/api/v1/docs`)
 * Сервисы напрямую (диагностика): core-api `http://localhost:8001/health`, auth-host `http://localhost:8002/health`, ai-service `http://localhost:8003/health`
+* Быстрая проверка логина через gateway (должно вернуть `200`):
+
+```bash
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
 
 ### Хранение ключей и файлов
 

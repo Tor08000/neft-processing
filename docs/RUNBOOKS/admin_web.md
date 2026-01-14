@@ -25,4 +25,6 @@ The build output is written to `dist/` and served by nginx in the Docker image d
 docker build -t neft-admin-web -f frontends/admin-ui/Dockerfile .
 ```
 
-The image bundles the Vite production build into nginx. Runtime configuration for the API endpoint is read from `VITE_API_BASE_URL` (gateway origin, e.g. `http://gateway`), while the base path is fixed via `BASE_URL=/admin/` from `vite.config.ts`.
+The image bundles the Vite production build into nginx. Runtime configuration for the API endpoint is read from `VITE_API_BASE_URL` (gateway origin, e.g. `http://localhost`), while the base path is fixed via `BASE_URL=/admin/` from `vite.config.ts`.
+
+> ⚠️ В браузере нельзя использовать `http://gateway` — этот адрес доступен только внутри docker-сети. Всегда открывайте UI через `http://localhost/admin/`.
