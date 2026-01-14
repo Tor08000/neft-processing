@@ -20,29 +20,41 @@ const normalizeApiBase = (raw: string): string => {
   return normalizeApiPath(trimmed).replace(/\/+$/, "");
 };
 
+const extractPathname = (value: string): string => {
+  if (/^https?:\/\//i.test(value)) {
+    return new URL(value).pathname || "/";
+  }
+  return value;
+};
+
 const rawApiBase = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL ?? "";
-const API_BASE = rawApiBase && rawApiBase.trim() !== "" ? rawApiBase : "";
+const API_BASE = normalizeApiBase(rawApiBase);
 const partnerBase = normalizeBase(import.meta.env.BASE_URL ?? "/partner/");
 
 export const joinUrl = (base: string, path: string): string => {
   const b = normalizeApiBase(base);
-  let rawPath = path.trim().replace(/^\/+/, "");
+  let rawPath = normalizeApiPath(path.trim()).replace(/^\/+/, "");
   if (!b) {
     return rawPath ? `/${rawPath}` : "";
   }
   if (!rawPath) {
     return b;
   }
-  if (/\/api\/auth$/.test(b)) {
-    if (rawPath.startsWith("api/auth/")) {
-      rawPath = rawPath.slice("api/auth/".length);
-    } else if (rawPath.startsWith("auth/")) {
-      rawPath = rawPath.slice("auth/".length);
+  const basePath = extractPathname(b).replace(/\/+$/, "");
+  const baseSegments = basePath.split("/").filter(Boolean);
+  let pathSegments = rawPath.split("/").filter(Boolean);
+  for (let overlap = Math.min(baseSegments.length, pathSegments.length); overlap > 0; overlap -= 1) {
+    const baseTail = baseSegments.slice(-overlap).join("/");
+    const pathHead = pathSegments.slice(0, overlap).join("/");
+    if (baseTail === pathHead) {
+      pathSegments = pathSegments.slice(overlap);
+      break;
     }
-  } else if (/\/api$/.test(b) && rawPath.startsWith("api/")) {
-    rawPath = rawPath.slice("api/".length);
   }
-  return `${b}/${rawPath}`;
+  if (pathSegments.length === 0) {
+    return b;
+  }
+  return `${b}/${pathSegments.join("/")}`;
 };
 
 const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {

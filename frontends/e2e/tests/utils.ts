@@ -41,6 +41,7 @@ export type AuthProbeResult = {
   authResponseStatus: number | null;
   authResponseContentType: string | null;
   authResponseBodySnippet: string | null;
+  authResponseTokenType: string | null;
   authResponseHasToken: boolean | null;
   authRequestFailedError: string | null;
   storageKeys: string[];
@@ -145,7 +146,9 @@ async function buildLoginDiagnostics(page: Page, reason: string, authProbe?: Aut
   const probe = authProbe
     ? ` Auth probe: url=${authProbe.authEffectiveUrl ?? "null"} status=${authProbe.authResponseStatus ?? "null"} contentType=${
         authProbe.authResponseContentType ?? "null"
-      } hasToken=${authProbe.authResponseHasToken ?? "null"} snippet=${authProbe.authResponseBodySnippet ?? "null"}.`
+      } tokenType=${authProbe.authResponseTokenType ?? "null"} hasToken=${
+        authProbe.authResponseHasToken ?? "null"
+      } snippet=${authProbe.authResponseBodySnippet ?? "null"}.`
     : "";
   return `${reason}. URL: ${url}. Title: ${title}. Body: ${snippet}. Auth URL: ${ADMIN_AUTH_URL}.${probe}`;
 }
@@ -408,6 +411,7 @@ async function buildAuthProbe({
   let authResponseStatus: number | null = null;
   let authResponseContentType: string | null = null;
   let authResponseBodySnippet: string | null = null;
+  let authResponseTokenType: string | null = null;
   let authResponseHasToken: boolean | null = null;
   let authRequestFailedError: string | null = null;
   let authResult: { type: "response"; status: number } | { type: "failed" } | null = null;
@@ -424,8 +428,10 @@ async function buildAuthProbe({
     }
     if (authResponseContentType?.includes("application/json")) {
       try {
-        const parsed = JSON.parse(bodyText) as { access_token?: string; token?: string };
-        authResponseHasToken = Boolean(parsed?.access_token || parsed?.token);
+        const parsed = JSON.parse(bodyText) as { access_token?: string; token_type?: string };
+        authResponseTokenType = typeof parsed?.token_type === "string" ? parsed.token_type : null;
+        authResponseHasToken =
+          Boolean(parsed?.access_token) && authResponseTokenType?.toLowerCase() === "bearer";
       } catch {
         authResponseHasToken = false;
       }
@@ -457,6 +463,7 @@ async function buildAuthProbe({
     authResponseStatus,
     authResponseContentType,
     authResponseBodySnippet,
+    authResponseTokenType,
     authResponseHasToken,
     authRequestFailedError,
     storageKeys,
@@ -537,7 +544,8 @@ export async function loginViaUi({
     probeResult.authResponseContentType ?? authResponse?.headers()["content-type"] ?? null;
   const authStatusOk = authResponseStatus === 200;
   const authContentTypeOk = authResponseContentType?.includes("application/json") ?? false;
-  const loginConfirmed = authStatusOk && hasSession && (hasShell || urlChanged);
+  const authTokenOk = probeResult.authResponseHasToken === true;
+  const loginConfirmed = authStatusOk && authContentTypeOk && authTokenOk && hasSession && (hasShell || urlChanged);
   if (probeResult.authEffectiveUrl?.includes("/api/api")) {
     return "FAIL_AUTH_URL_DUPLICATED";
   }
@@ -550,7 +558,7 @@ export async function loginViaUi({
   if (authResponseContentType?.includes("text/html")) {
     return "FAIL_LOGIN_BAD_ENDPOINT";
   }
-  if (authStatusOk && authContentTypeOk && probeResult.authResponseHasToken !== true) {
+  if (authStatusOk && authContentTypeOk && !authTokenOk) {
     return "FAIL_LOGIN_BAD_ENDPOINT";
   }
   if (authResponseStatus !== null && authResponseStatus >= 500) {
