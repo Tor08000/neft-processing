@@ -48,7 +48,7 @@ type ReportState = {
 };
 
 type LoginStateSummary = {
-  state: "LOGIN_OK" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "ERROR";
+  state: "LOGIN_OK" | "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "LOGIN_INPUTS_NOT_FOUND" | "LOGIN_STUCK_ON_LOGIN" | "ERROR";
   authUrl: string;
   notes?: string;
 };
@@ -266,27 +266,41 @@ export async function login(
       emailValue: credentials.email,
       passwordValue: credentials.password,
     });
+    const loginOk = loginState === "ALREADY_AUTHENTICATED" || loginState === "LOGIN_OK";
     report.loginStates[app] = {
       state:
-        loginState === "ALREADY_AUTHENTICATED" || loginState === "LOGIN_READY"
+        loginOk
           ? "LOGIN_OK"
+          : loginState === "LOGIN_READY"
+            ? "LOGIN_READY"
           : loginState === "LOGIN_SERVICE_DOWN"
             ? "LOGIN_SERVICE_DOWN"
+            : loginState === "LOGIN_STUCK_ON_LOGIN"
+              ? "LOGIN_STUCK_ON_LOGIN"
             : "LOGIN_INPUTS_NOT_FOUND",
       authUrl,
     };
     tracker.stop();
 
-    if (loginState === "ALREADY_AUTHENTICATED") {
+    if (loginOk) {
       return true;
     }
     if (loginState === "LOGIN_READY") {
-      return true;
+      return false;
     }
     if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
       const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_INPUTS_NOT_FOUND");
       report.loginStates[app] = {
         state: "LOGIN_INPUTS_NOT_FOUND",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      return false;
+    }
+    if (loginState === "LOGIN_STUCK_ON_LOGIN") {
+      const screenshot = await takeScreenshot(page, report, app, "login__LOGIN_STUCK_ON_LOGIN");
+      report.loginStates[app] = {
+        state: "LOGIN_STUCK_ON_LOGIN",
         authUrl,
         notes: `screenshot: ${screenshot}`,
       };
@@ -606,22 +620,16 @@ export const ADMIN_ROUTES: RouteConfig[] = [
 export const CLIENT_ROUTES: RouteConfig[] = [
   { id: "000_home", path: "/", label: "Home" },
   { id: "010_cards", path: "/cards", label: "Cards" },
-  { id: "020_limits", path: "/limits", label: "Limits" },
-  { id: "030_reports", path: "/reports", label: "Reports", details: true },
-  { id: "040_billing", path: "/billing", label: "Billing" },
-  { id: "050_support", path: "/support", label: "Support" },
-  { id: "060_settings", path: "/settings", label: "Settings" },
+  { id: "020_billing", path: "/billing", label: "Billing" },
+  { id: "030_support", path: "/support", label: "Support" },
+  { id: "040_settings", path: "/settings", label: "Settings" },
 ];
 
 export const PARTNER_ROUTES: RouteConfig[] = [
   { id: "000_dashboard", path: "/", label: "Dashboard" },
   { id: "010_prices", path: "/prices", label: "Prices" },
-  { id: "020_pos", path: "/pos", label: "POS" },
-  { id: "030_transactions", path: "/transactions", label: "Transactions", details: true },
-  { id: "040_reconciliation", path: "/reconciliation", label: "Reconciliation" },
-  { id: "050_billing", path: "/billing", label: "Billing" },
-  { id: "060_support", path: "/support", label: "Support" },
-  { id: "070_settings", path: "/settings", label: "Settings" },
+  { id: "020_transactions", path: "/transactions", label: "Transactions", details: true },
+  { id: "030_settings", path: "/settings", label: "Settings" },
 ];
 
 export const CREDENTIALS = {
