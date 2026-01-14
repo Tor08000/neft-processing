@@ -55,6 +55,7 @@ type LoginStateSummary = {
     | "LOGIN_READY"
     | "LOGIN_SERVICE_DOWN"
     | "LOGIN_BAD_ROUTE"
+    | "FAIL_LOGIN_BAD_ENDPOINT"
     | "LOGIN_INPUTS_NOT_FOUND"
     | "LOGIN_STUCK_ON_LOGIN"
     | "FAIL_AUTH_TOKEN_NOT_STORED"
@@ -298,6 +299,8 @@ export async function login(
         ? "LOGIN_SERVICE_DOWN"
       : loginState === "LOGIN_BAD_ROUTE"
         ? "LOGIN_BAD_ROUTE"
+      : loginState === "FAIL_LOGIN_BAD_ENDPOINT"
+        ? "FAIL_LOGIN_BAD_ENDPOINT"
       : loginState === "LOGIN_STUCK_ON_LOGIN"
         ? "LOGIN_STUCK_ON_LOGIN"
       : loginState === "FAIL_AUTH_TOKEN_NOT_STORED"
@@ -352,6 +355,16 @@ export async function login(
         notes: `screenshot: ${screenshot}`,
       };
       report.errors.push(`[${app}] login failed: FAIL_LOGIN_NOT_COMPLETED (auth: ${authUrl}) (${screenshot})`);
+      return false;
+    }
+    if (loginState === "FAIL_LOGIN_BAD_ENDPOINT") {
+      const screenshot = await takeScreenshot(page, report, app, "login__FAIL_LOGIN_BAD_ENDPOINT");
+      report.loginStates[app] = {
+        state: "FAIL_LOGIN_BAD_ENDPOINT",
+        authUrl,
+        notes: `screenshot: ${screenshot}`,
+      };
+      report.errors.push(`[${app}] login failed: FAIL_LOGIN_BAD_ENDPOINT (auth: ${authUrl}) (${screenshot})`);
       return false;
     }
     if (loginState === "FAIL_AUTH_URL_DUPLICATED") {

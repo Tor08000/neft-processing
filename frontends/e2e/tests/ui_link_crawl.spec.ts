@@ -201,13 +201,16 @@ function evaluateResult(
   notFound: boolean,
 ) {
   if (loginState === "LOGIN_SERVICE_DOWN") {
-    return { result: "SKIP" as const, reason: "LOGIN_SERVICE_DOWN" };
+    return { result: "FAIL" as const, reason: "LOGIN_SERVICE_DOWN" };
   }
   if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
-    return { result: "SKIP" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
+    return { result: "FAIL" as const, reason: "LOGIN_INPUTS_NOT_FOUND" };
   }
   if (loginState === "LOGIN_BAD_ROUTE") {
     return { result: "FAIL" as const, reason: "LOGIN_BAD_ROUTE" };
+  }
+  if (loginState === "FAIL_LOGIN_BAD_ENDPOINT") {
+    return { result: "FAIL" as const, reason: "FAIL_LOGIN_BAD_ENDPOINT" };
   }
   if (loginState === "FAIL_LOGIN_NOT_COMPLETED") {
     return { result: "FAIL" as const, reason: "FAIL_LOGIN_NOT_COMPLETED" };
@@ -272,13 +275,13 @@ async function crawlApp({
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
       url: loginUrl,
-      result: "SKIP",
+      result: "FAIL",
       reason: `LOGIN_SERVICE_DOWN (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
     });
-    return;
+    throw new Error(`LOGIN_SERVICE_DOWN (auth: ${ADMIN_AUTH_URL})`);
   }
   if (loginState === "LOGIN_INPUTS_NOT_FOUND") {
     const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_inputs_missing.png`);
@@ -286,13 +289,13 @@ async function crawlApp({
     await page.screenshot({ path: screenshotPath, fullPage: true });
     report[app].push({
       url: loginUrl,
-      result: "SKIP",
+      result: "FAIL",
       reason: `LOGIN_INPUTS_NOT_FOUND (auth: ${ADMIN_AUTH_URL})`,
       httpErrors: [],
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
     });
-    return;
+    throw new Error(`LOGIN_INPUTS_NOT_FOUND (auth: ${ADMIN_AUTH_URL})`);
   }
   if (loginState !== "ALREADY_AUTHENTICATED" && loginState !== "LOGIN_OK") {
     const screenshotPath = path.join(OUTPUT_ROOT, "crawl", app, `${String(index).padStart(3, "0")}_login_not_confirmed.png`);
@@ -304,6 +307,8 @@ async function crawlApp({
       reason:
         loginState === "LOGIN_BAD_ROUTE"
           ? `LOGIN_BAD_ROUTE (auth: ${ADMIN_AUTH_URL})`
+          : loginState === "FAIL_LOGIN_BAD_ENDPOINT"
+            ? `FAIL_LOGIN_BAD_ENDPOINT (auth: ${ADMIN_AUTH_URL})`
           : loginState === "FAIL_LOGIN_NOT_COMPLETED"
             ? `FAIL_LOGIN_NOT_COMPLETED (auth: ${ADMIN_AUTH_URL})`
             : loginState === "FAIL_AUTH_URL_DUPLICATED"
@@ -317,7 +322,7 @@ async function crawlApp({
       consoleErrors: [],
       screenshot: path.relative(process.cwd(), screenshotPath),
     });
-    return;
+    throw new Error(`Login failed: ${loginState} (auth: ${ADMIN_AUTH_URL})`);
   }
 
   queue.push({ url: baseUrl, depth: 0 });

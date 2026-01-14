@@ -96,7 +96,7 @@ services:
     container_name: neft-processing-admin-web-1
     environment:
       SERVICE_NAME: admin-web
-      VITE_API_BASE: http://gateway
+      VITE_API_BASE_URL: /api
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -112,7 +112,7 @@ services:
     container_name: neft-processing-client-web-1
     environment:
       SERVICE_NAME: client-web
-      VITE_API_BASE: http://gateway
+      VITE_API_BASE_URL: /api
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s

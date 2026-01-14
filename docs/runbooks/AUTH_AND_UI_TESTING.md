@@ -131,6 +131,56 @@ curl -I http://localhost/partner/assets/index-*.css
 - `Content-Type: application/javascript` (или `text/javascript`) для JS.
 - `Content-Type: text/css` для CSS.
 
+### Обязательные smoke-команды (Windows CMD)
+
+Извлекаем реальное имя ассета и проверяем Content-Type (без wildcard `*`):
+
+```bat
+curl -I http://localhost/admin/ | findstr /I "200"
+curl -s http://localhost/admin/ | findstr /I "assets/index-"
+```
+
+Возьмите реальное имя `index-XXXX.js`/`index-XXXX.css` из HTML и проверьте:
+
+```bat
+curl -I http://localhost/admin/assets/index-XXXX.js | findstr /I "Content-Type"
+curl -I http://localhost/admin/assets/index-XXXX.css | findstr /I "Content-Type"
+```
+
+Повторите для client/partner:
+
+```bat
+curl -I http://localhost/client/ | findstr /I "200"
+curl -s http://localhost/client/ | findstr /I "assets/index-"
+curl -I http://localhost/client/assets/index-XXXX.js | findstr /I "Content-Type"
+curl -I http://localhost/client/assets/index-XXXX.css | findstr /I "Content-Type"
+
+curl -I http://localhost/partner/ | findstr /I "200"
+curl -s http://localhost/partner/ | findstr /I "assets/index-"
+curl -I http://localhost/partner/assets/index-XXXX.js | findstr /I "Content-Type"
+curl -I http://localhost/partner/assets/index-XXXX.css | findstr /I "Content-Type"
+```
+
+Проверка на 404 (ассет не должен отдавать HTML):
+
+```bat
+curl -i http://localhost/admin/assets/THIS_SHOULD_404.css | findstr /I "HTTP/ Content-Type"
+curl -i http://localhost/client/assets/THIS_SHOULD_404.css | findstr /I "HTTP/ Content-Type"
+curl -i http://localhost/partner/assets/THIS_SHOULD_404.css | findstr /I "HTTP/ Content-Type"
+```
+
+Быстрый скрипт (вытащит реальные имена ассетов и проверит Content-Type):
+
+```bat
+scripts\ui_smoke_assets.cmd
+```
+
+Скрипт также проверяет auth login POST:
+
+```bat
+curl -i -X POST http://localhost/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
 ## 2.2) Проверка что HTML не подменяет ассеты
 
 Вытащите реальные имена ассетов из HTML:

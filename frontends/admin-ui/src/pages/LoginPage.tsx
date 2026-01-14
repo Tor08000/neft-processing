@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
@@ -7,7 +7,8 @@ import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
 
 export const LoginPage: React.FC = () => {
-  const { login, error, user } = useAuth();
+  const { login, error, accessToken } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin");
   const [submitting, setSubmitting] = useState(false);
@@ -17,8 +18,8 @@ export const LoginPage: React.FC = () => {
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  if (user) {
-    return <Navigate to="/users" replace />;
+  if (accessToken) {
+    return <Navigate to="/" replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -39,6 +40,12 @@ export const LoginPage: React.FC = () => {
   useEffect(() => {
     emailRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (accessToken) {
+      navigate("/", { replace: true });
+    }
+  }, [accessToken, navigate]);
 
   useEffect(() => {
     if (error || localError) {
