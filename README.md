@@ -194,6 +194,11 @@ curl -i "http://localhost/api/core/api/v1/admin/operations?limit=5" ^
 * Админские и клиентские SPA остаются на путях `/admin/` и `/client/`, но их API-запросы идут через новые namespace'ы `/api/core/...` и `/api/auth/...`.
 * Admin Web/Client Web собираются с `VITE_API_BASE_URL=/api` (или `http://localhost` для абсолютной схемы),
   `VITE_CORE_API_BASE=/api/core`, `VITE_AUTH_API_BASE=/api/auth` и опираются на `BASE_URL` (`/admin/` и `/client/`) как единственный базовый путь SPA.
+* Базовый путь SPA для всех порталов задаётся через `VITE_PUBLIC_BASE` (или `VITE_BASE_PATH` как fallback):
+  * admin: `/admin/`
+  * client: `/client/`
+  * partner: `/partner/`
+  Используйте это при деплое под поддиректориями или при изменении префиксов.
 
 ### Smoke-проверки (gateway, health, DB, merge markers)
 
@@ -204,6 +209,12 @@ docker compose up -d --build
 pytest -q tests\test_no_merge_markers.py tests\test_smoke_gateway_routing.py
 ```
 Запускайте `pytest` из корня репозитория, чтобы автоматически подхватывался `pytest.ini`.
+
+Проверка статики порталов (Windows CMD, CSS/JS + MIME-типы):
+
+```bat
+scripts\smoke_fronts.cmd
+```
 
 KPI smoke (core-api напрямую):
 
