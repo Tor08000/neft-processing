@@ -169,10 +169,17 @@ export async function getLoginSignals(page: Page): Promise<LoginSignals> {
   const hasEmailInput = await hasVisibleLocator(email);
   const hasPasswordInput = await hasVisibleLocator(pass);
   const hasSubmit = await hasVisibleLocator(submit);
-  const hasAuthCookie = await hasAuthCookie(page);
-  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || hasAuthCookie;
+  const authCookiePresent = await hasAuthCookie(page);
+  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || authCookiePresent;
   const hasShell = await hasAppShell(page);
-  return { hasEmailInput, hasPasswordInput, hasSubmit, hasAuthenticatedShell, hasAuthCookie, hasAppShell: hasShell };
+  return {
+    hasEmailInput,
+    hasPasswordInput,
+    hasSubmit,
+    hasAuthenticatedShell,
+    hasAuthCookie: authCookiePresent,
+    hasAppShell: hasShell,
+  };
 }
 
 export async function detectLoginState(page: Page): Promise<LoginState> {
