@@ -8,6 +8,14 @@ export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/ap
 
 export type LoginState = "LOGIN_READY" | "LOGIN_SERVICE_DOWN" | "ALREADY_AUTHENTICATED" | "LOGIN_INPUTS_NOT_FOUND";
 
+export type LoginSignals = {
+  hasEmailInput: boolean;
+  hasPasswordInput: boolean;
+  hasSubmit: boolean;
+  hasAuthenticatedShell: boolean;
+  hasAuthCookie: boolean;
+};
+
 const resolveEnv = (value: string | undefined, fallback: string) => (value && value.trim() !== "" ? value : fallback);
 const requireEnv = (value: string | undefined, name: string) => {
   if (!value || value.trim() === "") {
@@ -61,17 +69,6 @@ async function resolvePasswordInput(page: Page) {
     .first();
 }
 
-async function hasVisibleText(page: Page, text: string | RegExp) {
-  const locator = page.getByText(text, { exact: false });
-  const count = await locator.count();
-  for (let index = 0; index < count; index += 1) {
-    if (await locator.nth(index).isVisible().catch(() => false)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function hasAuthCookie(page: Page) {
   const cookies = await page.context().cookies();
   return cookies.some((cookie) => /auth|token|session/i.test(cookie.name));
@@ -104,6 +101,13 @@ async function hasLoggedInShell(page: Page) {
   return false;
 }
 
+async function hasVisibleLocator(locator: ReturnType<Page["locator"]>) {
+  if ((await locator.count()) === 0) {
+    return false;
+  }
+  return locator.first().isVisible().catch(() => false);
+}
+
 async function takeLoginScreenshot(page: Page, label: string) {
   const fileName = `login_${label}_${Date.now()}.png`;
   const filePath = path.join(process.cwd(), fileName);
@@ -111,22 +115,30 @@ async function takeLoginScreenshot(page: Page, label: string) {
   return filePath;
 }
 
-export async function detectLoginState(page: Page): Promise<LoginState> {
-  const serviceDown =
-    (await hasVisibleText(page, /сервис временно недоступен/i)) ||
-    (await hasVisibleText(page, /service unavailable/i)) ||
-    (await hasVisibleText(page, /\b503\b/));
-  if (serviceDown) {
-    return "LOGIN_SERVICE_DOWN";
-  }
-  if ((await hasLoggedInShell(page)) || (await hasAuthCookie(page))) {
-    return "ALREADY_AUTHENTICATED";
-  }
+export async function getLoginSignals(page: Page): Promise<LoginSignals> {
   const email = page.locator(emailSelector);
   const pass = page.locator(passwordSelector);
   const submit = page.locator(submitSelector);
-  const hasInputs = (await email.count()) > 0 && (await pass.count()) > 0 && (await submit.count()) > 0;
-  return hasInputs ? "LOGIN_READY" : "LOGIN_INPUTS_NOT_FOUND";
+  const hasEmailInput = await hasVisibleLocator(email);
+  const hasPasswordInput = await hasVisibleLocator(pass);
+  const hasSubmit = await hasVisibleLocator(submit);
+  const hasAuthCookie = await hasAuthCookie(page);
+  const hasAuthenticatedShell = (await hasLoggedInShell(page)) || hasAuthCookie;
+  return { hasEmailInput, hasPasswordInput, hasSubmit, hasAuthenticatedShell, hasAuthCookie };
+}
+
+export async function detectLoginState(page: Page): Promise<LoginState> {
+  const signals = await getLoginSignals(page);
+  if (signals.hasAuthenticatedShell) {
+    return "ALREADY_AUTHENTICATED";
+  }
+  if (signals.hasEmailInput && signals.hasPasswordInput && signals.hasSubmit) {
+    return "LOGIN_READY";
+  }
+  if (!signals.hasEmailInput && !signals.hasPasswordInput && !signals.hasSubmit && !signals.hasAuthenticatedShell) {
+    return "LOGIN_SERVICE_DOWN";
+  }
+  return "LOGIN_INPUTS_NOT_FOUND";
 }
 
 export async function loginViaUi({
