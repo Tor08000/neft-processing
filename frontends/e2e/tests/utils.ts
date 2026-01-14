@@ -10,6 +10,7 @@ export type LoginState =
   | "LOGIN_READY"
   | "LOGIN_SERVICE_DOWN"
   | "LOGIN_BAD_ROUTE"
+  | "FAIL_LOGIN_BAD_ENDPOINT"
   | "ALREADY_AUTHENTICATED"
   | "LOGIN_INPUTS_NOT_FOUND"
   | "LOGIN_OK"
@@ -40,6 +41,7 @@ export type AuthProbeResult = {
   authResponseStatus: number | null;
   authResponseContentType: string | null;
   authResponseBodySnippet: string | null;
+  authResponseHasToken: boolean | null;
   authRequestFailedError: string | null;
   storageKeys: string[];
   cookieNames: string[];
@@ -135,12 +137,17 @@ async function hasAuthStorageToken(page: Page) {
   }
 }
 
-async function buildLoginDiagnostics(page: Page, reason: string) {
+async function buildLoginDiagnostics(page: Page, reason: string, authProbe?: AuthProbeResult) {
   const url = page.url();
   const title = await page.title();
   const bodyText = await page.locator("body").innerText();
   const snippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 200);
-  return `${reason}. URL: ${url}. Title: ${title}. Body: ${snippet}. Auth URL: ${ADMIN_AUTH_URL}.`;
+  const probe = authProbe
+    ? ` Auth probe: url=${authProbe.authEffectiveUrl ?? "null"} status=${authProbe.authResponseStatus ?? "null"} contentType=${
+        authProbe.authResponseContentType ?? "null"
+      } hasToken=${authProbe.authResponseHasToken ?? "null"} snippet=${authProbe.authResponseBodySnippet ?? "null"}.`
+    : "";
+  return `${reason}. URL: ${url}. Title: ${title}. Body: ${snippet}. Auth URL: ${ADMIN_AUTH_URL}.${probe}`;
 }
 
 async function hasLoggedInShell(page: Page) {
@@ -401,6 +408,7 @@ async function buildAuthProbe({
   let authResponseStatus: number | null = null;
   let authResponseContentType: string | null = null;
   let authResponseBodySnippet: string | null = null;
+  let authResponseHasToken: boolean | null = null;
   let authRequestFailedError: string | null = null;
   let authResult: { type: "response"; status: number } | { type: "failed" } | null = null;
 
@@ -413,6 +421,14 @@ async function buildAuthProbe({
     const bodyText = await authEvent.response.text().catch(() => "");
     if (bodyText) {
       authResponseBodySnippet = bodyText.slice(0, 400);
+    }
+    if (authResponseContentType?.includes("application/json")) {
+      try {
+        const parsed = JSON.parse(bodyText) as { access_token?: string; token?: string };
+        authResponseHasToken = Boolean(parsed?.access_token || parsed?.token);
+      } catch {
+        authResponseHasToken = false;
+      }
     }
   } else if (authEvent?.type === "failed") {
     authRequestSent = true;
@@ -441,6 +457,7 @@ async function buildAuthProbe({
     authResponseStatus,
     authResponseContentType,
     authResponseBodySnippet,
+    authResponseHasToken,
     authRequestFailedError,
     storageKeys,
     cookieNames: sliceKeysForReport(cookieNames, 20),
@@ -491,15 +508,15 @@ export async function loginViaUi({
   await pass.fill(passwordValue);
   const initialUrl = page.url();
   const authEventPromise = waitForAuthEvent(page);
-  const authSuccessPromise = page
+  const authResponsePromise = page
     .waitForResponse(
-      (response) => matchesStrictAuthEndpoint(response.url()) && response.request().method() === "POST" && response.status() === 200,
+      (response) => matchesStrictAuthEndpoint(response.url()) && response.request().method() === "POST",
       { timeout: authProbeTimeoutMs },
     )
     .catch(() => null);
-  await Promise.all([authSuccessPromise, submit.click()]);
+  await Promise.all([authResponsePromise, submit.click()]);
   const afterClickScreenshot = await authProbe?.afterClickScreenshot?.(page);
-  const [authEvent, authSuccessResponse] = await Promise.all([authEventPromise, authSuccessPromise]);
+  const [authEvent, authResponse] = await Promise.all([authEventPromise, authResponsePromise]);
   const { authResult, probeResult } = await buildAuthProbe({
     page,
     authEvent,
@@ -515,9 +532,9 @@ export async function loginViaUi({
     postSignals.hasAuthCookie || postSignals.hasAuthStorageToken || probeResult.tokenFound.kind !== "none";
   const hasShell = postSignals.hasAuthenticatedShell || postSignals.hasAppShell || appShellVisible;
   const urlChanged = page.url() !== initialUrl && !page.url().includes("/login");
-  const authResponseStatus = probeResult.authResponseStatus ?? authSuccessResponse?.status() ?? null;
+  const authResponseStatus = probeResult.authResponseStatus ?? authResponse?.status() ?? null;
   const authResponseContentType =
-    probeResult.authResponseContentType ?? authSuccessResponse?.headers()["content-type"] ?? null;
+    probeResult.authResponseContentType ?? authResponse?.headers()["content-type"] ?? null;
   const authStatusOk = authResponseStatus === 200;
   const authContentTypeOk = authResponseContentType?.includes("application/json") ?? false;
   const loginConfirmed = authStatusOk && hasSession && (hasShell || urlChanged);
@@ -527,8 +544,14 @@ export async function loginViaUi({
   if (probeResult.authEffectiveUrl?.includes("/auth/auth")) {
     return "FAIL_AUTH_URL_DUPLICATED";
   }
-  if ((authResponseStatus === 200 && !authContentTypeOk) || authResponseStatus === 404) {
-    return "LOGIN_BAD_ROUTE";
+  if (authResponseStatus === 404 || (authResponseStatus === 200 && !authContentTypeOk)) {
+    return "FAIL_LOGIN_BAD_ENDPOINT";
+  }
+  if (authResponseContentType?.includes("text/html")) {
+    return "FAIL_LOGIN_BAD_ENDPOINT";
+  }
+  if (authStatusOk && authContentTypeOk && probeResult.authResponseHasToken !== true) {
+    return "FAIL_LOGIN_BAD_ENDPOINT";
   }
   if (authResponseStatus !== null && authResponseStatus >= 500) {
     return "LOGIN_SERVICE_DOWN";
@@ -596,6 +619,10 @@ async function performLogin({
   if (result === "LOGIN_BAD_ROUTE") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_LOGIN_BAD_ROUTE`);
     throw new Error(await buildLoginDiagnostics(page, `LOGIN_BAD_ROUTE (screenshot: ${screenshotPath})`));
+  }
+  if (result === "FAIL_LOGIN_BAD_ENDPOINT") {
+    const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_LOGIN_BAD_ENDPOINT`);
+    throw new Error(await buildLoginDiagnostics(page, `FAIL_LOGIN_BAD_ENDPOINT (screenshot: ${screenshotPath})`));
   }
   if (result === "FAIL_LOGIN_NOT_COMPLETED") {
     const screenshotPath = await takeLoginScreenshot(page, `${appLabel}_FAIL_LOGIN_NOT_COMPLETED`);

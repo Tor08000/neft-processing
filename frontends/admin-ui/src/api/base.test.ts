@@ -24,4 +24,19 @@ describe("joinUrl", () => {
       "http://localhost/api/auth/v1/auth/login",
     );
   });
+
+  it("normalizes auth base segments", () => {
+    expect(joinUrl("http://localhost/api", "/auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+    expect(joinUrl("http://localhost/api/", "auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+    expect(joinUrl("http://localhost/api/auth", "/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+    expect(joinUrl("http://localhost/api/api", "/auth/v1/auth/login")).toBe(
+      "http://localhost/api/auth/v1/auth/login",
+    );
+  });
 });
