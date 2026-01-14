@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ApiError, fetchMe, login, UnauthorizedError, ValidationError } from "../api/auth";
+import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
 import type { AuthSession } from "../api/types";
 
 interface AuthContextValue {
@@ -134,6 +134,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         }
         if (err instanceof ValidationError) {
           setError("Проверьте email и пароль");
+          return;
+        }
+        if (err instanceof HtmlResponseError) {
+          setError("Ошибка маршрутизации gateway (HTML вместо JSON)");
           return;
         }
         if (err instanceof ApiError && err.status >= 500) {

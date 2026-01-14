@@ -131,6 +131,45 @@ curl -I http://localhost/partner/assets/index-*.css
 - `Content-Type: application/javascript` (или `text/javascript`) для JS.
 - `Content-Type: text/css` для CSS.
 
+## 2.2) Проверка что HTML не подменяет ассеты
+
+Вытащите реальные имена ассетов из HTML:
+
+```bat
+curl -s http://localhost/admin/ | findstr /i "assets/index-"
+curl -s http://localhost/client/ | findstr /i "assets/index-"
+curl -s http://localhost/partner/ | findstr /i "assets/index-"
+```
+
+Проверьте реальные файлы (подставьте имена из предыдущего шага):
+
+```bash
+curl -I http://localhost/admin/assets/index-XXXX.js
+curl -I http://localhost/admin/assets/index-XXXX.css
+curl -I http://localhost/client/assets/index-XXXX.js
+curl -I http://localhost/client/assets/index-XXXX.css
+curl -I http://localhost/partner/assets/index-XXXX.js
+curl -I http://localhost/partner/assets/index-XXXX.css
+```
+
+Ожидания:
+
+- HTTP 200.
+- `Content-Type` не `text/html`.
+
+## 2.3) Проверка login JSON
+
+```bash
+curl -i -X POST http://localhost/api/auth/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}"
+```
+
+Ожидание:
+
+- HTTP/1.1 200
+- Content-Type: application/json
+
 ## 3) UI Link Crawl (ui_link_crawl.spec.ts)
 
 ```bat
