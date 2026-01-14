@@ -199,6 +199,7 @@ function evaluateResult(
   assetHtmlErrors: string[],
   loginState: LoginState,
   notFound: boolean,
+  notImplemented: boolean,
 ) {
   if (loginState === "LOGIN_SERVICE_DOWN") {
     return { result: "FAIL" as const, reason: "LOGIN_SERVICE_DOWN" };
@@ -229,6 +230,9 @@ function evaluateResult(
   }
   if (notFound) {
     return { result: "FAIL" as const, reason: "NOT_FOUND" };
+  }
+  if (notImplemented) {
+    return { result: "SKIP" as const, reason: "NOT_IMPLEMENTED" };
   }
   if (assetHtmlErrors.length > 0) {
     return { result: "FAIL" as const, reason: "FAIL_STATIC_ASSET_HTML" };
@@ -355,6 +359,10 @@ async function crawlApp({
     await page.waitForTimeout(800);
     const pageLoginState = await detectLoginState(page);
     const notFound = await hasVisibleText(page, "Страница не найдена");
+    const notImplemented =
+      (await hasVisibleText(page, "В разработке")) ||
+      (await hasVisibleText(page, "Not implemented")) ||
+      (await hasVisibleText(page, "Coming soon"));
     const { result, reason } = evaluateResult(
       page.url(),
       responseErrors,
@@ -363,6 +371,7 @@ async function crawlApp({
       assetHtmlErrors,
       pageLoginState,
       notFound,
+      notImplemented,
     );
 
     ensureDir(path.join(OUTPUT_ROOT, "crawl", app));
