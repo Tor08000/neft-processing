@@ -6,13 +6,14 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "@shared/brand/brand.css";
+import { normalizeBase } from "@shared/lib/path";
 
-const base = import.meta.env.BASE_URL || "/partner/";
+const base = normalizeBase(import.meta.env.VITE_PUBLIC_BASE ?? "/partner");
 document.documentElement.setAttribute("data-theme", "dark");
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <BrowserRouter basename={base.replace(/\/$/, "")}>
+    <BrowserRouter basename={base}>
       <I18nProvider>
         <ErrorBoundary>
           <App />

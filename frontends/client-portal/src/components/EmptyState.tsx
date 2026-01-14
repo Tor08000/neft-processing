@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { withBase } from "@shared/lib/path";
 
 type EmptyStateAction = {
   label: string;
@@ -30,7 +31,7 @@ const renderAction = (action: EmptyStateAction, fallbackVariant: EmptyStateActio
   }
   if (action.href) {
     return (
-      <a className={className} href={action.href}>
+      <a className={className} href={withBase(action.href)}>
         {action.label}
       </a>
     );

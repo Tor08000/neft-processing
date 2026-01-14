@@ -3,6 +3,7 @@ import { request } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { Toast } from "../components/common/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { withBase } from "@shared/lib/path";
 
 const VIEW_OPTIONS = ["FULL", "FLEET", "ACCOUNTANT"] as const;
 const SUBJECT_OPTIONS = [
@@ -251,11 +252,12 @@ export const UnifiedExplainPage = () => {
   const handleActionClick = (action: UnifiedExplainAction) => {
     const { url, missing } = resolveActionLink(action);
     if (!url || missing) return;
+    const targetUrl = withBase(url);
     if (action.code === "RUN_REPLAY") {
-      setConfirmReplayLink(url);
+      setConfirmReplayLink(targetUrl);
       return;
     }
-    window.location.assign(url);
+    window.location.assign(targetUrl);
   };
 
   const handleCopy = async () => {
@@ -583,7 +585,7 @@ export const UnifiedExplainPage = () => {
                   {deepLinks.map((link) => (
                     <a
                       key={link.label}
-                      href={link.url ?? "#"}
+                      href={link.url ? withBase(link.url) : "#"}
                       style={{
                         padding: "6px 10px",
                         borderRadius: 8,

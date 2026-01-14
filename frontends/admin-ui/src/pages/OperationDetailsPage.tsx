@@ -8,6 +8,7 @@ import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDateTime } from "../utils/format";
 import { Operation, RiskPayload } from "../types/operations";
 import { Loader } from "../components/Loader/Loader";
+import { withBase } from "@shared/lib/path";
 
 export const OperationDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -188,7 +189,7 @@ export const OperationDetailsPage: React.FC = () => {
                     return (
                       <li key={rule} style={{ color: "var(--neft-text-secondary)" }}>
                         {isId ? (
-                          <a href={`/risk/rules/${rule}`} style={{ color: "var(--neft-primary)" }}>
+                          <a href={withBase(`/risk/rules/${rule}`)} style={{ color: "var(--neft-primary)" }}>
                             {rule}
                           </a>
                         ) : (
