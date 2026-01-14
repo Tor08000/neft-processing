@@ -1,5 +1,6 @@
 import type { KpiCardData, KpiGoodWhen, KpiProgressMode, KpiTrend, KpiUnit } from "../types";
 import { formatCount, formatMoney, formatPercent } from "../formatters";
+import { withBase } from "@shared/lib/path";
 
 const getDeltaTone = (trend?: KpiTrend, goodWhen: KpiGoodWhen = "neutral") => {
   if (goodWhen === "neutral" || !trend || trend === "flat") return "is-neutral";
@@ -61,7 +62,9 @@ export const KpiCard = ({
         ? Math.max(current - target, 0)
         : Math.max(target - current, 0)
       : null;
-  const explainUrl = explainKey ? `/explain?kpi_key=${encodeURIComponent(explainKey)}&window_days=${explainWindowDays ?? 7}` : null;
+  const explainUrl = explainKey
+    ? withBase(`/explain?kpi_key=${encodeURIComponent(explainKey)}&window_days=${explainWindowDays ?? 7}`)
+    : null;
 
   return (
     <div className="kpi-card neft-card">

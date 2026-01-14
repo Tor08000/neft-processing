@@ -18,7 +18,7 @@
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src", "types", "../shared/brand"],
+  "include": ["src", "types", "../shared/brand", "../shared/lib"],
   "exclude": [
     "**/*.test.ts",
     "**/*.test.tsx",

@@ -10,6 +10,7 @@ import { useToast } from "../../components/Toast/useToast";
 import { formatDateTime } from "../../utils/format";
 import { createIdempotencyKey } from "../../utils/uuid";
 import type { BillingInvoice, BillingPayment, BillingReconciliationLink } from "../../types/billingFlows";
+import { withBase } from "@shared/lib/path";
 import {
   formatMoney,
   invoiceStatusBadge,
@@ -374,7 +375,12 @@ const BillingInvoiceDetailsPage: React.FC = () => {
           <div className="stack-inline" style={{ gap: 8 }}>
             <span>{invoice.ledger_tx_id}</span>
             <CopyButton value={invoice.ledger_tx_id} />
-            <a href={`/ledger/transactions/${invoice.ledger_tx_id}`} target="_blank" rel="noreferrer" className="ghost">
+            <a
+              href={withBase(`/ledger/transactions/${invoice.ledger_tx_id}`)}
+              target="_blank"
+              rel="noreferrer"
+              className="ghost"
+            >
               Open ledger transaction
             </a>
           </div>

@@ -8,15 +8,16 @@ import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import "./index.css";
 import "@shared/brand/brand.css";
 import { applyTheme, getInitialTheme } from "./lib/theme";
+import { normalizeBase } from "@shared/lib/path";
 
-const base = import.meta.env.BASE_URL || "/client/";
+const base = normalizeBase(import.meta.env.VITE_PUBLIC_BASE ?? "/client");
 
 registerServiceWorker();
 applyTheme(getInitialTheme());
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <BrowserRouter basename={base.replace(/\/$/, "")}>
+    <BrowserRouter basename={base}>
       <I18nProvider>
         <ErrorBoundary>
           <App />

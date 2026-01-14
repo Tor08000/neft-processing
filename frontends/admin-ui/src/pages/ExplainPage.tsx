@@ -31,6 +31,7 @@ import { buildMasterySnapshot } from "../mastery/levels";
 import { loadMasteryEvents, loadMasteryState } from "../mastery/storage";
 import { recordCaseExport, type CaseExportType } from "../utils/caseExportRegistry";
 import { redactForExport } from "../redaction/apply";
+import { withBase } from "@shared/lib/path";
 import type {
   ExplainActionCatalogItem,
   ExplainDiffResponse,
@@ -1573,7 +1574,9 @@ export const ExplainPage = () => {
                         <button
                           type="button"
                           className="neft-btn-secondary"
-                          onClick={() => (window.location.href = `/support/cases/${createdCaseId}`)}
+                          onClick={() => {
+                            window.location.href = withBase(`/support/cases/${createdCaseId}`);
+                          }}
                         >
                           Открыть кейс
                         </button>
