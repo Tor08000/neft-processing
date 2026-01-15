@@ -159,8 +159,6 @@ services:
       VITE_AUTH_API_BASE: /api/auth
       VITE_AI_API_BASE: /api/ai
       VITE_PUBLIC_BASE: /partner/
-    depends_on:
-      - gateway
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 10s
@@ -535,6 +533,12 @@ services:
     image: neft-processing-gateway:latest
     container_name: neft-processing-gateway-1
     depends_on:
+      admin-web:
+        condition: service_healthy
+      client-web:
+        condition: service_healthy
+      partner-web:
+        condition: service_healthy
       core-api:
         condition: service_healthy
       auth-host:

@@ -32,7 +32,12 @@ npm run ui:link-crawl
    Эти переменные используются для детерминированного создания/обновления демо-пользователей при старте `auth-host`.
    `DEMO_SEED_FORCE_PASSWORD_RESET=1` сбрасывает пароли один раз на первого запуска, дальше пароли остаются стабильными.
 4. Соберите и поднимите сервисы: `docker compose up -d --build`.
-5. Проверьте доступность сервисов через gateway и напрямую:
+5. Production-like доступ через gateway (единственная внешняя точка):
+  - Admin: `http://localhost/admin/`
+  - Client: `http://localhost/client/`
+  - Partner: `http://localhost/partner/`
+  - API: `http://localhost/api/...`
+6. Проверьте доступность сервисов через gateway и напрямую:
  - Gateway health: `http://localhost/health`
   - Core API напрямую: `http://localhost:8001/health`
   - Core API через gateway: `http://localhost/api/core/health`
@@ -43,10 +48,10 @@ npm run ui:link-crawl
   - Admin UI: `http://localhost/admin/`
   - Client UI: `http://localhost/client/`
   - ⚠️ В браузере используйте только `http://localhost/*` (адрес `http://gateway` доступен только изнутри docker-сети).
-5. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
+7. Для локальной наблюдаемости поднимите инструменты: `docker compose up -d otel-collector jaeger prometheus grafana` (Grafana: `http://localhost:3000`, логин/пароль `admin/admin`).
    - Проверка Prometheus targets из контейнера: `make prometheus-smoke`
    - Мини-проверка DOWN targets: `curl http://localhost:9090/api/v1/targets | findstr /C:"\"health\":\"down\""` (не должно быть вывода)
-6. Для обычной остановки используйте `docker compose down` (без `-v`), чтобы сохранить тома `postgres-data`, `minio-data` и `auth-keys`. Полная очистка с `docker compose down -v` удалит данные БД, ключи и файлы из MinIO.
+8. Для обычной остановки используйте `docker compose down` (без `-v`), чтобы сохранить тома `postgres-data`, `minio-data` и `auth-keys`. Полная очистка с `docker compose down -v` удалит данные БД, ключи и файлы из MinIO.
 
 ### Endpoints & Ports
 
