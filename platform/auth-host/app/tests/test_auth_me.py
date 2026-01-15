@@ -67,7 +67,7 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
     resp = client.get(
         "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Portal": "admin"},
     )
 
     assert resp.status_code == 200
@@ -125,7 +125,7 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     resp = client.get(
         "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Portal": "admin"},
     )
 
     assert resp.status_code == 200

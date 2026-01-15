@@ -4,7 +4,7 @@ import type { AuthSession, AuthUser, LoginRequest, LoginResponse, MeResponse } f
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
     "/v1/auth/login",
-    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify({ ...payload, portal: "admin" }) },
     { base: "auth" },
   );
   return {
@@ -16,7 +16,11 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function me(token: string): Promise<AuthUser> {
-  const body = await request<MeResponse>("/v1/auth/me", { method: "GET" }, { token, base: "auth" });
+  const body = await request<MeResponse>(
+    "/v1/auth/me",
+    { method: "GET", headers: { "X-Portal": "admin" } },
+    { token, base: "auth" },
+  );
   return {
     id: body.subject,
     email: body.email,

@@ -47,6 +47,16 @@ class Settings(SharedSettings):
     service_token: str = _env_or_default("SERVICE_TOKEN", "svc-dev")
     auth_issuer: str = _env_or_default("NEFT_AUTH_ISSUER", "neft-auth", fallback_keys=("AUTH_ISSUER",))
     auth_audience: str = _env_or_default("NEFT_AUTH_AUDIENCE", "neft-admin", fallback_keys=("AUTH_AUDIENCE",))
+    auth_client_issuer: str = _env_or_default(
+        "NEFT_CLIENT_ISSUER",
+        "neft-client",
+        fallback_keys=("CLIENT_AUTH_ISSUER",),
+    )
+    auth_client_audience: str = _env_or_default(
+        "NEFT_CLIENT_AUDIENCE",
+        "neft-client",
+        fallback_keys=("CLIENT_AUTH_AUDIENCE",),
+    )
     auth_key_dir: str = _env_or_default("AUTH_KEY_DIR", "/app/.keys", fallback_keys=("AUTH_JWT_KEY_DIR",))
     auth_private_key_path: str = field(
         default_factory=lambda: _path_env(

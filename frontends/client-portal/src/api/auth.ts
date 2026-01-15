@@ -6,7 +6,7 @@ export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
     "/v1/auth/login",
-    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify({ ...payload, portal: "client" }) },
     { base: "auth" },
   );
   return {
@@ -20,7 +20,11 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function fetchMe(token: string): Promise<MeResponse> {
-  return request<MeResponse>("/v1/auth/me", { method: "GET" }, { token, base: "auth" });
+  return request<MeResponse>(
+    "/v1/auth/me",
+    { method: "GET", headers: { "X-Portal": "client" } },
+    { token, base: "auth" },
+  );
 }
 
 export interface RegisterPayload {

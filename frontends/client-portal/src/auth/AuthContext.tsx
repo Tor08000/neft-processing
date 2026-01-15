@@ -21,6 +21,26 @@ interface AuthProviderProps {
 }
 
 const STORAGE_KEY = "neft_client_auth";
+const CLIENT_TOKEN_ISSUER = import.meta.env.VITE_CLIENT_TOKEN_ISSUER ?? "neft-client";
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  try {
+    const decoded = atob(padded);
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch (err) {
+    console.error("Failed to decode token payload", err);
+    return null;
+  }
+}
+
+function isClientIssuer(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  return payload?.iss === CLIENT_TOKEN_ISSUER;
+}
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -57,6 +77,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
   const reviveSession = useCallback(
     async (stored: AuthSession) => {
       try {
+        if (!isClientIssuer(stored.token)) {
+          setError("Неверный контур входа");
+          logout();
+          return;
+        }
         const profile = await fetchMe(stored.token);
         if (!isClientRolePresent(profile.roles)) {
           setError("Эта зона доступна только клиентам");
@@ -105,6 +130,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
 
   const finalizeSession = useCallback(
     async (session: AuthSession) => {
+      if (!isClientIssuer(session.token)) {
+        setError("Неверный контур входа");
+        logout();
+        return;
+      }
       const profile = await fetchMe(session.token);
       if (!isClientRolePresent(profile.roles)) {
         setError("У вас нет доступа к клиентскому кабинету");
