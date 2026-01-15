@@ -5,6 +5,8 @@ import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
+import { SignupPage } from "./pages/SignupPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OperationsPage } from "./pages/OperationsPage";
@@ -86,7 +88,9 @@ export function App({ initialSession = null }: AppProps) {
       <LegalGateProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/client/signup" element={<SignupPage />} />
           <Route element={<ProtectedRoute />}>
+            <Route path="/client/onboarding" element={<OnboardingPage />} />
             <Route element={<Layout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
