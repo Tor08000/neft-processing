@@ -4,7 +4,11 @@ All client-portal endpoints should rely on :func:`app.services.client_auth.requi
 to validate the ``Authorization: Bearer`` header for client users.
 """
 
-from app.services.client_auth import get_public_key, require_client_user, verify_client_token
+from app.services.client_auth import (
+    get_public_key,
+    require_client_user,
+    require_onboarding_user,
+    verify_client_token,
+)
 
-__all__ = ["get_public_key", "require_client_user", "verify_client_token"]
-
+__all__ = ["get_public_key", "require_client_user", "require_onboarding_user", "verify_client_token"]

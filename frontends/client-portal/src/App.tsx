@@ -1,9 +1,11 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { ClientProvider, useClient } from "./auth/ClientContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ModuleGate } from "./components/ModuleGate";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -68,8 +70,12 @@ interface AppProps {
 
 function IndexRedirect() {
   const { user } = useAuth();
+  const { client } = useClient();
   if (user) {
-    return <Navigate to="/vehicles" replace />;
+    if (!client?.org || client.org_status !== "ACTIVE") {
+      return <Navigate to="/client/connect" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
   }
   return <Navigate to="/login" replace />;
 }
@@ -85,13 +91,15 @@ function PwaIndexRedirect() {
 export function App({ initialSession = null }: AppProps) {
   return (
     <AuthProvider initialSession={initialSession}>
-      <LegalGateProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/client/signup" element={<SignupPage />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/client/onboarding" element={<OnboardingPage />} />
-            <Route element={<Layout pwaMode={isPwaMode} />}>
+      <ClientProvider>
+        <LegalGateProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/client/signup" element={<SignupPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/client/connect" element={<OnboardingPage />} />
+              <Route path="/client/onboarding" element={<OnboardingPage />} />
+              <Route element={<Layout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
                   <Route index element={<PwaIndexRedirect />} />
@@ -105,22 +113,92 @@ export function App({ initialSession = null }: AppProps) {
                 <>
                   <Route index element={<IndexRedirect />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/vehicles" element={<FleetGroupsPage />} />
-                <Route path="/vehicles/:id" element={<FleetGroupDetailsPage />} />
+                <Route
+                  path="/vehicles"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetGroupsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/vehicles/:id"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetGroupDetailsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/cards" element={<ClientCardsPage />} />
                 <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
-                <Route path="/orders" element={<MarketplaceOrdersPage />} />
-                <Route path="/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
+                <Route
+                  path="/orders"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceOrdersPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/orders/:orderId"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceOrderDetailsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/billing" element={<ClientInvoicesPage />} />
                 <Route path="/billing/:id" element={<ClientInvoiceDetailsPage />} />
                 <Route path="/support" element={<SupportRequestsPage />} />
                 <Route path="/support/:id" element={<SupportRequestDetailsPage />} />
-                <Route path="/analytics" element={<AnalyticsDashboardPage />} />
-                <Route path="/analytics/spend" element={<AnalyticsSpendPage />} />
-                <Route path="/analytics/declines" element={<AnalyticsDeclinesPage />} />
-                <Route path="/analytics/marketplace" element={<AnalyticsMarketplacePage />} />
-                <Route path="/analytics/documents" element={<AnalyticsDocumentsPage />} />
-                <Route path="/analytics/exports" element={<AnalyticsExportsPage />} />
+                <Route
+                  path="/analytics"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsDashboardPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/analytics/spend"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsSpendPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/analytics/declines"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsDeclinesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/analytics/marketplace"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsMarketplacePage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/analytics/documents"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsDocumentsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/analytics/exports"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsExportsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/spend/transactions" element={<OperationsPage />} />
                 <Route path="/explain" element={<ExplainPage />} />
                 <Route path="/explain/insights" element={<ExplainInsightsPage />} />
@@ -145,10 +223,38 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/operations" element={<OperationsPage />} />
                 <Route path="/operations/:id" element={<OperationDetailsPage />} />
                 <Route path="/balances" element={<BalancesPage />} />
-                <Route path="/marketplace" element={<MarketplaceCatalogPage />} />
-                <Route path="/marketplace/products/:productId" element={<MarketplaceProductDetailsPage />} />
-                <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
-                <Route path="/marketplace/orders/:orderId" element={<MarketplaceOrderDetailsPage />} />
+                <Route
+                  path="/marketplace"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceCatalogPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/marketplace/products/:productId"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceProductDetailsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/marketplace/orders"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceOrdersPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/marketplace/orders/:orderId"
+                  element={
+                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                      <MarketplaceOrderDetailsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/support/requests" element={<SupportRequestsPage />} />
                 <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
                 <Route path="/cases" element={<CasesPage />} />
@@ -158,31 +264,130 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />
                 <Route path="/legal" element={<LegalPage />} />
-                <Route path="/fleet/cards" element={<FleetCardsPage />} />
-                <Route path="/fleet/cards/:id" element={<FleetCardDetailsPage />} />
-                <Route path="/fleet/groups" element={<FleetGroupsPage />} />
-                <Route path="/fleet/groups/:id" element={<FleetGroupDetailsPage />} />
-                <Route path="/fleet/employees" element={<FleetEmployeesPage />} />
-                <Route path="/fleet/spend" element={<FleetSpendPage />} />
-                <Route path="/fleet/notifications" element={<FleetNotificationsPage />} />
-                <Route path="/fleet/incidents" element={<FleetIncidentsPage />} />
-                <Route path="/fleet/incidents/:id" element={<FleetIncidentDetailsPage />} />
-                <Route path="/fleet/policy-center" element={<FleetPolicyCenterOverviewPage />} />
-                <Route path="/fleet/policy-center/actions" element={<FleetPoliciesPage />} />
-                <Route path="/fleet/policy-center/notifications" element={<FleetNotificationPoliciesPage />} />
-                <Route path="/fleet/policy-center/channels" element={<FleetNotificationChannelsPage />} />
-                <Route path="/fleet/policy-center/executions" element={<FleetPolicyExecutionsPage />} />
+                <Route
+                  path="/fleet/cards"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetCardsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/cards/:id"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetCardDetailsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/groups"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetGroupsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/groups/:id"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetGroupDetailsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/employees"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetEmployeesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/spend"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetSpendPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/notifications"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetNotificationsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/incidents"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetIncidentsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/incidents/:id"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetIncidentDetailsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/policy-center"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetPolicyCenterOverviewPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/policy-center/actions"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetPoliciesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/policy-center/notifications"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetNotificationPoliciesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/policy-center/channels"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetNotificationChannelsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/fleet/policy-center/executions"
+                  element={
+                    <ModuleGate module="FLEET" title="Флот">
+                      <FleetPolicyExecutionsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/fleet/notifications/policies" element={<Navigate to="/fleet/policy-center/notifications" replace />} />
                 <Route path="/fleet/notifications/channels" element={<Navigate to="/fleet/policy-center/channels" replace />} />
                 <Route path="/fleet/policies" element={<Navigate to="/fleet/policy-center/actions" replace />} />
                 <Route path="/fleet/policies/executions" element={<Navigate to="/fleet/policy-center/executions" replace />} />
                 </>
               )}
+              </Route>
             </Route>
-          </Route>
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </LegalGateProvider>
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </LegalGateProvider>
+      </ClientProvider>
     </AuthProvider>
   );
 }

@@ -33,7 +33,15 @@ from .billing_task_link import BillingTaskLink, BillingTaskStatus, BillingTaskTy
 from .clearing import Clearing  # noqa: F401
 from .clearing_batch import ClearingBatch  # noqa: F401
 from .clearing_batch_operation import ClearingBatchOperation  # noqa: F401
-from .client_portal import ClientCard, ClientLimit, ClientOperation  # noqa: F401
+from .client_portal import (  # noqa: F401
+    CardAccess,
+    CardAccessScope,
+    CardLimit,
+    ClientCard,
+    ClientLimit,
+    ClientOperation,
+    ClientUserRole,
+)
 from .client_onboarding import ClientOnboarding, ClientOnboardingContract  # noqa: F401
 from .feature_flags import FeatureFlag  # noqa: F401
 from .commercial_layer import (  # noqa: F401

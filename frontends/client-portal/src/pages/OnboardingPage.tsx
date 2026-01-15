@@ -2,56 +2,38 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@shared/brand/components";
 import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
 import {
-  fetchOnboardingStatus,
-  submitOnboardingProfile,
-  uploadOnboardingFile,
+  createOrg,
+  fetchPlans,
+  selectSubscription,
   generateContract,
-  fetchContract,
+  fetchCurrentContract,
   signContract,
-  type ClientType,
-  type OnboardingContractInfo,
-  type OnboardingStatusResponse,
-} from "../api/onboarding";
-import { ApiError, UnauthorizedError } from "../api/http";
+  type ContractInfo,
+  type SubscriptionPlan,
+} from "../api/clientPortal";
 import {
   AUTO_ACTIVATE_AFTER_SIGN,
   CONTRACT_SIMPLE_SIGN_ENABLED,
   INDIVIDUAL_SIGNUP_ENABLED,
-  ONBOARDING_DOCS_REQUIRED,
   SELF_SIGNUP_ENABLED,
 } from "../config/features";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 
-type Step = "profile" | "docs" | "contract" | "activation";
-
-const FILE_TYPES = [
-  { value: "company_card", label: "Карточка предприятия / реквизиты" },
-  { value: "charter", label: "Устав" },
-  { value: "power_of_attorney", label: "Доверенность" },
-];
-
-const resolveStepFromStatus = (status: OnboardingStatusResponse | null): Step => {
-  if (!status) return "profile";
-  if (status.status === "ACTIVE" || status.status === "PENDING_ACTIVATION" || status.status === "CONTRACT_SIGNED") {
-    return "activation";
-  }
-  if (status.status === "CONTRACT_READY") return "contract";
-  if (status.status === "ONBOARDING_DOCS") return ONBOARDING_DOCS_REQUIRED ? "docs" : "contract";
-  return "profile";
-};
+type Step = "profile" | "plan" | "contract" | "activation";
 
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { client, refresh } = useClient();
   const { toast, showToast } = useToast();
-  const [status, setStatus] = useState<OnboardingStatusResponse | null>(null);
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [clientType, setClientType] = useState<ClientType>("LEGAL_ENTITY");
+  const [clientType, setClientType] = useState<"LEGAL" | "IP" | "INDIVIDUAL">("LEGAL");
   const [companyName, setCompanyName] = useState("");
   const [inn, setInn] = useState("");
   const [kpp, setKpp] = useState("");
@@ -63,11 +45,10 @@ export function OnboardingPage() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFileType, setSelectedFileType] = useState(FILE_TYPES[0].value);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; type: string; status: string }>>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<string>("");
 
-  const [contractInfo, setContractInfo] = useState<OnboardingContractInfo | null>(null);
+  const [contractInfo, setContractInfo] = useState<ContractInfo | null>(null);
   const [contractReady, setContractReady] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -75,53 +56,52 @@ export function OnboardingPage() {
   const [otp, setOtp] = useState("");
 
   const activationLabel = useMemo(() => {
-    if (status?.status === "ACTIVE") return "Аккаунт активирован";
+    if (client?.org_status === "ACTIVE") return "Аккаунт активирован";
     return "Ожидайте активации";
-  }, [status?.status]);
+  }, [client?.org_status]);
 
   useEffect(() => {
     if (!user || !SELF_SIGNUP_ENABLED) return;
-    let isMounted = true;
-    const loadStatus = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await fetchOnboardingStatus(user);
-        if (!isMounted) return;
-        if (!data) {
-          setStatus(null);
-          setStep("profile");
-          return;
-        }
-        setStatus(data);
-        setStep(resolveStepFromStatus(data));
-      } catch (err) {
-        if (!isMounted) return;
-        if (err instanceof UnauthorizedError) {
-          navigate("/login", { replace: true });
-          return;
-        }
-        if (err instanceof ApiError && err.status === 403) {
-          setError("Нет доступа к онбордингу");
-          return;
-        }
-        console.error("Не удалось получить статус онбординга", err);
-        setError("Модуль онбординга временно недоступен");
-      } finally {
-        if (!isMounted) return;
-        setIsLoading(false);
+    if (client?.org_status === "ACTIVE") {
+      setStep("activation");
+      return;
+    }
+    if (client?.org) {
+      if (client.subscription?.plan_code) {
+        setStep("contract");
+      } else {
+        setStep("plan");
       }
-    };
-    void loadStatus();
-    return () => {
-      isMounted = false;
-    };
-  }, [navigate, user]);
+      return;
+    }
+    setStep("profile");
+  }, [client?.org, client?.org_status, client?.subscription?.plan_code, user]);
+
+  useEffect(() => {
+    if (step !== "plan" || !user) return;
+    if (plans.length) return;
+    setIsLoading(true);
+    fetchPlans(user)
+      .then((data) => {
+        setPlans(data);
+        const freePlan = data.find((plan) => plan.code.toUpperCase().includes("FREE"));
+        if (freePlan) {
+          setSelectedPlan(freePlan.code);
+        } else if (data[0]) {
+          setSelectedPlan(data[0].code);
+        }
+      })
+      .catch((err) => {
+        console.error("Не удалось загрузить планы", err);
+        setError("Не удалось загрузить планы подписки");
+      })
+      .finally(() => setIsLoading(false));
+  }, [plans.length, step, user]);
 
   useEffect(() => {
     if (step !== "contract" || !user) return;
     if (contractReady) return;
-    fetchContract(user)
+    fetchCurrentContract(user)
       .then((data) => {
         setContractInfo(data);
         setContractReady(true);
@@ -153,37 +133,30 @@ export function OnboardingPage() {
       setError("Заполните обязательные поля");
       return;
     }
-    if (clientType === "LEGAL_ENTITY" && !kpp) {
+    if (clientType === "LEGAL" && !kpp) {
       setError("КПП обязателен для юридических лиц");
       return;
     }
-    if (clientType === "LEGAL_ENTITY" && !ogrn) {
+    if (clientType === "LEGAL" && !ogrn) {
       setError("ОГРН обязателен для юридических лиц");
       return;
     }
-    if (clientType === "SOLE_PROPRIETOR" && !ogrnip) {
+    if (clientType === "IP" && !ogrnip) {
       setError("ОГРНИП обязателен для ИП");
       return;
     }
     setIsLoading(true);
     try {
-      const response = await submitOnboardingProfile(user, {
-        client_type: clientType,
-        company_name: companyName,
+      await createOrg(user, {
+        org_type: clientType,
+        name: companyName,
         inn,
-        kpp: clientType === "LEGAL_ENTITY" ? kpp : null,
-        ogrn: clientType === "LEGAL_ENTITY" ? ogrn : null,
-        ogrnip: clientType === "SOLE_PROPRIETOR" ? ogrnip : null,
-        legal_address: legalAddress,
-        contact_person: {
-          full_name: contactName,
-          position: contactRole,
-          phone: contactPhone,
-          email: contactEmail,
-        },
+        kpp: clientType === "LEGAL" ? kpp : null,
+        ogrn: clientType === "LEGAL" ? ogrn : null,
+        address: legalAddress,
       });
-      setStatus(response.data);
-      setStep(ONBOARDING_DOCS_REQUIRED ? "docs" : "contract");
+      await refresh();
+      setStep("plan");
       showToast("success", "Профиль сохранён");
     } catch (err) {
       console.error("Ошибка сохранения профиля", err);
@@ -194,20 +167,22 @@ export function OnboardingPage() {
     }
   };
 
-  const handleFileUpload = async () => {
-    if (!user || !selectedFile) return;
+  const handlePlanSelect = async () => {
+    if (!user) return;
+    if (!selectedPlan) {
+      setError("Выберите план подписки");
+      return;
+    }
     setIsLoading(true);
     try {
-      const response = await uploadOnboardingFile(user, selectedFile, selectedFileType);
-      setUploadedFiles((prev) => [
-        ...prev,
-        { name: selectedFile.name, type: selectedFileType, status: response.data.status ?? "uploaded" },
-      ]);
-      setSelectedFile(null);
-      showToast("success", "Файл загружен");
+      await selectSubscription(user, { plan_code: selectedPlan });
+      await refresh();
+      setStep("contract");
+      showToast("success", "Подписка выбрана");
     } catch (err) {
-      console.error("Ошибка загрузки файла", err);
-      showToast("error", "Не удалось загрузить файл");
+      console.error("Ошибка выбора подписки", err);
+      setError("Не удалось выбрать подписку");
+      showToast("error", "Не удалось выбрать подписку");
     } finally {
       setIsLoading(false);
     }
@@ -218,7 +193,7 @@ export function OnboardingPage() {
     setIsLoading(true);
     try {
       const response = await generateContract(user);
-      setContractInfo(response.data);
+      setContractInfo(response);
       setContractReady(true);
       showToast("success", "Договор сформирован");
     } catch (err) {
@@ -243,7 +218,8 @@ export function OnboardingPage() {
     setError(null);
     try {
       const response = await signContract(user, { otp: otp.trim() });
-      setStatus(response.data);
+      setContractInfo(response);
+      await refresh();
       setStep("activation");
       showToast("success", "Договор подписан");
     } catch (err) {
@@ -259,7 +235,7 @@ export function OnboardingPage() {
     <div className="neft-page onboarding-page">
       <div className="card neft-card onboarding-card">
         <h1>Онбординг клиента</h1>
-        <p className="muted">Шаг {step === "profile" ? 1 : step === "docs" ? 2 : step === "contract" ? 3 : 4} из 4</p>
+        <p className="muted">Шаг {step === "profile" ? 1 : step === "plan" ? 2 : step === "contract" ? 3 : 4} из 4</p>
         {error ? <div className="error">{error}</div> : null}
         {isLoading ? <div className="muted">Загружаем данные...</div> : null}
         {step === "profile" ? (
@@ -270,10 +246,10 @@ export function OnboardingPage() {
                 id="client-type"
                 className="neft-select neft-input"
                 value={clientType}
-                onChange={(e) => setClientType(e.target.value as ClientType)}
+                onChange={(e) => setClientType(e.target.value as "LEGAL" | "IP" | "INDIVIDUAL")}
               >
-                <option value="LEGAL_ENTITY">Юридическое лицо</option>
-                <option value="SOLE_PROPRIETOR">ИП</option>
+                <option value="LEGAL">Юридическое лицо</option>
+                <option value="IP">ИП</option>
                 {INDIVIDUAL_SIGNUP_ENABLED ? <option value="INDIVIDUAL">Физлицо</option> : null}
               </select>
             </label>
@@ -285,19 +261,19 @@ export function OnboardingPage() {
               ИНН
               <input className="neft-input" value={inn} onChange={(e) => setInn(e.target.value)} />
             </label>
-            {clientType === "LEGAL_ENTITY" ? (
+            {clientType === "LEGAL" ? (
               <label>
                 КПП
                 <input className="neft-input" value={kpp} onChange={(e) => setKpp(e.target.value)} />
               </label>
             ) : null}
-            {clientType === "LEGAL_ENTITY" ? (
+            {clientType === "LEGAL" ? (
               <label>
                 ОГРН
                 <input className="neft-input" value={ogrn} onChange={(e) => setOgrn(e.target.value)} />
               </label>
             ) : null}
-            {clientType === "SOLE_PROPRIETOR" ? (
+            {clientType === "IP" ? (
               <label>
                 ОГРНИП
                 <input className="neft-input" value={ogrnip} onChange={(e) => setOgrnip(e.target.value)} />
@@ -331,50 +307,28 @@ export function OnboardingPage() {
             </button>
           </form>
         ) : null}
-        {step === "docs" ? (
+        {step === "plan" ? (
           <div className="onboarding-form">
-            <p className="muted">Загрузите необходимые документы.</p>
+            <p className="muted">Выберите план и модули для вашей компании.</p>
             <label>
-              Тип документа
+              План подписки
               <select
                 className="neft-select neft-input"
-                value={selectedFileType}
-                onChange={(e) => setSelectedFileType(e.target.value)}
+                value={selectedPlan}
+                onChange={(event) => setSelectedPlan(event.target.value)}
               >
-                {FILE_TYPES.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
+                <option value="" disabled>
+                  Выберите план
+                </option>
+                {plans.map((plan) => (
+                  <option key={plan.code} value={plan.code}>
+                    {plan.title ?? plan.code}
                   </option>
                 ))}
               </select>
             </label>
-            <label>
-              Файл
-              <input
-                type="file"
-                className="neft-input"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button
-              type="button"
-              className="neft-button neft-btn-secondary"
-              onClick={handleFileUpload}
-              disabled={!selectedFile || isLoading}
-            >
-              Загрузить
-            </button>
-            {uploadedFiles.length > 0 ? (
-              <ul className="onboarding-files">
-                {uploadedFiles.map((file, index) => (
-                  <li key={`${file.name}-${index}`}>
-                    {file.name} · {file.status}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <button type="button" className="neft-button neft-btn-primary" onClick={() => setStep("contract")}>
-              Перейти к договору
+            <button type="button" className="neft-button neft-btn-primary" onClick={handlePlanSelect} disabled={isLoading}>
+              Продолжить
             </button>
           </div>
         ) : null}
@@ -429,11 +383,11 @@ export function OnboardingPage() {
             <div className="onboarding-status">
               <div>
                 <div className="label">Статус заявки</div>
-                <div>{status?.status ?? "—"}</div>
+                <div>{client?.org_status ?? "—"}</div>
               </div>
               <div>
                 <div className="label">Статус договора</div>
-                <div>{status?.contract_status ?? "SIGNED_SIMPLE"}</div>
+                <div>{contractInfo?.status ?? "SIGNED_SIMPLE"}</div>
               </div>
               <div>
                 <div className="label">Автоактивация</div>
