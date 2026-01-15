@@ -39,7 +39,7 @@ export function SignupPage() {
   const contactPayload = useMemo(() => resolveContactPayload(contact), [contact]);
 
   if (user) {
-    return <Navigate to="/client/onboarding" replace />;
+    return <Navigate to="/client/connect" replace />;
   }
 
   if (!SELF_SIGNUP_ENABLED) {
@@ -99,7 +99,7 @@ export function SignupPage() {
     try {
       const session = await verifyRegistration({ verification_id: registerInfo.verification_id, otp: otp.trim() });
       await activateSession(session);
-      navigate("/client/onboarding", { replace: true });
+      navigate("/client/connect", { replace: true });
     } catch (err) {
       console.error("Ошибка подтверждения", err);
       setError("Неверный код или истёк срок действия");

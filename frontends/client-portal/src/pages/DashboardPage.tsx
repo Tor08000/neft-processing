@@ -2,28 +2,48 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchClientDashboard } from "../api/portal";
 import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { MoneyValue } from "../components/common/MoneyValue";
 import type { ClientDashboardSummary } from "../types/portal";
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const { client } = useClient();
   const [summary, setSummary] = useState<ClientDashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
+    if (!client?.org || client.org_status !== "ACTIVE") {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     fetchClientDashboard(user)
       .then((dashboard) => setSummary(dashboard))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
-  }, [user]);
+  }, [client?.org, client?.org_status, user]);
 
   if (!user) {
     return null;
+  }
+
+  if (!client?.org || client.org_status !== "ACTIVE") {
+    return (
+      <div className="stack" aria-live="polite">
+        <section className="card">
+          <h2>Компания не подключена</h2>
+          <p className="muted">Чтобы открыть доступ к картам и документам, подключите компанию.</p>
+          <Link className="neft-button neft-btn-primary" to="/client/connect">
+            Подключить компанию
+          </Link>
+        </section>
+      </div>
+    );
   }
 
   return (

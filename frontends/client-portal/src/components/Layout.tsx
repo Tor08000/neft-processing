@@ -6,6 +6,7 @@ import {
   ShoppingCart,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { API_BASE_URL, CLIENT_BASE_PATH } from "../api/base";
 import { AppErrorState } from "./states";
@@ -24,6 +25,7 @@ type NavItem = {
   label: string;
   icon?: ReactNode;
   isHidden?: boolean;
+  module?: string;
 };
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {
@@ -38,6 +40,7 @@ const buildContextLabel = (section: string, path: string, basePath?: string) => 
 
 export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
+  const { client } = useClient();
   const { isBlocked } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
@@ -45,15 +48,23 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const isApiBaseMissing = !API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
+  const enabledModules = new Set((client?.entitlements.enabled_modules ?? []).map((code) => code.toUpperCase()));
+  const isModuleEnabled = (module?: string) => (module ? enabledModules.has(module) : true);
+
   const navItems: NavItem[] = [
-    { to: "/vehicles", label: "Vehicles", icon: <Package size={18} /> },
+    { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET" },
     { to: "/cards", label: "Cards", icon: <Package size={18} /> },
-    { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} /> },
-    { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} /> },
+    { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
+    { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
     { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },
-    { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} /> },
+    { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
-  ];
+  ].map((item) => {
+    if (!isModuleEnabled(item.module)) {
+      return { ...item, label: `${item.label} · Недоступно` };
+    }
+    return item;
+  });
 
   const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
     (item) => !item.isHidden,

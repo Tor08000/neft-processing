@@ -1,31 +1,29 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { useClient } from "../auth/ClientContext";
 import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
-import { fetchOnboardingStatus, type OnboardingStatusResponse } from "../api/onboarding";
 import { SELF_SIGNUP_ENABLED } from "../config/features";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
+  const { client, isLoading: isClientLoading } = useClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/vehicles", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatusResponse | null>(null);
-  const [isStatusLoading, setIsStatusLoading] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  if (user && onboardingStatus?.status === "ACTIVE") {
+  if (user && client?.org_status === "ACTIVE") {
     return <Navigate to={returnUrl} replace />;
   }
 
@@ -50,40 +48,12 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!SELF_SIGNUP_ENABLED || !user) {
-      setOnboardingStatus(null);
-      setStatusError(null);
-      return;
-    }
-    let isMounted = true;
-    setIsStatusLoading(true);
-    setStatusError(null);
-    fetchOnboardingStatus(user)
-      .then((status) => {
-        if (!isMounted) return;
-        setOnboardingStatus(status);
-      })
-      .catch((err) => {
-        console.error("Не удалось загрузить статус онбординга", err);
-        if (!isMounted) return;
-        setStatusError("Не удалось проверить статус клиента");
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setIsStatusLoading(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [user]);
-
-  useEffect(() => {
     if (error || fieldError) {
       errorRef.current?.focus();
     }
   }, [error, fieldError]);
 
-  const showSelfSignup = SELF_SIGNUP_ENABLED && (!user || onboardingStatus?.status !== "ACTIVE");
+  const showSelfSignup = SELF_SIGNUP_ENABLED && (!user || client?.org_status !== "ACTIVE");
   const selfSignupLabel = user ? "Продолжить подключение" : "Подключиться / Стать клиентом";
 
   return (
@@ -108,7 +78,6 @@ export function LoginPage() {
             {fieldError}
           </div>
         ) : null}
-        {statusError ? <div className="error">{statusError}</div> : null}
         <label htmlFor="client-email">
           Email
           <input
@@ -153,10 +122,10 @@ export function LoginPage() {
           <button
             type="button"
             className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
-            onClick={() => navigate(user ? "/client/onboarding" : "/client/signup")}
-            disabled={isStatusLoading}
+            onClick={() => navigate(user ? "/client/connect" : "/client/signup")}
+            disabled={isClientLoading}
           >
-            {isStatusLoading && user ? "Проверяем статус..." : selfSignupLabel}
+            {isClientLoading && user ? "Проверяем статус..." : selfSignupLabel}
           </button>
         ) : null}
       </form>
