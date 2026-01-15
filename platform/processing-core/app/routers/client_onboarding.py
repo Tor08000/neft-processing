@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from hashlib import sha256
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models.client import Client
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
+from app.schemas.client_onboarding import (
+    OnboardingContractGenerateResponse,
+    OnboardingContractResponse,
+    OnboardingContractSignResponse,
+    OnboardingProfileRequest,
+    OnboardingProfileResponse,
+    OnboardingStatusResponse,
+)
+from app.services import client_auth
+from app.services.feature_flags import is_enabled
+from app.services.s3_storage import S3Storage
+
+
+router = APIRouter(prefix="/client/onboarding", tags=["client-onboarding"])
+
+SELF_SIGNUP_FLAG = "self_signup_enabled"
+AUTO_ACTIVATE_FLAG = "auto_activate_after_sign"
+CONTRACT_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1] / "assets" / "client_onboarding_contract_v1.pdf"
+)
+
+
+def _require_self_signup_enabled(db: Session) -> None:
+    if not is_enabled(db, SELF_SIGNUP_FLAG, default=False):
+        raise HTTPException(status_code=403, detail="self_signup_disabled")
+
+
+def _get_owner_id(token: dict) -> str:
+    owner_id = token.get("user_id") or token.get("sub")
+    if not owner_id:
+        raise HTTPException(status_code=403, detail="Missing user context")
+    return str(owner_id)
+
+
+def _get_onboarding(db: Session, *, token: dict, owner_id: str) -> ClientOnboarding | None:
+    client_id = token.get("client_id")
+    if client_id:
+        return db.query(ClientOnboarding).filter(ClientOnboarding.client_id == str(client_id)).one_or_none()
+    return (
+        db.query(ClientOnboarding)
+        .filter(ClientOnboarding.owner_user_id == owner_id)
+        .one_or_none()
+    )
+
+
+def _load_contract_template() -> bytes:
+    if not CONTRACT_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=500, detail="contract_template_missing")
+    return CONTRACT_TEMPLATE_PATH.read_bytes()
+
+
+def _store_contract_pdf(client_id: str, contract_id: str, payload: bytes) -> str:
+    key = f"client-onboarding/{client_id}/{contract_id}/contract_v1.pdf"
+    try:
+        storage = S3Storage()
+        storage.ensure_bucket()
+        return storage.put_bytes(key, payload)
+    except Exception:
+        return f"stub://{key}"
+
+
+@router.get("/status", response_model=OnboardingStatusResponse)
+def onboarding_status(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_signup_enabled(db)
+    owner_id = _get_owner_id(token)
+    onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    if not onboarding:
+        return OnboardingStatusResponse(step="PROFILE", status="DRAFT")
+    client_type = onboarding.client_type or None
+    if onboarding.profile_json and not client_type:
+        client_type = onboarding.profile_json.get("client_type")
+    return OnboardingStatusResponse(step=onboarding.step, status=onboarding.status, client_type=client_type)
+
+
+@router.post("/profile", response_model=OnboardingProfileResponse)
+def onboarding_profile(
+    payload: OnboardingProfileRequest,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_signup_enabled(db)
+    owner_id = _get_owner_id(token)
+    onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    client = None
+    if onboarding:
+        client = db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
+    if client is None and token.get("client_id"):
+        client = db.query(Client).filter(Client.id == str(token["client_id"])).one_or_none()
+
+    if client is None:
+        client = Client(
+            id=uuid4(),
+            name=payload.name,
+            inn=payload.inn,
+            status="DRAFT",
+        )
+        db.add(client)
+        db.flush()
+
+    if payload.name:
+        client.name = payload.name
+    if payload.inn is not None:
+        client.inn = payload.inn
+
+    profile_data = payload.model_dump()
+
+    if onboarding is None:
+        onboarding = ClientOnboarding(
+            client_id=str(client.id),
+            owner_user_id=owner_id,
+            step="CONTRACT",
+            status="DRAFT",
+            client_type=payload.client_type,
+            profile_json=profile_data,
+        )
+        db.add(onboarding)
+    else:
+        onboarding.step = "CONTRACT"
+        onboarding.status = "DRAFT"
+        onboarding.profile_json = profile_data
+        onboarding.client_type = payload.client_type or onboarding.client_type
+
+    db.commit()
+    return OnboardingProfileResponse(step="CONTRACT", status="DRAFT")
+
+
+@router.post("/contract/generate", response_model=OnboardingContractGenerateResponse)
+def onboarding_contract_generate(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_signup_enabled(db)
+    owner_id = _get_owner_id(token)
+    onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    if not onboarding:
+        raise HTTPException(status_code=400, detail="onboarding_profile_required")
+
+    if onboarding.contract_id:
+        existing = (
+            db.query(ClientOnboardingContract)
+            .filter(ClientOnboardingContract.id == onboarding.contract_id)
+            .one_or_none()
+        )
+        if existing:
+            return OnboardingContractGenerateResponse(
+                contract_id=str(existing.id),
+                pdf_url=existing.pdf_url,
+                version=int(existing.version or 1),
+            )
+
+    payload = _load_contract_template()
+    contract = ClientOnboardingContract(
+        client_id=str(onboarding.client_id),
+        status="DRAFT",
+        pdf_url="",
+        version=1,
+    )
+    db.add(contract)
+    db.flush()
+
+    pdf_url = _store_contract_pdf(str(onboarding.client_id), str(contract.id), payload)
+    contract.pdf_url = pdf_url
+    onboarding.contract_id = str(contract.id)
+    onboarding.step = "CONTRACT"
+    onboarding.status = "DRAFT"
+    db.commit()
+
+    return OnboardingContractGenerateResponse(
+        contract_id=str(contract.id),
+        pdf_url=pdf_url,
+        version=int(contract.version or 1),
+    )
+
+
+@router.get("/contract", response_model=OnboardingContractResponse)
+def onboarding_contract(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_signup_enabled(db)
+    owner_id = _get_owner_id(token)
+    onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    if not onboarding or not onboarding.contract_id:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == onboarding.contract_id)
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+
+    return OnboardingContractResponse(
+        contract_id=str(contract.id),
+        status=contract.status,
+        pdf_url=contract.pdf_url,
+        version=int(contract.version or 1),
+    )
+
+
+@router.post("/contract/sign", response_model=OnboardingContractSignResponse)
+def onboarding_contract_sign(
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+):
+    _require_self_signup_enabled(db)
+    owner_id = _get_owner_id(token)
+    onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    if not onboarding or not onboarding.contract_id:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == onboarding.contract_id)
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+
+    payload = _load_contract_template()
+    now = datetime.now(timezone.utc)
+    signature_meta = {
+        "ip": getattr(request.client, "host", None),
+        "user_agent": request.headers.get("user-agent"),
+        "timestamp": now.isoformat(),
+        "doc_hash": sha256(payload).hexdigest(),
+    }
+    contract.status = "SIGNED_SIMPLE"
+    contract.signed_at = now
+    contract.signature_meta = signature_meta
+
+    client = db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
+    if not client:
+        raise HTTPException(status_code=404, detail="client_not_found")
+
+    auto_activate = is_enabled(db, AUTO_ACTIVATE_FLAG, default=False)
+    client.status = "ACTIVE" if auto_activate else "PENDING_ACTIVATION"
+    onboarding.step = "ACTIVATION"
+    onboarding.status = client.status
+    db.commit()
+
+    return OnboardingContractSignResponse(status=client.status)
