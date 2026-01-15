@@ -107,5 +107,45 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
     return payload
 
 
+def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
+    public_key = get_public_key()
+
+    try:
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=EXPECTED_AUDIENCE,
+            issuer=EXPECTED_ISSUER,
+        )
+    except (JWTError, jwk.JWKError, ValueError):
+        public_key = get_public_key(force_refresh=True)
+        try:
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience=EXPECTED_AUDIENCE,
+                issuer=EXPECTED_ISSUER,
+            )
+        except (JWTError, jwk.JWKError, ValueError):
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+    roles = payload.get("roles") or []
+    role = payload.get("role") or next((r for r in roles if r in ALLOWED_CLIENT_ROLES), None)
+    subject_type = payload.get("subject_type")
+    if role not in ALLOWED_CLIENT_ROLES and subject_type != "client_user":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    payload["user_id"] = payload.get("user_id") or payload.get("sub")
+    if role:
+        payload["role"] = role
+    return payload
+
+
 def require_client_user(token: dict = Depends(verify_client_token)) -> dict:
+    return token
+
+
+def require_onboarding_user(token: dict = Depends(verify_onboarding_token)) -> dict:
     return token
