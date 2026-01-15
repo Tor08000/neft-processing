@@ -26,6 +26,7 @@ import { FinanceExportDetailsPage } from "./pages/FinanceExportDetailsPage";
 import { ReconciliationRequestsPage } from "./pages/ReconciliationRequestsPage";
 import { ClientDocumentsPage } from "./pages/ClientDocumentsPage";
 import { ClientDocumentDetailsPage } from "./pages/ClientDocumentDetailsPage";
+import { ClientDocsListPage } from "./pages/ClientDocsListPage";
 import { ExplainPage } from "./pages/ExplainPage";
 import { ExplainInsightsPage } from "./pages/ExplainInsightsPage";
 import { ActionsPage } from "./pages/ActionsPage";
@@ -131,6 +132,8 @@ export function App({ initialSession = null }: AppProps) {
                 />
                 <Route path="/cards" element={<ClientCardsPage />} />
                 <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
+                <Route path="/cards/:id/limits" element={<ClientCardDetailsPage />} />
+                <Route path="/cards/:id/access" element={<ClientCardDetailsPage />} />
                 <Route
                   path="/orders"
                   element={
@@ -218,6 +221,18 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/finance/documents" element={<Navigate to="/client/documents" replace />} />
                 <Route path="/client/documents" element={<ClientDocumentsPage />} />
                 <Route path="/client/documents/:id" element={<ClientDocumentDetailsPage />} />
+                <Route
+                  path="/client/docs/contracts"
+                  element={<ClientDocsListPage title="Договоры" docType="CONTRACT" />}
+                />
+                <Route
+                  path="/client/docs/invoices"
+                  element={<ClientDocsListPage title="Счета" docType="INVOICE" />}
+                />
+                <Route
+                  path="/client/docs/acts"
+                  element={<ClientDocsListPage title="Акты" docType="ACT" />}
+                />
                 <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
                 <Route path="/finance/exports" element={<FinanceExportsPage />} />
                 <Route path="/operations" element={<OperationsPage />} />

@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { blockCard, fetchCards, unblockCard } from "../api/cards";
+import { ApiError } from "../api/http";
+import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 import type { ClientCard } from "../types/cards";
 
 export function ClientCardsPage() {
   const { user } = useAuth();
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; status?: number } | null>(null);
+  const { toast, showToast } = useToast();
 
   useEffect(() => {
     let mounted = true;
@@ -18,7 +23,13 @@ export function ClientCardsPage() {
         if (!mounted) return;
         setCards(data.items);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: unknown) => {
+        if (err instanceof ApiError) {
+          setError({ message: err.message, status: err.status });
+        } else {
+          setError({ message: err instanceof Error ? err.message : "Не удалось загрузить карты" });
+        }
+      })
       .finally(() => setIsLoading(false));
     return () => {
       mounted = false;
@@ -39,22 +50,29 @@ export function ClientCardsPage() {
       setCards((prev) =>
         prev.map((c) => (c.id === card.id ? { ...c, status: response.status || c.status } : c)),
       );
+      showToast({
+        kind: "success",
+        text: card.status === "ACTIVE" ? "Карта заблокирована" : "Карта разблокирована",
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Не удалось изменить статус";
-      setError(message);
+      setError({ message });
     }
   };
 
   if (isLoading) {
-    return <div className="card">Загружаем карты...</div>;
+    return <AppLoadingState label="Загружаем карты..." />;
   }
 
   if (error) {
-    return (
-      <div className="card error" role="alert">
-        {error}
-      </div>
-    );
+    if (error.status === 403) {
+      return <AppForbiddenState message="Недостаточно прав для просмотра карт." />;
+    }
+    return <AppErrorState message={error.message} status={error.status} />;
+  }
+
+  if (cards.length === 0) {
+    return <AppEmptyState title="Карт нет" description="Нет карт — выпустить первую карту." />;
   }
 
   return (
@@ -111,6 +129,7 @@ export function ClientCardsPage() {
           ))}
         </tbody>
       </table>
+      {toast ? <Toast toast={toast} onClose={() => showToast(null)} /> : null}
     </div>
   );
 }

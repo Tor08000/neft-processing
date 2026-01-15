@@ -4,6 +4,8 @@ import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmActionModal } from "../components/ConfirmActionModal";
 import { AppEmptyState, AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 import type { ClientUserSummary } from "../types/controls";
 import { formatDateTime } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
@@ -11,12 +13,6 @@ import { hasAnyRole } from "../utils/roles";
 interface PageErrorState {
   message: string;
   status?: number;
-  correlationId?: string | null;
-}
-
-interface ActionNotice {
-  title: string;
-  description?: string;
   correlationId?: string | null;
 }
 
@@ -31,7 +27,7 @@ export function ClientUsersPage() {
   const [users, setUsers] = useState<ClientUserSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<PageErrorState | null>(null);
-  const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const { toast, showToast } = useToast();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -47,6 +43,7 @@ export function ClientUsersPage() {
   const [disableError, setDisableError] = useState<PageErrorState | null>(null);
 
   const canManage = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
+  const emailValid = newEmail.trim() !== "" && newEmail.includes("@");
 
   const loadUsers = () => {
     if (!user) return;
@@ -79,6 +76,9 @@ export function ClientUsersPage() {
   }
 
   if (error) {
+    if (error.status === 403) {
+      return <AppForbiddenState message="Недостаточно прав для управления пользователями." />;
+    }
     return (
       <AppErrorState
         message={error.message}
@@ -102,11 +102,7 @@ export function ClientUsersPage() {
     setAddError(null);
     try {
       const response = await createClientUser(user, { email: newEmail, role: newRole });
-      setNotice({
-        title: "Пользователь добавлен",
-        description: newEmail,
-        correlationId: response.correlationId,
-      });
+      showToast({ kind: "success", text: `Пользователь приглашён: ${newEmail}` });
       setIsAddOpen(false);
       loadUsers();
     } catch (err) {
@@ -125,12 +121,8 @@ export function ClientUsersPage() {
     setIsSubmitting(true);
     setRoleError(null);
     try {
-      const response = await updateClientUserRole(user, roleUser.id, { role: roleValue });
-      setNotice({
-        title: "Роль обновлена",
-        description: `${roleUser.email} → ${roleValue}`,
-        correlationId: response.correlationId,
-      });
+      const response = await updateClientUserRole(user, roleUser.id, { roles: [roleValue] });
+      showToast({ kind: "success", text: `Роль обновлена: ${roleUser.email} → ${roleValue}` });
       setRoleUser(null);
       loadUsers();
     } catch (err) {
@@ -150,11 +142,7 @@ export function ClientUsersPage() {
     setDisableError(null);
     try {
       const response = await disableClientUser(user, disableUser.id);
-      setNotice({
-        title: "Пользователь отключён",
-        description: disableUser.email,
-        correlationId: response.correlationId,
-      });
+      showToast({ kind: "success", text: `Пользователь отключён: ${disableUser.email}` });
       setDisableUser(null);
       loadUsers();
     } catch (err) {
@@ -177,22 +165,15 @@ export function ClientUsersPage() {
             <p className="muted">Управляйте ролями и доступами пользователей.</p>
           </div>
           <button type="button" className="primary" onClick={openAddModal} disabled={!canManage}>
-            Добавить пользователя
+            Пригласить сотрудника
           </button>
         </div>
         {!canManage ? <div className="muted small">Действия доступны только CLIENT_OWNER/CLIENT_ADMIN.</div> : null}
-        {notice ? (
-          <div className="notice">
-            <strong>{notice.title}</strong>
-            {notice.description ? <div className="muted small">{notice.description}</div> : null}
-            {notice.correlationId ? <div className="muted small">Correlation ID: {notice.correlationId}</div> : null}
-          </div>
-        ) : null}
       </section>
 
       <section className="card">
         {users.length === 0 ? (
-          <AppEmptyState title="Пользователей нет" description="Добавьте первых пользователей в кабинет." />
+          <AppEmptyState title="Пользователей нет" description="Пригласите первого сотрудника." />
         ) : (
           <>
             <table className="table">
@@ -229,7 +210,7 @@ export function ClientUsersPage() {
                         <button
                           type="button"
                           className="ghost"
-                          disabled={!canManage || item.status === "disabled"}
+                          disabled={!canManage || item.status?.toUpperCase() === "DISABLED"}
                           onClick={() => {
                             setDisableUser(item);
                             setDisableError(null);
@@ -256,7 +237,7 @@ export function ClientUsersPage() {
         onConfirm={() => void handleAddUser()}
         onCancel={() => setIsAddOpen(false)}
         isProcessing={isSubmitting}
-        isConfirmDisabled={!newEmail}
+        isConfirmDisabled={!emailValid}
         footerNote="Действие будет зафиксировано в audit-логе."
       >
         <label className="filter">
@@ -277,6 +258,7 @@ export function ClientUsersPage() {
             {addError.correlationId ? <div className="muted small">Correlation ID: {addError.correlationId}</div> : null}
           </div>
         ) : null}
+        {!emailValid && newEmail ? <div className="muted small">Введите корректный email.</div> : null}
       </ConfirmActionModal>
 
       <ConfirmActionModal
@@ -325,6 +307,7 @@ export function ClientUsersPage() {
           </div>
         ) : null}
       </ConfirmActionModal>
+      {toast ? <Toast toast={toast} onClose={() => showToast(null)} /> : null}
     </div>
   );
 }
