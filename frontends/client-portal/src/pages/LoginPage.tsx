@@ -5,6 +5,8 @@ import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
+import { fetchOnboardingStatus, type OnboardingStatusResponse } from "../api/onboarding";
+import { SELF_SIGNUP_ENABLED } from "../config/features";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
@@ -14,13 +16,16 @@ export function LoginPage() {
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatusResponse | null>(null);
+  const [isStatusLoading, setIsStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  if (user) {
+  if (user && onboardingStatus?.status === "ACTIVE") {
     return <Navigate to={returnUrl} replace />;
   }
 
@@ -45,10 +50,41 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (!SELF_SIGNUP_ENABLED || !user) {
+      setOnboardingStatus(null);
+      setStatusError(null);
+      return;
+    }
+    let isMounted = true;
+    setIsStatusLoading(true);
+    setStatusError(null);
+    fetchOnboardingStatus(user)
+      .then((status) => {
+        if (!isMounted) return;
+        setOnboardingStatus(status);
+      })
+      .catch((err) => {
+        console.error("Не удалось загрузить статус онбординга", err);
+        if (!isMounted) return;
+        setStatusError("Не удалось проверить статус клиента");
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsStatusLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
     if (error || fieldError) {
       errorRef.current?.focus();
     }
   }, [error, fieldError]);
+
+  const showSelfSignup = SELF_SIGNUP_ENABLED && (!user || onboardingStatus?.status !== "ACTIVE");
+  const selfSignupLabel = user ? "Продолжить подключение" : "Подключиться / Стать клиентом";
 
   return (
     <div className="login-wrapper neft-page">
@@ -72,6 +108,7 @@ export function LoginPage() {
             {fieldError}
           </div>
         ) : null}
+        {statusError ? <div className="error">{statusError}</div> : null}
         <label htmlFor="client-email">
           Email
           <input
@@ -84,7 +121,7 @@ export function LoginPage() {
             placeholder="client@neft.local"
             required
             autoComplete="username"
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(user)}
             aria-invalid={Boolean(error || fieldError)}
           />
         </label>
@@ -102,16 +139,26 @@ export function LoginPage() {
             placeholder="client"
             required
             autoComplete="current-password"
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(user)}
             aria-invalid={Boolean(error || fieldError)}
           />
         </label>
         {capsLockOn ? <div className="capslock-hint">Caps Lock включён</div> : null}
 
-        <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting}>
+        <button type="submit" className="neft-button neft-btn-primary" disabled={isSubmitting || Boolean(user)}>
           {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
+        {showSelfSignup ? (
+          <button
+            type="button"
+            className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
+            onClick={() => navigate(user ? "/client/onboarding" : "/client/signup")}
+            disabled={isStatusLoading}
+          >
+            {isStatusLoading && user ? "Проверяем статус..." : selfSignupLabel}
+          </button>
+        ) : null}
       </form>
       <Toast toast={toast} />
     </div>
