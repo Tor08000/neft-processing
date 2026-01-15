@@ -50,6 +50,7 @@ export type ContractInfo = {
   contract_id: string;
   status: string;
   pdf_url?: string | null;
+  summary?: string | null;
   version?: number | null;
 };
 
