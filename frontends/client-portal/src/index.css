@@ -312,6 +312,22 @@ textarea:focus-visible {
   gap: 0.4rem;
 }
 
+.login-secondary-action {
+  margin-top: 0.25rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--neft-text);
+}
+
+.checkbox-row input {
+  margin-top: 3px;
+}
+
 .copy-chip {
   display: inline-flex;
   align-items: center;
@@ -374,6 +390,59 @@ textarea:focus-visible {
 .roles {
   font-size: 0.85rem;
   color: var(--neft-text-secondary);
+}
+
+.onboarding-page {
+  padding: 2rem 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.onboarding-card {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+
+.onboarding-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.onboarding-section {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--neft-border);
+}
+
+.onboarding-files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--neft-text-muted);
+}
+
+.onboarding-status {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.contract-summary {
+  padding: 0.75rem;
+  border-radius: var(--neft-radius-md);
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+  color: var(--neft-text-muted);
+}
+
+.neft-link {
+  color: var(--neft-accent);
+  text-decoration: underline;
+  width: fit-content;
 }
 
 .nav-disabled {

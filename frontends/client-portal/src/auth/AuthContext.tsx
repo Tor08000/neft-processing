@@ -7,6 +7,7 @@ interface AuthContextValue {
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
   hasClientRole: boolean;
 }
@@ -102,6 +103,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     setIsLoading(false);
   }, [initialSession, reviveSession]);
 
+  const finalizeSession = useCallback(
+    async (session: AuthSession) => {
+      const profile = await fetchMe(session.token);
+      if (!isClientRolePresent(profile.roles)) {
+        setError("У вас нет доступа к клиентскому кабинету");
+        logout();
+        return;
+      }
+      const normalized: AuthSession = {
+        ...session,
+        email: profile.email ?? session.email,
+        roles: profile.roles,
+        subjectType: profile.subject_type,
+        clientId: profile.client_id ?? session.clientId,
+      };
+      setUser(normalized);
+      persist(normalized);
+    },
+    [logout, persist],
+  );
+
   const handleLogin = useCallback(
     async (email: string, password: string) => {
       setError(null);
@@ -112,21 +134,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           logout();
           return;
         }
-        const profile = await fetchMe(session.token);
-        if (!isClientRolePresent(profile.roles)) {
-          setError("У вас нет доступа к клиентскому кабинету");
-          logout();
-          return;
-        }
-        const normalized: AuthSession = {
-          ...session,
-          email: profile.email,
-          roles: profile.roles,
-          subjectType: profile.subject_type,
-          clientId: profile.client_id ?? session.clientId,
-        };
-        setUser(normalized);
-        persist(normalized);
+        await finalizeSession(session);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный email или пароль");
@@ -158,7 +166,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         setError("Сервис временно недоступен");
       }
     },
-    [logout, persist],
+    [finalizeSession, logout],
+  );
+
+  const activateSession = useCallback(
+    async (session: AuthSession) => {
+      setError(null);
+      try {
+        await finalizeSession(session);
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          setError("Требуется повторный вход");
+          return;
+        }
+        if (err instanceof ApiError && err.status >= 500) {
+          setError("Сервис временно недоступен");
+          return;
+        }
+        console.error("Ошибка авторизации", err);
+        setError("Сервис временно недоступен");
+      }
+    },
+    [finalizeSession],
   );
 
   const value = useMemo(
@@ -167,10 +196,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       isLoading,
       error,
       login: handleLogin,
+      activateSession,
       logout,
       hasClientRole: Boolean(user?.roles && isClientRolePresent(user.roles)),
     }),
-    [user, isLoading, error, handleLogin, logout],
+    [user, isLoading, error, handleLogin, activateSession, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
