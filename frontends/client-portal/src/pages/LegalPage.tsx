@@ -11,7 +11,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export function LegalPage() {
-  const { required, isBlocked, isLoading, document, loadDocument, accept, refresh } = useLegalGate();
+  const { required, isBlocked, isLoading, errorMessage, document, loadDocument, accept, refresh } = useLegalGate();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,6 +39,7 @@ export function LegalPage() {
         <p className="muted">Все обязательные документы приняты.</p>
       )}
 
+      {errorMessage ? <div className="card state">{errorMessage}</div> : null}
       {isLoading ? <div className="muted">Загружаем документы...</div> : null}
 
       <div className="legal-grid">
