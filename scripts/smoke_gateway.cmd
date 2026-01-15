@@ -8,6 +8,7 @@ call :check_head "%BASE_URL%/client/" "client portal"
 call :check_head "%BASE_URL%/partner/" "partner portal"
 call :check_head "%BASE_URL%/admin/" "admin portal"
 call :check_head "%BASE_URL%/api/core/health" "core-api health"
+call :check_json "%BASE_URL%/api/core/health" "core-api health JSON" "\"status\":\"ok\""
 
 if "%FAILED%"=="1" exit /b 1
 echo Gateway smoke checks passed.
@@ -19,6 +20,19 @@ set "NAME=%~2"
 
 echo Checking %NAME%: %URL%
 curl -I "%URL%" | findstr /R /C:"HTTP/.* 200" >nul
+if errorlevel 1 (
+  echo Failed: %NAME%
+  set "FAILED=1"
+)
+exit /b 0
+
+:check_json
+set "URL=%~1"
+set "NAME=%~2"
+set "MATCH=%~3"
+
+echo Checking %NAME%: %URL%
+curl -s "%URL%" | findstr /C:%MATCH% >nul
 if errorlevel 1 (
   echo Failed: %NAME%
   set "FAILED=1"
