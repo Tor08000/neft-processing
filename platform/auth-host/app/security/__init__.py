@@ -51,6 +51,8 @@ def create_access_token(
     *,
     subject_type: str = "user",
     client_id: str | None = None,
+    issuer: str | None = None,
+    audience: str | None = None,
 ) -> str:
     now = _now_utc()
     expire = now + timedelta(minutes=settings.access_token_expires_min)
@@ -58,8 +60,8 @@ def create_access_token(
         "sub": sub,
         "exp": expire,
         "iat": now,
-        "iss": ISSUER,
-        "aud": AUDIENCE,
+        "iss": issuer or ISSUER,
+        "aud": audience or AUDIENCE,
         "roles": roles,
         "subject_type": subject_type,
     }
@@ -69,15 +71,17 @@ def create_access_token(
     return jwt.encode(payload, private_key, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> dict:
+def decode_access_token(token: str, *, issuer: str | None = None, audience: str | None = None) -> dict:
     public_key = get_public_key_pem()
+    token_issuer = issuer or ISSUER
+    token_audience = audience or AUDIENCE
     try:
         return jwt.decode(
             token,
             public_key,
             algorithms=[ALGORITHM],
-            audience=AUDIENCE,
-            issuer=ISSUER,
+            audience=token_audience,
+            issuer=token_issuer,
         )
     except JWTError as exc:
         logger.warning("JWT decode failed", extra={"error": str(exc)})

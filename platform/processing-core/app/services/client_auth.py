@@ -13,8 +13,14 @@ PUBLIC_KEY_URL = os.getenv(
     os.getenv("ADMIN_PUBLIC_KEY_URL", "http://auth-host:8000/api/v1/auth/public-key"),
 )
 PUBLIC_KEY_CACHE_TTL = 300
-EXPECTED_ISSUER = "neft-auth"
-EXPECTED_AUDIENCE = "neft-admin"
+EXPECTED_ISSUER = os.getenv(
+    "NEFT_CLIENT_ISSUER",
+    os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-client")),
+)
+EXPECTED_AUDIENCE = os.getenv(
+    "NEFT_CLIENT_AUDIENCE",
+    os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-client")),
+)
 
 ALLOWED_CLIENT_ROLES = {
     "CLIENT_ADMIN",

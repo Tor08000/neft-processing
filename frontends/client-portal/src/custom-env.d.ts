@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_CONTRACT_SIMPLE_SIGN_ENABLED?: string;
   readonly VITE_AUTO_ACTIVATE_AFTER_SIGN?: string;
   readonly VITE_INDIVIDUAL_SIGNUP_ENABLED?: string;
+  readonly VITE_CLIENT_TOKEN_ISSUER?: string;
   readonly BASE_URL?: string;
 
   // Backward compatibility for legacy configuration variables

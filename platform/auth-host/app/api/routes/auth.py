@@ -4,7 +4,7 @@ import logging
 import os
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -42,6 +42,22 @@ def _admin_credentials() -> tuple[str, str]:
     email = settings.bootstrap_admin_email or settings.demo_admin_email
     password = settings.bootstrap_admin_password or ""
     return email, password
+
+
+def _resolve_portal(value: str | None, *, default: str) -> str:
+    portal = (value or "").strip().lower()
+    if not portal:
+        return default
+    if portal in {"client", "admin"}:
+        return portal
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_portal")
+
+
+def _portal_token_config(portal: str) -> tuple[str, str]:
+    settings = get_settings()
+    if portal == "client":
+        return settings.auth_client_issuer, settings.auth_client_audience
+    return settings.auth_issuer, settings.auth_audience
 
 
 async def _get_user_from_db(email: str) -> User | None:
@@ -126,6 +142,7 @@ async def register(payload: RegisterRequest) -> UserResponse:
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> TokenResponse:
     normalized_email = payload.email.strip().lower()
+    portal = _resolve_portal(payload.portal, default="admin")
 
     subject_type = "user"
     user_email = normalized_email
@@ -163,11 +180,14 @@ async def login(payload: LoginRequest) -> TokenResponse:
 
     settings = get_settings()
     expires_in = settings.access_token_expires_min * 60
+    issuer, audience = _portal_token_config(portal)
     try:
         token = create_access_token(
             user_email,
             roles=roles,
             subject_type=subject_type,
+            issuer=issuer,
+            audience=audience,
         )
     except InvalidRSAKeyError:
         logger.error("RSA keys unavailable during login", extra={"email": normalized_email})
@@ -184,11 +204,16 @@ async def login(payload: LoginRequest) -> TokenResponse:
 
 
 @router.get("/me", response_model=AuthMeResponse)
-async def auth_me(credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme)) -> AuthMeResponse:
+async def auth_me(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+) -> AuthMeResponse:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
 
-    payload = decode_access_token(credentials.credentials)
+    portal = _resolve_portal(request.headers.get("X-Portal"), default="client")
+    issuer, audience = _portal_token_config(portal)
+    payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
     subject = payload.get("sub")
     if not subject:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")

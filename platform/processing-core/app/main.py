@@ -23,6 +23,9 @@ from app.routers.admin import router as admin_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
+from app.routers.admin_auth_gateway import router as admin_auth_gateway_router
+from app.routers.client_auth_gateway import router as client_auth_gateway_router
+from app.routers.client_me import router as client_me_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client_marketplace import router as client_marketplace_router
@@ -310,6 +313,12 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, client_me_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, notifications_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, notifications_router, prefix=API_PREFIX_CORE)
@@ -417,6 +426,9 @@ safe_include_router(core_prefixed_router, achievements_router)
 safe_include_router(core_prefixed_router, subscriptions_router)
 safe_include_router(core_prefixed_router, subscriptions_admin_router)
 safe_include_router(core_prefixed_router, client_router)
+safe_include_router(core_prefixed_router, client_auth_gateway_router)
+safe_include_router(core_prefixed_router, admin_auth_gateway_router)
+safe_include_router(core_prefixed_router, client_me_router)
 safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_onboarding_router)

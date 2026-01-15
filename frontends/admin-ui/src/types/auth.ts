@@ -1,6 +1,7 @@
 export interface LoginRequest {
   email: string;
   password: string;
+  portal?: "admin";
 }
 
 export interface LoginResponse {
