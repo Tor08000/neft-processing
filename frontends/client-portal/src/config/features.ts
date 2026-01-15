@@ -1,0 +1,5 @@
+export const SELF_SIGNUP_ENABLED = import.meta.env.VITE_SELF_SIGNUP_ENABLED === "1";
+export const ONBOARDING_DOCS_REQUIRED = import.meta.env.VITE_ONBOARDING_DOCS_REQUIRED === "1";
+export const CONTRACT_SIMPLE_SIGN_ENABLED = import.meta.env.VITE_CONTRACT_SIMPLE_SIGN_ENABLED === "1";
+export const AUTO_ACTIVATE_AFTER_SIGN = import.meta.env.VITE_AUTO_ACTIVATE_AFTER_SIGN === "1";
+export const INDIVIDUAL_SIGNUP_ENABLED = import.meta.env.VITE_INDIVIDUAL_SIGNUP_ENABLED === "1";

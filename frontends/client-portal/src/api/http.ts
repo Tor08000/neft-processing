@@ -70,10 +70,11 @@ export class LegalRequiredError extends ApiError {
   }
 }
 
-const buildHeaders = (token?: string): HttpHeaders => {
-  const headers: HttpHeaders = {
-    "Content-Type": "application/json",
-  };
+const buildHeaders = (token?: string, body?: BodyInit | null): HttpHeaders => {
+  const headers: HttpHeaders = {};
+  if (!(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -103,7 +104,10 @@ export async function request<T>(
     }
   }
 
-  const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
+  const headers: HttpHeaders = {
+    ...buildHeaders(token ?? undefined, init.body),
+    ...(init.headers as HttpHeaders | undefined),
+  };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   const response = await fetch(url, { ...init, headers });
@@ -197,7 +201,10 @@ export async function requestWithMeta<T>(
     }
   }
 
-  const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
+  const headers: HttpHeaders = {
+    ...buildHeaders(token ?? undefined, init.body),
+    ...(init.headers as HttpHeaders | undefined),
+  };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   const response = await fetch(url, { ...init, headers });
