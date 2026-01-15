@@ -53,7 +53,7 @@ export interface CreateClientUserPayload {
 }
 
 export interface UpdateClientUserPayload {
-  role: string;
+  roles: string[];
 }
 
 export interface ClientServiceItem {

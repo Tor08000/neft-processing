@@ -32,7 +32,7 @@ export function fetchClientUsers(user: AuthSession | null): Promise<ClientUsersR
 
 export function createClientUser(user: AuthSession | null, payload: CreateClientUserPayload) {
   return requestWithMeta(
-    "/client/users",
+    "/client/users/invite",
     { method: "POST", body: JSON.stringify(payload) },
     withToken(user),
   );
@@ -40,14 +40,14 @@ export function createClientUser(user: AuthSession | null, payload: CreateClient
 
 export function updateClientUserRole(user: AuthSession | null, userId: string, payload: UpdateClientUserPayload) {
   return requestWithMeta(
-    `/client/users/${userId}`,
+    `/client/users/${userId}/roles`,
     { method: "PATCH", body: JSON.stringify(payload) },
     withToken(user),
   );
 }
 
 export function disableClientUser(user: AuthSession | null, userId: string) {
-  return requestWithMeta(`/client/users/${userId}/disable`, { method: "POST" }, withToken(user));
+  return requestWithMeta(`/client/users/${userId}`, { method: "DELETE" }, withToken(user));
 }
 
 export function fetchClientServices(user: AuthSession | null): Promise<ClientServicesResponse> {

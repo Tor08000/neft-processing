@@ -5,6 +5,7 @@ import { ClientLimitsPage } from "./ClientLimitsPage";
 import { ClientUsersPage } from "./ClientUsersPage";
 import { ClientServicesPage } from "./ClientServicesPage";
 import { ClientFeaturesPage } from "./ClientFeaturesPage";
+import { hasAnyRole } from "../utils/roles";
 
 const tabs = [
   { key: "limits", label: "Лимиты" },
@@ -18,6 +19,7 @@ type TabKey = (typeof tabs)[number]["key"];
 export function ClientControlsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("limits");
+  const canManageUsers = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
 
   if (!user) {
     return <AppForbiddenState message="Требуется авторизация." />;
@@ -34,21 +36,23 @@ export function ClientControlsPage() {
           </div>
         </div>
         <div className="tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={activeTab === tab.key ? "primary" : "secondary"}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {tabs
+            .filter((tab) => (tab.key === "users" ? canManageUsers : true))
+            .map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                className={activeTab === tab.key ? "primary" : "secondary"}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
         </div>
       </section>
 
       {activeTab === "limits" ? <ClientLimitsPage /> : null}
-      {activeTab === "users" ? <ClientUsersPage /> : null}
+      {activeTab === "users" && canManageUsers ? <ClientUsersPage /> : null}
       {activeTab === "services" ? <ClientServicesPage /> : null}
       {activeTab === "features" ? <ClientFeaturesPage /> : null}
     </div>

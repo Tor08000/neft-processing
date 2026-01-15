@@ -5,7 +5,8 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -18,7 +19,9 @@ from app.models.client_portal import (
     ClientOperation,
     ClientUserRole,
 )
+from app.models.fleet import ClientEmployee, EmployeeStatus
 from app.models.card import Card
+from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentType
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
     CardAccessGrantRequest,
@@ -36,13 +39,19 @@ from app.schemas.client_cards_v1 import (
 from app.schemas.client_portal_v1 import (
     ClientOrgIn,
     ClientOrgOut,
+    ClientDocSummary,
+    ClientDocsListResponse,
     ClientSubscriptionOut,
     ClientSubscriptionSelectRequest,
+    ClientUserInviteRequest,
+    ClientUserSummary,
+    ClientUsersResponse,
     ContractInfo,
     ContractSignRequest,
 )
 from app.schemas.subscriptions import SubscriptionPlanOut
 from app.services import client_auth
+from app.api.dependencies.client import client_portal_user
 from app.services.subscription_service import (
     DEFAULT_TENANT_ID,
     assign_plan_to_client,
@@ -52,12 +61,20 @@ from app.services.subscription_service import (
 )
 from app.routers.subscriptions_v1 import _build_plan_out
 from app.services.s3_storage import S3Storage
+from app.services.documents_storage import DocumentsStorage
 from app.services.audit_service import AuditService, request_context_from_request
 from app.models.audit_log import AuditVisibility
+from app.services.entitlements_service import assert_module_enabled
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
 
 _CONTRACT_TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "assets" / "client_onboarding_contract_v1.pdf"
+_DOC_TYPE_ALIASES = {
+    "CONTRACT": DocumentType.OFFER,
+    "INVOICE": DocumentType.INVOICE,
+    "ACT": DocumentType.ACT,
+    "RECONCILIATION_ACT": DocumentType.RECONCILIATION_ACT,
+}
 
 
 def _load_contract_template() -> bytes:
@@ -149,6 +166,11 @@ def _normalize_roles(token: dict) -> list[str]:
 def _is_card_admin(token: dict) -> bool:
     roles = set(_normalize_roles(token))
     return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"}))
+
+
+def _is_user_admin(token: dict) -> bool:
+    roles = set(_normalize_roles(token))
+    return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN"}))
 
 
 def _is_driver(token: dict) -> bool:
@@ -725,6 +747,106 @@ def revoke_card_access(
     return {"status": "revoked"}
 
 
+@router.get("/users", response_model=ClientUsersResponse)
+def list_users(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientUsersResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    users = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.client_id == str(client.id))
+        .order_by(ClientEmployee.created_at.desc())
+        .all()
+    )
+    role_rows = db.query(ClientUserRole).filter(ClientUserRole.client_id == str(client.id)).all()
+    role_map = {row.user_id: row.roles.split(",")[0] for row in role_rows}
+    return ClientUsersResponse(
+        items=[
+            ClientUserSummary(
+                id=str(user_item.id),
+                email=user_item.email,
+                role=role_map.get(str(user_item.id), "CLIENT_USER"),
+                status=user_item.status.value if user_item.status else None,
+                last_login=None,
+            )
+            for user_item in users
+        ]
+    )
+
+
+@router.post("/users/invite", response_model=ClientUserSummary, status_code=201)
+def invite_user(
+    payload: ClientUserInviteRequest,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientUserSummary:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=422, detail="email_required")
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.client_id == str(client.id), ClientEmployee.email == email)
+        .one_or_none()
+    )
+    if employee:
+        employee.status = EmployeeStatus.INVITED
+    else:
+        employee = ClientEmployee(client_id=str(client.id), email=email, status=EmployeeStatus.INVITED)
+        db.add(employee)
+        db.flush()
+    role_record = (
+        db.query(ClientUserRole)
+        .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id == str(employee.id))
+        .one_or_none()
+    )
+    if role_record:
+        role_record.roles = payload.role
+    else:
+        role_record = ClientUserRole(client_id=str(client.id), user_id=str(employee.id), roles=payload.role)
+        db.add(role_record)
+    db.commit()
+    return ClientUserSummary(
+        id=str(employee.id),
+        email=employee.email,
+        role=payload.role,
+        status=employee.status.value,
+        last_login=None,
+    )
+
+
+@router.delete("/users/{user_id}")
+def disable_user(
+    user_id: str,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.client_id == str(client.id), ClientEmployee.id == user_id)
+        .one_or_none()
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    employee.status = EmployeeStatus.DISABLED
+    db.commit()
+    return {"status": "disabled"}
+
+
 @router.patch("/users/{user_id}/roles")
 def update_user_roles(
     user_id: str,
@@ -736,7 +858,7 @@ def update_user_roles(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
-    if not _is_card_admin(token):
+    if not _is_user_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
     roles = payload.roles
     roles_normalized = ",".join([str(role) for role in roles])
@@ -764,6 +886,68 @@ def update_user_roles(
         action="update_roles",
     )
     return {"status": "ok", "user_id": user_id, "roles": roles}
+
+
+@router.get("/docs/list", response_model=ClientDocsListResponse)
+def list_client_docs(
+    doc_type: str | None = Query(None, alias="type"),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientDocsListResponse:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
+    query = db.query(Document).filter(Document.client_id == str(client_id))
+    if doc_type:
+        mapped = _DOC_TYPE_ALIASES.get(doc_type.upper())
+        if not mapped:
+            return ClientDocsListResponse(items=[])
+        query = query.filter(Document.document_type == mapped)
+    documents = query.order_by(Document.period_to.desc()).all()
+    items = [
+        ClientDocSummary(
+            id=str(doc.id),
+            type=doc.document_type.value,
+            status=doc.status.value,
+            date=doc.period_to,
+            download_url=f"/api/core/client/docs/{doc.id}/download",
+        )
+        for doc in documents
+    ]
+    return ClientDocsListResponse(items=items)
+
+
+@router.get("/docs/{document_id}/download")
+def download_client_doc(
+    document_id: str,
+    file_type: DocumentFileType = DocumentFileType.PDF,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
+    document = db.query(Document).filter(Document.id == document_id).one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="document_not_found")
+    if document.client_id != str(client_id):
+        raise HTTPException(status_code=403, detail="forbidden")
+    file_record = (
+        db.query(DocumentFile)
+        .filter(DocumentFile.document_id == document.id, DocumentFile.file_type == file_type)
+        .one_or_none()
+    )
+    if file_record is None:
+        raise HTTPException(status_code=404, detail="document_file_not_found")
+    payload = DocumentsStorage().fetch_bytes(file_record.object_key)
+    if not payload:
+        raise HTTPException(status_code=404, detail="document_file_not_found")
+    extension = "pdf" if file_type == DocumentFileType.PDF else "xlsx"
+    filename = f"{document.document_type.value}_v{document.version}.{extension}"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=payload, media_type=file_record.content_type, headers=headers)
 
 
 @router.get("/subscription", response_model=ClientSubscriptionOut)

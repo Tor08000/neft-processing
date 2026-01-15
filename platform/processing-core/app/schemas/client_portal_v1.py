@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -59,3 +60,42 @@ class ClientSubscriptionSelectRequest(BaseModel):
     plan_code: str
     auto_renew: bool = False
     duration_months: int | None = None
+
+
+class ClientUserInviteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    role: str
+
+
+class ClientUserSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    email: str
+    role: str
+    status: str | None = None
+    last_login: str | None = None
+
+
+class ClientUsersResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientUserSummary]
+
+
+class ClientDocSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    type: str
+    status: str
+    date: date
+    download_url: str
+
+
+class ClientDocsListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientDocSummary]
