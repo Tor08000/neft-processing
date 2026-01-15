@@ -9,7 +9,7 @@ import type {
   FleetSpendSummary,
   FleetTransaction,
 } from "../types/fleet";
-import { ApiError } from "./http";
+import { ApiError, HtmlResponseError } from "./http";
 
 export interface FleetListResponse<T> {
   items: T[];
@@ -25,8 +25,12 @@ export interface FleetSpendSummaryResponse extends FleetSpendSummary {
   unavailable?: boolean;
 }
 
-const isFleetUnavailableError = (error: unknown): boolean =>
-  error instanceof ApiError && (error.status === 404 || error.status === 501);
+const isFleetUnavailableError = (error: unknown): boolean => {
+  if (error instanceof ApiError || error instanceof HtmlResponseError) {
+    return error.status === 404 || error.status === 501;
+  }
+  return false;
+};
 
 const handleAvailability = <T>(error: unknown, fallback: T): T => {
   if (isFleetUnavailableError(error)) {

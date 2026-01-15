@@ -136,6 +136,9 @@ curl -I http://localhost/client/
 curl -I http://localhost/client/assets/
 curl -I http://localhost/partner/
 curl -I http://localhost/partner/assets/
+curl -I http://localhost/admin/brand/favicon.svg
+curl -I http://localhost/client/brand/favicon.svg
+curl -I http://localhost/partner/brand/favicon.svg
 ```
 
 Проверьте, что JS/CSS ассеты не возвращают HTML:

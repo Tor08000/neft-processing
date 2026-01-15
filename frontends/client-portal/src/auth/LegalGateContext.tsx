@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { acceptLegalDocument, fetchLegalDocument, fetchLegalRequired } from "../api/legal";
+import { ApiError, UnauthorizedError } from "../api/http";
 import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } from "../api/legal";
 import { useAuth } from "./AuthContext";
 
@@ -10,6 +11,7 @@ interface LegalGateContextValue {
   required: LegalRequiredItem[];
   isBlocked: boolean;
   isLoading: boolean;
+  errorMessage: string | null;
   document: LegalDocumentResponse | null;
   loadDocument: (code: string, version: string, locale: string) => Promise<void>;
   refresh: (force?: boolean) => Promise<void>;
@@ -25,8 +27,22 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [required, setRequired] = useState<LegalRequiredItem[]>([]);
   const [isBlocked, setIsBlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [document, setDocument] = useState<LegalDocumentResponse | null>(null);
+
+  const resolveErrorMessage = (error: unknown) => {
+    if (error instanceof UnauthorizedError) {
+      return "Требуется вход";
+    }
+    if (error instanceof ApiError && error.status === 403) {
+      return "Недостаточно прав";
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Не удалось загрузить юридические документы";
+  };
 
   const refresh = useCallback(
     async (force = false) => {
@@ -36,11 +52,14 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const data = (await fetchLegalRequired(user.token)) as LegalRequiredResponse;
         setRequired(data.required ?? []);
         setIsBlocked(Boolean(data.is_blocked));
         setLastFetched(now);
+      } catch (error) {
+        setErrorMessage(resolveErrorMessage(error));
       } finally {
         setIsLoading(false);
       }
@@ -52,11 +71,14 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     async (code: string, version: string, locale: string) => {
       if (!user?.token) return;
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const data = await acceptLegalDocument(user.token, { code, version, locale });
         setRequired(data.required ?? []);
         setIsBlocked(Boolean(data.is_blocked));
         setLastFetched(Date.now());
+      } catch (error) {
+        setErrorMessage(resolveErrorMessage(error));
       } finally {
         setIsLoading(false);
       }
@@ -68,9 +90,12 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     async (code: string, version: string, locale: string) => {
       if (!user?.token) return;
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const data = await fetchLegalDocument(user.token, code, { version, locale });
         setDocument(data);
+      } catch (error) {
+        setErrorMessage(resolveErrorMessage(error));
       } finally {
         setIsLoading(false);
       }
@@ -100,12 +125,13 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       required,
       isBlocked,
       isLoading,
+      errorMessage,
       document,
       loadDocument,
       refresh,
       accept,
     }),
-    [accept, document, isBlocked, isLoading, loadDocument, refresh, required],
+    [accept, document, errorMessage, isBlocked, isLoading, loadDocument, refresh, required],
   );
 
   return <LegalGateContext.Provider value={value}>{children}</LegalGateContext.Provider>;

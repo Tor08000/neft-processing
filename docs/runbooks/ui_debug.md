@@ -17,6 +17,8 @@ docker compose logs --tail=200 gateway
 ```bash
 curl -I http://localhost/admin/           # должен вернуть 200 text/html
 curl -I http://localhost/client/          # должен вернуть 200 text/html
+curl -I http://localhost/admin/brand/favicon.svg
+curl -I http://localhost/client/brand/favicon.svg
 ```
 
 Если тут 302/404 — смотрим `location /` и `location /admin/`/`/client/` в `gateway/nginx.conf`.
