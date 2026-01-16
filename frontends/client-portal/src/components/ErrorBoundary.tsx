@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import React from "react";
+import { StatusPage } from "./StatusPage";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -23,20 +24,15 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (this.state.hasError) {
       return (
-        <div className="error-boundary">
-          <div className="card error-boundary__card">
-            <h1>Произошла ошибка</h1>
-            <p className="muted">Попробуйте обновить страницу. Если проблема повторяется — сообщите в поддержку.</p>
-            <div className="actions">
-              <button type="button" onClick={this.handleReload}>
-                Перезагрузить
-              </button>
-              <button type="button" className="ghost">
-                Сообщить в поддержку
-              </button>
-            </div>
-          </div>
-        </div>
+        <StatusPage
+          title="Что-то пошло не так"
+          description="Попробуйте вернуться на дашборд или обновить страницу. Если проблема повторяется — сообщите в поддержку."
+          secondaryAction={
+            <button type="button" className="secondary" onClick={this.handleReload}>
+              Перезагрузить
+            </button>
+          }
+        />
       );
     }
 
