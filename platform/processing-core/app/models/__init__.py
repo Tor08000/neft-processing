@@ -232,6 +232,7 @@ from .support_request import (  # noqa: F401
 )
 from .support_ticket import (  # noqa: F401
     SupportTicket,
+    SupportTicketAttachment,
     SupportTicketComment,
     SupportTicketPriority,
     SupportTicketStatus,

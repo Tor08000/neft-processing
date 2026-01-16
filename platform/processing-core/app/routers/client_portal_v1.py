@@ -28,7 +28,12 @@ from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
 from app.models.fuel import FuelCard, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
 from app.models.operation import Operation
-from app.models.support_ticket import SupportTicket, SupportTicketComment, SupportTicketStatus
+from app.models.support_ticket import (
+    SupportTicket,
+    SupportTicketAttachment,
+    SupportTicketComment,
+    SupportTicketStatus,
+)
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
     BulkApplyTemplateRequest,
@@ -67,6 +72,11 @@ from app.schemas.client_portal_v1 import (
     ContractSignRequest,
 )
 from app.schemas.support_tickets import (
+    SupportTicketAttachmentComplete,
+    SupportTicketAttachmentInit,
+    SupportTicketAttachmentInitResponse,
+    SupportTicketAttachmentListResponse,
+    SupportTicketAttachmentOut,
     SupportTicketCommentCreate,
     SupportTicketCommentOut,
     SupportTicketCreate,
@@ -90,8 +100,11 @@ from app.services.documents_storage import DocumentsStorage
 from app.services.audit_service import AuditService, request_context_from_request
 from app.models.audit_log import AuditLog, AuditVisibility
 from app.services.entitlements_service import assert_module_enabled
+from app.services.support_attachment_storage import SupportAttachmentStorage
+from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
+settings = get_settings()
 
 _CONTRACT_TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "assets" / "client_onboarding_contract_v1.pdf"
 _DOC_TYPE_ALIASES = {
@@ -104,6 +117,15 @@ _LIMIT_TEMPLATE_TYPES = {"AMOUNT", "LITERS", "COUNT"}
 _LIMIT_TEMPLATE_WINDOWS = {"DAY", "WEEK", "MONTH"}
 _LIMIT_TEMPLATE_WINDOW_PREFIX = {"DAY": "DAILY", "WEEK": "WEEKLY", "MONTH": "MONTHLY"}
 MAX_EXPORT_ROWS = 5000
+SUPPORT_ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024
+SUPPORT_ATTACHMENT_ALLOWED_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "image/jpeg",
+    "image/png",
+    "text/csv",
+    "text/plain",
+}
 
 
 def _load_contract_template() -> bytes:
@@ -246,6 +268,38 @@ def _serialize_support_ticket_comment(comment: SupportTicketComment) -> SupportT
         message=comment.message,
         created_at=comment.created_at,
     )
+
+
+def _serialize_support_ticket_attachment(attachment: SupportTicketAttachment) -> SupportTicketAttachmentOut:
+    return SupportTicketAttachmentOut(
+        id=str(attachment.id),
+        ticket_id=str(attachment.ticket_id),
+        org_id=str(attachment.org_id),
+        uploaded_by_user_id=str(attachment.uploaded_by_user_id),
+        file_name=attachment.file_name,
+        content_type=attachment.content_type,
+        size=attachment.size,
+        object_key=attachment.object_key,
+        created_at=attachment.created_at,
+    )
+
+
+def _load_support_ticket(db: Session, *, ticket_id: str, token: dict) -> SupportTicket:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
+    if not ticket or str(ticket.org_id) != org_id:
+        raise HTTPException(status_code=404, detail="support_ticket_not_found")
+    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return ticket
+
+
+def _validate_support_attachment(*, size: int, content_type: str) -> None:
+    if size > SUPPORT_ATTACHMENT_MAX_SIZE:
+        raise HTTPException(status_code=413, detail="attachment_too_large")
+    if content_type.lower() not in SUPPORT_ATTACHMENT_ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="attachment_type_not_allowed")
 
 
 def _ensure_report_access(token: dict, allowed_roles: set[str]) -> None:
@@ -751,13 +805,7 @@ def get_support_ticket(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetail:
-    org_id = _support_ticket_org_id(token)
-    user_id = _support_ticket_user_id(token)
-    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
-    if not ticket or str(ticket.org_id) != org_id:
-        raise HTTPException(status_code=404, detail="support_ticket_not_found")
-    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
@@ -778,13 +826,8 @@ def add_support_ticket_comment(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetail:
-    org_id = _support_ticket_org_id(token)
     user_id = _support_ticket_user_id(token)
-    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
-    if not ticket or str(ticket.org_id) != org_id:
-        raise HTTPException(status_code=404, detail="support_ticket_not_found")
-    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     comment = SupportTicketComment(ticket_id=str(ticket.id), user_id=user_id, message=payload.message)
     ticket.updated_at = datetime.now(timezone.utc)
     db.add(comment)
@@ -819,13 +862,8 @@ def close_support_ticket(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetail:
-    org_id = _support_ticket_org_id(token)
-    user_id = _support_ticket_user_id(token)
-    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
-    if not ticket or str(ticket.org_id) != org_id:
-        raise HTTPException(status_code=404, detail="support_ticket_not_found")
-    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
-        raise HTTPException(status_code=403, detail="forbidden")
+    _ = _support_ticket_user_id(token)
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     if ticket.status != SupportTicketStatus.CLOSED:
         ticket.status = SupportTicketStatus.CLOSED
         ticket.updated_at = datetime.now(timezone.utc)
@@ -850,6 +888,125 @@ def close_support_ticket(
         **_serialize_support_ticket(ticket).model_dump(),
         comments=[_serialize_support_ticket_comment(item) for item in comments],
     )
+
+
+@router.post("/support/tickets/{ticket_id}/attachments/init", response_model=SupportTicketAttachmentInitResponse)
+def init_support_ticket_attachment(
+    ticket_id: str,
+    payload: SupportTicketAttachmentInit,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketAttachmentInitResponse:
+    _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    content_type = payload.content_type.lower()
+    _validate_support_attachment(size=payload.size, content_type=content_type)
+    storage = SupportAttachmentStorage()
+    attachment_id = str(uuid4())
+    object_key = storage.build_object_key(
+        ticket_id=ticket_id,
+        attachment_id=attachment_id,
+        file_name=payload.file_name,
+    )
+    upload_url = storage.presign_upload(
+        object_key=object_key,
+        content_type=content_type,
+        expires=settings.S3_SIGNED_URL_TTL_SECONDS,
+    )
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="presign_failed")
+    return SupportTicketAttachmentInitResponse(upload_url=upload_url, object_key=object_key)
+
+
+@router.post("/support/tickets/{ticket_id}/attachments/complete", response_model=SupportTicketAttachmentOut)
+def complete_support_ticket_attachment(
+    ticket_id: str,
+    payload: SupportTicketAttachmentComplete,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketAttachmentOut:
+    user_id = _support_ticket_user_id(token)
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    content_type = payload.content_type.lower()
+    _validate_support_attachment(size=payload.size, content_type=content_type)
+    if not payload.object_key.startswith(f"support-tickets/{ticket_id}/"):
+        raise HTTPException(status_code=400, detail="attachment_object_key_invalid")
+    storage = SupportAttachmentStorage()
+    file_name = storage.normalize_filename(payload.file_name)
+    attachment = SupportTicketAttachment(
+        ticket_id=str(ticket.id),
+        org_id=str(ticket.org_id),
+        uploaded_by_user_id=user_id,
+        file_name=file_name,
+        content_type=content_type,
+        size=payload.size,
+        object_key=payload.object_key,
+    )
+    db.add(attachment)
+    db.flush()
+    AuditService(db).audit(
+        event_type="support_ticket_attachment_uploaded",
+        entity_type="support_ticket_attachment",
+        entity_id=str(attachment.id),
+        action="support_ticket_attachment_uploaded",
+        visibility=AuditVisibility.INTERNAL,
+        after={
+            "ticket_id": str(ticket.id),
+            "file_name": attachment.file_name,
+            "content_type": attachment.content_type,
+            "size": attachment.size,
+        },
+        request_ctx=request_context_from_request(request, token=token),
+    )
+    db.refresh(attachment)
+    return _serialize_support_ticket_attachment(attachment)
+
+
+@router.get("/support/tickets/{ticket_id}/attachments", response_model=SupportTicketAttachmentListResponse)
+def list_support_ticket_attachments(
+    ticket_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketAttachmentListResponse:
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    rows = (
+        db.query(SupportTicketAttachment)
+        .filter(SupportTicketAttachment.ticket_id == str(ticket.id))
+        .order_by(SupportTicketAttachment.created_at.asc())
+        .all()
+    )
+    return SupportTicketAttachmentListResponse(items=[_serialize_support_ticket_attachment(item) for item in rows])
+
+
+@router.get("/support/attachments/{attachment_id}/download")
+def download_support_ticket_attachment(
+    attachment_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachment = db.query(SupportTicketAttachment).filter(SupportTicketAttachment.id == attachment_id).one_or_none()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="attachment_not_found")
+    _load_support_ticket(db, ticket_id=str(attachment.ticket_id), token=token)
+    storage = SupportAttachmentStorage()
+    url = storage.presign_download(
+        object_key=attachment.object_key,
+        expires=settings.S3_SIGNED_URL_TTL_SECONDS,
+    )
+    if not url:
+        raise HTTPException(status_code=500, detail="presign_failed")
+    AuditService(db).audit(
+        event_type="support_ticket_attachment_downloaded",
+        entity_type="support_ticket_attachment",
+        entity_id=str(attachment.id),
+        action="support_ticket_attachment_downloaded",
+        visibility=AuditVisibility.INTERNAL,
+        after={"ticket_id": str(attachment.ticket_id), "file_name": attachment.file_name},
+        request_ctx=request_context_from_request(request, token=token),
+        attachment_key=attachment.object_key,
+    )
+    return {"url": url}
 
 
 @router.post("/org", response_model=ClientOrgOut)

@@ -94,6 +94,23 @@ class S3Storage:
             logger.warning("s3.presign_failed", extra={"key": key})
             return None
 
+    def presign_put(
+        self,
+        key: str,
+        *,
+        content_type: str,
+        expires: int = 3600,
+    ) -> Optional[str]:
+        try:
+            return self._client.generate_presigned_url(
+                "put_object",
+                Params={"Bucket": self.bucket, "Key": key, "ContentType": content_type},
+                ExpiresIn=expires,
+            )
+        except Exception:  # pragma: no cover - optional presign failure
+            logger.warning("s3.presign_put_failed", extra={"key": key})
+            return None
+
     def _public_url(self, key: str) -> str:
         if self.public_base:
             return f"{self.public_base}/{key}"

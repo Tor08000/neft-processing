@@ -23,6 +23,40 @@ class SupportTicketCommentOut(BaseModel):
     created_at: datetime
 
 
+class SupportTicketAttachmentInit(BaseModel):
+    file_name: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field(..., min_length=1, max_length=128)
+    size: int = Field(..., ge=1)
+
+
+class SupportTicketAttachmentComplete(BaseModel):
+    object_key: str = Field(..., min_length=1)
+    file_name: str = Field(..., min_length=1, max_length=255)
+    content_type: str = Field(..., min_length=1, max_length=128)
+    size: int = Field(..., ge=1)
+
+
+class SupportTicketAttachmentInitResponse(BaseModel):
+    upload_url: str
+    object_key: str
+
+
+class SupportTicketAttachmentOut(BaseModel):
+    id: str
+    ticket_id: str
+    org_id: str
+    uploaded_by_user_id: str
+    file_name: str
+    content_type: str
+    size: int
+    object_key: str
+    created_at: datetime
+
+
+class SupportTicketAttachmentListResponse(BaseModel):
+    items: list[SupportTicketAttachmentOut]
+
+
 class SupportTicketOut(BaseModel):
     id: str
     org_id: str
@@ -47,6 +81,11 @@ class SupportTicketListResponse(BaseModel):
 __all__ = [
     "SupportTicketCommentCreate",
     "SupportTicketCommentOut",
+    "SupportTicketAttachmentComplete",
+    "SupportTicketAttachmentInit",
+    "SupportTicketAttachmentInitResponse",
+    "SupportTicketAttachmentListResponse",
+    "SupportTicketAttachmentOut",
     "SupportTicketCreate",
     "SupportTicketDetail",
     "SupportTicketListResponse",
