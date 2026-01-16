@@ -29,9 +29,11 @@ type AuditFilters = {
 const ENTITY_TYPE_OPTIONS = [
   { value: "", label: "Все" },
   { value: "card", label: "Card" },
+  { value: "card_bulk", label: "Card Bulk" },
   { value: "user", label: "User" },
   { value: "contract", label: "Contract" },
   { value: "document", label: "Document" },
+  { value: "limit_template", label: "Limit Template" },
 ];
 
 const buildFiltersFromSearch = (search: string): AuditFilters => {
@@ -84,6 +86,8 @@ const getEntityLink = (eventItem: AuditEventSummary): string | null => {
   const entityId = eventItem.entity_id ?? "";
   if (!entityId) return null;
   if (entityType === "card") return `/cards/${entityId}`;
+  if (entityType === "card_bulk") return "/cards";
+  if (entityType === "limit_template") return "/limits/templates";
   if (entityType === "user" || entityType === "membership") return "/settings/management?tab=users";
   if (["document", "document_acknowledgement", "legal_document", "closing_package"].includes(entityType)) {
     return `/documents/${entityId}`;

@@ -21,12 +21,17 @@ from app.models.client_portal import (
     CardLimit,
     ClientOperation,
     ClientUserRole,
+    LimitTemplate,
 )
 from app.models.fleet import ClientEmployee, EmployeeStatus
 from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentType
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
+    BulkApplyTemplateRequest,
+    BulkCardAccessRequest,
+    BulkCardRequest,
+    BulkCardResponse,
     CardAccessGrantRequest,
     CardAccessListResponse,
     CardAccessOut,
@@ -37,6 +42,10 @@ from app.schemas.client_cards_v1 import (
     CardOut,
     CardTransactionOut,
     CardUpdateRequest,
+    LimitTemplateCreateRequest,
+    LimitTemplateListResponse,
+    LimitTemplateOut,
+    LimitTemplateUpdateRequest,
     UserRoleUpdateRequest,
 )
 from app.schemas.client_portal_v1 import (
@@ -80,6 +89,9 @@ _DOC_TYPE_ALIASES = {
     "ACT": DocumentType.ACT,
     "RECONCILIATION_ACT": DocumentType.RECONCILIATION_ACT,
 }
+_LIMIT_TEMPLATE_TYPES = {"AMOUNT", "LITERS", "COUNT"}
+_LIMIT_TEMPLATE_WINDOWS = {"DAY", "WEEK", "MONTH"}
+_LIMIT_TEMPLATE_WINDOW_PREFIX = {"DAY": "DAILY", "WEEK": "WEEKLY", "MONTH": "MONTHLY"}
 
 
 def _load_contract_template() -> bytes:
@@ -222,6 +234,40 @@ def _audit_summary(log: AuditLog) -> str | None:
     return log.reason or log.action or log.event_type
 
 
+def _normalize_template_limits(limits: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for item in limits:
+        limit_type = str(item.get("type", "")).upper().strip()
+        window = str(item.get("window", "")).upper().strip()
+        value = item.get("value")
+        if limit_type not in _LIMIT_TEMPLATE_TYPES:
+            raise HTTPException(status_code=422, detail="invalid_limit_type")
+        if window not in _LIMIT_TEMPLATE_WINDOWS:
+            raise HTTPException(status_code=422, detail="invalid_limit_window")
+        try:
+            value_num = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="invalid_limit_value") from exc
+        if value is None or value_num <= 0:
+            raise HTTPException(status_code=422, detail="invalid_limit_value")
+        normalized.append({"type": limit_type, "window": window, "value": value_num})
+    return normalized
+
+
+def _limit_type_for_template(limit_type: str, window: str) -> str:
+    prefix = _LIMIT_TEMPLATE_WINDOW_PREFIX.get(window.upper().strip())
+    if not prefix:
+        raise HTTPException(status_code=422, detail="invalid_limit_window")
+    return f"{prefix}_{limit_type.upper().strip()}"
+
+
+def _audit_bulk_payload(card_ids: list[str]) -> dict:
+    if len(card_ids) <= 25:
+        return {"count": len(card_ids), "card_ids": card_ids}
+    digest = sha256(",".join(card_ids).encode("utf-8")).hexdigest()
+    return {"count": len(card_ids), "card_ids_hash": digest}
+
+
 def _build_audit_query(
     db: Session,
     *,
@@ -295,6 +341,46 @@ def _accessible_card_ids(db: Session, *, token: dict, client_id: str) -> list[st
     return [row[0] for row in rows]
 
 
+def _resolve_bulk_cards(
+    db: Session,
+    *,
+    token: dict,
+    client_id: str,
+    card_ids: list[str],
+) -> tuple[dict[str, Card], dict[str, str]]:
+    cards = db.query(Card).filter(Card.client_id == client_id, Card.id.in_(card_ids)).all()
+    card_map = {card.id: card for card in cards}
+    failed: dict[str, str] = {}
+    for card_id in card_ids:
+        if card_id not in card_map:
+            failed[card_id] = "not_found"
+    if not _is_card_admin(token):
+        allowed = set(_accessible_card_ids(db, token=token, client_id=client_id))
+        for card_id in list(card_map):
+            if card_id not in allowed:
+                failed[card_id] = "forbidden"
+                card_map.pop(card_id, None)
+    return card_map, failed
+
+
+def _ensure_driver_user(db: Session, *, client_id: str, user_id: str) -> None:
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.client_id == client_id, ClientEmployee.id == user_id)
+        .one_or_none()
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    role_row = (
+        db.query(ClientUserRole)
+        .filter(ClientUserRole.client_id == client_id, ClientUserRole.user_id == user_id)
+        .one_or_none()
+    )
+    roles = role_row.roles.split(",") if role_row else []
+    if "DRIVER" not in roles and "CLIENT_USER" not in roles:
+        raise HTTPException(status_code=409, detail="user_not_driver")
+
+
 def _audit_event(
     db: Session,
     *,
@@ -306,9 +392,11 @@ def _audit_event(
     before: dict | None = None,
     after: dict | None = None,
     action: str,
+    external_refs: dict | None = None,
+    reason: str | None = None,
 ) -> None:
     ctx = request_context_from_request(request, token=token)
-    AuditService(db).record(
+    AuditService(db).audit(
         event_type=event_type,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -317,6 +405,8 @@ def _audit_event(
         after=after,
         visibility=AuditVisibility.INTERNAL,
         request_ctx=ctx,
+        external_refs=external_refs,
+        reason=reason,
     )
 
 
@@ -747,6 +837,239 @@ def update_card(
     return CardOut(id=card.id, status=card.status, pan_masked=card.pan_masked, limits=limit_out)
 
 
+@router.post("/cards/bulk/block", response_model=BulkCardResponse)
+def bulk_block_cards(
+    payload: BulkCardRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> BulkCardResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
+    success: list[str] = []
+    for card_id, card in card_map.items():
+        if card.status == "BLOCKED":
+            failed[card_id] = "already_blocked"
+            continue
+        card.status = "BLOCKED"
+        success.append(card_id)
+    db.commit()
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="card_block_bulk",
+        entity_type="card_bulk",
+        entity_id=str(client.id),
+        action="card_block_bulk",
+        external_refs=_audit_bulk_payload(payload.card_ids),
+        reason=f"Массовая блокировка карт ({len(payload.card_ids)})",
+    )
+    return BulkCardResponse(success=success, failed=failed)
+
+
+@router.post("/cards/bulk/unblock", response_model=BulkCardResponse)
+def bulk_unblock_cards(
+    payload: BulkCardRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> BulkCardResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
+    success: list[str] = []
+    for card_id, card in card_map.items():
+        if card.status == "ACTIVE":
+            failed[card_id] = "already_active"
+            continue
+        card.status = "ACTIVE"
+        success.append(card_id)
+    db.commit()
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="card_unblock_bulk",
+        entity_type="card_bulk",
+        entity_id=str(client.id),
+        action="card_unblock_bulk",
+        external_refs=_audit_bulk_payload(payload.card_ids),
+        reason=f"Массовая разблокировка карт ({len(payload.card_ids)})",
+    )
+    return BulkCardResponse(success=success, failed=failed)
+
+
+@router.post("/cards/bulk/access/grant", response_model=BulkCardResponse)
+def bulk_grant_card_access(
+    payload: BulkCardAccessRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> BulkCardResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_driver_user(db, client_id=str(client.id), user_id=payload.user_id)
+    try:
+        scope_value = CardAccessScope(payload.scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_scope") from exc
+    card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
+    success: list[str] = []
+    for card_id, card in card_map.items():
+        access = (
+            db.query(CardAccess)
+            .filter(CardAccess.client_id == str(client.id), CardAccess.card_id == card.id, CardAccess.user_id == payload.user_id)
+            .one_or_none()
+        )
+        if access:
+            access.scope = scope_value
+            access.effective_to = None
+        else:
+            access = CardAccess(
+                client_id=str(client.id),
+                card_id=card.id,
+                user_id=payload.user_id,
+                scope=scope_value,
+                created_by=str(token.get("user_id") or token.get("sub") or ""),
+            )
+            db.add(access)
+        success.append(card_id)
+    db.commit()
+    external_refs = {"user_id": payload.user_id, "scope": payload.scope}
+    external_refs.update(_audit_bulk_payload(payload.card_ids))
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="card_access_grant_bulk",
+        entity_type="card_bulk",
+        entity_id=str(client.id),
+        action="card_access_grant_bulk",
+        external_refs=external_refs,
+        reason=f"Массовая выдача доступа к картам ({len(payload.card_ids)})",
+    )
+    return BulkCardResponse(success=success, failed=failed)
+
+
+@router.post("/cards/bulk/access/revoke", response_model=BulkCardResponse)
+def bulk_revoke_card_access(
+    payload: BulkCardAccessRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> BulkCardResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_driver_user(db, client_id=str(client.id), user_id=payload.user_id)
+    card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
+    success: list[str] = []
+    now = datetime.now(timezone.utc)
+    for card_id, card in card_map.items():
+        access = (
+            db.query(CardAccess)
+            .filter(CardAccess.client_id == str(client.id), CardAccess.card_id == card.id, CardAccess.user_id == payload.user_id)
+            .one_or_none()
+        )
+        if not access or access.effective_to is not None:
+            failed[card_id] = "not_granted"
+            continue
+        access.effective_to = now
+        success.append(card_id)
+    db.commit()
+    external_refs = {"user_id": payload.user_id, "scope": payload.scope}
+    external_refs.update(_audit_bulk_payload(payload.card_ids))
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="card_access_revoke_bulk",
+        entity_type="card_bulk",
+        entity_id=str(client.id),
+        action="card_access_revoke_bulk",
+        external_refs=external_refs,
+        reason=f"Массовый отзыв доступа к картам ({len(payload.card_ids)})",
+    )
+    return BulkCardResponse(success=success, failed=failed)
+
+
+@router.post("/cards/bulk/limits/apply-template", response_model=BulkCardResponse)
+def bulk_apply_limit_template(
+    payload: BulkApplyTemplateRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> BulkCardResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    template = (
+        db.query(LimitTemplate)
+        .filter(LimitTemplate.client_id == str(client.id), LimitTemplate.id == payload.template_id)
+        .one_or_none()
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="template_not_found")
+    if template.status != "ACTIVE":
+        raise HTTPException(status_code=409, detail="template_disabled")
+    card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
+    template_limits = template.limits if isinstance(template.limits, list) else []
+    success: list[str] = []
+    for card_id, card in card_map.items():
+        for item in template_limits:
+            limit_type = _limit_type_for_template(str(item.get("type")), str(item.get("window")))
+            value = float(item.get("value"))
+            existing = (
+                db.query(CardLimit)
+                .filter(CardLimit.card_id == card.id, CardLimit.limit_type == limit_type)
+                .one_or_none()
+            )
+            if existing:
+                existing.amount = value
+                existing.currency = "RUB"
+            else:
+                db.add(
+                    CardLimit(
+                        client_id=str(client.id),
+                        card_id=card.id,
+                        limit_type=limit_type,
+                        amount=value,
+                        currency="RUB",
+                    )
+                )
+        success.append(card_id)
+    db.commit()
+    external_refs = {"template_id": str(template.id)}
+    external_refs.update(_audit_bulk_payload(payload.card_ids))
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="limit_template_apply_bulk",
+        entity_type="limit_template",
+        entity_id=str(template.id),
+        action="limit_template_apply_bulk",
+        external_refs=external_refs,
+        reason=f"Применён шаблон лимитов '{template.name}' к {len(payload.card_ids)} картам",
+    )
+    return BulkCardResponse(success=success, failed=failed)
+
+
 @router.get("/cards/{card_id}", response_model=CardOut)
 def get_card(
     card_id: str,
@@ -971,6 +1294,129 @@ def revoke_card_access(
         action="revoke_access",
     )
     return {"status": "revoked"}
+
+
+def _template_to_out(template: LimitTemplate) -> LimitTemplateOut:
+    limits = template.limits if isinstance(template.limits, list) else []
+    return LimitTemplateOut(
+        id=str(template.id),
+        org_id=str(template.client_id),
+        name=template.name,
+        description=template.description,
+        limits=[{"type": item.get("type"), "window": item.get("window"), "value": item.get("value")} for item in limits],
+        status=template.status,
+        created_at=template.created_at,
+    )
+
+
+@router.get("/limits/templates", response_model=LimitTemplateListResponse)
+def list_limit_templates(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> LimitTemplateListResponse:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    items = (
+        db.query(LimitTemplate)
+        .filter(LimitTemplate.client_id == str(client.id))
+        .order_by(LimitTemplate.created_at.desc())
+        .all()
+    )
+    return LimitTemplateListResponse(items=[_template_to_out(item) for item in items])
+
+
+@router.post("/limits/templates", response_model=LimitTemplateOut, status_code=201)
+def create_limit_template(
+    payload: LimitTemplateCreateRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> LimitTemplateOut:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name_required")
+    limits = _normalize_template_limits([limit.model_dump() for limit in payload.limits])
+    template = LimitTemplate(
+        client_id=str(client.id),
+        name=name,
+        description=payload.description,
+        limits=limits,
+        status="ACTIVE",
+    )
+    db.add(template)
+    db.commit()
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="limit_template_create",
+        entity_type="limit_template",
+        entity_id=str(template.id),
+        action="limit_template_create",
+        external_refs={"template_id": str(template.id), "name": name},
+        reason=f"Создан шаблон лимитов '{name}'",
+    )
+    return _template_to_out(template)
+
+
+@router.patch("/limits/templates/{template_id}", response_model=LimitTemplateOut)
+def update_limit_template(
+    template_id: str,
+    payload: LimitTemplateUpdateRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> LimitTemplateOut:
+    if not _is_card_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    template = (
+        db.query(LimitTemplate)
+        .filter(LimitTemplate.client_id == str(client.id), LimitTemplate.id == template_id)
+        .one_or_none()
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="template_not_found")
+    before = {"name": template.name, "description": template.description, "status": template.status}
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="name_required")
+        template.name = name
+    if payload.description is not None:
+        template.description = payload.description
+    if payload.limits is not None:
+        template.limits = _normalize_template_limits([limit.model_dump() for limit in payload.limits])
+    if payload.status is not None:
+        status = payload.status.upper().strip()
+        if status not in {"ACTIVE", "DISABLED"}:
+            raise HTTPException(status_code=422, detail="invalid_status")
+        template.status = status
+    db.commit()
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="limit_template_update",
+        entity_type="limit_template",
+        entity_id=str(template.id),
+        action="limit_template_update",
+        before=before,
+        after={"name": template.name, "description": template.description, "status": template.status},
+        external_refs={"template_id": str(template.id), "name": template.name},
+        reason=f"Обновлён шаблон лимитов '{template.name}'",
+    )
+    return _template_to_out(template)
 
 
 @router.get("/users", response_model=ClientUsersResponse)
