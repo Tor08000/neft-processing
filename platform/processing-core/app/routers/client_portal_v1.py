@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse
 from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from app.models.client_portal import (
     ClientUserRole,
     LimitTemplate,
 )
+from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
 from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
 from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
@@ -64,6 +65,10 @@ from app.schemas.client_portal_v1 import (
     ClientOrgOut,
     ClientDocSummary,
     ClientDocsListResponse,
+    ExportJobCreateRequest,
+    ExportJobCreateResponse,
+    ExportJobListResponse,
+    ExportJobOut,
     ClientSubscriptionOut,
     ClientSubscriptionSelectRequest,
     ClientUserInviteRequest,
@@ -100,7 +105,9 @@ from app.services.s3_storage import S3Storage
 from app.services.documents_storage import DocumentsStorage
 from app.services.audit_service import AuditService, request_context_from_request
 from app.models.audit_log import AuditLog, AuditVisibility
+from app.celery_client import celery_client
 from app.services.entitlements_service import assert_module_enabled
+from app.services.reports_render import ExportRenderValidationError, normalize_filters
 from app.services.support_attachment_storage import SupportAttachmentStorage
 from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
@@ -337,6 +344,65 @@ def _ensure_report_access(token: dict, allowed_roles: set[str]) -> None:
     roles = set(_normalize_roles(token))
     if not roles.intersection(allowed_roles):
         raise HTTPException(status_code=403, detail="forbidden")
+
+
+_EXPORT_JOB_ROLES: dict[ExportJobReportType, set[str]] = {
+    ExportJobReportType.CARDS: {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"},
+    ExportJobReportType.USERS: {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"},
+    ExportJobReportType.TRANSACTIONS: {
+        "CLIENT_OWNER",
+        "CLIENT_ADMIN",
+        "CLIENT_ACCOUNTANT",
+        "CLIENT_FLEET_MANAGER",
+    },
+    ExportJobReportType.DOCUMENTS: {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"},
+    ExportJobReportType.AUDIT: {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"},
+    ExportJobReportType.SUPPORT: {"CLIENT_OWNER", "CLIENT_ADMIN"},
+}
+
+
+def _ensure_export_job_access(token: dict, report_type: ExportJobReportType) -> None:
+    allowed_roles = _EXPORT_JOB_ROLES.get(report_type)
+    if not allowed_roles:
+        raise HTTPException(status_code=422, detail="report_type_not_supported")
+    _ensure_report_access(token, allowed_roles)
+
+
+def _export_job_cursor(job: ExportJob) -> str:
+    return f"{job.created_at.isoformat()}|{job.id}"
+
+
+def _parse_export_job_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
+    if not cursor:
+        return None, None
+    parts = cursor.split("|", maxsplit=1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=422, detail="invalid_cursor")
+    try:
+        created_at = datetime.fromisoformat(parts[0])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_cursor") from exc
+    return created_at, parts[1]
+
+
+def _export_job_to_out(job: ExportJob) -> ExportJobOut:
+    return ExportJobOut(
+        id=str(job.id),
+        org_id=str(job.org_id),
+        created_by_user_id=str(job.created_by_user_id),
+        report_type=job.report_type,
+        format=job.format,
+        status=job.status,
+        filters=job.filters_json or {},
+        file_name=job.file_name,
+        content_type=job.content_type,
+        row_count=job.row_count,
+        error_message=job.error_message,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        expires_at=job.expires_at,
+    )
 
 
 def _date_range_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
@@ -767,6 +833,181 @@ def export_audit_events(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/exports/jobs", response_model=ExportJobCreateResponse, status_code=201)
+def create_export_job(
+    payload: ExportJobCreateRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ExportJobCreateResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_export_job_access(token, payload.report_type)
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=403, detail="missing_user")
+
+    try:
+        filters = normalize_filters(payload.report_type, payload.filters or {})
+    except ExportRenderValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if payload.report_type == ExportJobReportType.AUDIT:
+        tenant_id = token.get("tenant_id")
+        if tenant_id is None:
+            raise HTTPException(status_code=403, detail="missing_tenant")
+        filters["tenant_id"] = int(tenant_id)
+        allowed_entity_types = _audit_allowed_entity_types(token)
+        if allowed_entity_types is not None:
+            filters["allowed_entity_types"] = list(allowed_entity_types)
+    if payload.report_type == ExportJobReportType.SUPPORT and not _is_support_ticket_admin(token):
+        filters["created_by_user_id"] = user_id
+
+    job = ExportJob(
+        org_id=str(client.id),
+        created_by_user_id=user_id,
+        report_type=payload.report_type,
+        format=payload.format,
+        filters_json=filters,
+        status=ExportJobStatus.QUEUED,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    db.add(job)
+    db.flush()
+    db.commit()
+
+    try:
+        celery_client.send_task("exports.generate_export_job", args=[str(job.id)])
+    except Exception as exc:  # noqa: BLE001
+        job.status = ExportJobStatus.FAILED
+        job.error_message = "celery_not_available"
+        db.add(job)
+        db.commit()
+        raise HTTPException(status_code=503, detail="celery_not_available") from exc
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="export_job_created",
+        entity_type="export_job",
+        entity_id=str(job.id),
+        action="export_job_created",
+        after={"report_type": job.report_type.value, "format": job.format.value},
+    )
+
+    return ExportJobCreateResponse(id=str(job.id), status=job.status)
+
+
+@router.get("/exports/jobs", response_model=ExportJobListResponse)
+def list_export_jobs(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    status: ExportJobStatus | None = Query(None),
+    report_type: ExportJobReportType | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = Query(None),
+    only_my: bool = Query(False),
+) -> ExportJobListResponse:
+    if _is_driver(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    query = db.query(ExportJob).filter(ExportJob.org_id == str(client.id))
+    if status:
+        query = query.filter(ExportJob.status == status)
+    if report_type:
+        query = query.filter(ExportJob.report_type == report_type)
+
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=403, detail="missing_user")
+    if not _is_user_admin(token) or only_my:
+        query = query.filter(ExportJob.created_by_user_id == user_id)
+
+    cursor_created_at, cursor_id = _parse_export_job_cursor(cursor)
+    if cursor_created_at and cursor_id:
+        query = query.filter(
+            or_(
+                ExportJob.created_at < cursor_created_at,
+                and_(ExportJob.created_at == cursor_created_at, ExportJob.id < cursor_id),
+            )
+        )
+
+    jobs = query.order_by(ExportJob.created_at.desc(), ExportJob.id.desc()).limit(limit + 1).all()
+    has_more = len(jobs) > limit
+    if has_more:
+        jobs = jobs[:limit]
+    next_cursor = _export_job_cursor(jobs[-1]) if has_more and jobs else None
+    return ExportJobListResponse(items=[_export_job_to_out(job) for job in jobs], next_cursor=next_cursor)
+
+
+@router.get("/exports/jobs/{job_id}", response_model=ExportJobOut)
+def get_export_job(
+    job_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ExportJobOut:
+    if _is_driver(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    job = db.query(ExportJob).filter(ExportJob.id == job_id).one_or_none()
+    if not job or str(job.org_id) != str(client.id):
+        raise HTTPException(status_code=404, detail="export_job_not_found")
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=403, detail="missing_user")
+    if not _is_user_admin(token) and job.created_by_user_id != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return _export_job_to_out(job)
+
+
+@router.get("/exports/jobs/{job_id}/download")
+def download_export_job(
+    job_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if _is_driver(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    job = db.query(ExportJob).filter(ExportJob.id == job_id).one_or_none()
+    if not job or str(job.org_id) != str(client.id):
+        raise HTTPException(status_code=404, detail="export_job_not_found")
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=403, detail="missing_user")
+    if not _is_user_admin(token) and job.created_by_user_id != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if job.status != ExportJobStatus.DONE or not job.file_object_key:
+        raise HTTPException(status_code=400, detail="export_not_ready")
+
+    storage = S3Storage(bucket=settings.NEFT_EXPORTS_BUCKET)
+    signed_url = storage.presign(job.file_object_key, expires=settings.S3_SIGNED_URL_TTL_SECONDS)
+    if not signed_url:
+        raise HTTPException(status_code=503, detail="download_unavailable")
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="export_job_downloaded",
+        entity_type="export_job",
+        entity_id=str(job.id),
+        action="export_job_downloaded",
+    )
+
+    return RedirectResponse(url=signed_url)
 
 
 @router.post("/support/tickets", response_model=SupportTicketDetail)

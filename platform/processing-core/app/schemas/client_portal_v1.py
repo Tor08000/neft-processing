@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.export_jobs import ExportJobFormat, ExportJobReportType, ExportJobStatus
 
 class ClientOrgIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -124,4 +125,46 @@ class ClientAuditEventsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ClientAuditEventSummary]
+    next_cursor: str | None = None
+
+
+class ExportJobCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: ExportJobReportType
+    format: ExportJobFormat
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExportJobCreateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    status: ExportJobStatus
+
+
+class ExportJobOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    org_id: str
+    created_by_user_id: str
+    report_type: ExportJobReportType
+    format: ExportJobFormat
+    status: ExportJobStatus
+    filters: dict[str, Any]
+    file_name: str | None = None
+    content_type: str | None = None
+    row_count: int | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    expires_at: datetime | None = None
+
+
+class ExportJobListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ExportJobOut]
     next_cursor: str | None = None

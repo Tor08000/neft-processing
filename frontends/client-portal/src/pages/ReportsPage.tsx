@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
-import { downloadReportCsv } from "../api/reports";
+import { Link } from "react-router-dom";
+import { createExportJob } from "../api/exports";
 import { ApiError, ValidationError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AppForbiddenState } from "../components/states";
+import { Toast } from "../components/Toast/Toast";
+import { useToast } from "../components/Toast/useToast";
 import { hasAnyRole } from "../utils/roles";
 
 const MAX_EXPORT_ROWS = 5000;
@@ -34,6 +37,8 @@ const splitValues = (value: string): string[] =>
 
 export function ReportsPage() {
   const { user } = useAuth();
+  const { toast, showToast } = useToast();
+  const [showExportHint, setShowExportHint] = useState(false);
   const [cardsFilters, setCardsFilters] = useState({ status: "", driverId: "", from: "", to: "" });
   const [usersFilters, setUsersFilters] = useState({ role: "", status: "", from: "", to: "" });
   const [transactionsFilters, setTransactionsFilters] = useState({
@@ -85,6 +90,11 @@ export function ReportsPage() {
           <div>
             <h2>Reports / Exports</h2>
             <p className="muted">Выгружайте CSV с учётом фильтров. Максимум {MAX_EXPORT_ROWS} строк.</p>
+            {showExportHint ? (
+              <p className="muted">
+                Отчёт поставлен в очередь. <Link to="/client/exports">Перейти в Экспорты</Link>
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -104,17 +114,18 @@ export function ReportsPage() {
               onClick={async () => {
                 setCardsState({ loading: true, error: "" });
                 try {
-                  await downloadReportCsv(
-                    "/client/reports/cards",
+                  await createExportJob(
+                    "cards",
                     {
                       status: cardsFilters.status,
                       driver_id: cardsFilters.driverId,
                       from: cardsFilters.from,
                       to: cardsFilters.to,
-                      limit: MAX_EXPORT_ROWS,
                     },
                     user,
                   );
+                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
+                  setShowExportHint(true);
                 } catch (error) {
                   setCardsState({ loading: false, error: resolveErrorMessage(error) });
                   return;
@@ -122,7 +133,7 @@ export function ReportsPage() {
                 setCardsState({ loading: false, error: "" });
               }}
             >
-              {cardsState.loading ? "Готовим CSV…" : "Экспорт CSV"}
+              {cardsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
             </button>
           </div>
           <div className="filters">
@@ -186,17 +197,18 @@ export function ReportsPage() {
               onClick={async () => {
                 setUsersState({ loading: true, error: "" });
                 try {
-                  await downloadReportCsv(
-                    "/client/reports/users",
+                  await createExportJob(
+                    "users",
                     {
                       role: usersFilters.role,
                       status: usersFilters.status,
                       from: usersFilters.from,
                       to: usersFilters.to,
-                      limit: MAX_EXPORT_ROWS,
                     },
                     user,
                   );
+                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
+                  setShowExportHint(true);
                 } catch (error) {
                   setUsersState({ loading: false, error: resolveErrorMessage(error) });
                   return;
@@ -204,7 +216,7 @@ export function ReportsPage() {
                 setUsersState({ loading: false, error: "" });
               }}
             >
-              {usersState.loading ? "Готовим CSV…" : "Экспорт CSV"}
+              {usersState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
             </button>
           </div>
           <div className="filters">
@@ -274,19 +286,20 @@ export function ReportsPage() {
               onClick={async () => {
                 setTransactionsState({ loading: true, error: "" });
                 try {
-                  await downloadReportCsv(
-                    "/client/reports/transactions",
+                  await createExportJob(
+                    "transactions",
                     {
-                      "cards[]": splitValues(transactionsFilters.cards),
+                      card_ids: splitValues(transactionsFilters.cards),
                       status: transactionsFilters.status,
                       from: transactionsFilters.from,
                       to: transactionsFilters.to,
                       min_amount: transactionsFilters.minAmount,
                       max_amount: transactionsFilters.maxAmount,
-                      limit: MAX_EXPORT_ROWS,
                     },
                     user,
                   );
+                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
+                  setShowExportHint(true);
                 } catch (error) {
                   setTransactionsState({ loading: false, error: resolveErrorMessage(error) });
                   return;
@@ -294,7 +307,7 @@ export function ReportsPage() {
                 setTransactionsState({ loading: false, error: "" });
               }}
             >
-              {transactionsState.loading ? "Готовим CSV…" : "Экспорт CSV"}
+              {transactionsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
             </button>
           </div>
           <div className="filters">
@@ -378,17 +391,18 @@ export function ReportsPage() {
               onClick={async () => {
                 setDocumentsState({ loading: true, error: "" });
                 try {
-                  await downloadReportCsv(
-                    "/client/reports/documents",
+                  await createExportJob(
+                    "documents",
                     {
                       type: documentsFilters.type,
                       status: documentsFilters.status,
                       from: documentsFilters.from,
                       to: documentsFilters.to,
-                      limit: MAX_EXPORT_ROWS,
                     },
                     user,
                   );
+                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
+                  setShowExportHint(true);
                 } catch (error) {
                   setDocumentsState({ loading: false, error: resolveErrorMessage(error) });
                   return;
@@ -396,7 +410,7 @@ export function ReportsPage() {
                 setDocumentsState({ loading: false, error: "" });
               }}
             >
-              {documentsState.loading ? "Готовим CSV…" : "Экспорт CSV"}
+              {documentsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
             </button>
           </div>
           <div className="filters">
@@ -450,6 +464,7 @@ export function ReportsPage() {
           {documentsState.error ? <div className="muted">{documentsState.error}</div> : null}
         </section>
       ) : null}
+      {toast ? <Toast toast={toast} onClose={() => showToast(null)} /> : null}
     </div>
   );
 }

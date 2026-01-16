@@ -69,6 +69,7 @@ import { AuditPage } from "./pages/AuditPage";
 import { isPwaMode } from "./pwa/mode";
 import { LegalPage } from "./pages/LegalPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { ExportsPage } from "./pages/ExportsPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -290,6 +291,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/settings/management" element={<ClientControlsPage />} />
                 <Route path="/audit" element={<AuditPage />} />
                 <Route path="/client/reports" element={<ReportsPage />} />
+                <Route path="/client/exports" element={<ExportsPage />} />
                 <Route path="/legal" element={<LegalPage />} />
                 <Route
                   path="/fleet/cards"
