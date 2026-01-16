@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.export_jobs import ExportJobFormat, ExportJobReportType, ExportJobStatus
+from app.models.report_schedules import ReportScheduleKind, ReportScheduleStatus
 
 class ClientOrgIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -168,3 +169,60 @@ class ExportJobListResponse(BaseModel):
 
     items: list[ExportJobOut]
     next_cursor: str | None = None
+
+
+class ReportScheduleDelivery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    in_app: bool = True
+    email_to_creator: bool = True
+    email_to_roles: list[str] = Field(default_factory=list)
+
+
+class ReportScheduleCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: ExportJobReportType
+    format: ExportJobFormat
+    filters: dict[str, Any] = Field(default_factory=dict)
+    schedule_kind: ReportScheduleKind
+    schedule_meta: dict[str, int]
+    timezone: str = "Europe/Moscow"
+    delivery: ReportScheduleDelivery = Field(default_factory=ReportScheduleDelivery)
+
+
+class ReportScheduleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    format: ExportJobFormat | None = None
+    filters: dict[str, Any] | None = None
+    schedule_kind: ReportScheduleKind | None = None
+    schedule_meta: dict[str, int] | None = None
+    timezone: str | None = None
+    delivery: ReportScheduleDelivery | None = None
+
+
+class ReportScheduleOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    org_id: str
+    created_by_user_id: str
+    report_type: ExportJobReportType
+    format: ExportJobFormat
+    filters: dict[str, Any]
+    schedule_kind: ReportScheduleKind
+    schedule_meta: dict[str, int]
+    timezone: str
+    delivery: ReportScheduleDelivery
+    status: ReportScheduleStatus
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReportScheduleListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ReportScheduleOut]

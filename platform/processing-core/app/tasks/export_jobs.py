@@ -13,6 +13,7 @@ from app.services.reports_render import (
     render_export_report,
     render_xlsx_payload,
 )
+from app.services.report_schedule_notifications import send_scheduled_report_notifications
 from app.services.s3_storage import S3Storage
 from app.services.client_notifications import ClientNotificationSeverity, create_notification
 from neft_shared.logging_setup import get_logger
@@ -81,6 +82,7 @@ def generate_export_job(job_id: str) -> dict:
         job.finished_at = datetime.now(timezone.utc)
         job.expires_at = job.expires_at or (datetime.now(timezone.utc) + timedelta(days=7))
         session.add(job)
+        _notify_schedule_if_needed(session, job, True)
         session.commit()
 
         try:
@@ -110,6 +112,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.warning("export_job.limit_exceeded", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
@@ -121,6 +124,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.warning("export_job.failed", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
@@ -132,6 +136,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.exception("export_job.error", extra={"job_id": job_id})
         raise

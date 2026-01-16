@@ -24,6 +24,7 @@ from app.models.client_portal import (
     LimitTemplate,
 )
 from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
+from app.models.report_schedules import ReportSchedule, ReportScheduleKind, ReportScheduleStatus
 from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
 from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
@@ -69,6 +70,11 @@ from app.schemas.client_portal_v1 import (
     ExportJobCreateResponse,
     ExportJobListResponse,
     ExportJobOut,
+    ReportScheduleCreateRequest,
+    ReportScheduleDelivery,
+    ReportScheduleListResponse,
+    ReportScheduleOut,
+    ReportScheduleUpdateRequest,
     ClientSubscriptionOut,
     ClientSubscriptionSelectRequest,
     ClientUserInviteRequest,
@@ -108,6 +114,13 @@ from app.models.audit_log import AuditLog, AuditVisibility
 from app.celery_client import celery_client
 from app.services.entitlements_service import assert_module_enabled
 from app.services.reports_render import ExportRenderValidationError, normalize_filters
+from app.services.report_schedules import (
+    ReportScheduleValidationError,
+    compute_next_run_at,
+    normalize_delivery_roles,
+    normalize_schedule_meta,
+    validate_timezone,
+)
 from app.services.support_attachment_storage import SupportAttachmentStorage
 from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
@@ -447,6 +460,40 @@ def _ensure_export_job_access(token: dict, report_type: ExportJobReportType) -> 
     _ensure_report_access(token, allowed_roles)
 
 
+def _ensure_schedule_admin(token: dict) -> None:
+    if not _is_user_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
+def _schedule_delivery_from_request(delivery: ReportScheduleDelivery) -> tuple[bool, bool, list[str]]:
+    roles = normalize_delivery_roles(delivery.email_to_roles)
+    return delivery.in_app, delivery.email_to_creator, roles
+
+
+def _schedule_out(schedule: ReportSchedule) -> ReportScheduleOut:
+    return ReportScheduleOut(
+        id=str(schedule.id),
+        org_id=str(schedule.org_id),
+        created_by_user_id=str(schedule.created_by_user_id),
+        report_type=schedule.report_type,
+        format=schedule.format,
+        filters=schedule.filters_json or {},
+        schedule_kind=schedule.schedule_kind,
+        schedule_meta=schedule.schedule_meta or {},
+        timezone=schedule.timezone,
+        delivery=ReportScheduleDelivery(
+            in_app=bool(schedule.delivery_in_app),
+            email_to_creator=bool(schedule.delivery_email_to_creator),
+            email_to_roles=schedule.delivery_email_to_roles or [],
+        ),
+        status=schedule.status,
+        last_run_at=schedule.last_run_at,
+        next_run_at=schedule.next_run_at,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at,
+    )
+
+
 def _export_job_cursor(job: ExportJob) -> str:
     return f"{job.created_at.isoformat()}|{job.id}"
 
@@ -481,6 +528,329 @@ def _export_job_to_out(job: ExportJob) -> ExportJobOut:
         started_at=job.started_at,
         finished_at=job.finished_at,
         expires_at=job.expires_at,
+    )
+
+
+@router.post("/reports/schedules", response_model=ReportScheduleOut, status_code=201)
+def create_report_schedule(
+    payload: ReportScheduleCreateRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleOut:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_schedule_admin(token)
+    _ensure_export_job_access(token, payload.report_type)
+    if payload.report_type == ExportJobReportType.SUPPORT and not _is_support_ticket_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    try:
+        filters = normalize_filters(payload.report_type, payload.filters or {})
+    except ExportRenderValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if payload.report_type == ExportJobReportType.AUDIT:
+        tenant_id = token.get("tenant_id")
+        if tenant_id is None:
+            raise HTTPException(status_code=403, detail="missing_tenant")
+        filters["tenant_id"] = int(tenant_id)
+        allowed_entity_types = _audit_allowed_entity_types(token)
+        if allowed_entity_types is not None:
+            filters["allowed_entity_types"] = list(allowed_entity_types)
+
+    try:
+        schedule_meta = normalize_schedule_meta(payload.schedule_kind, payload.schedule_meta)
+    except ReportScheduleValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        delivery_in_app, delivery_email_to_creator, delivery_email_to_roles = _schedule_delivery_from_request(
+            payload.delivery
+        )
+    except ReportScheduleValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    timezone_name = payload.timezone or "Europe/Moscow"
+    try:
+        validate_timezone(timezone_name)
+    except ReportScheduleValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    next_run_at = compute_next_run_at(payload.schedule_kind, schedule_meta, timezone_name)
+    user_id = _support_ticket_user_id(token)
+
+    schedule = ReportSchedule(
+        org_id=str(client.id),
+        created_by_user_id=user_id,
+        report_type=payload.report_type,
+        format=payload.format,
+        filters_json=filters,
+        schedule_kind=payload.schedule_kind,
+        schedule_meta=schedule_meta,
+        timezone=timezone_name,
+        delivery_in_app=delivery_in_app,
+        delivery_email_to_creator=delivery_email_to_creator,
+        delivery_email_to_roles=delivery_email_to_roles,
+        status=ReportScheduleStatus.ACTIVE,
+        next_run_at=next_run_at,
+    )
+    db.add(schedule)
+    db.flush()
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="report_schedule_created",
+        entity_type="report_schedule",
+        entity_id=str(schedule.id),
+        action="report_schedule_created",
+        after={
+            "report_type": schedule.report_type.value,
+            "format": schedule.format.value,
+            "schedule_kind": schedule.schedule_kind.value,
+            "timezone": schedule.timezone,
+        },
+    )
+
+    return _schedule_out(schedule)
+
+
+@router.get("/reports/schedules", response_model=ReportScheduleListResponse)
+def list_report_schedules(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleListResponse:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedules = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.org_id == str(client.id))
+        .filter(ReportSchedule.status != ReportScheduleStatus.DISABLED)
+        .order_by(ReportSchedule.created_at.desc())
+        .all()
+    )
+    return ReportScheduleListResponse(items=[_schedule_out(schedule) for schedule in schedules])
+
+
+@router.get("/reports/schedules/{schedule_id}", response_model=ReportScheduleOut)
+def get_report_schedule(
+    schedule_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleOut:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedule = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.id == schedule_id, ReportSchedule.org_id == str(client.id))
+        .one_or_none()
+    )
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    return _schedule_out(schedule)
+
+
+@router.patch("/reports/schedules/{schedule_id}", response_model=ReportScheduleOut)
+def update_report_schedule(
+    schedule_id: str,
+    payload: ReportScheduleUpdateRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleOut:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedule = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.id == schedule_id, ReportSchedule.org_id == str(client.id))
+        .one_or_none()
+    )
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        raise HTTPException(status_code=404, detail="report_schedule_not_found")
+
+    if payload.schedule_kind is not None and payload.schedule_meta is None:
+        raise HTTPException(status_code=422, detail="schedule_meta_required")
+
+    schedule_kind = payload.schedule_kind or schedule.schedule_kind
+    schedule_meta_raw = payload.schedule_meta or schedule.schedule_meta or {}
+    try:
+        schedule_meta = normalize_schedule_meta(schedule_kind, schedule_meta_raw)
+    except ReportScheduleValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    filters = schedule.filters_json or {}
+    if payload.filters is not None:
+        try:
+            filters = normalize_filters(schedule.report_type, payload.filters or {})
+        except ExportRenderValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if schedule.report_type == ExportJobReportType.AUDIT:
+            tenant_id = token.get("tenant_id")
+            if tenant_id is None:
+                raise HTTPException(status_code=403, detail="missing_tenant")
+            filters["tenant_id"] = int(tenant_id)
+            allowed_entity_types = _audit_allowed_entity_types(token)
+            if allowed_entity_types is not None:
+                filters["allowed_entity_types"] = list(allowed_entity_types)
+    if payload.format is not None:
+        schedule.format = payload.format
+    schedule.filters_json = filters
+    schedule.schedule_kind = schedule_kind
+    schedule.schedule_meta = schedule_meta
+    if payload.timezone is not None:
+        try:
+            validate_timezone(payload.timezone)
+        except ReportScheduleValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        schedule.timezone = payload.timezone
+
+    if payload.delivery is not None:
+        try:
+            delivery_in_app, delivery_email_to_creator, delivery_email_to_roles = _schedule_delivery_from_request(
+                payload.delivery
+            )
+        except ReportScheduleValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        schedule.delivery_in_app = delivery_in_app
+        schedule.delivery_email_to_creator = delivery_email_to_creator
+        schedule.delivery_email_to_roles = delivery_email_to_roles
+
+    if schedule.status == ReportScheduleStatus.ACTIVE:
+        schedule.next_run_at = compute_next_run_at(schedule.schedule_kind, schedule.schedule_meta, schedule.timezone)
+
+    db.add(schedule)
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="report_schedule_updated",
+        entity_type="report_schedule",
+        entity_id=str(schedule.id),
+        action="report_schedule_updated",
+        after={
+            "report_type": schedule.report_type.value,
+            "format": schedule.format.value,
+            "schedule_kind": schedule.schedule_kind.value,
+            "timezone": schedule.timezone,
+        },
+    )
+
+    return _schedule_out(schedule)
+
+
+@router.post("/reports/schedules/{schedule_id}/pause", response_model=ReportScheduleOut)
+def pause_report_schedule(
+    schedule_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleOut:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedule = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.id == schedule_id, ReportSchedule.org_id == str(client.id))
+        .one_or_none()
+    )
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    schedule.status = ReportScheduleStatus.PAUSED
+    schedule.next_run_at = None
+    db.add(schedule)
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="report_schedule_paused",
+        entity_type="report_schedule",
+        entity_id=str(schedule.id),
+        action="report_schedule_paused",
+    )
+
+    return _schedule_out(schedule)
+
+
+@router.post("/reports/schedules/{schedule_id}/resume", response_model=ReportScheduleOut)
+def resume_report_schedule(
+    schedule_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ReportScheduleOut:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedule = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.id == schedule_id, ReportSchedule.org_id == str(client.id))
+        .one_or_none()
+    )
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    schedule.status = ReportScheduleStatus.ACTIVE
+    schedule.next_run_at = compute_next_run_at(schedule.schedule_kind, schedule.schedule_meta, schedule.timezone)
+    db.add(schedule)
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="report_schedule_resumed",
+        entity_type="report_schedule",
+        entity_id=str(schedule.id),
+        action="report_schedule_resumed",
+    )
+
+    return _schedule_out(schedule)
+
+
+@router.delete("/reports/schedules/{schedule_id}", status_code=204)
+def delete_report_schedule(
+    schedule_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> None:
+    _ensure_schedule_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    schedule = (
+        db.query(ReportSchedule)
+        .filter(ReportSchedule.id == schedule_id, ReportSchedule.org_id == str(client.id))
+        .one_or_none()
+    )
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    schedule.status = ReportScheduleStatus.DISABLED
+    schedule.next_run_at = None
+    db.add(schedule)
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="report_schedule_deleted",
+        entity_type="report_schedule",
+        entity_id=str(schedule.id),
+        action="report_schedule_deleted",
     )
 
 
