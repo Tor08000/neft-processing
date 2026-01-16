@@ -5,7 +5,7 @@ import type { AccountingExportDetails, AccountingExportList } from "../types/exp
 
 export type ExportJobStatus = "QUEUED" | "RUNNING" | "DONE" | "FAILED" | "CANCELED" | "EXPIRED";
 export type ExportJobReportType = "cards" | "users" | "transactions" | "documents" | "audit" | "support";
-export type ExportJobFormat = "CSV";
+export type ExportJobFormat = "CSV" | "XLSX";
 
 export type ExportJobFilters = Record<string, string | number | boolean | string[] | null | undefined>;
 
@@ -62,6 +62,7 @@ const requestJson = async <T>(
 export async function createExportJob(
   reportType: ExportJobReportType,
   filters: ExportJobFilters,
+  format: ExportJobFormat,
   user: AuthSession | null,
 ): Promise<{ id: string; status: ExportJobStatus }> {
   const url = joinUrl(CORE_API_BASE, "/client/exports/jobs");
@@ -70,7 +71,7 @@ export async function createExportJob(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ report_type: reportType, format: "CSV", filters }),
+      body: JSON.stringify({ report_type: reportType, format, filters }),
     },
     user,
   );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { createExportJob } from "../api/exports";
+import { Link, useSearchParams } from "react-router-dom";
+import { createExportJob, type ExportJobFormat } from "../api/exports";
 import { ApiError, ValidationError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { AppForbiddenState } from "../components/states";
@@ -38,6 +38,11 @@ const splitValues = (value: string): string[] =>
 export function ReportsPage() {
   const { user } = useAuth();
   const { toast, showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [exportFormat, setExportFormat] = useState<ExportJobFormat>(
+    searchParams.get("format")?.toLowerCase() === "xlsx" ? "XLSX" : "CSV",
+  );
+  const [lastQueuedFormat, setLastQueuedFormat] = useState<ExportJobFormat>(exportFormat);
   const [showExportHint, setShowExportHint] = useState(false);
   const [cardsFilters, setCardsFilters] = useState({ status: "", driverId: "", from: "", to: "" });
   const [usersFilters, setUsersFilters] = useState({ role: "", status: "", from: "", to: "" });
@@ -74,6 +79,14 @@ export function ReportsPage() {
   );
 
   const hasAnyAccess = canAccessCards || canAccessUsers || canAccessTransactions || canAccessDocuments;
+  const formatLabel = exportFormat.toUpperCase();
+
+  const updateFormat = (format: ExportJobFormat) => {
+    setExportFormat(format);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("format", format.toLowerCase());
+    setSearchParams(nextParams, { replace: true });
+  };
 
   if (!user) {
     return <AppForbiddenState message="Требуется авторизация" />;
@@ -89,10 +102,13 @@ export function ReportsPage() {
         <div className="card__header">
           <div>
             <h2>Reports / Exports</h2>
-            <p className="muted">Выгружайте CSV с учётом фильтров. Максимум {MAX_EXPORT_ROWS} строк.</p>
+            <p className="muted">
+              Выгружайте CSV или XLSX с учётом фильтров. Максимум {MAX_EXPORT_ROWS} строк.
+            </p>
             {showExportHint ? (
               <p className="muted">
-                Отчёт поставлен в очередь. <Link to="/client/exports">Перейти в Экспорты</Link>
+                Отчёт поставлен в очередь ({lastQueuedFormat}).{" "}
+                <Link to="/client/exports">Перейти в Экспорты</Link>
               </p>
             ) : null}
           </div>
@@ -106,35 +122,59 @@ export function ReportsPage() {
               <h3>Cards</h3>
               <p className="muted">Карты с состоянием, назначением и лимитами.</p>
             </div>
-            <button
-              type="button"
-              className="neft-btn neft-btn-primary"
-              disabled={cardsState.loading}
-              title="Экспортирует список карт текущей организации"
-              onClick={async () => {
-                setCardsState({ loading: true, error: "" });
-                try {
-                  await createExportJob(
-                    "cards",
-                    {
-                      status: cardsFilters.status,
-                      driver_id: cardsFilters.driverId,
-                      from: cardsFilters.from,
-                      to: cardsFilters.to,
-                    },
-                    user,
-                  );
-                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
-                  setShowExportHint(true);
-                } catch (error) {
-                  setCardsState({ loading: false, error: resolveErrorMessage(error) });
-                  return;
-                }
-                setCardsState({ loading: false, error: "" });
-              }}
-            >
-              {cardsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
-            </button>
+            <div className="stack-inline">
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="CSV"
+                  checked={exportFormat === "CSV"}
+                  onChange={() => updateFormat("CSV")}
+                />
+                CSV
+              </label>
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="XLSX"
+                  checked={exportFormat === "XLSX"}
+                  onChange={() => updateFormat("XLSX")}
+                />
+                XLSX
+              </label>
+              <button
+                type="button"
+                className="neft-btn neft-btn-primary"
+                disabled={cardsState.loading}
+                title="Экспортирует список карт текущей организации"
+                onClick={async () => {
+                  setCardsState({ loading: true, error: "" });
+                  try {
+                    await createExportJob(
+                      "cards",
+                      {
+                        status: cardsFilters.status,
+                        driver_id: cardsFilters.driverId,
+                        from: cardsFilters.from,
+                        to: cardsFilters.to,
+                      },
+                      exportFormat,
+                      user,
+                    );
+                    showToast({ kind: "success", text: `Отчёт поставлен в очередь (${formatLabel})` });
+                    setLastQueuedFormat(exportFormat);
+                    setShowExportHint(true);
+                  } catch (error) {
+                    setCardsState({ loading: false, error: resolveErrorMessage(error) });
+                    return;
+                  }
+                  setCardsState({ loading: false, error: "" });
+                }}
+              >
+                {cardsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
+              </button>
+            </div>
           </div>
           <div className="filters">
             <div className="filter">
@@ -189,35 +229,59 @@ export function ReportsPage() {
               <h3>Users</h3>
               <p className="muted">Пользователи организации с ролями и статусами.</p>
             </div>
-            <button
-              type="button"
-              className="neft-btn neft-btn-primary"
-              disabled={usersState.loading}
-              title="Экспортирует пользователей текущей организации"
-              onClick={async () => {
-                setUsersState({ loading: true, error: "" });
-                try {
-                  await createExportJob(
-                    "users",
-                    {
-                      role: usersFilters.role,
-                      status: usersFilters.status,
-                      from: usersFilters.from,
-                      to: usersFilters.to,
-                    },
-                    user,
-                  );
-                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
-                  setShowExportHint(true);
-                } catch (error) {
-                  setUsersState({ loading: false, error: resolveErrorMessage(error) });
-                  return;
-                }
-                setUsersState({ loading: false, error: "" });
-              }}
-            >
-              {usersState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
-            </button>
+            <div className="stack-inline">
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="CSV"
+                  checked={exportFormat === "CSV"}
+                  onChange={() => updateFormat("CSV")}
+                />
+                CSV
+              </label>
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="XLSX"
+                  checked={exportFormat === "XLSX"}
+                  onChange={() => updateFormat("XLSX")}
+                />
+                XLSX
+              </label>
+              <button
+                type="button"
+                className="neft-btn neft-btn-primary"
+                disabled={usersState.loading}
+                title="Экспортирует пользователей текущей организации"
+                onClick={async () => {
+                  setUsersState({ loading: true, error: "" });
+                  try {
+                    await createExportJob(
+                      "users",
+                      {
+                        role: usersFilters.role,
+                        status: usersFilters.status,
+                        from: usersFilters.from,
+                        to: usersFilters.to,
+                      },
+                      exportFormat,
+                      user,
+                    );
+                    showToast({ kind: "success", text: `Отчёт поставлен в очередь (${formatLabel})` });
+                    setLastQueuedFormat(exportFormat);
+                    setShowExportHint(true);
+                  } catch (error) {
+                    setUsersState({ loading: false, error: resolveErrorMessage(error) });
+                    return;
+                  }
+                  setUsersState({ loading: false, error: "" });
+                }}
+              >
+                {usersState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
+              </button>
+            </div>
           </div>
           <div className="filters">
             <div className="filter">
@@ -278,37 +342,61 @@ export function ReportsPage() {
               <h3>Transactions</h3>
               <p className="muted">Операции с картами, датой, суммой и статусом. Диапазон дат обязателен.</p>
             </div>
-            <button
-              type="button"
-              className="neft-btn neft-btn-primary"
-              disabled={transactionsState.loading || !transactionsFilters.from || !transactionsFilters.to}
-              title="Экспортирует операции по выбранным фильтрам"
-              onClick={async () => {
-                setTransactionsState({ loading: true, error: "" });
-                try {
-                  await createExportJob(
-                    "transactions",
-                    {
-                      card_ids: splitValues(transactionsFilters.cards),
-                      status: transactionsFilters.status,
-                      from: transactionsFilters.from,
-                      to: transactionsFilters.to,
-                      min_amount: transactionsFilters.minAmount,
-                      max_amount: transactionsFilters.maxAmount,
-                    },
-                    user,
-                  );
-                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
-                  setShowExportHint(true);
-                } catch (error) {
-                  setTransactionsState({ loading: false, error: resolveErrorMessage(error) });
-                  return;
-                }
-                setTransactionsState({ loading: false, error: "" });
-              }}
-            >
-              {transactionsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
-            </button>
+            <div className="stack-inline">
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="CSV"
+                  checked={exportFormat === "CSV"}
+                  onChange={() => updateFormat("CSV")}
+                />
+                CSV
+              </label>
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="XLSX"
+                  checked={exportFormat === "XLSX"}
+                  onChange={() => updateFormat("XLSX")}
+                />
+                XLSX
+              </label>
+              <button
+                type="button"
+                className="neft-btn neft-btn-primary"
+                disabled={transactionsState.loading || !transactionsFilters.from || !transactionsFilters.to}
+                title="Экспортирует операции по выбранным фильтрам"
+                onClick={async () => {
+                  setTransactionsState({ loading: true, error: "" });
+                  try {
+                    await createExportJob(
+                      "transactions",
+                      {
+                        card_ids: splitValues(transactionsFilters.cards),
+                        status: transactionsFilters.status,
+                        from: transactionsFilters.from,
+                        to: transactionsFilters.to,
+                        min_amount: transactionsFilters.minAmount,
+                        max_amount: transactionsFilters.maxAmount,
+                      },
+                      exportFormat,
+                      user,
+                    );
+                    showToast({ kind: "success", text: `Отчёт поставлен в очередь (${formatLabel})` });
+                    setLastQueuedFormat(exportFormat);
+                    setShowExportHint(true);
+                  } catch (error) {
+                    setTransactionsState({ loading: false, error: resolveErrorMessage(error) });
+                    return;
+                  }
+                  setTransactionsState({ loading: false, error: "" });
+                }}
+              >
+                {transactionsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
+              </button>
+            </div>
           </div>
           <div className="filters">
             <div className="filter">
@@ -383,35 +471,59 @@ export function ReportsPage() {
               <h3>Documents</h3>
               <p className="muted">Метаданные документов без вложений.</p>
             </div>
-            <button
-              type="button"
-              className="neft-btn neft-btn-primary"
-              disabled={documentsState.loading}
-              title="Экспортирует метаданные документов"
-              onClick={async () => {
-                setDocumentsState({ loading: true, error: "" });
-                try {
-                  await createExportJob(
-                    "documents",
-                    {
-                      type: documentsFilters.type,
-                      status: documentsFilters.status,
-                      from: documentsFilters.from,
-                      to: documentsFilters.to,
-                    },
-                    user,
-                  );
-                  showToast({ kind: "success", text: "Отчёт поставлен в очередь" });
-                  setShowExportHint(true);
-                } catch (error) {
-                  setDocumentsState({ loading: false, error: resolveErrorMessage(error) });
-                  return;
-                }
-                setDocumentsState({ loading: false, error: "" });
-              }}
-            >
-              {documentsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
-            </button>
+            <div className="stack-inline">
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="CSV"
+                  checked={exportFormat === "CSV"}
+                  onChange={() => updateFormat("CSV")}
+                />
+                CSV
+              </label>
+              <label className="stack-inline">
+                <input
+                  type="radio"
+                  name="report-format"
+                  value="XLSX"
+                  checked={exportFormat === "XLSX"}
+                  onChange={() => updateFormat("XLSX")}
+                />
+                XLSX
+              </label>
+              <button
+                type="button"
+                className="neft-btn neft-btn-primary"
+                disabled={documentsState.loading}
+                title="Экспортирует метаданные документов"
+                onClick={async () => {
+                  setDocumentsState({ loading: true, error: "" });
+                  try {
+                    await createExportJob(
+                      "documents",
+                      {
+                        type: documentsFilters.type,
+                        status: documentsFilters.status,
+                        from: documentsFilters.from,
+                        to: documentsFilters.to,
+                      },
+                      exportFormat,
+                      user,
+                    );
+                    showToast({ kind: "success", text: `Отчёт поставлен в очередь (${formatLabel})` });
+                    setLastQueuedFormat(exportFormat);
+                    setShowExportHint(true);
+                  } catch (error) {
+                    setDocumentsState({ loading: false, error: resolveErrorMessage(error) });
+                    return;
+                  }
+                  setDocumentsState({ loading: false, error: "" });
+                }}
+              >
+                {documentsState.loading ? "Ставим в очередь…" : "Сформировать отчёт"}
+              </button>
+            </div>
           </div>
           <div className="filters">
             <div className="filter">

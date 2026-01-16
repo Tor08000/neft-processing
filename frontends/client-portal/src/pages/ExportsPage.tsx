@@ -159,6 +159,7 @@ export function ExportsPage() {
             <thead>
               <tr>
                 <th>Отчёт</th>
+                <th>Формат</th>
                 <th>Создан</th>
                 <th>Статус</th>
                 <th>Строки</th>
@@ -168,7 +169,7 @@ export function ExportsPage() {
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted">
+                  <td colSpan={6} className="muted">
                     {loading ? "Загрузка…" : "Нет экспортов"}
                   </td>
                 </tr>
@@ -179,6 +180,7 @@ export function ExportsPage() {
                       <div>{job.report_type}</div>
                       <div className="muted">{job.file_name || "—"}</div>
                     </td>
+                    <td>{job.format}</td>
                     <td>{new Date(job.created_at).toLocaleString()}</td>
                     <td>
                       <span className={statusBadgeMap[job.status]}>{statusLabelMap[job.status]}</span>

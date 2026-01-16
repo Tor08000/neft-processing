@@ -264,6 +264,11 @@ def render_cards_csv(db: Session, *, client_id: str, filters: dict[str, Any]) ->
     )
 
 
+def render_cards_xlsx(db: Session, *, client_id: str, filters: dict[str, Any]) -> bytes:
+    result = render_cards_csv(db, client_id=client_id, filters=filters)
+    return render_xlsx_payload(result)
+
+
 def render_users_csv(db: Session, *, client_id: str, filters: dict[str, Any]) -> ExportRenderResult:
     role = filters.get("role")
     status = filters.get("status")
@@ -327,6 +332,11 @@ def render_users_csv(db: Session, *, client_id: str, filters: dict[str, Any]) ->
         headers=["user_id", "email", "roles", "status", "created_at", "last_login_at"],
         rows=rows,
     )
+
+
+def render_users_xlsx(db: Session, *, client_id: str, filters: dict[str, Any]) -> bytes:
+    result = render_users_csv(db, client_id=client_id, filters=filters)
+    return render_xlsx_payload(result)
 
 
 def render_transactions_csv(db: Session, *, client_id: str, filters: dict[str, Any]) -> ExportRenderResult:
@@ -396,6 +406,11 @@ def render_transactions_csv(db: Session, *, client_id: str, filters: dict[str, A
         ],
         rows=rows,
     )
+
+
+def render_transactions_xlsx(db: Session, *, client_id: str, filters: dict[str, Any]) -> bytes:
+    result = render_transactions_csv(db, client_id=client_id, filters=filters)
+    return render_xlsx_payload(result)
 
 
 def render_documents_csv(db: Session, *, client_id: str, filters: dict[str, Any]) -> ExportRenderResult:
@@ -682,6 +697,50 @@ def render_csv_payload(result: ExportRenderResult) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
+def _xlsx_cell_value(value: object | None) -> object | None:
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value
+    return value
+
+
+def _xlsx_display_text(value: object | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)
+
+
+def render_xlsx_payload(result: ExportRenderResult) -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Sheet1"
+    sheet.append(result.headers)
+
+    for row in result.rows:
+        sheet.append([_xlsx_cell_value(value) for value in row])
+
+    column_widths = [len(header) if header else 0 for header in result.headers]
+    for row in result.rows:
+        for idx, value in enumerate(row):
+            column_widths[idx] = max(column_widths[idx], len(_xlsx_display_text(value)))
+
+    for idx, width in enumerate(column_widths, start=1):
+        column_letter = get_column_letter(idx)
+        sheet.column_dimensions[column_letter].width = max(10, min(width + 2, 60))
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 __all__ = [
     "ExportRenderError",
     "ExportRenderLimitError",
@@ -689,6 +748,10 @@ __all__ = [
     "ExportRenderValidationError",
     "MAX_EXPORT_ROWS",
     "normalize_filters",
+    "render_cards_xlsx",
     "render_csv_payload",
     "render_export_report",
+    "render_transactions_xlsx",
+    "render_users_xlsx",
+    "render_xlsx_payload",
 ]

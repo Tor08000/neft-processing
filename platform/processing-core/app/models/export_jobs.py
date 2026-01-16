@@ -19,6 +19,7 @@ class ExportJobReportType(str, Enum):
 
 class ExportJobFormat(str, Enum):
     CSV = "CSV"
+    XLSX = "XLSX"
 
 
 class ExportJobStatus(str, Enum):
