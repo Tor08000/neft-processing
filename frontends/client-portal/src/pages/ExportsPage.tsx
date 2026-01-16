@@ -11,7 +11,7 @@ const statusLabelMap: Record<ExportJobStatus, string> = {
   DONE: "Готово",
   FAILED: "Ошибка",
   CANCELED: "Отменено",
-  EXPIRED: "Истекло",
+  EXPIRED: "Срок хранения истёк",
 };
 
 const statusBadgeMap: Record<ExportJobStatus, string> = {
@@ -193,6 +193,8 @@ export function ExportsPage() {
                         </a>
                       ) : job.status === "FAILED" ? (
                         <span className="muted">{job.error_message || "Ошибка"}</span>
+                      ) : job.status === "EXPIRED" ? (
+                        <span className="muted">Срок хранения истёк</span>
                       ) : (
                         <span className="muted">—</span>
                       )}

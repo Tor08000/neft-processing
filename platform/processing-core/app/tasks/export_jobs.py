@@ -14,6 +14,7 @@ from app.services.reports_render import (
     render_xlsx_payload,
 )
 from app.services.report_schedule_notifications import send_scheduled_report_notifications
+from app.services.audit_service import AuditService
 from app.services.s3_storage import S3Storage
 from app.services.client_notifications import ClientNotificationSeverity, create_notification
 from neft_shared.logging_setup import get_logger
@@ -80,7 +81,9 @@ def generate_export_job(job_id: str) -> dict:
         job.content_type = content_type
         job.row_count = len(render_result.rows)
         job.finished_at = datetime.now(timezone.utc)
-        job.expires_at = job.expires_at or (datetime.now(timezone.utc) + timedelta(days=7))
+        job.expires_at = job.expires_at or (
+            datetime.now(timezone.utc) + timedelta(days=settings.EXPORT_JOB_RETENTION_DAYS)
+        )
         session.add(job)
         _notify_schedule_if_needed(session, job, True)
         session.commit()
@@ -143,5 +146,64 @@ def generate_export_job(job_id: str) -> dict:
     finally:
         session.close()
 
+@celery_client.task(name="exports.cleanup_expired_exports")
+def cleanup_expired_exports(*, limit: int = 500) -> dict[str, int]:
+    session = get_sessionmaker()()
+    now = datetime.now(timezone.utc)
+    expired = 0
+    errors = 0
+    try:
+        jobs = (
+            session.query(ExportJob)
+            .filter(
+                ExportJob.status == ExportJobStatus.DONE,
+                ExportJob.expires_at.isnot(None),
+                ExportJob.expires_at < now,
+            )
+            .order_by(ExportJob.expires_at.asc())
+            .limit(limit)
+            .all()
+        )
+        if not jobs:
+            return {"expired": 0, "errors": 0}
 
-__all__ = ["generate_export_job"]
+        storage = S3Storage(bucket=settings.NEFT_EXPORTS_BUCKET)
+        audit = AuditService(session)
+        for job in jobs:
+            try:
+                if job.file_object_key:
+                    storage.delete(job.file_object_key)
+                job.status = ExportJobStatus.EXPIRED
+                job.file_object_key = None
+                job.content_type = None
+                session.add(job)
+                audit.audit(
+                    event_type="export_expired",
+                    entity_type="export_job",
+                    entity_id=str(job.id),
+                    action="export_expired",
+                    after={
+                        "report_type": job.report_type.value,
+                        "format": job.format.value,
+                        "expired_at": job.expires_at.isoformat() if job.expires_at else None,
+                    },
+                )
+                session.commit()
+                expired += 1
+            except Exception as exc:  # noqa: BLE001
+                session.rollback()
+                errors += 1
+                logger.warning(
+                    "export_job.cleanup_failed",
+                    extra={"job_id": str(job.id), "error": str(exc)},
+                )
+        return {"expired": expired, "errors": errors}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("export_job.cleanup_runner_failed")
+        raise
+    finally:
+        session.close()
+
+
+__all__ = ["cleanup_expired_exports", "generate_export_job"]

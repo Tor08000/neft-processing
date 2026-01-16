@@ -111,6 +111,13 @@ class S3Storage:
             logger.warning("s3.presign_put_failed", extra={"key": key})
             return None
 
+    def delete(self, key: str) -> None:
+        try:
+            self._client.delete_object(Bucket=self.bucket, Key=key)
+        except Exception:  # pragma: no cover - optional delete failure
+            logger.warning("s3.delete_failed", extra={"key": key})
+            raise
+
     def _public_url(self, key: str) -> str:
         if self.public_base:
             return f"{self.public_base}/{key}"
