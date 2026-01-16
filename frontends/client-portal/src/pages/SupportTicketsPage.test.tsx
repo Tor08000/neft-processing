@@ -13,7 +13,7 @@ const session: AuthSession = {
   expiresAt: Date.now() + 1000 * 60 * 60,
 };
 
-describe("Support requests list", () => {
+describe("Support tickets list", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -21,19 +21,17 @@ describe("Support requests list", () => {
 
   it("renders empty state", async () => {
     const fetchMock = vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ items: [], total: 0, limit: 50, offset: 0 }), { status: 200 }),
-      ),
+      Promise.resolve(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 })),
     );
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/support/requests"]}>
+      <MemoryRouter initialEntries={["/client/support"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("У вас пока нет обращений.")).toBeInTheDocument();
+    expect(await screen.findByText("Обращений пока нет")).toBeInTheDocument();
   });
 
   it("renders list rows", async () => {
@@ -43,28 +41,18 @@ describe("Support requests list", () => {
           JSON.stringify({
             items: [
               {
-                id: "sr-1",
-                tenant_id: 1,
-                client_id: "client-1",
-                partner_id: null,
+                id: "ticket-1",
+                org_id: "client-1",
                 created_by_user_id: "user-1",
-                scope_type: "CLIENT",
-                subject_type: "ORDER",
-                subject_id: "order-1",
-                correlation_id: null,
-                event_id: null,
-                title: "Проблема с заказом",
-                description: "Описание",
+                subject: "Проблема с лимитами",
+                message: "Описание",
                 status: "OPEN",
                 priority: "NORMAL",
                 created_at: "2025-01-01T10:00:00Z",
                 updated_at: "2025-01-01T10:05:00Z",
-                resolved_at: null,
               },
             ],
-            total: 1,
-            limit: 50,
-            offset: 0,
+            next_cursor: null,
           }),
           { status: 200 },
         ),
@@ -73,12 +61,12 @@ describe("Support requests list", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/support/requests"]}>
+      <MemoryRouter initialEntries={["/client/support"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Проблема с заказом")).toBeInTheDocument();
+    expect(await screen.findByText("Проблема с лимитами")).toBeInTheDocument();
     expect(screen.getByText("Открыто")).toBeInTheDocument();
   });
 });

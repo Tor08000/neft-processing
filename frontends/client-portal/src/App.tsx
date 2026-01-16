@@ -39,8 +39,9 @@ import { MarketplaceCatalogPage } from "./pages/MarketplaceCatalogPage";
 import { MarketplaceProductDetailsPage } from "./pages/MarketplaceProductDetailsPage";
 import { MarketplaceOrdersPage } from "./pages/MarketplaceOrdersPage";
 import { MarketplaceOrderDetailsPage } from "./pages/MarketplaceOrderDetailsPage";
-import { SupportRequestsPage } from "./pages/SupportRequestsPage";
-import { SupportRequestDetailsPage } from "./pages/SupportRequestDetailsPage";
+import { SupportTicketsPage } from "./pages/SupportTicketsPage";
+import { SupportTicketDetailsPage } from "./pages/SupportTicketDetailsPage";
+import { SupportTicketNewPage } from "./pages/SupportTicketNewPage";
 import { CasesPage } from "./pages/CasesPage";
 import { CaseDetailsPage } from "./pages/CaseDetailsPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
@@ -158,8 +159,11 @@ export function App({ initialSession = null }: AppProps) {
                 />
                 <Route path="/billing" element={<ClientInvoicesPage />} />
                 <Route path="/billing/:id" element={<ClientInvoiceDetailsPage />} />
-                <Route path="/support" element={<SupportRequestsPage />} />
-                <Route path="/support/:id" element={<SupportRequestDetailsPage />} />
+                <Route path="/client/support" element={<SupportTicketsPage />} />
+                <Route path="/client/support/new" element={<SupportTicketNewPage />} />
+                <Route path="/client/support/:id" element={<SupportTicketDetailsPage />} />
+                <Route path="/support" element={<Navigate to="/client/support" replace />} />
+                <Route path="/support/:id" element={<SupportTicketDetailsPage />} />
                 <Route
                   path="/analytics"
                   element={
@@ -276,8 +280,8 @@ export function App({ initialSession = null }: AppProps) {
                     </ModuleGate>
                   }
                 />
-                <Route path="/support/requests" element={<SupportRequestsPage />} />
-                <Route path="/support/requests/:id" element={<SupportRequestDetailsPage />} />
+                <Route path="/support/requests" element={<Navigate to="/client/support" replace />} />
+                <Route path="/support/requests/:id" element={<SupportTicketDetailsPage />} />
                 <Route path="/cases" element={<CasesPage />} />
                 <Route path="/cases/:id" element={<CaseDetailsPage />} />
                 <Route path="/subscription" element={<SubscriptionPage />} />

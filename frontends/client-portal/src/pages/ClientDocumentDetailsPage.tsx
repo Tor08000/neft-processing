@@ -219,9 +219,7 @@ export function ClientDocumentDetailsPage() {
       <SupportRequestModal
         isOpen={isSupportOpen}
         onClose={() => setIsSupportOpen(false)}
-        subjectType="DOCUMENT"
-        subjectId={document.id}
-        defaultTitle={`Проблема с документом ${document.number ?? document.id}`}
+        defaultSubject={`Проблема с документом ${document.number ?? document.id}`}
       />
 
       {document.ack_details ? (

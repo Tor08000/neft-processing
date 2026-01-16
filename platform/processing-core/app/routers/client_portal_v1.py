@@ -28,6 +28,7 @@ from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
 from app.models.fuel import FuelCard, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
 from app.models.operation import Operation
+from app.models.support_ticket import SupportTicket, SupportTicketComment, SupportTicketStatus
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
     BulkApplyTemplateRequest,
@@ -64,6 +65,14 @@ from app.schemas.client_portal_v1 import (
     ClientUsersResponse,
     ContractInfo,
     ContractSignRequest,
+)
+from app.schemas.support_tickets import (
+    SupportTicketCommentCreate,
+    SupportTicketCommentOut,
+    SupportTicketCreate,
+    SupportTicketDetail,
+    SupportTicketListResponse,
+    SupportTicketOut,
 )
 from app.schemas.subscriptions import SubscriptionPlanOut
 from app.services import client_auth
@@ -198,6 +207,47 @@ def _is_driver(token: dict) -> bool:
     return bool(roles.intersection({"CLIENT_USER", "DRIVER"}))
 
 
+def _support_ticket_org_id(token: dict) -> str:
+    org_id = token.get("client_id") or token.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=403, detail="missing_org")
+    return str(org_id)
+
+
+def _support_ticket_user_id(token: dict) -> str:
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=403, detail="missing_user")
+    return user_id
+
+
+def _is_support_ticket_admin(token: dict) -> bool:
+    roles = set(_normalize_roles(token))
+    return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}))
+
+
+def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
+    return SupportTicketOut(
+        id=str(ticket.id),
+        org_id=str(ticket.org_id),
+        created_by_user_id=str(ticket.created_by_user_id),
+        subject=ticket.subject,
+        message=ticket.message,
+        status=ticket.status,
+        priority=ticket.priority,
+        created_at=ticket.created_at,
+        updated_at=ticket.updated_at,
+    )
+
+
+def _serialize_support_ticket_comment(comment: SupportTicketComment) -> SupportTicketCommentOut:
+    return SupportTicketCommentOut(
+        user_id=str(comment.user_id),
+        message=comment.message,
+        created_at=comment.created_at,
+    )
+
+
 def _ensure_report_access(token: dict, allowed_roles: set[str]) -> None:
     roles = set(_normalize_roles(token))
     if not roles.intersection(allowed_roles):
@@ -284,6 +334,7 @@ _AUDIT_ACCOUNTANT_ENTITY_TYPES = {
     "document_acknowledgement",
     "closing_package",
     "legal_document",
+    "support_ticket",
 }
 
 
@@ -630,6 +681,174 @@ def export_audit_events(
         content=buffer.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/support/tickets", response_model=SupportTicketDetail)
+def create_support_ticket(
+    payload: SupportTicketCreate,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketDetail:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    ticket = SupportTicket(
+        org_id=org_id,
+        created_by_user_id=user_id,
+        subject=payload.subject,
+        message=payload.message,
+        status=SupportTicketStatus.OPEN,
+        priority=payload.priority,
+    )
+    db.add(ticket)
+    db.flush()
+    AuditService(db).audit(
+        event_type="support_ticket_created",
+        entity_type="support_ticket",
+        entity_id=str(ticket.id),
+        action="support_ticket_created",
+        visibility=AuditVisibility.INTERNAL,
+        after={
+            "status": ticket.status.value,
+            "priority": ticket.priority.value,
+            "subject": ticket.subject,
+        },
+        request_ctx=request_context_from_request(request, token=token),
+    )
+    db.refresh(ticket)
+    return SupportTicketDetail(**_serialize_support_ticket(ticket).model_dump(), comments=[])
+
+
+@router.get("/support/tickets", response_model=SupportTicketListResponse)
+def list_support_tickets(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    status: SupportTicketStatus | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    cursor: int | None = Query(None, ge=0),
+) -> SupportTicketListResponse:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    query = db.query(SupportTicket).filter(SupportTicket.org_id == org_id)
+    if status:
+        query = query.filter(SupportTicket.status == status)
+    if not _is_support_ticket_admin(token):
+        query = query.filter(SupportTicket.created_by_user_id == user_id)
+    offset = cursor or 0
+    rows = query.order_by(SupportTicket.created_at.desc()).offset(offset).limit(limit + 1).all()
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+    next_cursor = str(offset + limit) if has_more else None
+    items = [_serialize_support_ticket(ticket) for ticket in rows]
+    return SupportTicketListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/support/tickets/{ticket_id}", response_model=SupportTicketDetail)
+def get_support_ticket(
+    ticket_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketDetail:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
+    if not ticket or str(ticket.org_id) != org_id:
+        raise HTTPException(status_code=404, detail="support_ticket_not_found")
+    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    comments = (
+        db.query(SupportTicketComment)
+        .filter(SupportTicketComment.ticket_id == ticket.id)
+        .order_by(SupportTicketComment.created_at.asc())
+        .all()
+    )
+    return SupportTicketDetail(
+        **_serialize_support_ticket(ticket).model_dump(),
+        comments=[_serialize_support_ticket_comment(comment) for comment in comments],
+    )
+
+
+@router.post("/support/tickets/{ticket_id}/comments", response_model=SupportTicketDetail)
+def add_support_ticket_comment(
+    ticket_id: str,
+    payload: SupportTicketCommentCreate,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketDetail:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
+    if not ticket or str(ticket.org_id) != org_id:
+        raise HTTPException(status_code=404, detail="support_ticket_not_found")
+    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    comment = SupportTicketComment(ticket_id=str(ticket.id), user_id=user_id, message=payload.message)
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.add(comment)
+    db.add(ticket)
+    db.flush()
+    AuditService(db).audit(
+        event_type="support_ticket_commented",
+        entity_type="support_ticket",
+        entity_id=str(ticket.id),
+        action="support_ticket_commented",
+        visibility=AuditVisibility.INTERNAL,
+        after={"comment_id": str(comment.id)},
+        request_ctx=request_context_from_request(request, token=token),
+    )
+    db.refresh(ticket)
+    comments = (
+        db.query(SupportTicketComment)
+        .filter(SupportTicketComment.ticket_id == ticket.id)
+        .order_by(SupportTicketComment.created_at.asc())
+        .all()
+    )
+    return SupportTicketDetail(
+        **_serialize_support_ticket(ticket).model_dump(),
+        comments=[_serialize_support_ticket_comment(item) for item in comments],
+    )
+
+
+@router.post("/support/tickets/{ticket_id}/close", response_model=SupportTicketDetail)
+def close_support_ticket(
+    ticket_id: str,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SupportTicketDetail:
+    org_id = _support_ticket_org_id(token)
+    user_id = _support_ticket_user_id(token)
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).one_or_none()
+    if not ticket or str(ticket.org_id) != org_id:
+        raise HTTPException(status_code=404, detail="support_ticket_not_found")
+    if not _is_support_ticket_admin(token) and str(ticket.created_by_user_id) != user_id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    if ticket.status != SupportTicketStatus.CLOSED:
+        ticket.status = SupportTicketStatus.CLOSED
+        ticket.updated_at = datetime.now(timezone.utc)
+        db.add(ticket)
+        db.flush()
+        AuditService(db).audit(
+            event_type="support_ticket_closed",
+            entity_type="support_ticket",
+            entity_id=str(ticket.id),
+            action="support_ticket_closed",
+            visibility=AuditVisibility.INTERNAL,
+            after={"status": ticket.status.value},
+            request_ctx=request_context_from_request(request, token=token),
+        )
+    comments = (
+        db.query(SupportTicketComment)
+        .filter(SupportTicketComment.ticket_id == ticket.id)
+        .order_by(SupportTicketComment.created_at.asc())
+        .all()
+    )
+    return SupportTicketDetail(
+        **_serialize_support_ticket(ticket).model_dump(),
+        comments=[_serialize_support_ticket_comment(item) for item in comments],
     )
 
 

@@ -150,10 +150,7 @@ export function OperationDetailsPage() {
         <SupportRequestModal
           isOpen={isSupportOpen}
           onClose={() => setIsSupportOpen(false)}
-          subjectType="ORDER"
-          subjectId={operation.id}
-          correlationId={operation.correlation_id ?? undefined}
-          defaultTitle={`Проблема с заказом ${operation.id}`}
+          defaultSubject={`Проблема с заказом ${operation.id}`}
         />
       ) : null}
     </div>

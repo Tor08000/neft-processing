@@ -515,9 +515,7 @@ export function MarketplaceOrderDetailsPage() {
         <SupportRequestModal
           isOpen={isSupportOpen}
           onClose={() => setIsSupportOpen(false)}
-          subjectType="ORDER"
-          subjectId={order.id}
-          defaultTitle={t("marketplaceOrderDetails.supportTitle", { id: order.id })}
+          defaultSubject={t("marketplaceOrderDetails.supportTitle", { id: order.id })}
         />
       ) : null}
     </div>

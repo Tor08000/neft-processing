@@ -3,8 +3,8 @@ import { CLIENT_BASE_URL, expectHeading, expectTableOrEmptyState, loginClient } 
 
 test("client support requests list loads", async ({ page }) => {
   await loginClient(page);
-  await page.goto(`${CLIENT_BASE_URL}/support/requests`);
+  await page.goto(`${CLIENT_BASE_URL}/client/support`);
 
-  await expectHeading(page, /Запросы \/ Обращения/i);
+  await expectHeading(page, /Поддержка/i);
   await expectTableOrEmptyState(page);
 });
