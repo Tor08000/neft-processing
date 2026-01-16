@@ -1,6 +1,33 @@
 import { request } from "./http";
 import type { AuthSession } from "./types";
 
+export type ClientDashboardSnapshot = {
+  cards?: {
+    total?: number | null;
+    active?: number | null;
+    blocked?: number | null;
+    mine?: number | null;
+    available_to_issue?: number | null;
+  } | null;
+  users?: {
+    total?: number | null;
+    active?: number | null;
+    invited?: number | null;
+    disabled?: number | null;
+  } | null;
+  documents?: Array<{
+    id: string;
+    type: string;
+    status: string;
+    date: string;
+  }> | null;
+  activity?: Array<{
+    id: string;
+    message: string;
+    created_at: string;
+  }> | null;
+};
+
 export type ClientMeResponse = {
   user: {
     id: string;
@@ -30,6 +57,7 @@ export type ClientMeResponse = {
     org_status: string;
   };
   org_status: string;
+  dashboard?: ClientDashboardSnapshot | null;
 };
 
 export type ClientOrgPayload = {
