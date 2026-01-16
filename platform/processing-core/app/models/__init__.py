@@ -175,6 +175,10 @@ from .notifications import (  # noqa: F401
     NotificationTemplateContentType,
     NotificationWebPushSubscription,
 )
+from .client_notification import (  # noqa: F401
+    ClientNotification,
+    ClientNotificationSeverity,
+)
 from .billing_flow import (  # noqa: F401
     BillingInvoice,
     BillingInvoiceStatus,
