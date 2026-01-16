@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -23,9 +23,11 @@ from app.models.client_portal import (
     ClientUserRole,
     LimitTemplate,
 )
-from app.models.fleet import ClientEmployee, EmployeeStatus
+from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
 from app.models.card import Card
-from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentType
+from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
+from app.models.fuel import FuelCard, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
+from app.models.operation import Operation
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
     BulkApplyTemplateRequest,
@@ -92,6 +94,7 @@ _DOC_TYPE_ALIASES = {
 _LIMIT_TEMPLATE_TYPES = {"AMOUNT", "LITERS", "COUNT"}
 _LIMIT_TEMPLATE_WINDOWS = {"DAY", "WEEK", "MONTH"}
 _LIMIT_TEMPLATE_WINDOW_PREFIX = {"DAY": "DAILY", "WEEK": "WEEKLY", "MONTH": "MONTHLY"}
+MAX_EXPORT_ROWS = 5000
 
 
 def _load_contract_template() -> bytes:
@@ -193,6 +196,84 @@ def _is_user_admin(token: dict) -> bool:
 def _is_driver(token: dict) -> bool:
     roles = set(_normalize_roles(token))
     return bool(roles.intersection({"CLIENT_USER", "DRIVER"}))
+
+
+def _ensure_report_access(token: dict, allowed_roles: set[str]) -> None:
+    roles = set(_normalize_roles(token))
+    if not roles.intersection(allowed_roles):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
+def _date_range_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
+    start = datetime.combine(date_from, time.min) if date_from else None
+    end = datetime.combine(date_to, time.max) if date_to else None
+    return start, end
+
+
+def _format_csv_value(value: object | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)
+
+
+def _csv_response(filename: str, headers: list[str], rows: list[list[object | None]]) -> Response:
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow([_format_csv_value(value) for value in row])
+    payload = output.getvalue()
+    response_headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=payload, media_type="text/csv", headers=response_headers)
+
+
+def _extract_token_tail(value: str | None) -> str | None:
+    if not value:
+        return None
+    digits = "".join(char for char in value if char.isdigit())
+    if digits:
+        return digits[-4:]
+    return value[-4:] if len(value) >= 4 else value
+
+
+def _limits_summary(limits: list[FuelLimit]) -> str | None:
+    if not limits:
+        return None
+    parts: list[str] = []
+    for limit in limits:
+        period = limit.period.value if isinstance(limit.period, FuelLimitPeriod) else str(limit.period)
+        limit_type = limit.limit_type.value if isinstance(limit.limit_type, FuelLimitType) else str(limit.limit_type)
+        value = limit.value
+        suffix = ""
+        if limit.limit_type == FuelLimitType.VOLUME:
+            suffix = " L"
+        elif limit.currency:
+            suffix = f" {limit.currency}"
+        parts.append(f"{limit_type}/{period}: {value}{suffix}")
+    return "; ".join(parts)
+
+
+def _audit_export(
+    db: Session,
+    *,
+    request: Request,
+    token: dict,
+    client_id: str,
+    action: str,
+    filters: dict[str, object | None],
+    row_count: int,
+) -> None:
+    AuditService(db).audit(
+        event_type="CLIENT_REPORT_EXPORT",
+        entity_type="report_export",
+        entity_id=f"{client_id}:{action}",
+        action=action,
+        visibility=AuditVisibility.INTERNAL,
+        after={"filters": filters, "row_count": row_count},
+        request_ctx=request_context_from_request(request, token=token),
+    )
 
 
 _AUDIT_ACCOUNTANT_ENTITY_TYPES = {
@@ -1417,6 +1498,385 @@ def update_limit_template(
         reason=f"Обновлён шаблон лимитов '{template.name}'",
     )
     return _template_to_out(template)
+
+
+@router.get("/reports/cards")
+def export_cards_report(
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+    status: str | None = None,
+    driver_id: str | None = Query(None, alias="driver_id"),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+) -> Response:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"})
+
+    start, end = _date_range_bounds(date_from, date_to)
+    query = db.query(FuelCard).filter(FuelCard.client_id == str(client.id))
+    if status:
+        query = query.filter(FuelCard.status == status.upper().strip())
+    if driver_id:
+        query = query.filter(FuelCard.driver_id == driver_id)
+    if start:
+        query = query.filter(FuelCard.created_at >= start)
+    if end:
+        query = query.filter(FuelCard.created_at <= end)
+
+    cards = query.order_by(FuelCard.created_at.desc()).limit(limit + 1).all()
+    if len(cards) > limit:
+        raise HTTPException(status_code=413, detail="too_large")
+
+    driver_ids = {str(card.driver_id) for card in cards if card.driver_id}
+    drivers = db.query(FleetDriver).filter(FleetDriver.id.in_(driver_ids)).all() if driver_ids else []
+    driver_map = {str(driver.id): driver for driver in drivers}
+
+    card_ids = [str(card.id) for card in cards]
+    limits = []
+    if card_ids:
+        limits = (
+            db.query(FuelLimit)
+            .filter(FuelLimit.client_id == str(client.id))
+            .filter(FuelLimit.scope_type == FuelLimitScopeType.CARD)
+            .filter(FuelLimit.scope_id.in_(card_ids))
+            .filter(FuelLimit.active.is_(True))
+            .order_by(FuelLimit.created_at.desc())
+            .all()
+        )
+    limit_map: dict[str, list[FuelLimit]] = {}
+    for item in limits:
+        if item.scope_id:
+            limit_map.setdefault(str(item.scope_id), []).append(item)
+
+    rows = []
+    for card in cards:
+        driver = driver_map.get(str(card.driver_id)) if card.driver_id else None
+        assigned_driver = driver.full_name if driver else None
+        rows.append(
+            [
+                str(card.id),
+                card.masked_pan,
+                _extract_token_tail(card.masked_pan or card.token_ref),
+                card.status.value if hasattr(card.status, "value") else str(card.status),
+                assigned_driver,
+                _limits_summary(limit_map.get(str(card.id), [])),
+                card.created_at,
+            ]
+        )
+
+    _audit_export(
+        db,
+        request=request,
+        token=token,
+        client_id=str(client.id),
+        action="export_cards",
+        filters={
+            "status": status,
+            "driver_id": driver_id,
+            "from": date_from,
+            "to": date_to,
+            "limit": limit,
+        },
+        row_count=len(rows),
+    )
+    return _csv_response(
+        "cards_export.csv",
+        ["card_id", "masked_pan", "token_tail", "status", "assigned_driver", "limit_summary", "created_at"],
+        rows,
+    )
+
+
+@router.get("/reports/users")
+def export_users_report(
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+    role: str | None = None,
+    status: str | None = None,
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+) -> Response:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"})
+
+    start, end = _date_range_bounds(date_from, date_to)
+    query = (
+        db.query(ClientEmployee)
+        .outerjoin(
+            ClientUserRole,
+            and_(
+                ClientUserRole.client_id == str(client.id),
+                ClientUserRole.user_id == ClientEmployee.id,
+            ),
+        )
+        .filter(ClientEmployee.client_id == str(client.id))
+    )
+    if status:
+        try:
+            parsed_status = EmployeeStatus(status.upper().strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid_status") from exc
+        query = query.filter(ClientEmployee.status == parsed_status)
+    if role:
+        role_value = role.upper().strip()
+        if role_value == "CLIENT_USER":
+            query = query.filter(or_(ClientUserRole.roles.ilike(f"%{role_value}%"), ClientUserRole.roles.is_(None)))
+        else:
+            query = query.filter(ClientUserRole.roles.ilike(f"%{role_value}%"))
+    if start:
+        query = query.filter(ClientEmployee.created_at >= start)
+    if end:
+        query = query.filter(ClientEmployee.created_at <= end)
+
+    users = query.order_by(ClientEmployee.created_at.desc()).limit(limit + 1).all()
+    if len(users) > limit:
+        raise HTTPException(status_code=413, detail="too_large")
+
+    user_ids = [str(user_item.id) for user_item in users]
+    role_rows = (
+        db.query(ClientUserRole)
+        .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id.in_(user_ids))
+        .all()
+    )
+    role_map = {row.user_id: row.roles for row in role_rows}
+
+    rows = [
+        [
+            str(user_item.id),
+            user_item.email,
+            role_map.get(str(user_item.id), "CLIENT_USER"),
+            user_item.status.value if user_item.status else None,
+            user_item.created_at,
+            None,
+        ]
+        for user_item in users
+    ]
+
+    _audit_export(
+        db,
+        request=request,
+        token=token,
+        client_id=str(client.id),
+        action="export_users",
+        filters={
+            "role": role,
+            "status": status,
+            "from": date_from,
+            "to": date_to,
+            "limit": limit,
+        },
+        row_count=len(rows),
+    )
+    return _csv_response(
+        "users_export.csv",
+        ["user_id", "email", "roles", "status", "created_at", "last_login_at"],
+        rows,
+    )
+
+
+@router.get("/reports/transactions")
+def export_transactions_report(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    status: str | None = None,
+    card_id: str | None = None,
+    card_ids: list[str] | None = Query(None, alias="cards[]"),
+    min_amount: int | None = Query(None, alias="min_amount"),
+    max_amount: int | None = Query(None, alias="max_amount"),
+    limit: int = Query(..., ge=1, le=MAX_EXPORT_ROWS),
+) -> Response:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER"})
+    if not date_from or not date_to:
+        raise HTTPException(status_code=422, detail="date_range_required")
+
+    start, end = _date_range_bounds(date_from, date_to)
+    query = db.query(Operation).filter(Operation.client_id == str(client_id))
+    if card_id:
+        query = query.filter(Operation.card_id == card_id)
+    if card_ids:
+        query = query.filter(Operation.card_id.in_(card_ids))
+    if status:
+        query = query.filter(Operation.status == status)
+    if start:
+        query = query.filter(Operation.created_at >= start)
+    if end:
+        query = query.filter(Operation.created_at <= end)
+    if min_amount is not None:
+        query = query.filter(Operation.amount >= min_amount)
+    if max_amount is not None:
+        query = query.filter(Operation.amount <= max_amount)
+
+    operations = query.order_by(Operation.created_at.desc()).limit(limit + 1).all()
+    if len(operations) > limit:
+        raise HTTPException(status_code=413, detail="too_large")
+
+    card_ids_map = {op.card_id for op in operations}
+    cards = db.query(Card).filter(Card.id.in_(card_ids_map)).all() if card_ids_map else []
+    card_map = {card.id: card for card in cards}
+
+    rows = [
+        [
+            str(op.operation_id),
+            op.card_id,
+            card_map.get(op.card_id).pan_masked if op.card_id in card_map else None,
+            op.created_at,
+            op.amount,
+            op.currency,
+            op.product_type.value if hasattr(op.product_type, "value") else op.product_type,
+            op.merchant_id,
+            op.terminal_id,
+            op.status.value if hasattr(op.status, "value") else op.status,
+        ]
+        for op in operations
+    ]
+
+    _audit_export(
+        db,
+        request=request,
+        token=token,
+        client_id=str(client_id),
+        action="export_transactions",
+        filters={
+            "card_id": card_id,
+            "cards": card_ids,
+            "status": status,
+            "from": date_from,
+            "to": date_to,
+            "min_amount": min_amount,
+            "max_amount": max_amount,
+            "limit": limit,
+        },
+        row_count=len(rows),
+    )
+    return _csv_response(
+        "transactions_export.csv",
+        [
+            "transaction_id",
+            "card_id",
+            "masked_pan",
+            "date",
+            "amount",
+            "currency",
+            "product_type",
+            "station",
+            "network",
+            "status",
+        ],
+        rows,
+    )
+
+
+@router.get("/reports/documents")
+def export_documents_report(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    document_type: str | None = Query(None, alias="type"),
+    status: str | None = None,
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+) -> Response:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"})
+    assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
+
+    query = db.query(Document).filter(Document.client_id == str(client_id))
+    if date_from:
+        query = query.filter(Document.period_from >= date_from)
+    if date_to:
+        query = query.filter(Document.period_to <= date_to)
+    if document_type:
+        resolved_type = _DOC_TYPE_ALIASES.get(document_type.upper().strip())
+        if resolved_type is None:
+            try:
+                resolved_type = DocumentType(document_type)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="invalid_document_type") from exc
+        query = query.filter(Document.document_type == resolved_type)
+    if status:
+        try:
+            parsed_status = DocumentStatus(status)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid_document_status") from exc
+        query = query.filter(Document.status == parsed_status)
+
+    documents = query.order_by(Document.period_to.desc()).limit(limit + 1).all()
+    if len(documents) > limit:
+        raise HTTPException(status_code=413, detail="too_large")
+
+    document_ids = [str(item.id) for item in documents]
+    files = (
+        db.query(DocumentFile)
+        .filter(DocumentFile.document_id.in_(document_ids))
+        .filter(DocumentFile.file_type == DocumentFileType.PDF)
+        .all()
+        if document_ids
+        else []
+    )
+    file_map = {str(item.document_id): item for item in files}
+
+    rows = []
+    for item in documents:
+        meta = item.meta if isinstance(item.meta, dict) else {}
+        amount = None
+        currency = None
+        for key in ("amount_total", "total_amount", "amount"):
+            if key in meta:
+                amount = meta.get(key)
+                break
+        if isinstance(meta, dict):
+            currency = meta.get("currency")
+        file_item = file_map.get(str(item.id))
+        file_name = file_item.object_key.split("/")[-1] if file_item else None
+        rows.append(
+            [
+                str(item.id),
+                item.document_type.value,
+                item.number,
+                item.period_to,
+                item.status.value,
+                amount,
+                currency,
+                file_name,
+            ]
+        )
+
+    _audit_export(
+        db,
+        request=request,
+        token=token,
+        client_id=str(client_id),
+        action="export_documents",
+        filters={
+            "type": document_type,
+            "status": status,
+            "from": date_from,
+            "to": date_to,
+            "limit": limit,
+        },
+        row_count=len(rows),
+    )
+    return _csv_response(
+        "documents_export.csv",
+        ["document_id", "type", "number", "date", "status", "amount", "currency", "file_name"],
+        rows,
+    )
 
 
 @router.get("/users", response_model=ClientUsersResponse)

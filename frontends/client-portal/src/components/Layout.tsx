@@ -4,6 +4,7 @@ import {
   MessageCircle,
   Package,
   ShoppingCart,
+  FileSpreadsheet,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
@@ -15,6 +16,7 @@ import { isPwaMode } from "../pwa/mode";
 import { PwaNotificationsPrompt } from "../pwa/PwaNotificationsPrompt";
 import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 import { getInitialTheme, toggleTheme } from "../lib/theme";
+import { hasAnyRole } from "../utils/roles";
 
 interface LayoutProps {
   pwaMode?: boolean;
@@ -50,6 +52,12 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   const enabledModules = new Set((client?.entitlements.enabled_modules ?? []).map((code) => code.toUpperCase()));
   const isModuleEnabled = (module?: string) => (module ? enabledModules.has(module) : true);
+  const canSeeReports = hasAnyRole(user, [
+    "CLIENT_OWNER",
+    "CLIENT_ADMIN",
+    "CLIENT_ACCOUNTANT",
+    "CLIENT_FLEET_MANAGER",
+  ]);
 
   const navItems: NavItem[] = [
     { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET" },
@@ -59,6 +67,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
     { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },
     { to: "/audit", label: "Audit", icon: <MessageCircle size={18} /> },
+    { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
   ].map((item) => {
