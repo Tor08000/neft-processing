@@ -10,6 +10,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { UnauthorizedPage } from "./pages/UnauthorizedPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { OperationDetailsPage } from "./pages/OperationDetailsPage";
@@ -97,6 +98,7 @@ export function App({ initialSession = null }: AppProps) {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/client/signup" element={<SignupPage />} />
+            <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/client/connect" element={<OnboardingPage />} />
               <Route path="/client/onboarding" element={<OnboardingPage />} />

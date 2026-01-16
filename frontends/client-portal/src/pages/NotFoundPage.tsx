@@ -1,16 +1,10 @@
-import { Link } from "react-router-dom";
-import { EmptyState } from "@shared/brand/components";
+import { StatusPage } from "../components/StatusPage";
 
 export function NotFoundPage() {
   return (
-    <EmptyState
+    <StatusPage
       title="Страница не найдена"
-      description="Проверьте адрес или вернитесь в список документов."
-      action={
-        <Link className="ghost neft-btn-secondary" to="/billing">
-          Перейти к документам
-        </Link>
-      }
+      description="Проверьте адрес или вернитесь на дашборд."
     />
   );
 }
