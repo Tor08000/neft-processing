@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.support_ticket import SupportTicketPriority, SupportTicketStatus
+from app.models.support_ticket import SupportTicketPriority, SupportTicketSlaStatus, SupportTicketStatus
 
 
 class SupportTicketCreate(BaseModel):
@@ -65,6 +65,14 @@ class SupportTicketOut(BaseModel):
     message: str
     status: SupportTicketStatus
     priority: SupportTicketPriority
+    first_response_due_at: datetime | None
+    first_response_at: datetime | None
+    resolution_due_at: datetime | None
+    resolved_at: datetime | None
+    sla_first_response_status: SupportTicketSlaStatus
+    sla_resolution_status: SupportTicketSlaStatus
+    sla_first_response_remaining_minutes: int | None
+    sla_resolution_remaining_minutes: int | None
     created_at: datetime
     updated_at: datetime
 

@@ -32,6 +32,7 @@ from app.models.support_ticket import (
     SupportTicket,
     SupportTicketAttachment,
     SupportTicketComment,
+    SupportTicketSlaStatus,
     SupportTicketStatus,
 )
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
@@ -101,7 +102,14 @@ from app.services.audit_service import AuditService, request_context_from_reques
 from app.models.audit_log import AuditLog, AuditVisibility
 from app.services.entitlements_service import assert_module_enabled
 from app.services.support_attachment_storage import SupportAttachmentStorage
-from app.services.client_notifications import ADMIN_TARGET_ROLES, ClientNotificationSeverity, create_notification
+from app.services.support_ticket_sla import (
+    initialize_support_ticket_sla,
+    load_support_ticket_sla_config,
+    mark_first_response,
+    mark_resolution,
+    refresh_sla_breaches,
+    sla_remaining_minutes,
+)
 from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
@@ -327,7 +335,15 @@ def _is_support_ticket_admin(token: dict) -> bool:
     return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}))
 
 
+def _is_support_ticket_staff(token: dict) -> bool:
+    roles = set(_normalize_roles(token))
+    return bool(roles.intersection({"OWNER", "ADMIN"}))
+
+
 def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
+    now = datetime.now(timezone.utc)
+    first_response_reference = ticket.first_response_at or now
+    resolution_reference = ticket.resolved_at or now
     return SupportTicketOut(
         id=str(ticket.id),
         org_id=str(ticket.org_id),
@@ -336,6 +352,20 @@ def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
         message=ticket.message,
         status=ticket.status,
         priority=ticket.priority,
+        first_response_due_at=ticket.first_response_due_at,
+        first_response_at=ticket.first_response_at,
+        resolution_due_at=ticket.resolution_due_at,
+        resolved_at=ticket.resolved_at,
+        sla_first_response_status=ticket.sla_first_response_status or SupportTicketSlaStatus.PENDING,
+        sla_resolution_status=ticket.sla_resolution_status or SupportTicketSlaStatus.PENDING,
+        sla_first_response_remaining_minutes=sla_remaining_minutes(
+            due_at=ticket.first_response_due_at,
+            reference_time=first_response_reference,
+        ),
+        sla_resolution_remaining_minutes=sla_remaining_minutes(
+            due_at=ticket.resolution_due_at,
+            reference_time=resolution_reference,
+        ),
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
     )
@@ -834,6 +864,8 @@ def create_support_ticket(
         status=SupportTicketStatus.OPEN,
         priority=payload.priority,
     )
+    sla_config = load_support_ticket_sla_config(db, org_id=org_id)
+    initialize_support_ticket_sla(ticket, sla_config)
     db.add(ticket)
     db.flush()
     AuditService(db).audit(
@@ -864,6 +896,7 @@ def create_support_ticket(
 
 @router.get("/support/tickets", response_model=SupportTicketListResponse)
 def list_support_tickets(
+    request: Request,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
     status: SupportTicketStatus | None = Query(None),
@@ -882,6 +915,14 @@ def list_support_tickets(
     has_more = len(rows) > limit
     if has_more:
         rows = rows[:limit]
+    now = datetime.now(timezone.utc)
+    request_ctx = request_context_from_request(request, token=token)
+    audit_service = AuditService(db)
+    updated = False
+    for ticket in rows:
+        updated = refresh_sla_breaches(ticket, now=now, audit=audit_service, request_ctx=request_ctx) or updated
+    if updated:
+        db.flush()
     next_cursor = str(offset + limit) if has_more else None
     items = [_serialize_support_ticket(ticket) for ticket in rows]
     return SupportTicketListResponse(items=items, next_cursor=next_cursor)
@@ -890,10 +931,15 @@ def list_support_tickets(
 @router.get("/support/tickets/{ticket_id}", response_model=SupportTicketDetail)
 def get_support_ticket(
     ticket_id: str,
+    request: Request,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetail:
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    now = datetime.now(timezone.utc)
+    request_ctx = request_context_from_request(request, token=token)
+    if refresh_sla_breaches(ticket, now=now, audit=AuditService(db), request_ctx=request_ctx):
+        db.flush()
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
@@ -918,17 +964,21 @@ def add_support_ticket_comment(
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     comment = SupportTicketComment(ticket_id=str(ticket.id), user_id=user_id, message=payload.message)
     ticket.updated_at = datetime.now(timezone.utc)
+    audit_service = AuditService(db)
+    request_ctx = request_context_from_request(request, token=token)
+    if _is_support_ticket_staff(token):
+        mark_first_response(ticket, audit=audit_service, request_ctx=request_ctx)
     db.add(comment)
     db.add(ticket)
     db.flush()
-    AuditService(db).audit(
+    audit_service.audit(
         event_type="support_ticket_commented",
         entity_type="support_ticket",
         entity_id=str(ticket.id),
         action="support_ticket_commented",
         visibility=AuditVisibility.INTERNAL,
         after={"comment_id": str(comment.id)},
-        request_ctx=request_context_from_request(request, token=token),
+        request_ctx=request_ctx,
     )
     db.refresh(ticket)
     _notify_support_ticket(
@@ -960,19 +1010,22 @@ def close_support_ticket(
 ) -> SupportTicketDetail:
     _ = _support_ticket_user_id(token)
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    audit_service = AuditService(db)
+    request_ctx = request_context_from_request(request, token=token)
     if ticket.status != SupportTicketStatus.CLOSED:
         ticket.status = SupportTicketStatus.CLOSED
         ticket.updated_at = datetime.now(timezone.utc)
+        mark_resolution(ticket, audit=audit_service, request_ctx=request_ctx)
         db.add(ticket)
         db.flush()
-        AuditService(db).audit(
+        audit_service.audit(
             event_type="support_ticket_closed",
             entity_type="support_ticket",
             entity_id=str(ticket.id),
             action="support_ticket_closed",
             visibility=AuditVisibility.INTERNAL,
             after={"status": ticket.status.value},
-            request_ctx=request_context_from_request(request, token=token),
+            request_ctx=request_ctx,
         )
         db.refresh(ticket)
         _notify_support_ticket(

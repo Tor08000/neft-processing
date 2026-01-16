@@ -9,7 +9,14 @@ import { ForbiddenPage } from "./ForbiddenPage";
 import type { SupportTicketDetail } from "../types/supportTickets";
 import { formatDateTime } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
-import { supportTicketPriorityLabel, supportTicketStatusLabel, supportTicketStatusTone } from "../utils/supportTickets";
+import {
+  supportTicketPriorityLabel,
+  supportTicketSlaRemainingLabel,
+  supportTicketSlaStatusLabel,
+  supportTicketSlaStatusTone,
+  supportTicketStatusLabel,
+  supportTicketStatusTone,
+} from "../utils/supportTickets";
 
 const decodeJwtPayload = (token: string | null | undefined): Record<string, unknown> | null => {
   if (!token) return null;
@@ -48,6 +55,11 @@ export function SupportTicketDetailsPage() {
     const isCreator = userId && ticket.created_by_user_id === userId;
     return isAdmin || Boolean(isCreator);
   }, [ticket, user, userId]);
+
+  const slaBreached = useMemo(() => {
+    if (!ticket) return false;
+    return ticket.sla_first_response_status === "BREACHED" || ticket.sla_resolution_status === "BREACHED";
+  }, [ticket]);
 
   const handleError = useCallback((err: unknown) => {
     if (err instanceof ApiError) {
@@ -145,6 +157,12 @@ export function SupportTicketDetailsPage() {
             <div className="label">Приоритет</div>
             <div>{supportTicketPriorityLabel(ticket.priority)}</div>
           </div>
+          {slaBreached ? (
+            <div>
+              <div className="label">SLA</div>
+              <span className="badge error">SLA нарушен</span>
+            </div>
+          ) : null}
           <div>
             <div className="label">Создано</div>
             <div>{formatDateTime(ticket.created_at)}</div>
@@ -157,6 +175,54 @@ export function SupportTicketDetailsPage() {
         <div className="card__section">
           <h3>Описание</h3>
           <p>{ticket.message}</p>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card__header">
+          <h3>SLA таймеры</h3>
+        </div>
+        <div className="meta-grid">
+          <div>
+            <div className="label">First Response SLA</div>
+            <span className={supportTicketSlaStatusTone(ticket.sla_first_response_status)}>
+              {supportTicketSlaStatusLabel(ticket.sla_first_response_status)}
+            </span>
+            <div className="muted small">
+              {supportTicketSlaRemainingLabel(
+                ticket.sla_first_response_remaining_minutes,
+                ticket.sla_first_response_status,
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="label">Resolution SLA</div>
+            <span className={supportTicketSlaStatusTone(ticket.sla_resolution_status)}>
+              {supportTicketSlaStatusLabel(ticket.sla_resolution_status)}
+            </span>
+            <div className="muted small">
+              {supportTicketSlaRemainingLabel(
+                ticket.sla_resolution_remaining_minutes,
+                ticket.sla_resolution_status,
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="label">First Response due_at</div>
+            <div>{ticket.first_response_due_at ? formatDateTime(ticket.first_response_due_at) : "—"}</div>
+          </div>
+          <div>
+            <div className="label">Resolution due_at</div>
+            <div>{ticket.resolution_due_at ? formatDateTime(ticket.resolution_due_at) : "—"}</div>
+          </div>
+          <div>
+            <div className="label">First Response факт</div>
+            <div>{ticket.first_response_at ? formatDateTime(ticket.first_response_at) : "—"}</div>
+          </div>
+          <div>
+            <div className="label">Resolution факт</div>
+            <div>{ticket.resolved_at ? formatDateTime(ticket.resolved_at) : "—"}</div>
+          </div>
         </div>
       </section>
 

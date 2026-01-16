@@ -239,6 +239,8 @@ from .support_ticket import (  # noqa: F401
     SupportTicketAttachment,
     SupportTicketComment,
     SupportTicketPriority,
+    SupportTicketSlaPolicy,
+    SupportTicketSlaStatus,
     SupportTicketStatus,
 )
 from .cases import (  # noqa: F401
