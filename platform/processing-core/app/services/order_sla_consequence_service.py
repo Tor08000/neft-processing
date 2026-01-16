@@ -35,6 +35,12 @@ from app.services.case_event_redaction import redact_deep
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 from app.services.marketplace_settlement_service import MarketplaceSettlementService
+from app.services.client_notifications import (
+    ADMIN_TARGET_ROLES,
+    ClientNotificationSeverity,
+    create_notification,
+    resolve_client_email,
+)
 
 
 @dataclass(frozen=True)
@@ -216,6 +222,22 @@ def _enqueue_notification(
         after={"order_id": order_id, "severity": severity.value, "dedupe_key": dedupe_key},
         request_ctx=request_ctx,
     )
+    if client_id:
+        email_to = resolve_client_email(db, client_id)
+        create_notification(
+            db,
+            org_id=client_id,
+            event_type="support_sla_resolution_breached",
+            severity=ClientNotificationSeverity.CRITICAL,
+            title="Нарушен SLA поддержки",
+            body=f"Нарушен SLA по заказу {order_id}.",
+            link=f"/orders/{order_id}",
+            target_roles=ADMIN_TARGET_ROLES,
+            entity_type="marketplace_order",
+            entity_id=order_id,
+            meta_json={"severity": severity.value},
+            email_to=email_to,
+        )
 
 
 def apply_sla_consequences(

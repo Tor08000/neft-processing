@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import {
+  Bell,
   MessageCircle,
   Package,
   ShoppingCart,
@@ -10,6 +11,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { API_BASE_URL, CLIENT_BASE_PATH } from "../api/base";
+import { getClientNotificationsUnreadCount } from "../api/clientNotifications";
 import { AppErrorState } from "./states";
 import { useI18n } from "../i18n";
 import { isPwaMode } from "../pwa/mode";
@@ -47,6 +49,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { t } = useI18n();
   const location = useLocation();
   const [theme, setTheme] = useState(getInitialTheme());
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const isApiBaseMissing = !API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
@@ -65,6 +68,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     { to: "/limits/templates", label: "Limit Templates", icon: <Package size={18} /> },
     { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
+    { to: "/client/notifications", label: "Notifications", icon: <Bell size={18} /> },
     { to: "/client/support", label: "Support", icon: <MessageCircle size={18} /> },
     { to: "/audit", label: "Audit", icon: <MessageCircle size={18} /> },
     { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
@@ -85,6 +89,32 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   );
   const sectionTitle = activeItem?.label ?? t("app.title");
   const contextLabel = buildContextLabel(sectionTitle, location.pathname, activeItem?.to);
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(null);
+      return;
+    }
+    let mounted = true;
+    const fetchUnread = async () => {
+      try {
+        const response = await getClientNotificationsUnreadCount(user);
+        if (mounted) {
+          setUnreadCount(response.count);
+        }
+      } catch {
+        if (mounted) {
+          setUnreadCount(null);
+        }
+      }
+    };
+    void fetchUnread();
+    const timer = window.setInterval(fetchUnread, 10000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [user]);
 
   if (isApiBaseMissing) {
     return (
@@ -122,17 +152,23 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
           meta={user?.clientId ? t("app.clientLabel", { id: user.clientId }) : t("app.clientFallback")}
           userSlot={
             <>
+              <Link to="/client/notifications" className="notification-bell" aria-label="Notifications">
+                <Bell size={18} />
+                {unreadCount && unreadCount > 0 ? (
+                  <span className="notification-bell__badge">{unreadCount}</span>
+                ) : null}
+              </Link>
               <div>
                 <div className="muted">{t("app.signedInAs")}</div>
-            <strong>{user?.email}</strong>
-            <div className="roles">{user?.roles.join(", ")}</div>
-          </div>
-          <button type="button" className="neft-btn neft-btn-outline" onClick={() => setTheme(toggleTheme(theme))}>
-            Theme: {theme}
-          </button>
-          <button className="ghost neft-btn-secondary" onClick={logout} type="button">
-            {t("actions.logout")}
-          </button>
+                <strong>{user?.email}</strong>
+                <div className="roles">{user?.roles.join(", ")}</div>
+              </div>
+              <button type="button" className="neft-btn neft-btn-outline" onClick={() => setTheme(toggleTheme(theme))}>
+                Theme: {theme}
+              </button>
+              <button className="ghost neft-btn-secondary" onClick={logout} type="button">
+                {t("actions.logout")}
+              </button>
             </>
           }
         />

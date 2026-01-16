@@ -38,6 +38,7 @@ from app.routers.client_service_completion_proofs import (
 from app.routers.client_portal import router as client_portal_router
 from app.routers.client_onboarding import router as client_onboarding_router
 from app.routers.client_portal_v1 import router as client_portal_v1_router
+from app.routers.client_notifications import router as client_notifications_router
 from app.routers.legal import router as legal_router
 from app.routers.notifications import router as notifications_router
 from app.routers.client_vehicles import router as client_vehicles_router
@@ -432,6 +433,7 @@ safe_include_router(core_prefixed_router, client_auth_gateway_router)
 safe_include_router(core_prefixed_router, admin_auth_gateway_router)
 safe_include_router(core_prefixed_router, client_me_router)
 safe_include_router(core_prefixed_router, client_portal_v1_router)
+safe_include_router(core_prefixed_router, client_notifications_router)
 safe_include_router(core_prefixed_router, fleet_router)
 safe_include_router(core_prefixed_router, client_portal_router)
 safe_include_router(core_prefixed_router, client_onboarding_router)

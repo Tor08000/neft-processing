@@ -101,3 +101,10 @@ export const MessageCircle = (props: IconProps) => (
     <path d="M21 11a8 8 0 0 1-8 8H7l-4 3 1.2-4.5A8 8 0 1 1 21 11z" />
   </Icon>
 );
+
+export const Bell = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+    <path d="M13.5 21a2 2 0 0 1-3 0" />
+  </Icon>
+);

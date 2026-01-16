@@ -252,6 +252,84 @@ def _support_ticket_user_id(token: dict) -> str:
     return user_id
 
 
+def _notification_user_email(token: dict) -> str | None:
+    email = token.get("email")
+    if email:
+        return str(email)
+    return None
+
+
+def _notify_support_ticket(
+    db: Session,
+    *,
+    ticket: SupportTicket,
+    event_type: str,
+    title: str,
+    body: str,
+    target_user_id: str | None,
+) -> None:
+    link = f"/client/support/{ticket.id}"
+    create_notification(
+        db,
+        org_id=str(ticket.org_id),
+        event_type=event_type,
+        severity=ClientNotificationSeverity.INFO,
+        title=title,
+        body=body,
+        link=link,
+        target_user_id=target_user_id,
+        target_roles=ADMIN_TARGET_ROLES,
+        entity_type="support_ticket",
+        entity_id=str(ticket.id),
+    )
+
+
+def _notify_export_ready(
+    db: Session,
+    *,
+    org_id: str,
+    user_id: str,
+    title: str,
+    body: str,
+    email_to: str | None,
+) -> None:
+    create_notification(
+        db,
+        org_id=org_id,
+        event_type="export_ready",
+        severity=ClientNotificationSeverity.INFO,
+        title=title,
+        body=body,
+        link="/client/reports",
+        target_user_id=user_id,
+        entity_type="report_export",
+        email_to=email_to,
+    )
+
+
+def _notify_export_failed(
+    db: Session,
+    *,
+    org_id: str,
+    user_id: str,
+    title: str,
+    body: str,
+    email_to: str | None,
+) -> None:
+    create_notification(
+        db,
+        org_id=org_id,
+        event_type="export_failed",
+        severity=ClientNotificationSeverity.WARNING,
+        title=title,
+        body=body,
+        link="/client/reports",
+        target_user_id=user_id,
+        entity_type="report_export",
+        email_to=email_to,
+    )
+
+
 def _is_support_ticket_admin(token: dict) -> bool:
     roles = set(_normalize_roles(token))
     return bool(roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}))
@@ -804,6 +882,15 @@ def create_support_ticket(
         request_ctx=request_context_from_request(request, token=token),
     )
     db.refresh(ticket)
+    creator_is_admin = _is_support_ticket_admin(token)
+    _notify_support_ticket(
+        db,
+        ticket=ticket,
+        event_type="support_ticket_created",
+        title="Тикет создан",
+        body=f"Мы получили запрос \"{ticket.subject}\".",
+        target_user_id=None if creator_is_admin else user_id,
+    )
     return SupportTicketDetail(**_serialize_support_ticket(ticket).model_dump(), comments=[])
 
 
@@ -894,6 +981,14 @@ def add_support_ticket_comment(
         request_ctx=request_ctx,
     )
     db.refresh(ticket)
+    _notify_support_ticket(
+        db,
+        ticket=ticket,
+        event_type="support_ticket_commented",
+        title="Новый комментарий",
+        body=f"В тикете \"{ticket.subject}\" появился комментарий.",
+        target_user_id=str(ticket.created_by_user_id),
+    )
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
@@ -931,6 +1026,15 @@ def close_support_ticket(
             visibility=AuditVisibility.INTERNAL,
             after={"status": ticket.status.value},
             request_ctx=request_ctx,
+        )
+        db.refresh(ticket)
+        _notify_support_ticket(
+            db,
+            ticket=ticket,
+            event_type="support_ticket_closed",
+            title="Тикет закрыт",
+            body=f"Тикет \"{ticket.subject}\" закрыт.",
+            target_user_id=str(ticket.created_by_user_id),
         )
     comments = (
         db.query(SupportTicketComment)
@@ -1945,73 +2049,97 @@ def export_cards_report(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"})
+    user_id = _support_ticket_user_id(token)
+    email_to = _notification_user_email(token)
 
-    start, end = _date_range_bounds(date_from, date_to)
-    query = db.query(FuelCard).filter(FuelCard.client_id == str(client.id))
-    if status:
-        query = query.filter(FuelCard.status == status.upper().strip())
-    if driver_id:
-        query = query.filter(FuelCard.driver_id == driver_id)
-    if start:
-        query = query.filter(FuelCard.created_at >= start)
-    if end:
-        query = query.filter(FuelCard.created_at <= end)
+    try:
+        start, end = _date_range_bounds(date_from, date_to)
+        query = db.query(FuelCard).filter(FuelCard.client_id == str(client.id))
+        if status:
+            query = query.filter(FuelCard.status == status.upper().strip())
+        if driver_id:
+            query = query.filter(FuelCard.driver_id == driver_id)
+        if start:
+            query = query.filter(FuelCard.created_at >= start)
+        if end:
+            query = query.filter(FuelCard.created_at <= end)
 
-    cards = query.order_by(FuelCard.created_at.desc()).limit(limit + 1).all()
-    if len(cards) > limit:
-        raise HTTPException(status_code=413, detail="too_large")
+        cards = query.order_by(FuelCard.created_at.desc()).limit(limit + 1).all()
+        if len(cards) > limit:
+            raise HTTPException(status_code=413, detail="too_large")
 
-    driver_ids = {str(card.driver_id) for card in cards if card.driver_id}
-    drivers = db.query(FleetDriver).filter(FleetDriver.id.in_(driver_ids)).all() if driver_ids else []
-    driver_map = {str(driver.id): driver for driver in drivers}
+        driver_ids = {str(card.driver_id) for card in cards if card.driver_id}
+        drivers = db.query(FleetDriver).filter(FleetDriver.id.in_(driver_ids)).all() if driver_ids else []
+        driver_map = {str(driver.id): driver for driver in drivers}
 
-    card_ids = [str(card.id) for card in cards]
-    limits = []
-    if card_ids:
-        limits = (
-            db.query(FuelLimit)
-            .filter(FuelLimit.client_id == str(client.id))
-            .filter(FuelLimit.scope_type == FuelLimitScopeType.CARD)
-            .filter(FuelLimit.scope_id.in_(card_ids))
-            .filter(FuelLimit.active.is_(True))
-            .order_by(FuelLimit.created_at.desc())
-            .all()
+        card_ids = [str(card.id) for card in cards]
+        limits = []
+        if card_ids:
+            limits = (
+                db.query(FuelLimit)
+                .filter(FuelLimit.client_id == str(client.id))
+                .filter(FuelLimit.scope_type == FuelLimitScopeType.CARD)
+                .filter(FuelLimit.scope_id.in_(card_ids))
+                .filter(FuelLimit.active.is_(True))
+                .order_by(FuelLimit.created_at.desc())
+                .all()
+            )
+        limit_map: dict[str, list[FuelLimit]] = {}
+        for item in limits:
+            if item.scope_id:
+                limit_map.setdefault(str(item.scope_id), []).append(item)
+
+        rows = []
+        for card in cards:
+            driver = driver_map.get(str(card.driver_id)) if card.driver_id else None
+            assigned_driver = driver.full_name if driver else None
+            rows.append(
+                [
+                    str(card.id),
+                    card.masked_pan,
+                    _extract_token_tail(card.masked_pan or card.token_ref),
+                    card.status.value if hasattr(card.status, "value") else str(card.status),
+                    assigned_driver,
+                    _limits_summary(limit_map.get(str(card.id), [])),
+                    card.created_at,
+                ]
+            )
+
+        _audit_export(
+            db,
+            request=request,
+            token=token,
+            client_id=str(client.id),
+            action="export_cards",
+            filters={
+                "status": status,
+                "driver_id": driver_id,
+                "from": date_from,
+                "to": date_to,
+                "limit": limit,
+            },
+            row_count=len(rows),
         )
-    limit_map: dict[str, list[FuelLimit]] = {}
-    for item in limits:
-        if item.scope_id:
-            limit_map.setdefault(str(item.scope_id), []).append(item)
-
-    rows = []
-    for card in cards:
-        driver = driver_map.get(str(card.driver_id)) if card.driver_id else None
-        assigned_driver = driver.full_name if driver else None
-        rows.append(
-            [
-                str(card.id),
-                card.masked_pan,
-                _extract_token_tail(card.masked_pan or card.token_ref),
-                card.status.value if hasattr(card.status, "value") else str(card.status),
-                assigned_driver,
-                _limits_summary(limit_map.get(str(card.id), [])),
-                card.created_at,
-            ]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _notify_export_failed(
+            db,
+            org_id=str(client.id),
+            user_id=user_id,
+            title="Ошибка экспорта",
+            body="Не удалось сформировать отчёт по картам.",
+            email_to=email_to,
         )
+        raise
 
-    _audit_export(
+    _notify_export_ready(
         db,
-        request=request,
-        token=token,
-        client_id=str(client.id),
-        action="export_cards",
-        filters={
-            "status": status,
-            "driver_id": driver_id,
-            "from": date_from,
-            "to": date_to,
-            "limit": limit,
-        },
-        row_count=len(rows),
+        org_id=str(client.id),
+        user_id=user_id,
+        title="Отчёт готов",
+        body="Выгрузка по картам готова к скачиванию.",
+        email_to=email_to,
     )
     return _csv_response(
         "cards_export.csv",
@@ -2035,74 +2163,98 @@ def export_users_report(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"})
+    user_id = _support_ticket_user_id(token)
+    email_to = _notification_user_email(token)
 
-    start, end = _date_range_bounds(date_from, date_to)
-    query = (
-        db.query(ClientEmployee)
-        .outerjoin(
-            ClientUserRole,
-            and_(
-                ClientUserRole.client_id == str(client.id),
-                ClientUserRole.user_id == ClientEmployee.id,
-            ),
+    try:
+        start, end = _date_range_bounds(date_from, date_to)
+        query = (
+            db.query(ClientEmployee)
+            .outerjoin(
+                ClientUserRole,
+                and_(
+                    ClientUserRole.client_id == str(client.id),
+                    ClientUserRole.user_id == ClientEmployee.id,
+                ),
+            )
+            .filter(ClientEmployee.client_id == str(client.id))
         )
-        .filter(ClientEmployee.client_id == str(client.id))
-    )
-    if status:
-        try:
-            parsed_status = EmployeeStatus(status.upper().strip())
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="invalid_status") from exc
-        query = query.filter(ClientEmployee.status == parsed_status)
-    if role:
-        role_value = role.upper().strip()
-        if role_value == "CLIENT_USER":
-            query = query.filter(or_(ClientUserRole.roles.ilike(f"%{role_value}%"), ClientUserRole.roles.is_(None)))
-        else:
-            query = query.filter(ClientUserRole.roles.ilike(f"%{role_value}%"))
-    if start:
-        query = query.filter(ClientEmployee.created_at >= start)
-    if end:
-        query = query.filter(ClientEmployee.created_at <= end)
+        if status:
+            try:
+                parsed_status = EmployeeStatus(status.upper().strip())
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="invalid_status") from exc
+            query = query.filter(ClientEmployee.status == parsed_status)
+        if role:
+            role_value = role.upper().strip()
+            if role_value == "CLIENT_USER":
+                query = query.filter(or_(ClientUserRole.roles.ilike(f"%{role_value}%"), ClientUserRole.roles.is_(None)))
+            else:
+                query = query.filter(ClientUserRole.roles.ilike(f"%{role_value}%"))
+        if start:
+            query = query.filter(ClientEmployee.created_at >= start)
+        if end:
+            query = query.filter(ClientEmployee.created_at <= end)
 
-    users = query.order_by(ClientEmployee.created_at.desc()).limit(limit + 1).all()
-    if len(users) > limit:
-        raise HTTPException(status_code=413, detail="too_large")
+        users = query.order_by(ClientEmployee.created_at.desc()).limit(limit + 1).all()
+        if len(users) > limit:
+            raise HTTPException(status_code=413, detail="too_large")
 
-    user_ids = [str(user_item.id) for user_item in users]
-    role_rows = (
-        db.query(ClientUserRole)
-        .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id.in_(user_ids))
-        .all()
-    )
-    role_map = {row.user_id: row.roles for row in role_rows}
+        user_ids = [str(user_item.id) for user_item in users]
+        role_rows = (
+            db.query(ClientUserRole)
+            .filter(ClientUserRole.client_id == str(client.id), ClientUserRole.user_id.in_(user_ids))
+            .all()
+        )
+        role_map = {row.user_id: row.roles for row in role_rows}
 
-    rows = [
-        [
-            str(user_item.id),
-            user_item.email,
-            role_map.get(str(user_item.id), "CLIENT_USER"),
-            user_item.status.value if user_item.status else None,
-            user_item.created_at,
-            None,
+        rows = [
+            [
+                str(user_item.id),
+                user_item.email,
+                role_map.get(str(user_item.id), "CLIENT_USER"),
+                user_item.status.value if user_item.status else None,
+                user_item.created_at,
+                None,
+            ]
+            for user_item in users
         ]
-        for user_item in users
-    ]
 
-    _audit_export(
+        _audit_export(
+            db,
+            request=request,
+            token=token,
+            client_id=str(client.id),
+            action="export_users",
+            filters={
+                "role": role,
+                "status": status,
+                "from": date_from,
+                "to": date_to,
+                "limit": limit,
+            },
+            row_count=len(rows),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _notify_export_failed(
+            db,
+            org_id=str(client.id),
+            user_id=user_id,
+            title="Ошибка экспорта",
+            body="Не удалось сформировать отчёт по пользователям.",
+            email_to=email_to,
+        )
+        raise
+
+    _notify_export_ready(
         db,
-        request=request,
-        token=token,
-        client_id=str(client.id),
-        action="export_users",
-        filters={
-            "role": role,
-            "status": status,
-            "from": date_from,
-            "to": date_to,
-            "limit": limit,
-        },
-        row_count=len(rows),
+        org_id=str(client.id),
+        user_id=user_id,
+        title="Отчёт готов",
+        body="Выгрузка по пользователям готова к скачиванию.",
+        email_to=email_to,
     )
     return _csv_response(
         "users_export.csv",
@@ -2131,65 +2283,89 @@ def export_transactions_report(
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT", "CLIENT_FLEET_MANAGER"})
     if not date_from or not date_to:
         raise HTTPException(status_code=422, detail="date_range_required")
+    user_id = _support_ticket_user_id(token)
+    email_to = _notification_user_email(token)
 
-    start, end = _date_range_bounds(date_from, date_to)
-    query = db.query(Operation).filter(Operation.client_id == str(client_id))
-    if card_id:
-        query = query.filter(Operation.card_id == card_id)
-    if card_ids:
-        query = query.filter(Operation.card_id.in_(card_ids))
-    if status:
-        query = query.filter(Operation.status == status)
-    if start:
-        query = query.filter(Operation.created_at >= start)
-    if end:
-        query = query.filter(Operation.created_at <= end)
-    if min_amount is not None:
-        query = query.filter(Operation.amount >= min_amount)
-    if max_amount is not None:
-        query = query.filter(Operation.amount <= max_amount)
+    try:
+        start, end = _date_range_bounds(date_from, date_to)
+        query = db.query(Operation).filter(Operation.client_id == str(client_id))
+        if card_id:
+            query = query.filter(Operation.card_id == card_id)
+        if card_ids:
+            query = query.filter(Operation.card_id.in_(card_ids))
+        if status:
+            query = query.filter(Operation.status == status)
+        if start:
+            query = query.filter(Operation.created_at >= start)
+        if end:
+            query = query.filter(Operation.created_at <= end)
+        if min_amount is not None:
+            query = query.filter(Operation.amount >= min_amount)
+        if max_amount is not None:
+            query = query.filter(Operation.amount <= max_amount)
 
-    operations = query.order_by(Operation.created_at.desc()).limit(limit + 1).all()
-    if len(operations) > limit:
-        raise HTTPException(status_code=413, detail="too_large")
+        operations = query.order_by(Operation.created_at.desc()).limit(limit + 1).all()
+        if len(operations) > limit:
+            raise HTTPException(status_code=413, detail="too_large")
 
-    card_ids_map = {op.card_id for op in operations}
-    cards = db.query(Card).filter(Card.id.in_(card_ids_map)).all() if card_ids_map else []
-    card_map = {card.id: card for card in cards}
+        card_ids_map = {op.card_id for op in operations}
+        cards = db.query(Card).filter(Card.id.in_(card_ids_map)).all() if card_ids_map else []
+        card_map = {card.id: card for card in cards}
 
-    rows = [
-        [
-            str(op.operation_id),
-            op.card_id,
-            card_map.get(op.card_id).pan_masked if op.card_id in card_map else None,
-            op.created_at,
-            op.amount,
-            op.currency,
-            op.product_type.value if hasattr(op.product_type, "value") else op.product_type,
-            op.merchant_id,
-            op.terminal_id,
-            op.status.value if hasattr(op.status, "value") else op.status,
+        rows = [
+            [
+                str(op.operation_id),
+                op.card_id,
+                card_map.get(op.card_id).pan_masked if op.card_id in card_map else None,
+                op.created_at,
+                op.amount,
+                op.currency,
+                op.product_type.value if hasattr(op.product_type, "value") else op.product_type,
+                op.merchant_id,
+                op.terminal_id,
+                op.status.value if hasattr(op.status, "value") else op.status,
+            ]
+            for op in operations
         ]
-        for op in operations
-    ]
 
-    _audit_export(
+        _audit_export(
+            db,
+            request=request,
+            token=token,
+            client_id=str(client_id),
+            action="export_transactions",
+            filters={
+                "card_id": card_id,
+                "cards": card_ids,
+                "status": status,
+                "from": date_from,
+                "to": date_to,
+                "min_amount": min_amount,
+                "max_amount": max_amount,
+                "limit": limit,
+            },
+            row_count=len(rows),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _notify_export_failed(
+            db,
+            org_id=str(client_id),
+            user_id=user_id,
+            title="Ошибка экспорта",
+            body="Не удалось сформировать отчёт по транзакциям.",
+            email_to=email_to,
+        )
+        raise
+
+    _notify_export_ready(
         db,
-        request=request,
-        token=token,
-        client_id=str(client_id),
-        action="export_transactions",
-        filters={
-            "card_id": card_id,
-            "cards": card_ids,
-            "status": status,
-            "from": date_from,
-            "to": date_to,
-            "min_amount": min_amount,
-            "max_amount": max_amount,
-            "limit": limit,
-        },
-        row_count=len(rows),
+        org_id=str(client_id),
+        user_id=user_id,
+        title="Отчёт готов",
+        body="Выгрузка по транзакциям готова к скачиванию.",
+        email_to=email_to,
     )
     return _csv_response(
         "transactions_export.csv",
@@ -2225,82 +2401,106 @@ def export_documents_report(
         raise HTTPException(status_code=403, detail="missing_client_context")
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"})
     assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
+    user_id = _support_ticket_user_id(token)
+    email_to = _notification_user_email(token)
 
-    query = db.query(Document).filter(Document.client_id == str(client_id))
-    if date_from:
-        query = query.filter(Document.period_from >= date_from)
-    if date_to:
-        query = query.filter(Document.period_to <= date_to)
-    if document_type:
-        resolved_type = _DOC_TYPE_ALIASES.get(document_type.upper().strip())
-        if resolved_type is None:
+    try:
+        query = db.query(Document).filter(Document.client_id == str(client_id))
+        if date_from:
+            query = query.filter(Document.period_from >= date_from)
+        if date_to:
+            query = query.filter(Document.period_to <= date_to)
+        if document_type:
+            resolved_type = _DOC_TYPE_ALIASES.get(document_type.upper().strip())
+            if resolved_type is None:
+                try:
+                    resolved_type = DocumentType(document_type)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="invalid_document_type") from exc
+            query = query.filter(Document.document_type == resolved_type)
+        if status:
             try:
-                resolved_type = DocumentType(document_type)
+                parsed_status = DocumentStatus(status)
             except ValueError as exc:
-                raise HTTPException(status_code=422, detail="invalid_document_type") from exc
-        query = query.filter(Document.document_type == resolved_type)
-    if status:
-        try:
-            parsed_status = DocumentStatus(status)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="invalid_document_status") from exc
-        query = query.filter(Document.status == parsed_status)
+                raise HTTPException(status_code=422, detail="invalid_document_status") from exc
+            query = query.filter(Document.status == parsed_status)
 
-    documents = query.order_by(Document.period_to.desc()).limit(limit + 1).all()
-    if len(documents) > limit:
-        raise HTTPException(status_code=413, detail="too_large")
+        documents = query.order_by(Document.period_to.desc()).limit(limit + 1).all()
+        if len(documents) > limit:
+            raise HTTPException(status_code=413, detail="too_large")
 
-    document_ids = [str(item.id) for item in documents]
-    files = (
-        db.query(DocumentFile)
-        .filter(DocumentFile.document_id.in_(document_ids))
-        .filter(DocumentFile.file_type == DocumentFileType.PDF)
-        .all()
-        if document_ids
-        else []
-    )
-    file_map = {str(item.document_id): item for item in files}
-
-    rows = []
-    for item in documents:
-        meta = item.meta if isinstance(item.meta, dict) else {}
-        amount = None
-        currency = None
-        for key in ("amount_total", "total_amount", "amount"):
-            if key in meta:
-                amount = meta.get(key)
-                break
-        if isinstance(meta, dict):
-            currency = meta.get("currency")
-        file_item = file_map.get(str(item.id))
-        file_name = file_item.object_key.split("/")[-1] if file_item else None
-        rows.append(
-            [
-                str(item.id),
-                item.document_type.value,
-                item.number,
-                item.period_to,
-                item.status.value,
-                amount,
-                currency,
-                file_name,
-            ]
+        document_ids = [str(item.id) for item in documents]
+        files = (
+            db.query(DocumentFile)
+            .filter(DocumentFile.document_id.in_(document_ids))
+            .filter(DocumentFile.file_type == DocumentFileType.PDF)
+            .all()
+            if document_ids
+            else []
         )
+        file_map = {str(item.document_id): item for item in files}
 
-    _audit_export(
+        rows = []
+        for item in documents:
+            meta = item.meta if isinstance(item.meta, dict) else {}
+            amount = None
+            currency = None
+            for key in ("amount_total", "total_amount", "amount"):
+                if key in meta:
+                    amount = meta.get(key)
+                    break
+            if isinstance(meta, dict):
+                currency = meta.get("currency")
+            file_item = file_map.get(str(item.id))
+            file_name = file_item.object_key.split("/")[-1] if file_item else None
+            rows.append(
+                [
+                    str(item.id),
+                    item.document_type.value,
+                    item.number,
+                    item.period_to,
+                    item.status.value,
+                    amount,
+                    currency,
+                    file_name,
+                ]
+            )
+
+        _audit_export(
+            db,
+            request=request,
+            token=token,
+            client_id=str(client_id),
+            action="export_documents",
+            filters={
+                "type": document_type,
+                "status": status,
+                "from": date_from,
+                "to": date_to,
+                "limit": limit,
+            },
+            row_count=len(rows),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _notify_export_failed(
+            db,
+            org_id=str(client_id),
+            user_id=user_id,
+            title="Ошибка экспорта",
+            body="Не удалось сформировать отчёт по документам.",
+            email_to=email_to,
+        )
+        raise
+
+    _notify_export_ready(
         db,
-        request=request,
-        token=token,
-        client_id=str(client_id),
-        action="export_documents",
-        filters={
-            "type": document_type,
-            "status": status,
-            "from": date_from,
-            "to": date_to,
-            "limit": limit,
-        },
-        row_count=len(rows),
+        org_id=str(client_id),
+        user_id=user_id,
+        title="Отчёт готов",
+        body="Выгрузка по документам готова к скачиванию.",
+        email_to=email_to,
     )
     return _csv_response(
         "documents_export.csv",

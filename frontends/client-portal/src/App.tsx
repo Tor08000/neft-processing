@@ -44,6 +44,7 @@ import { SupportTicketDetailsPage } from "./pages/SupportTicketDetailsPage";
 import { SupportTicketNewPage } from "./pages/SupportTicketNewPage";
 import { CasesPage } from "./pages/CasesPage";
 import { CaseDetailsPage } from "./pages/CaseDetailsPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
 import { AnalyticsSpendPage } from "./pages/AnalyticsSpendPage";
 import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
@@ -162,6 +163,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/client/support" element={<SupportTicketsPage />} />
                 <Route path="/client/support/new" element={<SupportTicketNewPage />} />
                 <Route path="/client/support/:id" element={<SupportTicketDetailsPage />} />
+                <Route path="/client/notifications" element={<NotificationsPage />} />
                 <Route path="/support" element={<Navigate to="/client/support" replace />} />
                 <Route path="/support/:id" element={<SupportTicketDetailsPage />} />
                 <Route
