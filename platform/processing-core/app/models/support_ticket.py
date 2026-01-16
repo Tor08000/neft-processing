@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -61,8 +61,28 @@ class SupportTicketComment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class SupportTicketAttachment(Base):
+    __tablename__ = "support_ticket_attachments"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    ticket_id = Column(
+        GUID(),
+        ForeignKey("support_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(GUID(), nullable=False, index=True)
+    uploaded_by_user_id = Column(String(128), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    content_type = Column(String(128), nullable=False)
+    size = Column(Integer, nullable=False)
+    object_key = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 __all__ = [
     "SupportTicket",
+    "SupportTicketAttachment",
     "SupportTicketComment",
     "SupportTicketPriority",
     "SupportTicketStatus",
