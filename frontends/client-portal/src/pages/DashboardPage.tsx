@@ -47,7 +47,7 @@ export function DashboardPage() {
     if (client?.org_status === "ONBOARDING" || !client?.org) {
       return { label: "Завершить подключение", to: "/client/onboarding" };
     }
-    if (client?.org_status === "SUSPENDED") return { label: "Связаться с поддержкой", to: "/support" };
+    if (client?.org_status === "SUSPENDED") return { label: "Связаться с поддержкой", to: "/client/support" };
     return { label: "Перейти к управлению", to: "/cards" };
   })();
 

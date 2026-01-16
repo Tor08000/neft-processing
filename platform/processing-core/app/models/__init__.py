@@ -230,6 +230,12 @@ from .support_request import (  # noqa: F401
     SupportRequestStatus,
     SupportRequestSubjectType,
 )
+from .support_ticket import (  # noqa: F401
+    SupportTicket,
+    SupportTicketComment,
+    SupportTicketPriority,
+    SupportTicketStatus,
+)
 from .cases import (  # noqa: F401
     Case,
     CaseComment,
@@ -782,6 +788,10 @@ __all__ = [
     "SupportRequestScopeType",
     "SupportRequestStatus",
     "SupportRequestSubjectType",
+    "SupportTicket",
+    "SupportTicketComment",
+    "SupportTicketPriority",
+    "SupportTicketStatus",
     "Reversal",
     "ReversalStatus",
     "Dispute",

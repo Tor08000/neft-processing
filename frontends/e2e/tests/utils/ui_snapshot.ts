@@ -773,7 +773,7 @@ export const CLIENT_ROUTES: RouteConfig[] = [
   { id: "000_home", path: "/", label: "Home" },
   { id: "010_cards", path: "/cards", label: "Cards" },
   { id: "020_billing", path: "/billing", label: "Billing" },
-  { id: "030_support", path: "/support", label: "Support" },
+  { id: "030_support", path: "/client/support", label: "Support" },
   { id: "040_settings", path: "/settings", label: "Settings" },
 ];
 

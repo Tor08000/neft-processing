@@ -22,9 +22,7 @@ describe("SupportRequestModal", () => {
           <SupportRequestModal
             isOpen
             onClose={() => undefined}
-            subjectType="ORDER"
-            subjectId="order-1"
-            defaultTitle="Проблема с заказом"
+            defaultSubject="Проблема с заказом"
           />
         </AuthProvider>
       </MemoryRouter>,
@@ -33,5 +31,6 @@ describe("SupportRequestModal", () => {
     expect(screen.getByText("Создать обращение")).toBeInTheDocument();
     expect(screen.getByLabelText("Тема")).toBeInTheDocument();
     expect(screen.getByLabelText("Описание")).toBeInTheDocument();
+    expect(screen.getByLabelText("Приоритет")).toBeInTheDocument();
   });
 });

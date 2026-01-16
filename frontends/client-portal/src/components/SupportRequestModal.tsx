@@ -1,42 +1,37 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { createSupportRequest } from "../api/support";
+import { createSupportTicket } from "../api/supportTickets";
 import { useAuth } from "../auth/AuthContext";
-import type { SupportRequestDetail, SupportRequestSubjectType } from "../types/support";
+import type { SupportTicketDetail, SupportTicketPriority } from "../types/supportTickets";
+import { supportTicketPriorityLabel } from "../utils/supportTickets";
 
 type SupportRequestModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  subjectType: SupportRequestSubjectType;
-  subjectId?: string | null;
-  correlationId?: string | null;
-  eventId?: string | null;
-  defaultTitle: string;
+  defaultSubject: string;
 };
 
 export function SupportRequestModal({
   isOpen,
   onClose,
-  subjectType,
-  subjectId,
-  correlationId,
-  eventId,
-  defaultTitle,
+  defaultSubject,
 }: SupportRequestModalProps) {
   const { user } = useAuth();
-  const [title, setTitle] = useState(defaultTitle);
-  const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [message, setMessage] = useState("");
+  const [priority, setPriority] = useState<SupportTicketPriority>("NORMAL");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<SupportRequestDetail | null>(null);
+  const [result, setResult] = useState<SupportTicketDetail | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    setTitle(defaultTitle);
-    setDescription("");
+    setSubject(defaultSubject);
+    setMessage("");
+    setPriority("NORMAL");
     setError(null);
     setResult(null);
-  }, [defaultTitle, isOpen]);
+  }, [defaultSubject, isOpen]);
 
   if (!isOpen) return null;
 
@@ -45,20 +40,9 @@ export function SupportRequestModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      const created = await createSupportRequest(
-        {
-          scope_type: "CLIENT",
-          subject_type: subjectType,
-          subject_id: subjectId ?? null,
-          title,
-          description,
-          correlation_id: correlationId ?? undefined,
-          event_id: eventId ?? undefined,
-        },
-        user,
-      );
+      const created = await createSupportTicket({ subject, message, priority }, user);
       setResult(created);
-      setDescription("");
+      setMessage("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить обращение");
     } finally {
@@ -83,11 +67,8 @@ export function SupportRequestModal({
             <div className="notice">
               <strong>Обращение создано</strong>
               <div className="muted small">Номер обращения: {result.id}</div>
-              {result.correlation_id ? (
-                <div className="muted small">Correlation ID: {result.correlation_id}</div>
-              ) : null}
             </div>
-            <Link className="link-button" to={`/support/requests/${result.id}`} onClick={onClose}>
+            <Link className="link-button" to={`/client/support/${result.id}`} onClick={onClose}>
               Перейти к обращению
             </Link>
           </div>
@@ -95,15 +76,30 @@ export function SupportRequestModal({
           <div className="stack">
             <label className="filter">
               Тема
-              <input value={title} onChange={(event) => setTitle(event.target.value)} />
+              <input value={subject} onChange={(event) => setSubject(event.target.value)} />
             </label>
             <label className="filter">
               Описание
-              <textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+              <textarea rows={4} value={message} onChange={(event) => setMessage(event.target.value)} />
+            </label>
+            <label className="filter">
+              Приоритет
+              <select value={priority} onChange={(event) => setPriority(event.target.value as SupportTicketPriority)}>
+                {["LOW", "NORMAL", "HIGH"].map((option) => (
+                  <option key={option} value={option}>
+                    {supportTicketPriorityLabel(option as SupportTicketPriority)}
+                  </option>
+                ))}
+              </select>
             </label>
             {error ? <div className="notice error">{error}</div> : null}
             <div className="actions">
-              <button type="button" className="primary" onClick={() => void handleSubmit()} disabled={!title || !description || isSubmitting}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void handleSubmit()}
+                disabled={!subject || !message || isSubmitting}
+              >
                 Отправить
               </button>
               <button type="button" className="ghost" onClick={onClose}>
