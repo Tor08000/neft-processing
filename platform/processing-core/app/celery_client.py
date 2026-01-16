@@ -55,6 +55,10 @@ celery_client.conf.update(
             "task": "fleet_control.nightly",
             "schedule": crontab(hour=4, minute=0),
         },
+        "reports.run_report_schedules": {
+            "task": "reports.run_report_schedules",
+            "schedule": crontab(minute="*/2"),
+        },
     },
 )
 

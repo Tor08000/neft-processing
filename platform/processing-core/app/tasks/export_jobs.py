@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.celery_client import celery_client
 from app.db import get_sessionmaker
 from app.models.export_jobs import ExportJob, ExportJobStatus
+from app.models.report_schedules import ReportSchedule, ReportScheduleStatus
 from app.services.reports_render import (
     ExportRenderError,
     ExportRenderLimitError,
@@ -12,6 +13,7 @@ from app.services.reports_render import (
     render_csv_payload,
     render_export_report,
 )
+from app.services.report_schedule_notifications import send_scheduled_report_notifications
 from app.services.s3_storage import S3Storage
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
@@ -22,6 +24,17 @@ settings = get_settings()
 
 def _build_object_key(org_id: str, job_id: str, filename: str) -> str:
     return f"{org_id}/{job_id}/{filename}"
+
+
+def _notify_schedule_if_needed(session, job: ExportJob, success: bool) -> None:
+    filters = job.filters_json or {}
+    schedule_id = filters.get("schedule_id")
+    if not schedule_id:
+        return
+    schedule = session.get(ReportSchedule, schedule_id)
+    if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
+        return
+    send_scheduled_report_notifications(session, schedule=schedule, job=job, success=success)
 
 
 @celery_client.task(name="exports.generate_export_job")
@@ -66,6 +79,7 @@ def generate_export_job(job_id: str) -> dict:
         job.finished_at = datetime.now(timezone.utc)
         job.expires_at = job.expires_at or (datetime.now(timezone.utc) + timedelta(days=7))
         session.add(job)
+        _notify_schedule_if_needed(session, job, True)
         session.commit()
         return {"status": "done", "job_id": job_id}
     except ExportRenderLimitError as exc:
@@ -76,6 +90,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.warning("export_job.limit_exceeded", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
@@ -87,6 +102,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.warning("export_job.failed", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
@@ -98,6 +114,7 @@ def generate_export_job(job_id: str) -> dict:
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
+            _notify_schedule_if_needed(session, job, False)
             session.commit()
         logger.exception("export_job.error", extra={"job_id": job_id})
         raise
