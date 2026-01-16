@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timezone
 from hashlib import sha256
+from io import StringIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -37,6 +40,8 @@ from app.schemas.client_cards_v1 import (
     UserRoleUpdateRequest,
 )
 from app.schemas.client_portal_v1 import (
+    ClientAuditEventSummary,
+    ClientAuditEventsResponse,
     ClientOrgIn,
     ClientOrgOut,
     ClientDocSummary,
@@ -63,7 +68,7 @@ from app.routers.subscriptions_v1 import _build_plan_out
 from app.services.s3_storage import S3Storage
 from app.services.documents_storage import DocumentsStorage
 from app.services.audit_service import AuditService, request_context_from_request
-from app.models.audit_log import AuditVisibility
+from app.models.audit_log import AuditLog, AuditVisibility
 from app.services.entitlements_service import assert_module_enabled
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
@@ -178,6 +183,85 @@ def _is_driver(token: dict) -> bool:
     return bool(roles.intersection({"CLIENT_USER", "DRIVER"}))
 
 
+_AUDIT_ACCOUNTANT_ENTITY_TYPES = {
+    "document",
+    "contract",
+    "invoice",
+    "invoice_thread",
+    "document_acknowledgement",
+    "closing_package",
+    "legal_document",
+}
+
+
+def _audit_allowed_entity_types(token: dict) -> set[str] | None:
+    roles = set(_normalize_roles(token))
+    if roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN"}):
+        return None
+    if "CLIENT_ACCOUNTANT" in roles:
+        return _AUDIT_ACCOUNTANT_ENTITY_TYPES
+    raise HTTPException(status_code=403, detail="forbidden")
+
+
+def _audit_actor_label(log: AuditLog) -> str | None:
+    return log.actor_email or log.actor_id
+
+
+def _audit_entity_label(log: AuditLog) -> str | None:
+    refs = log.external_refs
+    if not isinstance(refs, dict):
+        return None
+    for key in ("masked_pan", "card_masked_pan", "card_tail", "pan_tail", "token_tail", "label", "number_tail"):
+        value = refs.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _audit_summary(log: AuditLog) -> str | None:
+    return log.reason or log.action or log.event_type
+
+
+def _build_audit_query(
+    db: Session,
+    *,
+    tenant_id: int,
+    allowed_entity_types: set[str] | None,
+    from_dt: datetime | None,
+    to_dt: datetime | None,
+    action: list[str] | None,
+    actor: str | None,
+    entity_type: str | None,
+    entity_id: str | None,
+    request_id: str | None,
+):
+    query = db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
+    if allowed_entity_types is not None:
+        if entity_type and entity_type not in allowed_entity_types:
+            return query.filter(AuditLog.id.is_(None))
+        query = query.filter(AuditLog.entity_type.in_(allowed_entity_types))
+    if from_dt:
+        query = query.filter(AuditLog.ts >= from_dt)
+    if to_dt:
+        query = query.filter(AuditLog.ts <= to_dt)
+    if action:
+        query = query.filter(AuditLog.action.in_(action))
+    if actor:
+        like = f"%{actor}%"
+        query = query.filter(or_(AuditLog.actor_email.ilike(like), AuditLog.actor_id.ilike(like)))
+    if entity_type:
+        query = query.filter(AuditLog.entity_type == entity_type)
+    if entity_id:
+        entity_like = f"%{entity_id}%"
+        external_refs = cast(AuditLog.external_refs, String)
+        query = query.filter(
+            or_(AuditLog.entity_id == entity_id, AuditLog.entity_id.ilike(entity_like), external_refs.ilike(entity_like))
+        )
+    if request_id:
+        query = query.filter(AuditLog.request_id == request_id)
+    return query
+
+
 def _ensure_card_access(db: Session, *, token: dict, card_id: str) -> None:
     if _is_card_admin(token):
         return
@@ -233,6 +317,148 @@ def _audit_event(
         after=after,
         visibility=AuditVisibility.INTERNAL,
         request_ctx=ctx,
+    )
+
+
+@router.get("/audit/events", response_model=ClientAuditEventsResponse)
+def list_audit_events(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    from_dt: datetime | None = Query(None, alias="from"),
+    to_dt: datetime | None = Query(None, alias="to"),
+    action: list[str] | None = Query(None),
+    actor: str | None = Query(None),
+    entity_type: str | None = Query(None),
+    entity_id: str | None = Query(None),
+    request_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: int | None = Query(None, ge=0),
+) -> ClientAuditEventsResponse:
+    _ = request
+    allowed_entity_types = _audit_allowed_entity_types(token)
+    tenant_id = token.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="missing_tenant")
+    query = _build_audit_query(
+        db,
+        tenant_id=int(tenant_id),
+        allowed_entity_types=allowed_entity_types,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        action=action,
+        actor=actor,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        request_id=request_id,
+    )
+    offset = cursor or 0
+    logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).offset(offset).limit(limit + 1).all()
+    has_more = len(logs) > limit
+    if has_more:
+        logs = logs[:limit]
+    next_cursor = str(offset + limit) if has_more else None
+    org_id = token.get("client_id") or token.get("org_id") or tenant_id
+
+    items = [
+        ClientAuditEventSummary(
+            id=str(log.id),
+            created_at=log.ts,
+            org_id=str(org_id) if org_id is not None else None,
+            actor_user_id=log.actor_id,
+            actor_label=_audit_actor_label(log),
+            action=log.action,
+            entity_type=log.entity_type,
+            entity_id=log.entity_id,
+            entity_label=_audit_entity_label(log),
+            request_id=log.request_id,
+            ip=str(log.ip) if log.ip else None,
+            ua=log.user_agent,
+            result=None,
+            summary=_audit_summary(log),
+        )
+        for log in logs
+    ]
+    return ClientAuditEventsResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/audit/events/export")
+def export_audit_events(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+    from_dt: datetime | None = Query(None, alias="from"),
+    to_dt: datetime | None = Query(None, alias="to"),
+    action: list[str] | None = Query(None),
+    actor: str | None = Query(None),
+    entity_type: str | None = Query(None),
+    entity_id: str | None = Query(None),
+    request_id: str | None = Query(None),
+) -> Response:
+    allowed_entity_types = _audit_allowed_entity_types(token)
+    tenant_id = token.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="missing_tenant")
+    query = _build_audit_query(
+        db,
+        tenant_id=int(tenant_id),
+        allowed_entity_types=allowed_entity_types,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        action=action,
+        actor=actor,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        request_id=request_id,
+    )
+    max_rows = 5000
+    logs = query.order_by(AuditLog.ts.desc(), AuditLog.id.desc()).limit(max_rows + 1).all()
+    if len(logs) > max_rows:
+        raise HTTPException(status_code=400, detail="export_limit_exceeded")
+    org_id = token.get("client_id") or token.get("org_id") or tenant_id
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "id",
+            "created_at",
+            "org_id",
+            "actor_user_id",
+            "actor_label",
+            "action",
+            "entity_type",
+            "entity_id",
+            "entity_label",
+            "request_id",
+            "ip",
+            "ua",
+            "result",
+            "summary",
+        ]
+    )
+    for log in logs:
+        writer.writerow(
+            [
+                str(log.id),
+                log.ts.isoformat(),
+                str(org_id) if org_id is not None else "",
+                log.actor_id or "",
+                _audit_actor_label(log) or "",
+                log.action or "",
+                log.entity_type or "",
+                log.entity_id or "",
+                _audit_entity_label(log) or "",
+                log.request_id or "",
+                str(log.ip) if log.ip else "",
+                log.user_agent or "",
+                "",
+                _audit_summary(log) or "",
+            ]
+        )
+    filename = f"audit_events_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

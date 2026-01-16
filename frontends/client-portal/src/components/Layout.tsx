@@ -57,6 +57,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
     { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },
+    { to: "/audit", label: "Audit", icon: <MessageCircle size={18} /> },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
   ].map((item) => {
