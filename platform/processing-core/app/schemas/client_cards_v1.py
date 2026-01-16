@@ -86,3 +86,74 @@ class UserRoleUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     roles: list[str]
+
+
+class BulkCardRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_ids: list[str] = Field(min_length=1)
+
+
+class BulkCardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    success: list[str]
+    failed: dict[str, str]
+
+
+class BulkCardAccessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_ids: list[str] = Field(min_length=1)
+    user_id: str
+    scope: str
+
+
+class BulkApplyTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_ids: list[str] = Field(min_length=1)
+    template_id: str
+
+
+class LimitTemplateLimit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str
+    value: float
+    window: str
+
+
+class LimitTemplateCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+    limits: list[LimitTemplateLimit]
+
+
+class LimitTemplateUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+    limits: list[LimitTemplateLimit] | None = None
+    status: str | None = None
+
+
+class LimitTemplateOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    org_id: str
+    name: str
+    description: str | None = None
+    limits: list[LimitTemplateLimit]
+    status: str
+    created_at: datetime
+
+
+class LimitTemplateListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[LimitTemplateOut]

@@ -16,6 +16,7 @@ import { OperationsPage } from "./pages/OperationsPage";
 import { OperationDetailsPage } from "./pages/OperationDetailsPage";
 import { ClientCardsPage } from "./pages/ClientCardsPage";
 import { ClientCardDetailsPage } from "./pages/ClientCardDetailsPage";
+import { LimitTemplatesPage } from "./pages/LimitTemplatesPage";
 import { BalancesPage } from "./pages/BalancesPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ClientInvoicesPage } from "./pages/ClientInvoicesPage";
@@ -134,6 +135,7 @@ export function App({ initialSession = null }: AppProps) {
                   }
                 />
                 <Route path="/cards" element={<ClientCardsPage />} />
+                <Route path="/limits/templates" element={<LimitTemplatesPage />} />
                 <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
                 <Route path="/cards/:id/limits" element={<ClientCardDetailsPage />} />
                 <Route path="/cards/:id/access" element={<ClientCardDetailsPage />} />

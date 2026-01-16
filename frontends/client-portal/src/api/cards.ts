@@ -19,6 +19,7 @@ type ApiCard = {
 
 const normalizeLimitWindow = (limitType: string): string => {
   if (limitType.includes("DAILY")) return "DAY";
+  if (limitType.includes("WEEK")) return "WEEK";
   if (limitType.includes("MONTH")) return "MONTH";
   return "CUSTOM";
 };
@@ -104,4 +105,58 @@ export async function fetchCardTransactions(cardId: string, user: AuthSession | 
   return request<
     { id: string; operation_type: string; status: string; amount: number; currency: string; performed_at: string }[]
   >(`/client/cards/${cardId}/transactions`, { method: "GET" }, withToken(user));
+}
+
+export type BulkCardsResponse = {
+  success: string[];
+  failed: Record<string, string>;
+};
+
+export async function bulkBlockCards(cardIds: string[], user: AuthSession | null): Promise<BulkCardsResponse> {
+  return request<BulkCardsResponse>(
+    "/client/cards/bulk/block",
+    { method: "POST", body: JSON.stringify({ card_ids: cardIds }) },
+    withToken(user),
+  );
+}
+
+export async function bulkUnblockCards(cardIds: string[], user: AuthSession | null): Promise<BulkCardsResponse> {
+  return request<BulkCardsResponse>(
+    "/client/cards/bulk/unblock",
+    { method: "POST", body: JSON.stringify({ card_ids: cardIds }) },
+    withToken(user),
+  );
+}
+
+export async function bulkGrantCardAccess(
+  payload: { card_ids: string[]; user_id: string; scope: string },
+  user: AuthSession | null,
+): Promise<BulkCardsResponse> {
+  return request<BulkCardsResponse>(
+    "/client/cards/bulk/access/grant",
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
+}
+
+export async function bulkRevokeCardAccess(
+  payload: { card_ids: string[]; user_id: string; scope: string },
+  user: AuthSession | null,
+): Promise<BulkCardsResponse> {
+  return request<BulkCardsResponse>(
+    "/client/cards/bulk/access/revoke",
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
+}
+
+export async function bulkApplyLimitTemplate(
+  payload: { card_ids: string[]; template_id: string },
+  user: AuthSession | null,
+): Promise<BulkCardsResponse> {
+  return request<BulkCardsResponse>(
+    "/client/cards/bulk/limits/apply-template",
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
 }

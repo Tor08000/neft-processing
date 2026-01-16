@@ -54,6 +54,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const navItems: NavItem[] = [
     { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET" },
     { to: "/cards", label: "Cards", icon: <Package size={18} /> },
+    { to: "/limits/templates", label: "Limit Templates", icon: <Package size={18} /> },
     { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
     { to: "/support", label: "Support", icon: <MessageCircle size={18} /> },

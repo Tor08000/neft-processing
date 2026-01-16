@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -103,4 +103,16 @@ class ClientUserRole(Base):
     client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
     user_id = Column(String(64), nullable=False, index=True)
     roles = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LimitTemplate(Base):
+    __tablename__ = "limit_templates"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    client_id = Column(GUID(), ForeignKey("clients.id"), nullable=False, index=True)
+    name = Column(String(128), nullable=False)
+    description = Column(String(512), nullable=True)
+    limits = Column(JSON, nullable=False)
+    status = Column(String(32), nullable=False, server_default="ACTIVE")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
