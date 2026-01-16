@@ -299,14 +299,15 @@ def _notify_export_ready(
     title: str,
     body: str,
     email_to: str | None,
+    export_format: str = "CSV",
 ) -> None:
     create_notification(
         db,
         org_id=org_id,
         event_type="export_ready",
         severity=ClientNotificationSeverity.INFO,
-        title=title,
-        body=body,
+        title=f"{title} ({export_format})",
+        body=f"{body} ({export_format}).",
         link="/client/reports",
         target_user_id=user_id,
         entity_type="report_export",
@@ -1083,6 +1084,7 @@ def download_export_job(
         entity_type="export_job",
         entity_id=str(job.id),
         action="export_job_downloaded",
+        after={"report_type": job.report_type.value, "format": job.format.value},
     )
 
     return RedirectResponse(url=signed_url)
@@ -2379,8 +2381,9 @@ def export_cards_report(
         org_id=str(client.id),
         user_id=user_id,
         title="Отчёт готов",
-        body="Выгрузка по картам готова к скачиванию.",
+        body="Выгрузка по картам готова к скачиванию",
         email_to=email_to,
+        export_format="CSV",
     )
     return _csv_response(
         "cards_export.csv",
@@ -2494,8 +2497,9 @@ def export_users_report(
         org_id=str(client.id),
         user_id=user_id,
         title="Отчёт готов",
-        body="Выгрузка по пользователям готова к скачиванию.",
+        body="Выгрузка по пользователям готова к скачиванию",
         email_to=email_to,
+        export_format="CSV",
     )
     return _csv_response(
         "users_export.csv",
@@ -2605,8 +2609,9 @@ def export_transactions_report(
         org_id=str(client_id),
         user_id=user_id,
         title="Отчёт готов",
-        body="Выгрузка по транзакциям готова к скачиванию.",
+        body="Выгрузка по транзакциям готова к скачиванию",
         email_to=email_to,
+        export_format="CSV",
     )
     return _csv_response(
         "transactions_export.csv",
@@ -2740,8 +2745,9 @@ def export_documents_report(
         org_id=str(client_id),
         user_id=user_id,
         title="Отчёт готов",
-        body="Выгрузка по документам готова к скачиванию.",
+        body="Выгрузка по документам готова к скачиванию",
         email_to=email_to,
+        export_format="CSV",
     )
     return _csv_response(
         "documents_export.csv",
