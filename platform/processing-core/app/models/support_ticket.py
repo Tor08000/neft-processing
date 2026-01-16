@@ -20,6 +20,12 @@ class SupportTicketPriority(str, Enum):
     HIGH = "HIGH"
 
 
+class SupportTicketSlaStatus(str, Enum):
+    OK = "OK"
+    BREACHED = "BREACHED"
+    PENDING = "PENDING"
+
+
 class SupportTicket(Base):
     __tablename__ = "support_tickets"
 
@@ -39,6 +45,20 @@ class SupportTicket(Base):
         nullable=False,
         default=SupportTicketPriority.NORMAL,
         index=True,
+    )
+    first_response_due_at = Column(DateTime(timezone=True), nullable=True)
+    first_response_at = Column(DateTime(timezone=True), nullable=True)
+    resolution_due_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    sla_first_response_status = Column(
+        ExistingEnum(SupportTicketSlaStatus, name="support_ticket_sla_status"),
+        nullable=False,
+        default=SupportTicketSlaStatus.PENDING,
+    )
+    sla_resolution_status = Column(
+        ExistingEnum(SupportTicketSlaStatus, name="support_ticket_sla_status"),
+        nullable=False,
+        default=SupportTicketSlaStatus.PENDING,
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -80,10 +100,22 @@ class SupportTicketAttachment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class SupportTicketSlaPolicy(Base):
+    __tablename__ = "support_ticket_sla_policies"
+
+    org_id = Column(GUID(), primary_key=True)
+    first_response_minutes = Column(Integer, nullable=False)
+    resolution_minutes = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 __all__ = [
     "SupportTicket",
     "SupportTicketAttachment",
     "SupportTicketComment",
     "SupportTicketPriority",
+    "SupportTicketSlaPolicy",
+    "SupportTicketSlaStatus",
     "SupportTicketStatus",
 ]
