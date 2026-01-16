@@ -139,6 +139,7 @@ class Settings:
         "ACCOUNTING_EXPORT_ALERTING_ENABLED", "false"
     ).lower() in {"1", "true", "yes"}
     ACCOUNTING_EXPORT_ALERTING_TARGETS: str = os.getenv("ACCOUNTING_EXPORT_ALERTING_TARGETS", "")
+    EXPORT_JOB_RETENTION_DAYS: int = int(os.getenv("EXPORT_JOB_RETENTION_DAYS", "14"))
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv(
         "NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)

@@ -59,6 +59,10 @@ celery_client.conf.update(
             "task": "reports.run_report_schedules",
             "schedule": crontab(minute="*/2"),
         },
+        "exports.cleanup_expired_exports": {
+            "task": "exports.cleanup_expired_exports",
+            "schedule": crontab(hour="*/6", minute=15),
+        },
     },
 )
 

@@ -1438,6 +1438,27 @@ def download_export_job(
         raise HTTPException(status_code=403, detail="missing_user")
     if not _is_user_admin(token) and job.created_by_user_id != user_id:
         raise HTTPException(status_code=403, detail="forbidden")
+    if job.expires_at and job.expires_at < datetime.now(timezone.utc):
+        if job.status != ExportJobStatus.EXPIRED:
+            job.status = ExportJobStatus.EXPIRED
+            job.file_object_key = None
+            job.content_type = None
+            db.add(job)
+            AuditService(db).audit(
+                event_type="export_expired",
+                entity_type="export_job",
+                entity_id=str(job.id),
+                action="export_expired",
+                after={
+                    "report_type": job.report_type.value,
+                    "format": job.format.value,
+                    "expired_at": job.expires_at.isoformat() if job.expires_at else None,
+                },
+            )
+            db.commit()
+        raise HTTPException(status_code=410, detail="export_expired")
+    if job.status == ExportJobStatus.EXPIRED:
+        raise HTTPException(status_code=410, detail="export_expired")
     if job.status != ExportJobStatus.DONE or not job.file_object_key:
         raise HTTPException(status_code=400, detail="export_not_ready")
 
