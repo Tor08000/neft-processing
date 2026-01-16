@@ -1083,6 +1083,42 @@
       "decisionId": "ID decision memory",
       "sourceRef": "Источник"
     },
+    "auditViewer": {
+      "title": "Журнал действий",
+      "clearFilters": "Очистить фильтры",
+      "exportCsv": "Экспорт CSV",
+      "exporting": "Экспорт...",
+      "loadingMore": "Загрузка...",
+      "loadMore": "Загрузить ещё",
+      "openObject": "Открыть объект",
+      "emptyTitle": "Событий пока нет",
+      "emptyDescription": "Попробуйте изменить фильтры или выбрать другой диапазон.",
+      "loadFailedTitle": "Не удалось загрузить события",
+      "loadFailedDescription": "Попробуйте обновить страницу позже.",
+      "serviceUnavailableTitle": "Сервис временно недоступен",
+      "serviceUnavailableDescription": "Попробуйте повторить запрос позже.",
+      "columns": {
+        "time": "Время",
+        "actor": "Кто",
+        "action": "Действие",
+        "entity": "Объект",
+        "result": "Результат"
+      },
+      "filters": {
+        "from": "От",
+        "to": "До",
+        "action": "Действие",
+        "actionEmpty": "Нет данных",
+        "actor": "Кто",
+        "actorPlaceholder": "Имя или email",
+        "entityType": "Тип объекта",
+        "entityId": "ID объекта",
+        "entityIdPlaceholder": "ID или хвост токена",
+        "requestId": "Request ID",
+        "requestIdPlaceholder": "Полный request_id",
+        "limit": "Лимит"
+      }
+    },
     "start": {
       "title": "Взять в работу",
       "description": "Подтвердите, что берёте инцидент в работу.",

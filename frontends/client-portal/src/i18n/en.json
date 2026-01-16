@@ -1083,6 +1083,42 @@
       "decisionId": "Decision memory ID",
       "sourceRef": "Source ref"
     },
+    "auditViewer": {
+      "title": "Audit log",
+      "clearFilters": "Clear filters",
+      "exportCsv": "Export CSV",
+      "exporting": "Exporting...",
+      "loadingMore": "Loading...",
+      "loadMore": "Load more",
+      "openObject": "Open object",
+      "emptyTitle": "No events yet",
+      "emptyDescription": "Try adjusting the filters or selecting another date range.",
+      "loadFailedTitle": "Unable to load events",
+      "loadFailedDescription": "Please try again later.",
+      "serviceUnavailableTitle": "Service temporarily unavailable",
+      "serviceUnavailableDescription": "Please try again later.",
+      "columns": {
+        "time": "Time",
+        "actor": "Actor",
+        "action": "Action",
+        "entity": "Entity",
+        "result": "Result"
+      },
+      "filters": {
+        "from": "From",
+        "to": "To",
+        "action": "Action",
+        "actionEmpty": "No data",
+        "actor": "Actor",
+        "actorPlaceholder": "Name or email",
+        "entityType": "Entity type",
+        "entityId": "Entity ID",
+        "entityIdPlaceholder": "ID or token tail",
+        "requestId": "Request ID",
+        "requestIdPlaceholder": "Exact request_id",
+        "limit": "Limit"
+      }
+    },
     "start": {
       "title": "Start work",
       "description": "Confirm you are taking this incident into work.",

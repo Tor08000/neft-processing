@@ -1,4 +1,4 @@
-import { request } from "./http";
+import { ApiError, CORE_API_BASE, UnauthorizedError, request } from "./http";
 import type { AuthSession } from "./types";
 
 export type ClientDashboardSnapshot = {
@@ -117,6 +117,40 @@ export type ClientSubscriptionResponse = {
   limits: Record<string, Record<string, unknown>>;
 };
 
+export type AuditEventSummary = {
+  id: string;
+  created_at: string;
+  org_id?: string | null;
+  actor_user_id?: string | null;
+  actor_label?: string | null;
+  action?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  entity_label?: string | null;
+  request_id?: string | null;
+  ip?: string | null;
+  ua?: string | null;
+  result?: string | null;
+  summary?: string | null;
+};
+
+export type AuditEventsResponse = {
+  items: AuditEventSummary[];
+  next_cursor?: string | null;
+};
+
+export type AuditEventsFilters = {
+  from?: string;
+  to?: string;
+  action?: string[];
+  actor?: string;
+  entity_type?: string;
+  entity_id?: string;
+  request_id?: string;
+  limit?: number;
+  cursor?: string;
+};
+
 const withToken = (user: AuthSession | null) => ({ token: user?.token, base: "core" as const });
 
 export const fetchClientMe = (user: AuthSession | null) =>
@@ -149,3 +183,54 @@ export const fetchCurrentContract = (user: AuthSession | null) =>
 
 export const signContract = (user: AuthSession | null, payload: ContractSignPayload) =>
   request<ContractInfo>("/client/contracts/sign-simple", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+
+export const buildAuditEventsQuery = (filters: AuditEventsFilters = {}): string => {
+  const search = new URLSearchParams();
+  if (filters.from) search.set("from", filters.from);
+  if (filters.to) search.set("to", filters.to);
+  if (filters.actor) search.set("actor", filters.actor);
+  if (filters.entity_type) search.set("entity_type", filters.entity_type);
+  if (filters.entity_id) search.set("entity_id", filters.entity_id);
+  if (filters.request_id) search.set("request_id", filters.request_id);
+  if (filters.limit) search.set("limit", String(filters.limit));
+  if (filters.cursor) search.set("cursor", filters.cursor);
+  if (filters.action?.length) {
+    filters.action.forEach((item) => search.append("action", item));
+  }
+  return search.toString();
+};
+
+export const getAuditEvents = (user: AuthSession | null, filters: AuditEventsFilters = {}) => {
+  const query = buildAuditEventsQuery(filters);
+  const path = query ? `/client/audit/events?${query}` : "/client/audit/events";
+  return request<AuditEventsResponse>(path, { method: "GET" }, withToken(user));
+};
+
+const parseFilename = (header: string | null): string | null => {
+  if (!header) return null;
+  const match = header.match(/filename=\"?([^\";]+)\"?/i);
+  return match?.[1] ?? null;
+};
+
+export const exportAuditEvents = async (user: AuthSession | null, filters: AuditEventsFilters = {}): Promise<void> => {
+  const token = user?.token;
+  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+  const query = buildAuditEventsQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${CORE_API_BASE}/client/audit/events/export${suffix}`, { headers });
+  if (response.status === 401) {
+    throw new UnauthorizedError();
+  }
+  if (!response.ok) {
+    const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
+    throw new ApiError(await response.text(), response.status, correlationId);
+  }
+  const blob = await response.blob();
+  const filename = parseFilename(response.headers.get("Content-Disposition")) ?? "audit_events.csv";
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+};

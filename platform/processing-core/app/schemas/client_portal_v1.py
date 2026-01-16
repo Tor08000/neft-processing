@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -99,3 +99,29 @@ class ClientDocsListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ClientDocSummary]
+
+
+class ClientAuditEventSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    created_at: datetime
+    org_id: str | None = None
+    actor_user_id: str | None = None
+    actor_label: str | None = None
+    action: str | None = None
+    entity_type: str | None = None
+    entity_id: str | None = None
+    entity_label: str | None = None
+    request_id: str | None = None
+    ip: str | None = None
+    ua: str | None = None
+    result: str | None = None
+    summary: str | None = None
+
+
+class ClientAuditEventsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientAuditEventSummary]
+    next_cursor: str | None = None
