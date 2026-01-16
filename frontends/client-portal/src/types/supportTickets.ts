@@ -2,6 +2,8 @@ export type SupportTicketStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
 
 export type SupportTicketPriority = "LOW" | "NORMAL" | "HIGH";
 
+export type SupportTicketSlaStatus = "OK" | "BREACHED" | "PENDING";
+
 export interface SupportTicketItem {
   id: string;
   org_id: string;
@@ -10,6 +12,14 @@ export interface SupportTicketItem {
   message: string;
   status: SupportTicketStatus;
   priority: SupportTicketPriority;
+  first_response_due_at: string | null;
+  first_response_at: string | null;
+  resolution_due_at: string | null;
+  resolved_at: string | null;
+  sla_first_response_status: SupportTicketSlaStatus;
+  sla_resolution_status: SupportTicketSlaStatus;
+  sla_first_response_remaining_minutes: number | null;
+  sla_resolution_remaining_minutes: number | null;
   created_at: string;
   updated_at: string;
 }

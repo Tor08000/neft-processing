@@ -5,7 +5,14 @@ import { useAuth } from "../auth/AuthContext";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import type { SupportTicketItem } from "../types/supportTickets";
 import { formatDateTime } from "../utils/format";
-import { supportTicketPriorityLabel, supportTicketStatusLabel, supportTicketStatusTone } from "../utils/supportTickets";
+import {
+  supportTicketPriorityLabel,
+  supportTicketSlaRemainingLabel,
+  supportTicketSlaStatusLabel,
+  supportTicketSlaStatusTone,
+  supportTicketStatusLabel,
+  supportTicketStatusTone,
+} from "../utils/supportTickets";
 
 const STATUS_OPTIONS: SupportTicketItem["status"][] = ["OPEN", "IN_PROGRESS", "CLOSED"];
 
@@ -81,6 +88,8 @@ export function SupportTicketsPage() {
                 <th>Тема</th>
                 <th>Статус</th>
                 <th>Приоритет</th>
+                <th>SLA первого ответа</th>
+                <th>SLA решения</th>
                 <th>Создано</th>
               </tr>
             </thead>
@@ -94,6 +103,28 @@ export function SupportTicketsPage() {
                     <span className={supportTicketStatusTone(item.status)}>{supportTicketStatusLabel(item.status)}</span>
                   </td>
                   <td>{supportTicketPriorityLabel(item.priority)}</td>
+                  <td>
+                    <span
+                      className={supportTicketSlaStatusTone(item.sla_first_response_status)}
+                      title={supportTicketSlaRemainingLabel(
+                        item.sla_first_response_remaining_minutes,
+                        item.sla_first_response_status,
+                      )}
+                    >
+                      {supportTicketSlaStatusLabel(item.sla_first_response_status)}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className={supportTicketSlaStatusTone(item.sla_resolution_status)}
+                      title={supportTicketSlaRemainingLabel(
+                        item.sla_resolution_remaining_minutes,
+                        item.sla_resolution_status,
+                      )}
+                    >
+                      {supportTicketSlaStatusLabel(item.sla_resolution_status)}
+                    </span>
+                  </td>
                   <td>{formatDateTime(item.created_at)}</td>
                 </tr>
               ))}
