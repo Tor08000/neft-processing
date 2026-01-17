@@ -4,7 +4,7 @@ import { AppForbiddenState } from "../components/states";
 import { buildExportJobDownloadUrl, listExportJobs, type ExportJob, type ExportJobStatus } from "../api/exports";
 import { ApiError, ValidationError } from "../api/http";
 import { hasAnyRole } from "../utils/roles";
-import { formatDateTime } from "../utils/format";
+import { formatDateTime, formatTime } from "../utils/format";
 
 const statusLabelMap: Record<ExportJobStatus, string> = {
   QUEUED: "В очереди",
@@ -60,6 +60,32 @@ export function ExportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const numberFormatter = useMemo(() => new Intl.NumberFormat("ru-RU"), []);
+
+  const formatEtaSeconds = useCallback((etaSeconds: number): string => {
+    if (etaSeconds < 60) {
+      return "меньше минуты";
+    }
+    if (etaSeconds < 3600) {
+      return `${Math.ceil(etaSeconds / 60)} мин`;
+    }
+    if (etaSeconds < 86400) {
+      return `${Math.ceil(etaSeconds / 3600)} ч`;
+    }
+    return `${Math.ceil(etaSeconds / 86400)} дн`;
+  }, []);
+
+  const resolveEtaLabel = useCallback(
+    (job: ExportJob): string => {
+      if (job.eta_at) {
+        return `Готово к: ${formatTime(job.eta_at, user?.timezone)}`;
+      }
+      if (job.eta_seconds == null) {
+        return "Оценка времени недоступна";
+      }
+      return `≈ ${formatEtaSeconds(job.eta_seconds)}`;
+    },
+    [formatEtaSeconds, user?.timezone],
+  );
 
   const canAccess = useMemo(
     () =>
@@ -124,6 +150,7 @@ export function ExportsPage() {
     if (job.status === "RUNNING") {
       const processed = job.processed_rows ?? 0;
       const hasPercent = typeof job.progress_percent === "number" && job.estimated_total_rows != null;
+      const etaLabel = resolveEtaLabel(job);
       if (hasPercent) {
         const percent = Math.min(job.progress_percent ?? 0, 99);
         const total = job.estimated_total_rows ?? 0;
@@ -135,6 +162,7 @@ export function ExportsPage() {
             <div className="muted export-progress__text">
               {percent}% — {numberFormatter.format(processed)} / {numberFormatter.format(total)} строк
             </div>
+            <div className="muted export-progress__text">{etaLabel}</div>
           </div>
         );
       }
@@ -145,6 +173,7 @@ export function ExportsPage() {
             <span className="export-progress__fill" />
           </div>
           <div className="muted export-progress__text">Обработано: {numberFormatter.format(processed)} строк</div>
+          <div className="muted export-progress__text">{etaLabel}</div>
         </div>
       );
     }

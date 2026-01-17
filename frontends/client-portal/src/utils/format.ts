@@ -38,6 +38,26 @@ export function formatDateTime(dateStr: string, timezone?: string | null): strin
   }
 }
 
+export function formatTime(dateStr: string, timezone?: string | null): string {
+  const resolvedTimezone = timezone ?? getStoredTimezone();
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: resolvedTimezone,
+    }).format(new Date(dateStr));
+  } catch (err) {
+    try {
+      return new Intl.DateTimeFormat("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(dateStr));
+    } catch (fallbackError) {
+      return dateStr;
+    }
+  }
+}
+
 export type NumberParts = {
   int: string;
   fraction?: string | null;

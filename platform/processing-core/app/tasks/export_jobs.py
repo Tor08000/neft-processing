@@ -33,6 +33,10 @@ settings = get_settings()
 
 PROGRESS_UPDATE_ROWS_STEP = 1000
 PROGRESS_UPDATE_SECONDS = 2.0
+PROGRESS_RATE_ALPHA = 0.25
+PROGRESS_RATE_MAX = 100000.0
+PROGRESS_RATE_MIN_SECONDS = 0.5
+PROGRESS_WARMUP_UPDATES = 2
 
 
 def _calculate_progress_percent(processed_rows: int, estimated_total_rows: int | None) -> int | None:
@@ -50,6 +54,9 @@ def _update_job_progress(
     job_id: str,
     processed_rows: int,
     estimated_total_rows: int | None,
+    progress_updated_at: datetime,
+    avg_rows_per_sec: float | None,
+    last_heartbeat_at: datetime,
 ) -> None:
     job = session.get(ExportJob, job_id)
     if not job or job.status != ExportJobStatus.RUNNING:
@@ -57,6 +64,10 @@ def _update_job_progress(
     job.processed_rows = processed_rows
     job.estimated_total_rows = estimated_total_rows
     job.progress_percent = _calculate_progress_percent(processed_rows, estimated_total_rows)
+    job.progress_updated_at = progress_updated_at
+    job.last_heartbeat_at = last_heartbeat_at
+    if avg_rows_per_sec is not None:
+        job.avg_rows_per_sec = avg_rows_per_sec
     session.add(job)
     session.commit()
 
@@ -146,6 +157,9 @@ def generate_export_job(job_id: str) -> dict:
 
         job.status = ExportJobStatus.RUNNING
         job.started_at = datetime.now(timezone.utc)
+        job.last_heartbeat_at = job.started_at
+        job.avg_rows_per_sec = None
+        job.progress_updated_at = None
         job.error_message = None
         session.add(job)
         session.commit()
@@ -177,9 +191,11 @@ def generate_export_job(job_id: str) -> dict:
         progress_session = get_sessionmaker()()
         last_progress_rows = 0
         last_progress_time = time.monotonic()
+        avg_rows_per_sec = None
+        progress_updates = 0
 
         def progress_callback(count: int) -> None:
-            nonlocal last_progress_rows, last_progress_time, processed_rows
+            nonlocal last_progress_rows, last_progress_time, processed_rows, avg_rows_per_sec, progress_updates
             processed_rows = count
             now = time.monotonic()
             if count == last_progress_rows:
@@ -188,14 +204,29 @@ def generate_export_job(job_id: str) -> dict:
                 now - last_progress_time
             ) < PROGRESS_UPDATE_SECONDS:
                 return
+            delta_rows = count - last_progress_rows
+            delta_t = now - last_progress_time
             last_progress_rows = count
             last_progress_time = now
+            progress_updates += 1
+            inst_rate = None
+            if delta_rows > 0 and delta_t >= PROGRESS_RATE_MIN_SECONDS:
+                inst_rate = min(delta_rows / delta_t, PROGRESS_RATE_MAX)
+                if avg_rows_per_sec is None:
+                    avg_rows_per_sec = inst_rate
+                else:
+                    avg_rows_per_sec = PROGRESS_RATE_ALPHA * inst_rate + (1 - PROGRESS_RATE_ALPHA) * avg_rows_per_sec
+            avg_to_store = avg_rows_per_sec if progress_updates > PROGRESS_WARMUP_UPDATES else None
+            progress_timestamp = datetime.now(timezone.utc)
             try:
                 _update_job_progress(
                     progress_session,
                     job_id=job_id,
                     processed_rows=count,
                     estimated_total_rows=estimated_total_rows,
+                    progress_updated_at=progress_timestamp,
+                    avg_rows_per_sec=avg_to_store,
+                    last_heartbeat_at=progress_timestamp,
                 )
             except Exception as exc:  # noqa: BLE001
                 progress_session.rollback()

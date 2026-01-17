@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, Index, Integer, JSON, String, Text, func
+from sqlalchemy import Column, DateTime, Float, Index, Integer, JSON, String, Text, func
 
 from app.db import Base
 from app.db.types import ExistingEnum, GUID, new_uuid_str
@@ -53,6 +53,9 @@ class ExportJob(Base):
     processed_rows = Column(Integer, nullable=False, default=0)
     estimated_total_rows = Column(Integer, nullable=True)
     progress_percent = Column(Integer, nullable=True)
+    progress_updated_at = Column(DateTime(timezone=True), nullable=True)
+    avg_rows_per_sec = Column(Float, nullable=True)
+    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)

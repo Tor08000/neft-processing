@@ -23,6 +23,9 @@ export type ExportJob = {
   processed_rows: number;
   estimated_total_rows?: number | null;
   progress_percent?: number | null;
+  avg_rows_per_sec?: number | null;
+  eta_seconds?: number | null;
+  eta_at?: string | null;
   error_message?: string | null;
   created_at: string;
   started_at?: string | null;
