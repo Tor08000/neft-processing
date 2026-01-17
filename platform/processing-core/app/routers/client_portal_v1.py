@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
-from sqlalchemy import String, and_, cast, or_
+from sqlalchemy import Date, String, and_, cast, desc, func, or_
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -30,7 +30,17 @@ from app.models.report_schedules import ReportSchedule, ReportScheduleKind, Repo
 from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
 from app.models.card import Card
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
-from app.models.fuel import FuelCard, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
+from app.models.fuel import (
+    FuelCard,
+    FuelCardStatus,
+    FuelLimit,
+    FuelLimitPeriod,
+    FuelLimitScopeType,
+    FuelLimitType,
+    FuelStation,
+    FuelTransaction,
+    FuelTransactionStatus,
+)
 from app.models.operation import Operation
 from app.models.support_ticket import (
     SupportTicket,
@@ -69,6 +79,15 @@ from app.schemas.client_portal_v1 import (
     ClientOrgOut,
     ClientDocSummary,
     ClientDocsListResponse,
+    ClientAnalyticsSummaryResponse,
+    ClientAnalyticsPeriod,
+    ClientAnalyticsSummary,
+    ClientAnalyticsTimeseriesPoint,
+    ClientAnalyticsTopCard,
+    ClientAnalyticsTopDriver,
+    ClientAnalyticsTopLists,
+    ClientAnalyticsTopStation,
+    ClientAnalyticsSupport,
     ExportJobCreateRequest,
     ExportJobCreateResponse,
     ExportJobListResponse,
@@ -135,6 +154,7 @@ from app.services.report_schedules import (
     validate_timezone,
 )
 from app.services.timezones import format_datetime_for_user, resolve_user_timezone_info
+from app.services.timezones import resolve_user_timezone
 from app.services.support_attachment_storage import SupportAttachmentStorage
 from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
@@ -317,6 +337,20 @@ def _is_user_admin(token: dict) -> bool:
 def _is_driver(token: dict) -> bool:
     roles = set(_normalize_roles(token))
     return bool(roles.intersection({"CLIENT_USER", "DRIVER"}))
+
+
+def _ensure_analytics_access(token: dict) -> None:
+    roles = set(_normalize_roles(token))
+    allowed_roles = {
+        "CLIENT_OWNER",
+        "CLIENT_ADMIN",
+        "CLIENT_ACCOUNTANT",
+        "CLIENT_FLEET_MANAGER",
+        "OWNER",
+        "ADMIN",
+    }
+    if not roles.intersection(allowed_roles):
+        raise HTTPException(status_code=403, detail="forbidden")
 
 
 def _support_ticket_org_id(token: dict) -> str:
@@ -3489,6 +3523,273 @@ def export_documents_report(
         "documents_export.csv",
         ["document_id", "type", "number", "date", "status", "amount", "currency", "file_name"],
         rows,
+    )
+
+
+@router.get("/analytics/summary", response_model=ClientAnalyticsSummaryResponse)
+def get_client_analytics_summary(
+    request: Request,
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    scope: str | None = Query(default=None),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientAnalyticsSummaryResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
+    _ensure_analytics_access(token)
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="invalid_period")
+
+    tz_name = timezone_name or resolve_user_timezone(db, token=token)
+    if timezone_name:
+        try:
+            ZoneInfo(timezone_name)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="invalid_timezone") from exc
+    tzinfo = ZoneInfo(tz_name)
+
+    start_dt = datetime.combine(date_from, time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+    end_dt = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+
+    filters = [
+        FuelTransaction.client_id == str(client.id),
+        FuelTransaction.occurred_at >= start_dt,
+        FuelTransaction.occurred_at < end_dt,
+        FuelTransaction.status == FuelTransactionStatus.SETTLED,
+    ]
+    scope_value = (scope or "all").strip()
+    if scope_value and scope_value != "all":
+        if scope_value.startswith("cards:"):
+            cards_payload = scope_value.split(":", 1)[1]
+            card_ids = [card_id.strip() for card_id in cards_payload.split(",") if card_id.strip()]
+            if not card_ids:
+                raise HTTPException(status_code=400, detail="invalid_scope")
+            filters.append(FuelTransaction.card_id.in_(card_ids))
+        elif scope_value.startswith("driver:"):
+            driver_id = scope_value.split(":", 1)[1].strip()
+            if not driver_id:
+                raise HTTPException(status_code=400, detail="invalid_scope")
+            filters.append(FuelTransaction.driver_id == driver_id)
+        else:
+            raise HTTPException(status_code=400, detail="invalid_scope")
+
+    summary_row = (
+        db.query(
+            func.count().label("transactions_count"),
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("total_spend_minor"),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0).label("total_liters"),
+            func.count(func.distinct(FuelTransaction.driver_id)).label("unique_drivers"),
+        )
+        .filter(*filters)
+        .one()
+    )
+
+    active_cards = (
+        db.query(func.count())
+        .filter(FuelCard.client_id == str(client.id), FuelCard.status == FuelCardStatus.ACTIVE)
+        .scalar()
+        or 0
+    )
+    blocked_cards = (
+        db.query(func.count())
+        .filter(FuelCard.client_id == str(client.id), FuelCard.status == FuelCardStatus.BLOCKED)
+        .scalar()
+        or 0
+    )
+
+    org_id = _support_ticket_org_id(token)
+    ticket_filters = [
+        SupportTicket.org_id == org_id,
+        SupportTicket.created_at >= start_dt,
+        SupportTicket.created_at < end_dt,
+    ]
+    open_tickets = (
+        db.query(func.count())
+        .filter(
+            *ticket_filters,
+            SupportTicket.status.in_({SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS}),
+        )
+        .scalar()
+        or 0
+    )
+    sla_first_breaches = (
+        db.query(func.count())
+        .filter(*ticket_filters, SupportTicket.sla_first_response_status == SupportTicketSlaStatus.BREACHED)
+        .scalar()
+        or 0
+    )
+    sla_resolution_breaches = (
+        db.query(func.count())
+        .filter(*ticket_filters, SupportTicket.sla_resolution_status == SupportTicketSlaStatus.BREACHED)
+        .scalar()
+        or 0
+    )
+
+    avg_first_response = (
+        db.query(
+            func.avg(
+                func.extract(
+                    "epoch",
+                    SupportTicket.first_response_at - SupportTicket.created_at,
+                )
+                / 60
+            )
+        )
+        .filter(*ticket_filters, SupportTicket.first_response_at.isnot(None))
+        .scalar()
+    )
+    avg_resolve = (
+        db.query(
+            func.avg(
+                func.extract(
+                    "epoch",
+                    SupportTicket.resolved_at - SupportTicket.created_at,
+                )
+                / 60
+            )
+        )
+        .filter(*ticket_filters, SupportTicket.resolved_at.isnot(None))
+        .scalar()
+    )
+
+    day_bucket = cast(
+        func.date_trunc(
+            "day",
+            FuelTransaction.occurred_at.op("AT TIME ZONE")(tz_name),
+        ),
+        Date,
+    ).label("day")
+    timeseries_rows = (
+        db.query(
+            day_bucket,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("spend_minor"),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0).label("liters"),
+            func.count().label("count"),
+        )
+        .filter(*filters)
+        .group_by(day_bucket)
+        .order_by(day_bucket.asc())
+        .all()
+    )
+    timeseries_map = {row.day: row for row in timeseries_rows if row.day}
+    timeseries: list[ClientAnalyticsTimeseriesPoint] = []
+    cursor = date_from
+    while cursor <= date_to:
+        row = timeseries_map.get(cursor)
+        spend_minor = int(row.spend_minor) if row else 0
+        liters_value = float(row.liters) if row and row.liters is not None else None
+        count_value = int(row.count) if row else 0
+        timeseries.append(
+            ClientAnalyticsTimeseriesPoint(
+                date=cursor,
+                spend=spend_minor / 100,
+                liters=liters_value,
+                count=count_value,
+            )
+        )
+        cursor += timedelta(days=1)
+
+    top_cards_rows = (
+        db.query(
+            FuelTransaction.card_id,
+            FuelCard.masked_pan,
+            FuelCard.card_alias,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("spend_minor"),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0).label("liters"),
+            func.count().label("count"),
+        )
+        .join(FuelCard, FuelCard.id == FuelTransaction.card_id)
+        .filter(*filters, FuelCard.client_id == str(client.id))
+        .group_by(FuelTransaction.card_id, FuelCard.masked_pan, FuelCard.card_alias)
+        .order_by(desc("spend_minor"))
+        .limit(5)
+        .all()
+    )
+    top_cards = [
+        ClientAnalyticsTopCard(
+            card_id=str(row.card_id),
+            label=row.masked_pan or row.card_alias or str(row.card_id),
+            spend=int(row.spend_minor) / 100,
+            count=int(row.count),
+            liters=float(row.liters) if row.liters is not None else None,
+        )
+        for row in top_cards_rows
+    ]
+
+    top_drivers_rows = (
+        db.query(
+            FuelTransaction.driver_id,
+            FleetDriver.full_name,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("spend_minor"),
+            func.count().label("count"),
+        )
+        .join(FleetDriver, FleetDriver.id == FuelTransaction.driver_id)
+        .filter(*filters, FuelTransaction.driver_id.isnot(None))
+        .group_by(FuelTransaction.driver_id, FleetDriver.full_name)
+        .order_by(desc("spend_minor"))
+        .limit(5)
+        .all()
+    )
+    top_drivers = [
+        ClientAnalyticsTopDriver(
+            user_id=str(row.driver_id),
+            label=row.full_name or str(row.driver_id),
+            spend=int(row.spend_minor) / 100,
+            count=int(row.count),
+        )
+        for row in top_drivers_rows
+    ]
+
+    top_stations_rows = (
+        db.query(
+            FuelTransaction.station_id,
+            FuelStation.name,
+            func.coalesce(func.sum(FuelTransaction.amount_total_minor), 0).label("spend_minor"),
+            func.coalesce(func.sum(FuelTransaction.volume_liters), 0).label("liters"),
+            func.count().label("count"),
+        )
+        .join(FuelStation, FuelStation.id == FuelTransaction.station_id)
+        .filter(*filters)
+        .group_by(FuelTransaction.station_id, FuelStation.name)
+        .order_by(desc("spend_minor"))
+        .limit(5)
+        .all()
+    )
+    top_stations = [
+        ClientAnalyticsTopStation(
+            station_id=str(row.station_id),
+            label=row.name or str(row.station_id),
+            spend=int(row.spend_minor) / 100,
+            count=int(row.count),
+            liters=float(row.liters) if row.liters is not None else None,
+        )
+        for row in top_stations_rows
+    ]
+
+    return ClientAnalyticsSummaryResponse(
+        period=ClientAnalyticsPeriod(from_=date_from, to=date_to),
+        summary=ClientAnalyticsSummary(
+            transactions_count=int(summary_row.transactions_count or 0),
+            total_spend=int(summary_row.total_spend_minor or 0) / 100,
+            total_liters=float(summary_row.total_liters) if summary_row.total_liters is not None else None,
+            active_cards=int(active_cards),
+            blocked_cards=int(blocked_cards),
+            unique_drivers=int(summary_row.unique_drivers or 0),
+            open_tickets=int(open_tickets),
+            sla_breaches_first=int(sla_first_breaches),
+            sla_breaches_resolution=int(sla_resolution_breaches),
+        ),
+        timeseries=timeseries,
+        tops=ClientAnalyticsTopLists(cards=top_cards, drivers=top_drivers, stations=top_stations),
+        support=ClientAnalyticsSupport(
+            open=int(open_tickets),
+            avg_first_response_minutes=float(avg_first_response) if avg_first_response is not None else None,
+            avg_resolve_minutes=float(avg_resolve) if avg_resolve is not None else None,
+        ),
     )
 
 
