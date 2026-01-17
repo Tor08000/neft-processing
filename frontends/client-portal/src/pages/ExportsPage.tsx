@@ -39,6 +39,16 @@ const resolveErrorMessage = (error: unknown): string => {
   return "Ошибка загрузки";
 };
 
+const resolveJobErrorMessage = (job: ExportJob): string => {
+  if (job.error_message === "too_many_rows_limit_exceeded") {
+    return "Слишком большой объём данных — сузьте фильтры";
+  }
+  if (job.error_message === "timeout") {
+    return "Превышено время формирования отчёта";
+  }
+  return job.error_message || "Ошибка";
+};
+
 export function ExportsPage() {
   const { user } = useAuth();
   const [status, setStatus] = useState("");
@@ -192,7 +202,7 @@ export function ExportsPage() {
                           Скачать
                         </a>
                       ) : job.status === "FAILED" ? (
-                        <span className="muted">{job.error_message || "Ошибка"}</span>
+                        <span className="muted">{resolveJobErrorMessage(job)}</span>
                       ) : job.status === "EXPIRED" ? (
                         <span className="muted">Срок хранения истёк</span>
                       ) : (

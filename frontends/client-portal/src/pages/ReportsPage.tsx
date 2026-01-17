@@ -8,7 +8,7 @@ import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { hasAnyRole } from "../utils/roles";
 
-const MAX_EXPORT_ROWS = 5000;
+const MAX_EXPORT_ROWS = 200000;
 
 const resolveErrorMessage = (error: unknown): string => {
   if (error instanceof ValidationError) {
@@ -105,6 +105,7 @@ export function ReportsPage() {
             <p className="muted">
               Выгружайте CSV или XLSX с учётом фильтров. Максимум {MAX_EXPORT_ROWS} строк.
             </p>
+            <p className="muted">Большие отчёты могут формироваться несколько минут.</p>
             {showExportHint ? (
               <p className="muted">
                 Отчёт поставлен в очередь ({lastQueuedFormat}).{" "}

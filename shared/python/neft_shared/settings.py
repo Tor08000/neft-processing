@@ -140,6 +140,12 @@ class Settings:
     ).lower() in {"1", "true", "yes"}
     ACCOUNTING_EXPORT_ALERTING_TARGETS: str = os.getenv("ACCOUNTING_EXPORT_ALERTING_TARGETS", "")
     EXPORT_JOB_RETENTION_DAYS: int = int(os.getenv("EXPORT_JOB_RETENTION_DAYS", "14"))
+    NEFT_EXPORT_MAX_ROWS: int = int(os.getenv("NEFT_EXPORT_MAX_ROWS", "200000"))
+    NEFT_EXPORT_CHUNK_SIZE: int = int(os.getenv("NEFT_EXPORT_CHUNK_SIZE", "5000"))
+    NEFT_EXPORT_TMP_DIR: str = os.getenv("NEFT_EXPORT_TMP_DIR", "/tmp/neft_exports")
+    NEFT_EXPORT_JOB_SOFT_TIME_LIMIT_SECONDS: int = int(
+        os.getenv("NEFT_EXPORT_JOB_SOFT_TIME_LIMIT_SECONDS", "1200")
+    )
     NEFT_S3_BUCKET: str = os.getenv("NEFT_S3_BUCKET", "")
     NEFT_S3_ACCESS_KEY: str = os.getenv(
         "NEFT_S3_ACCESS_KEY", os.getenv("S3_ACCESS_KEY", _DEFAULT_MINIO_USER)
