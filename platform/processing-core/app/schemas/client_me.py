@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -38,6 +39,10 @@ class ClientMeSubscription(BaseModel):
 
     plan_code: str
     status: str | None = None
+    billing_cycle: str | None = None
+    support_plan: str | None = None
+    slo_tier: str | None = None
+    addons: list[dict[str, Any]] | None = None
     modules: dict[str, dict[str, Any]]
     limits: dict[str, dict[str, Any]]
 
@@ -45,6 +50,8 @@ class ClientMeSubscription(BaseModel):
 class ClientMeEntitlements(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    features: dict[str, dict[str, Any]] | None = None
+    modules: dict[str, dict[str, Any]] | None = None
     enabled_modules: list[str]
     permissions: list[str]
     limits: dict[str, dict[str, Any]]
@@ -59,6 +66,9 @@ class ClientMeResponse(BaseModel):
     membership: ClientMeMembership
     subscription: ClientMeSubscription | None = None
     entitlements: ClientMeEntitlements
+    entitlements_snapshot: dict[str, Any] | None = None
+    entitlements_hash: str | None = None
+    entitlements_computed_at: datetime | None = None
     org_status: str
 
 
