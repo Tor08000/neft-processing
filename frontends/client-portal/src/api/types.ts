@@ -28,5 +28,6 @@ export interface AuthSession {
   roles: string[];
   subjectType: string;
   clientId?: string | null;
+  timezone?: string | null;
   expiresAt: number;
 }

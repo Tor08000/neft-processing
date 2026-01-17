@@ -53,6 +53,7 @@ def send_notification_email(
     notification_id: str | None,
     entity_id: str | None,
     idempotency_key: str | None = None,
+    context: dict[str, str] | None = None,
 ) -> None:
     template_key = EMAIL_TEMPLATE_MAP.get(event_type)
     if not template_key:
@@ -64,6 +65,9 @@ def send_notification_email(
     resolved_key = idempotency_key or build_idempotency_key(event_type, org_id, resolved_entity_id)
     portal_link = build_portal_url(link)
     try:
+        email_context = {"body": body, "link": portal_link, "title": title}
+        if context:
+            email_context.update(context)
         enqueue_templated_email(
             db,
             template_key=template_key,
@@ -71,7 +75,7 @@ def send_notification_email(
             idempotency_key=resolved_key,
             org_id=org_id,
             user_id=None,
-            context={"body": body, "link": portal_link, "title": title},
+            context=email_context,
             tags={"client_notification_id": notification_id} if notification_id else None,
         )
     except Exception:  # noqa: BLE001 - log and continue
@@ -97,6 +101,7 @@ def create_notification(
     meta_json: dict[str, object] | None = None,
     email_to: str | None = None,
     email_idempotency_key: str | None = None,
+    email_context: dict[str, str] | None = None,
 ) -> ClientNotification:
     notification = ClientNotification(
         org_id=org_id,
@@ -127,6 +132,7 @@ def create_notification(
             notification_id=str(notification.id),
             entity_id=entity_id,
             idempotency_key=email_idempotency_key,
+            context=email_context,
         )
     return notification
 

@@ -33,12 +33,14 @@ export type ClientMeResponse = {
     id: string;
     email?: string | null;
     subject_type?: string | null;
+    timezone?: string | null;
   };
   org?: {
     id: string;
     name: string;
     inn?: string | null;
     status: string;
+    timezone?: string | null;
   } | null;
   membership: {
     roles: string[];
@@ -155,6 +157,20 @@ const withToken = (user: AuthSession | null) => ({ token: user?.token, base: "co
 
 export const fetchClientMe = (user: AuthSession | null) =>
   request<ClientMeResponse>("/client/me", { method: "GET" }, withToken(user));
+
+export type ClientTimezoneUpdateResponse = {
+  id: string;
+  email?: string | null;
+  subject_type?: string | null;
+  timezone?: string | null;
+};
+
+export const updateClientTimezone = (user: AuthSession | null, timezone: string) =>
+  request<ClientTimezoneUpdateResponse>(
+    "/client/account",
+    { method: "PATCH", body: JSON.stringify({ timezone }) },
+    withToken(user),
+  );
 
 export const createOrg = (user: AuthSession | null, payload: ClientOrgPayload) =>
   request<ClientOrgResponse>("/client/org", { method: "POST", body: JSON.stringify(payload) }, withToken(user));

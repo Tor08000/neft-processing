@@ -6,6 +6,7 @@ import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppEmptyState, AppErrorState, AppLoadingState } from "../components/states";
 import { reduceExplainDiffReasons, type ExplainDiffTab } from "../features/explain/diffReducer";
+import { formatDateTime } from "../utils/format";
 import type {
   ExplainDiffResponse,
   ExplainEvidence,
@@ -19,10 +20,9 @@ const percent = (value?: number | null) => {
   return `${Math.round(value * 100)}%`;
 };
 
-const formatTimestamp = (value?: string | null) => {
+const formatTimestamp = (value?: string | null, timezone?: string | null) => {
   if (!value) return "—";
-  const date = new Date(value);
-  return date.toLocaleString("ru-RU");
+  return formatDateTime(value, timezone);
 };
 
 const scoreBandLabel = (band?: string | null) => {
@@ -384,7 +384,7 @@ export function ExplainPage() {
     const options: { value: string; label: string }[] = [
       {
         value: "latest",
-        label: payload?.generated_at ? `Последний · ${formatTimestamp(payload.generated_at)}` : "Последний",
+        label: payload?.generated_at ? `Последний · ${formatTimestamp(payload.generated_at, user?.timezone)}` : "Последний",
       },
       { value: "previous", label: "Предыдущий" },
       { value: "baseline", label: "Baseline" },
@@ -395,7 +395,7 @@ export function ExplainPage() {
     if (payload?.generated_at) {
       options.push({
         value: `generated_at:${payload.generated_at}`,
-        label: `Generated · ${formatTimestamp(payload.generated_at)}`,
+        label: `Generated · ${formatTimestamp(payload.generated_at, user?.timezone)}`,
       });
     }
     const ensureOption = (value: string) => {
@@ -732,7 +732,7 @@ export function ExplainPage() {
               </div>
               <div className="muted small">
                 {payload.policy_snapshot ? `Policy: ${payload.policy_snapshot}` : "Policy: —"}
-                <div>{formatTimestamp(payload.generated_at)}</div>
+                <div>{formatTimestamp(payload.generated_at, user?.timezone)}</div>
               </div>
             </div>
           </section>
