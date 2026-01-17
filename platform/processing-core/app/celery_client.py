@@ -31,6 +31,8 @@ celery_client.conf.update(
         "billing.generate_invoice_pdf": {"queue": "pdf"},
         "billing.generate_subscription_invoices": {"queue": "billing"},
         "billing.overdue_check": {"queue": "billing"},
+        "billing.dunning_scan": {"queue": "billing"},
+        "billing.suspend_overdue": {"queue": "billing"},
     },
     beat_schedule={
         "billing_generate_monthly": {
@@ -40,6 +42,14 @@ celery_client.conf.update(
         "billing_overdue_check": {
             "task": "billing.overdue_check",
             "schedule": crontab(minute="*/30"),
+        },
+        "billing_dunning_scan": {
+            "task": "billing.dunning_scan",
+            "schedule": crontab(minute=0, hour="*/6"),
+        },
+        "billing_suspend_overdue": {
+            "task": "billing.suspend_overdue",
+            "schedule": crontab(hour=2, minute=0),
         },
         "ops.scan_sla_expiry": {
             "task": "ops.scan_sla_expiry",

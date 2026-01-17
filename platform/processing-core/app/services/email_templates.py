@@ -12,6 +12,12 @@ TEMPLATE_SUBJECTS = {
     "support_ticket_commented": "[NEFT] Новый комментарий по тикету",
     "support_sla_first_response_breached": "[NEFT] SLA нарушен: первый ответ",
     "support_sla_resolution_breached": "[NEFT] SLA нарушен: решение",
+    "billing_due_soon_7d": "[NEFT] Счёт скоро к оплате",
+    "billing_due_soon_1d": "[NEFT] Напоминание об оплате",
+    "billing_overdue_1d": "[NEFT] Счёт просрочен",
+    "billing_overdue_7d": "[NEFT] Просрочка по счёту",
+    "billing_pre_suspend_1d": "[NEFT] Предупреждение о приостановке",
+    "billing_suspended": "[NEFT] Доступ приостановлен",
 }
 
 

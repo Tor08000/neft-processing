@@ -9,10 +9,10 @@ import { MoneyValue } from "../components/common/MoneyValue";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
 
 const STATUS_OPTIONS = [
-  { value: "SENT", label: "Выставлен" },
-  { value: "PARTIALLY_PAID", label: "Частично оплачен" },
+  { value: "ISSUED", label: "Выставлен" },
   { value: "PAID", label: "Оплачен" },
   { value: "OVERDUE", label: "Просрочен" },
+  { value: "VOID", label: "Аннулирован" },
 ];
 
 const DEFAULT_LIMIT = 25;
@@ -77,7 +77,7 @@ export function ClientInvoicesPage() {
   };
 
   const handleQuickUnpaid = () => {
-    setFilters((prev) => ({ ...prev, status: ["SENT", "PARTIALLY_PAID", "OVERDUE"] }));
+    setFilters((prev) => ({ ...prev, status: ["ISSUED", "OVERDUE"] }));
     setOffset(0);
   };
 
@@ -95,8 +95,8 @@ export function ClientInvoicesPage() {
   };
 
   const handleDownload = (invoice: ClientInvoiceSummary) => {
-    if (!invoice.invoice_number || invoice.invoice_number === "UNASSIGNED") return;
-    window.open(`/api/client/invoices/${invoice.invoice_number}/download`, "_blank", "noopener");
+    if (!invoice.download_url) return;
+    window.open(invoice.download_url, "_blank", "noopener");
   };
 
   const filtersActive = filters.dateFrom !== "" || filters.dateTo !== "" || filters.status.length > 0;
@@ -194,7 +194,7 @@ export function ClientInvoicesPage() {
           {
             key: "number",
             title: "Номер",
-            render: (invoice) => <span>{invoice.invoice_number}</span>,
+            render: (invoice) => <span>{invoice.id}</span>,
           },
           {
             key: "period",
@@ -217,17 +217,17 @@ export function ClientInvoicesPage() {
             ),
           },
           {
-            key: "due_date",
+            key: "due_at",
             title: "Срок",
-            render: (invoice) => (invoice.due_date ? formatDate(invoice.due_date) : "—"),
+            render: (invoice) => (invoice.due_at ? formatDate(invoice.due_at) : "—"),
           },
           {
             key: "actions",
             title: "",
             render: (invoice) => (
               <div className="actions">
-                {invoice.invoice_number && invoice.invoice_number !== "UNASSIGNED" ? (
-                  <Link to={`/invoices/${invoice.invoice_number}`} className="ghost">
+                {invoice.id ? (
+                  <Link to={`/invoices/${invoice.id}`} className="ghost">
                     Открыть
                   </Link>
                 ) : (
@@ -237,7 +237,7 @@ export function ClientInvoicesPage() {
                   type="button"
                   className="ghost"
                   onClick={() => handleDownload(invoice)}
-                  disabled={!invoice.invoice_number || invoice.invoice_number === "UNASSIGNED"}
+                  disabled={!invoice.download_url}
                 >
                   Скачать PDF
                 </button>
