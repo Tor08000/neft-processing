@@ -10,6 +10,7 @@ class SubscriptionInvoiceLineOut(BaseModel):
     line_type: str
     ref_code: str | None = None
     description: str | None = None
+    unit: str | None = None
     quantity: Decimal | None = None
     unit_price: Decimal | None = None
     amount: Decimal | None = None

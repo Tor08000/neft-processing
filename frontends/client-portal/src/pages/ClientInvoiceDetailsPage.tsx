@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { ClientInvoiceDetails } from "../types/portal";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { AppErrorState, AppLoadingState } from "../components/states";
-import { formatDate, formatDateTime } from "../utils/format";
+import { formatDate, formatDateTime, formatNumberParts } from "../utils/format";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
 
 export function ClientInvoiceDetailsPage() {
@@ -40,6 +40,16 @@ export function ClientInvoiceDetailsPage() {
   if (!invoice) {
     return <AppErrorState message="Инвойс не найден" />;
   }
+
+  const usageLines = invoice.lines?.filter((line) => line.line_type === "USAGE") ?? [];
+  const formatQuantity = (value?: number | null) => {
+    if (value === null || value === undefined) return "—";
+    const fixed = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+    const fractionLength = fixed.includes(".") ? fixed.split(".")[1]?.length ?? 0 : 0;
+    const digits = fractionLength === 0 ? 0 : fractionLength <= 2 ? 2 : 6;
+    const parts = formatNumberParts(value, digits);
+    return parts.fraction ? `${parts.int}.${parts.fraction}` : parts.int;
+  };
 
   return (
     <div className="stack">
@@ -123,6 +133,51 @@ export function ClientInvoiceDetailsPage() {
           </table>
         ) : (
           <p className="muted">Платежей пока нет.</p>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="card__header">
+          <h3>Начисления за использование</h3>
+        </div>
+        {usageLines.length ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Описание</th>
+                <th>Количество</th>
+                <th>Цена за единицу</th>
+                <th>Сумма</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usageLines.map((line, index) => (
+                <tr key={`${line.ref_code ?? "usage"}-${index}`}>
+                  <td>{line.description ?? line.ref_code ?? "Usage"}</td>
+                  <td>
+                    {formatQuantity(line.quantity ?? undefined)}
+                    {line.unit ? ` ${line.unit}` : ""}
+                  </td>
+                  <td>
+                    {line.unit_price !== null && line.unit_price !== undefined ? (
+                      <MoneyValue amount={line.unit_price} currency={invoice.currency} />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td>
+                    {line.amount !== null && line.amount !== undefined ? (
+                      <MoneyValue amount={line.amount} currency={invoice.currency} />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="muted">Начислений за использование пока нет.</p>
         )}
       </section>
 

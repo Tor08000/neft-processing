@@ -388,7 +388,7 @@ CREATE TABLE IF NOT EXISTS org_entitlements_snapshot (
 
 CREATE TABLE IF NOT EXISTS pricing_catalog (
   id BIGSERIAL PRIMARY KEY,
-  item_type TEXT NOT NULL CHECK (item_type IN ('PLAN', 'ADDON')),
+  item_type TEXT NOT NULL CHECK (item_type IN ('PLAN', 'ADDON', 'USAGE_METER')),
   item_id BIGINT NOT NULL,
   currency TEXT DEFAULT 'RUB' CHECK (currency IN ('RUB', 'USD', 'EUR')),
   price_monthly NUMERIC(18,2),

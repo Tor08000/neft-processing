@@ -5646,6 +5646,7 @@ def get_subscription_invoice(
                 line_type=line.get("line_type"),
                 ref_code=line.get("ref_code"),
                 description=line.get("description"),
+                unit=(line.get("meta_json") or {}).get("unit"),
                 quantity=line.get("quantity"),
                 unit_price=line.get("unit_price"),
                 amount=line.get("amount"),
