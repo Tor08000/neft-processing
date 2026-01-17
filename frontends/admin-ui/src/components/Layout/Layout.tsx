@@ -8,6 +8,7 @@ import { getInitialTheme, toggleTheme } from "../../lib/theme";
 const baseNavItems = [
   { to: "/operations", label: "Ops" },
   { to: "/finance", label: "Finance" },
+  { to: "/finance/revenue", label: "Revenue" },
   { to: "/stubs", label: "Stubs" },
   { to: "/risk", label: "Risk" },
   { to: "/risk/sandbox", label: "Rules Sandbox" },

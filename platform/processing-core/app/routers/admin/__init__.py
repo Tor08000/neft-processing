@@ -61,6 +61,7 @@ from app.routers.admin import (
     edo,
     bi_sync,
     commercial,
+    revenue,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -124,5 +125,6 @@ router.include_router(entitlements.router)
 router.include_router(edo.router)
 router.include_router(bi_sync.router)
 router.include_router(commercial.router)
+router.include_router(revenue.router)
 
 __all__ = ["router"]
