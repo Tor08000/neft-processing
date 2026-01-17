@@ -262,6 +262,16 @@ from .support_ticket import (  # noqa: F401
     SupportTicketSlaStatus,
     SupportTicketStatus,
 )
+from .helpdesk import (  # noqa: F401
+    HelpdeskIntegration,
+    HelpdeskIntegrationStatus,
+    HelpdeskOutbox,
+    HelpdeskOutboxEventType,
+    HelpdeskOutboxStatus,
+    HelpdeskProvider,
+    HelpdeskTicketLink,
+    HelpdeskTicketLinkStatus,
+)
 from .cases import (  # noqa: F401
     Case,
     CaseComment,
@@ -818,6 +828,14 @@ __all__ = [
     "SupportTicketComment",
     "SupportTicketPriority",
     "SupportTicketStatus",
+    "HelpdeskIntegration",
+    "HelpdeskIntegrationStatus",
+    "HelpdeskOutbox",
+    "HelpdeskOutboxEventType",
+    "HelpdeskOutboxStatus",
+    "HelpdeskProvider",
+    "HelpdeskTicketLink",
+    "HelpdeskTicketLinkStatus",
     "Reversal",
     "ReversalStatus",
     "Dispute",
