@@ -20,6 +20,7 @@ from app.schemas.client_me import (
 from app.security.client_auth import require_onboarding_user
 from app.services.audit_service import AuditService, request_context_from_request
 from app.services import entitlements_service
+from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.client_entitlements import build_client_entitlements, normalize_roles
 from app.services.subscription_service import (
     DEFAULT_TENANT_ID,
@@ -57,9 +58,15 @@ def get_client_me(
     entitlements_limits: dict[str, dict] = {}
     entitlements_modules: dict[str, dict] = {}
     role_entitlements: list[dict] = []
+    entitlements_snapshot = None
+    entitlements_hash = None
+    entitlements_computed_at = None
 
     if client_id and client is not None:
         entitlements = entitlements_service.get_entitlements(db, client_id=str(client_id))
+        entitlements_snapshot = get_org_entitlements_snapshot(db, org_id=int(client_id))
+        entitlements_hash = entitlements_snapshot.hash
+        entitlements_computed_at = entitlements_snapshot.computed_at
         entitlements_limits = entitlements.limits
         entitlements_modules = entitlements.modules
         tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
@@ -73,9 +80,16 @@ def get_client_me(
                     compute_entitlements(db, plan_id=plan.id, role_code=role_code)
                     for role_code in normalized_roles
                 ]
+            snapshot_subscription = (
+                entitlements_snapshot.entitlements.get("subscription") if entitlements_snapshot else None
+            )
             subscription_payload = ClientMeSubscription(
                 plan_code=plan.code if plan else entitlements.plan_code,
                 status=str(subscription.status) if subscription else None,
+                billing_cycle=snapshot_subscription.get("billing_cycle") if snapshot_subscription else None,
+                support_plan=snapshot_subscription.get("support_plan") if snapshot_subscription else None,
+                slo_tier=snapshot_subscription.get("slo_tier") if snapshot_subscription else None,
+                addons=snapshot_subscription.get("addons") if snapshot_subscription else None,
                 modules=entitlements.modules,
                 limits=entitlements.limits,
             )
@@ -123,13 +137,32 @@ def get_client_me(
         membership=ClientMeMembership(roles=normalized_roles, status="active"),
         subscription=subscription_payload,
         entitlements=ClientMeEntitlements(
+            features=entitlements_snapshot.entitlements.get("features") if entitlements_snapshot else None,
+            modules=entitlements_snapshot.entitlements.get("modules") if entitlements_snapshot else None,
             enabled_modules=entitlements_output.enabled_modules,
             permissions=entitlements_output.permissions,
-            limits=entitlements_output.limits,
+            limits=entitlements_snapshot.entitlements.get("limits")
+            if entitlements_snapshot
+            else entitlements_output.limits,
             org_status=entitlements_output.org_status,
         ),
+        entitlements_snapshot=entitlements_snapshot.entitlements if entitlements_snapshot else None,
+        entitlements_hash=entitlements_hash,
+        entitlements_computed_at=entitlements_computed_at,
         org_status=org_status,
     )
+
+
+@router.get("/entitlements")
+def get_client_entitlements(
+    token: dict = Depends(require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    snapshot = get_org_entitlements_snapshot(db, org_id=int(client_id))
+    return snapshot.entitlements
 
 
 @router.patch("/account", response_model=ClientMeUser)
