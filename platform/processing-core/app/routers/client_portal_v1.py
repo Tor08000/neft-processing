@@ -12,10 +12,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
-from sqlalchemy import Date, String, and_, cast, desc, func, or_
+from sqlalchemy import Date, MetaData, String, Table, and_, cast, desc, func, or_, select
 from sqlalchemy.orm import Query, Session
 
 from app.db import get_db
+from app.db.schema import DB_SCHEMA
 from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
@@ -156,6 +157,12 @@ from app.schemas.helpdesk import (
     HelpdeskTicketLinkResponse,
 )
 from app.schemas.subscriptions import SubscriptionPlanOut
+from app.schemas.subscription_invoices import (
+    SubscriptionInvoiceDetailOut,
+    SubscriptionInvoiceLineOut,
+    SubscriptionInvoiceListResponse,
+    SubscriptionInvoiceOut,
+)
 from app.schemas.user_notification_preferences import (
     UserNotificationEventType,
     UserNotificationPreferenceOut,
@@ -391,6 +398,20 @@ def _normalize_roles(token: dict) -> list[str]:
     return [str(item).upper() for item in roles]
 
 
+def _table(db: Session, name: str) -> Table:
+    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+
+
+def _table_exists(db: Session, name: str) -> bool:
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(db.get_bind())
+        return inspector.has_table(name, schema=DB_SCHEMA)
+    except Exception:
+        return False
+
+
 def _resolve_dashboard_role(token: dict) -> str:
     roles = set(_normalize_roles(token))
     if roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}):
@@ -402,6 +423,23 @@ def _resolve_dashboard_role(token: dict) -> str:
     if roles.intersection({"CLIENT_USER", "DRIVER"}):
         return "DRIVER"
     return "OWNER"
+
+
+def _ensure_invoice_access(token: dict) -> None:
+    roles = set(_normalize_roles(token))
+    allowed_roles = {"CLIENT_OWNER", "CLIENT_ACCOUNTANT", "OWNER", "ACCOUNTANT"}
+    if not roles.intersection(allowed_roles):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
+def _resolve_org_id(token: dict) -> int:
+    org_id = token.get("client_id") or token.get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=403, detail="missing_org")
+    try:
+        return int(org_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=403, detail="invalid_org")
 
 
 def _notification_preferences_from_db(
@@ -5531,6 +5569,138 @@ def update_user_roles(
         action="update_roles",
     )
     return {"status": "ok", "user_id": user_id, "roles": roles}
+
+
+@router.get("/invoices", response_model=SubscriptionInvoiceListResponse)
+def list_subscription_invoices(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SubscriptionInvoiceListResponse:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+
+    if not _table_exists(db, "billing_invoices"):
+        return SubscriptionInvoiceListResponse(items=[], total=0)
+
+    billing_invoices = _table(db, "billing_invoices")
+    rows = (
+        db.execute(
+            select(billing_invoices)
+            .where(billing_invoices.c.org_id == org_id)
+            .order_by(desc(billing_invoices.c.issued_at).nullslast(), desc(billing_invoices.c.created_at))
+        )
+        .mappings()
+        .all()
+    )
+    items = [
+        SubscriptionInvoiceOut(
+            id=row["id"],
+            org_id=row["org_id"],
+            subscription_id=row.get("subscription_id"),
+            period_start=row["period_start"],
+            period_end=row["period_end"],
+            status=row["status"],
+            issued_at=row.get("issued_at"),
+            due_at=row.get("due_at"),
+            paid_at=row.get("paid_at"),
+            total_amount=row.get("total_amount"),
+            currency=row.get("currency"),
+            pdf_object_key=row.get("pdf_object_key"),
+            download_url=f"/api/core/client/invoices/{row['id']}/download",
+        )
+        for row in rows
+    ]
+    return SubscriptionInvoiceListResponse(items=items, total=len(items))
+
+
+@router.get("/invoices/{invoice_id}", response_model=SubscriptionInvoiceDetailOut)
+def get_subscription_invoice(
+    invoice_id: int,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> SubscriptionInvoiceDetailOut:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    if not _table_exists(db, "billing_invoices"):
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    billing_invoices = _table(db, "billing_invoices")
+    invoice = (
+        db.execute(select(billing_invoices).where(billing_invoices.c.id == invoice_id))
+        .mappings()
+        .first()
+    )
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    lines: list[SubscriptionInvoiceLineOut] = []
+    if _table_exists(db, "billing_invoice_lines"):
+        billing_invoice_lines = _table(db, "billing_invoice_lines")
+        line_rows = (
+            db.execute(select(billing_invoice_lines).where(billing_invoice_lines.c.invoice_id == invoice_id))
+            .mappings()
+            .all()
+        )
+        lines = [
+            SubscriptionInvoiceLineOut(
+                line_type=line.get("line_type"),
+                ref_code=line.get("ref_code"),
+                description=line.get("description"),
+                quantity=line.get("quantity"),
+                unit_price=line.get("unit_price"),
+                amount=line.get("amount"),
+            )
+            for line in line_rows
+        ]
+
+    return SubscriptionInvoiceDetailOut(
+        id=invoice["id"],
+        org_id=invoice["org_id"],
+        subscription_id=invoice.get("subscription_id"),
+        period_start=invoice["period_start"],
+        period_end=invoice["period_end"],
+        status=invoice["status"],
+        issued_at=invoice.get("issued_at"),
+        due_at=invoice.get("due_at"),
+        paid_at=invoice.get("paid_at"),
+        total_amount=invoice.get("total_amount"),
+        currency=invoice.get("currency"),
+        pdf_object_key=invoice.get("pdf_object_key"),
+        download_url=f"/api/core/client/invoices/{invoice['id']}/download",
+        lines=lines,
+    )
+
+
+@router.get("/invoices/{invoice_id}/download")
+def download_subscription_invoice(
+    invoice_id: int,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    if not _table_exists(db, "billing_invoices"):
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    billing_invoices = _table(db, "billing_invoices")
+    invoice = (
+        db.execute(select(billing_invoices).where(billing_invoices.c.id == invoice_id))
+        .mappings()
+        .first()
+    )
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    if not invoice.get("pdf_object_key"):
+        raise HTTPException(status_code=404, detail="pdf_not_found")
+
+    storage = S3Storage()
+    pdf_bytes = storage.get_bytes(invoice["pdf_object_key"])
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="pdf_not_found")
+
+    filename = f"invoice-{invoice_id}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 @router.get("/docs/list", response_model=ClientDocsListResponse)

@@ -60,6 +60,11 @@ except Exception:
     pass
 
 try:  # pragma: no cover - optional task modules
+    import app.tasks.subscription_billing  # noqa: F401
+except Exception:
+    pass
+
+try:  # pragma: no cover - optional task modules
     import app.tasks.email_outbox  # noqa: F401
 except Exception:
     pass

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -38,6 +38,11 @@ from app.schemas.admin.billing import (
     TariffPriceRead,
     BillingJobRunListResponse,
 )
+from app.schemas.subscription_invoices import (
+    SubscriptionInvoiceGenerateRequest,
+    SubscriptionInvoiceGenerateResponse,
+    SubscriptionInvoiceStatusResponse,
+)
 from app.security.rbac.guard import require_permission
 from app.schemas.reports import BillingSummaryItem
 from app.schemas.settlement_allocations import SettlementSummaryItem, SettlementSummaryResponse
@@ -58,6 +63,11 @@ from app.services.billing_task_links import BillingTaskLinkService
 from app.services.billing_service import (
     generate_invoices_for_period,
     get_billing_summaries,
+)
+from app.services.subscription_billing import (
+    generate_invoice_pdf as generate_subscription_invoice_pdf,
+    generate_invoices_for_period as generate_subscription_invoices_for_period,
+    update_invoice_status as update_subscription_invoice_status,
 )
 from app.services.billing import finalize_billing_day, run_billing_daily
 from app.services.invoicing import run_invoice_monthly
@@ -80,6 +90,82 @@ from neft_shared.logging_setup import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["admin"], dependencies=[Depends(require_permission("admin:billing:*"))])
+
+
+@router.post("/generate", response_model=SubscriptionInvoiceGenerateResponse)
+def admin_generate_subscription_invoices(
+    body: SubscriptionInvoiceGenerateRequest,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> SubscriptionInvoiceGenerateResponse:
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    target_date = body.target_date or datetime.now(timezone.utc).date()
+    invoice_ids = generate_subscription_invoices_for_period(
+        db,
+        target_date=target_date,
+        org_id=body.org_id,
+        subscription_id=body.subscription_id,
+        request_ctx=request_ctx,
+    )
+    for invoice_id in invoice_ids:
+        try:
+            generate_subscription_invoice_pdf(db, invoice_id=invoice_id)
+        except Exception as exc:  # noqa: BLE001 - PDF should not block invoice generation
+            logger.warning(
+                "subscription_invoice.pdf_failed",
+                extra={"invoice_id": invoice_id, "error": str(exc)},
+            )
+    db.commit()
+    return SubscriptionInvoiceGenerateResponse(invoice_ids=invoice_ids, created=len(invoice_ids))
+
+
+@router.post("/invoices/{invoice_id}/mark-paid", response_model=SubscriptionInvoiceStatusResponse)
+def admin_mark_subscription_invoice_paid(
+    invoice_id: int,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> SubscriptionInvoiceStatusResponse:
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    invoice = update_subscription_invoice_status(
+        db,
+        invoice_id=invoice_id,
+        status="PAID",
+        request_ctx=request_ctx,
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    db.commit()
+    return SubscriptionInvoiceStatusResponse(
+        id=invoice["id"],
+        status=invoice["status"],
+        paid_at=invoice.get("paid_at"),
+    )
+
+
+@router.post("/invoices/{invoice_id}/void", response_model=SubscriptionInvoiceStatusResponse)
+def admin_void_subscription_invoice(
+    invoice_id: int,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> SubscriptionInvoiceStatusResponse:
+    request_ctx = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    invoice = update_subscription_invoice_status(
+        db,
+        invoice_id=invoice_id,
+        status="VOID",
+        request_ctx=request_ctx,
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    db.commit()
+    return SubscriptionInvoiceStatusResponse(
+        id=invoice["id"],
+        status=invoice["status"],
+        paid_at=invoice.get("paid_at"),
+    )
 
 
 @router.get("/settlement-summary", response_model=SettlementSummaryResponse)
