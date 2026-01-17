@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models.client import Client
 from app.models.client_notification import ClientNotification, ClientNotificationSeverity
-from app.services.notifications.email_sender import ConsoleEmailSender, EmailSender, SmtpEmailSender
+from app.services.email_service import build_idempotency_key, enqueue_templated_email
+from app.services.email_templates import build_portal_url
 
 logger = logging.getLogger(__name__)
 
 ADMIN_TARGET_ROLES = ["CLIENT_OWNER", "CLIENT_ADMIN"]
+
+EMAIL_TEMPLATE_MAP = {
+    "export_ready": "export_ready",
+    "export_failed": "export_failed",
+    "scheduled_report_ready": "scheduled_report_ready",
+    "support_ticket_commented": "support_ticket_commented",
+    "support_sla_first_response_breached": "support_sla_first_response_breached",
+    "support_sla_resolution_breached": "support_sla_resolution_breached",
+}
 
 
 def normalize_roles(token: dict) -> list[str]:
@@ -31,23 +40,44 @@ def resolve_client_email(db: Session, org_id: str) -> str | None:
     return None
 
 
-def _pick_email_sender() -> EmailSender:
-    smtp_sender = SmtpEmailSender()
-    if smtp_sender.host:
-        return smtp_sender
-    return ConsoleEmailSender()
-
-
-def send_notification_email(*, to_email: str, title: str, body: str, link: str | None) -> str | None:
-    sender = _pick_email_sender()
-    message = body
-    if link:
-        message = f"{body}\n\nОткрыть: {link}"
+def send_notification_email(
+    *,
+    db: Session,
+    to_email: str,
+    title: str,
+    body: str,
+    link: str | None,
+    event_type: str,
+    org_id: str,
+    notification_id: str | None,
+    entity_id: str | None,
+    idempotency_key: str | None = None,
+) -> None:
+    template_key = EMAIL_TEMPLATE_MAP.get(event_type)
+    if not template_key:
+        return
+    resolved_entity_id = entity_id or notification_id
+    if not resolved_entity_id:
+        logger.warning("client_notification_email_missing_entity", extra={"event_type": event_type, "org_id": org_id})
+        return
+    resolved_key = idempotency_key or build_idempotency_key(event_type, org_id, resolved_entity_id)
+    portal_link = build_portal_url(link)
     try:
-        return sender.send(to=to_email, subject=title, html=None, text=message)
+        enqueue_templated_email(
+            db,
+            template_key=template_key,
+            to=[to_email],
+            idempotency_key=resolved_key,
+            org_id=org_id,
+            user_id=None,
+            context={"body": body, "link": portal_link, "title": title},
+            tags={"client_notification_id": notification_id} if notification_id else None,
+        )
     except Exception:  # noqa: BLE001 - log and continue
-        logger.exception("client_notification_email_failed", extra={"email": to_email, "title": title})
-        return None
+        logger.exception(
+            "client_notification_email_failed",
+            extra={"email": to_email, "title": title, "event_type": event_type},
+        )
 
 
 def create_notification(
@@ -65,6 +95,7 @@ def create_notification(
     entity_id: str | None = None,
     meta_json: dict[str, object] | None = None,
     email_to: str | None = None,
+    email_idempotency_key: str | None = None,
 ) -> ClientNotification:
     notification = ClientNotification(
         org_id=org_id,
@@ -83,10 +114,18 @@ def create_notification(
     db.flush()
 
     if email_to:
-        message_id = send_notification_email(to_email=email_to, title=title, body=body, link=link)
-        if message_id is not None:
-            notification.delivered_email_at = datetime.now(timezone.utc)
-            db.add(notification)
+        send_notification_email(
+            db=db,
+            to_email=email_to,
+            title=title,
+            body=body,
+            link=link,
+            event_type=event_type,
+            org_id=str(org_id),
+            notification_id=str(notification.id),
+            entity_id=entity_id,
+            idempotency_key=email_idempotency_key,
+        )
     return notification
 
 

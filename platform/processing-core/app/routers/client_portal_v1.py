@@ -113,6 +113,8 @@ from app.services.documents_storage import DocumentsStorage
 from app.services.audit_service import AuditService, request_context_from_request
 from app.models.audit_log import AuditLog, AuditVisibility
 from app.celery_client import celery_client
+from app.services.email_service import build_idempotency_key, enqueue_templated_email
+from app.services.email_templates import build_portal_url
 from app.services.entitlements_service import assert_module_enabled
 from app.services.reports_render import ExportRenderValidationError, normalize_filters
 from app.services.report_schedules import (
@@ -280,6 +282,24 @@ def _notification_user_email(token: dict) -> str | None:
     return None
 
 
+def _resolve_employee_email(db: Session, *, org_id: str, user_id: str) -> str | None:
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.client_id == org_id)
+        .filter(ClientEmployee.id == user_id)
+        .one_or_none()
+    )
+    if employee and employee.email:
+        return employee.email
+    return None
+
+
+def _email_idempotency_key(*, event_type: str, org_id: str, user_id: str, request_id: str | None) -> str | None:
+    if not request_id:
+        return build_idempotency_key(event_type, org_id, user_id, uuid4().hex)
+    return build_idempotency_key(event_type, org_id, user_id, request_id)
+
+
 def _notify_support_ticket(
     db: Session,
     *,
@@ -288,6 +308,8 @@ def _notify_support_ticket(
     title: str,
     body: str,
     target_user_id: str | None,
+    email_to: str | None = None,
+    email_idempotency_key: str | None = None,
 ) -> None:
     link = f"/client/support/{ticket.id}"
     create_notification(
@@ -303,6 +325,52 @@ def _notify_support_ticket(
         entity_type="support_ticket",
         entity_id=str(ticket.id),
     )
+    if event_type == "support_ticket_commented" and email_to:
+        enqueue_templated_email(
+            db,
+            template_key="support_ticket_commented",
+            to=[email_to],
+            idempotency_key=email_idempotency_key
+            or build_idempotency_key(event_type, str(ticket.org_id), str(ticket.id)),
+            org_id=str(ticket.org_id),
+            user_id=target_user_id,
+            context={
+                "body": body,
+                "link": build_portal_url(link),
+                "title": title,
+            },
+        )
+
+
+def _notify_support_sla_breaches(db: Session, *, ticket: SupportTicket, events: list[str]) -> None:
+    if not events:
+        return
+    email_to = _resolve_employee_email(db, org_id=str(ticket.org_id), user_id=str(ticket.created_by_user_id))
+    if not email_to:
+        return
+    link = build_portal_url(f"/client/support/{ticket.id}")
+    template_map = {
+        "support_sla_first_response_breached": "support_sla_first_response_breached",
+        "support_sla_resolution_breached": "support_sla_resolution_breached",
+    }
+    for event_type in events:
+        template_key = template_map.get(event_type)
+        if not template_key:
+            continue
+        body = "Нарушен SLA по тикету поддержки." if "resolution" in event_type else "Нарушен SLA первого ответа."
+        enqueue_templated_email(
+            db,
+            template_key=template_key,
+            to=[email_to],
+            idempotency_key=build_idempotency_key(event_type, str(ticket.org_id), str(ticket.id), event_type),
+            org_id=str(ticket.org_id),
+            user_id=str(ticket.created_by_user_id),
+            context={
+                "body": body,
+                "link": link,
+                "title": ticket.subject,
+            },
+        )
 
 
 def _notify_export_ready(
@@ -314,6 +382,7 @@ def _notify_export_ready(
     body: str,
     email_to: str | None,
     export_format: str = "CSV",
+    email_idempotency_key: str | None = None,
 ) -> None:
     create_notification(
         db,
@@ -325,7 +394,9 @@ def _notify_export_ready(
         link="/client/reports",
         target_user_id=user_id,
         entity_type="report_export",
+        entity_id=user_id,
         email_to=email_to,
+        email_idempotency_key=email_idempotency_key,
     )
 
 
@@ -337,6 +408,7 @@ def _notify_export_failed(
     title: str,
     body: str,
     email_to: str | None,
+    email_idempotency_key: str | None = None,
 ) -> None:
     create_notification(
         db,
@@ -348,7 +420,9 @@ def _notify_export_failed(
         link="/client/reports",
         target_user_id=user_id,
         entity_type="report_export",
+        entity_id=user_id,
         email_to=email_to,
+        email_idempotency_key=email_idempotency_key,
     )
 
 
@@ -1581,7 +1655,10 @@ def list_support_tickets(
     audit_service = AuditService(db)
     updated = False
     for ticket in rows:
-        updated = refresh_sla_breaches(ticket, now=now, audit=audit_service, request_ctx=request_ctx) or updated
+        events = refresh_sla_breaches(ticket, now=now, audit=audit_service, request_ctx=request_ctx)
+        if events:
+            _notify_support_sla_breaches(db, ticket=ticket, events=events)
+            updated = True
     if updated:
         db.flush()
     next_cursor = str(offset + limit) if has_more else None
@@ -1599,7 +1676,9 @@ def get_support_ticket(
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     now = datetime.now(timezone.utc)
     request_ctx = request_context_from_request(request, token=token)
-    if refresh_sla_breaches(ticket, now=now, audit=AuditService(db), request_ctx=request_ctx):
+    events = refresh_sla_breaches(ticket, now=now, audit=AuditService(db), request_ctx=request_ctx)
+    if events:
+        _notify_support_sla_breaches(db, ticket=ticket, events=events)
         db.flush()
     comments = (
         db.query(SupportTicketComment)
@@ -1642,6 +1721,7 @@ def add_support_ticket_comment(
         request_ctx=request_ctx,
     )
     db.refresh(ticket)
+    email_to = _resolve_employee_email(db, org_id=str(ticket.org_id), user_id=str(ticket.created_by_user_id))
     _notify_support_ticket(
         db,
         ticket=ticket,
@@ -1649,6 +1729,13 @@ def add_support_ticket_comment(
         title="Новый комментарий",
         body=f"В тикете \"{ticket.subject}\" появился комментарий.",
         target_user_id=str(ticket.created_by_user_id),
+        email_to=email_to,
+        email_idempotency_key=build_idempotency_key(
+            "support_ticket_commented",
+            str(ticket.org_id),
+            str(ticket.id),
+            str(comment.id),
+        ),
     )
     comments = (
         db.query(SupportTicketComment)
@@ -2712,6 +2799,7 @@ def export_cards_report(
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_FLEET_MANAGER"})
     user_id = _support_ticket_user_id(token)
     email_to = _notification_user_email(token)
+    request_id = request.headers.get("x-request-id")
 
     try:
         start, end = _date_range_bounds(date_from, date_to)
@@ -2791,6 +2879,12 @@ def export_cards_report(
             title="Ошибка экспорта",
             body="Не удалось сформировать отчёт по картам.",
             email_to=email_to,
+            email_idempotency_key=_email_idempotency_key(
+                event_type="export_failed",
+                org_id=str(client.id),
+                user_id=user_id,
+                request_id=request_id,
+            ),
         )
         raise
 
@@ -2802,6 +2896,12 @@ def export_cards_report(
         body="Выгрузка по картам готова к скачиванию",
         email_to=email_to,
         export_format="CSV",
+        email_idempotency_key=_email_idempotency_key(
+            event_type="export_ready",
+            org_id=str(client.id),
+            user_id=user_id,
+            request_id=request_id,
+        ),
     )
     return _csv_response(
         "cards_export.csv",
@@ -2827,6 +2927,7 @@ def export_users_report(
     _ensure_report_access(token, {"CLIENT_OWNER", "CLIENT_ADMIN", "CLIENT_ACCOUNTANT"})
     user_id = _support_ticket_user_id(token)
     email_to = _notification_user_email(token)
+    request_id = request.headers.get("x-request-id")
 
     try:
         start, end = _date_range_bounds(date_from, date_to)
@@ -2907,6 +3008,12 @@ def export_users_report(
             title="Ошибка экспорта",
             body="Не удалось сформировать отчёт по пользователям.",
             email_to=email_to,
+            email_idempotency_key=_email_idempotency_key(
+                event_type="export_failed",
+                org_id=str(client.id),
+                user_id=user_id,
+                request_id=request_id,
+            ),
         )
         raise
 
@@ -2918,6 +3025,12 @@ def export_users_report(
         body="Выгрузка по пользователям готова к скачиванию",
         email_to=email_to,
         export_format="CSV",
+        email_idempotency_key=_email_idempotency_key(
+            event_type="export_ready",
+            org_id=str(client.id),
+            user_id=user_id,
+            request_id=request_id,
+        ),
     )
     return _csv_response(
         "users_export.csv",
@@ -2948,6 +3061,7 @@ def export_transactions_report(
         raise HTTPException(status_code=422, detail="date_range_required")
     user_id = _support_ticket_user_id(token)
     email_to = _notification_user_email(token)
+    request_id = request.headers.get("x-request-id")
 
     try:
         start, end = _date_range_bounds(date_from, date_to)
@@ -3019,6 +3133,12 @@ def export_transactions_report(
             title="Ошибка экспорта",
             body="Не удалось сформировать отчёт по транзакциям.",
             email_to=email_to,
+            email_idempotency_key=_email_idempotency_key(
+                event_type="export_failed",
+                org_id=str(client_id),
+                user_id=user_id,
+                request_id=request_id,
+            ),
         )
         raise
 
@@ -3030,6 +3150,12 @@ def export_transactions_report(
         body="Выгрузка по транзакциям готова к скачиванию",
         email_to=email_to,
         export_format="CSV",
+        email_idempotency_key=_email_idempotency_key(
+            event_type="export_ready",
+            org_id=str(client_id),
+            user_id=user_id,
+            request_id=request_id,
+        ),
     )
     return _csv_response(
         "transactions_export.csv",
@@ -3067,6 +3193,7 @@ def export_documents_report(
     assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
     user_id = _support_ticket_user_id(token)
     email_to = _notification_user_email(token)
+    request_id = request.headers.get("x-request-id")
 
     try:
         query = db.query(Document).filter(Document.client_id == str(client_id))
@@ -3155,6 +3282,12 @@ def export_documents_report(
             title="Ошибка экспорта",
             body="Не удалось сформировать отчёт по документам.",
             email_to=email_to,
+            email_idempotency_key=_email_idempotency_key(
+                event_type="export_failed",
+                org_id=str(client_id),
+                user_id=user_id,
+                request_id=request_id,
+            ),
         )
         raise
 
@@ -3166,6 +3299,12 @@ def export_documents_report(
         body="Выгрузка по документам готова к скачиванию",
         email_to=email_to,
         export_format="CSV",
+        email_idempotency_key=_email_idempotency_key(
+            event_type="export_ready",
+            org_id=str(client_id),
+            user_id=user_id,
+            request_id=request_id,
+        ),
     )
     return _csv_response(
         "documents_export.csv",

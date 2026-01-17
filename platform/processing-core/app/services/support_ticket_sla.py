@@ -102,8 +102,8 @@ def refresh_sla_breaches(
     now: datetime,
     audit: AuditService,
     request_ctx: RequestContext | None,
-) -> bool:
-    changed = False
+) -> list[str]:
+    breached_events: list[str] = []
     if (
         ticket.sla_first_response_status == SupportTicketSlaStatus.PENDING
         and ticket.first_response_due_at
@@ -111,7 +111,7 @@ def refresh_sla_breaches(
     ):
         ticket.sla_first_response_status = SupportTicketSlaStatus.BREACHED
         _audit_breach(audit, event_type=FIRST_RESPONSE_BREACH_EVENT, ticket=ticket, request_ctx=request_ctx)
-        changed = True
+        breached_events.append(FIRST_RESPONSE_BREACH_EVENT)
     if (
         ticket.sla_resolution_status == SupportTicketSlaStatus.PENDING
         and ticket.resolution_due_at
@@ -119,8 +119,8 @@ def refresh_sla_breaches(
     ):
         ticket.sla_resolution_status = SupportTicketSlaStatus.BREACHED
         _audit_breach(audit, event_type=RESOLUTION_BREACH_EVENT, ticket=ticket, request_ctx=request_ctx)
-        changed = True
-    return changed
+        breached_events.append(RESOLUTION_BREACH_EVENT)
+    return breached_events
 
 
 __all__ = [
