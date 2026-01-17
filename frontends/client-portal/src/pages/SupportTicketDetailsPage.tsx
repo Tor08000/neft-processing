@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/http";
+import { fetchHelpdeskTicketLink } from "../api/helpdesk";
 import { closeSupportTicket, createSupportTicketComment, fetchSupportTicket } from "../api/supportTickets";
 import { useAuth } from "../auth/AuthContext";
 import { AppEmptyState, AppLoadingState } from "../components/states";
 import { StatusPage } from "../components/StatusPage";
 import { ForbiddenPage } from "./ForbiddenPage";
 import type { SupportTicketDetail } from "../types/supportTickets";
+import type { HelpdeskTicketLink } from "../types/helpdesk";
 import { formatDateTime } from "../utils/format";
 import { hasAnyRole } from "../utils/roles";
 import {
@@ -37,6 +39,7 @@ export function SupportTicketDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [ticket, setTicket] = useState<SupportTicketDetail | null>(null);
+  const [helpdeskLink, setHelpdeskLink] = useState<HelpdeskTicketLink | null>(null);
   const [comment, setComment] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,6 +85,16 @@ export function SupportTicketDetailsPage() {
       .catch(handleError)
       .finally(() => setIsLoading(false));
   }, [id, user, handleError]);
+
+  useEffect(() => {
+    if (!id || !user) return;
+    fetchHelpdeskTicketLink(id, user)
+      .then((response) => setHelpdeskLink(response.link ?? null))
+      .catch((err) => {
+        console.error("Не удалось загрузить helpdesk ссылку", err);
+        setHelpdeskLink(null);
+      });
+  }, [id, user]);
 
   const handleComment = async () => {
     if (!id || !user || !comment.trim()) return;
@@ -170,6 +183,24 @@ export function SupportTicketDetailsPage() {
           <div>
             <div className="label">Обновлено</div>
             <div>{formatDateTime(ticket.updated_at)}</div>
+          </div>
+          <div>
+            <div className="label">Зеркало в Helpdesk</div>
+            {helpdeskLink ? (
+              helpdeskLink.status === "LINKED" ? (
+                helpdeskLink.external_url ? (
+                  <a href={helpdeskLink.external_url} target="_blank" rel="noreferrer">
+                    Открыть тикет
+                  </a>
+                ) : (
+                  <div>{helpdeskLink.external_ticket_id ?? "Связано"}</div>
+                )
+              ) : (
+                <span className="badge error">Ошибка синхронизации</span>
+              )
+            ) : (
+              <div>—</div>
+            )}
           </div>
         </div>
         <div className="card__section">

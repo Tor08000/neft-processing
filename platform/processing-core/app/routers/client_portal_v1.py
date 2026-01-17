@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from hashlib import sha256
@@ -42,6 +43,12 @@ from app.models.fuel import (
     FuelTransactionStatus,
 )
 from app.models.operation import Operation
+from app.models.helpdesk import (
+    HelpdeskIntegrationStatus,
+    HelpdeskOutboxEventType,
+    HelpdeskOutboxStatus,
+    HelpdeskTicketLink,
+)
 from app.models.support_ticket import (
     SupportTicket,
     SupportTicketAttachment,
@@ -118,6 +125,14 @@ from app.schemas.support_tickets import (
     SupportTicketListResponse,
     SupportTicketOut,
 )
+from app.schemas.helpdesk import (
+    HelpdeskIntegrationOut,
+    HelpdeskIntegrationPatch,
+    HelpdeskIntegrationResponse,
+    HelpdeskIntegrationUpsert,
+    HelpdeskTicketLinkOut,
+    HelpdeskTicketLinkResponse,
+)
 from app.schemas.subscriptions import SubscriptionPlanOut
 from app.schemas.user_notification_preferences import (
     UserNotificationEventType,
@@ -164,10 +179,25 @@ from app.services.support_ticket_sla import (
     refresh_sla_breaches,
     sla_remaining_minutes,
 )
+from app.services.helpdesk_service import (
+    build_close_payload,
+    build_comment_payload,
+    build_idempotency_for_close,
+    build_idempotency_for_comment,
+    build_idempotency_for_ticket,
+    build_ticket_payload,
+    enqueue_helpdesk_event,
+    get_active_integration,
+    get_integration,
+    get_integration_last_error,
+    integration_payload_from_config,
+    schedule_helpdesk_outbox,
+)
 from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 _CONTRACT_TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "assets" / "client_onboarding_contract_v1.pdf"
 _DOC_TYPE_ALIASES = {
@@ -613,6 +643,77 @@ def _serialize_support_ticket_attachment(attachment: SupportTicketAttachment) ->
     )
 
 
+def _serialize_helpdesk_integration(
+    integration: HelpdeskIntegration,
+    *,
+    last_error: str | None,
+) -> HelpdeskIntegrationOut:
+    payload = integration_payload_from_config(integration.config_json or {})
+    return HelpdeskIntegrationOut(
+        id=str(integration.id),
+        org_id=str(integration.org_id),
+        provider=integration.provider,
+        status=integration.status,
+        base_url=payload.get("base_url"),
+        project_id=payload.get("project_id"),
+        brand_id=payload.get("brand_id"),
+        last_error=last_error,
+        created_at=integration.created_at,
+        updated_at=integration.updated_at,
+    )
+
+
+def _serialize_helpdesk_ticket_link(link: HelpdeskTicketLink) -> HelpdeskTicketLinkOut:
+    return HelpdeskTicketLinkOut(
+        id=str(link.id),
+        org_id=str(link.org_id),
+        internal_ticket_id=str(link.internal_ticket_id),
+        provider=link.provider,
+        external_ticket_id=link.external_ticket_id,
+        external_url=link.external_url,
+        status=link.status,
+        last_sync_at=link.last_sync_at,
+    )
+
+
+def _enqueue_helpdesk_outbox(
+    db: Session,
+    *,
+    ticket: SupportTicket,
+    event_type: HelpdeskOutboxEventType,
+    payload: dict,
+    idempotency_key: str,
+) -> HelpdeskOutbox | None:
+    integration = get_active_integration(db, org_id=str(ticket.org_id))
+    if not integration:
+        return None
+    outbox = enqueue_helpdesk_event(
+        db,
+        org_id=str(ticket.org_id),
+        provider=integration.provider,
+        internal_ticket_id=str(ticket.id),
+        event_type=event_type,
+        payload=payload,
+        idempotency_key=idempotency_key,
+    )
+    db.flush()
+    try:
+        schedule_helpdesk_outbox(outbox)
+    except Exception as exc:  # noqa: BLE001
+        outbox.status = HelpdeskOutboxStatus.FAILED
+        outbox.last_error = "celery_not_available"
+        outbox.next_retry_at = None
+        logger.warning(
+            "helpdesk_outbox.enqueue_failed",
+            extra={
+                "outbox_id": str(outbox.id),
+                "org_id": str(ticket.org_id),
+                "error": str(exc),
+            },
+        )
+    return outbox
+
+
 def _load_support_ticket(db: Session, *, ticket_id: str, token: dict) -> SupportTicket:
     org_id = _support_ticket_org_id(token)
     user_id = _support_ticket_user_id(token)
@@ -629,6 +730,14 @@ def _validate_support_attachment(*, size: int, content_type: str) -> None:
         raise HTTPException(status_code=413, detail="attachment_too_large")
     if content_type.lower() not in SUPPORT_ATTACHMENT_ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="attachment_type_not_allowed")
+
+
+def _validate_helpdesk_config(provider: str, config: dict) -> None:
+    if provider == "zendesk":
+        if not config.get("base_url"):
+            raise HTTPException(status_code=422, detail="helpdesk_base_url_required")
+        if not config.get("api_email") or not config.get("api_token"):
+            raise HTTPException(status_code=422, detail="helpdesk_credentials_required")
 
 
 def _ensure_report_access(token: dict, allowed_roles: set[str]) -> None:
@@ -1795,6 +1904,149 @@ def download_export_job(
     return RedirectResponse(url=signed_url)
 
 
+@router.get("/helpdesk/integration", response_model=HelpdeskIntegrationResponse)
+def get_helpdesk_integration(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> HelpdeskIntegrationResponse:
+    if not _is_support_ticket_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    org_id = _support_ticket_org_id(token)
+    integration = get_integration(db, org_id=org_id)
+    if not integration:
+        return HelpdeskIntegrationResponse(integration=None)
+    last_error = get_integration_last_error(db, org_id=org_id)
+    return HelpdeskIntegrationResponse(integration=_serialize_helpdesk_integration(integration, last_error=last_error))
+
+
+@router.post("/helpdesk/integration", response_model=HelpdeskIntegrationResponse)
+def enable_helpdesk_integration(
+    payload: HelpdeskIntegrationUpsert,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> HelpdeskIntegrationResponse:
+    if not _is_support_ticket_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    org_id = _support_ticket_org_id(token)
+    config = payload.config.model_dump(exclude_none=True)
+    if "base_url" in config:
+        config["base_url"] = str(config["base_url"]).strip().rstrip("/")
+    _validate_helpdesk_config(payload.provider.value, config)
+    integration = upsert_integration(
+        db,
+        org_id=org_id,
+        provider=payload.provider,
+        config=config,
+        status=HelpdeskIntegrationStatus.ACTIVE,
+    )
+    db.add(integration)
+    db.commit()
+    db.refresh(integration)
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="helpdesk_integration_enabled",
+        entity_type="helpdesk_integration",
+        entity_id=str(integration.id),
+        action="helpdesk_integration_enabled",
+        after={"provider": integration.provider.value, "status": integration.status.value},
+    )
+    last_error = get_integration_last_error(db, org_id=org_id)
+    return HelpdeskIntegrationResponse(integration=_serialize_helpdesk_integration(integration, last_error=last_error))
+
+
+@router.patch("/helpdesk/integration", response_model=HelpdeskIntegrationResponse)
+def update_helpdesk_integration(
+    payload: HelpdeskIntegrationPatch,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> HelpdeskIntegrationResponse:
+    if not _is_support_ticket_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    org_id = _support_ticket_org_id(token)
+    integration = get_integration(db, org_id=org_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="integration_not_found")
+    if payload.provider:
+        integration.provider = payload.provider
+    if payload.config:
+        existing = integration.config_json or {}
+        updates = payload.config.model_dump(exclude_none=True)
+        if "base_url" in updates:
+            updates["base_url"] = str(updates["base_url"]).strip().rstrip("/")
+        existing.update(updates)
+        integration.config_json = existing
+    _validate_helpdesk_config(integration.provider.value, integration.config_json or {})
+    integration.updated_at = datetime.now(timezone.utc)
+    db.add(integration)
+    db.commit()
+    db.refresh(integration)
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="helpdesk_integration_updated",
+        entity_type="helpdesk_integration",
+        entity_id=str(integration.id),
+        action="helpdesk_integration_updated",
+        after={"provider": integration.provider.value, "status": integration.status.value},
+    )
+    last_error = get_integration_last_error(db, org_id=org_id)
+    return HelpdeskIntegrationResponse(integration=_serialize_helpdesk_integration(integration, last_error=last_error))
+
+
+@router.post("/helpdesk/integration/disable", response_model=HelpdeskIntegrationResponse)
+def disable_helpdesk_integration(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> HelpdeskIntegrationResponse:
+    if not _is_support_ticket_admin(token):
+        raise HTTPException(status_code=403, detail="forbidden")
+    org_id = _support_ticket_org_id(token)
+    integration = get_integration(db, org_id=org_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="integration_not_found")
+    integration.status = HelpdeskIntegrationStatus.DISABLED
+    integration.updated_at = datetime.now(timezone.utc)
+    db.add(integration)
+    db.commit()
+    db.refresh(integration)
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="helpdesk_integration_disabled",
+        entity_type="helpdesk_integration",
+        entity_id=str(integration.id),
+        action="helpdesk_integration_disabled",
+        after={"provider": integration.provider.value, "status": integration.status.value},
+    )
+    last_error = get_integration_last_error(db, org_id=org_id)
+    return HelpdeskIntegrationResponse(integration=_serialize_helpdesk_integration(integration, last_error=last_error))
+
+
+@router.get("/helpdesk/tickets/{ticket_id}/link", response_model=HelpdeskTicketLinkResponse)
+def get_helpdesk_ticket_link(
+    ticket_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> HelpdeskTicketLinkResponse:
+    ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
+    link = (
+        db.query(HelpdeskTicketLink)
+        .filter(HelpdeskTicketLink.internal_ticket_id == str(ticket.id))
+        .filter(HelpdeskTicketLink.org_id == str(ticket.org_id))
+        .one_or_none()
+    )
+    if not link:
+        return HelpdeskTicketLinkResponse(link=None)
+    return HelpdeskTicketLinkResponse(link=_serialize_helpdesk_ticket_link(link))
+
+
 @router.post("/support/tickets", response_model=SupportTicketDetail)
 def create_support_ticket(
     payload: SupportTicketCreate,
@@ -1839,6 +2091,45 @@ def create_support_ticket(
         body=f"Мы получили запрос \"{ticket.subject}\".",
         target_user_id=None if creator_is_admin else user_id,
     )
+    created_by_email = _resolve_employee_email(db, org_id=org_id, user_id=user_id) or _notification_user_email(token)
+    outbox = _enqueue_helpdesk_outbox(
+        db,
+        ticket=ticket,
+        event_type=HelpdeskOutboxEventType.TICKET_CREATED,
+        payload=build_ticket_payload(ticket=ticket, created_by_email=created_by_email, attachments=[]),
+        idempotency_key=build_idempotency_for_ticket(HelpdeskOutboxEventType.TICKET_CREATED, str(ticket.id), org_id),
+    )
+    if outbox:
+        _audit_event(
+            db,
+            request=request,
+            token=token,
+            event_type="helpdesk_sync_enqueued",
+            entity_type="helpdesk_outbox",
+            entity_id=str(outbox.id),
+            action="helpdesk_sync_enqueued",
+            after={
+                "event_type": outbox.event_type.value,
+                "provider": outbox.provider.value,
+                "internal_ticket_id": str(outbox.internal_ticket_id),
+            },
+        )
+        if outbox.status == HelpdeskOutboxStatus.FAILED:
+            _audit_event(
+                db,
+                request=request,
+                token=token,
+                event_type="helpdesk_sync_failed",
+                entity_type="helpdesk_outbox",
+                entity_id=str(outbox.id),
+                action="helpdesk_sync_failed",
+                after={
+                    "event_type": outbox.event_type.value,
+                    "provider": outbox.provider.value,
+                    "internal_ticket_id": str(outbox.internal_ticket_id),
+                    "error": outbox.last_error,
+                },
+            )
     return SupportTicketDetail(**_serialize_support_ticket(ticket).model_dump(), comments=[])
 
 
@@ -1950,6 +2241,52 @@ def add_support_ticket_comment(
             str(comment.id),
         ),
     )
+    author_email = _resolve_employee_email(db, org_id=str(ticket.org_id), user_id=user_id) or _notification_user_email(
+        token
+    )
+    outbox = _enqueue_helpdesk_outbox(
+        db,
+        ticket=ticket,
+        event_type=HelpdeskOutboxEventType.COMMENT_ADDED,
+        payload=build_comment_payload(ticket=ticket, comment=comment, author_email=author_email),
+        idempotency_key=build_idempotency_for_comment(
+            HelpdeskOutboxEventType.COMMENT_ADDED,
+            str(ticket.id),
+            str(ticket.org_id),
+            str(comment.id),
+        ),
+    )
+    if outbox:
+        _audit_event(
+            db,
+            request=request,
+            token=token,
+            event_type="helpdesk_sync_enqueued",
+            entity_type="helpdesk_outbox",
+            entity_id=str(outbox.id),
+            action="helpdesk_sync_enqueued",
+            after={
+                "event_type": outbox.event_type.value,
+                "provider": outbox.provider.value,
+                "internal_ticket_id": str(outbox.internal_ticket_id),
+            },
+        )
+        if outbox.status == HelpdeskOutboxStatus.FAILED:
+            _audit_event(
+                db,
+                request=request,
+                token=token,
+                event_type="helpdesk_sync_failed",
+                entity_type="helpdesk_outbox",
+                entity_id=str(outbox.id),
+                action="helpdesk_sync_failed",
+                after={
+                    "event_type": outbox.event_type.value,
+                    "provider": outbox.provider.value,
+                    "internal_ticket_id": str(outbox.internal_ticket_id),
+                    "error": outbox.last_error,
+                },
+            )
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
@@ -1997,6 +2334,48 @@ def close_support_ticket(
             body=f"Тикет \"{ticket.subject}\" закрыт.",
             target_user_id=str(ticket.created_by_user_id),
         )
+        outbox = _enqueue_helpdesk_outbox(
+            db,
+            ticket=ticket,
+            event_type=HelpdeskOutboxEventType.TICKET_CLOSED,
+            payload=build_close_payload(ticket=ticket),
+            idempotency_key=build_idempotency_for_close(
+                HelpdeskOutboxEventType.TICKET_CLOSED,
+                str(ticket.id),
+                str(ticket.org_id),
+            ),
+        )
+        if outbox:
+            _audit_event(
+                db,
+                request=request,
+                token=token,
+                event_type="helpdesk_sync_enqueued",
+                entity_type="helpdesk_outbox",
+                entity_id=str(outbox.id),
+                action="helpdesk_sync_enqueued",
+                after={
+                    "event_type": outbox.event_type.value,
+                    "provider": outbox.provider.value,
+                    "internal_ticket_id": str(outbox.internal_ticket_id),
+                },
+            )
+            if outbox.status == HelpdeskOutboxStatus.FAILED:
+                _audit_event(
+                    db,
+                    request=request,
+                    token=token,
+                    event_type="helpdesk_sync_failed",
+                    entity_type="helpdesk_outbox",
+                    entity_id=str(outbox.id),
+                    action="helpdesk_sync_failed",
+                    after={
+                        "event_type": outbox.event_type.value,
+                        "provider": outbox.provider.value,
+                        "internal_ticket_id": str(outbox.internal_ticket_id),
+                        "error": outbox.last_error,
+                    },
+                )
     comments = (
         db.query(SupportTicketComment)
         .filter(SupportTicketComment.ticket_id == ticket.id)
