@@ -29,8 +29,18 @@ celery_client.conf.update(
     task_routes={
         "billing.generate_monthly_invoices": {"queue": "billing"},
         "billing.generate_invoice_pdf": {"queue": "pdf"},
+        "billing.generate_subscription_invoices": {"queue": "billing"},
+        "billing.overdue_check": {"queue": "billing"},
     },
     beat_schedule={
+        "billing_generate_monthly": {
+            "task": "billing.generate_subscription_invoices",
+            "schedule": crontab(day_of_month="1", hour=1, minute=0),
+        },
+        "billing_overdue_check": {
+            "task": "billing.overdue_check",
+            "schedule": crontab(minute="*/30"),
+        },
         "ops.scan_sla_expiry": {
             "task": "ops.scan_sla_expiry",
             "schedule": crontab(minute="*/5"),
