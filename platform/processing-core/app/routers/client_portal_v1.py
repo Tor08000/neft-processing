@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
@@ -471,6 +472,8 @@ def _schedule_delivery_from_request(delivery: ReportScheduleDelivery) -> tuple[b
 
 
 def _schedule_out(schedule: ReportSchedule) -> ReportScheduleOut:
+    local_tz = _safe_timezone(schedule.timezone)
+    next_run_at_local = schedule.next_run_at.astimezone(local_tz) if schedule.next_run_at else None
     return ReportScheduleOut(
         id=str(schedule.id),
         org_id=str(schedule.org_id),
@@ -489,9 +492,17 @@ def _schedule_out(schedule: ReportSchedule) -> ReportScheduleOut:
         status=schedule.status,
         last_run_at=schedule.last_run_at,
         next_run_at=schedule.next_run_at,
+        next_run_at_local=next_run_at_local,
         created_at=schedule.created_at,
         updated_at=schedule.updated_at,
     )
+
+
+def _safe_timezone(tz_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:  # noqa: BLE001
+        return ZoneInfo("UTC")
 
 
 def _export_job_cursor(job: ExportJob) -> str:
