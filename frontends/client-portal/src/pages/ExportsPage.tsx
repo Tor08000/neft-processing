@@ -58,6 +58,7 @@ export function ExportsPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const numberFormatter = useMemo(() => new Intl.NumberFormat("ru-RU"), []);
 
   const canAccess = useMemo(
     () =>
@@ -71,9 +72,11 @@ export function ExportsPage() {
   );
 
   const loadJobs = useCallback(
-    async (nextCursor: string | null, reset = false) => {
+    async (nextCursor: string | null, reset = false, limit = 20, showLoading = true) => {
       if (!user) return;
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError("");
       try {
         const response = await listExportJobs(
@@ -81,7 +84,7 @@ export function ExportsPage() {
             status: status ? (status as ExportJobStatus) : undefined,
             report_type: reportType ? (reportType as ExportJob["report_type"]) : undefined,
             cursor: nextCursor,
-            limit: 20,
+            limit,
             only_my: onlyMy,
           },
           user,
@@ -91,7 +94,9 @@ export function ExportsPage() {
       } catch (err) {
         setError(resolveErrorMessage(err));
       } finally {
-        setLoading(false);
+        if (showLoading) {
+          setLoading(false);
+        }
       }
     },
     [onlyMy, reportType, status, user],
@@ -104,6 +109,59 @@ export function ExportsPage() {
       loadJobs(null, true);
     }
   }, [loadJobs, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!items.some((item) => item.status === "RUNNING")) return;
+    const interval = window.setInterval(() => {
+      loadJobs(null, true, Math.max(items.length, 20), false);
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [items, loadJobs, user]);
+
+  const renderRowsCell = (job: ExportJob) => {
+    if (job.status === "RUNNING") {
+      const processed = job.processed_rows ?? 0;
+      const hasPercent = typeof job.progress_percent === "number" && job.estimated_total_rows != null;
+      if (hasPercent) {
+        const percent = Math.min(job.progress_percent ?? 0, 99);
+        const total = job.estimated_total_rows ?? 0;
+        return (
+          <div className="export-progress">
+            <div className="export-progress__bar">
+              <span className="export-progress__fill" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="muted export-progress__text">
+              {percent}% — {numberFormatter.format(processed)} / {numberFormatter.format(total)} строк
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="export-progress">
+          <div className="export-progress__bar is-indeterminate">
+            <span className="export-progress__fill" />
+          </div>
+          <div className="muted export-progress__text">Обработано: {numberFormatter.format(processed)} строк</div>
+        </div>
+      );
+    }
+
+    if (job.status === "DONE") {
+      const total = job.row_count ?? 0;
+      return (
+        <div className="export-progress">
+          <div className="export-progress__bar">
+            <span className="export-progress__fill" style={{ width: "100%" }} />
+          </div>
+          <div className="muted export-progress__text">100% — {numberFormatter.format(total)} строк</div>
+        </div>
+      );
+    }
+
+    return job.row_count ?? "—";
+  };
 
   if (!user) {
     return <AppForbiddenState message="Требуется авторизация" />;
@@ -195,7 +253,7 @@ export function ExportsPage() {
                     <td>
                       <span className={statusBadgeMap[job.status]}>{statusLabelMap[job.status]}</span>
                     </td>
-                    <td>{job.row_count ?? "—"}</td>
+                    <td>{renderRowsCell(job)}</td>
                     <td>
                       {job.status === "DONE" ? (
                         <a className="neft-btn neft-btn-primary" href={buildExportJobDownloadUrl(job.id)}>
