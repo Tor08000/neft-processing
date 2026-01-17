@@ -62,6 +62,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     "CLIENT_ACCOUNTANT",
     "CLIENT_FLEET_MANAGER",
   ]);
+  const canSeeSlo = hasAnyRole(user, ["CLIENT_OWNER", "CLIENT_ADMIN"]);
   const canSeeAnalytics = hasAnyRole(user, [
     "CLIENT_OWNER",
     "CLIENT_ADMIN",
@@ -87,6 +88,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     },
     { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
     { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
+    { to: "/client/slo", label: "SLO / SLA", icon: <LineChart size={18} />, isHidden: !canSeeSlo },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
   ].map((item) => {
