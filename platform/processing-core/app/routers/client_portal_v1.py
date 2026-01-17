@@ -51,6 +51,12 @@ from app.models.helpdesk import (
     HelpdeskOutboxStatus,
     HelpdeskTicketLink,
 )
+from app.models.service_slo import (
+    ServiceSlo,
+    ServiceSloBreach,
+    ServiceSloService,
+    ServiceSloWindow,
+)
 from app.models.support_ticket import (
     SupportTicket,
     SupportTicketAttachment,
@@ -120,6 +126,14 @@ from app.schemas.client_portal_v1 import (
     ContractInfo,
     ContractSignRequest,
 )
+from app.schemas.service_slo import (
+    ServiceSloBreachListResponse,
+    ServiceSloBreachOut,
+    ServiceSloCreateRequest,
+    ServiceSloListResponse,
+    ServiceSloOut,
+    ServiceSloUpdateRequest,
+)
 from app.schemas.support_tickets import (
     SupportTicketAttachmentComplete,
     SupportTicketAttachmentInit,
@@ -175,6 +189,14 @@ from app.services.report_schedules import (
     normalize_delivery_roles,
     normalize_schedule_meta,
     validate_timezone,
+)
+from app.services.service_slo import (
+    SloObjectiveError,
+    build_slo_health,
+    format_objective,
+    format_observed,
+    resolve_window_bounds,
+    validate_objective,
 )
 from app.services.timezones import format_datetime_for_user, resolve_user_timezone_info
 from app.services.timezones import resolve_user_timezone
@@ -245,6 +267,7 @@ DASHBOARD_WIDGETS_BY_ROLE = {
         {"type": "list", "key": "top_cards"},
         {"type": "health", "key": "health_exports_email"},
         {"type": "health", "key": "support_overview"},
+        {"type": "health", "key": "slo_health"},
         {"type": "cta", "key": "owner_actions"},
     ],
     "ACCOUNTANT": [
@@ -252,6 +275,7 @@ DASHBOARD_WIDGETS_BY_ROLE = {
         {"type": "kpi", "key": "invoices_count_30d"},
         {"type": "list", "key": "recent_documents"},
         {"type": "list", "key": "exports_recent"},
+        {"type": "health", "key": "slo_health"},
         {"type": "cta", "key": "accountant_actions"},
     ],
     "FLEET_MANAGER": [
@@ -673,6 +697,12 @@ def _is_support_ticket_staff(token: dict) -> bool:
     return bool(roles.intersection({"OWNER", "ADMIN"}))
 
 
+def _ensure_slo_admin(token: dict) -> None:
+    roles = set(_normalize_roles(token))
+    if not roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+
 def _serialize_support_ticket(ticket: SupportTicket) -> SupportTicketOut:
     now = datetime.now(timezone.utc)
     first_response_reference = ticket.first_response_at or now
@@ -1083,6 +1113,8 @@ def get_client_dashboard(
                 "exports_failed": int(exports_failed),
                 "email_failures_24h": int(email_failures),
             }
+        elif key == "slo_health":
+            data = build_slo_health(db, str(client.id))
         elif key == "invoices_count_30d":
             tzinfo = ZoneInfo(tz_name)
             date_to = datetime.now(tzinfo).date()
@@ -1197,6 +1229,288 @@ def get_client_dashboard(
         widgets.append(ClientDashboardWidget(type=config["type"], key=key, data=data))
 
     return ClientDashboardResponse(role=role, timezone=tz_name, widgets=widgets)
+
+
+@router.get("/slo", response_model=ServiceSloListResponse)
+def list_service_slos(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ServiceSloListResponse:
+    _ensure_slo_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    slos = (
+        db.query(ServiceSlo)
+        .filter(ServiceSlo.org_id == str(client.id))
+        .order_by(ServiceSlo.created_at.desc())
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    items: list[ServiceSloOut] = []
+    for slo in slos:
+        bounds = resolve_window_bounds(slo.window, now)
+        breach = (
+            db.query(ServiceSloBreach)
+            .filter(
+                ServiceSloBreach.slo_id == slo.id,
+                ServiceSloBreach.window_start == bounds.window_start,
+                ServiceSloBreach.window_end == bounds.window_end,
+            )
+            .one_or_none()
+        )
+        items.append(
+            ServiceSloOut(
+                id=str(slo.id),
+                org_id=str(slo.org_id),
+                service=slo.service,
+                metric=slo.metric,
+                objective_json=slo.objective_json or {},
+                objective=format_objective(slo.metric, slo.objective_json or {}),
+                window=slo.window,
+                enabled=bool(slo.enabled),
+                breach_status=breach.status if breach else None,
+                breached_at=breach.breached_at if breach else None,
+                window_start=bounds.window_start,
+                window_end=bounds.window_end,
+                created_at=slo.created_at,
+                updated_at=slo.updated_at,
+            )
+        )
+    return ServiceSloListResponse(items=items)
+
+
+@router.post("/slo", response_model=ServiceSloOut, status_code=201)
+def create_service_slo(
+    request: Request,
+    payload: ServiceSloCreateRequest,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ServiceSloOut:
+    _ensure_slo_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    try:
+        objective = validate_objective(payload.metric, payload.objective_json)
+    except SloObjectiveError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    slo = ServiceSlo(
+        org_id=str(client.id),
+        service=payload.service,
+        metric=payload.metric,
+        objective_json=objective,
+        window=payload.window,
+        enabled=payload.enabled,
+    )
+    db.add(slo)
+    db.flush()
+
+    request_ctx = request_context_from_request(request, token=token)
+    AuditService(db).audit(
+        event_type="slo_created",
+        entity_type="service_slo",
+        entity_id=str(slo.id),
+        action="slo_created",
+        after={
+            "service": slo.service.value,
+            "metric": slo.metric.value,
+            "window": slo.window.value,
+            "enabled": slo.enabled,
+        },
+        request_ctx=request_ctx,
+    )
+    db.commit()
+
+    return ServiceSloOut(
+        id=str(slo.id),
+        org_id=str(slo.org_id),
+        service=slo.service,
+        metric=slo.metric,
+        objective_json=slo.objective_json or {},
+        objective=format_objective(slo.metric, slo.objective_json or {}),
+        window=slo.window,
+        enabled=bool(slo.enabled),
+        breach_status=None,
+        breached_at=None,
+        window_start=None,
+        window_end=None,
+        created_at=slo.created_at,
+        updated_at=slo.updated_at,
+    )
+
+
+@router.patch("/slo/{slo_id}", response_model=ServiceSloOut)
+def update_service_slo(
+    request: Request,
+    slo_id: str,
+    payload: ServiceSloUpdateRequest,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ServiceSloOut:
+    _ensure_slo_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    slo = (
+        db.query(ServiceSlo)
+        .filter(ServiceSlo.id == slo_id, ServiceSlo.org_id == str(client.id))
+        .one_or_none()
+    )
+    if slo is None:
+        raise HTTPException(status_code=404, detail="slo_not_found")
+
+    before = {"objective_json": slo.objective_json, "window": slo.window.value, "enabled": slo.enabled}
+
+    if payload.objective_json is not None:
+        try:
+            slo.objective_json = validate_objective(slo.metric, payload.objective_json)
+        except SloObjectiveError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.window is not None:
+        slo.window = payload.window
+    if payload.enabled is not None:
+        slo.enabled = payload.enabled
+
+    request_ctx = request_context_from_request(request, token=token)
+    AuditService(db).audit(
+        event_type="slo_updated",
+        entity_type="service_slo",
+        entity_id=str(slo.id),
+        action="slo_updated",
+        before=before,
+        after={"objective_json": slo.objective_json, "window": slo.window.value, "enabled": slo.enabled},
+        request_ctx=request_ctx,
+    )
+    db.commit()
+
+    bounds = resolve_window_bounds(slo.window)
+    breach = (
+        db.query(ServiceSloBreach)
+        .filter(
+            ServiceSloBreach.slo_id == slo.id,
+            ServiceSloBreach.window_start == bounds.window_start,
+            ServiceSloBreach.window_end == bounds.window_end,
+        )
+        .one_or_none()
+    )
+    return ServiceSloOut(
+        id=str(slo.id),
+        org_id=str(slo.org_id),
+        service=slo.service,
+        metric=slo.metric,
+        objective_json=slo.objective_json or {},
+        objective=format_objective(slo.metric, slo.objective_json or {}),
+        window=slo.window,
+        enabled=bool(slo.enabled),
+        breach_status=breach.status if breach else None,
+        breached_at=breach.breached_at if breach else None,
+        window_start=bounds.window_start,
+        window_end=bounds.window_end,
+        created_at=slo.created_at,
+        updated_at=slo.updated_at,
+    )
+
+
+@router.post("/slo/{slo_id}/disable", response_model=ServiceSloOut)
+def disable_service_slo(
+    request: Request,
+    slo_id: str,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ServiceSloOut:
+    _ensure_slo_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    slo = (
+        db.query(ServiceSlo)
+        .filter(ServiceSlo.id == slo_id, ServiceSlo.org_id == str(client.id))
+        .one_or_none()
+    )
+    if slo is None:
+        raise HTTPException(status_code=404, detail="slo_not_found")
+
+    slo.enabled = False
+    request_ctx = request_context_from_request(request, token=token)
+    AuditService(db).audit(
+        event_type="slo_disabled",
+        entity_type="service_slo",
+        entity_id=str(slo.id),
+        action="slo_disabled",
+        after={"enabled": False},
+        request_ctx=request_ctx,
+    )
+    db.commit()
+
+    bounds = resolve_window_bounds(slo.window)
+    breach = (
+        db.query(ServiceSloBreach)
+        .filter(
+            ServiceSloBreach.slo_id == slo.id,
+            ServiceSloBreach.window_start == bounds.window_start,
+            ServiceSloBreach.window_end == bounds.window_end,
+        )
+        .one_or_none()
+    )
+    return ServiceSloOut(
+        id=str(slo.id),
+        org_id=str(slo.org_id),
+        service=slo.service,
+        metric=slo.metric,
+        objective_json=slo.objective_json or {},
+        objective=format_objective(slo.metric, slo.objective_json or {}),
+        window=slo.window,
+        enabled=bool(slo.enabled),
+        breach_status=breach.status if breach else None,
+        breached_at=breach.breached_at if breach else None,
+        window_start=bounds.window_start,
+        window_end=bounds.window_end,
+        created_at=slo.created_at,
+        updated_at=slo.updated_at,
+    )
+
+
+@router.get("/slo/breaches", response_model=ServiceSloBreachListResponse)
+def list_slo_breaches(
+    service: ServiceSloService | None = Query(None),
+    window: ServiceSloWindow | None = Query(None),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ServiceSloBreachListResponse:
+    _ensure_slo_admin(token)
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    query = db.query(ServiceSloBreach, ServiceSlo).join(ServiceSlo, ServiceSlo.id == ServiceSloBreach.slo_id)
+    query = query.filter(ServiceSloBreach.org_id == str(client.id))
+    if service:
+        query = query.filter(ServiceSloBreach.service == service)
+    if window:
+        query = query.filter(ServiceSloBreach.window == window)
+    breaches = query.order_by(ServiceSloBreach.breached_at.desc()).all()
+
+    items: list[ServiceSloBreachOut] = []
+    for breach, slo in breaches:
+        observed = format_observed(slo.metric, breach.observed_value_json or {}) or "—"
+        items.append(
+            ServiceSloBreachOut(
+                service=breach.service,
+                metric=breach.metric,
+                objective=format_objective(slo.metric, slo.objective_json or {}),
+                window=breach.window,
+                observed=observed,
+                status=breach.status,
+                breached_at=breach.breached_at,
+            )
+        )
+    return ServiceSloBreachListResponse(items=items)
 
 
 @router.get("/notification-preferences", response_model=UserNotificationPreferencesResponse)

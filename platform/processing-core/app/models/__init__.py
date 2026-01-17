@@ -53,6 +53,14 @@ from .report_schedules import (  # noqa: F401
     ReportScheduleKind,
     ReportScheduleStatus,
 )
+from .service_slo import (  # noqa: F401
+    ServiceSlo,
+    ServiceSloBreach,
+    ServiceSloBreachStatus,
+    ServiceSloMetric,
+    ServiceSloService,
+    ServiceSloWindow,
+)
 from .client_onboarding import ClientOnboarding, ClientOnboardingContract  # noqa: F401
 from .feature_flags import FeatureFlag  # noqa: F401
 from .commercial_layer import (  # noqa: F401

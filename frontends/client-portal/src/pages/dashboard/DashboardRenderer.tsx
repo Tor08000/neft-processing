@@ -13,6 +13,7 @@ const widgetLinks: Record<string, string> = {
   top_drivers_cards: "/client/analytics",
   support_overview: "/client/support",
   health_exports_email: "/client/exports",
+  slo_health: "/client/slo",
   invoices_count_30d: "/billing",
   recent_documents: "/client/documents",
   exports_recent: "/client/exports",
@@ -32,6 +33,7 @@ const widgetTitles: Record<string, { title: string; subtitle?: string }> = {
   top_drivers_cards: { title: "Топ водителей и карт", subtitle: "Лидеры по расходам" },
   support_overview: { title: "Поддержка", subtitle: "Статусы за 30 дней" },
   health_exports_email: { title: "Системное здоровье", subtitle: "Экспорты и почта" },
+  slo_health: { title: "SLO Health", subtitle: "Окна 7d / 30d" },
   invoices_count_30d: { title: "Счета и акты", subtitle: "За последние 30 дней" },
   recent_documents: { title: "Недавние документы", subtitle: "Последние 5" },
   exports_recent: { title: "Экспорты", subtitle: "Последние задачи" },
@@ -79,6 +81,12 @@ type HealthData = {
   exports_running: number;
   exports_failed: number;
   email_failures_24h: number;
+};
+
+type SloHealthData = {
+  status: "green" | "yellow" | "red";
+  breaches_7d: number;
+  breaches_30d: number;
 };
 
 type RecentDocument = { id: string; type: string; status: string; date: string };
@@ -349,6 +357,30 @@ function SystemHealth({ data }: { data: HealthData }) {
   );
 }
 
+function SloHealth({ data }: { data: SloHealthData }) {
+  const status = data?.status ?? "green";
+  const badgeClass =
+    status === "red" ? "pill pill--danger" : status === "yellow" ? "pill pill--warning" : "pill pill--success";
+  return (
+    <div className="dashboard-health">
+      <div className="dashboard-health__item">
+        <div className="dashboard-health__label">Status</div>
+        <div className="dashboard-health__value">
+          <span className={badgeClass}>{status.toUpperCase()}</span>
+        </div>
+      </div>
+      <div className="dashboard-health__item">
+        <div className="dashboard-health__label">Breaches 7d</div>
+        <div className="dashboard-health__value">{data?.breaches_7d ?? 0}</div>
+      </div>
+      <div className="dashboard-health__item">
+        <div className="dashboard-health__label">Breaches 30d</div>
+        <div className="dashboard-health__value">{data?.breaches_30d ?? 0}</div>
+      </div>
+    </div>
+  );
+}
+
 function renderWidget(widget: ClientDashboardWidget, timezone: string) {
   const meta = widgetTitles[widget.key] ?? { title: widget.key };
   const link = widgetLinks[widget.key];
@@ -395,6 +427,13 @@ function renderWidget(widget: ClientDashboardWidget, timezone: string) {
       return (
         <WidgetCard title={meta.title} subtitle={meta.subtitle} link={link}>
           <SupportHealth data={widget.data as SupportData} />
+        </WidgetCard>
+      );
+    }
+    if (widget.key === "slo_health") {
+      return (
+        <WidgetCard title={meta.title} subtitle={meta.subtitle} link={link}>
+          <SloHealth data={widget.data as SloHealthData} />
         </WidgetCard>
       );
     }
