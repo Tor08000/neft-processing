@@ -43,6 +43,7 @@ export interface ClientInvoiceLine {
   line_type: string;
   ref_code?: string | null;
   description?: string | null;
+  unit?: string | null;
   quantity?: number | null;
   unit_price?: number | null;
   amount?: number | null;

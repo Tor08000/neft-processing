@@ -44,7 +44,10 @@ export function ClientInvoiceDetailsPage() {
   const usageLines = invoice.lines?.filter((line) => line.line_type === "USAGE") ?? [];
   const formatQuantity = (value?: number | null) => {
     if (value === null || value === undefined) return "—";
-    const parts = formatNumberParts(value, 2);
+    const fixed = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+    const fractionLength = fixed.includes(".") ? fixed.split(".")[1]?.length ?? 0 : 0;
+    const digits = fractionLength === 0 ? 0 : fractionLength <= 2 ? 2 : 6;
+    const parts = formatNumberParts(value, digits);
     return parts.fraction ? `${parts.int}.${parts.fraction}` : parts.int;
   };
 
@@ -151,7 +154,10 @@ export function ClientInvoiceDetailsPage() {
               {usageLines.map((line, index) => (
                 <tr key={`${line.ref_code ?? "usage"}-${index}`}>
                   <td>{line.description ?? line.ref_code ?? "Usage"}</td>
-                  <td>{formatQuantity(line.quantity ?? undefined)}</td>
+                  <td>
+                    {formatQuantity(line.quantity ?? undefined)}
+                    {line.unit ? ` ${line.unit}` : ""}
+                  </td>
                   <td>
                     {line.unit_price !== null && line.unit_price !== undefined ? (
                       <MoneyValue amount={line.unit_price} currency={invoice.currency} />

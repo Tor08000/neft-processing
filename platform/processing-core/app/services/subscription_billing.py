@@ -316,10 +316,10 @@ def _usage_lines(
     period_start: date,
     period_end: date,
     as_of: datetime,
-) -> tuple[list[SubscriptionInvoiceLine], list[dict[str, Any]]]:
+) -> tuple[list[SubscriptionInvoiceLine], list[dict[str, Any]], list[dict[str, Any]]]:
     required_tables = ["usage_events", "usage_meters", "pricing_catalog", "usage_aggregates"]
     if not _tables_ready(db, required_tables):
-        return [], []
+        return [], [], []
 
     usage_events = _table(db, "usage_events")
     start_dt, end_dt = _usage_event_bounds(period_start, period_end)
@@ -340,7 +340,7 @@ def _usage_lines(
         .all()
     )
     if not aggregates:
-        return [], []
+        return [], [], []
 
     meter_ids = [row["meter_id"] for row in aggregates]
     usage_meters = _table(db, "usage_meters")
@@ -351,6 +351,7 @@ def _usage_lines(
 
     lines: list[SubscriptionInvoiceLine] = []
     summary: list[dict[str, Any]] = []
+    missing_pricing: list[dict[str, Any]] = []
     for row in aggregates:
         quantity = _decimal(row.get("quantity"))
         if quantity <= 0:
@@ -363,6 +364,12 @@ def _usage_lines(
             logger.warning(
                 "subscription_billing.usage_pricing_missing",
                 extra={"meter_id": meter["id"], "meter_code": meter.get("code")},
+            )
+            missing_pricing.append(
+                {
+                    "meter_id": meter.get("id"),
+                    "code": meter.get("code"),
+                }
             )
             continue
         unit_price = _decimal(pricing.get("price_monthly"))
@@ -407,7 +414,7 @@ def _usage_lines(
             quantity=quantity,
             now=as_of,
         )
-    return lines, summary
+    return lines, summary, missing_pricing
 
 
 def generate_subscription_invoice(
@@ -429,7 +436,7 @@ def generate_subscription_invoice(
     now = _now()
     plan_line, currency = _plan_line(db, subscription, as_of=now)
     addon_lines = _addon_lines(db, subscription["id"]) if _table_exists(db, "org_subscription_addons") else []
-    usage_lines, usage_summary = _usage_lines(
+    usage_lines, usage_summary, missing_pricing = _usage_lines(
         db,
         org_id=subscription["org_id"],
         period_start=period_start,
@@ -488,6 +495,22 @@ def generate_subscription_invoice(
                 "period_start": period_start,
                 "period_end": period_end,
                 "meters": usage_summary,
+            },
+            request_ctx=request_ctx or RequestContext(actor_type=ActorType.SYSTEM, actor_id="billing_subscription"),
+        )
+
+    if missing_pricing:
+        AuditService(db).audit(
+            event_type="USAGE_PRICING_MISSING",
+            entity_type="billing_invoice",
+            entity_id=str(invoice_id),
+            action="WARN",
+            after={
+                "org_id": subscription["org_id"],
+                "subscription_id": subscription["id"],
+                "period_start": period_start,
+                "period_end": period_end,
+                "meters": missing_pricing,
             },
             request_ctx=request_ctx or RequestContext(actor_type=ActorType.SYSTEM, actor_id="billing_subscription"),
         )
