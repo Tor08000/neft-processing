@@ -230,3 +230,88 @@ class ReportScheduleListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ReportScheduleOut]
+
+
+class ClientAnalyticsPeriod(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_: date = Field(..., alias="from")
+    to: date
+
+
+class ClientAnalyticsSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transactions_count: int
+    total_spend: float
+    total_liters: float | None = None
+    active_cards: int
+    blocked_cards: int
+    unique_drivers: int
+    open_tickets: int
+    sla_breaches_first: int
+    sla_breaches_resolution: int
+
+
+class ClientAnalyticsTimeseriesPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: date
+    spend: float
+    liters: float | None = None
+    count: int
+
+
+class ClientAnalyticsTopCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_id: str
+    label: str
+    spend: float
+    count: int
+    liters: float | None = None
+
+
+class ClientAnalyticsTopDriver(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    label: str
+    spend: float
+    count: int
+
+
+class ClientAnalyticsTopStation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    station_id: str
+    label: str
+    spend: float
+    count: int
+    liters: float | None = None
+
+
+class ClientAnalyticsTopLists(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cards: list[ClientAnalyticsTopCard]
+    drivers: list[ClientAnalyticsTopDriver]
+    stations: list[ClientAnalyticsTopStation]
+
+
+class ClientAnalyticsSupport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    open: int
+    avg_first_response_minutes: float | None = None
+    avg_resolve_minutes: float | None = None
+
+
+class ClientAnalyticsSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: ClientAnalyticsPeriod
+    summary: ClientAnalyticsSummary
+    timeseries: list[ClientAnalyticsTimeseriesPoint]
+    tops: ClientAnalyticsTopLists
+    support: ClientAnalyticsSupport

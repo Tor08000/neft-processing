@@ -6,6 +6,7 @@ import {
   Package,
   ShoppingCart,
   FileSpreadsheet,
+  LineChart,
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
@@ -61,6 +62,12 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     "CLIENT_ACCOUNTANT",
     "CLIENT_FLEET_MANAGER",
   ]);
+  const canSeeAnalytics = hasAnyRole(user, [
+    "CLIENT_OWNER",
+    "CLIENT_ADMIN",
+    "CLIENT_ACCOUNTANT",
+    "CLIENT_FLEET_MANAGER",
+  ]);
 
   const navItems: NavItem[] = [
     { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET" },
@@ -71,6 +78,13 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
     { to: "/client/notifications", label: "Notifications", icon: <Bell size={18} /> },
     { to: "/client/support", label: "Support", icon: <MessageCircle size={18} /> },
     { to: "/audit", label: "Audit", icon: <MessageCircle size={18} /> },
+    {
+      to: "/client/analytics",
+      label: "Analytics",
+      icon: <LineChart size={18} />,
+      isHidden: !canSeeAnalytics,
+      module: "ANALYTICS",
+    },
     { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
     { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
