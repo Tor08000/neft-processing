@@ -450,6 +450,12 @@ from .billing_reconciliation import (  # noqa: F401
     BillingReconciliationStatus,
     BillingReconciliationVerdict,
 )
+from .bank_statement_imports import (  # noqa: F401
+    BankStatementImport,
+    BankStatementImportStatus,
+    BankStatementMatchStatus,
+    BankStatementTransaction,
+)
 from .reconciliation import (  # noqa: F401
     ExternalStatement,
     ReconciliationDiscrepancy,

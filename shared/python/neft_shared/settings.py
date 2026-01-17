@@ -109,6 +109,9 @@ class Settings:
         "NEFT_INVOICE_MONTHLY_ENABLED", "false"
     ).lower() in {"1", "true", "yes"}
     NEFT_INVOICE_MONTHLY_AT: str = os.getenv("NEFT_INVOICE_MONTHLY_AT", "03:00")
+    NEFT_RECONCILIATION_AUTO_APPROVE_THRESHOLD: int = int(
+        os.getenv("NEFT_RECONCILIATION_AUTO_APPROVE_THRESHOLD", "95")
+    )
 
     # Stub providers (local demos)
     BANK_STUB_ENABLED: bool = os.getenv("BANK_STUB_ENABLED", "false").lower() in {"1", "true", "yes"}
