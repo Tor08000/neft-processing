@@ -1,4 +1,19 @@
-export function formatDateTime(dateStr: string): string {
+const STORAGE_KEY = "neft_client_auth";
+
+const getStoredTimezone = (): string | undefined => {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { timezone?: string | null };
+    return parsed.timezone ?? undefined;
+  } catch (err) {
+    return undefined;
+  }
+};
+
+export function formatDateTime(dateStr: string, timezone?: string | null): string {
+  const resolvedTimezone = timezone ?? getStoredTimezone();
   try {
     return new Intl.DateTimeFormat("ru-RU", {
       year: "numeric",
@@ -6,9 +21,20 @@ export function formatDateTime(dateStr: string): string {
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: resolvedTimezone,
     }).format(new Date(dateStr));
   } catch (err) {
-    return dateStr;
+    try {
+      return new Intl.DateTimeFormat("ru-RU", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(dateStr));
+    } catch (fallbackError) {
+      return dateStr;
+    }
   }
 }
 
@@ -64,15 +90,25 @@ export function formatLiters(quantity?: number | string | null): string {
   return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 3 }).format(value);
 }
 
-export function formatDate(dateStr?: string | null): string {
+export function formatDate(dateStr?: string | null, timezone?: string | null): string {
   if (!dateStr) return "—";
+  const resolvedTimezone = timezone ?? getStoredTimezone();
   try {
     return new Intl.DateTimeFormat("ru-RU", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
+      timeZone: resolvedTimezone,
     }).format(new Date(dateStr));
   } catch (err) {
-    return String(dateStr);
+    try {
+      return new Intl.DateTimeFormat("ru-RU", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(dateStr));
+    } catch (fallbackError) {
+      return String(dateStr);
+    }
   }
 }

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, fetchMe, HtmlResponseError, login, UnauthorizedError, ValidationError } from "../api/auth";
+import { fetchClientMe } from "../api/clientPortal";
 import type { AuthSession } from "../api/types";
 
 interface AuthContextValue {
@@ -9,6 +10,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   activateSession: (session: AuthSession) => Promise<void>;
   logout: () => void;
+  setTimezone: (timezone: string | null) => void;
   hasClientRole: boolean;
 }
 
@@ -66,6 +68,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
     persist(null);
   }, [persist]);
 
+  const setTimezone = useCallback(
+    (timezone: string | null) => {
+      setUser((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, timezone };
+        persist(next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
   useEffect(() => {
     const handleUnauthorized = () => {
       logout();
@@ -83,6 +97,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           return;
         }
         const profile = await fetchMe(stored.token);
+        let timezone: string | null | undefined = stored.timezone;
+        try {
+          const clientProfile = await fetchClientMe(stored);
+          timezone = clientProfile.user.timezone ?? null;
+        } catch (err) {
+          console.warn("Не удалось загрузить timezone клиента", err);
+        }
         if (!isClientRolePresent(profile.roles)) {
           setError("Эта зона доступна только клиентам");
           logout();
@@ -94,6 +115,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           email: profile.email ?? stored.email,
           subjectType: profile.subject_type,
           clientId: profile.client_id ?? stored.clientId,
+          timezone,
         };
         setUser(normalized);
         persist(normalized);
@@ -136,6 +158,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         return;
       }
       const profile = await fetchMe(session.token);
+      let timezone: string | null | undefined = session.timezone;
+      try {
+        const clientProfile = await fetchClientMe(session);
+        timezone = clientProfile.user.timezone ?? null;
+      } catch (err) {
+        console.warn("Не удалось загрузить timezone клиента", err);
+      }
       if (!isClientRolePresent(profile.roles)) {
         setError("У вас нет доступа к клиентскому кабинету");
         logout();
@@ -147,6 +176,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         roles: profile.roles,
         subjectType: profile.subject_type,
         clientId: profile.client_id ?? session.clientId,
+        timezone,
       };
       setUser(normalized);
       persist(normalized);
@@ -228,9 +258,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
       login: handleLogin,
       activateSession,
       logout,
+      setTimezone,
       hasClientRole: Boolean(user?.roles && isClientRolePresent(user.roles)),
     }),
-    [user, isLoading, error, handleLogin, activateSession, logout],
+    [user, isLoading, error, handleLogin, activateSession, logout, setTimezone],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.client import Client
+from app.models.crm import CRMClient
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.models.client_portal import (
     CardAccess,
@@ -133,6 +134,7 @@ from app.services.report_schedules import (
     normalize_schedule_meta,
     validate_timezone,
 )
+from app.services.timezones import format_datetime_for_user, resolve_user_timezone_info
 from app.services.support_attachment_storage import SupportAttachmentStorage
 from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
@@ -405,6 +407,12 @@ def _notify_support_sla_breaches(db: Session, *, ticket: SupportTicket, events: 
     if not email_to:
         return
     link = build_portal_url(f"/client/support/{ticket.id}")
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.id == str(ticket.created_by_user_id), ClientEmployee.client_id == str(ticket.org_id))
+        .one_or_none()
+    )
+    org = db.query(CRMClient).filter(CRMClient.id == str(ticket.org_id)).one_or_none()
     template_map = {
         "support_sla_first_response_breached": "support_sla_first_response_breached",
         "support_sla_resolution_breached": "support_sla_resolution_breached",
@@ -413,6 +421,17 @@ def _notify_support_sla_breaches(db: Session, *, ticket: SupportTicket, events: 
         template_key = template_map.get(event_type)
         if not template_key:
             continue
+        deadline = (
+            ticket.resolution_due_at
+            if event_type == "support_sla_resolution_breached"
+            else ticket.first_response_due_at
+        )
+        formatted_deadline, tz_name = format_datetime_for_user(
+            db,
+            value=deadline,
+            user=employee,
+            org=org,
+        )
         body = "Нарушен SLA по тикету поддержки." if "resolution" in event_type else "Нарушен SLA первого ответа."
         enqueue_templated_email(
             db,
@@ -425,6 +444,8 @@ def _notify_support_sla_breaches(db: Session, *, ticket: SupportTicket, events: 
                 "body": body,
                 "link": link,
                 "title": ticket.subject,
+                "deadline_at": formatted_deadline,
+                "timezone": tz_name,
             },
         )
 
@@ -440,6 +461,18 @@ def _notify_export_ready(
     export_format: str = "CSV",
     email_idempotency_key: str | None = None,
 ) -> None:
+    employee = (
+        db.query(ClientEmployee)
+        .filter(ClientEmployee.id == str(user_id), ClientEmployee.client_id == str(org_id))
+        .one_or_none()
+    )
+    org = db.query(CRMClient).filter(CRMClient.id == str(org_id)).one_or_none()
+    generated_at, tz_name = format_datetime_for_user(
+        db,
+        value=datetime.now(timezone.utc),
+        user=employee,
+        org=org,
+    )
     create_notification(
         db,
         org_id=org_id,
@@ -453,6 +486,7 @@ def _notify_export_ready(
         entity_id=user_id,
         email_to=email_to,
         email_idempotency_key=email_idempotency_key,
+        email_context={"generated_at": generated_at, "timezone": tz_name},
     )
 
 
@@ -601,9 +635,8 @@ def _schedule_delivery_from_request(delivery: ReportScheduleDelivery) -> tuple[b
     return delivery.in_app, delivery.email_to_creator, roles
 
 
-def _schedule_out(schedule: ReportSchedule) -> ReportScheduleOut:
-    local_tz = _safe_timezone(schedule.timezone)
-    next_run_at_local = schedule.next_run_at.astimezone(local_tz) if schedule.next_run_at else None
+def _schedule_out(schedule: ReportSchedule, *, tzinfo: ZoneInfo) -> ReportScheduleOut:
+    next_run_at_local = schedule.next_run_at.astimezone(tzinfo) if schedule.next_run_at else None
     return ReportScheduleOut(
         id=str(schedule.id),
         org_id=str(schedule.org_id),
@@ -626,13 +659,6 @@ def _schedule_out(schedule: ReportSchedule) -> ReportScheduleOut:
         created_at=schedule.created_at,
         updated_at=schedule.updated_at,
     )
-
-
-def _safe_timezone(tz_name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(tz_name)
-    except Exception:  # noqa: BLE001
-        return ZoneInfo("UTC")
 
 
 def _export_job_cursor(job: ExportJob) -> str:
@@ -835,7 +861,8 @@ def create_report_schedule(
         },
     )
 
-    return _schedule_out(schedule)
+    tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
+    return _schedule_out(schedule, tzinfo=tzinfo)
 
 
 @router.get("/reports/schedules", response_model=ReportScheduleListResponse)
@@ -854,7 +881,11 @@ def list_report_schedules(
         .order_by(ReportSchedule.created_at.desc())
         .all()
     )
-    return ReportScheduleListResponse(items=[_schedule_out(schedule) for schedule in schedules])
+    items = [
+        _schedule_out(schedule, tzinfo=resolve_user_timezone_info(db, token=token, schedule=schedule))
+        for schedule in schedules
+    ]
+    return ReportScheduleListResponse(items=items)
 
 
 @router.get("/reports/schedules/{schedule_id}", response_model=ReportScheduleOut)
@@ -874,7 +905,8 @@ def get_report_schedule(
     )
     if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
         raise HTTPException(status_code=404, detail="report_schedule_not_found")
-    return _schedule_out(schedule)
+    tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
+    return _schedule_out(schedule, tzinfo=tzinfo)
 
 
 @router.patch("/reports/schedules/{schedule_id}", response_model=ReportScheduleOut)
@@ -966,7 +998,8 @@ def update_report_schedule(
         },
     )
 
-    return _schedule_out(schedule)
+    tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
+    return _schedule_out(schedule, tzinfo=tzinfo)
 
 
 @router.post("/reports/schedules/{schedule_id}/pause", response_model=ReportScheduleOut)
@@ -1003,7 +1036,8 @@ def pause_report_schedule(
         action="report_schedule_paused",
     )
 
-    return _schedule_out(schedule)
+    tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
+    return _schedule_out(schedule, tzinfo=tzinfo)
 
 
 @router.post("/reports/schedules/{schedule_id}/resume", response_model=ReportScheduleOut)
@@ -1039,7 +1073,8 @@ def resume_report_schedule(
         action="report_schedule_resumed",
     )
 
-    return _schedule_out(schedule)
+    tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
+    return _schedule_out(schedule, tzinfo=tzinfo)
 
 
 @router.delete("/reports/schedules/{schedule_id}", status_code=204)

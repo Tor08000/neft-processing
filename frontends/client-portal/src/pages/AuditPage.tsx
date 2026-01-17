@@ -271,7 +271,7 @@ export function AuditPage() {
       title: t("auditViewer.columns.time"),
       render: (eventItem) => (
         <div className="stack">
-          <span>{formatDateTime(eventItem.created_at)}</span>
+          <span>{formatDateTime(eventItem.created_at, user?.timezone)}</span>
           <span className="muted small">{formatRelativeTime(eventItem.created_at)}</span>
         </div>
       ),

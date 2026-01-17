@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import { useLegalGate } from "../auth/LegalGateContext";
-
-const formatDate = (value?: string | null) => {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString("ru-RU");
-  } catch {
-    return value;
-  }
-};
+import { formatDateTime } from "../utils/format";
 
 export function LegalPage() {
+  const { user } = useAuth();
   const { required, isBlocked, isLoading, errorMessage, document, loadDocument, accept, refresh } = useLegalGate();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
@@ -51,7 +45,7 @@ export function LegalPage() {
                 <div className="muted">Код: {item.code}</div>
                 <div className="muted">Версия: {item.required_version}</div>
                 <div className="muted">Локаль: {item.locale}</div>
-                <div className="muted">Вступает: {formatDate(item.effective_from)}</div>
+                <div className="muted">Вступает: {formatDateTime(item.effective_from, user?.timezone)}</div>
               </div>
               <div className="legal-actions">
                 <button
@@ -63,7 +57,9 @@ export function LegalPage() {
                 </button>
                 <label className="checkbox">
                   <input type="checkbox" checked={item.accepted} readOnly />
-                  <span>{item.accepted ? `Принято ${formatDate(item.accepted_at)}` : "Не принято"}</span>
+                  <span>
+                    {item.accepted ? `Принято ${formatDateTime(item.accepted_at, user?.timezone)}` : "Не принято"}
+                  </span>
                 </label>
                 {!item.accepted ? (
                   <button
@@ -83,7 +79,7 @@ export function LegalPage() {
             <>
               <h2>{document.title}</h2>
               <div className="muted">Версия {document.version}</div>
-              <div className="muted">Опубликован: {formatDate(document.published_at)}</div>
+              <div className="muted">Опубликован: {formatDateTime(document.published_at, user?.timezone)}</div>
               <pre className="legal-content">{document.content}</pre>
             </>
           ) : (

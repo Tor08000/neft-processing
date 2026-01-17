@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+from pydantic import field_validator
+from zoneinfo import ZoneInfo
 
 
 class ClientMeUser(BaseModel):
@@ -11,6 +13,7 @@ class ClientMeUser(BaseModel):
     id: str
     email: str | None = None
     subject_type: str | None = None
+    timezone: str | None = None
 
 
 class ClientMeOrg(BaseModel):
@@ -20,6 +23,7 @@ class ClientMeOrg(BaseModel):
     name: str
     inn: str | None = None
     status: str
+    timezone: str | None = None
 
 
 class ClientMeMembership(BaseModel):
@@ -56,3 +60,18 @@ class ClientMeResponse(BaseModel):
     subscription: ClientMeSubscription | None = None
     entitlements: ClientMeEntitlements
     org_status: str
+
+
+class ClientAccountTimezoneUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str) -> str:  # noqa: D417
+        try:
+            ZoneInfo(v)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("invalid_timezone") from exc
+        return v

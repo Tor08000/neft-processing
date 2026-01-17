@@ -2,4 +2,6 @@
 
 {body}
 
+Сформирован: {generated_at} ({timezone})
+
 Открыть в портале: {link}

@@ -92,6 +92,7 @@ class ClientEmployee(Base):
     client_id = Column(String(64), nullable=False, index=True)
     email = Column(String(256), nullable=False)
     status = Column(ExistingEnum(EmployeeStatus, name="employee_status"), nullable=False)
+    timezone = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     audit_event_id = Column(GUID(), nullable=True)
 

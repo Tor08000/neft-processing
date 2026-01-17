@@ -4,6 +4,7 @@ import { AppForbiddenState } from "../components/states";
 import { buildExportJobDownloadUrl, listExportJobs, type ExportJob, type ExportJobStatus } from "../api/exports";
 import { ApiError, ValidationError } from "../api/http";
 import { hasAnyRole } from "../utils/roles";
+import { formatDateTime } from "../utils/format";
 
 const statusLabelMap: Record<ExportJobStatus, string> = {
   QUEUED: "В очереди",
@@ -249,7 +250,7 @@ export function ExportsPage() {
                       <div className="muted">{job.file_name || "—"}</div>
                     </td>
                     <td>{job.format}</td>
-                    <td>{new Date(job.created_at).toLocaleString()}</td>
+                    <td>{formatDateTime(job.created_at, user.timezone)}</td>
                     <td>
                       <span className={statusBadgeMap[job.status]}>{statusLabelMap[job.status]}</span>
                     </td>
