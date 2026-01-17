@@ -190,6 +190,10 @@ from .client_notification import (  # noqa: F401
     ClientNotification,
     ClientNotificationSeverity,
 )
+from .email_outbox import (  # noqa: F401
+    EmailOutbox,
+    EmailOutboxStatus,
+)
 from .billing_flow import (  # noqa: F401
     BillingInvoice,
     BillingInvoiceStatus,

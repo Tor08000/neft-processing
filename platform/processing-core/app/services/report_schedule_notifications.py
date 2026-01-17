@@ -7,6 +7,7 @@ from app.models.export_jobs import ExportJob
 from app.models.fleet import ClientEmployee
 from app.models.report_schedules import ReportSchedule
 from app.services.client_notifications import ClientNotificationSeverity, create_notification, send_notification_email
+from app.services.email_service import build_idempotency_key
 
 _ROLE_LABELS = {"CLIENT_OWNER", "CLIENT_ADMIN"}
 
@@ -79,12 +80,34 @@ def send_scheduled_report_notifications(
     if schedule.delivery_email_to_creator:
         creator = session.get(ClientEmployee, schedule.created_by_user_id)
         if creator and creator.email:
-            send_notification_email(to_email=creator.email, title=title, body=body, link=link)
+            send_notification_email(
+                db=session,
+                to_email=creator.email,
+                title=title,
+                body=body,
+                link=link,
+                event_type=event_type,
+                org_id=str(schedule.org_id),
+                notification_id=None,
+                entity_id=str(schedule.id),
+                idempotency_key=build_idempotency_key(event_type, str(schedule.org_id), str(schedule.id), str(job.id)),
+            )
 
     if schedule.delivery_email_to_roles:
         emails = _fetch_role_emails(session, str(schedule.org_id), schedule.delivery_email_to_roles or [])
         for email in emails:
-            send_notification_email(to_email=email, title=title, body=body, link=link)
+            send_notification_email(
+                db=session,
+                to_email=email,
+                title=title,
+                body=body,
+                link=link,
+                event_type=event_type,
+                org_id=str(schedule.org_id),
+                notification_id=None,
+                entity_id=str(schedule.id),
+                idempotency_key=build_idempotency_key(event_type, str(schedule.org_id), str(schedule.id), str(job.id)),
+            )
 
 
 __all__ = ["send_scheduled_report_notifications"]
