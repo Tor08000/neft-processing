@@ -160,6 +160,9 @@ class ExportJobOut(BaseModel):
     processed_rows: int
     estimated_total_rows: int | None = None
     progress_percent: int | None = None
+    avg_rows_per_sec: float | None = None
+    eta_seconds: int | None = None
+    eta_at: datetime | None = None
     error_message: str | None = None
     created_at: datetime
     started_at: datetime | None = None

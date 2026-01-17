@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from hashlib import sha256
@@ -868,7 +869,24 @@ def _parse_datetime_cursor(cursor: str | None) -> tuple[datetime | None, str | N
     return cursor_dt, parts[1]
 
 
+def _export_job_eta(job: ExportJob) -> tuple[int | None, datetime | None]:
+    if (
+        job.estimated_total_rows is None
+        or job.started_at is None
+        or job.progress_updated_at is None
+        or not job.avg_rows_per_sec
+        or job.avg_rows_per_sec <= 0
+    ):
+        return None, None
+    remaining = job.estimated_total_rows - job.processed_rows
+    if remaining <= 0:
+        return 0, datetime.now(timezone.utc)
+    eta_seconds = max(0, math.ceil(remaining / job.avg_rows_per_sec))
+    return eta_seconds, datetime.now(timezone.utc) + timedelta(seconds=eta_seconds)
+
+
 def _export_job_to_out(job: ExportJob) -> ExportJobOut:
+    eta_seconds, eta_at = _export_job_eta(job)
     return ExportJobOut(
         id=str(job.id),
         org_id=str(job.org_id),
@@ -883,6 +901,9 @@ def _export_job_to_out(job: ExportJob) -> ExportJobOut:
         processed_rows=job.processed_rows,
         estimated_total_rows=job.estimated_total_rows,
         progress_percent=job.progress_percent,
+        avg_rows_per_sec=job.avg_rows_per_sec,
+        eta_seconds=eta_seconds,
+        eta_at=eta_at,
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,
