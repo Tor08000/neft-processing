@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
 from sqlalchemy import Date, String, and_, cast, desc, func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.db import get_db
 from app.models.client import Client
@@ -95,6 +95,10 @@ from app.schemas.client_portal_v1 import (
     ClientAnalyticsTopLists,
     ClientAnalyticsTopStation,
     ClientAnalyticsSupport,
+    ClientAnalyticsDrillResponse,
+    ClientAnalyticsDrillTransaction,
+    ClientAnalyticsSupportDrillItem,
+    ClientAnalyticsSupportDrillResponse,
     ExportJobCreateRequest,
     ExportJobCreateResponse,
     ExportJobListResponse,
@@ -421,6 +425,35 @@ def _email_idempotency_key(*, event_type: str, org_id: str, user_id: str, reques
     if not request_id:
         return build_idempotency_key(event_type, org_id, user_id, uuid4().hex)
     return build_idempotency_key(event_type, org_id, user_id, request_id)
+
+
+def _drill_transaction_cursor(tx: FuelTransaction) -> str:
+    return f"{tx.occurred_at.isoformat()}|{tx.id}"
+
+
+def _support_ticket_cursor(ticket: SupportTicket) -> str:
+    return f"{ticket.created_at.isoformat()}|{ticket.id}"
+
+
+def _build_drill_transactions_query(
+    db: Session,
+    *,
+    client_id: str,
+    start_dt: datetime,
+    end_dt: datetime,
+) -> Query:
+    return (
+        db.query(FuelTransaction, FuelCard, FleetDriver, FuelStation)
+        .join(FuelCard, FuelCard.id == FuelTransaction.card_id)
+        .join(FuelStation, FuelStation.id == FuelTransaction.station_id)
+        .outerjoin(FleetDriver, FleetDriver.id == FuelTransaction.driver_id)
+        .filter(
+            FuelTransaction.client_id == client_id,
+            FuelTransaction.occurred_at >= start_dt,
+            FuelTransaction.occurred_at < end_dt,
+            FuelTransaction.status == FuelTransactionStatus.SETTLED,
+        )
+    )
 
 
 def _notify_support_ticket(
@@ -820,6 +853,19 @@ def _parse_export_job_cursor(cursor: str | None) -> tuple[datetime | None, str |
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_cursor") from exc
     return created_at, parts[1]
+
+
+def _parse_datetime_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
+    if not cursor:
+        return None, None
+    parts = cursor.split("|", maxsplit=1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=422, detail="invalid_cursor")
+    try:
+        cursor_dt = datetime.fromisoformat(parts[0])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_cursor") from exc
+    return cursor_dt, parts[1]
 
 
 def _export_job_to_out(job: ExportJob) -> ExportJobOut:
@@ -4181,6 +4227,321 @@ def get_client_analytics_summary(
             avg_resolve_minutes=float(avg_resolve) if avg_resolve is not None else None,
         ),
     )
+
+
+@router.get("/analytics/drill/day", response_model=ClientAnalyticsDrillResponse)
+def get_client_analytics_day_drill(
+    date_value: date = Query(..., alias="date"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientAnalyticsDrillResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
+    _ensure_analytics_access(token)
+
+    tz_name = timezone_name or resolve_user_timezone(db, token=token)
+    if timezone_name:
+        try:
+            ZoneInfo(timezone_name)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="invalid_timezone") from exc
+    tzinfo = ZoneInfo(tz_name)
+
+    start_dt = datetime.combine(date_value, time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+    end_dt = datetime.combine(date_value + timedelta(days=1), time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+
+    query = _build_drill_transactions_query(
+        db,
+        client_id=str(client.id),
+        start_dt=start_dt,
+        end_dt=end_dt,
+    )
+
+    cursor_dt, cursor_id = _parse_datetime_cursor(cursor)
+    if cursor_dt and cursor_id:
+        query = query.filter(
+            or_(
+                FuelTransaction.occurred_at < cursor_dt,
+                and_(FuelTransaction.occurred_at == cursor_dt, FuelTransaction.id < cursor_id),
+            )
+        )
+
+    rows = (
+        query.order_by(FuelTransaction.occurred_at.desc(), FuelTransaction.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    items = [
+        ClientAnalyticsDrillTransaction(
+            tx_id=str(tx.id),
+            occurred_at=tx.occurred_at,
+            card_id=str(tx.card_id),
+            card_label=card.masked_pan or card.card_alias or str(tx.card_id),
+            driver_user_id=str(driver.id) if driver else None,
+            driver_label=driver.full_name if driver else None,
+            amount=int(tx.amount_total_minor or 0) / 100,
+            currency=tx.currency,
+            liters=float(tx.volume_liters) if tx.volume_liters is not None else None,
+            station=station.name or str(tx.station_id),
+            status=tx.status.value if hasattr(tx.status, "value") else str(tx.status),
+        )
+        for tx, card, driver, station in rows
+    ]
+    next_cursor = _drill_transaction_cursor(rows[-1][0]) if has_more and rows else None
+
+    return ClientAnalyticsDrillResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/analytics/drill/card/{card_id}", response_model=ClientAnalyticsDrillResponse)
+def get_client_analytics_card_drill(
+    card_id: str,
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientAnalyticsDrillResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
+    _ensure_analytics_access(token)
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="invalid_period")
+
+    card = (
+        db.query(FuelCard)
+        .filter(FuelCard.id == card_id, FuelCard.client_id == str(client.id))
+        .one_or_none()
+    )
+    if card is None:
+        raise HTTPException(status_code=404, detail="card_not_found")
+
+    tzinfo = ZoneInfo(resolve_user_timezone(db, token=token))
+    start_dt = datetime.combine(date_from, time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+    end_dt = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+
+    query = _build_drill_transactions_query(
+        db,
+        client_id=str(client.id),
+        start_dt=start_dt,
+        end_dt=end_dt,
+    ).filter(FuelTransaction.card_id == card_id)
+
+    cursor_dt, cursor_id = _parse_datetime_cursor(cursor)
+    if cursor_dt and cursor_id:
+        query = query.filter(
+            or_(
+                FuelTransaction.occurred_at < cursor_dt,
+                and_(FuelTransaction.occurred_at == cursor_dt, FuelTransaction.id < cursor_id),
+            )
+        )
+
+    rows = (
+        query.order_by(FuelTransaction.occurred_at.desc(), FuelTransaction.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    items = [
+        ClientAnalyticsDrillTransaction(
+            tx_id=str(tx.id),
+            occurred_at=tx.occurred_at,
+            card_id=str(tx.card_id),
+            card_label=card_item.masked_pan or card_item.card_alias or str(tx.card_id),
+            driver_user_id=str(driver.id) if driver else None,
+            driver_label=driver.full_name if driver else None,
+            amount=int(tx.amount_total_minor or 0) / 100,
+            currency=tx.currency,
+            liters=float(tx.volume_liters) if tx.volume_liters is not None else None,
+            station=station.name or str(tx.station_id),
+            status=tx.status.value if hasattr(tx.status, "value") else str(tx.status),
+        )
+        for tx, card_item, driver, station in rows
+    ]
+    next_cursor = _drill_transaction_cursor(rows[-1][0]) if has_more and rows else None
+
+    return ClientAnalyticsDrillResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/analytics/drill/driver/{user_id}", response_model=ClientAnalyticsDrillResponse)
+def get_client_analytics_driver_drill(
+    user_id: str,
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientAnalyticsDrillResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
+    _ensure_analytics_access(token)
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="invalid_period")
+
+    driver = (
+        db.query(FleetDriver)
+        .filter(FleetDriver.id == user_id, FleetDriver.client_id == str(client.id))
+        .one_or_none()
+    )
+    if driver is None:
+        raise HTTPException(status_code=404, detail="driver_not_found")
+
+    tzinfo = ZoneInfo(resolve_user_timezone(db, token=token))
+    start_dt = datetime.combine(date_from, time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+    end_dt = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+
+    query = _build_drill_transactions_query(
+        db,
+        client_id=str(client.id),
+        start_dt=start_dt,
+        end_dt=end_dt,
+    ).filter(FuelTransaction.driver_id == user_id)
+
+    cursor_dt, cursor_id = _parse_datetime_cursor(cursor)
+    if cursor_dt and cursor_id:
+        query = query.filter(
+            or_(
+                FuelTransaction.occurred_at < cursor_dt,
+                and_(FuelTransaction.occurred_at == cursor_dt, FuelTransaction.id < cursor_id),
+            )
+        )
+
+    rows = (
+        query.order_by(FuelTransaction.occurred_at.desc(), FuelTransaction.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    items = [
+        ClientAnalyticsDrillTransaction(
+            tx_id=str(tx.id),
+            occurred_at=tx.occurred_at,
+            card_id=str(tx.card_id),
+            card_label=card_item.masked_pan or card_item.card_alias or str(tx.card_id),
+            driver_user_id=str(driver_item.id) if driver_item else None,
+            driver_label=driver_item.full_name if driver_item else None,
+            amount=int(tx.amount_total_minor or 0) / 100,
+            currency=tx.currency,
+            liters=float(tx.volume_liters) if tx.volume_liters is not None else None,
+            station=station.name or str(tx.station_id),
+            status=tx.status.value if hasattr(tx.status, "value") else str(tx.status),
+        )
+        for tx, card_item, driver_item, station in rows
+    ]
+    next_cursor = _drill_transaction_cursor(rows[-1][0]) if has_more and rows else None
+
+    return ClientAnalyticsDrillResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/analytics/drill/support", response_model=ClientAnalyticsSupportDrillResponse)
+def get_client_analytics_support_drill(
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    filter_type: str | None = Query(default=None, alias="t"),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(None),
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientAnalyticsSupportDrillResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
+    _ensure_analytics_access(token)
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="invalid_period")
+
+    org_id = _support_ticket_org_id(token)
+    tzinfo = ZoneInfo(resolve_user_timezone(db, token=token))
+    start_dt = datetime.combine(date_from, time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+    end_dt = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=tzinfo).astimezone(timezone.utc)
+
+    query = db.query(SupportTicket).filter(
+        SupportTicket.org_id == org_id,
+        SupportTicket.created_at >= start_dt,
+        SupportTicket.created_at < end_dt,
+    )
+
+    filter_value = (filter_type or "open").strip().lower()
+    if filter_value in {"open"}:
+        query = query.filter(SupportTicket.status.in_({SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS}))
+    elif filter_value == "closed":
+        query = query.filter(SupportTicket.status == SupportTicketStatus.CLOSED)
+    elif filter_value in {"sla_breached", "sla_breached_any"}:
+        query = query.filter(
+            or_(
+                SupportTicket.sla_first_response_status == SupportTicketSlaStatus.BREACHED,
+                SupportTicket.sla_resolution_status == SupportTicketSlaStatus.BREACHED,
+            )
+        )
+    elif filter_value == "sla_breached_first":
+        query = query.filter(SupportTicket.sla_first_response_status == SupportTicketSlaStatus.BREACHED)
+    elif filter_value == "sla_breached_resolution":
+        query = query.filter(SupportTicket.sla_resolution_status == SupportTicketSlaStatus.BREACHED)
+    else:
+        raise HTTPException(status_code=400, detail="invalid_filter")
+
+    cursor_dt, cursor_id = _parse_datetime_cursor(cursor)
+    if cursor_dt and cursor_id:
+        query = query.filter(
+            or_(
+                SupportTicket.created_at < cursor_dt,
+                and_(SupportTicket.created_at == cursor_dt, SupportTicket.id < cursor_id),
+            )
+        )
+
+    rows = (
+        query.order_by(SupportTicket.created_at.desc(), SupportTicket.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    items = [
+        ClientAnalyticsSupportDrillItem(
+            ticket_id=str(ticket.id),
+            subject=ticket.subject,
+            status=ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status),
+            priority=ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority),
+            created_at=ticket.created_at,
+            first_response_status=(
+                ticket.sla_first_response_status.value
+                if hasattr(ticket.sla_first_response_status, "value")
+                else str(ticket.sla_first_response_status)
+            ),
+            resolution_status=(
+                ticket.sla_resolution_status.value
+                if hasattr(ticket.sla_resolution_status, "value")
+                else str(ticket.sla_resolution_status)
+            ),
+        )
+        for ticket in rows
+    ]
+    next_cursor = _support_ticket_cursor(rows[-1]) if has_more and rows else None
+
+    return ClientAnalyticsSupportDrillResponse(items=items, next_cursor=next_cursor)
 
 
 @router.get("/users", response_model=ClientUsersResponse)

@@ -48,3 +48,37 @@ export interface ClientAnalyticsSummaryResponse {
     avg_resolve_minutes: number | null;
   };
 }
+
+export interface ClientAnalyticsDrillTransaction {
+  tx_id: string;
+  occurred_at: string;
+  card_id: string;
+  card_label: string;
+  driver_user_id: string | null;
+  driver_label: string | null;
+  amount: number;
+  currency: string;
+  liters: number | null;
+  station: string;
+  status: string;
+}
+
+export interface ClientAnalyticsDrillResponse {
+  items: ClientAnalyticsDrillTransaction[];
+  next_cursor: string | null;
+}
+
+export interface ClientAnalyticsSupportDrillItem {
+  ticket_id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  created_at: string;
+  first_response_status: string;
+  resolution_status: string;
+}
+
+export interface ClientAnalyticsSupportDrillResponse {
+  items: ClientAnalyticsSupportDrillItem[];
+  next_cursor: string | null;
+}

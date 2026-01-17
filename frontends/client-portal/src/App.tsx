@@ -46,6 +46,10 @@ import { CasesPage } from "./pages/CasesPage";
 import { CaseDetailsPage } from "./pages/CaseDetailsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ClientAnalyticsPage } from "./pages/ClientAnalyticsPage";
+import { AnalyticsDayPage } from "./pages/AnalyticsDayPage";
+import { AnalyticsCardPage } from "./pages/AnalyticsCardPage";
+import { AnalyticsDriverPage } from "./pages/AnalyticsDriverPage";
+import { AnalyticsSupportPage } from "./pages/AnalyticsSupportPage";
 import { AnalyticsDashboardPage } from "./pages/AnalyticsDashboardPage";
 import { AnalyticsSpendPage } from "./pages/AnalyticsSpendPage";
 import { AnalyticsDeclinesPage } from "./pages/AnalyticsDeclinesPage";
@@ -171,6 +175,38 @@ export function App({ initialSession = null }: AppProps) {
                   element={
                     <ModuleGate module="ANALYTICS" title="Аналитика">
                       <ClientAnalyticsPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/client/analytics/day"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsDayPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/client/analytics/card/:cardId"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsCardPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/client/analytics/driver/:userId"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsDriverPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/client/analytics/support"
+                  element={
+                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                      <AnalyticsSupportPage />
                     </ModuleGate>
                   }
                 />
