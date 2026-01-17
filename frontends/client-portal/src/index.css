@@ -720,6 +720,105 @@ textarea:focus-visible {
   color: var(--neft-text-muted);
 }
 
+.dashboard-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-widget {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard-sparkline {
+  width: 100%;
+  max-width: 320px;
+  color: var(--neft-primary);
+}
+
+.dashboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboard-list__title {
+  font-weight: 600;
+}
+
+.dashboard-list__value {
+  font-weight: 600;
+}
+
+.dashboard-health {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard-health__item {
+  background: var(--neft-surface2);
+  border: 1px solid var(--neft-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.dashboard-health__label {
+  font-size: 0.75rem;
+  color: var(--neft-text-muted);
+}
+
+.dashboard-health__value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.dashboard-sublist {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard-sublist__title {
+  font-weight: 700;
+}
+
+.dashboard-limits {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.dashboard-limits__card {
+  border: 1px solid var(--neft-border);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: var(--neft-surface2);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dashboard-limits__list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
 .kpi-card__progress {
   position: relative;
   height: 4px;

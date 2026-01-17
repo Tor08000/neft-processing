@@ -14,12 +14,12 @@ const session: AuthSession = {
 };
 
 const dashboardPayload = {
-  active_contracts: 3,
-  invoices_due: 2,
-  invoices_due_amount: 125000,
-  payments_last_30d: 98000,
-  payments_last_30d_count: 4,
-  sla: { status: "OK", violations: 0 },
+  role: "OWNER",
+  timezone: "Europe/Moscow",
+  widgets: [
+    { type: "kpi", key: "total_spend_30d", data: { value: 125000, currency: "RUB" } },
+    { type: "cta", key: "owner_actions", data: null },
+  ],
 };
 
 describe("Client portal pages", () => {
@@ -44,7 +44,7 @@ describe("Client portal pages", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/Обзор клиента/i)).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(await screen.findByText(/Общие расходы/i)).toBeInTheDocument();
+    expect(screen.getByText(/Создать отчёт/i)).toBeInTheDocument();
   });
 });
