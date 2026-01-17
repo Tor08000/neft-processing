@@ -14,6 +14,9 @@ from neft_shared.logging_setup import get_logger
 logger = get_logger(__name__)
 
 
+SAFETY_WINDOW_SECONDS = 30
+
+
 def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
     if schedule.last_run_at and (now - schedule.last_run_at).total_seconds() < 60:
         return
@@ -32,7 +35,12 @@ def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
     session.flush()
 
     schedule.last_run_at = now
-    schedule.next_run_at = compute_next_run_at(schedule.schedule_kind, schedule.schedule_meta, schedule.timezone)
+    schedule.next_run_at = compute_next_run_at(
+        schedule.schedule_kind,
+        schedule.schedule_meta,
+        schedule.timezone,
+        anchor_utc=now + timedelta(seconds=1),
+    )
     session.add(schedule)
 
     try:
@@ -57,14 +65,16 @@ def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
 def run_report_schedules() -> dict:
     session = get_sessionmaker()()
     now = datetime.now(timezone.utc)
+    due_before = now - timedelta(seconds=SAFETY_WINDOW_SECONDS)
     triggered = 0
     try:
         schedules = (
             session.query(ReportSchedule)
             .filter(ReportSchedule.status == ReportScheduleStatus.ACTIVE)
             .filter(ReportSchedule.next_run_at.isnot(None))
-            .filter(ReportSchedule.next_run_at <= now)
+            .filter(ReportSchedule.next_run_at <= due_before)
             .order_by(ReportSchedule.next_run_at.asc())
+            .with_for_update(skip_locked=True)
             .all()
         )
         for schedule in schedules:

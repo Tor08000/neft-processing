@@ -218,6 +218,7 @@ class ReportScheduleOut(BaseModel):
     status: ReportScheduleStatus
     last_run_at: datetime | None = None
     next_run_at: datetime | None = None
+    next_run_at_local: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
