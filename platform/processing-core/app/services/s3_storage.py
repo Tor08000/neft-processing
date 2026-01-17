@@ -56,6 +56,15 @@ class S3Storage:
         self._client.put_object(Bucket=self.bucket, Key=key, Body=payload, ContentType=content_type)
         return self._public_url(key)
 
+    def put_file(self, key: str, file_path: str, *, content_type: str) -> str:
+        self._client.upload_file(
+            file_path,
+            self.bucket,
+            key,
+            ExtraArgs={"ContentType": content_type},
+        )
+        return self._public_url(key)
+
     def exists(self, key: str) -> bool:
         try:
             self._client.head_object(Bucket=self.bucket, Key=key)

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from uuid import uuid4
+
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_client import celery_client
 from app.db import get_sessionmaker
 from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobStatus
+from app.models.report_schedules import ReportSchedule
 from app.services.reports_render import (
     ExportRenderError,
     ExportRenderLimitError,
     ExportRenderValidationError,
-    render_csv_payload,
-    render_export_report,
-    render_xlsx_payload,
+    TOO_MANY_ROWS_ERROR,
+    render_export_report_stream,
+    write_csv_stream,
+    write_xlsx_stream,
 )
 from app.services.report_schedule_notifications import send_scheduled_report_notifications
 from app.services.audit_service import AuditService
@@ -33,9 +39,52 @@ def _build_xlsx_filename(report_type: str, job_id: str) -> str:
     return f"{report_type}_{stamp}_{job_id}.xlsx"
 
 
-@celery_client.task(name="exports.generate_export_job")
+def _notify_schedule_if_needed(session, job: ExportJob, success: bool) -> None:
+    schedule_id = None
+    if isinstance(job.filters_json, dict):
+        schedule_id = job.filters_json.get("schedule_id")
+    if schedule_id:
+        schedule = session.get(ReportSchedule, schedule_id)
+        if schedule:
+            send_scheduled_report_notifications(session, schedule=schedule, job=job, success=success)
+
+
+def _failure_notification_body(error_message: str | None) -> str:
+    if error_message == TOO_MANY_ROWS_ERROR:
+        return "Слишком большой объём данных — сузьте фильтры."
+    if error_message == "timeout":
+        return "Превышено время формирования отчёта. Попробуйте сузить фильтры."
+    return "Не удалось сформировать отчёт."
+
+
+def _notify_export_failure(session, job: ExportJob) -> None:
+    try:
+        create_notification(
+            session,
+            org_id=str(job.org_id),
+            event_type="export_failed",
+            severity=ClientNotificationSeverity.WARNING,
+            title=f"Ошибка экспорта {job.format.value}",
+            body=_failure_notification_body(job.error_message),
+            link="/client/exports",
+            target_user_id=job.created_by_user_id,
+            entity_type="report_export",
+            entity_id=str(job.id),
+            meta_json={"row_count": job.row_count, "format": job.format.value},
+        )
+        session.commit()
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        logger.warning("export_job.failure_notification_failed", extra={"job_id": str(job.id), "error": str(exc)})
+
+
+@celery_client.task(
+    name="exports.generate_export_job",
+    soft_time_limit=settings.NEFT_EXPORT_JOB_SOFT_TIME_LIMIT_SECONDS,
+)
 def generate_export_job(job_id: str) -> dict:
     session = get_sessionmaker()()
+    temp_path: Path | None = None
     try:
         job = session.get(ExportJob, job_id)
         if not job:
@@ -52,7 +101,7 @@ def generate_export_job(job_id: str) -> dict:
         filters = job.filters_json or {}
         tenant_id = filters.get("tenant_id")
         allowed_entity_types = filters.get("allowed_entity_types")
-        render_result = render_export_report(
+        render_result = render_export_report_stream(
             session,
             report_type=job.report_type,
             client_id=str(job.org_id),
@@ -61,25 +110,39 @@ def generate_export_job(job_id: str) -> dict:
             created_by_user_id=job.created_by_user_id,
             filters=filters,
             allowed_entity_types=set(allowed_entity_types) if allowed_entity_types else None,
+            max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+            chunk_size=settings.NEFT_EXPORT_CHUNK_SIZE,
         )
+        temp_dir = Path(settings.NEFT_EXPORT_TMP_DIR)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_suffix = "xlsx" if job.format == ExportJobFormat.XLSX else "csv"
+        temp_path = temp_dir / f"export_{job.id}_{uuid4().hex}.{temp_suffix}"
         if job.format == ExportJobFormat.XLSX:
-            payload = render_xlsx_payload(render_result)
             filename = _build_xlsx_filename(job.report_type.value, str(job.id))
             content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            row_count = write_xlsx_stream(
+                render_result,
+                file_path=str(temp_path),
+                max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+            )
         else:
-            payload = render_csv_payload(render_result)
             filename = render_result.filename
             content_type = "text/csv"
+            row_count = write_csv_stream(
+                render_result,
+                file_path=str(temp_path),
+                max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+            )
 
         object_key = _build_object_key(str(job.org_id), str(job.id), filename)
         storage = S3Storage(bucket=settings.NEFT_EXPORTS_BUCKET)
-        storage.put_bytes(object_key, payload, content_type=content_type)
+        storage.put_file(object_key, str(temp_path), content_type=content_type)
 
         job.status = ExportJobStatus.DONE
         job.file_object_key = object_key
         job.file_name = filename
         job.content_type = content_type
-        job.row_count = len(render_result.rows)
+        job.row_count = row_count
         job.finished_at = datetime.now(timezone.utc)
         job.expires_at = job.expires_at or (
             datetime.now(timezone.utc) + timedelta(days=settings.EXPORT_JOB_RETENTION_DAYS)
@@ -100,6 +163,7 @@ def generate_export_job(job_id: str) -> dict:
                 target_user_id=job.created_by_user_id,
                 entity_type="report_export",
                 entity_id=str(job.id),
+                meta_json={"row_count": job.row_count, "format": job.format.value},
             )
             session.commit()
         except Exception as exc:  # noqa: BLE001
@@ -117,8 +181,22 @@ def generate_export_job(job_id: str) -> dict:
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
             session.commit()
+            _notify_export_failure(session, job)
         logger.warning("export_job.limit_exceeded", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
+    except SoftTimeLimitExceeded:
+        session.rollback()
+        job = session.get(ExportJob, job_id)
+        if job:
+            job.status = ExportJobStatus.FAILED
+            job.error_message = "timeout"
+            job.finished_at = datetime.now(timezone.utc)
+            session.add(job)
+            _notify_schedule_if_needed(session, job, False)
+            session.commit()
+            _notify_export_failure(session, job)
+        logger.warning("export_job.timeout", extra={"job_id": job_id})
+        return {"status": "failed", "job_id": job_id, "error": "timeout"}
     except (ExportRenderValidationError, ExportRenderError) as exc:
         session.rollback()
         job = session.get(ExportJob, job_id)
@@ -129,6 +207,7 @@ def generate_export_job(job_id: str) -> dict:
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
             session.commit()
+            _notify_export_failure(session, job)
         logger.warning("export_job.failed", extra={"job_id": job_id, "error": str(exc)})
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
@@ -141,9 +220,15 @@ def generate_export_job(job_id: str) -> dict:
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
             session.commit()
+            _notify_export_failure(session, job)
         logger.exception("export_job.error", extra={"job_id": job_id})
         raise
     finally:
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                logger.warning("export_job.temp_cleanup_failed", extra={"job_id": job_id, "path": str(temp_path)})
         session.close()
 
 @celery_client.task(name="exports.cleanup_expired_exports")

@@ -1153,6 +1153,12 @@ def _audit_event(
     )
 
 
+def _export_job_duration_ms(job: ExportJob) -> int | None:
+    if job.started_at and job.finished_at:
+        return int((job.finished_at - job.started_at).total_seconds() * 1000)
+    return None
+
+
 @router.get("/audit/events", response_model=ClientAuditEventsResponse)
 def list_audit_events(
     request: Request,
@@ -1356,7 +1362,12 @@ def create_export_job(
         entity_type="export_job",
         entity_id=str(job.id),
         action="export_job_created",
-        after={"report_type": job.report_type.value, "format": job.format.value},
+        after={
+            "report_type": job.report_type.value,
+            "format": job.format.value,
+            "row_count": job.row_count,
+            "duration_ms": _export_job_duration_ms(job),
+        },
     )
 
     return ExportJobCreateResponse(id=str(job.id), status=job.status)
@@ -1486,7 +1497,12 @@ def download_export_job(
         entity_type="export_job",
         entity_id=str(job.id),
         action="export_job_downloaded",
-        after={"report_type": job.report_type.value, "format": job.format.value},
+        after={
+            "report_type": job.report_type.value,
+            "format": job.format.value,
+            "row_count": job.row_count,
+            "duration_ms": _export_job_duration_ms(job),
+        },
     )
 
     return RedirectResponse(url=signed_url)
