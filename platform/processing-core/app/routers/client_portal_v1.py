@@ -180,6 +180,7 @@ from app.services.support_ticket_sla import (
     sla_remaining_minutes,
 )
 from app.services.helpdesk_service import (
+    HELPDESK_INBOUND_SOURCE,
     build_close_payload,
     build_comment_payload,
     build_idempotency_for_close,
@@ -2206,7 +2207,12 @@ def add_support_ticket_comment(
 ) -> SupportTicketDetail:
     user_id = _support_ticket_user_id(token)
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
-    comment = SupportTicketComment(ticket_id=str(ticket.id), user_id=user_id, message=payload.message)
+    comment = SupportTicketComment(
+        ticket_id=str(ticket.id),
+        user_id=user_id,
+        message=payload.message,
+        source="PORTAL",
+    )
     ticket.updated_at = datetime.now(timezone.utc)
     audit_service = AuditService(db)
     request_ctx = request_context_from_request(request, token=token)
@@ -2244,18 +2250,20 @@ def add_support_ticket_comment(
     author_email = _resolve_employee_email(db, org_id=str(ticket.org_id), user_id=user_id) or _notification_user_email(
         token
     )
-    outbox = _enqueue_helpdesk_outbox(
-        db,
-        ticket=ticket,
-        event_type=HelpdeskOutboxEventType.COMMENT_ADDED,
-        payload=build_comment_payload(ticket=ticket, comment=comment, author_email=author_email),
-        idempotency_key=build_idempotency_for_comment(
-            HelpdeskOutboxEventType.COMMENT_ADDED,
-            str(ticket.id),
-            str(ticket.org_id),
-            str(comment.id),
-        ),
-    )
+    outbox = None
+    if comment.source != HELPDESK_INBOUND_SOURCE:
+        outbox = _enqueue_helpdesk_outbox(
+            db,
+            ticket=ticket,
+            event_type=HelpdeskOutboxEventType.COMMENT_ADDED,
+            payload=build_comment_payload(ticket=ticket, comment=comment, author_email=author_email),
+            idempotency_key=build_idempotency_for_comment(
+                HelpdeskOutboxEventType.COMMENT_ADDED,
+                str(ticket.id),
+                str(ticket.org_id),
+                str(comment.id),
+            ),
+        )
     if outbox:
         _audit_event(
             db,
@@ -2306,12 +2314,13 @@ def close_support_ticket(
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
 ) -> SupportTicketDetail:
-    _ = _support_ticket_user_id(token)
+    user_id = _support_ticket_user_id(token)
     ticket = _load_support_ticket(db, ticket_id=ticket_id, token=token)
     audit_service = AuditService(db)
     request_ctx = request_context_from_request(request, token=token)
     if ticket.status != SupportTicketStatus.CLOSED:
         ticket.status = SupportTicketStatus.CLOSED
+        ticket.last_changed_by = user_id
         ticket.updated_at = datetime.now(timezone.utc)
         mark_resolution(ticket, audit=audit_service, request_ctx=request_ctx)
         db.add(ticket)
@@ -2334,17 +2343,19 @@ def close_support_ticket(
             body=f"Тикет \"{ticket.subject}\" закрыт.",
             target_user_id=str(ticket.created_by_user_id),
         )
-        outbox = _enqueue_helpdesk_outbox(
-            db,
-            ticket=ticket,
-            event_type=HelpdeskOutboxEventType.TICKET_CLOSED,
-            payload=build_close_payload(ticket=ticket),
-            idempotency_key=build_idempotency_for_close(
-                HelpdeskOutboxEventType.TICKET_CLOSED,
-                str(ticket.id),
-                str(ticket.org_id),
-            ),
-        )
+        outbox = None
+        if ticket.last_changed_by != HELPDESK_INBOUND_SOURCE:
+            outbox = _enqueue_helpdesk_outbox(
+                db,
+                ticket=ticket,
+                event_type=HelpdeskOutboxEventType.TICKET_CLOSED,
+                payload=build_close_payload(ticket=ticket),
+                idempotency_key=build_idempotency_for_close(
+                    HelpdeskOutboxEventType.TICKET_CLOSED,
+                    str(ticket.id),
+                    str(ticket.org_id),
+                ),
+            )
         if outbox:
             _audit_event(
                 db,

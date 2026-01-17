@@ -263,6 +263,8 @@ from .support_ticket import (  # noqa: F401
     SupportTicketStatus,
 )
 from .helpdesk import (  # noqa: F401
+    HelpdeskInboundEvent,
+    HelpdeskInboundEventStatus,
     HelpdeskIntegration,
     HelpdeskIntegrationStatus,
     HelpdeskOutbox,
@@ -830,6 +832,8 @@ __all__ = [
     "SupportTicketStatus",
     "HelpdeskIntegration",
     "HelpdeskIntegrationStatus",
+    "HelpdeskInboundEvent",
+    "HelpdeskInboundEventStatus",
     "HelpdeskOutbox",
     "HelpdeskOutboxEventType",
     "HelpdeskOutboxStatus",

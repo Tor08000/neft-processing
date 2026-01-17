@@ -47,6 +47,7 @@ from app.routers.commercial_layer import router as commercial_layer_router
 from app.routers.internal.fleet import router as internal_fleet_router
 from app.routers.internal.fuel_providers import router as internal_fuel_providers_router
 from app.routers.internal.telegram import router as internal_telegram_router
+from app.routers.helpdesk_webhooks import router as helpdesk_webhooks_router
 from app.routers.portal import client_router as portal_client_router, partner_router as portal_partner_router
 from app.routers.partner.marketplace_analytics import router as partner_marketplace_analytics_router
 from app.routers.partner.marketplace_catalog import router as partner_marketplace_router
@@ -452,6 +453,7 @@ safe_include_router(core_prefixed_router, client_service_completion_proofs_route
 safe_include_router(core_prefixed_router, internal_fleet_router)
 safe_include_router(core_prefixed_router, internal_fuel_providers_router)
 safe_include_router(core_prefixed_router, internal_telegram_router)
+safe_include_router(core_prefixed_router, helpdesk_webhooks_router)
 safe_include_router(core_prefixed_router, commercial_layer_router)
 safe_include_router(core_prefixed_router, partner_edo_router)
 

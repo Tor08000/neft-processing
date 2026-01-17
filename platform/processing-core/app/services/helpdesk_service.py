@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.celery_client import celery_client
 from app.models.audit_log import ActorType, AuditVisibility
 from app.models.helpdesk import (
+    HelpdeskInboundEventStatus,
     HelpdeskIntegration,
     HelpdeskIntegrationStatus,
     HelpdeskOutbox,
@@ -20,17 +21,55 @@ from app.models.helpdesk import (
     HelpdeskTicketLink,
     HelpdeskTicketLinkStatus,
 )
-from app.models.support_ticket import SupportTicket, SupportTicketAttachment, SupportTicketComment
+from app.models.support_ticket import (
+    SupportTicket,
+    SupportTicketAttachment,
+    SupportTicketComment,
+    SupportTicketStatus,
+)
 from app.services.audit_service import AuditService, RequestContext
 from app.services.client_notifications import ADMIN_TARGET_ROLES, ClientNotificationSeverity, create_notification
 from app.services.email_service import build_idempotency_key
 from app.services.email_templates import build_portal_url
+from app.services.support_ticket_sla import mark_first_response, mark_resolution
 
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 6
 RETRY_DELAYS = [60, 300, 900, 3600, 3600, 3600]
 FAILURE_NOTIFICATION_THRESHOLD = 3
+HELPDESK_INBOUND_SOURCE = "HELPDESK_INBOUND"
+HELPDESK_INBOUND_ACTOR_ID = "helpdesk_inbound"
+
+
+@dataclass(frozen=True)
+class HelpdeskAuthor:
+    name: str | None
+    email: str | None
+    role: str | None
+
+
+@dataclass(frozen=True)
+class HelpdeskComment:
+    body: str
+    is_public: bool | None
+    created_at: str | None
+
+
+@dataclass(frozen=True)
+class HelpdeskStatusChange:
+    from_status: str | None
+    to_status: str | None
+
+
+@dataclass(frozen=True)
+class NormalizedHelpdeskEvent:
+    event_id: str
+    event_type: str
+    external_ticket_id: str
+    author: HelpdeskAuthor | None = None
+    comment: HelpdeskComment | None = None
+    status: HelpdeskStatusChange | None = None
 
 
 @dataclass(frozen=True)
@@ -401,6 +440,179 @@ def build_close_payload(*, ticket: SupportTicket) -> dict[str, Any]:
     }
 
 
+def _normalize_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _normalize_author_role(role: Any) -> str | None:
+    if role is None:
+        return None
+    normalized = str(role).strip().lower().replace("-", "_")
+    if normalized in {"enduser", "end_user"}:
+        return "end_user"
+    if normalized in {"agent", "admin"}:
+        return "agent"
+    return normalized or None
+
+
+def normalize_zendesk_payload(payload: dict[str, Any], *, event_id: str) -> NormalizedHelpdeskEvent | None:
+    ticket = payload.get("ticket") or {}
+    external_ticket_id = (
+        _normalize_text(payload.get("ticket_id"))
+        or _normalize_text(ticket.get("id"))
+        or _normalize_text(payload.get("id"))
+    )
+    if not external_ticket_id:
+        return None
+
+    event_type = _normalize_text(payload.get("event_type"))
+    comment_payload = payload.get("comment") or {}
+    if not event_type:
+        if comment_payload or comment_payload.get("body"):
+            event_type = "comment_created"
+        elif payload.get("status") or ticket.get("status") or ticket.get("previous_status"):
+            event_type = "status_changed"
+
+    if event_type not in {"comment_created", "status_changed"}:
+        return None
+
+    author_payload = (
+        comment_payload.get("author")
+        or payload.get("author")
+        or payload.get("current_user")
+        or payload.get("assignee")
+        or {}
+    )
+    author = HelpdeskAuthor(
+        name=_normalize_text(author_payload.get("name")),
+        email=_normalize_text(author_payload.get("email")),
+        role=_normalize_author_role(author_payload.get("role")),
+    )
+
+    comment = None
+    if event_type == "comment_created":
+        body = _normalize_text(comment_payload.get("body") or comment_payload.get("text") or payload.get("comment"))
+        if not body:
+            return None
+        comment = HelpdeskComment(
+            body=body,
+            is_public=bool(comment_payload.get("public")) if "public" in comment_payload else None,
+            created_at=_normalize_text(comment_payload.get("created_at")),
+        )
+
+    status_change = None
+    if event_type == "status_changed":
+        status_change = HelpdeskStatusChange(
+            from_status=_normalize_text(ticket.get("previous_status") or payload.get("previous_status")),
+            to_status=_normalize_text(payload.get("status") or ticket.get("status")),
+        )
+
+    return NormalizedHelpdeskEvent(
+        event_id=event_id,
+        event_type=event_type,
+        external_ticket_id=str(external_ticket_id),
+        author=author,
+        comment=comment,
+        status=status_change,
+    )
+
+
+def map_zendesk_status_to_support(status: str | None) -> SupportTicketStatus | None:
+    if not status:
+        return None
+    normalized = status.strip().lower()
+    if normalized in {"new", "open"}:
+        return SupportTicketStatus.OPEN
+    if normalized in {"pending", "hold"}:
+        return SupportTicketStatus.IN_PROGRESS
+    if normalized in {"solved", "closed"}:
+        return SupportTicketStatus.CLOSED
+    return None
+
+
+def apply_helpdesk_inbound_event(
+    db: Session,
+    *,
+    event: NormalizedHelpdeskEvent,
+    provider: HelpdeskProvider,
+) -> tuple[HelpdeskInboundEventStatus, str | None, str | None]:
+    link = (
+        db.query(HelpdeskTicketLink)
+        .filter(HelpdeskTicketLink.provider == provider)
+        .filter(HelpdeskTicketLink.external_ticket_id == event.external_ticket_id)
+        .one_or_none()
+    )
+    if not link:
+        return HelpdeskInboundEventStatus.IGNORED, "unknown_external_ticket", None
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == str(link.internal_ticket_id)).one_or_none()
+    if not ticket:
+        return HelpdeskInboundEventStatus.IGNORED, "missing_internal_ticket", None
+
+    audit_service = AuditService(db)
+    request_ctx = RequestContext(actor_type=ActorType.SERVICE, actor_id=HELPDESK_INBOUND_ACTOR_ID)
+
+    if event.event_type == "comment_created":
+        role = event.author.role if event.author else None
+        if role == "end_user":
+            return HelpdeskInboundEventStatus.IGNORED, "end_user_comment", str(ticket.id)
+        if not event.comment or not event.comment.body:
+            return HelpdeskInboundEventStatus.IGNORED, "empty_comment", str(ticket.id)
+        comment = SupportTicketComment(
+            ticket_id=str(ticket.id),
+            user_id=HELPDESK_INBOUND_ACTOR_ID,
+            message=event.comment.body,
+            source=HELPDESK_INBOUND_SOURCE,
+        )
+        ticket.updated_at = _now()
+        mark_first_response(ticket, audit=audit_service, request_ctx=request_ctx)
+        db.add(comment)
+        db.add(ticket)
+        db.flush()
+        audit_service.audit(
+            event_type="helpdesk_inbound_comment_applied",
+            entity_type="support_ticket",
+            entity_id=str(ticket.id),
+            action="helpdesk_inbound_comment_applied",
+            visibility=AuditVisibility.INTERNAL,
+            after={"comment_id": str(comment.id)},
+            request_ctx=request_ctx,
+        )
+        return HelpdeskInboundEventStatus.PROCESSED, None, str(ticket.id)
+
+    if event.event_type == "status_changed":
+        mapped_status = map_zendesk_status_to_support(event.status.to_status if event.status else None)
+        if not mapped_status:
+            return HelpdeskInboundEventStatus.IGNORED, "unsupported_status", str(ticket.id)
+        if ticket.status == SupportTicketStatus.CLOSED and mapped_status == SupportTicketStatus.OPEN:
+            return HelpdeskInboundEventStatus.IGNORED, "reopen_ignored", str(ticket.id)
+        if ticket.status == mapped_status:
+            return HelpdeskInboundEventStatus.PROCESSED, None, str(ticket.id)
+        previous = ticket.status
+        ticket.status = mapped_status
+        ticket.last_changed_by = HELPDESK_INBOUND_SOURCE
+        ticket.updated_at = _now()
+        if mapped_status == SupportTicketStatus.CLOSED:
+            mark_resolution(ticket, audit=audit_service, request_ctx=request_ctx)
+        db.add(ticket)
+        db.flush()
+        audit_service.audit(
+            event_type="helpdesk_inbound_status_applied",
+            entity_type="support_ticket",
+            entity_id=str(ticket.id),
+            action="helpdesk_inbound_status_applied",
+            visibility=AuditVisibility.INTERNAL,
+            after={"from": previous.value, "to": ticket.status.value},
+            request_ctx=request_ctx,
+        )
+        return HelpdeskInboundEventStatus.PROCESSED, None, str(ticket.id)
+
+    return HelpdeskInboundEventStatus.IGNORED, "unsupported_event", str(ticket.id)
+
+
 def build_idempotency(event_type: str, org_id: str, entity_id: str, job_id: str | None = None) -> str:
     return build_idempotency_key(event_type, org_id, entity_id, job_id)
 
@@ -585,9 +797,13 @@ def integration_payload_from_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "HELPDESK_INBOUND_ACTOR_ID",
+    "HELPDESK_INBOUND_SOURCE",
     "HelpdeskProviderError",
     "HelpdeskProvider",
     "ExternalTicketRef",
+    "NormalizedHelpdeskEvent",
+    "apply_helpdesk_inbound_event",
     "build_close_payload",
     "build_comment_payload",
     "build_idempotency",
@@ -601,6 +817,8 @@ __all__ = [
     "get_integration",
     "get_integration_last_error",
     "integration_payload_from_config",
+    "map_zendesk_status_to_support",
+    "normalize_zendesk_payload",
     "schedule_helpdesk_outbox",
     "upsert_integration",
 ]

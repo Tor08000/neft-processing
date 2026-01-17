@@ -46,6 +46,7 @@ class SupportTicket(Base):
         default=SupportTicketPriority.NORMAL,
         index=True,
     )
+    last_changed_by = Column(String(128), nullable=True)
     first_response_due_at = Column(DateTime(timezone=True), nullable=True)
     first_response_at = Column(DateTime(timezone=True), nullable=True)
     resolution_due_at = Column(DateTime(timezone=True), nullable=True)
@@ -78,6 +79,7 @@ class SupportTicketComment(Base):
     )
     user_id = Column(String(128), nullable=False)
     message = Column(Text, nullable=False)
+    source = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
