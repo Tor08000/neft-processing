@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fetchClientInvoiceDetails } from "../api/portal";
+import { fetchClientInvoiceDetails, initPaymentIntakeAttachment, submitPaymentIntake } from "../api/portal";
 import { useAuth } from "../auth/AuthContext";
-import type { ClientInvoiceDetails } from "../types/portal";
+import type { ClientInvoiceDetails, ClientPaymentIntake } from "../types/portal";
 import { MoneyValue } from "../components/common/MoneyValue";
 import { AppErrorState, AppLoadingState } from "../components/states";
 import { formatDate, formatDateTime, formatNumberParts } from "../utils/format";
 import { getInvoiceStatusLabel, getInvoiceStatusTone } from "../utils/invoices";
+
+const BANK_DETAILS = {
+  recipient: "ООО «Нефть»",
+  inn: "7700000000",
+  kpp: "770001001",
+  bank: "АО «Надежный банк»",
+  bik: "044525225",
+  account: "40702810900000000001",
+  corrAccount: "30101810400000000225",
+};
 
 export function ClientInvoiceDetailsPage() {
   const { id } = useParams();
@@ -14,6 +24,14 @@ export function ClientInvoiceDetailsPage() {
   const [invoice, setInvoice] = useState<ClientInvoiceDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [paidAt, setPaidAt] = useState("");
+  const [bankReference, setBankReference] = useState("");
+  const [comment, setComment] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -41,6 +59,9 @@ export function ClientInvoiceDetailsPage() {
     return <AppErrorState message="Инвойс не найден" />;
   }
 
+  const intakeList = invoice.payment_intakes ?? [];
+  const latestIntake = intakeList[0];
+  const defaultAmount = Number(invoice.amount_due ?? invoice.amount_total ?? 0);
   const usageLines = invoice.lines?.filter((line) => line.line_type === "USAGE") ?? [];
   const formatQuantity = (value?: number | null) => {
     if (value === null || value === undefined) return "—";
@@ -49,6 +70,74 @@ export function ClientInvoiceDetailsPage() {
     const digits = fractionLength === 0 ? 0 : fractionLength <= 2 ? 2 : 6;
     const parts = formatNumberParts(value, digits);
     return parts.fraction ? `${parts.int}.${parts.fraction}` : parts.int;
+  };
+
+  const handleSubmitPaymentIntake = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!id || !invoice) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      const resolvedAmount = Number(amount || defaultAmount);
+      if (!resolvedAmount || Number.isNaN(resolvedAmount)) {
+        setSubmitError("Укажите сумму платежа.");
+        return;
+      }
+      let proof:
+        | {
+            object_key: string;
+            file_name: string;
+            content_type: string;
+            size: number;
+          }
+        | null = null;
+      if (proofFile) {
+        const init = await initPaymentIntakeAttachment(user, id, {
+          file_name: proofFile.name,
+          content_type: proofFile.type,
+          size: proofFile.size,
+        });
+        await fetch(init.upload_url, {
+          method: "PUT",
+          body: proofFile,
+          headers: { "Content-Type": proofFile.type },
+        });
+        proof = {
+          object_key: init.object_key,
+          file_name: proofFile.name,
+          content_type: proofFile.type,
+          size: proofFile.size,
+        };
+      }
+      const result = await submitPaymentIntake(user, id, {
+        amount: resolvedAmount,
+        currency: invoice.currency,
+        paid_at_claimed: paidAt || undefined,
+        bank_reference: bankReference || undefined,
+        comment: comment || undefined,
+        proof,
+      });
+      const updatedIntakes = [result, ...(invoice.payment_intakes ?? [])];
+      setInvoice({ ...invoice, payment_intakes: updatedIntakes });
+      setSubmitSuccess("Заявка отправлена. Статус: на проверке.");
+      setProofFile(null);
+      setComment("");
+      setBankReference("");
+      setPaidAt("");
+      setAmount("");
+    } catch (err) {
+      setSubmitError((err as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderIntakeStatus = (intake: ClientPaymentIntake) => {
+    if (intake.status === "APPROVED") return "Подтверждено";
+    if (intake.status === "REJECTED") return "Отклонено";
+    if (intake.status === "UNDER_REVIEW") return "На проверке";
+    return "Отправлено";
   };
 
   return (
@@ -101,6 +190,120 @@ export function ClientInvoiceDetailsPage() {
           </div>
         </div>
       </div>
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <h3>Оплата по реквизитам</h3>
+            <p className="muted">Оплатите счет банковским переводом и отправьте подтверждение.</p>
+          </div>
+        </div>
+        <div className="form-grid">
+          <div className="form-field">
+            <span className="muted">Получатель</span>
+            <strong>{BANK_DETAILS.recipient}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">ИНН / КПП</span>
+            <strong>{BANK_DETAILS.inn} / {BANK_DETAILS.kpp}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">Банк</span>
+            <strong>{BANK_DETAILS.bank}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">БИК</span>
+            <strong>{BANK_DETAILS.bik}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">Р/с</span>
+            <strong>{BANK_DETAILS.account}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">К/с</span>
+            <strong>{BANK_DETAILS.corrAccount}</strong>
+          </div>
+          <div className="form-field form-grid__full">
+            <span className="muted">Назначение платежа</span>
+            <strong>Оплата счета №{id}</strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">Сумма</span>
+            <strong>
+              <MoneyValue amount={defaultAmount} currency={invoice.currency} />
+            </strong>
+          </div>
+          <div className="form-field">
+            <span className="muted">Срок оплаты</span>
+            <strong>{invoice.due_date ? formatDate(invoice.due_date) : "—"}</strong>
+          </div>
+        </div>
+
+        <form className="form-grid" onSubmit={handleSubmitPaymentIntake} style={{ marginTop: 16 }}>
+          <label className="form-field">
+            Сумма
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder={String(defaultAmount)}
+            />
+          </label>
+          <label className="form-field">
+            Дата оплаты
+            <input type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
+          </label>
+          <label className="form-field">
+            Номер платежки
+            <input value={bankReference} onChange={(event) => setBankReference(event.target.value)} />
+          </label>
+          <label className="form-field form-grid__full">
+            Комментарий
+            <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={3} />
+          </label>
+          <label className="form-field form-grid__full">
+            Платежный документ (PDF/JPG/PNG)
+            <input type="file" accept=".pdf,image/jpeg,image/png" onChange={(event) => setProofFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <div className="form-actions form-grid__full">
+            <button className="primary" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Отправляем..." : "Сообщить об оплате"}
+            </button>
+            {latestIntake ? <span className="muted">Статус: {renderIntakeStatus(latestIntake)}</span> : null}
+          </div>
+          {submitError ? <div className="error-text form-grid__full">{submitError}</div> : null}
+          {submitSuccess ? <div className="success form-grid__full" style={{ padding: 12 }}>{submitSuccess}</div> : null}
+        </form>
+
+        {intakeList.length ? (
+          <div style={{ marginTop: 16 }}>
+            <h4>Отправленные подтверждения</h4>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Сумма</th>
+                  <th>Статус</th>
+                  <th>Комментарий</th>
+                </tr>
+              </thead>
+              <tbody>
+                {intakeList.map((intake) => (
+                  <tr key={intake.id}>
+                    <td>{formatDateTime(intake.created_at)}</td>
+                    <td>
+                      <MoneyValue amount={intake.amount} currency={intake.currency} />
+                    </td>
+                    <td>{renderIntakeStatus(intake)}</td>
+                    <td>{intake.review_note ?? intake.comment ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       <section className="card">
         <div className="card__header">

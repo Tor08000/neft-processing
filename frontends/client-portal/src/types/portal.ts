@@ -49,6 +49,33 @@ export interface ClientInvoiceLine {
   amount?: number | null;
 }
 
+export interface ClientPaymentIntakeProof {
+  object_key: string;
+  file_name: string;
+  content_type: string;
+  size: number;
+}
+
+export interface ClientPaymentIntake {
+  id: number;
+  org_id: number;
+  invoice_id: number;
+  status: string;
+  amount: number;
+  currency: string;
+  payer_name?: string | null;
+  payer_inn?: string | null;
+  bank_reference?: string | null;
+  paid_at_claimed?: string | null;
+  comment?: string | null;
+  proof?: ClientPaymentIntakeProof | null;
+  created_by_user_id: string;
+  reviewed_by_admin?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
+}
+
 export interface ClientInvoiceDetails {
   invoice_number: string;
   period_start: string;
@@ -64,6 +91,7 @@ export interface ClientInvoiceDetails {
   payments: ClientInvoicePaymentSummary[];
   refunds: ClientInvoiceRefundSummary[];
   lines?: ClientInvoiceLine[];
+  payment_intakes?: ClientPaymentIntake[];
 }
 
 export interface ClientInvoiceListResponse {

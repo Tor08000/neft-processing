@@ -6,6 +6,7 @@ import type {
   ClientDashboardResponse,
   ClientInvoiceDetails,
   ClientInvoiceListResponse,
+  ClientPaymentIntake,
 } from "../types/portal";
 
 const withToken = (user: AuthSession | null) => ({ token: user?.token, base: "core_root" as const });
@@ -39,6 +40,55 @@ export const fetchClientInvoices = (user: AuthSession | null, filters: InvoiceFi
 
 export const fetchClientInvoiceDetails = (user: AuthSession | null, invoiceRef: string) =>
   request<ClientInvoiceDetails>(`/client/invoices/${invoiceRef}`, { method: "GET" }, withToken(user));
+
+export interface PaymentIntakeAttachmentInitRequest {
+  file_name: string;
+  content_type: string;
+  size: number;
+}
+
+export interface PaymentIntakeAttachmentInitResponse {
+  upload_url: string;
+  object_key: string;
+}
+
+export interface PaymentIntakeCreateRequest {
+  amount: number;
+  currency: string;
+  paid_at_claimed?: string | null;
+  bank_reference?: string | null;
+  payer_name?: string | null;
+  payer_inn?: string | null;
+  comment?: string | null;
+  proof?: {
+    object_key: string;
+    file_name: string;
+    content_type: string;
+    size: number;
+  } | null;
+}
+
+export const initPaymentIntakeAttachment = (
+  user: AuthSession | null,
+  invoiceId: string,
+  payload: PaymentIntakeAttachmentInitRequest,
+) =>
+  request<PaymentIntakeAttachmentInitResponse>(
+    `/client/invoices/${invoiceId}/payment-intakes/attachments/init`,
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
+
+export const submitPaymentIntake = (
+  user: AuthSession | null,
+  invoiceId: string,
+  payload: PaymentIntakeCreateRequest,
+) =>
+  request<ClientPaymentIntake>(
+    `/client/invoices/${invoiceId}/payment-intakes`,
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
 
 export const fetchClientContracts = (user: AuthSession | null) =>
   request<ClientContractsResponse>("/client/contracts", { method: "GET" }, withToken(user));
