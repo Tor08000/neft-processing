@@ -1893,6 +1893,17 @@ textarea:focus-visible {
   grid-template-columns: minmax(160px, 1.2fr) 1fr auto;
 }
 
+.chart-row--link {
+  text-decoration: none;
+  color: inherit;
+  padding: 0.35rem 0;
+  border-radius: var(--neft-radius-md);
+}
+
+.chart-row--link:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .chart-bar {
   background: var(--neft-border);
   border-radius: var(--neft-radius-md);
@@ -1961,6 +1972,12 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.analytics-drilldown__period {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
 }
 
 .analytics-scope-filters {

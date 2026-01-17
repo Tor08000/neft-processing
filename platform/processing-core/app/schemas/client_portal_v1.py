@@ -315,3 +315,45 @@ class ClientAnalyticsSummaryResponse(BaseModel):
     timeseries: list[ClientAnalyticsTimeseriesPoint]
     tops: ClientAnalyticsTopLists
     support: ClientAnalyticsSupport
+
+
+class ClientAnalyticsDrillTransaction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tx_id: str
+    occurred_at: datetime
+    card_id: str
+    card_label: str
+    driver_user_id: str | None = None
+    driver_label: str | None = None
+    amount: float
+    currency: str
+    liters: float | None = None
+    station: str
+    status: str
+
+
+class ClientAnalyticsDrillResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientAnalyticsDrillTransaction]
+    next_cursor: str | None = None
+
+
+class ClientAnalyticsSupportDrillItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str
+    subject: str
+    status: str
+    priority: str
+    created_at: datetime
+    first_response_status: str
+    resolution_status: str
+
+
+class ClientAnalyticsSupportDrillResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ClientAnalyticsSupportDrillItem]
+    next_cursor: str | None = None

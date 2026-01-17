@@ -178,7 +178,11 @@ export function ClientAnalyticsPage() {
           {data.timeseries.length ? (
             <div className="chart">
               {data.timeseries.map((point) => (
-                <div className="chart-row" key={`spend-${point.date}`}>
+                <Link
+                  className="chart-row chart-row--link"
+                  key={`spend-${point.date}`}
+                  to={`/client/analytics/day?date=${point.date}&period=${filters.preset}`}
+                >
                   <span className="muted small">{formatDate(point.date)}</span>
                   <div className="chart-bar">
                     <span
@@ -192,7 +196,7 @@ export function ClientAnalyticsPage() {
                       {formatLiters(point.liters)} л · {point.count} tx
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           ) : (
@@ -209,7 +213,10 @@ export function ClientAnalyticsPage() {
                 {data.tops.cards.map((card) => (
                   <div className="chart-row chart-row--wide" key={`card-${card.card_id}`}>
                     <div>
-                      <Link className="link-button" to={`/cards/${card.card_id}`}>
+                      <Link
+                        className="link-button"
+                        to={`/client/analytics/card/${card.card_id}?from=${filters.from}&to=${filters.to}`}
+                      >
                         {card.label}
                       </Link>
                       <div className="muted small">
@@ -237,7 +244,10 @@ export function ClientAnalyticsPage() {
                 {data.tops.drivers.map((driver) => (
                   <div className="chart-row chart-row--wide" key={`driver-${driver.user_id}`}>
                     <div>
-                      <Link className="link-button" to="/fleet/employees">
+                      <Link
+                        className="link-button"
+                        to={`/client/analytics/driver/${driver.user_id}?from=${filters.from}&to=${filters.to}`}
+                      >
                         {driver.label}
                       </Link>
                       <div className="muted small">{driver.count} tx</div>
@@ -286,7 +296,15 @@ export function ClientAnalyticsPage() {
       ) : null}
 
       {!isLoading && !error && hasData && data ? (
-        <AnalyticsChartPanel title="Support health" subtitle="SLA и время реакции">
+        <AnalyticsChartPanel
+          title="Support health"
+          subtitle="SLA и время реакции"
+          action={
+            <Link className="ghost" to={`/client/analytics/support?t=open&from=${filters.from}&to=${filters.to}`}>
+              Открытые тикеты
+            </Link>
+          }
+        >
           <div className="analytics-summary-grid">
             <div>
               <div className="muted small">Open tickets</div>
