@@ -179,6 +179,16 @@ from app.models.audit_log import AuditLog, AuditVisibility
 from app.celery_client import celery_client
 from app.services.email_service import build_idempotency_key, enqueue_templated_email
 from app.services.email_templates import build_portal_url
+from app.services.billing_access import (
+    BillingActionKind,
+    BillingBlockMode,
+    EntitlementDecision,
+    ERROR_MESSAGES,
+    audit_billing_blocked,
+    decision_payload,
+    enforce_entitlement,
+    evaluate_entitlement,
+)
 from app.services.entitlements_service import assert_module_enabled
 from app.services.export_metrics import metrics as export_metrics
 from app.services.report_schedule_metrics import metrics as report_schedule_metrics
@@ -459,6 +469,44 @@ def _ensure_analytics_access(token: dict) -> None:
     }
     if not roles.intersection(allowed_roles):
         raise HTTPException(status_code=403, detail="forbidden")
+
+
+def _enforce_analytics_drill_access(
+    *,
+    db: Session,
+    request: Request | None,
+    token: dict,
+) -> None:
+    decision = evaluate_entitlement(
+        db,
+        token=token,
+        feature_keys=None,
+        action_kind=BillingActionKind.READ_ONLY,
+    )
+    if decision.subscription_status == "SUSPENDED":
+        blocked = EntitlementDecision(
+            allowed=False,
+            error_code="billing_hard_blocked",
+            message=ERROR_MESSAGES["billing_hard_blocked"],
+            feature_key="feature.analytics.drill",
+            subscription_status=decision.subscription_status,
+            block_mode=BillingBlockMode.HARD,
+        )
+        try:
+            org_id = int(token.get("client_id") or token.get("org_id"))
+        except (TypeError, ValueError):
+            org_id = None
+        audit_billing_blocked(
+            db,
+            request=request,
+            token=token,
+            org_id=org_id,
+            subscription_status=decision.subscription_status,
+            feature_key=blocked.feature_key,
+            action_kind=BillingActionKind.READ_ONLY,
+            block_mode=blocked.block_mode,
+        )
+        raise HTTPException(status_code=403, detail=decision_payload(blocked, feature_key=blocked.feature_key))
 
 
 def _support_ticket_org_id(token: dict) -> str:
@@ -879,6 +927,79 @@ def _ensure_export_job_access(token: dict, report_type: ExportJobReportType) -> 
     if not allowed_roles:
         raise HTTPException(status_code=422, detail="report_type_not_supported")
     _ensure_report_access(token, allowed_roles)
+
+
+def _enforce_export_entitlements(
+    *,
+    db: Session,
+    request: Request | None,
+    token: dict,
+    export_format: ExportJobFormat,
+    action_kind: BillingActionKind,
+) -> None:
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=["feature.export.async"],
+        action_kind=action_kind,
+    )
+    if export_format == ExportJobFormat.XLSX:
+        enforce_entitlement(
+            db,
+            request=request,
+            token=token,
+            feature_keys=["feature.reports.xlsx", "feature.export.xlsx"],
+            action_kind=action_kind,
+        )
+
+
+def _enforce_portal_write_access(
+    *,
+    db: Session,
+    request: Request | None,
+    token: dict,
+) -> None:
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=["feature.portal.entities"],
+        action_kind=BillingActionKind.WRITE,
+    )
+
+
+def _allow_helpdesk_outbound(
+    *,
+    db: Session,
+    request: Request | None,
+    token: dict,
+    feature_key: str,
+) -> bool:
+    decision = evaluate_entitlement(
+        db,
+        token=token,
+        feature_keys=[feature_key],
+        action_kind=BillingActionKind.INTEGRATION_OUTBOUND,
+    )
+    if decision.allowed:
+        return True
+    if decision.error_code in {"billing_soft_blocked", "billing_hard_blocked"}:
+        try:
+            org_id = int(token.get("client_id") or token.get("org_id"))
+        except (TypeError, ValueError):
+            org_id = None
+        audit_billing_blocked(
+            db,
+            request=request,
+            token=token,
+            org_id=org_id,
+            subscription_status=decision.subscription_status,
+            feature_key=feature_key,
+            action_kind=BillingActionKind.INTEGRATION_OUTBOUND,
+            block_mode=decision.block_mode,
+        )
+    return False
 
 
 def _ensure_schedule_admin(token: dict) -> None:
@@ -1602,6 +1723,13 @@ def create_report_schedule(
         raise HTTPException(status_code=404, detail="org_not_found")
     _ensure_schedule_admin(token)
     _ensure_export_job_access(token, payload.report_type)
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=payload.format,
+        action_kind=BillingActionKind.EXPORT_CREATE,
+    )
     if payload.report_type == ExportJobReportType.SUPPORT and not _is_support_ticket_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
 
@@ -1717,6 +1845,13 @@ def get_report_schedule(
     )
     if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
         raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=payload.format or schedule.format,
+        action_kind=BillingActionKind.WRITE,
+    )
     tzinfo = resolve_user_timezone_info(db, token=token, schedule=schedule)
     return _schedule_out(schedule, tzinfo=tzinfo)
 
@@ -1832,6 +1967,13 @@ def pause_report_schedule(
     )
     if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
         raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=schedule.format,
+        action_kind=BillingActionKind.WRITE,
+    )
     schedule.status = ReportScheduleStatus.PAUSED
     schedule.next_run_at = None
     db.add(schedule)
@@ -1870,6 +2012,13 @@ def resume_report_schedule(
     )
     if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
         raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=schedule.format,
+        action_kind=BillingActionKind.WRITE,
+    )
     schedule.status = ReportScheduleStatus.ACTIVE
     schedule.next_run_at = compute_next_run_at(schedule.schedule_kind, schedule.schedule_meta, schedule.timezone)
     db.add(schedule)
@@ -1907,6 +2056,13 @@ def delete_report_schedule(
     )
     if not schedule or schedule.status == ReportScheduleStatus.DISABLED:
         raise HTTPException(status_code=404, detail="report_schedule_not_found")
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=schedule.format,
+        action_kind=BillingActionKind.WRITE,
+    )
     schedule.status = ReportScheduleStatus.DISABLED
     schedule.next_run_at = None
     db.add(schedule)
@@ -2371,6 +2527,13 @@ def create_export_job(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
     _ensure_export_job_access(token, payload.report_type)
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=payload.format,
+        action_kind=BillingActionKind.EXPORT_CREATE,
+    )
     user_id = str(token.get("user_id") or token.get("sub") or "").strip()
     if not user_id:
         raise HTTPException(status_code=403, detail="missing_user")
@@ -2525,6 +2688,13 @@ def download_export_job(
         raise HTTPException(status_code=403, detail="missing_user")
     if not _is_user_admin(token) and job.created_by_user_id != user_id:
         raise HTTPException(status_code=403, detail="forbidden")
+    _enforce_export_entitlements(
+        db=db,
+        request=request,
+        token=token,
+        export_format=job.format,
+        action_kind=BillingActionKind.EXPORT_DOWNLOAD,
+    )
     if job.expires_at and job.expires_at < datetime.now(timezone.utc):
         if job.status != ExportJobStatus.EXPIRED:
             job.status = ExportJobStatus.EXPIRED
@@ -2597,6 +2767,13 @@ def enable_helpdesk_integration(
 ) -> HelpdeskIntegrationResponse:
     if not _is_support_ticket_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=["integration.helpdesk.outbound"],
+        action_kind=BillingActionKind.INTEGRATION_OUTBOUND,
+    )
     org_id = _support_ticket_org_id(token)
     config = payload.config.model_dump(exclude_none=True)
     if "base_url" in config:
@@ -2635,6 +2812,13 @@ def update_helpdesk_integration(
 ) -> HelpdeskIntegrationResponse:
     if not _is_support_ticket_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=["integration.helpdesk.outbound"],
+        action_kind=BillingActionKind.INTEGRATION_OUTBOUND,
+    )
     org_id = _support_ticket_org_id(token)
     integration = get_integration(db, org_id=org_id)
     if not integration:
@@ -2675,6 +2859,13 @@ def disable_helpdesk_integration(
 ) -> HelpdeskIntegrationResponse:
     if not _is_support_ticket_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=["integration.helpdesk.outbound"],
+        action_kind=BillingActionKind.INTEGRATION_OUTBOUND,
+    )
     org_id = _support_ticket_org_id(token)
     integration = get_integration(db, org_id=org_id)
     if not integration:
@@ -2761,13 +2952,20 @@ def create_support_ticket(
         target_user_id=None if creator_is_admin else user_id,
     )
     created_by_email = _resolve_employee_email(db, org_id=org_id, user_id=user_id) or _notification_user_email(token)
-    outbox = _enqueue_helpdesk_outbox(
-        db,
-        ticket=ticket,
-        event_type=HelpdeskOutboxEventType.TICKET_CREATED,
-        payload=build_ticket_payload(ticket=ticket, created_by_email=created_by_email, attachments=[]),
-        idempotency_key=build_idempotency_for_ticket(HelpdeskOutboxEventType.TICKET_CREATED, str(ticket.id), org_id),
-    )
+    outbox = None
+    if _allow_helpdesk_outbound(
+        db=db,
+        request=request,
+        token=token,
+        feature_key="integration.helpdesk.outbound",
+    ):
+        outbox = _enqueue_helpdesk_outbox(
+            db,
+            ticket=ticket,
+            event_type=HelpdeskOutboxEventType.TICKET_CREATED,
+            payload=build_ticket_payload(ticket=ticket, created_by_email=created_by_email, attachments=[]),
+            idempotency_key=build_idempotency_for_ticket(HelpdeskOutboxEventType.TICKET_CREATED, str(ticket.id), org_id),
+        )
     if outbox:
         _audit_event(
             db,
@@ -2919,7 +3117,12 @@ def add_support_ticket_comment(
         token
     )
     outbox = None
-    if comment.source != HELPDESK_INBOUND_SOURCE:
+    if comment.source != HELPDESK_INBOUND_SOURCE and _allow_helpdesk_outbound(
+        db=db,
+        request=request,
+        token=token,
+        feature_key="integration.helpdesk.outbound",
+    ):
         outbox = _enqueue_helpdesk_outbox(
             db,
             ticket=ticket,
@@ -3012,7 +3215,12 @@ def close_support_ticket(
             target_user_id=str(ticket.created_by_user_id),
         )
         outbox = None
-        if ticket.last_changed_by != HELPDESK_INBOUND_SOURCE:
+        if ticket.last_changed_by != HELPDESK_INBOUND_SOURCE and _allow_helpdesk_outbound(
+            db=db,
+            request=request,
+            token=token,
+            feature_key="integration.helpdesk.outbound",
+        ):
             outbox = _enqueue_helpdesk_outbox(
                 db,
                 ticket=ticket,
@@ -3429,6 +3637,7 @@ def create_card(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=None, token=token)
     card_id = f"card-{uuid4()}"
     card = Card(id=card_id, client_id=str(client.id), status="ACTIVE", pan_masked=payload.pan_masked)
     db.add(card)
@@ -3452,6 +3661,7 @@ def update_card(
         raise HTTPException(status_code=404, detail="card_not_found")
     if not _is_card_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     before = {"status": card.status}
     card.status = payload.status
     db.commit()
@@ -3483,6 +3693,7 @@ def bulk_block_cards(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
     success: list[str] = []
     for card_id, card in card_map.items():
@@ -3518,6 +3729,7 @@ def bulk_unblock_cards(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
     success: list[str] = []
     for card_id, card in card_map.items():
@@ -3553,6 +3765,7 @@ def bulk_grant_card_access(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     _ensure_driver_user(db, client_id=str(client.id), user_id=payload.user_id)
     try:
         scope_value = CardAccessScope(payload.scope)
@@ -3608,6 +3821,7 @@ def bulk_revoke_card_access(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     _ensure_driver_user(db, client_id=str(client.id), user_id=payload.user_id)
     card_map, failed = _resolve_bulk_cards(db, token=token, client_id=str(client.id), card_ids=payload.card_ids)
     success: list[str] = []
@@ -3652,6 +3866,7 @@ def bulk_apply_limit_template(
     client = _resolve_client(db, token)
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     template = (
         db.query(LimitTemplate)
         .filter(LimitTemplate.client_id == str(client.id), LimitTemplate.id == payload.template_id)
@@ -3738,6 +3953,7 @@ def update_card_limits(
         raise HTTPException(status_code=404, detail="card_not_found")
     if not _is_card_admin(token):
         raise HTTPException(status_code=403, detail="forbidden")
+    _enforce_portal_write_access(db=db, request=request, token=token)
     existing = (
         db.query(CardLimit)
         .filter(CardLimit.card_id == card.id, CardLimit.limit_type == payload.limit_type)
@@ -4599,6 +4815,13 @@ def get_client_analytics_summary(
         raise HTTPException(status_code=404, detail="org_not_found")
     assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
     _ensure_analytics_access(token)
+    enforce_entitlement(
+        db,
+        request=request,
+        token=token,
+        feature_keys=None,
+        action_kind=BillingActionKind.READ_ONLY,
+    )
     if date_from > date_to:
         raise HTTPException(status_code=400, detail="invalid_period")
 
@@ -4938,6 +5161,7 @@ def get_client_analytics_card_drill(
         raise HTTPException(status_code=404, detail="org_not_found")
     assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
     _ensure_analytics_access(token)
+    _enforce_analytics_drill_access(db=db, request=None, token=token)
     if date_from > date_to:
         raise HTTPException(status_code=400, detail="invalid_period")
 
@@ -5014,6 +5238,7 @@ def get_client_analytics_driver_drill(
         raise HTTPException(status_code=404, detail="org_not_found")
     assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
     _ensure_analytics_access(token)
+    _enforce_analytics_drill_access(db=db, request=None, token=token)
     if date_from > date_to:
         raise HTTPException(status_code=400, detail="invalid_period")
 
@@ -5090,6 +5315,7 @@ def get_client_analytics_support_drill(
         raise HTTPException(status_code=404, detail="org_not_found")
     assert_module_enabled(db, client_id=str(client.id), module_code="ANALYTICS")
     _ensure_analytics_access(token)
+    _enforce_analytics_drill_access(db=db, request=None, token=token)
     if date_from > date_to:
         raise HTTPException(status_code=400, detail="invalid_period")
 

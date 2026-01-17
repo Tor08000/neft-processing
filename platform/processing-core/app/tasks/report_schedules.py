@@ -7,6 +7,7 @@ from app.db import get_sessionmaker
 from app.models.export_jobs import ExportJob, ExportJobStatus
 from app.models.report_schedules import ReportSchedule, ReportScheduleStatus
 from app.services.audit_service import AuditService
+from app.services.billing_access import BillingActionKind, billing_policy_allow, get_subscription_status
 from app.services.report_schedule_notifications import send_scheduled_report_notifications
 from app.services.report_schedules import compute_next_run_at
 from app.services.export_metrics import metrics as export_metrics
@@ -89,6 +90,27 @@ def run_report_schedules() -> dict:
             .all()
         )
         for schedule in schedules:
+            org_id = None
+            try:
+                org_id = int(schedule.org_id)
+            except (TypeError, ValueError):
+                org_id = None
+            if org_id is not None:
+                subscription_status = get_subscription_status(session, org_id=org_id)
+                if not billing_policy_allow(BillingActionKind.SCHEDULE_TRIGGER, subscription_status):
+                    schedule_metrics.mark_skipped("billing_blocked")
+                    AuditService(session).audit(
+                        event_type="schedule_skipped_billing",
+                        entity_type="report_schedule",
+                        entity_id=str(schedule.id),
+                        action="schedule_skipped_billing",
+                        after={
+                            "org_id": str(schedule.org_id),
+                            "subscription_status": subscription_status,
+                        },
+                    )
+                    session.commit()
+                    continue
             _trigger_schedule(session, schedule, now)
             session.commit()
             triggered += 1

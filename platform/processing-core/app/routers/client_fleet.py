@@ -75,6 +75,7 @@ from app.security.rbac.permissions import Permission
 from app.security.rbac.principal import Principal
 from app.services import fleet_service
 from app.services.audit_service import AuditService, request_context_from_request
+from app.services.billing_access import BillingActionKind, enforce_entitlement
 from app.services.entitlements_service import assert_max_cards, assert_module_enabled
 from app.services.fleet_notification_dispatcher import dispatch_outbox_item, enqueue_notification
 from neft_shared.settings import get_settings
@@ -90,6 +91,21 @@ def _ensure_client_context(principal: Principal) -> str:
     if principal.client_id is None:
         raise HTTPException(status_code=403, detail={"error": "forbidden", "reason": "missing_client"})
     return str(principal.client_id)
+
+
+def _enforce_fleet_write_access(
+    *,
+    db: Session,
+    request: Request | None,
+    principal: Principal,
+) -> None:
+    enforce_entitlement(
+        db,
+        request=request,
+        token=principal.raw_claims,
+        feature_keys=["feature.portal.entities"],
+        action_kind=BillingActionKind.WRITE,
+    )
 
 
 def _card_to_schema(card) -> FleetCardOut:
@@ -210,6 +226,7 @@ def create_card(
     db: Session = Depends(get_db),
 ) -> FleetCardOut:
     client_id = _ensure_client_context(principal)
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     assert_module_enabled(db, client_id=client_id, module_code="FLEET")
     assert_max_cards(db, client_id=client_id, delta=1)
     request_id, trace_id = _request_ids(request)
@@ -254,6 +271,7 @@ def block_card(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetCardOut:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     card = fleet_service.set_card_status(
         db,
@@ -279,6 +297,7 @@ def unblock_card(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_CARDS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetCardOut:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     card = fleet_service.unblock_card_with_reason(
         db,
@@ -319,6 +338,7 @@ def create_group(
     db: Session = Depends(get_db),
 ) -> FleetGroupOut:
     client_id = _ensure_client_context(principal)
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     group = fleet_service.create_group(
         db,
@@ -345,6 +365,7 @@ def add_card_to_group(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_GROUPS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> dict:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     member = fleet_service.add_card_to_group(
         db,
@@ -370,6 +391,7 @@ def remove_card_from_group(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_GROUPS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> dict:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     member = fleet_service.remove_card_from_group(
         db,
@@ -409,6 +431,7 @@ def grant_group_access(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_GROUPS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetAccessOut:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     access = fleet_service.grant_group_access(
         db,
@@ -435,6 +458,7 @@ def revoke_group_access(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_GROUPS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetAccessOut:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     access = fleet_service.revoke_group_access(
         db,
@@ -482,6 +506,7 @@ def set_limit(
     db: Session = Depends(get_db),
 ) -> FleetLimitOut:
     client_id = _ensure_client_context(principal)
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     limit = fleet_service.set_limit(
         db,
@@ -513,6 +538,7 @@ def revoke_limit(
     principal: Principal = Depends(require_permission(Permission.CLIENT_FLEET_LIMITS_MANAGE.value)),
     db: Session = Depends(get_db),
 ) -> FleetLimitOut:
+    _enforce_fleet_write_access(db=db, request=request, principal=principal)
     request_id, trace_id = _request_ids(request)
     limit = fleet_service.revoke_limit(
         db,
