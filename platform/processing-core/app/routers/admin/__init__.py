@@ -64,6 +64,7 @@ from app.routers.admin import (
     bi_sync,
     commercial,
     revenue,
+    reconciliation_imports,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -121,6 +122,7 @@ router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(notifications.router)
 router.include_router(reconciliation.router)
+router.include_router(reconciliation_imports.router)
 router.include_router(bank_stub.router)
 router.include_router(erp_stub.router)
 router.include_router(legal.router)
