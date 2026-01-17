@@ -278,6 +278,13 @@ SET availability = EXCLUDED.availability,
 -- If you want strict upsert, add UNIQUE(item_type,item_id,effective_from) and update accordingly.
 -- =========================================================
 
+-- Usage meters (minimal seed)
+INSERT INTO usage_meters (code, title, unit)
+VALUES
+  ('exports_jobs', 'Exports jobs', 'шт'),
+  ('exports_rows', 'Exports rows', 'строк')
+ON CONFLICT (code) DO NOTHING;
+
 -- Plans pricing (placeholder numbers; adjust)
 INSERT INTO pricing_catalog (item_type, item_id, currency, price_monthly, price_yearly, effective_from, effective_to)
 SELECT 'PLAN', p.id, 'RUB',
@@ -297,6 +304,18 @@ SELECT 'PLAN', p.id, 'RUB',
 FROM subscription_plans p
 WHERE p.version=1
   AND p.code IN ('FREE','CONTROL','INTEGRATE','ENTERPRISE');
+
+-- Usage pricing (placeholder numbers; adjust)
+INSERT INTO pricing_catalog (item_type, item_id, currency, price_monthly, price_yearly, effective_from, effective_to)
+SELECT 'USAGE_METER', m.id, 'RUB',
+       CASE m.code
+         WHEN 'exports_jobs' THEN 1.00
+         WHEN 'exports_rows' THEN 0.01
+       END,
+       NULL,
+       now(), NULL
+FROM usage_meters m
+WHERE m.code IN ('exports_jobs', 'exports_rows');
 
 -- Add-ons pricing (placeholder)
 INSERT INTO pricing_catalog (item_type, item_id, currency, price_monthly, price_yearly, effective_from, effective_to)

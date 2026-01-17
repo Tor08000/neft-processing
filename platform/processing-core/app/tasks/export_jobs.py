@@ -25,6 +25,7 @@ from app.services.audit_service import AuditService
 from app.services.s3_storage import S3Storage
 from app.services.client_notifications import ClientNotificationSeverity, create_notification
 from app.services.export_metrics import metrics as export_metrics
+from app.services.usage_service import record_usage_event
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 
@@ -37,6 +38,45 @@ PROGRESS_RATE_ALPHA = 0.25
 PROGRESS_RATE_MAX = 100000.0
 PROGRESS_RATE_MIN_SECONDS = 0.5
 PROGRESS_WARMUP_UPDATES = 2
+
+
+def _parse_usage_org_id(org_id: str) -> int | None:
+    try:
+        return int(org_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_export_usage(job: ExportJob) -> None:
+    org_id = _parse_usage_org_id(str(job.org_id))
+    if org_id is None:
+        logger.warning("export_job.usage_org_invalid", extra={"job_id": str(job.id), "org_id": str(job.org_id)})
+        return
+    usage_session = get_sessionmaker()()
+    try:
+        record_usage_event(
+            usage_session,
+            org_id=org_id,
+            meter_code="exports_jobs",
+            quantity=1,
+            source_id=str(job.id),
+            meta={"source_type": "export_job", "report_type": job.report_type.value},
+        )
+        if job.row_count is not None:
+            record_usage_event(
+                usage_session,
+                org_id=org_id,
+                meter_code="exports_rows",
+                quantity=job.row_count,
+                source_id=str(job.id),
+                meta={"source_type": "export_job", "report_type": job.report_type.value},
+            )
+        usage_session.commit()
+    except Exception as exc:  # noqa: BLE001
+        usage_session.rollback()
+        logger.warning("export_job.usage_event_failed", extra={"job_id": str(job.id), "error": str(exc)})
+    finally:
+        usage_session.close()
 
 
 def _calculate_progress_percent(processed_rows: int, estimated_total_rows: int | None) -> int | None:
@@ -282,6 +322,7 @@ def generate_export_job(job_id: str) -> dict:
             duration_seconds=time.perf_counter() - started_at,
             row_count=job.row_count,
         )
+        _record_export_usage(job)
 
         try:
             create_notification(

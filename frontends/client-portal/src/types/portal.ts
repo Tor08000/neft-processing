@@ -39,6 +39,15 @@ export interface ClientInvoiceRefundSummary {
   reason?: string | null;
 }
 
+export interface ClientInvoiceLine {
+  line_type: string;
+  ref_code?: string | null;
+  description?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  amount?: number | null;
+}
+
 export interface ClientInvoiceDetails {
   invoice_number: string;
   period_start: string;
@@ -53,6 +62,7 @@ export interface ClientInvoiceDetails {
   download_url?: string | null;
   payments: ClientInvoicePaymentSummary[];
   refunds: ClientInvoiceRefundSummary[];
+  lines?: ClientInvoiceLine[];
 }
 
 export interface ClientInvoiceListResponse {

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 
-from sqlalchemy import MetaData, Table, desc, insert, or_, select, update
+from sqlalchemy import MetaData, Table, desc, func, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
@@ -34,6 +35,7 @@ class SubscriptionInvoiceLine:
     quantity: Decimal
     unit_price: Decimal
     amount: Decimal
+    meta_json: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +243,173 @@ def _invoice_lines_total(lines: Iterable[SubscriptionInvoiceLine]) -> Decimal:
     return sum((line.amount for line in lines), Decimal("0"))
 
 
+def _usage_event_bounds(period_start: date, period_end: date) -> tuple[datetime, datetime]:
+    start_dt = datetime.combine(period_start, time.min).replace(tzinfo=timezone.utc)
+    end_dt = datetime.combine(period_end + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+    return start_dt, end_dt
+
+
+def _upsert_usage_aggregate(
+    db: Session,
+    *,
+    org_id: int,
+    meter_id: int,
+    period_start: date,
+    period_end: date,
+    quantity: Decimal,
+    now: datetime,
+) -> None:
+    usage_aggregates = _table(db, "usage_aggregates")
+    if db.get_bind().dialect.name == "postgresql":
+        stmt = (
+            pg_insert(usage_aggregates)
+            .values(
+                org_id=org_id,
+                meter_id=meter_id,
+                period_start=period_start,
+                period_end=period_end,
+                quantity=quantity,
+                created_at=now,
+            )
+            .on_conflict_do_update(
+                index_elements=["org_id", "meter_id", "period_start", "period_end"],
+                set_={"quantity": quantity, "created_at": now},
+            )
+        )
+        db.execute(stmt)
+        return
+    existing = (
+        db.execute(
+            select(usage_aggregates.c.id).where(
+                usage_aggregates.c.org_id == org_id,
+                usage_aggregates.c.meter_id == meter_id,
+                usage_aggregates.c.period_start == period_start,
+                usage_aggregates.c.period_end == period_end,
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if existing:
+        db.execute(
+            update(usage_aggregates)
+            .where(usage_aggregates.c.id == existing["id"])
+            .values(quantity=quantity, created_at=now)
+        )
+    else:
+        db.execute(
+            insert(usage_aggregates).values(
+                org_id=org_id,
+                meter_id=meter_id,
+                period_start=period_start,
+                period_end=period_end,
+                quantity=quantity,
+                created_at=now,
+            )
+        )
+
+
+def _usage_lines(
+    db: Session,
+    *,
+    org_id: int,
+    period_start: date,
+    period_end: date,
+    as_of: datetime,
+) -> tuple[list[SubscriptionInvoiceLine], list[dict[str, Any]]]:
+    required_tables = ["usage_events", "usage_meters", "pricing_catalog", "usage_aggregates"]
+    if not _tables_ready(db, required_tables):
+        return [], []
+
+    usage_events = _table(db, "usage_events")
+    start_dt, end_dt = _usage_event_bounds(period_start, period_end)
+    aggregates = (
+        db.execute(
+            select(
+                usage_events.c.meter_id,
+                func.coalesce(func.sum(usage_events.c.quantity), 0).label("quantity"),
+            )
+            .where(
+                usage_events.c.org_id == org_id,
+                usage_events.c.occurred_at >= start_dt,
+                usage_events.c.occurred_at < end_dt,
+            )
+            .group_by(usage_events.c.meter_id)
+        )
+        .mappings()
+        .all()
+    )
+    if not aggregates:
+        return [], []
+
+    meter_ids = [row["meter_id"] for row in aggregates]
+    usage_meters = _table(db, "usage_meters")
+    meter_rows = (
+        db.execute(select(usage_meters).where(usage_meters.c.id.in_(meter_ids))).mappings().all()
+    )
+    meter_map = {row["id"]: row for row in meter_rows}
+
+    lines: list[SubscriptionInvoiceLine] = []
+    summary: list[dict[str, Any]] = []
+    for row in aggregates:
+        quantity = _decimal(row.get("quantity"))
+        if quantity <= 0:
+            continue
+        meter = meter_map.get(row["meter_id"])
+        if not meter:
+            continue
+        pricing = _resolve_pricing_record(db, item_type="USAGE_METER", item_id=meter["id"], as_of=as_of)
+        if not pricing or pricing.get("price_monthly") is None:
+            logger.warning(
+                "subscription_billing.usage_pricing_missing",
+                extra={"meter_id": meter["id"], "meter_code": meter.get("code")},
+            )
+            continue
+        unit_price = _decimal(pricing.get("price_monthly"))
+        currency = pricing.get("currency") if pricing else None
+        title = meter.get("title") or meter.get("code") or "Usage"
+        unit = meter.get("unit") or ""
+        unit_label = f" {unit}" if unit else ""
+        description = f"{title}: {quantity}{unit_label} × {unit_price} {currency or 'RUB'}"
+        amount = quantity * unit_price
+        lines.append(
+            SubscriptionInvoiceLine(
+                line_type="USAGE",
+                ref_code=meter.get("code"),
+                description=description,
+                quantity=quantity,
+                unit_price=unit_price,
+                amount=amount,
+                meta_json={
+                    "meter_id": meter.get("id"),
+                    "unit": unit,
+                    "period_start": period_start.isoformat(),
+                    "period_end": period_end.isoformat(),
+                },
+            )
+        )
+        summary.append(
+            {
+                "meter_id": meter.get("id"),
+                "code": meter.get("code"),
+                "unit": unit,
+                "quantity": str(quantity),
+                "unit_price": str(unit_price),
+                "amount": str(amount),
+            }
+        )
+        _upsert_usage_aggregate(
+            db,
+            org_id=org_id,
+            meter_id=meter["id"],
+            period_start=period_start,
+            period_end=period_end,
+            quantity=quantity,
+            now=as_of,
+        )
+    return lines, summary
+
+
 def generate_subscription_invoice(
     db: Session,
     *,
@@ -260,7 +429,14 @@ def generate_subscription_invoice(
     now = _now()
     plan_line, currency = _plan_line(db, subscription, as_of=now)
     addon_lines = _addon_lines(db, subscription["id"]) if _table_exists(db, "org_subscription_addons") else []
-    lines = [plan_line, *addon_lines]
+    usage_lines, usage_summary = _usage_lines(
+        db,
+        org_id=subscription["org_id"],
+        period_start=period_start,
+        period_end=period_end,
+        as_of=now,
+    )
+    lines = [plan_line, *addon_lines, *usage_lines]
     total_amount = _invoice_lines_total(lines)
     currency_code = _resolve_invoice_currency(db, org_id=subscription["org_id"], fallback=currency)
     due_at = now + timedelta(days=int(subscription.get("grace_period_days") or 0))
@@ -293,11 +469,28 @@ def generate_subscription_invoice(
             "quantity": line.quantity,
             "unit_price": line.unit_price,
             "amount": line.amount,
+            "meta_json": line.meta_json,
         }
         for line in lines
     ]
     if line_payloads:
         db.execute(insert(billing_invoice_lines).values(line_payloads))
+
+    if usage_summary:
+        AuditService(db).audit(
+            event_type="USAGE_INVOICED",
+            entity_type="billing_invoice",
+            entity_id=str(invoice_id),
+            action="USAGE_INVOICED",
+            after={
+                "org_id": subscription["org_id"],
+                "subscription_id": subscription["id"],
+                "period_start": period_start,
+                "period_end": period_end,
+                "meters": usage_summary,
+            },
+            request_ctx=request_ctx or RequestContext(actor_type=ActorType.SYSTEM, actor_id="billing_subscription"),
+        )
 
     AuditService(db).audit(
         event_type="SUBSCRIPTION_INVOICE_ISSUED",
