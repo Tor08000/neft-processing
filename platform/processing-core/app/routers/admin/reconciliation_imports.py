@@ -34,7 +34,7 @@ from app.services.bank_statement_reconciliation import (
     list_transactions,
     mark_import_status,
     match_transactions,
-    parse_csv_simple,
+    parse_statement_import,
 )
 from app.security.rbac.guard import require_permission
 
@@ -115,7 +115,13 @@ def complete_import(
 
     actor = request_context_from_request(request, token=_sanitize_token_for_audit(token))
     try:
-        parse_csv_simple(db, import_id=import_id, payload=payload_bytes, actor=actor)
+        parse_statement_import(
+            db,
+            import_id=import_id,
+            payload=payload_bytes,
+            fmt=record.get("format"),
+            actor=actor,
+        )
         match_transactions(db, import_id=import_id, actor=actor)
         apply_matches(db, import_id=import_id, actor=actor)
     except Exception as exc:  # noqa: BLE001 - surface parse errors

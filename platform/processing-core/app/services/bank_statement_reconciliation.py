@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import re
 from dataclasses import dataclass
@@ -81,7 +82,262 @@ def _extract_org_id(text: str) -> int | None:
 
 
 def _normalize_purpose(text: str | None) -> str:
-    return (text or "").strip()
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _decode_payload(payload: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            return payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return payload.decode("latin-1")
+
+
+def _hash_bank_tx_id(*parts: str | None) -> str:
+    raw = "|".join(part or "" for part in parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _is_service_document(doc: dict[str, str]) -> bool:
+    combined = " ".join(
+        [
+            doc.get("НазначениеПлатежа", ""),
+            doc.get("ВидДокумента", ""),
+            doc.get("ВидОперации", ""),
+        ]
+    ).lower()
+    return any(keyword in combined for keyword in ["комис", "списан", "служеб"])
+
+
+@dataclass(frozen=True)
+class ParsedBankTx:
+    posted_at: datetime
+    amount: Decimal
+    currency: str
+    payer_name: str | None
+    payer_inn: str | None
+    reference: str | None
+    purpose_text: str | None
+    bank_tx_id: str
+    raw_json: dict[str, Any]
+
+
+def parse_csv_statement(payload: bytes) -> list[ParsedBankTx]:
+    decoded = _decode_payload(payload)
+    reader = csv.DictReader(io.StringIO(decoded))
+    transactions: list[ParsedBankTx] = []
+    for row in reader:
+        posted_at = _parse_date(row.get("date"))
+        amount = _parse_decimal(row.get("amount"))
+        if posted_at is None or amount is None:
+            continue
+        currency = (row.get("currency") or "RUB").strip().upper()
+        bank_tx_id = (row.get("transaction_id") or row.get("bank_tx_id") or "").strip()
+        reference = (row.get("reference") or "").strip() or None
+        if not bank_tx_id:
+            if not reference:
+                continue
+            bank_tx_id = f"ref:{reference}:{amount}:{posted_at.date().isoformat()}"
+        purpose_text = _normalize_purpose(row.get("purpose_text"))
+        transactions.append(
+            ParsedBankTx(
+                posted_at=posted_at,
+                amount=amount,
+                currency=currency,
+                payer_name=(row.get("payer_name") or "").strip() or None,
+                payer_inn=(row.get("payer_inn") or "").strip() or None,
+                reference=reference,
+                purpose_text=purpose_text or None,
+                bank_tx_id=bank_tx_id,
+                raw_json=row,
+            )
+        )
+    return transactions
+
+
+def _parse_1c_documents(lines: list[str]) -> list[dict[str, str]]:
+    documents: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    current_key: str | None = None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line == "СекцияДокумент":
+            current = {}
+            current_key = None
+            continue
+        if line == "КонецДокумента":
+            if current is not None:
+                documents.append(current)
+            current = None
+            current_key = None
+            continue
+        if current is None:
+            continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            current[key] = value
+            current_key = key
+            continue
+        if current_key:
+            current[current_key] = f"{current.get(current_key, '')}\n{line}".strip()
+    return documents
+
+
+def parse_1c_clientbank_statement(payload: bytes) -> list[ParsedBankTx]:
+    decoded = _decode_payload(payload)
+    lines = decoded.splitlines()
+    documents = _parse_1c_documents(lines)
+    transactions: list[ParsedBankTx] = []
+    for doc in documents:
+        posted_at = _parse_date(doc.get("ДатаПоступило") or doc.get("Дата"))
+        amount = _parse_decimal(doc.get("Сумма"))
+        if posted_at is None or amount is None:
+            continue
+        if amount <= 0 or _is_service_document(doc):
+            continue
+        payer_name = doc.get("Плательщик") or doc.get("Плательщик1")
+        payer_inn = doc.get("ПлательщикИНН")
+        reference = doc.get("Номер")
+        purpose_raw = doc.get("НазначениеПлатежа")
+        purpose_text = _normalize_purpose(purpose_raw)
+        currency = (doc.get("Валюта") or "RUB").strip().upper()
+        bank_tx_id = (
+            doc.get("Ид")
+            or doc.get("УИП")
+            or doc.get("НомерДокумента")
+        )
+        if not bank_tx_id:
+            bank_tx_id = _hash_bank_tx_id(
+                doc.get("ДатаПоступило") or doc.get("Дата"),
+                doc.get("Номер"),
+                doc.get("Сумма"),
+                doc.get("ПлательщикИНН"),
+                doc.get("НазначениеПлатежа"),
+            )
+        transactions.append(
+            ParsedBankTx(
+                posted_at=posted_at,
+                amount=amount,
+                currency=currency,
+                payer_name=payer_name.strip() if payer_name else None,
+                payer_inn=payer_inn.strip() if payer_inn else None,
+                reference=reference.strip() if reference else None,
+                purpose_text=purpose_text or None,
+                bank_tx_id=str(bank_tx_id).strip(),
+                raw_json=doc,
+            )
+        )
+    return transactions
+
+
+def parse_mt940_statement(payload: bytes) -> list[ParsedBankTx]:
+    decoded = _decode_payload(payload)
+    lines = decoded.splitlines()
+    currency = "RUB"
+    for line in lines:
+        if line.startswith(":60") and len(line) >= 15:
+            currency = line[12:15].strip() or currency
+            break
+    transactions: list[ParsedBankTx] = []
+    current: dict[str, str] | None = None
+    description_lines: list[str] = []
+
+    def flush_current() -> None:
+        if not current:
+            return
+        if current.get("sign") != "C":
+            return
+        posted_at = _parse_date(current.get("date"))
+        amount = _parse_decimal(current.get("amount"))
+        if posted_at is None or amount is None:
+            return
+        if amount <= 0:
+            return
+        purpose_text = _normalize_purpose("\n".join(description_lines))
+        bank_tx_id = _hash_bank_tx_id(current.get("raw"), purpose_text)
+        transactions.append(
+            ParsedBankTx(
+                posted_at=posted_at,
+                amount=amount,
+                currency=currency,
+                payer_name=None,
+                payer_inn=None,
+                reference=current.get("reference") or None,
+                purpose_text=purpose_text or None,
+                bank_tx_id=bank_tx_id,
+                raw_json={"61": current.get("raw"), "86": "\n".join(description_lines)},
+            )
+        )
+
+    for line in lines:
+        if line.startswith(":61:"):
+            flush_current()
+            description_lines = []
+            value = line[4:]
+            match = re.match(
+                r"(?P<date>\d{6})(?:\d{4})?(?P<sign>[CD])(?P<amount>\d+[,.]\d{0,2})(?P<rest>.*)",
+                value,
+            )
+            if not match:
+                current = None
+                continue
+            amount = match.group("amount").replace(".", ",")
+            reference = match.group("rest").strip() or None
+            current = {
+                "date": _parse_mt940_date(match.group("date")),
+                "sign": match.group("sign"),
+                "amount": amount,
+                "reference": reference,
+                "raw": line,
+            }
+            continue
+        if line.startswith(":86:"):
+            description_lines.append(line[4:].strip())
+            continue
+        if line.startswith(":") and current:
+            flush_current()
+            current = None
+            description_lines = []
+            continue
+        if current and description_lines is not None:
+            description_lines.append(line.strip())
+
+    flush_current()
+    return transactions
+
+
+def _parse_mt940_date(value: str | None) -> str | None:
+    if not value or len(value) != 6:
+        return None
+    try:
+        year = int(value[:2])
+        month = int(value[2:4])
+        day = int(value[4:6])
+    except ValueError:
+        return None
+    year += 2000 if year < 70 else 1900
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def parse_statement(payload: bytes, fmt: str | None) -> list[ParsedBankTx]:
+    normalized = (fmt or "").strip().upper()
+    if normalized in {"CSV", "CSV_SIMPLE"}:
+        return parse_csv_statement(payload)
+    if normalized in {"CLIENT_BANK_1C", "1C", "1C_CLIENT_BANK"}:
+        return parse_1c_clientbank_statement(payload)
+    if normalized == "MT940":
+        return parse_mt940_statement(payload)
+
+    decoded = _decode_payload(payload)
+    if "СекцияДокумент" in decoded:
+        return parse_1c_clientbank_statement(payload)
+    lines = decoded.splitlines()
+    if lines and "," in lines[0]:
+        return parse_csv_statement(payload)
+    raise ValueError("unsupported_statement_format")
 
 
 def create_import_record(
@@ -133,11 +389,12 @@ def mark_import_status(
     return db.execute(update_stmt).mappings().first()
 
 
-def parse_csv_simple(
+def parse_statement_import(
     db: Session,
     *,
     import_id: str,
     payload: bytes,
+    fmt: str | None,
     actor: RequestContext,
 ) -> int:
     required_tables = ["bank_statement_imports", "bank_statement_transactions"]
@@ -145,33 +402,21 @@ def parse_csv_simple(
         raise RuntimeError("bank_statement_tables_missing")
 
     transactions = _table(db, "bank_statement_transactions")
-    decoded = payload.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(decoded))
+    transactions_parsed = parse_statement(payload, fmt)
     created = 0
-    for row in reader:
-        posted_at = _parse_date(row.get("date"))
-        amount = _parse_decimal(row.get("amount"))
-        if posted_at is None or amount is None:
-            continue
-        currency = (row.get("currency") or "RUB").strip().upper()
-        bank_tx_id = (row.get("transaction_id") or row.get("bank_tx_id") or "").strip()
-        reference = (row.get("reference") or "").strip()
-        if not bank_tx_id:
-            if not reference:
-                continue
-            bank_tx_id = f"ref:{reference}:{amount}:{posted_at.date().isoformat()}"
+    for tx in transactions_parsed:
         record = {
             "id": new_uuid_str(),
             "import_id": import_id,
-            "bank_tx_id": bank_tx_id,
-            "posted_at": posted_at,
-            "amount": amount,
-            "currency": currency,
-            "payer_name": (row.get("payer_name") or "").strip() or None,
-            "payer_inn": (row.get("payer_inn") or "").strip() or None,
-            "reference": reference or None,
-            "purpose_text": (row.get("purpose_text") or "").strip() or None,
-            "raw_json": row,
+            "bank_tx_id": tx.bank_tx_id,
+            "posted_at": tx.posted_at,
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "payer_name": tx.payer_name,
+            "payer_inn": tx.payer_inn,
+            "reference": tx.reference,
+            "purpose_text": tx.purpose_text,
+            "raw_json": tx.raw_json,
             "matched_status": "UNMATCHED",
             "confidence_score": Decimal("0"),
             "created_at": _now(),
