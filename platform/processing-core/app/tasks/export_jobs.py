@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from app.services.report_schedule_notifications import send_scheduled_report_not
 from app.services.audit_service import AuditService
 from app.services.s3_storage import S3Storage
 from app.services.client_notifications import ClientNotificationSeverity, create_notification
+from app.services.export_metrics import metrics as export_metrics
 from neft_shared.logging_setup import get_logger
 from neft_shared.settings import get_settings
 
@@ -47,6 +49,22 @@ def _notify_schedule_if_needed(session, job: ExportJob, success: bool) -> None:
         schedule = session.get(ReportSchedule, schedule_id)
         if schedule:
             send_scheduled_report_notifications(session, schedule=schedule, job=job, success=success)
+
+
+def _export_failure_reason(error_message: str | None) -> str:
+    if error_message == TOO_MANY_ROWS_ERROR:
+        return "too_many_rows"
+    if error_message == "timeout":
+        return "timeout"
+    if error_message == "celery_not_available":
+        return "celery"
+    if error_message:
+        lowered = error_message.lower()
+        if "s3" in lowered or "storage" in lowered:
+            return "storage_error"
+        if "db" in lowered or "database" in lowered:
+            return "db_error"
+    return "unknown"
 
 
 def _failure_notification_body(error_message: str | None) -> str:
@@ -85,6 +103,9 @@ def _notify_export_failure(session, job: ExportJob) -> None:
 def generate_export_job(job_id: str) -> dict:
     session = get_sessionmaker()()
     temp_path: Path | None = None
+    started_at = time.perf_counter()
+    request_id = None
+    schedule_id = None
     try:
         job = session.get(ExportJob, job_id)
         if not job:
@@ -99,6 +120,8 @@ def generate_export_job(job_id: str) -> dict:
         session.commit()
 
         filters = job.filters_json or {}
+        request_id = filters.get("request_id") if isinstance(filters, dict) else None
+        schedule_id = filters.get("schedule_id") if isinstance(filters, dict) else None
         tenant_id = filters.get("tenant_id")
         allowed_entity_types = filters.get("allowed_entity_types")
         render_result = render_export_report_stream(
@@ -150,6 +173,13 @@ def generate_export_job(job_id: str) -> dict:
         session.add(job)
         _notify_schedule_if_needed(session, job, True)
         session.commit()
+        export_metrics.mark_completed(
+            job.report_type.value,
+            job.format.value,
+            job.status.value,
+            duration_seconds=time.perf_counter() - started_at,
+            row_count=job.row_count,
+        )
 
         try:
             create_notification(
@@ -182,7 +212,22 @@ def generate_export_job(job_id: str) -> dict:
             _notify_schedule_if_needed(session, job, False)
             session.commit()
             _notify_export_failure(session, job)
-        logger.warning("export_job.limit_exceeded", extra={"job_id": job_id, "error": str(exc)})
+            export_metrics.mark_completed(
+                job.report_type.value,
+                job.format.value,
+                job.status.value,
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            export_metrics.mark_failure(_export_failure_reason(job.error_message))
+        logger.warning(
+            "export_job.limit_exceeded",
+            extra={
+                "job_id": job_id,
+                "error": str(exc),
+                "request_id": request_id,
+                "schedule_id": schedule_id,
+            },
+        )
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
     except SoftTimeLimitExceeded:
         session.rollback()
@@ -195,7 +240,17 @@ def generate_export_job(job_id: str) -> dict:
             _notify_schedule_if_needed(session, job, False)
             session.commit()
             _notify_export_failure(session, job)
-        logger.warning("export_job.timeout", extra={"job_id": job_id})
+            export_metrics.mark_completed(
+                job.report_type.value,
+                job.format.value,
+                job.status.value,
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            export_metrics.mark_failure(_export_failure_reason(job.error_message))
+        logger.warning(
+            "export_job.timeout",
+            extra={"job_id": job_id, "request_id": request_id, "schedule_id": schedule_id},
+        )
         return {"status": "failed", "job_id": job_id, "error": "timeout"}
     except (ExportRenderValidationError, ExportRenderError) as exc:
         session.rollback()
@@ -208,7 +263,22 @@ def generate_export_job(job_id: str) -> dict:
             _notify_schedule_if_needed(session, job, False)
             session.commit()
             _notify_export_failure(session, job)
-        logger.warning("export_job.failed", extra={"job_id": job_id, "error": str(exc)})
+            export_metrics.mark_completed(
+                job.report_type.value,
+                job.format.value,
+                job.status.value,
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            export_metrics.mark_failure(_export_failure_reason(job.error_message))
+        logger.warning(
+            "export_job.failed",
+            extra={
+                "job_id": job_id,
+                "error": str(exc),
+                "request_id": request_id,
+                "schedule_id": schedule_id,
+            },
+        )
         return {"status": "failed", "job_id": job_id, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
         session.rollback()
@@ -221,7 +291,17 @@ def generate_export_job(job_id: str) -> dict:
             _notify_schedule_if_needed(session, job, False)
             session.commit()
             _notify_export_failure(session, job)
-        logger.exception("export_job.error", extra={"job_id": job_id})
+            export_metrics.mark_completed(
+                job.report_type.value,
+                job.format.value,
+                job.status.value,
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            export_metrics.mark_failure(_export_failure_reason(job.error_message))
+        logger.exception(
+            "export_job.error",
+            extra={"job_id": job_id, "request_id": request_id, "schedule_id": schedule_id},
+        )
         raise
     finally:
         if temp_path and temp_path.exists():
@@ -274,6 +354,7 @@ def cleanup_expired_exports(*, limit: int = 500) -> dict[str, int]:
                     },
                 )
                 session.commit()
+                export_metrics.mark_completed(job.report_type.value, job.format.value, job.status.value)
                 expired += 1
             except Exception as exc:  # noqa: BLE001
                 session.rollback()

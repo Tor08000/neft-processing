@@ -21,6 +21,7 @@ from app.models.cases import (
 from app.services.case_events_service import CaseEventActor, CaseEventChange, emit_case_event
 from app.services.case_escalation_service import apply_classification, apply_sla_filter, classify_case
 from app.services.decision_memory.records import _extract_score_snapshot, record_decision_memory
+from app.services.cases_metrics import metrics as case_metrics
 
 
 def _format_score(value: Any) -> str | None:
@@ -125,6 +126,7 @@ def create_case(
     )
     db.add(case)
     db.flush()
+    case_metrics.mark_support_ticket_created(case.priority.value)
 
     snapshot = CaseSnapshot(
         case_id=case.id,
@@ -429,6 +431,7 @@ def close_case(
         mastery_snapshot=mastery_snapshot,
         audit_event_id=event.id,
     )
+    case_metrics.mark_support_ticket_closed()
     return case
 
 

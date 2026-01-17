@@ -620,6 +620,7 @@ services:
     container_name: neft-processing-prometheus-1
     volumes:
       - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
     ports:
       - "9090:9090"
     depends_on:

@@ -346,7 +346,7 @@ def evaluate_escalations(db: Session, *, now: datetime | None = None) -> dict[st
         )
         escalated_resolve += 1
         case_metrics.mark_escalation(level=2)
-        case_metrics.mark_sla_breach("resolve")
+        case_metrics.mark_sla_breach("resolution")
 
     if escalated_first or escalated_resolve:
         logger.info(

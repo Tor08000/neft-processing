@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import smtplib
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -16,6 +17,7 @@ from app.models.client_notification import ClientNotification
 from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
 from app.services.audit_service import AuditService, RequestContext
 from app.services.email_templates import render_email_template
+from app.services.email_metrics import metrics as email_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +121,23 @@ def _is_retryable_smtp_error(exc: Exception) -> tuple[bool, int | None]:
     return False, None
 
 
+def _normalize_email_failure_reason(error: str | None) -> str:
+    if not error:
+        return "unknown"
+    lowered = error.lower()
+    if "max_attempts" in lowered:
+        return "max_attempts"
+    if "disabled" in lowered:
+        return "disabled"
+    if "timeout" in lowered:
+        return "timeout"
+    if "connection" in lowered or "connect" in lowered:
+        return "connection"
+    if "smtp" in lowered:
+        return "smtp_error"
+    return "unknown"
+
+
 def _send_smtp_email(
     *,
     settings: EmailSettings,
@@ -217,6 +236,7 @@ def enqueue_email(
     )
     db.add(outbox)
     db.flush()
+    email_metrics.mark_enqueued(template_key)
 
     try:
         celery_client.send_task("emails.send_outbox", args=[str(outbox.id)])
@@ -266,6 +286,7 @@ def deliver_outbox_email(db, *, outbox: EmailOutbox) -> tuple[SendResult, int | 
         outbox.status = EmailOutboxStatus.FAILED
         outbox.last_error = outbox.last_error or "max_attempts_reached"
         outbox.next_retry_at = None
+        email_metrics.mark_failed(outbox.provider or "unknown", "max_attempts")
         return SendResult(status="FAILED", error=outbox.last_error), None
 
     settings = _load_settings()
@@ -274,9 +295,20 @@ def deliver_outbox_email(db, *, outbox: EmailOutbox) -> tuple[SendResult, int | 
         outbox.last_error = "email_disabled"
         outbox.next_retry_at = None
         _audit_email_event(db, event_type="email_failed", outbox=outbox, error=outbox.last_error)
+        email_metrics.mark_failed(outbox.provider or "unknown", "disabled")
+        logger.warning(
+            "email_outbox.disabled",
+            extra={
+                "outbox_id": str(outbox.id),
+                "org_id": outbox.org_id,
+                "status": outbox.status.value,
+                "error": outbox.last_error,
+            },
+        )
         return SendResult(status="FAILED", error=outbox.last_error), None
 
     outbox.attempts_count += 1
+    started_at = time.perf_counter()
     try:
         message_id = _send_smtp_email(
             settings=settings,
@@ -293,6 +325,7 @@ def deliver_outbox_email(db, *, outbox: EmailOutbox) -> tuple[SendResult, int | 
         outbox.next_retry_at = None
         outbox.last_error = None
         _audit_email_event(db, event_type="email_sent", outbox=outbox)
+        email_metrics.mark_sent(outbox.provider, time.perf_counter() - started_at)
 
         notification_id = None
         if isinstance(outbox.tags, dict):
@@ -305,15 +338,39 @@ def deliver_outbox_email(db, *, outbox: EmailOutbox) -> tuple[SendResult, int | 
     except Exception as exc:  # noqa: BLE001
         retryable, _ = _is_retryable_smtp_error(exc)
         outbox.last_error = str(exc)
+        duration = time.perf_counter() - started_at
+        provider = outbox.provider or settings.mode.upper()
+        reason = _normalize_email_failure_reason(outbox.last_error)
+        email_metrics.mark_failed(provider, reason, duration)
         if retryable and outbox.attempts_count < MAX_ATTEMPTS:
             outbox.status = EmailOutboxStatus.QUEUED
             outbox.next_retry_at = _next_retry_at(outbox.attempts_count)
             _audit_email_event(db, event_type="email_failed", outbox=outbox, error=outbox.last_error)
+            logger.warning(
+                "email_outbox.retry_scheduled",
+                extra={
+                    "outbox_id": str(outbox.id),
+                    "org_id": outbox.org_id,
+                    "status": outbox.status.value,
+                    "error": outbox.last_error,
+                    "provider": provider,
+                },
+            )
             delay = int((outbox.next_retry_at - _now()).total_seconds())
             return SendResult(status="FAILED", error=outbox.last_error), max(delay, 1)
         outbox.status = EmailOutboxStatus.FAILED
         outbox.next_retry_at = None
         _audit_email_event(db, event_type="email_failed", outbox=outbox, error=outbox.last_error)
+        logger.warning(
+            "email_outbox.failed",
+            extra={
+                "outbox_id": str(outbox.id),
+                "org_id": outbox.org_id,
+                "status": outbox.status.value,
+                "error": outbox.last_error,
+                "provider": provider,
+            },
+        )
         return SendResult(status="FAILED", error=outbox.last_error), None
 
 

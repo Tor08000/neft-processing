@@ -116,6 +116,8 @@ from app.celery_client import celery_client
 from app.services.email_service import build_idempotency_key, enqueue_templated_email
 from app.services.email_templates import build_portal_url
 from app.services.entitlements_service import assert_module_enabled
+from app.services.export_metrics import metrics as export_metrics
+from app.services.report_schedule_metrics import metrics as report_schedule_metrics
 from app.services.reports_render import ExportRenderValidationError, normalize_filters
 from app.services.report_schedules import (
     ReportScheduleValidationError,
@@ -854,6 +856,7 @@ def pause_report_schedule(
     schedule.status = ReportScheduleStatus.PAUSED
     schedule.next_run_at = None
     db.add(schedule)
+    report_schedule_metrics.mark_skipped("paused")
     db.commit()
 
     _audit_event(
@@ -926,6 +929,7 @@ def delete_report_schedule(
     schedule.status = ReportScheduleStatus.DISABLED
     schedule.next_run_at = None
     db.add(schedule)
+    report_schedule_metrics.mark_skipped("disabled")
     db.commit()
 
     _audit_event(
@@ -1390,6 +1394,7 @@ def create_export_job(
     if not user_id:
         raise HTTPException(status_code=403, detail="missing_user")
 
+    request_id = request.headers.get("x-request-id")
     try:
         filters = normalize_filters(payload.report_type, payload.filters or {})
     except ExportRenderValidationError as exc:
@@ -1405,6 +1410,8 @@ def create_export_job(
             filters["allowed_entity_types"] = list(allowed_entity_types)
     if payload.report_type == ExportJobReportType.SUPPORT and not _is_support_ticket_admin(token):
         filters["created_by_user_id"] = user_id
+    if request_id:
+        filters["request_id"] = request_id
 
     job = ExportJob(
         org_id=str(client.id),
@@ -1418,6 +1425,7 @@ def create_export_job(
     db.add(job)
     db.flush()
     db.commit()
+    export_metrics.mark_created(job.report_type.value, job.format.value)
 
     try:
         celery_client.send_task("exports.generate_export_job", args=[str(job.id)])
@@ -1426,6 +1434,8 @@ def create_export_job(
         job.error_message = "celery_not_available"
         db.add(job)
         db.commit()
+        export_metrics.mark_completed(job.report_type.value, job.format.value, job.status.value)
+        export_metrics.mark_failure("celery")
         raise HTTPException(status_code=503, detail="celery_not_available") from exc
 
     _audit_event(

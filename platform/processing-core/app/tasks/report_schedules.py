@@ -9,6 +9,8 @@ from app.models.report_schedules import ReportSchedule, ReportScheduleStatus
 from app.services.audit_service import AuditService
 from app.services.report_schedule_notifications import send_scheduled_report_notifications
 from app.services.report_schedules import compute_next_run_at
+from app.services.export_metrics import metrics as export_metrics
+from app.services.report_schedule_metrics import metrics as schedule_metrics
 from neft_shared.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -19,9 +21,12 @@ SAFETY_WINDOW_SECONDS = 30
 
 def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
     if schedule.last_run_at and (now - schedule.last_run_at).total_seconds() < 60:
+        schedule_metrics.mark_skipped("not_due")
         return
     filters = dict(schedule.filters_json or {})
     filters["schedule_id"] = str(schedule.id)
+    if schedule.next_run_at:
+        schedule_metrics.observe_lag((now - schedule.next_run_at).total_seconds())
     job = ExportJob(
         org_id=str(schedule.org_id),
         created_by_user_id=str(schedule.created_by_user_id),
@@ -33,6 +38,7 @@ def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
     )
     session.add(job)
     session.flush()
+    export_metrics.mark_created(schedule.report_type.value, schedule.format.value)
 
     schedule.last_run_at = now
     schedule.next_run_at = compute_next_run_at(
@@ -50,7 +56,12 @@ def _trigger_schedule(session, schedule: ReportSchedule, now: datetime) -> None:
         job.error_message = "celery_not_available"
         session.add(job)
         send_scheduled_report_notifications(session, schedule=schedule, job=job, success=False)
-        logger.warning("report_schedule.celery_not_available", extra={"schedule_id": str(schedule.id), "error": str(exc)})
+        logger.warning(
+            "report_schedule.celery_not_available",
+            extra={"schedule_id": str(schedule.id), "export_job_id": str(job.id), "error": str(exc)},
+        )
+    else:
+        schedule_metrics.mark_triggered(schedule.report_type.value, schedule.format.value)
 
     AuditService(session).audit(
         event_type="report_schedule_triggered",

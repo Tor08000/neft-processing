@@ -1,0 +1,173 @@
+{
+  "uid": "client-ops",
+  "title": "Client Ops",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Export jobs rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(export_jobs_created_total[5m])",
+          "legendFormat": "created"
+        },
+        {
+          "expr": "rate(export_jobs_completed_total{status=\"DONE\"}[5m])",
+          "legendFormat": "done"
+        },
+        {
+          "expr": "rate(export_jobs_completed_total{status=\"FAILED\"}[5m])",
+          "legendFormat": "failed"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Export duration p50/p95",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(export_job_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(export_job_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Export failures by reason",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(export_job_failures_total[5m])",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Email outbox rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(email_outbox_enqueued_total[5m])",
+          "legendFormat": "enqueued"
+        },
+        {
+          "expr": "rate(email_outbox_sent_total[5m])",
+          "legendFormat": "sent"
+        },
+        {
+          "expr": "rate(email_outbox_failed_total[5m])",
+          "legendFormat": "failed"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Email failures by reason",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(email_outbox_failed_total[5m])",
+          "legendFormat": "{{provider}}/{{reason}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Schedule triggers & lag p95",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(report_schedules_triggered_total[5m])",
+          "legendFormat": "triggers"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(report_schedule_trigger_lag_seconds_bucket[5m])) by (le))",
+          "legendFormat": "lag_p95"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Support SLA breaches",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(support_sla_breaches_total[5m])",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notifications created",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(client_notifications_created_total[5m])",
+          "legendFormat": "{{type}}/{{severity}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}
