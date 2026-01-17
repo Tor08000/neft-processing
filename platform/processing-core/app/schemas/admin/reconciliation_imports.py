@@ -11,7 +11,7 @@ class BankStatementImportCreateRequest(BaseModel):
     file_name: str = Field(..., min_length=1, max_length=255)
     content_type: str = Field(..., min_length=1, max_length=128)
     size_bytes: int = Field(..., ge=1)
-    format: Literal["CSV_SIMPLE"]
+    format: Literal["CSV", "CLIENT_BANK_1C", "MT940"]
     period_from: date | None = None
     period_to: date | None = None
 
@@ -70,4 +70,3 @@ class BankStatementTransactionListResponse(BaseModel):
 
 class BankStatementTransactionApplyRequest(BaseModel):
     invoice_id: str = Field(..., min_length=1, max_length=36)
-
