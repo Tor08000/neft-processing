@@ -69,6 +69,229 @@ gateway все запросы доступны по тем же путям с п
 4. **Документы и договоры** — договор, счета, акты, закрывающие документы.
 5. **Marketplace** — витрина/заказы/документы (если модуль включён).
 
+## Client Portal — Коммерциализация (vC)
+
+### 0) Принцип коммерциализации (ключевой)
+
+Мы не продаём фичи поштучно. Мы продаём:
+
+- уровень контроля;
+- уровень ответственности;
+- уровень интеграции;
+- уровень SLA.
+
+Фичи — инструмент внутри пакета.
+
+### 1) Базовая линейка тарифов (каноническая)
+
+#### 1.1 FREE / BASIC (Entry)
+
+Цель: затянуть клиента в экосистему.
+
+Включено:
+
+- Client Portal.
+- Cards / Users / Docs.
+- Exports (CSV, async).
+- BI Analytics (summary).
+- User dashboards (базовые).
+- Support (internal).
+- Notifications (in-app).
+
+Ограничения:
+
+- ❌ Helpdesk integrations.
+- ❌ BI Drill-down.
+- ❌ Export ETA.
+- ❌ SLO/SLA framework.
+- ❌ Email notifications (или ограничено).
+- ❌ Advanced analytics.
+
+#### 1.2 CONTROL (SMB)
+
+Цель: контроль операций.
+
+Включено:
+
+- Всё из BASIC.
+- BI Drill-down.
+- Export ETA.
+- User Dashboards (role-based).
+- Email notifications.
+- Scheduled reports (CSV).
+- Support SLA (фиксированный, базовый).
+
+Ограничения:
+
+- ❌ Helpdesk integrations.
+- ❌ SLO tiers.
+- ❌ Advanced analytics.
+
+#### 1.3 INTEGRATE (Business / Enterprise Light)
+
+Цель: интеграция и масштаб.
+
+Включено:
+
+- Всё из CONTROL.
+- Helpdesk integrations (Zendesk / Jira SM).
+- Inbound + outbound sync.
+- Scheduled reports (XLSX).
+- Export retention extended.
+- Advanced notifications.
+- SLO monitoring (read-only).
+
+Ограничения:
+
+- ❌ Custom SLO.
+- ❌ Burn-rate / error budget.
+- ❌ Enterprise support.
+
+#### 1.4 ENTERPRISE
+
+Цель: ответственность и гарантия.
+
+Включено:
+
+- Всё из INTEGRATE.
+- SLO tiers (на выбор).
+- SLA contracts.
+- Advanced analytics.
+- Priority support.
+- Incident handling.
+- Dedicated support channel.
+
+### 2) Платные интеграции (Add-ons)
+
+Интеграции — всегда платные, даже для Enterprise (кроме пакета).
+
+#### 2.1 Helpdesk integrations
+
+- Zendesk.
+- Jira Service Management.
+
+Модель оплаты:
+
+- per org / per month;
+- или per ticket volume (P2).
+
+#### 2.2 ERP / Accounting (v1.7+)
+
+- 1C.
+- SAP.
+- Oracle.
+- CSV/EDO pipelines.
+
+### 3) SLO tiers (ключевая monetization-фича)
+
+#### 3.1 SLO как продукт
+
+Не «есть или нет», а уровень гарантий.
+
+- Tier A — Monitoring: SLO visibility, breach notifications, no guarantees.
+- Tier B — Committed: defined SLO, SLA breach tracking, service credits (manual).
+- Tier C — Guaranteed: contractual SLA, incident response, penalties / credits, dedicated escalation.
+
+SLO — аргумент для продаж Enterprise, не просто метрика.
+
+### 4) Advanced Analytics (платно)
+
+#### 4.1 Что считается «advanced»
+
+- Period comparison (MoM / YoY).
+- Trend detection.
+- Outliers.
+- Export of BI views.
+- Drill-down depth > 1.
+- Saved views.
+
+Важно: advanced analytics не ломают базовый BI, а расширяют его.
+
+### 5) Enterprise Support Plans
+
+#### 5.1 Support tiers
+
+- Standard: internal support, async response, no SLA.
+- Priority: SLA response time, email + portal, escalation.
+- Dedicated: SLA + SLO, incident management, on-call, postmortems.
+
+### 6) Техническая реализация (важно)
+
+#### 6.1 Feature gating
+
+Все коммерческие фичи должны:
+
+- проверяться на сервере;
+- основываться на:
+  - subscription plan;
+  - enabled add-ons;
+  - SLO tier.
+
+Никаких if (plan === 'enterprise') во фронте.
+
+#### 6.2 Contract / Subscription model
+
+Рекомендуется добавить:
+
+- subscription_plan;
+- addons[];
+- slo_tier;
+- support_plan.
+
+Это даст:
+
+- гибкость продаж;
+- возможность кастомных контрактов.
+
+### 7) UI / UX коммерциализации
+
+#### 7.1 В портале
+
+Paywall states:
+
+- «Доступно в INTEGRATE».
+- «Требуется Enterprise».
+
+Upgrade CTA:
+
+- «Связаться с менеджером».
+- «Запросить демо».
+
+#### 7.2 Без self-checkout (важно!)
+
+Для Enterprise:
+
+- ❌ не даём купить кнопкой;
+- ✅ только через sales.
+
+### 8) Что не продаём (принципиально)
+
+- безопасность как фичу;
+- базовый аудит;
+- доступ к своим данным;
+- исправление багов.
+
+Это обязанность платформы, а не upsell.
+
+### 9) Роадмап монетизации (практичный)
+
+#### Этап 1 (сейчас)
+
+- зафиксировать тарифы;
+- включить feature flags;
+- подготовить sales deck.
+
+#### Этап 2
+
+- добавить paywall UI;
+- SLO tiers UI;
+- integration marketplace (1–2).
+
+#### Этап 3
+
+- contracts automation;
+- usage-based pricing (exports, tickets).
+
 ## ABAC: доступ водителей к картам
 
 Для выдачи доступа к 1..N картам используется сущность привязки:
