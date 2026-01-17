@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
@@ -73,6 +74,10 @@ from app.services.audit_signing import AuditSigningService, get_audit_signing_he
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
+from app.services.export_metrics import metrics as export_metrics
+from app.services.email_metrics import metrics as email_metrics
+from app.services.report_schedule_metrics import metrics as report_schedule_metrics
+from app.services.notification_metrics import metrics as notification_metrics
 from app.services.limits import (
     CheckAndReserveRequest,
     CheckAndReserveTaskResponse,
@@ -85,6 +90,8 @@ from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
 from app.services.risk_v5.hook import register_shadow_hook
 from app.services.risk_v5.metrics import metrics as risk_v5_metrics
+from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
+from app.models.export_jobs import ExportJob, ExportJobStatus
 
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
@@ -466,6 +473,45 @@ def _percentile(values: list[float], pct: float) -> float | None:
     return d0 + d1
 
 
+def _format_labels(labels: dict[str, str]) -> str:
+    if not labels:
+        return ""
+    parts = [f'{key}="{value}"' for key, value in labels.items()]
+    return "{" + ",".join(parts) + "}"
+
+
+def _render_histogram(
+    *,
+    metric_prefix: str,
+    help_text: str,
+    items: dict[tuple[str, ...], Any],
+    label_names: list[str],
+) -> list[str]:
+    lines = [
+        f"# HELP {metric_prefix} {help_text}",
+        f"# TYPE {metric_prefix} histogram",
+    ]
+    if not items:
+        lines.append(f'{metric_prefix}_bucket{{le="+Inf"}} 0')
+        lines.append(f"{metric_prefix}_sum 0")
+        lines.append(f"{metric_prefix}_count 0")
+        return lines
+
+    for key, histogram in items.items():
+        labels = dict(zip(label_names, key, strict=False))
+        bucket_counts = histogram.counts
+        for bucket in histogram.buckets:
+            bucket_labels = dict(labels)
+            bucket_labels["le"] = str(bucket)
+            lines.append(f"{metric_prefix}_bucket{_format_labels(bucket_labels)} {bucket_counts.get(bucket, 0)}")
+        inf_labels = dict(labels)
+        inf_labels["le"] = "+Inf"
+        lines.append(f"{metric_prefix}_bucket{_format_labels(inf_labels)} {histogram.total_count}")
+        lines.append(f"{metric_prefix}_sum{_format_labels(labels)} {histogram.total_sum}")
+        lines.append(f"{metric_prefix}_count{_format_labels(labels)} {histogram.total_count}")
+    return lines
+
+
 def _billing_metrics() -> list[str]:
     lines = [
         "# HELP core_api_billing_generated_total Total invoices generated.",
@@ -781,6 +827,20 @@ def _cases_metrics() -> list[str]:
     if not breach_lines:
         breach_lines.append('core_api_cases_sla_breaches_total{kind="unset"} 0')
 
+    support_breach_lines = [
+        f'support_sla_breaches_total{{kind="{kind}"}} {count}'
+        for kind, count in cases_metrics.sla_breaches_total.items()
+    ]
+    if not support_breach_lines:
+        support_breach_lines.append('support_sla_breaches_total{kind="unset"} 0')
+
+    support_created_lines = [
+        f'support_tickets_created_total{{priority="{priority}"}} {count}'
+        for priority, count in cases_metrics.support_tickets_created_total.items()
+    ]
+    if not support_created_lines:
+        support_created_lines.append('support_tickets_created_total{priority="unset"} 0')
+
     return [
         "# HELP core_api_cases_escalations_total Total SLA escalations by level.",
         "# TYPE core_api_cases_escalations_total counter",
@@ -788,8 +848,202 @@ def _cases_metrics() -> list[str]:
         "# HELP core_api_cases_sla_breaches_total Total SLA breaches by kind.",
         "# TYPE core_api_cases_sla_breaches_total counter",
         *breach_lines,
+        "# HELP support_sla_breaches_total Support SLA breaches by kind.",
+        "# TYPE support_sla_breaches_total counter",
+        *support_breach_lines,
+        "# HELP support_tickets_created_total Support tickets created by priority.",
+        "# TYPE support_tickets_created_total counter",
+        *support_created_lines,
+        "# HELP support_tickets_closed_total Support tickets closed.",
+        "# TYPE support_tickets_closed_total counter",
+        f"support_tickets_closed_total {cases_metrics.support_tickets_closed_total}",
     ]
 
+
+def _export_job_metrics() -> list[str]:
+    created_lines = [
+        f'export_jobs_created_total{{report_type="{report_type}",format="{export_format}"}} {count}'
+        for (report_type, export_format), count in export_metrics.created_total.items()
+    ]
+    if not created_lines:
+        created_lines.append('export_jobs_created_total{report_type="unset",format="unset"} 0')
+
+    completed_lines = [
+        f'export_jobs_completed_total{{report_type="{report_type}",format="{export_format}",status="{status}"}} {count}'
+        for (report_type, export_format, status), count in export_metrics.completed_total.items()
+    ]
+    if not completed_lines:
+        completed_lines.append('export_jobs_completed_total{report_type="unset",format="unset",status="unset"} 0')
+
+    failure_lines = [
+        f'export_job_failures_total{{reason="{reason}"}} {count}'
+        for reason, count in export_metrics.failures_total.items()
+    ]
+    if not failure_lines:
+        failure_lines.append('export_job_failures_total{reason="unset"} 0')
+
+    lines = [
+        "# HELP export_jobs_created_total Export jobs created.",
+        "# TYPE export_jobs_created_total counter",
+        *created_lines,
+        "# HELP export_jobs_completed_total Export jobs completed.",
+        "# TYPE export_jobs_completed_total counter",
+        *completed_lines,
+    ]
+    lines.extend(
+        _render_histogram(
+            metric_prefix="export_job_duration_seconds",
+            help_text="Export job duration seconds.",
+            items=export_metrics.duration_seconds,
+            label_names=["report_type", "format"],
+        )
+    )
+    lines.extend(
+        _render_histogram(
+            metric_prefix="export_job_rows",
+            help_text="Export job row counts.",
+            items=export_metrics.rows,
+            label_names=["report_type", "format"],
+        )
+    )
+    lines.extend(
+        [
+            "# HELP export_job_failures_total Export job failures by reason.",
+            "# TYPE export_job_failures_total counter",
+            *failure_lines,
+        ]
+    )
+    return lines
+
+
+def _email_outbox_metrics() -> list[str]:
+    enqueued_lines = [
+        f'email_outbox_enqueued_total{{template_key="{template_key}"}} {count}'
+        for template_key, count in email_metrics.enqueued_total.items()
+    ]
+    if not enqueued_lines:
+        enqueued_lines.append('email_outbox_enqueued_total{template_key="unset"} 0')
+
+    sent_lines = [
+        f'email_outbox_sent_total{{provider="{provider}"}} {count}'
+        for provider, count in email_metrics.sent_total.items()
+    ]
+    if not sent_lines:
+        sent_lines.append('email_outbox_sent_total{provider="unset"} 0')
+
+    failed_lines = [
+        f'email_outbox_failed_total{{provider="{provider}",reason="{reason}"}} {count}'
+        for (provider, reason), count in email_metrics.failed_total.items()
+    ]
+    if not failed_lines:
+        failed_lines.append('email_outbox_failed_total{provider="unset",reason="unset"} 0')
+
+    lines = [
+        "# HELP email_outbox_enqueued_total Emails enqueued by template.",
+        "# TYPE email_outbox_enqueued_total counter",
+        *enqueued_lines,
+        "# HELP email_outbox_sent_total Emails sent by provider.",
+        "# TYPE email_outbox_sent_total counter",
+        *sent_lines,
+        "# HELP email_outbox_failed_total Email failures by provider and reason.",
+        "# TYPE email_outbox_failed_total counter",
+        *failed_lines,
+    ]
+    lines.extend(
+        _render_histogram(
+            metric_prefix="email_delivery_duration_seconds",
+            help_text="Email delivery duration seconds.",
+            items={(provider,): histogram for provider, histogram in email_metrics.delivery_duration_seconds.items()},
+            label_names=["provider"],
+        )
+    )
+    return lines
+
+
+def _report_schedule_metrics() -> list[str]:
+    triggered_lines = [
+        f'report_schedules_triggered_total{{report_type="{report_type}",format="{export_format}"}} {count}'
+        for (report_type, export_format), count in report_schedule_metrics.triggered_total.items()
+    ]
+    if not triggered_lines:
+        triggered_lines.append('report_schedules_triggered_total{report_type="unset",format="unset"} 0')
+
+    skipped_lines = [
+        f'report_schedules_skipped_total{{reason="{reason}"}} {count}'
+        for reason, count in report_schedule_metrics.skipped_total.items()
+    ]
+    if not skipped_lines:
+        skipped_lines.append('report_schedules_skipped_total{reason="unset"} 0')
+
+    lines = [
+        "# HELP report_schedules_triggered_total Report schedules triggered.",
+        "# TYPE report_schedules_triggered_total counter",
+        *triggered_lines,
+        "# HELP report_schedules_skipped_total Report schedules skipped.",
+        "# TYPE report_schedules_skipped_total counter",
+        *skipped_lines,
+    ]
+    lines.extend(
+        _render_histogram(
+            metric_prefix="report_schedule_trigger_lag_seconds",
+            help_text="Report schedule trigger lag seconds.",
+            items={(): report_schedule_metrics.trigger_lag_seconds},
+            label_names=[],
+        )
+    )
+    return lines
+
+
+def _notification_metrics() -> list[str]:
+    created_lines = [
+        f'client_notifications_created_total{{type="{event_type}",severity="{severity}"}} {count}'
+        for (event_type, severity), count in notification_metrics.created_total.items()
+    ]
+    if not created_lines:
+        created_lines.append('client_notifications_created_total{type="unset",severity="unset"} 0')
+    return [
+        "# HELP client_notifications_created_total Client notifications created.",
+        "# TYPE client_notifications_created_total counter",
+        *created_lines,
+    ]
+
+
+def _queue_metrics() -> list[str]:
+    session = get_sessionmaker()()
+    try:
+        outbox_backlog = (
+            session.query(EmailOutbox).filter(EmailOutbox.status == EmailOutboxStatus.QUEUED).count()
+        )
+        running_started_at = (
+            session.query(ExportJob.started_at)
+            .filter(ExportJob.status == ExportJobStatus.RUNNING)
+            .order_by(ExportJob.started_at.asc())
+            .limit(1)
+            .scalar()
+        )
+        running_age_seconds = 0.0
+        if running_started_at:
+            running_age_seconds = max(0.0, (datetime.now(timezone.utc) - running_started_at).total_seconds())
+        return [
+            "# HELP email_outbox_backlog Email outbox backlog (queued).",
+            "# TYPE email_outbox_backlog gauge",
+            f"email_outbox_backlog {outbox_backlog}",
+            "# HELP export_jobs_running_age_seconds Oldest running export job age in seconds.",
+            "# TYPE export_jobs_running_age_seconds gauge",
+            f"export_jobs_running_age_seconds {running_age_seconds}",
+        ]
+    except Exception:  # noqa: BLE001
+        logger.exception("metrics_queue_collection_failed")
+        return [
+            "# HELP email_outbox_backlog Email outbox backlog (queued).",
+            "# TYPE email_outbox_backlog gauge",
+            "email_outbox_backlog 0",
+            "# HELP export_jobs_running_age_seconds Oldest running export job age in seconds.",
+            "# TYPE export_jobs_running_age_seconds gauge",
+            "export_jobs_running_age_seconds 0",
+        ]
+    finally:
+        session.close()
 
 
 def _fleet_metrics() -> list[str]:
@@ -915,6 +1169,11 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_risk_v5_metrics())
     lines.extend(_audit_metrics())
     lines.extend(_cases_metrics())
+    lines.extend(_export_job_metrics())
+    lines.extend(_email_outbox_metrics())
+    lines.extend(_report_schedule_metrics())
+    lines.extend(_notification_metrics())
+    lines.extend(_queue_metrics())
     lines.extend(_accounting_export_metrics())
     lines.extend(_fleet_metrics())
     lines.extend(_bi_metrics())

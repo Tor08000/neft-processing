@@ -9,6 +9,7 @@ from app.models.client import Client
 from app.models.client_notification import ClientNotification, ClientNotificationSeverity
 from app.services.email_service import build_idempotency_key, enqueue_templated_email
 from app.services.email_templates import build_portal_url
+from app.services.notification_metrics import metrics as notification_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ def create_notification(
     )
     db.add(notification)
     db.flush()
+    notification_metrics.mark_created(event_type, severity.value)
 
     if email_to:
         send_notification_email(
