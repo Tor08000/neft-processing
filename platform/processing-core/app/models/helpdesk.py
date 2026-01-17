@@ -39,6 +39,12 @@ class HelpdeskOutboxEventType(str, Enum):
     TICKET_CLOSED = "TICKET_CLOSED"
 
 
+class HelpdeskInboundEventStatus(str, Enum):
+    PROCESSED = "PROCESSED"
+    IGNORED = "IGNORED"
+    FAILED = "FAILED"
+
+
 class HelpdeskIntegration(Base):
     __tablename__ = "helpdesk_integrations"
     __table_args__ = (
@@ -98,7 +104,25 @@ class HelpdeskOutbox(Base):
     sent_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class HelpdeskInboundEvent(Base):
+    __tablename__ = "helpdesk_inbound_events"
+    __table_args__ = (UniqueConstraint("provider", "event_id", name="uq_helpdesk_inbound_events_scope"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    provider = Column(ExistingEnum(HelpdeskProvider, name="helpdesk_provider"), nullable=False)
+    event_id = Column(String(255), nullable=False)
+    received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(
+        ExistingEnum(HelpdeskInboundEventStatus, name="helpdesk_inbound_event_status"),
+        nullable=False,
+    )
+    last_error = Column(Text, nullable=True)
+
+
 __all__ = [
+    "HelpdeskInboundEvent",
+    "HelpdeskInboundEventStatus",
     "HelpdeskIntegration",
     "HelpdeskIntegrationStatus",
     "HelpdeskOutbox",

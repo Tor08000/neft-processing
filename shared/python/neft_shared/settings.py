@@ -32,6 +32,8 @@ class Settings:
     access_token_expires_min: int = int(os.getenv("ACCESS_TOKEN_EXPIRES_MIN", "60"))
     refresh_token_expires_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRES_DAYS", "15"))
     password_pepper: str = os.getenv("PASSWORD_PEPPER", "dev-pepper")
+    NEFT_HELPDESK_WEBHOOK_SECRET: str = os.getenv("NEFT_HELPDESK_WEBHOOK_SECRET", "")
+    NEFT_HELPDESK_WEBHOOK_TOLERANCE_SEC: int = int(os.getenv("NEFT_HELPDESK_WEBHOOK_TOLERANCE_SEC", "300"))
 
     # Risk & Rules feature flags
     AI_RISK_ENABLED: bool = os.getenv("AI_RISK_ENABLED", "true").lower() in {"1", "true", "yes"}
