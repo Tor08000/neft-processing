@@ -31,6 +31,35 @@ from neft_shared.settings import get_settings
 logger = get_logger(__name__)
 settings = get_settings()
 
+PROGRESS_UPDATE_ROWS_STEP = 1000
+PROGRESS_UPDATE_SECONDS = 2.0
+
+
+def _calculate_progress_percent(processed_rows: int, estimated_total_rows: int | None) -> int | None:
+    if estimated_total_rows is None:
+        return None
+    if estimated_total_rows <= 0:
+        return 0
+    progress = int(processed_rows * 100 / estimated_total_rows)
+    return min(99, max(0, progress))
+
+
+def _update_job_progress(
+    session,
+    *,
+    job_id: str,
+    processed_rows: int,
+    estimated_total_rows: int | None,
+) -> None:
+    job = session.get(ExportJob, job_id)
+    if not job or job.status != ExportJobStatus.RUNNING:
+        return
+    job.processed_rows = processed_rows
+    job.estimated_total_rows = estimated_total_rows
+    job.progress_percent = _calculate_progress_percent(processed_rows, estimated_total_rows)
+    session.add(job)
+    session.commit()
+
 
 def _build_object_key(org_id: str, job_id: str, filename: str) -> str:
     return f"{org_id}/{job_id}/{filename}"
@@ -102,10 +131,12 @@ def _notify_export_failure(session, job: ExportJob) -> None:
 )
 def generate_export_job(job_id: str) -> dict:
     session = get_sessionmaker()()
+    progress_session = None
     temp_path: Path | None = None
     started_at = time.perf_counter()
     request_id = None
     schedule_id = None
+    processed_rows = 0
     try:
         job = session.get(ExportJob, job_id)
         if not job:
@@ -136,6 +167,42 @@ def generate_export_job(job_id: str) -> dict:
             max_rows=settings.NEFT_EXPORT_MAX_ROWS,
             chunk_size=settings.NEFT_EXPORT_CHUNK_SIZE,
         )
+        estimated_total_rows = render_result.estimated_total_rows
+        job.processed_rows = 0
+        job.estimated_total_rows = estimated_total_rows
+        job.progress_percent = _calculate_progress_percent(0, estimated_total_rows)
+        session.add(job)
+        session.commit()
+
+        progress_session = get_sessionmaker()()
+        last_progress_rows = 0
+        last_progress_time = time.monotonic()
+
+        def progress_callback(count: int) -> None:
+            nonlocal last_progress_rows, last_progress_time, processed_rows
+            processed_rows = count
+            now = time.monotonic()
+            if count == last_progress_rows:
+                return
+            if (count - last_progress_rows) < PROGRESS_UPDATE_ROWS_STEP and (
+                now - last_progress_time
+            ) < PROGRESS_UPDATE_SECONDS:
+                return
+            last_progress_rows = count
+            last_progress_time = now
+            try:
+                _update_job_progress(
+                    progress_session,
+                    job_id=job_id,
+                    processed_rows=count,
+                    estimated_total_rows=estimated_total_rows,
+                )
+            except Exception as exc:  # noqa: BLE001
+                progress_session.rollback()
+                logger.warning(
+                    "export_job.progress_update_failed",
+                    extra={"job_id": job_id, "error": str(exc)},
+                )
         temp_dir = Path(settings.NEFT_EXPORT_TMP_DIR)
         temp_dir.mkdir(parents=True, exist_ok=True)
         temp_suffix = "xlsx" if job.format == ExportJobFormat.XLSX else "csv"
@@ -147,6 +214,7 @@ def generate_export_job(job_id: str) -> dict:
                 render_result,
                 file_path=str(temp_path),
                 max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+                progress_callback=progress_callback,
             )
         else:
             filename = render_result.filename
@@ -155,6 +223,7 @@ def generate_export_job(job_id: str) -> dict:
                 render_result,
                 file_path=str(temp_path),
                 max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+                progress_callback=progress_callback,
             )
 
         object_key = _build_object_key(str(job.org_id), str(job.id), filename)
@@ -166,6 +235,8 @@ def generate_export_job(job_id: str) -> dict:
         job.file_name = filename
         job.content_type = content_type
         job.row_count = row_count
+        job.processed_rows = row_count
+        job.progress_percent = 100 if job.estimated_total_rows is not None else None
         job.finished_at = datetime.now(timezone.utc)
         job.expires_at = job.expires_at or (
             datetime.now(timezone.utc) + timedelta(days=settings.EXPORT_JOB_RETENTION_DAYS)
@@ -207,6 +278,8 @@ def generate_export_job(job_id: str) -> dict:
         if job:
             job.status = ExportJobStatus.FAILED
             job.error_message = str(exc)
+            job.processed_rows = processed_rows
+            job.progress_percent = _calculate_progress_percent(processed_rows, job.estimated_total_rows)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
@@ -235,6 +308,8 @@ def generate_export_job(job_id: str) -> dict:
         if job:
             job.status = ExportJobStatus.FAILED
             job.error_message = "timeout"
+            job.processed_rows = processed_rows
+            job.progress_percent = _calculate_progress_percent(processed_rows, job.estimated_total_rows)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
@@ -258,6 +333,8 @@ def generate_export_job(job_id: str) -> dict:
         if job:
             job.status = ExportJobStatus.FAILED
             job.error_message = str(exc)
+            job.processed_rows = processed_rows
+            job.progress_percent = _calculate_progress_percent(processed_rows, job.estimated_total_rows)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
@@ -286,6 +363,8 @@ def generate_export_job(job_id: str) -> dict:
         if job:
             job.status = ExportJobStatus.FAILED
             job.error_message = str(exc)
+            job.processed_rows = processed_rows
+            job.progress_percent = _calculate_progress_percent(processed_rows, job.estimated_total_rows)
             job.finished_at = datetime.now(timezone.utc)
             session.add(job)
             _notify_schedule_if_needed(session, job, False)
@@ -310,6 +389,8 @@ def generate_export_job(job_id: str) -> dict:
             except OSError:
                 logger.warning("export_job.temp_cleanup_failed", extra={"job_id": job_id, "path": str(temp_path)})
         session.close()
+        if progress_session:
+            progress_session.close()
 
 @celery_client.task(name="exports.cleanup_expired_exports")
 def cleanup_expired_exports(*, limit: int = 500) -> dict[str, int]:

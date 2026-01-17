@@ -20,6 +20,9 @@ export type ExportJob = {
   file_name?: string | null;
   content_type?: string | null;
   row_count?: number | null;
+  processed_rows: number;
+  estimated_total_rows?: number | null;
+  progress_percent?: number | null;
   error_message?: string | null;
   created_at: string;
   started_at?: string | null;

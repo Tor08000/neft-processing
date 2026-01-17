@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from sqlalchemy import and_, cast, or_, String
 from sqlalchemy.orm import Session
@@ -66,6 +66,8 @@ class ExportRenderStreamResult:
     filename: str
     headers: list[str]
     rows: Iterable[list[object | None]]
+    estimated_total_rows: int | None = None
+    estimated_total_rows: int | None = None
 
 
 def _parse_date(value: Any, *, field: str) -> date | None:
@@ -779,22 +781,23 @@ def stream_transactions_csv(
     card_ids = filters.get("card_ids") or []
     min_amount = _parse_int(filters.get("min_amount"), field="min_amount")
     max_amount = _parse_int(filters.get("max_amount"), field="max_amount")
-    query = db.query(Operation).filter(Operation.client_id == str(client_id))
+    base_query = db.query(Operation).filter(Operation.client_id == str(client_id))
     if card_id:
-        query = query.filter(Operation.card_id == card_id)
+        base_query = base_query.filter(Operation.card_id == card_id)
     if card_ids:
-        query = query.filter(Operation.card_id.in_(card_ids))
+        base_query = base_query.filter(Operation.card_id.in_(card_ids))
     if status:
-        query = query.filter(Operation.status == status)
+        base_query = base_query.filter(Operation.status == status)
     if start:
-        query = query.filter(Operation.created_at >= start)
+        base_query = base_query.filter(Operation.created_at >= start)
     if end:
-        query = query.filter(Operation.created_at <= end)
+        base_query = base_query.filter(Operation.created_at <= end)
     if min_amount is not None:
-        query = query.filter(Operation.amount >= min_amount)
+        base_query = base_query.filter(Operation.amount >= min_amount)
     if max_amount is not None:
-        query = query.filter(Operation.amount <= max_amount)
-    query = query.order_by(Operation.created_at.asc(), Operation.id.asc()).limit(max_rows + 1)
+        base_query = base_query.filter(Operation.amount <= max_amount)
+    estimated_total_rows = base_query.count()
+    query = base_query.order_by(Operation.created_at.asc(), Operation.id.asc()).limit(max_rows + 1)
 
     def row_iterator() -> Iterator[list[object | None]]:
         streamed = _stream_query(query, chunk_size=chunk_size)
@@ -832,6 +835,7 @@ def stream_transactions_csv(
             "status",
         ],
         rows=row_iterator(),
+        estimated_total_rows=estimated_total_rows,
     )
 
 
@@ -1258,7 +1262,13 @@ def render_xlsx_payload(result: ExportRenderResult) -> bytes:
     return output.getvalue()
 
 
-def write_csv_stream(result: ExportRenderStreamResult, *, file_path: str, max_rows: int) -> int:
+def write_csv_stream(
+    result: ExportRenderStreamResult,
+    *,
+    file_path: str,
+    max_rows: int,
+    progress_callback: Callable[[int], None] | None = None,
+) -> int:
     row_count = 0
     with open(file_path, "w", newline="", encoding="utf-8") as file_handle:
         writer = csv.writer(file_handle)
@@ -1268,10 +1278,18 @@ def write_csv_stream(result: ExportRenderStreamResult, *, file_path: str, max_ro
             if row_count > max_rows:
                 raise ExportRenderLimitError(TOO_MANY_ROWS_ERROR)
             writer.writerow([_format_csv_value(value) for value in row])
+            if progress_callback:
+                progress_callback(row_count)
     return row_count
 
 
-def write_xlsx_stream(result: ExportRenderStreamResult, *, file_path: str, max_rows: int) -> int:
+def write_xlsx_stream(
+    result: ExportRenderStreamResult,
+    *,
+    file_path: str,
+    max_rows: int,
+    progress_callback: Callable[[int], None] | None = None,
+) -> int:
     from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
 
@@ -1288,6 +1306,8 @@ def write_xlsx_stream(result: ExportRenderStreamResult, *, file_path: str, max_r
         if row_count > max_rows:
             raise ExportRenderLimitError(TOO_MANY_ROWS_ERROR)
         sheet.append([_xlsx_cell_value(value) for value in row])
+        if progress_callback:
+            progress_callback(row_count)
 
     workbook.save(file_path)
     return row_count

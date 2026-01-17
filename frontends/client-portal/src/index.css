@@ -750,6 +750,49 @@ textarea:focus-visible {
   font-style: italic;
 }
 
+.export-progress {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.export-progress__bar {
+  position: relative;
+  height: 4px;
+  border-radius: var(--neft-radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.export-progress__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--neft-accent);
+  border-radius: var(--neft-radius-md);
+  transition: width 0.3s ease;
+}
+
+.export-progress__bar.is-indeterminate .export-progress__fill {
+  width: 35%;
+  animation: export-progress-slide 1.2s ease-in-out infinite;
+}
+
+.export-progress__text {
+  font-size: 0.75rem;
+}
+
+@keyframes export-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
 .kpi-hints {
   list-style: none;
   margin: 0.75rem 0 0;
