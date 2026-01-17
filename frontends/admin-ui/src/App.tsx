@@ -23,6 +23,7 @@ import { RulesSandboxPage } from "./pages/RulesSandboxPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import PayoutsList from "./pages/finance/PayoutsList";
 import PayoutBatchDetail from "./pages/finance/PayoutBatchDetail";
+import RevenuePage from "./pages/finance/RevenuePage";
 import ForbiddenPage from "./pages/ForbiddenPage";
 import ExplainPage from "./pages/ExplainPage";
 import ClientsPage from "./pages/crm/ClientsPage";
@@ -70,6 +71,7 @@ export function App() {
             <Route path="/finance/payments/:id" element={<BillingPaymentDetailsPage />} />
             <Route path="/finance/refunds" element={<BillingRefundsPage />} />
             <Route path="/finance/links" element={<BillingLinksPage />} />
+            <Route path="/finance/revenue" element={<RevenuePage />} />
             <Route path="/risk" element={<Navigate to="/analytics/risk" replace />} />
             <Route path="/policies" element={<Navigate to="/risk/rules" replace />} />
             <Route path="/marketplace" element={<Navigate to="/marketplace/moderation" replace />} />
