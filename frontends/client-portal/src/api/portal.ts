@@ -3,7 +3,7 @@ import type { AuthSession } from "./types";
 import type {
   ClientContractDetails,
   ClientContractsResponse,
-  ClientDashboardSummary,
+  ClientDashboardResponse,
   ClientInvoiceDetails,
   ClientInvoiceListResponse,
 } from "../types/portal";
@@ -32,7 +32,7 @@ const buildInvoiceQuery = (filters: InvoiceFilters): string => {
 };
 
 export const fetchClientDashboard = (user: AuthSession | null) =>
-  request<ClientDashboardSummary>("/client/dashboard", { method: "GET" }, withToken(user));
+  request<ClientDashboardResponse>("/client/dashboard", { method: "GET" }, withToken(user));
 
 export const fetchClientInvoices = (user: AuthSession | null, filters: InvoiceFilters = {}) =>
   request<ClientInvoiceListResponse>(`/client/invoices${buildInvoiceQuery(filters)}`, { method: "GET" }, withToken(user));

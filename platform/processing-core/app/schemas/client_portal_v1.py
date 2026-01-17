@@ -310,6 +310,22 @@ class ClientAnalyticsSupport(BaseModel):
     avg_resolve_minutes: float | None = None
 
 
+class ClientDashboardWidget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str
+    key: str
+    data: Any | None = None
+
+
+class ClientDashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    timezone: str
+    widgets: list[ClientDashboardWidget]
+
+
 class ClientAnalyticsSummaryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

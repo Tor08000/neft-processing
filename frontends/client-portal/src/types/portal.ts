@@ -1,15 +1,15 @@
-export interface PortalSlaSummary {
-  status: string;
-  violations: number;
+export type ClientDashboardWidgetType = "kpi" | "chart" | "list" | "health" | "cta";
+
+export interface ClientDashboardWidget {
+  type: ClientDashboardWidgetType;
+  key: string;
+  data?: unknown;
 }
 
-export interface ClientDashboardSummary {
-  active_contracts: number;
-  invoices_due: number;
-  invoices_due_amount: number;
-  payments_last_30d: number;
-  payments_last_30d_count: number;
-  sla: PortalSlaSummary;
+export interface ClientDashboardResponse {
+  role: string;
+  timezone: string;
+  widgets: ClientDashboardWidget[];
 }
 
 export interface ClientInvoiceSummary {

@@ -31,6 +31,7 @@ from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportTy
 from app.models.report_schedules import ReportSchedule, ReportScheduleKind, ReportScheduleStatus
 from app.models.fleet import ClientEmployee, EmployeeStatus, FleetDriver
 from app.models.card import Card
+from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
 from app.models.fuel import (
     FuelCard,
@@ -100,6 +101,8 @@ from app.schemas.client_portal_v1 import (
     ClientAnalyticsDrillTransaction,
     ClientAnalyticsSupportDrillItem,
     ClientAnalyticsSupportDrillResponse,
+    ClientDashboardResponse,
+    ClientDashboardWidget,
     ExportJobCreateRequest,
     ExportJobCreateResponse,
     ExportJobListResponse,
@@ -234,6 +237,38 @@ USER_NOTIFICATION_EVENTS = [
     UserNotificationEventType.SECURITY_EVENTS,
 ]
 USER_NOTIFICATION_CHANNELS = [UserNotificationChannel.EMAIL, UserNotificationChannel.IN_APP]
+DASHBOARD_WIDGETS_BY_ROLE = {
+    "OWNER": [
+        {"type": "kpi", "key": "total_spend_30d"},
+        {"type": "kpi", "key": "transactions_30d"},
+        {"type": "chart", "key": "spend_timeseries_30d"},
+        {"type": "list", "key": "top_cards"},
+        {"type": "health", "key": "health_exports_email"},
+        {"type": "health", "key": "support_overview"},
+        {"type": "cta", "key": "owner_actions"},
+    ],
+    "ACCOUNTANT": [
+        {"type": "kpi", "key": "total_spend_30d"},
+        {"type": "kpi", "key": "invoices_count_30d"},
+        {"type": "list", "key": "recent_documents"},
+        {"type": "list", "key": "exports_recent"},
+        {"type": "cta", "key": "accountant_actions"},
+    ],
+    "FLEET_MANAGER": [
+        {"type": "kpi", "key": "active_cards"},
+        {"type": "kpi", "key": "blocked_cards"},
+        {"type": "chart", "key": "spend_timeseries_30d"},
+        {"type": "list", "key": "top_drivers_cards"},
+        {"type": "list", "key": "alerts"},
+        {"type": "cta", "key": "fleet_actions"},
+    ],
+    "DRIVER": [
+        {"type": "kpi", "key": "my_cards_count"},
+        {"type": "list", "key": "recent_transactions"},
+        {"type": "list", "key": "card_limits"},
+        {"type": "cta", "key": "driver_actions"},
+    ],
+}
 
 
 def _load_contract_template() -> bytes:
@@ -320,6 +355,19 @@ def _normalize_roles(token: dict) -> list[str]:
     if token.get("role"):
         roles.append(token["role"])
     return [str(item).upper() for item in roles]
+
+
+def _resolve_dashboard_role(token: dict) -> str:
+    roles = set(_normalize_roles(token))
+    if roles.intersection({"CLIENT_OWNER", "CLIENT_ADMIN", "OWNER", "ADMIN"}):
+        return "OWNER"
+    if "CLIENT_ACCOUNTANT" in roles:
+        return "ACCOUNTANT"
+    if "CLIENT_FLEET_MANAGER" in roles:
+        return "FLEET_MANAGER"
+    if roles.intersection({"CLIENT_USER", "DRIVER"}):
+        return "DRIVER"
+    return "OWNER"
 
 
 def _notification_preferences_from_db(
@@ -910,6 +958,245 @@ def _export_job_to_out(job: ExportJob) -> ExportJobOut:
         finished_at=job.finished_at,
         expires_at=job.expires_at,
     )
+
+
+@router.get("/dashboard", response_model=ClientDashboardResponse)
+def get_client_dashboard(
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientDashboardResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    role = _resolve_dashboard_role(token)
+    widgets_config = DASHBOARD_WIDGETS_BY_ROLE.get(role, [])
+    tz_name = resolve_user_timezone(db, token=token)
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+
+    analytics_keys = {
+        "total_spend_30d",
+        "transactions_30d",
+        "spend_timeseries_30d",
+        "top_cards",
+        "top_drivers_cards",
+        "support_overview",
+        "active_cards",
+        "blocked_cards",
+    }
+    analytics_summary: ClientAnalyticsSummaryResponse | None = None
+    if role != "DRIVER" and any(widget["key"] in analytics_keys for widget in widgets_config):
+        tzinfo = ZoneInfo(tz_name)
+        date_to = datetime.now(tzinfo).date()
+        date_from = date_to - timedelta(days=29)
+        analytics_summary = get_client_analytics_summary(
+            request=request,
+            date_from=date_from,
+            date_to=date_to,
+            scope=None,
+            timezone_name=tz_name,
+            token=token,
+            db=db,
+        )
+
+    widgets: list[ClientDashboardWidget] = []
+    for config in widgets_config:
+        key = config["key"]
+        data: dict | list | None = None
+
+        if key == "total_spend_30d" and analytics_summary:
+            data = {"value": analytics_summary.summary.total_spend, "currency": "RUB"}
+        elif key == "transactions_30d" and analytics_summary:
+            data = {"value": analytics_summary.summary.transactions_count}
+        elif key == "active_cards" and analytics_summary:
+            data = {"value": analytics_summary.summary.active_cards}
+        elif key == "blocked_cards" and analytics_summary:
+            data = {"value": analytics_summary.summary.blocked_cards}
+        elif key == "spend_timeseries_30d" and analytics_summary:
+            data = [
+                {"date": point.date.isoformat(), "value": point.spend} for point in analytics_summary.timeseries
+            ]
+        elif key == "top_cards" and analytics_summary:
+            data = [
+                {
+                    "id": item.card_id,
+                    "label": item.label,
+                    "spend": item.spend,
+                    "count": item.count,
+                }
+                for item in analytics_summary.tops.cards
+            ]
+        elif key == "top_drivers_cards" and analytics_summary:
+            data = {
+                "drivers": [
+                    {
+                        "id": item.user_id,
+                        "label": item.label,
+                        "spend": item.spend,
+                        "count": item.count,
+                    }
+                    for item in analytics_summary.tops.drivers
+                ],
+                "cards": [
+                    {
+                        "id": item.card_id,
+                        "label": item.label,
+                        "spend": item.spend,
+                        "count": item.count,
+                    }
+                    for item in analytics_summary.tops.cards
+                ],
+            }
+        elif key == "support_overview" and analytics_summary:
+            data = {
+                "open_tickets": analytics_summary.summary.open_tickets,
+                "sla_breaches_first": analytics_summary.summary.sla_breaches_first,
+                "sla_breaches_resolution": analytics_summary.summary.sla_breaches_resolution,
+            }
+        elif key == "health_exports_email":
+            exports_running = (
+                db.query(func.count())
+                .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.RUNNING)
+                .scalar()
+                or 0
+            )
+            exports_failed = (
+                db.query(func.count())
+                .filter(ExportJob.org_id == str(client.id), ExportJob.status == ExportJobStatus.FAILED)
+                .scalar()
+                or 0
+            )
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
+            email_failures = (
+                db.query(func.count())
+                .filter(
+                    EmailOutbox.org_id == str(client.id),
+                    EmailOutbox.status == EmailOutboxStatus.FAILED,
+                    EmailOutbox.created_at >= since,
+                )
+                .scalar()
+                or 0
+            )
+            data = {
+                "exports_running": int(exports_running),
+                "exports_failed": int(exports_failed),
+                "email_failures_24h": int(email_failures),
+            }
+        elif key == "invoices_count_30d":
+            tzinfo = ZoneInfo(tz_name)
+            date_to = datetime.now(tzinfo).date()
+            date_from = date_to - timedelta(days=29)
+            doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
+            invoices_count = (
+                db.query(func.count())
+                .filter(
+                    Document.client_id == str(client.id),
+                    Document.document_type.in_(doc_types),
+                    Document.period_to >= date_from,
+                    Document.period_to <= date_to,
+                )
+                .scalar()
+                or 0
+            )
+            data = {"value": int(invoices_count)}
+        elif key == "recent_documents":
+            doc_types = {DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE, DocumentType.ACT}
+            documents = (
+                db.query(Document)
+                .filter(Document.client_id == str(client.id), Document.document_type.in_(doc_types))
+                .order_by(Document.period_to.desc())
+                .limit(5)
+                .all()
+            )
+            data = [
+                {
+                    "id": str(doc.id),
+                    "type": doc.document_type.value,
+                    "status": doc.status.value,
+                    "date": doc.period_to.isoformat(),
+                }
+                for doc in documents
+            ]
+        elif key == "exports_recent":
+            if not user_id:
+                data = []
+            else:
+                query = db.query(ExportJob).filter(ExportJob.org_id == str(client.id))
+                if not _is_user_admin(token):
+                    query = query.filter(ExportJob.created_by_user_id == user_id)
+                jobs = query.order_by(ExportJob.created_at.desc()).limit(5).all()
+                data = [
+                    {
+                        "id": item.id,
+                        "report_type": item.report_type.value,
+                        "status": item.status.value,
+                        "created_at": item.created_at.isoformat(),
+                        "eta_at": item.eta_at.isoformat() if item.eta_at else None,
+                    }
+                    for item in (_export_job_to_out(job) for job in jobs)
+                ]
+        elif key == "my_cards_count":
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            data = {"value": len(card_ids)}
+        elif key == "recent_transactions":
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            if card_ids:
+                rows = (
+                    db.query(FuelTransaction, FuelCard.masked_pan, FuelCard.card_alias)
+                    .join(FuelCard, FuelCard.id == FuelTransaction.card_id)
+                    .filter(
+                        FuelTransaction.client_id == str(client.id),
+                        FuelTransaction.card_id.in_(card_ids),
+                        FuelTransaction.status == FuelTransactionStatus.SETTLED,
+                    )
+                    .order_by(FuelTransaction.occurred_at.desc())
+                    .limit(5)
+                    .all()
+                )
+                data = [
+                    {
+                        "id": str(tx.id),
+                        "occurred_at": tx.occurred_at.isoformat(),
+                        "amount": int(tx.amount_total_minor) / 100,
+                        "currency": tx.currency,
+                        "card_label": masked_pan or card_alias or str(tx.card_id),
+                    }
+                    for tx, masked_pan, card_alias in rows
+                ]
+            else:
+                data = []
+        elif key == "card_limits":
+            card_ids = _accessible_card_ids(db, token=token, client_id=str(client.id))
+            if not card_ids:
+                data = []
+            else:
+                cards = db.query(Card).filter(Card.id.in_(card_ids)).all()
+                card_labels = {card.id: card.pan_masked or card.id for card in cards}
+                limits = db.query(CardLimit).filter(CardLimit.card_id.in_(card_ids)).all()
+                limits_map: dict[str, list[dict]] = {}
+                for limit in limits:
+                    limits_map.setdefault(limit.card_id, []).append(
+                        {
+                            "type": limit.limit_type,
+                            "amount": float(limit.amount),
+                            "currency": limit.currency,
+                        }
+                    )
+                data = [
+                    {
+                        "card_id": card_id,
+                        "label": card_labels.get(card_id, card_id),
+                        "limits": limits_map.get(card_id, []),
+                    }
+                    for card_id in card_ids
+                ]
+        elif key == "alerts":
+            data = []
+
+        widgets.append(ClientDashboardWidget(type=config["type"], key=key, data=data))
+
+    return ClientDashboardResponse(role=role, timezone=tz_name, widgets=widgets)
 
 
 @router.get("/notification-preferences", response_model=UserNotificationPreferencesResponse)
