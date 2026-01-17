@@ -345,6 +345,7 @@ CREATE TABLE IF NOT EXISTS org_subscriptions (
   billing_cycle TEXT NOT NULL CHECK (billing_cycle IN ('MONTHLY', 'YEARLY')),
   auto_renew BOOLEAN DEFAULT TRUE,
   grace_period_days INT DEFAULT 0,
+  suspend_blocked_until TIMESTAMPTZ,
   support_plan_id BIGINT REFERENCES support_plans(id),
   slo_tier_id BIGINT REFERENCES slo_tiers(id),
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -442,6 +443,18 @@ CREATE TABLE IF NOT EXISTS billing_invoice_lines (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS billing_dunning_events (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES client_organizations(id),
+  invoice_id BIGINT NOT NULL REFERENCES billing_invoices(id),
+  event_type TEXT NOT NULL CHECK (event_type IN ('DUE_SOON_7D', 'DUE_SOON_1D', 'OVERDUE_1D', 'OVERDUE_7D', 'PRE_SUSPEND_1D', 'SUSPENDED')),
+  channel TEXT NOT NULL CHECK (channel IN ('EMAIL', 'IN_APP')),
+  status TEXT NOT NULL CHECK (status IN ('SENT', 'FAILED', 'SKIPPED')),
+  sent_at TIMESTAMPTZ,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS usage_meters (
   id BIGSERIAL PRIMARY KEY,
   code TEXT NOT NULL,
@@ -498,5 +511,8 @@ CREATE INDEX IF NOT EXISTS idx_org_subscription_addons_status ON org_subscriptio
 CREATE INDEX IF NOT EXISTS idx_billing_invoices_period ON billing_invoices(org_id, period_start, period_end);
 CREATE INDEX IF NOT EXISTS idx_billing_invoices_due ON billing_invoices(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_billing_invoice_lines_invoice ON billing_invoice_lines(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_billing_dunning_events_org ON billing_dunning_events(org_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_billing_dunning_events_invoice ON billing_dunning_events(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_billing_dunning_events_channel ON billing_dunning_events(channel, status);
 CREATE INDEX IF NOT EXISTS idx_usage_events_org_meter_time ON usage_events(org_id, meter_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_usage_aggregates_org_meter_period ON usage_aggregates(org_id, meter_id, period_start);

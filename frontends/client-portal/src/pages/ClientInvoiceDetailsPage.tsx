@@ -60,9 +60,21 @@ export function ClientInvoiceDetailsPage() {
   }
 
   const intakeList = invoice.payment_intakes ?? [];
+  const payments = invoice.payments ?? [];
+  const refunds = invoice.refunds ?? [];
   const latestIntake = intakeList[0];
   const defaultAmount = Number(invoice.amount_due ?? invoice.amount_total ?? 0);
   const usageLines = invoice.lines?.filter((line) => line.line_type === "USAGE") ?? [];
+  const subscriptionStatusLabels: Record<string, string> = {
+    ACTIVE: "Активна",
+    OVERDUE: "Просрочена",
+    SUSPENDED: "Приостановлена",
+    CANCELED: "Отменена",
+    TRIAL: "Триал",
+  };
+  const subscriptionStatusLabel = invoice.subscription_status
+    ? subscriptionStatusLabels[invoice.subscription_status] ?? invoice.subscription_status
+    : "—";
   const formatQuantity = (value?: number | null) => {
     if (value === null || value === undefined) return "—";
     const fixed = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
@@ -145,7 +157,7 @@ export function ClientInvoiceDetailsPage() {
       <div className="card">
         <div className="card__header">
           <div>
-            <h2>{invoice.invoice_number}</h2>
+            <h2>Счёт #{invoice.id}</h2>
             <p className="muted">Инвойс за период {formatDate(invoice.period_start)} — {formatDate(invoice.period_end)}</p>
           </div>
           <div className="actions">
@@ -186,7 +198,15 @@ export function ClientInvoiceDetailsPage() {
           </div>
           <div className="stat">
             <span className="muted">Срок оплаты</span>
-            <strong>{invoice.due_date ? formatDate(invoice.due_date) : "—"}</strong>
+            <strong>{invoice.due_at ? formatDate(invoice.due_at) : "—"}</strong>
+          </div>
+          <div className="stat">
+            <span className="muted">Дата приостановки</span>
+            <strong>{invoice.suspend_at ? formatDate(invoice.suspend_at) : "—"}</strong>
+          </div>
+          <div className="stat">
+            <span className="muted">Статус подписки</span>
+            <strong>{subscriptionStatusLabel}</strong>
           </div>
         </div>
       </div>
@@ -235,7 +255,7 @@ export function ClientInvoiceDetailsPage() {
           </div>
           <div className="form-field">
             <span className="muted">Срок оплаты</span>
-            <strong>{invoice.due_date ? formatDate(invoice.due_date) : "—"}</strong>
+            <strong>{invoice.due_at ? formatDate(invoice.due_at) : "—"}</strong>
           </div>
         </div>
 
@@ -309,7 +329,7 @@ export function ClientInvoiceDetailsPage() {
         <div className="card__header">
           <h3>Платежи</h3>
         </div>
-        {invoice.payments.length ? (
+        {payments.length ? (
           <table className="data-table">
             <thead>
               <tr>
@@ -321,7 +341,7 @@ export function ClientInvoiceDetailsPage() {
               </tr>
             </thead>
             <tbody>
-              {invoice.payments.map((payment) => (
+              {payments.map((payment) => (
                 <tr key={`${payment.external_ref}-${payment.created_at}`}>
                   <td>{formatDateTime(payment.created_at)}</td>
                   <td>
@@ -388,7 +408,7 @@ export function ClientInvoiceDetailsPage() {
         <div className="card__header">
           <h3>Возвраты</h3>
         </div>
-        {invoice.refunds.length ? (
+        {refunds.length ? (
           <table className="data-table">
             <thead>
               <tr>
@@ -399,7 +419,7 @@ export function ClientInvoiceDetailsPage() {
               </tr>
             </thead>
             <tbody>
-              {invoice.refunds.map((refund) => (
+              {refunds.map((refund) => (
                 <tr key={`${refund.external_ref}-${refund.created_at}`}>
                   <td>{formatDateTime(refund.created_at)}</td>
                   <td>

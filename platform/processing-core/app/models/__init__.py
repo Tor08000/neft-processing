@@ -214,6 +214,12 @@ from .billing_flow import (  # noqa: F401
     BillingRefund,
     BillingRefundStatus,
 )
+from .billing_dunning import (  # noqa: F401
+    BillingDunningChannel,
+    BillingDunningEvent,
+    BillingDunningEventType,
+    BillingDunningStatus,
+)
 from .settlement_v1 import (  # noqa: F401
     PayoutStatus,
     SettlementAccount,

@@ -27,8 +27,13 @@ class SubscriptionInvoiceOut(BaseModel):
     status: str
     issued_at: datetime | None = None
     due_at: datetime | None = None
+    suspend_at: datetime | None = None
+    subscription_status: str | None = None
     paid_at: datetime | None = None
     total_amount: Decimal | None = None
+    amount_paid: Decimal | None = None
+    amount_refunded: Decimal | None = None
+    amount_due: Decimal | None = None
     currency: str | None = None
     pdf_object_key: str | None = None
     download_url: str | None = None

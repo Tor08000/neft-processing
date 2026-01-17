@@ -15,17 +15,18 @@ const session: AuthSession = {
 };
 
 const invoicePayload = {
-  invoice_number: "INV-001",
+  id: 101,
+  org_id: 1,
   period_start: "2025-02-01",
   period_end: "2025-02-28",
-  status: "SENT",
+  status: "ISSUED",
   amount_total: 1000,
   amount_paid: 0,
   amount_refunded: 0,
   amount_due: 1000,
   currency: "RUB",
-  due_date: "2025-03-10",
-  download_url: "/api/client/invoices/INV-001/download",
+  due_at: "2025-03-10",
+  download_url: "/api/client/invoices/101/download",
   payments: [],
   refunds: [],
 };
@@ -43,7 +44,7 @@ describe("ClientInvoiceDetailsPage", () => {
   it("renders invoice summary", async () => {
     render(
       <AuthProvider initialSession={session}>
-        <MemoryRouter initialEntries={["/invoices/INV-001"]}>
+        <MemoryRouter initialEntries={["/invoices/101"]}>
           <Routes>
             <Route path="/invoices/:id" element={<ClientInvoiceDetailsPage />} />
           </Routes>
@@ -51,7 +52,7 @@ describe("ClientInvoiceDetailsPage", () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findByText("INV-001")).toBeInTheDocument();
+    expect(await screen.findByText("Счёт #101")).toBeInTheDocument();
     expect(screen.getByText(/Скачать PDF/)).toBeInTheDocument();
   });
 });

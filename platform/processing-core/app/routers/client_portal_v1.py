@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import logging
 import math
+from typing import Any
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from hashlib import sha256
@@ -5608,6 +5609,18 @@ def list_subscription_invoices(
         return SubscriptionInvoiceListResponse(items=[], total=0)
 
     billing_invoices = _table(db, "billing_invoices")
+    subscription_map: dict[int, dict[str, Any]] = {}
+    if _table_exists(db, "org_subscriptions"):
+        org_subscriptions = _table(db, "org_subscriptions")
+        subscription_rows = (
+            db.execute(
+                select(org_subscriptions.c.id, org_subscriptions.c.status, org_subscriptions.c.grace_period_days)
+                .where(org_subscriptions.c.org_id == org_id)
+            )
+            .mappings()
+            .all()
+        )
+        subscription_map = {row["id"]: row for row in subscription_rows}
     rows = (
         db.execute(
             select(billing_invoices)
@@ -5617,24 +5630,35 @@ def list_subscription_invoices(
         .mappings()
         .all()
     )
-    items = [
-        SubscriptionInvoiceOut(
-            id=row["id"],
-            org_id=row["org_id"],
-            subscription_id=row.get("subscription_id"),
-            period_start=row["period_start"],
-            period_end=row["period_end"],
-            status=row["status"],
-            issued_at=row.get("issued_at"),
-            due_at=row.get("due_at"),
-            paid_at=row.get("paid_at"),
-            total_amount=row.get("total_amount"),
-            currency=row.get("currency"),
-            pdf_object_key=row.get("pdf_object_key"),
-            download_url=f"/api/core/client/invoices/{row['id']}/download",
+    items: list[SubscriptionInvoiceOut] = []
+    for row in rows:
+        subscription = subscription_map.get(row.get("subscription_id"))
+        grace_days = int(subscription.get("grace_period_days") or 0) if subscription else 0
+        due_at = row.get("due_at")
+        suspend_at = due_at + timedelta(days=grace_days) if due_at and grace_days > 0 else None
+        total_amount = row.get("total_amount")
+        items.append(
+            SubscriptionInvoiceOut(
+                id=row["id"],
+                org_id=row["org_id"],
+                subscription_id=row.get("subscription_id"),
+                period_start=row["period_start"],
+                period_end=row["period_end"],
+                status=row["status"],
+                issued_at=row.get("issued_at"),
+                due_at=due_at,
+                suspend_at=suspend_at,
+                subscription_status=subscription.get("status") if subscription else None,
+                paid_at=row.get("paid_at"),
+                total_amount=total_amount,
+                amount_paid=0,
+                amount_refunded=0,
+                amount_due=total_amount,
+                currency=row.get("currency"),
+                pdf_object_key=row.get("pdf_object_key"),
+                download_url=f"/api/core/client/invoices/{row['id']}/download",
+            )
         )
-        for row in rows
-    ]
     return SubscriptionInvoiceListResponse(items=items, total=len(items))
 
 
@@ -5657,6 +5681,15 @@ def get_subscription_invoice(
     )
     if not invoice or invoice["org_id"] != org_id:
         raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    subscription = None
+    if _table_exists(db, "org_subscriptions") and invoice.get("subscription_id"):
+        org_subscriptions = _table(db, "org_subscriptions")
+        subscription = (
+            db.execute(select(org_subscriptions).where(org_subscriptions.c.id == invoice["subscription_id"]))
+            .mappings()
+            .first()
+        )
 
     lines: list[SubscriptionInvoiceLineOut] = []
     if _table_exists(db, "billing_invoice_lines"):
@@ -5683,6 +5716,10 @@ def get_subscription_invoice(
         _serialize_payment_intake(row)
         for row in list_invoice_payment_intakes(db, invoice_id=invoice_id)
     ]
+    grace_days = int(subscription.get("grace_period_days") or 0) if subscription else 0
+    due_at = invoice.get("due_at")
+    suspend_at = due_at + timedelta(days=grace_days) if due_at and grace_days > 0 else None
+    total_amount = invoice.get("total_amount")
 
     return SubscriptionInvoiceDetailOut(
         id=invoice["id"],
@@ -5692,9 +5729,14 @@ def get_subscription_invoice(
         period_end=invoice["period_end"],
         status=invoice["status"],
         issued_at=invoice.get("issued_at"),
-        due_at=invoice.get("due_at"),
+        due_at=due_at,
+        suspend_at=suspend_at,
+        subscription_status=subscription.get("status") if subscription else None,
         paid_at=invoice.get("paid_at"),
-        total_amount=invoice.get("total_amount"),
+        total_amount=total_amount,
+        amount_paid=0,
+        amount_refunded=0,
+        amount_due=total_amount,
         currency=invoice.get("currency"),
         pdf_object_key=invoice.get("pdf_object_key"),
         download_url=f"/api/core/client/invoices/{invoice['id']}/download",

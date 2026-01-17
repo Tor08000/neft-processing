@@ -13,13 +13,23 @@ export interface ClientDashboardResponse {
 }
 
 export interface ClientInvoiceSummary {
-  invoice_number: string;
+  id: number;
+  org_id: number;
+  subscription_id?: number | null;
   period_start: string;
   period_end: string;
-  amount_total: number;
+  issued_at?: string | null;
   status: string;
-  due_date?: string | null;
-  currency: string;
+  due_at?: string | null;
+  suspend_at?: string | null;
+  subscription_status?: string | null;
+  paid_at?: string | null;
+  amount_total?: number | null;
+  amount_paid?: number | null;
+  amount_refunded?: number | null;
+  amount_due?: number | null;
+  currency?: string | null;
+  download_url?: string | null;
 }
 
 export interface ClientInvoicePaymentSummary {
@@ -77,19 +87,25 @@ export interface ClientPaymentIntake {
 }
 
 export interface ClientInvoiceDetails {
-  invoice_number: string;
+  id: number;
+  org_id: number;
+  subscription_id?: number | null;
   period_start: string;
   period_end: string;
-  amount_total: number;
-  amount_paid: number;
-  amount_refunded: number;
-  amount_due: number;
+  issued_at?: string | null;
   status: string;
-  due_date?: string | null;
-  currency: string;
+  due_at?: string | null;
+  suspend_at?: string | null;
+  subscription_status?: string | null;
+  paid_at?: string | null;
+  amount_total?: number | null;
+  amount_paid?: number | null;
+  amount_refunded?: number | null;
+  amount_due?: number | null;
+  currency?: string | null;
   download_url?: string | null;
-  payments: ClientInvoicePaymentSummary[];
-  refunds: ClientInvoiceRefundSummary[];
+  payments?: ClientInvoicePaymentSummary[];
+  refunds?: ClientInvoiceRefundSummary[];
   lines?: ClientInvoiceLine[];
   payment_intakes?: ClientPaymentIntake[];
 }

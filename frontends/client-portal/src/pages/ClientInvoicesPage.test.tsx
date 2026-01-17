@@ -52,7 +52,8 @@ describe("Client invoices", () => {
   it("opens invoice details", async () => {
     const detailResponse = new Response(
       JSON.stringify({
-        invoice_number: "INV-2024-02",
+        id: 402,
+        org_id: 1,
         period_start: "2024-03-01",
         period_end: "2024-03-31",
         currency: "RUB",
@@ -61,8 +62,8 @@ describe("Client invoices", () => {
         amount_refunded: 0,
         amount_due: 500,
         status: "PAID",
-        due_date: "2024-04-10",
-        download_url: "/api/client/invoices/INV-2024-02/download",
+        due_at: "2024-04-10",
+        download_url: "/api/client/invoices/402/download",
         payments: [
           {
             amount: 1000,
@@ -81,12 +82,12 @@ describe("Client invoices", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     render(
-      <MemoryRouter initialEntries={["/invoices/INV-2024-02"]}>
+      <MemoryRouter initialEntries={["/invoices/402"]}>
         <App initialSession={session} />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/INV-2024-02/)).toBeInTheDocument();
+    expect(await screen.findByText(/Счёт #402/)).toBeInTheDocument();
     expect(screen.getByText(/Платежи/)).toBeInTheDocument();
     expect(screen.getByText(/1500/)).toBeInTheDocument();
   });

@@ -22,6 +22,12 @@ EMAIL_TEMPLATE_MAP = {
     "support_ticket_commented": "support_ticket_commented",
     "support_sla_first_response_breached": "support_sla_first_response_breached",
     "support_sla_resolution_breached": "support_sla_resolution_breached",
+    "billing_due_soon_7d": "billing_due_soon_7d",
+    "billing_due_soon_1d": "billing_due_soon_1d",
+    "billing_overdue_1d": "billing_overdue_1d",
+    "billing_overdue_7d": "billing_overdue_7d",
+    "billing_pre_suspend_1d": "billing_pre_suspend_1d",
+    "billing_suspended": "billing_suspended",
 }
 
 
