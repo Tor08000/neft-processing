@@ -10,6 +10,7 @@ import BillingInvoiceDetailsPage from "./pages/billing/BillingInvoiceDetailsPage
 import BillingPaymentsPage from "./pages/billing/BillingPaymentsPage";
 import BillingPaymentDetailsPage from "./pages/billing/BillingPaymentDetailsPage";
 import BillingRefundsPage from "./pages/billing/BillingRefundsPage";
+import BillingPaymentIntakesPage from "./pages/billing/BillingPaymentIntakesPage";
 import BillingLinksPage from "./pages/billing/BillingLinksPage";
 import { UsersPage } from "./pages/UsersPage";
 import { CreateUserPage } from "./pages/CreateUserPage";
@@ -80,6 +81,7 @@ export function App() {
               <Route index element={<Navigate to="/billing/invoices" replace />} />
               <Route path="invoices" element={<BillingInvoicesPage />} />
               <Route path="payments" element={<BillingPaymentsPage />} />
+              <Route path="payment-intakes" element={<BillingPaymentIntakesPage />} />
               <Route path="refunds" element={<BillingRefundsPage />} />
               <Route path="links" element={<BillingLinksPage />} />
             </Route>

@@ -127,6 +127,13 @@ from app.schemas.client_portal_v1 import (
     ContractInfo,
     ContractSignRequest,
 )
+from app.schemas.billing_payment_intakes import (
+    PaymentIntakeAttachmentIn,
+    PaymentIntakeAttachmentInitResponse,
+    PaymentIntakeCreateRequest,
+    PaymentIntakeListResponse,
+    PaymentIntakeOut,
+)
 from app.schemas.service_slo import (
     ServiceSloBreachListResponse,
     ServiceSloBreachOut,
@@ -181,7 +188,7 @@ from app.services.subscription_service import (
 from app.routers.subscriptions_v1 import _build_plan_out
 from app.services.s3_storage import S3Storage
 from app.services.documents_storage import DocumentsStorage
-from app.services.audit_service import AuditService, request_context_from_request
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.models.audit_log import AuditLog, AuditVisibility
 from app.celery_client import celery_client
 from app.services.email_service import build_idempotency_key, enqueue_templated_email
@@ -218,6 +225,17 @@ from app.services.service_slo import (
 from app.services.timezones import format_datetime_for_user, resolve_user_timezone_info
 from app.services.timezones import resolve_user_timezone
 from app.services.support_attachment_storage import SupportAttachmentStorage
+from app.services.payment_intake_attachment_storage import PaymentIntakeAttachmentStorage
+from app.services.billing_payment_intakes import (
+    create_payment_intake,
+    get_invoice,
+    list_invoice_payment_intakes,
+)
+from app.services.client_notifications import (
+    ClientNotificationSeverity,
+    create_notification,
+    resolve_client_email,
+)
 from app.services.support_ticket_sla import (
     initialize_support_ticket_sla,
     load_support_ticket_sla_config,
@@ -244,6 +262,13 @@ from app.services.helpdesk_service import (
 from neft_shared.settings import get_settings
 
 router = APIRouter(prefix="/client", tags=["client-portal-v1"])
+
+PAYMENT_INTAKE_CONTENT_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+}
+PAYMENT_INTAKE_MAX_SIZE = 10 * 1024 * 1024
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -5654,6 +5679,11 @@ def get_subscription_invoice(
             for line in line_rows
         ]
 
+    payment_intakes = [
+        _serialize_payment_intake(row)
+        for row in list_invoice_payment_intakes(db, invoice_id=invoice_id)
+    ]
+
     return SubscriptionInvoiceDetailOut(
         id=invoice["id"],
         org_id=invoice["org_id"],
@@ -5669,6 +5699,7 @@ def get_subscription_invoice(
         pdf_object_key=invoice.get("pdf_object_key"),
         download_url=f"/api/core/client/invoices/{invoice['id']}/download",
         lines=lines,
+        payment_intakes=payment_intakes,
     )
 
 
@@ -5702,6 +5733,175 @@ def download_subscription_invoice(
     filename = f"invoice-{invoice_id}.pdf"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+def _serialize_payment_intake(row: dict) -> PaymentIntakeOut:
+    proof = None
+    if row.get("proof_object_key"):
+        proof = {
+            "object_key": row.get("proof_object_key"),
+            "file_name": row.get("proof_file_name"),
+            "content_type": row.get("proof_content_type"),
+            "size": row.get("proof_size"),
+        }
+    return PaymentIntakeOut(
+        id=row["id"],
+        org_id=row["org_id"],
+        invoice_id=row["invoice_id"],
+        status=row["status"],
+        amount=row["amount"],
+        currency=row["currency"],
+        payer_name=row.get("payer_name"),
+        payer_inn=row.get("payer_inn"),
+        bank_reference=row.get("bank_reference"),
+        paid_at_claimed=row.get("paid_at_claimed"),
+        comment=row.get("comment"),
+        proof=proof,
+        proof_url=None,
+        created_by_user_id=row.get("created_by_user_id"),
+        reviewed_by_admin=row.get("reviewed_by_admin"),
+        reviewed_at=row.get("reviewed_at"),
+        review_note=row.get("review_note"),
+        created_at=row.get("created_at"),
+    )
+
+
+def _validate_payment_intake_attachment(payload: PaymentIntakeAttachmentIn) -> None:
+    if payload.content_type not in PAYMENT_INTAKE_CONTENT_TYPES:
+        raise HTTPException(status_code=422, detail="invalid_file_type")
+    if payload.size > PAYMENT_INTAKE_MAX_SIZE:
+        raise HTTPException(status_code=422, detail="file_too_large")
+    if payload.size <= 0:
+        raise HTTPException(status_code=422, detail="invalid_file_size")
+
+
+@router.post("/invoices/{invoice_id}/payment-intakes/attachments/init", response_model=PaymentIntakeAttachmentInitResponse)
+def init_payment_intake_attachment(
+    invoice_id: int,
+    payload: PaymentIntakeAttachmentIn,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeAttachmentInitResponse:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    _validate_payment_intake_attachment(payload)
+
+    storage = PaymentIntakeAttachmentStorage()
+    attachment_id = str(uuid4())
+    object_key = storage.build_object_key(
+        invoice_id=invoice_id,
+        intake_id=attachment_id,
+        file_name=payload.file_name,
+    )
+    upload_url = storage.presign_upload(
+        object_key=object_key,
+        content_type=payload.content_type,
+        expires=3600,
+    )
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="upload_url_error")
+    return PaymentIntakeAttachmentInitResponse(upload_url=upload_url, object_key=object_key)
+
+
+@router.post("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeOut, status_code=201)
+def submit_payment_intake(
+    invoice_id: int,
+    payload: PaymentIntakeCreateRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeOut:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    if invoice.get("currency") and payload.currency != invoice.get("currency"):
+        raise HTTPException(status_code=422, detail="currency_mismatch")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=422, detail="invalid_amount")
+    if invoice.get("total_amount") is not None and payload.amount != invoice.get("total_amount"):
+        raise HTTPException(status_code=422, detail="partial_payment_not_allowed")
+
+    existing_intakes = list_invoice_payment_intakes(db, invoice_id=invoice_id)
+    if any(item.get("status") in {"SUBMITTED", "UNDER_REVIEW"} for item in existing_intakes):
+        raise HTTPException(status_code=409, detail="payment_intake_already_submitted")
+
+    if payload.proof:
+        _validate_payment_intake_attachment(payload.proof)
+
+    created_by = str(token.get("user_id") or token.get("sub") or token.get("client_id") or "unknown")
+    intake_payload = {
+        "status": "SUBMITTED",
+        "amount": payload.amount,
+        "currency": payload.currency,
+        "payer_name": payload.payer_name,
+        "payer_inn": payload.payer_inn,
+        "bank_reference": payload.bank_reference,
+        "paid_at_claimed": payload.paid_at_claimed,
+        "comment": payload.comment,
+        "proof_object_key": payload.proof.object_key if payload.proof else None,
+        "proof_file_name": payload.proof.file_name if payload.proof else None,
+        "proof_content_type": payload.proof.content_type if payload.proof else None,
+        "proof_size": payload.proof.size if payload.proof else None,
+        "created_by_user_id": created_by,
+    }
+    intake = create_payment_intake(db, org_id=org_id, invoice_id=invoice_id, payload=intake_payload)
+    db.commit()
+
+    AuditService(db).audit(
+        event_type="PAYMENT_INTAKE_SUBMITTED",
+        entity_type="billing_payment_intake",
+        entity_id=str(intake["id"]),
+        action="SUBMIT",
+        visibility=AuditVisibility.PUBLIC,
+        after={
+            "org_id": org_id,
+            "invoice_id": invoice_id,
+            "amount": str(payload.amount),
+            "currency": payload.currency,
+        },
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
+
+    client_email = resolve_client_email(db, str(org_id))
+    create_notification(
+        db,
+        org_id=str(org_id),
+        event_type="payment_intake_submitted",
+        severity=ClientNotificationSeverity.INFO,
+        title="Оплата отправлена на проверку",
+        body=f"Мы получили подтверждение оплаты по счету №{invoice_id}.",
+        link=f"/finance/invoices/{invoice_id}",
+        target_user_id=created_by,
+        entity_type="billing_payment_intake",
+        entity_id=str(intake["id"]),
+        email_to=client_email,
+        email_context={"invoice_id": str(invoice_id)},
+    )
+    db.commit()
+
+    return _serialize_payment_intake(intake)
+
+
+@router.get("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeListResponse)
+def list_payment_intakes_for_invoice(
+    invoice_id: int,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeListResponse:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    rows = list_invoice_payment_intakes(db, invoice_id=invoice_id)
+    items = [_serialize_payment_intake(row) for row in rows]
+    return PaymentIntakeListResponse(items=items, total=len(items), limit=len(items), offset=0)
 
 
 @router.get("/docs/list", response_model=ClientDocsListResponse)

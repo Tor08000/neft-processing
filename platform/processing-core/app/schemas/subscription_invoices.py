@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.billing_payment_intakes import PaymentIntakeOut
+
 
 class SubscriptionInvoiceLineOut(BaseModel):
     line_type: str
@@ -36,6 +38,7 @@ class SubscriptionInvoiceOut(BaseModel):
 
 class SubscriptionInvoiceDetailOut(SubscriptionInvoiceOut):
     lines: list[SubscriptionInvoiceLineOut] = []
+    payment_intakes: list[PaymentIntakeOut] = []
 
 
 class SubscriptionInvoiceListResponse(BaseModel):

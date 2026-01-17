@@ -38,6 +38,7 @@ const BillingOverviewPage: React.FC = () => {
     () => [
       { label: "Invoices", path: "/billing/invoices" },
       { label: "Payments", path: "/billing/payments" },
+      { label: "Payment intakes", path: "/billing/payment-intakes" },
       { label: "Refunds", path: "/billing/refunds" },
       { label: "Links", path: "/billing/links" },
     ],

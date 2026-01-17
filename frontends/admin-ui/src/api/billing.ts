@@ -18,6 +18,7 @@ import type {
   BillingRefundResult,
   BillingRefundsListResponse,
 } from "../types/billingFlows";
+import type { BillingPaymentIntake, BillingPaymentIntakeListResponse } from "../types/paymentIntakes";
 
 export async function fetchBillingSummary(params: {
   date_from?: string;
@@ -78,6 +79,7 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
 
 const BILLING_FLOW_BASE = "/api/admin/billing/flows";
 const RECONCILIATION_LINKS_BASE = "/api/admin/reconciliation/links";
+const BILLING_PAYMENT_INTAKES_BASE = "/api/core/v1/admin/billing/payment-intakes";
 
 const isNotAvailableMessage = (message?: string) => Boolean(message && /HTTP (404|501)\b/.test(message));
 
@@ -181,6 +183,22 @@ export async function getPayment(id: string): Promise<BillingPaymentResult> {
   } catch (error) {
     return handleAvailability(error, { payment: null, unavailable: true });
   }
+}
+
+export async function listPaymentIntakes(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<BillingPaymentIntakeListResponse> {
+  return apiGet<BillingPaymentIntakeListResponse>(BILLING_PAYMENT_INTAKES_BASE, params);
+}
+
+export async function approvePaymentIntake(id: number, payload?: { review_note?: string | null }) {
+  return apiPost<BillingPaymentIntake>(`${BILLING_PAYMENT_INTAKES_BASE}/${id}/approve`, payload ?? {});
+}
+
+export async function rejectPaymentIntake(id: number, payload: { review_note: string }) {
+  return apiPost<BillingPaymentIntake>(`${BILLING_PAYMENT_INTAKES_BASE}/${id}/reject`, payload);
 }
 
 export async function refundPayment(
