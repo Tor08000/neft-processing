@@ -190,6 +190,10 @@ from .client_notification import (  # noqa: F401
     ClientNotification,
     ClientNotificationSeverity,
 )
+from .user_notification_preferences import (  # noqa: F401
+    UserNotificationChannel,
+    UserNotificationPreference,
+)
 from .email_outbox import (  # noqa: F401
     EmailOutbox,
     EmailOutboxStatus,

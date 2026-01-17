@@ -38,6 +38,7 @@ from app.models.support_ticket import (
     SupportTicketSlaStatus,
     SupportTicketStatus,
 )
+from app.models.user_notification_preferences import UserNotificationChannel, UserNotificationPreference
 from app.models.subscriptions_v1 import SubscriptionPlan, SubscriptionPlanModule
 from app.schemas.client_cards_v1 import (
     BulkApplyTemplateRequest,
@@ -98,6 +99,12 @@ from app.schemas.support_tickets import (
     SupportTicketOut,
 )
 from app.schemas.subscriptions import SubscriptionPlanOut
+from app.schemas.user_notification_preferences import (
+    UserNotificationEventType,
+    UserNotificationPreferenceOut,
+    UserNotificationPreferencesPatch,
+    UserNotificationPreferencesResponse,
+)
 from app.services import client_auth
 from app.api.dependencies.client import client_portal_user
 from app.services.subscription_service import (
@@ -160,6 +167,15 @@ SUPPORT_ATTACHMENT_ALLOWED_TYPES = {
     "text/csv",
     "text/plain",
 }
+USER_NOTIFICATION_EVENTS = [
+    UserNotificationEventType.EXPORT_READY,
+    UserNotificationEventType.EXPORT_FAILED,
+    UserNotificationEventType.SCHEDULED_REPORT_READY,
+    UserNotificationEventType.SUPPORT_TICKET_COMMENTED,
+    UserNotificationEventType.SUPPORT_SLA_BREACHED,
+    UserNotificationEventType.SECURITY_EVENTS,
+]
+USER_NOTIFICATION_CHANNELS = [UserNotificationChannel.EMAIL, UserNotificationChannel.IN_APP]
 
 
 def _load_contract_template() -> bytes:
@@ -246,6 +262,44 @@ def _normalize_roles(token: dict) -> list[str]:
     if token.get("role"):
         roles.append(token["role"])
     return [str(item).upper() for item in roles]
+
+
+def _notification_preferences_from_db(
+    user_id: str,
+    org_id: str,
+    preferences: list[UserNotificationPreference],
+) -> list[UserNotificationPreferenceOut]:
+    pref_map = {(pref.event_type, UserNotificationChannel(pref.channel)): pref for pref in preferences}
+    items: list[UserNotificationPreferenceOut] = []
+    for event_type in USER_NOTIFICATION_EVENTS:
+        event_key = event_type.value
+        for channel in USER_NOTIFICATION_CHANNELS:
+            pref = pref_map.get((event_key, channel))
+            enabled = bool(pref.enabled) if pref else True
+            if channel == UserNotificationChannel.IN_APP:
+                enabled = True
+            items.append(
+                UserNotificationPreferenceOut(
+                    user_id=user_id,
+                    org_id=org_id,
+                    event_type=event_type,
+                    channel=channel,
+                    enabled=enabled,
+                    updated_at=pref.updated_at if pref else None,
+                )
+            )
+    return items
+
+
+def _notification_preferences_snapshot(items: list[UserNotificationPreferenceOut]) -> list[dict[str, object]]:
+    return [
+        {
+            "event_type": item.event_type.value,
+            "channel": item.channel.value,
+            "enabled": item.enabled,
+        }
+        for item in items
+    ]
 
 
 def _is_card_admin(token: dict) -> bool:
@@ -616,6 +670,83 @@ def _export_job_to_out(job: ExportJob) -> ExportJobOut:
         finished_at=job.finished_at,
         expires_at=job.expires_at,
     )
+
+
+@router.get("/notification-preferences", response_model=UserNotificationPreferencesResponse)
+def list_notification_preferences(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> UserNotificationPreferencesResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    user_id = _resolve_owner_id(token)
+    preferences = (
+        db.query(UserNotificationPreference)
+        .filter(UserNotificationPreference.org_id == str(client.id))
+        .filter(UserNotificationPreference.user_id == user_id)
+        .all()
+    )
+    items = _notification_preferences_from_db(user_id, str(client.id), preferences)
+    return UserNotificationPreferencesResponse(items=items)
+
+
+@router.patch("/notification-preferences", response_model=UserNotificationPreferencesResponse)
+def update_notification_preferences(
+    payload: UserNotificationPreferencesPatch,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> UserNotificationPreferencesResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    user_id = _resolve_owner_id(token)
+    org_id = str(client.id)
+    existing = (
+        db.query(UserNotificationPreference)
+        .filter(UserNotificationPreference.org_id == org_id)
+        .filter(UserNotificationPreference.user_id == user_id)
+        .all()
+    )
+    existing_map = {(pref.event_type, UserNotificationChannel(pref.channel)): pref for pref in existing}
+    before_items = _notification_preferences_from_db(user_id, org_id, existing)
+
+    for item in payload.items:
+        event_type = item.event_type.value
+        channel = item.channel
+        enabled = bool(item.enabled)
+        if channel == UserNotificationChannel.IN_APP:
+            enabled = True
+        pref = existing_map.get((event_type, channel))
+        if pref:
+            pref.enabled = enabled
+        else:
+            pref = UserNotificationPreference(
+                user_id=user_id,
+                org_id=org_id,
+                event_type=event_type,
+                channel=channel,
+                enabled=enabled,
+            )
+            db.add(pref)
+            existing_map[(event_type, channel)] = pref
+
+    db.commit()
+    items = _notification_preferences_from_db(user_id, org_id, list(existing_map.values()))
+
+    AuditService(db).audit(
+        event_type="CLIENT_NOTIFICATION_PREFERENCES_UPDATED",
+        entity_type="user_notification_preferences",
+        entity_id=f"{org_id}:{user_id}",
+        action="update",
+        visibility=AuditVisibility.INTERNAL,
+        before={"items": _notification_preferences_snapshot(before_items)},
+        after={"items": _notification_preferences_snapshot(items)},
+        request_ctx=request_context_from_request(request, token=token),
+    )
+    db.commit()
+    return UserNotificationPreferencesResponse(items=items)
 
 
 @router.post("/reports/schedules", response_model=ReportScheduleOut, status_code=201)
