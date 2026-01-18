@@ -21,6 +21,33 @@ export interface MeResponse {
   partner_id?: string | null;
 }
 
+export interface PortalMeResponse {
+  user: {
+    id: string;
+    email?: string | null;
+    subject_type?: string | null;
+    timezone?: string | null;
+  };
+  org?: {
+    id: string;
+    name?: string | null;
+    status?: string | null;
+  } | null;
+  org_roles: string[];
+  user_roles: string[];
+  subscription?: {
+    plan_code?: string | null;
+    status?: string | null;
+    billing_cycle?: string | null;
+    support_plan?: string | null;
+    slo_tier?: string | null;
+    addons?: Array<Record<string, unknown>> | null;
+  } | null;
+  entitlements_snapshot?: Record<string, unknown> | null;
+  capabilities: string[];
+  nav_sections?: Array<{ code: string; label: string }> | null;
+}
+
 export interface AuthSession {
   token: string;
   email: string;

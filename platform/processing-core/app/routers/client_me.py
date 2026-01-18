@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.client import Client
-from app.models.crm import CRMClient
 from app.models.fleet import ClientEmployee
 from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.client_me import ClientAccountTimezoneUpdate
@@ -29,6 +28,7 @@ from app.services.subscription_service import (
     get_client_subscription,
 )
 from app.services.timezones import validate_timezone_name
+from app.services.portal_me import build_portal_me
 
 router = APIRouter(prefix="/client", tags=["client-me"])
 
@@ -44,6 +44,7 @@ def get_client_me(
     token: dict = Depends(require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientMeResponse:
+    portal_payload = build_portal_me(db, token=token)
     client_id = token.get("client_id")
     client = db.get(Client, client_id) if client_id else None
     org_status = _resolve_org_status(client)
@@ -103,34 +104,22 @@ def get_client_me(
     )
 
     org_payload = None
-    org_timezone = None
-    crm_client = None
-    if client is not None:
-        crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
-        org_timezone = crm_client.timezone if crm_client else None
+    if portal_payload.org is not None:
         org_payload = ClientMeOrg(
-            id=str(client.id),
-            name=client.name,
-            inn=client.inn,
-            status=str(client.status),
-            timezone=org_timezone,
+            id=portal_payload.org.id,
+            name=portal_payload.org.name,
+            inn=portal_payload.org.inn,
+            status=portal_payload.org.status or "UNKNOWN",
+            timezone=portal_payload.org.timezone,
         )
 
-    employee_timezone = None
-    user_id = token.get("user_id") or token.get("sub")
-    if user_id and client_id:
-        employee = (
-            db.query(ClientEmployee)
-            .filter(ClientEmployee.id == str(user_id), ClientEmployee.client_id == str(client_id))
-            .one_or_none()
-        )
-        employee_timezone = employee.timezone if employee else None
+    employee_timezone = portal_payload.user.timezone
 
     return ClientMeResponse(
         user=ClientMeUser(
-            id=str(token.get("user_id") or token.get("sub") or ""),
-            email=token.get("email") or token.get("sub"),
-            subject_type=token.get("subject_type"),
+            id=portal_payload.user.id,
+            email=portal_payload.user.email,
+            subject_type=portal_payload.user.subject_type,
             timezone=employee_timezone,
         ),
         org=org_payload,

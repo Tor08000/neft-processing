@@ -26,6 +26,18 @@ ADDON_FEATURE_MAP: dict[str, set[str]] = {
     "feature.export.priority": {"feature.export.streaming_priority"},
 }
 
+CAPABILITY_CLIENT_CORE = "CLIENT_CORE"
+CAPABILITY_CLIENT_BILLING = "CLIENT_BILLING"
+CAPABILITY_CLIENT_ANALYTICS = "CLIENT_ANALYTICS"
+CAPABILITY_PARTNER_CORE = "PARTNER_CORE"
+CAPABILITY_PARTNER_PRICING = "PARTNER_PRICING"
+CAPABILITY_PARTNER_SETTLEMENTS = "PARTNER_SETTLEMENTS"
+CAPABILITY_MARKETPLACE = "MARKETPLACE"
+CAPABILITY_LOGISTICS = "LOGISTICS"
+
+CLIENT_ROLE = "CLIENT"
+PARTNER_ROLE = "PARTNER"
+
 
 @dataclass(frozen=True)
 class EntitlementsSnapshot:
@@ -51,6 +63,14 @@ def _tables_ready(db: Session, table_names: list[str]) -> bool:
         return False
 
 
+def _table_exists(db: Session, name: str) -> bool:
+    try:
+        inspector = inspect(db.get_bind())
+        return inspector.has_table(name, schema=DB_SCHEMA)
+    except Exception:
+        return False
+
+
 def _hash_payload(payload: dict[str, Any]) -> str:
     serialized = json.dumps(payload, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -62,6 +82,150 @@ def _reverse_addon_map() -> dict[str, set[str]]:
         for feature_key in feature_keys:
             feature_to_addons.setdefault(feature_key, set()).add(addon_code)
     return feature_to_addons
+
+
+def _normalize_subscription_status(status: str | None) -> str | None:
+    if not status:
+        return None
+    upper = str(status).upper()
+    if upper in {"PAST_DUE", "OVERDUE"}:
+        return "OVERDUE"
+    if upper == "SUSPENDED":
+        return "SUSPENDED"
+    if upper == "ACTIVE":
+        return "ACTIVE"
+    return upper
+
+
+def _feature_available(availability: str | None) -> bool:
+    return availability in {AVAILABILITY_ENABLED, "LIMITED"}
+
+
+def _has_feature(features: dict[str, dict[str, Any]], feature_keys: list[str] | None) -> bool:
+    if not feature_keys:
+        return True
+    if not features:
+        return True
+    return any(_feature_available((features.get(key) or {}).get("availability")) for key in feature_keys)
+
+
+def _has_module(modules: dict[str, dict[str, Any]], module_codes: list[str] | None) -> bool:
+    if not module_codes:
+        return True
+    if not modules:
+        return True
+    return any((modules.get(code) or {}).get("enabled") for code in module_codes)
+
+
+def _entitlement_allows(
+    features: dict[str, dict[str, Any]],
+    modules: dict[str, dict[str, Any]],
+    feature_keys: list[str] | None,
+    module_codes: list[str] | None,
+) -> bool:
+    feature_ok = _has_feature(features, feature_keys)
+    module_ok = _has_module(modules, module_codes)
+    if feature_keys and module_codes:
+        return feature_ok or module_ok
+    return feature_ok and module_ok
+
+
+def _load_org_roles(db: Session, *, org_id: int) -> list[str]:
+    if not _table_exists(db, "orgs"):
+        return []
+    orgs = _table(db, "orgs")
+    if "roles" not in orgs.c:
+        return []
+    record = db.execute(select(orgs.c.roles).where(orgs.c.id == org_id)).mappings().first()
+    if not record:
+        return []
+    roles = record.get("roles")
+    if not roles:
+        return []
+    if isinstance(roles, str):
+        roles = [roles]
+    return sorted({str(role).upper() for role in roles if role})
+
+
+def _compute_capabilities(
+    *,
+    org_roles: list[str],
+    features: dict[str, dict[str, Any]],
+    modules: dict[str, dict[str, Any]],
+    subscription_status: str | None,
+) -> list[str]:
+    billing_blocked = subscription_status in {"OVERDUE", "SUSPENDED"}
+
+    rules = [
+        {
+            "code": CAPABILITY_CLIENT_CORE,
+            "roles": {CLIENT_ROLE},
+            "feature_keys": ["feature.portal.core", "feature.portal.entities"],
+            "module_codes": None,
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_CLIENT_BILLING,
+            "roles": {CLIENT_ROLE},
+            "feature_keys": ["feature.portal.billing", "feature.billing.invoices"],
+            "module_codes": ["BILLING", "DOCS"],
+            "billing_scoped": True,
+        },
+        {
+            "code": CAPABILITY_CLIENT_ANALYTICS,
+            "roles": {CLIENT_ROLE},
+            "feature_keys": ["feature.portal.analytics", "feature.analytics"],
+            "module_codes": ["ANALYTICS"],
+            "billing_scoped": True,
+        },
+        {
+            "code": CAPABILITY_PARTNER_CORE,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.core"],
+            "module_codes": None,
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_PRICING,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.pricing", "feature.partner.catalog"],
+            "module_codes": ["PARTNER_PRICING"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_SETTLEMENTS,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.settlements", "feature.partner.payouts"],
+            "module_codes": ["PARTNER_SETTLEMENTS"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_MARKETPLACE,
+            "roles": {CLIENT_ROLE, PARTNER_ROLE},
+            "feature_keys": ["feature.marketplace", "feature.portal.marketplace"],
+            "module_codes": ["MARKETPLACE"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_LOGISTICS,
+            "roles": {CLIENT_ROLE, PARTNER_ROLE},
+            "feature_keys": ["feature.logistics"],
+            "module_codes": ["LOGISTICS"],
+            "billing_scoped": False,
+        },
+    ]
+
+    role_set = {str(role).upper() for role in org_roles}
+    capabilities: list[str] = []
+    for rule in rules:
+        if not role_set.intersection(rule["roles"]):
+            continue
+        if rule["billing_scoped"] and billing_blocked:
+            continue
+        if not _entitlement_allows(features, modules, rule["feature_keys"], rule["module_codes"]):
+            continue
+        capabilities.append(rule["code"])
+    return capabilities
 
 
 def _apply_support_features(features: dict[str, dict[str, Any]], *, support_plan: str | None, slo_tier: str | None) -> None:
@@ -99,9 +263,11 @@ def get_org_entitlements_snapshot(db: Session, *, org_id: int) -> EntitlementsSn
         payload = {
             "org_id": org_id,
             "subscription": None,
+            "org_roles": [],
             "features": {},
             "modules": {},
             "limits": {},
+            "capabilities": [],
             "computed": {
                 "hash": "",
                 "computed_at": computed_at.isoformat(),
@@ -248,12 +414,28 @@ def get_org_entitlements_snapshot(db: Session, *, org_id: int) -> EntitlementsSn
             "addons": addons_payload,
         }
 
+    org_roles = _load_org_roles(db, org_id=org_id)
+    if not org_roles and subscription:
+        org_roles = [CLIENT_ROLE]
+
+    subscription_status = _normalize_subscription_status(
+        subscription_payload.get("status") if subscription_payload else None
+    )
+    capabilities = _compute_capabilities(
+        org_roles=org_roles,
+        features=features_map,
+        modules=modules_map,
+        subscription_status=subscription_status,
+    )
+
     snapshot_payload = {
         "org_id": org_id,
         "subscription": subscription_payload,
+        "org_roles": org_roles,
         "features": features_map,
         "modules": modules_map,
         "limits": {},
+        "capabilities": capabilities,
     }
     payload_hash = _hash_payload(snapshot_payload)
     computed_payload = {

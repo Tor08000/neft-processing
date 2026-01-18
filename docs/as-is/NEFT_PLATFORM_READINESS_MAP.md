@@ -30,6 +30,7 @@
 | Analytics/BI (exports, dashboards, optional ClickHouse) | PARTIAL | NOT VERIFIED | BI endpoints + optional marts | runtime ClickHouse не подтверждён | `platform/processing-core/app/api/v1/endpoints/bi.py`, `platform/processing-core/app/alembic/versions/20297240_0129_bi_runtime_marts_v1.py` |
 | Notifications (channels, outbox, delivery logs) | PARTIAL | NOT VERIFIED | email/webhook notifications в core | каналы ограничены, runtime PASS отсутствует | `platform/processing-core/app/services/notifications_v1.py` |
 | Frontends: Admin / Client / Partner | PARTIAL | NOT VERIFIED | SPA проекты + gateway маршруты | runtime e2e подтверждения нет | `frontends/admin-ui/`, `frontends/client-portal/`, `frontends/partner-portal/`, `gateway/nginx.conf` |
+| Portal Unification (client+partner capabilities) | PARTIAL | NOT VERIFIED | базовый портал SSoT + capabilities в snapshot | нет полного UI с контекстным переключением и runtime верификации | `platform/processing-core/app/services/entitlements_v2_service.py`, `platform/processing-core/app/routers/portal_me.py`, `frontends/client-portal/`, `frontends/partner-portal/` |
 | Observability (metrics/logs/traces dashboards/targets) | PARTIAL | NOT VERIFIED | Prometheus/Grafana/OTel/Loki configs | runtime dashboards/targets не подтверждены | `infra/prometheus.yml`, `infra/otel-collector-config.yaml`, `infra/loki/loki-config.yml`, `docker-compose.yml` |
 
 ---

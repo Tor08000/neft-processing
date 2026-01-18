@@ -95,3 +95,13 @@ class CommercialRecomputeResponse(BaseModel):
     hash: str
     computed_at: datetime
     version: int
+
+
+class CommercialOrgRoleRequest(BaseModel):
+    role: str
+    reason: str | None = None
+
+
+class CommercialOrgRolesResponse(BaseModel):
+    org_id: int
+    roles: list[str]

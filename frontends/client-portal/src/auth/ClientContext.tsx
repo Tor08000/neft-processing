@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { ClientMeResponse } from "../api/clientPortal";
+import type { PortalMeResponse } from "../api/clientPortal";
 import { fetchClientMe } from "../api/clientPortal";
 import { ApiError, UnauthorizedError } from "../api/http";
 import { useAuth } from "./AuthContext";
 
 type ClientContextValue = {
-  client: ClientMeResponse | null;
+  client: PortalMeResponse | null;
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -15,7 +15,7 @@ const ClientContext = createContext<ClientContextValue | undefined>(undefined);
 
 export function ClientProvider({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const [client, setClient] = useState<ClientMeResponse | null>(null);
+  const [client, setClient] = useState<PortalMeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
