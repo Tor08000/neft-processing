@@ -16,6 +16,8 @@ from app.schemas.commercial_admin import (
     CommercialAddonEnableRequest,
     CommercialAddonOut,
     CommercialOrgInfo,
+    CommercialOrgRoleRequest,
+    CommercialOrgRolesResponse,
     CommercialOrgStateOut,
     CommercialOverrideOut,
     CommercialOverrideUpsertRequest,
@@ -282,7 +284,7 @@ def _audit_event(
     before: dict | None,
     after: dict | None,
     reason: str | None,
-) -> None:
+    ) -> None:
     audit_service = AuditService(db)
     audit_service.audit(
         event_type=event_type,
@@ -292,6 +294,57 @@ def _audit_event(
         before=before,
         after=after,
         reason=reason,
+        request_ctx=request_context_from_request(request, token=token),
+    )
+
+
+def _normalize_org_roles(roles: Any) -> list[str]:
+    if not roles:
+        return []
+    if isinstance(roles, str):
+        roles = [roles]
+    return sorted({str(role).upper() for role in roles if role})
+
+
+def _load_org_roles(db: Session, org_id: int) -> list[str]:
+    if not _table_exists(db, "orgs"):
+        raise HTTPException(status_code=404, detail="org_roles_not_supported")
+    orgs = _table(db, "orgs")
+    if "roles" not in orgs.c:
+        raise HTTPException(status_code=404, detail="org_roles_not_supported")
+    record = db.execute(select(orgs.c.roles).where(orgs.c.id == org_id)).mappings().first()
+    if not record:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    return _normalize_org_roles(record.get("roles"))
+
+
+def _save_org_roles(db: Session, *, org_id: int, roles: list[str]) -> None:
+    orgs = _table(db, "orgs")
+    update_values = {"roles": roles}
+    if "updated_at" in orgs.c:
+        update_values["updated_at"] = datetime.utcnow()
+    db.execute(update(orgs).where(orgs.c.id == org_id).values(**update_values))
+    db.commit()
+
+
+def _audit_role_change(
+    db: Session,
+    *,
+    request: Request,
+    token: dict,
+    org_id: int,
+    before_roles: list[str],
+    after_roles: list[str],
+    action: str,
+    reason: str | None,
+) -> None:
+    AuditService(db).audit(
+        event_type="org_role_changed",
+        entity_type="org",
+        entity_id=str(org_id),
+        action="org_role_changed",
+        before={"roles": before_roles},
+        after={"roles": after_roles, "action": action, "reason": reason},
         request_ctx=request_context_from_request(request, token=token),
     )
 
@@ -309,6 +362,62 @@ def get_commercial_state(
 ) -> CommercialOrgStateOut:
     _ensure_role(token, write=False)
     return _build_state(db, org_id)
+
+
+@router.post("/orgs/{org_id}/roles/add", response_model=CommercialOrgRolesResponse)
+def add_org_role(
+    org_id: int,
+    payload: CommercialOrgRoleRequest,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> CommercialOrgRolesResponse:
+    _ensure_role(token, write=True)
+    before_roles = _load_org_roles(db, org_id)
+    role = payload.role.upper()
+    after_roles = sorted({*before_roles, role})
+    if after_roles != before_roles:
+        _save_org_roles(db, org_id=org_id, roles=after_roles)
+    _audit_role_change(
+        db,
+        request=request,
+        token=token,
+        org_id=org_id,
+        before_roles=before_roles,
+        after_roles=after_roles,
+        action="add",
+        reason=payload.reason,
+    )
+    get_org_entitlements_snapshot(db, org_id=org_id)
+    return CommercialOrgRolesResponse(org_id=org_id, roles=after_roles)
+
+
+@router.post("/orgs/{org_id}/roles/remove", response_model=CommercialOrgRolesResponse)
+def remove_org_role(
+    org_id: int,
+    payload: CommercialOrgRoleRequest,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> CommercialOrgRolesResponse:
+    _ensure_role(token, write=True)
+    before_roles = _load_org_roles(db, org_id)
+    role = payload.role.upper()
+    after_roles = [item for item in before_roles if item != role]
+    if after_roles != before_roles:
+        _save_org_roles(db, org_id=org_id, roles=after_roles)
+    _audit_role_change(
+        db,
+        request=request,
+        token=token,
+        org_id=org_id,
+        before_roles=before_roles,
+        after_roles=after_roles,
+        action="remove",
+        reason=payload.reason,
+    )
+    get_org_entitlements_snapshot(db, org_id=org_id)
+    return CommercialOrgRolesResponse(org_id=org_id, roles=after_roles)
 
 
 @router.post("/orgs/{org_id}/plan", response_model=CommercialOrgStateOut)

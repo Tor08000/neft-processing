@@ -9,14 +9,17 @@ import {
 } from "./icons";
 import { useAuth } from "../auth/AuthContext";
 import { useLegalGate } from "../auth/LegalGateContext";
+import { usePortal } from "../auth/PortalContext";
 import { useI18n } from "../i18n";
 import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const { portal } = usePortal();
   const { isBlocked } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
+  const capabilities = new Set((portal?.capabilities ?? []).map((cap) => cap.toUpperCase()));
 
   const buildContextLabel = (section: string, path: string, basePath?: string) => {
     if (!basePath) return section;
@@ -29,16 +32,18 @@ export function Layout() {
   };
 
   const navItems = [
-    { to: "/products", label: "Products", icon: <Package size={18} /> },
-    { to: "/orders", label: "Orders", icon: <ShoppingBag size={18} /> },
-    { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} /> },
-    { to: "/promotions", label: "Promotions", icon: <Percent size={18} /> },
-    { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} /> },
-    { to: "/payouts", label: "Payouts", icon: <Wallet size={18} /> },
+    { to: "/products", label: "Products", icon: <Package size={18} />, capability: "PARTNER_PRICING" },
+    { to: "/orders", label: "Orders", icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
+    { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
+    { to: "/promotions", label: "Promotions", icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
+    { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} />, capability: "PARTNER_CORE" },
+    { to: "/payouts", label: "Payouts", icon: <Wallet size={18} />, capability: "PARTNER_SETTLEMENTS" },
     { to: "/legal", label: "Legal", icon: <Package size={18} /> },
   ];
 
-  const visibleNavItems = isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems;
+  const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
+    (item) => !item.capability || capabilities.has(item.capability),
+  );
   const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );

@@ -86,7 +86,7 @@ function IndexRedirect() {
   const { user } = useAuth();
   const { client } = useClient();
   if (user) {
-    if (!client?.org || client.org_status !== "ACTIVE") {
+    if (!client?.org || client.org.status !== "ACTIVE") {
       return <Navigate to="/client/connect" replace />;
     }
     return <Navigate to="/dashboard" replace />;
@@ -131,7 +131,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/vehicles"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetGroupsPage />
                     </ModuleGate>
                   }
@@ -139,7 +139,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/vehicles/:id"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetGroupDetailsPage />
                     </ModuleGate>
                   }
@@ -152,7 +152,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/orders"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceOrdersPage />
                     </ModuleGate>
                   }
@@ -160,13 +160,27 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/orders/:orderId"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceOrderDetailsPage />
                     </ModuleGate>
                   }
                 />
-                <Route path="/billing" element={<ClientInvoicesPage />} />
-                <Route path="/billing/:id" element={<ClientInvoiceDetailsPage />} />
+                <Route
+                  path="/billing"
+                  element={
+                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                      <ClientInvoicesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route
+                  path="/billing/:id"
+                  element={
+                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                      <ClientInvoiceDetailsPage />
+                    </ModuleGate>
+                  }
+                />
                 <Route path="/client/support" element={<SupportTicketsPage />} />
                 <Route path="/client/support/new" element={<SupportTicketNewPage />} />
                 <Route path="/client/support/:id" element={<SupportTicketDetailsPage />} />
@@ -174,7 +188,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/client/analytics"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <ClientAnalyticsPage />
                     </ModuleGate>
                   }
@@ -182,7 +196,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/client/analytics/day"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsDayPage />
                     </ModuleGate>
                   }
@@ -190,7 +204,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/client/analytics/card/:cardId"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsCardPage />
                     </ModuleGate>
                   }
@@ -198,7 +212,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/client/analytics/driver/:userId"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsDriverPage />
                     </ModuleGate>
                   }
@@ -206,7 +220,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/client/analytics/support"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsSupportPage />
                     </ModuleGate>
                   }
@@ -216,7 +230,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsDashboardPage />
                     </ModuleGate>
                   }
@@ -224,7 +238,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics/spend"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsSpendPage />
                     </ModuleGate>
                   }
@@ -232,7 +246,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics/declines"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsDeclinesPage />
                     </ModuleGate>
                   }
@@ -240,7 +254,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics/marketplace"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsMarketplacePage />
                     </ModuleGate>
                   }
@@ -248,7 +262,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics/documents"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsDocumentsPage />
                     </ModuleGate>
                   }
@@ -256,7 +270,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/analytics/exports"
                   element={
-                    <ModuleGate module="ANALYTICS" title="Аналитика">
+                    <ModuleGate module="ANALYTICS" capability="CLIENT_ANALYTICS" title="Аналитика">
                       <AnalyticsExportsPage />
                     </ModuleGate>
                   }
@@ -300,7 +314,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/marketplace"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceCatalogPage />
                     </ModuleGate>
                   }
@@ -308,7 +322,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/marketplace/products/:productId"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceProductDetailsPage />
                     </ModuleGate>
                   }
@@ -316,7 +330,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/marketplace/orders"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceOrdersPage />
                     </ModuleGate>
                   }
@@ -324,7 +338,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/marketplace/orders/:orderId"
                   element={
-                    <ModuleGate module="MARKETPLACE" title="Маркетплейс">
+                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
                       <MarketplaceOrderDetailsPage />
                     </ModuleGate>
                   }
@@ -345,7 +359,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/cards"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetCardsPage />
                     </ModuleGate>
                   }
@@ -353,7 +367,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/cards/:id"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetCardDetailsPage />
                     </ModuleGate>
                   }
@@ -361,7 +375,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/groups"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetGroupsPage />
                     </ModuleGate>
                   }
@@ -369,7 +383,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/groups/:id"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetGroupDetailsPage />
                     </ModuleGate>
                   }
@@ -377,7 +391,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/employees"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetEmployeesPage />
                     </ModuleGate>
                   }
@@ -385,7 +399,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/spend"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetSpendPage />
                     </ModuleGate>
                   }
@@ -393,7 +407,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/notifications"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetNotificationsPage />
                     </ModuleGate>
                   }
@@ -401,7 +415,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/incidents"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetIncidentsPage />
                     </ModuleGate>
                   }
@@ -409,7 +423,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/incidents/:id"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetIncidentDetailsPage />
                     </ModuleGate>
                   }
@@ -417,7 +431,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/policy-center"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetPolicyCenterOverviewPage />
                     </ModuleGate>
                   }
@@ -425,7 +439,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/policy-center/actions"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetPoliciesPage />
                     </ModuleGate>
                   }
@@ -433,7 +447,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/policy-center/notifications"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetNotificationPoliciesPage />
                     </ModuleGate>
                   }
@@ -441,7 +455,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/policy-center/channels"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetNotificationChannelsPage />
                     </ModuleGate>
                   }
@@ -449,7 +463,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route
                   path="/fleet/policy-center/executions"
                   element={
-                    <ModuleGate module="FLEET" title="Флот">
+                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
                       <FleetPolicyExecutionsPage />
                     </ModuleGate>
                   }

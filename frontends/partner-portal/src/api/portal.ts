@@ -1,5 +1,5 @@
 import { request } from "./http";
-import type { AuthSession } from "./types";
+import type { AuthSession, PortalMeResponse } from "./types";
 import type {
   PartnerContractsResponse,
   PartnerDashboardSummary,
@@ -23,3 +23,6 @@ export const fetchPartnerSettlementDetails = (user: AuthSession | null, settleme
 
 export const confirmPartnerSettlement = (user: AuthSession | null, settlementRef: string) =>
   request(`/partner/settlements/${settlementRef}/confirm`, { method: "POST" }, withToken(user));
+
+export const fetchPortalMe = (user: AuthSession | null) =>
+  request<PortalMeResponse>("/portal/me", { method: "GET" }, withToken(user));

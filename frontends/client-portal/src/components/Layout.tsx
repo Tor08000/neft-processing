@@ -31,6 +31,7 @@ type NavItem = {
   icon?: ReactNode;
   isHidden?: boolean;
   module?: string;
+  capability?: string;
 };
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {
@@ -54,8 +55,15 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const isApiBaseMissing = !API_BASE_URL;
   const configError = !CLIENT_BASE_PATH ? t("app.configMissing") : null;
 
-  const enabledModules = new Set((client?.entitlements.enabled_modules ?? []).map((code) => code.toUpperCase()));
+  const modulesPayload = client?.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;
+  const enabledModules = new Set(
+    Object.entries(modulesPayload ?? {})
+      .filter(([, payload]) => payload?.enabled)
+      .map(([code]) => code.toUpperCase()),
+  );
+  const capabilities = new Set((client?.capabilities ?? []).map((code) => code.toUpperCase()));
   const isModuleEnabled = (module?: string) => (module ? enabledModules.has(module) : true);
+  const hasCapability = (capability?: string) => (capability ? capabilities.has(capability) : true);
   const canSeeReports = hasAnyRole(user, [
     "CLIENT_OWNER",
     "CLIENT_ADMIN",
@@ -71,35 +79,36 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   ]);
 
   const navItems: NavItem[] = [
-    { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET" },
-    { to: "/cards", label: "Cards", icon: <Package size={18} /> },
-    { to: "/limits/templates", label: "Limit Templates", icon: <Package size={18} /> },
-    { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
-    { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS" },
-    { to: "/client/notifications", label: "Notifications", icon: <Bell size={18} /> },
-    { to: "/client/support", label: "Support", icon: <MessageCircle size={18} /> },
-    { to: "/audit", label: "Audit", icon: <MessageCircle size={18} /> },
+    { to: "/vehicles", label: "Vehicles", icon: <Package size={18} />, module: "FLEET", capability: "CLIENT_CORE" },
+    { to: "/cards", label: "Cards", icon: <Package size={18} />, capability: "CLIENT_CORE" },
+    { to: "/limits/templates", label: "Limit Templates", icon: <Package size={18} />, capability: "CLIENT_CORE" },
+    { to: "/orders", label: "Orders", icon: <ShoppingCart size={18} />, module: "MARKETPLACE", capability: "MARKETPLACE" },
+    { to: "/billing", label: "Billing", icon: <ShoppingCart size={18} />, module: "DOCS", capability: "CLIENT_BILLING" },
+    { to: "/client/notifications", label: "Notifications", icon: <Bell size={18} />, capability: "CLIENT_CORE" },
+    { to: "/client/support", label: "Support", icon: <MessageCircle size={18} />, capability: "CLIENT_CORE" },
+    { to: "/audit", label: "Audit", icon: <MessageCircle size={18} />, capability: "CLIENT_CORE" },
     {
       to: "/client/analytics",
       label: "Analytics",
       icon: <LineChart size={18} />,
       isHidden: !canSeeAnalytics,
       module: "ANALYTICS",
+      capability: "CLIENT_ANALYTICS",
     },
-    { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
-    { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports },
-    { to: "/client/slo", label: "SLO / SLA", icon: <LineChart size={18} />, isHidden: !canSeeSlo },
-    { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE" },
+    { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports, capability: "CLIENT_CORE" },
+    { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports, capability: "CLIENT_CORE" },
+    { to: "/client/slo", label: "SLO / SLA", icon: <LineChart size={18} />, isHidden: !canSeeSlo, capability: "CLIENT_CORE" },
+    { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE", capability: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
   ].map((item) => {
-    if (!isModuleEnabled(item.module)) {
+    if (!isModuleEnabled(item.module) || !hasCapability(item.capability)) {
       return { ...item, label: `${item.label} · Недоступно` };
     }
     return item;
   });
 
   const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
-    (item) => !item.isHidden,
+    (item) => !item.isHidden && hasCapability(item.capability),
   );
   const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),

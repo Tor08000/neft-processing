@@ -3,16 +3,23 @@ import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
 import { useClient } from "../auth/ClientContext";
 
 type ModuleGateProps = {
-  module: string;
+  module?: string;
+  capability?: string;
   title: string;
   children: ReactNode;
 };
 
-export function ModuleGate({ module, title, children }: ModuleGateProps) {
+export function ModuleGate({ module, capability, title, children }: ModuleGateProps) {
   const { client } = useClient();
-  const enabledModules = new Set((client?.entitlements.enabled_modules ?? []).map((code) => code.toUpperCase()));
+  const modulesPayload = client?.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;
+  const enabledModules = new Set(
+    Object.entries(modulesPayload ?? {})
+      .filter(([, payload]) => payload?.enabled)
+      .map(([code]) => code.toUpperCase()),
+  );
+  const capabilities = new Set((client?.capabilities ?? []).map((code) => code.toUpperCase()));
 
-  if (!enabledModules.has(module)) {
+  if ((module && !enabledModules.has(module)) || (capability && !capabilities.has(capability))) {
     return <ModuleUnavailablePage title={title} />;
   }
 

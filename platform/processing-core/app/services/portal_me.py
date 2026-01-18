@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy import MetaData, Table, inspect, select
+from sqlalchemy.orm import Session
+
+from app.db.schema import DB_SCHEMA
+from app.models.client import Client
+from app.models.crm import CRMClient
+from app.models.partner import Partner
+from app.models.fleet import ClientEmployee
+from app.schemas.portal_me import PortalMeOrg, PortalMeResponse, PortalMeSubscription, PortalMeUser, PortalNavSection
+from app.services.entitlements_v2_service import get_org_entitlements_snapshot
+
+
+def _table(db: Session, name: str) -> Table:
+    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
+
+
+def _table_exists(db: Session, name: str) -> bool:
+    inspector = inspect(db.get_bind())
+    return inspector.has_table(name, schema=DB_SCHEMA)
+
+
+def _normalize_roles(token: dict) -> list[str]:
+    roles = token.get("roles") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    if token.get("role"):
+        roles.append(token["role"])
+    return sorted({str(role) for role in roles if role})
+
+
+def _resolve_org_id(token: dict) -> str | None:
+    return token.get("org_id") or token.get("client_id") or token.get("partner_id")
+
+
+def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
+    if not _table_exists(db, "orgs"):
+        return None
+    orgs = _table(db, "orgs")
+    record = db.execute(select(orgs).where(orgs.c.id == org_id)).mappings().first()
+    if not record:
+        return None
+    payload = dict(record)
+    return PortalMeOrg(
+        id=str(payload.get("id")),
+        name=payload.get("name"),
+        inn=payload.get("inn"),
+        status=payload.get("status"),
+        timezone=payload.get("timezone"),
+    )
+
+
+def _load_org_fallback(db: Session, *, client_id: str | None, partner_id: str | None) -> PortalMeOrg | None:
+    if client_id:
+        client = db.get(Client, client_id)
+        if client:
+            crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
+            return PortalMeOrg(
+                id=str(client.id),
+                name=client.name,
+                inn=client.inn,
+                status=str(client.status),
+                timezone=crm_client.timezone if crm_client else None,
+            )
+    if partner_id:
+        partner = db.query(Partner).filter(Partner.id == str(partner_id)).one_or_none()
+        if partner:
+            return PortalMeOrg(id=str(partner.id), name=partner.name, status=str(partner.status))
+    return None
+
+
+def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
+    sections: list[PortalNavSection] = []
+    client_caps = {"CLIENT_CORE", "CLIENT_BILLING", "CLIENT_ANALYTICS"}
+    partner_caps = {"PARTNER_CORE", "PARTNER_PRICING", "PARTNER_SETTLEMENTS"}
+
+    if any(cap in client_caps for cap in capabilities):
+        sections.append(PortalNavSection(code="client", label="Client"))
+    if any(cap in partner_caps for cap in capabilities):
+        sections.append(PortalNavSection(code="partner", label="Partner"))
+    return sections
+
+
+def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
+    org_id_raw = _resolve_org_id(token)
+    client_id = token.get("client_id")
+    partner_id = token.get("partner_id")
+    org_id_int = None
+    if org_id_raw is not None:
+        try:
+            org_id_int = int(org_id_raw)
+        except (TypeError, ValueError):
+            org_id_int = None
+
+    entitlements_snapshot = None
+    org_roles: list[str] = []
+    capabilities: list[str] = []
+    subscription_payload = None
+    if org_id_int is not None:
+        snapshot = get_org_entitlements_snapshot(db, org_id=org_id_int)
+        entitlements_snapshot = snapshot.entitlements
+        org_roles = entitlements_snapshot.get("org_roles") or []
+        capabilities = entitlements_snapshot.get("capabilities") or []
+        subscription = entitlements_snapshot.get("subscription") or None
+        if subscription and "CLIENT" in org_roles:
+            subscription_payload = PortalMeSubscription(
+                plan_code=subscription.get("plan_code"),
+                status=subscription.get("status"),
+                billing_cycle=subscription.get("billing_cycle"),
+                support_plan=subscription.get("support_plan"),
+                slo_tier=subscription.get("slo_tier"),
+                addons=subscription.get("addons"),
+            )
+
+    if not org_roles:
+        if client_id:
+            org_roles.append("CLIENT")
+        if partner_id:
+            org_roles.append("PARTNER")
+
+    org_payload = None
+    if org_id_int is not None:
+        org_payload = _load_org_from_orgs(db, org_id=org_id_int)
+    if org_payload is None:
+        org_payload = _load_org_fallback(db, client_id=client_id, partner_id=partner_id)
+
+    employee_timezone = None
+    user_id = token.get("user_id") or token.get("sub")
+    if user_id and client_id:
+        employee = (
+            db.query(ClientEmployee)
+            .filter(ClientEmployee.id == str(user_id), ClientEmployee.client_id == str(client_id))
+            .one_or_none()
+        )
+        employee_timezone = employee.timezone if employee else None
+
+    user_roles = _normalize_roles(token)
+    nav_sections = _resolve_nav_sections(capabilities)
+
+    return PortalMeResponse(
+        user=PortalMeUser(
+            id=str(token.get("user_id") or token.get("sub") or ""),
+            email=token.get("email") or token.get("sub"),
+            subject_type=token.get("subject_type"),
+            timezone=employee_timezone,
+        ),
+        org=org_payload,
+        org_roles=sorted({str(role).upper() for role in org_roles if role}),
+        user_roles=user_roles,
+        subscription=subscription_payload,
+        entitlements_snapshot=entitlements_snapshot,
+        capabilities=sorted({str(cap) for cap in capabilities if cap}),
+        nav_sections=nav_sections or None,
+    )
+
+
+__all__ = ["build_portal_me"]

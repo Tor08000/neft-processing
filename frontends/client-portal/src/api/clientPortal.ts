@@ -28,7 +28,7 @@ export type ClientDashboardSnapshot = {
   }> | null;
 };
 
-export type ClientMeResponse = {
+export type PortalMeResponse = {
   user: {
     id: string;
     email?: string | null;
@@ -42,23 +42,19 @@ export type ClientMeResponse = {
     status: string;
     timezone?: string | null;
   } | null;
-  membership: {
-    roles: string[];
-    status: string;
-  };
+  org_roles: string[];
+  user_roles: string[];
   subscription?: {
-    plan_code: string;
+    plan_code?: string | null;
     status?: string | null;
-    modules: Record<string, Record<string, unknown>>;
-    limits: Record<string, Record<string, unknown>>;
+    billing_cycle?: string | null;
+    support_plan?: string | null;
+    slo_tier?: string | null;
+    addons?: Array<Record<string, unknown>> | null;
   } | null;
-  entitlements: {
-    enabled_modules: string[];
-    permissions: string[];
-    limits: Record<string, Record<string, unknown>>;
-    org_status: string;
-  };
-  org_status: string;
+  entitlements_snapshot?: Record<string, unknown> | null;
+  capabilities: string[];
+  nav_sections?: Array<{ code: string; label: string }> | null;
   dashboard?: ClientDashboardSnapshot | null;
 };
 
@@ -156,7 +152,7 @@ export type AuditEventsFilters = {
 const withToken = (user: AuthSession | null) => ({ token: user?.token, base: "core" as const });
 
 export const fetchClientMe = (user: AuthSession | null) =>
-  request<ClientMeResponse>("/client/me", { method: "GET" }, withToken(user));
+  request<PortalMeResponse>("/portal/me", { method: "GET" }, withToken(user));
 
 export type ClientTimezoneUpdateResponse = {
   id: string;
