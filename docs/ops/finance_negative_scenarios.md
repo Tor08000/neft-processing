@@ -1,11 +1,192 @@
 # Finance negative scenarios (integration + runbook)
 
-This runbook covers four deterministic negative scenarios for the finance contour:
+This runbook covers deterministic negative scenarios for the finance contour and
+defines canonical billing behavior for failed or ambiguous payments.
 
 - **SCN-1 Partial payment** — verify PARTIALLY_PAID → PAID, outstanding amount, ledger balance, idempotency.
-- **SCN-2 Overdue** — invoice transitions to OVERDUE and can be paid after overdue, with audit trail.
-- **SCN-3 Cancel/Void** — cancellation is allowed only from permitted states, idempotent, and excluded from settlement.
-- **SCN-4 Refund after SLA penalty** — SLA breach → penalty/credit → payment → refund, with balanced ledger and settlement adjustment.
+- **SCN-2 Wrong amount / unmatched** — reconciliation classification, no access restoration, finance notification.
+- **SCN-3 Double payment** — idempotency and overpayment credit.
+- **SCN-4 Overdue** — invoice transitions to OVERDUE and can be paid after overdue, with audit trail.
+- **SCN-5 Cancel/Void** — cancellation is allowed only from permitted states, idempotent, and excluded from settlement.
+- **SCN-6 Refund after SLA penalty** — SLA breach → penalty/credit → payment → refund, with balanced ledger and settlement adjustment.
+
+## Canonical behavior (non-negotiable)
+
+Money does **not** imply access. Payment events must be processed as:
+
+```
+money → event → validation → state → entitlements
+```
+
+### 1) Partial payment
+
+**Scenario**
+
+- Invoice = 100 000 ₽
+- Paid = 40 000 ₽
+
+**Detection sources**
+
+- Bank reconciliation, or
+- Manual payment intake
+
+**Rule**
+
+```
+paid_amount < invoice.total_amount → PARTIAL
+```
+
+**State changes**
+
+- Invoice: `ISSUED` / `OVERDUE` → `PARTIALLY_PAID`
+- Subscription: remains `OVERDUE`
+- Entitlements: **no changes**
+
+```json
+{
+  "exports": { "allowed": false },
+  "integrations": { "allowed": false },
+  "analytics": { "allowed": true, "mode": "read_only" }
+}
+```
+
+**Automatic actions**
+
+- Create billing event:
+
+```json
+{
+  "type": "PARTIAL_PAYMENT",
+  "invoice_id": "...",
+  "paid": 40000,
+  "remaining": 60000
+}
+```
+
+**Notifications**
+
+- Client (email + in-app): "Partial payment received. Remaining: 60 000 ₽. Access will be restored after full payment."
+- Finance / Sales: optional
+
+**Dunning**
+
+- Continues on schedule
+- Suspension is **not** отменяется
+
+**Manual actions (if needed)**
+
+- Finance can leave as is
+- Issue credit note / installment (future)
+- Apply explicit admin override (with audit)
+
+> Default: **no partial access**.
+
+### 2) Wrong amount (unmatched / tolerance = 0)
+
+**Detection (bank reconciliation)**
+
+Matching rules (MVP):
+
+1. `invoice_id` / payment purpose
+2. exact amount
+3. tolerance = 0 (`RECONCILIATION_AMOUNT_TOLERANCE=0`)
+
+**Classification**
+
+| Situation | Result |
+| --- | --- |
+| `amount == invoice` | `MATCHED` |
+| `amount < invoice` | `PARTIAL` |
+| `amount > invoice` | `OVERPAID` |
+| no invoice match | `UNMATCHED` |
+
+**Behavior**
+
+**UNMATCHED**
+
+- Invoice unchanged
+- Payment saved as `UNMATCHED`
+- Notify finance: "Payment without matched invoice detected"
+- Access is **not** restored
+
+**OVERPAID**
+
+- Invoice: `ISSUED` → `PAID`
+- Overpayment creates `billing_credit` with delta:
+
+```json
+{
+  "credit": 12000,
+  "currency": "RUB"
+}
+```
+
+- Subscription → `ACTIVE`
+- Entitlements restored
+- Admin UI shows: invoice paid, credit balance
+- Admin may apply credit to next period or refund (manual, future)
+
+### 3) Double payment
+
+**Scenario**
+
+- Invoice = 100 000 ₽
+- Paid = 2 × 100 000 ₽
+
+**Idempotency guard (reconciliation)**
+
+```
+bank_tx_id = hash(date + amount + sender + ref)
+UNIQUE(bank_tx_id)
+```
+
+Second payment is **not ignored**.
+Dedupe applies to the statement row, not the business payment event.
+
+**Processing**
+
+- First payment: `MATCHED`, invoice → `PAID`, subscription → `ACTIVE`
+- Second payment: classified as `OVERPAID`, credit created
+
+```json
+{
+  "invoice_id": "...",
+  "credit": 100000,
+  "reason": "double_payment"
+}
+```
+
+**What must NOT happen**
+
+- No new invoice
+- No status corruption
+- No duplicated access
+
+**Notifications**
+
+- Client: "Overpayment received. Amount credited."
+- Finance: "Double payment detected."
+
+### 4) Critical invariants (must-have)
+
+1. **Access is restored only when** `invoice.status == PAID`.
+2. **Entitlements recompute** is triggered by billing state change, not UI clicks.
+3. **No partial unlocks** by default (exceptions only via explicit admin override + audit).
+4. **All money events are idempotent**.
+
+### 5) Summary table
+
+| Scenario | Invoice | Subscription | Access |
+| --- | --- | --- | --- |
+| Partial payment | `PARTIALLY_PAID` | `OVERDUE` | ❌ |
+| Wrong amount (unmatched) | unchanged | unchanged | ❌ |
+| Overpaid | `PAID` + credit | `ACTIVE` | ✅ |
+| Double payment | `PAID` + credit | `ACTIVE` | ✅ |
+
+### 6) Credit balance policy
+
+Credit is created for overpayments and double payments and is applied manually by finance today
+(future: auto-apply).
 
 ## Integration tests (recommended)
 
@@ -88,7 +269,28 @@ Expected:
 - invoice status becomes `PARTIALLY_PAID` after the first payment and `PAID` after the final payment.
 - repeating the same idempotency key does not create a duplicate payment.
 
-### SCN-2 Overdue
+### SCN-2 Wrong amount / unmatched
+
+This scenario is validated during bank reconciliation. Use a payment record that:
+
+- does not match any invoice, or
+- uses an incorrect amount (tolerance = 0).
+
+Expected:
+- payment classified as `UNMATCHED`.
+- invoice state unchanged.
+- finance notified and access not restored.
+
+### SCN-3 Double payment
+
+Use two identical payment transactions in the bank statement input.
+
+Expected:
+- first payment matches, invoice → `PAID`.
+- second payment classified as `OVERPAID`.
+- `billing_credit` created with `reason=double_payment`.
+
+### SCN-4 Overdue
 
 ```cmd
 rem mark invoice overdue
@@ -101,7 +303,7 @@ Expected:
 - invoice status becomes `OVERDUE` (audit event `INVOICE_STATUS_CHANGED`).
 - after payment, it transitions to `PAID`.
 
-### SCN-3 Cancel/Void
+### SCN-5 Cancel/Void
 
 ```cmd
 rem cancel invoice
@@ -114,7 +316,7 @@ Expected:
 - invoice status becomes `CANCELLED`.
 - repeat cancel is idempotent (no extra transition logs).
 
-### SCN-4 Refund after SLA penalty
+### SCN-6 Refund after SLA penalty
 
 This scenario requires a fresh invoice and a deterministic SLA breach. The integration test is the most reliable
 way to validate the SLA + finance interplay. To run manually:
