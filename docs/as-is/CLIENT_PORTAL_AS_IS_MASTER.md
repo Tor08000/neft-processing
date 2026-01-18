@@ -51,8 +51,8 @@
 
 ## 3.3 IAM / Entitlements / Billing Enforcement
 
-**`/client/me` as SSoT**
-- `/client/me` returns user, org, membership, subscription and entitlements snapshot (hash + computed_at). This is the primary session/entitlements snapshot for the portal.
+**`/portal/me` as SSoT (client bootstrap)**
+- Portal bootstrap uses `GET /api/core/portal/me` to resolve user, org, roles, subscription and entitlements snapshot (hash + computed_at), then client-specific endpoints enrich the portal state. `GET /api/core/client/me` remains as a compatibility client-focused view built on top of the same portal payload.
 
 **Entitlements engine v2 (snapshot + hash + overrides + addons)**
 - `get_org_entitlements_snapshot()` builds snapshot from `org_subscriptions`, `subscription_plan_features`, `subscription_plan_modules`, addons, overrides, and persists `org_entitlements_snapshot` with a hash/version.
