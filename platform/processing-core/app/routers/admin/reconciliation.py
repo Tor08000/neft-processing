@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.admin import require_admin_user
 from app.config import settings
 from app.db import get_db
+from app.db.types import new_uuid_str
 from app.models.reconciliation import ExternalStatement, ReconciliationDiscrepancy, ReconciliationRun
 from app.schemas.admin.reconciliation import (
     ExternalStatementListResponse,
@@ -23,13 +24,22 @@ from app.schemas.admin.reconciliation import (
     ReconciliationRunResponse,
     ResolveDiscrepancyRequest,
 )
+from app.schemas.admin.reconciliation_fixtures import (
+    ReconciliationFixtureBundleResponse,
+    ReconciliationFixtureCreateRequest,
+    ReconciliationFixtureFile,
+    ReconciliationFixtureImportCreateRequest,
+    ReconciliationFixtureImportCreateResponse,
+)
 from app.services.bank_stub_service import (
     BankStubServiceError,
     build_external_hash,
     build_external_statement_payload,
     generate_statement,
 )
-from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
+from app.services.bank_statement_reconciliation import create_import_record
+from app.services.reconciliation_fixtures import FixtureStorage, generate_fixture_bundle
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.reconciliation_service import (
     ignore_discrepancy,
     resolve_discrepancy_with_adjustment,
@@ -150,6 +160,106 @@ def run_stubbed_external(
     db.commit()
     run = db.query(ReconciliationRun).filter(ReconciliationRun.id == run_id).one()
     return _serialize_run(run)
+
+
+@router.post("/fixtures", response_model=ReconciliationFixtureBundleResponse, status_code=201)
+def create_fixture_bundle(
+    payload: ReconciliationFixtureCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> ReconciliationFixtureBundleResponse:
+    try:
+        files, meta = generate_fixture_bundle(
+            db=db,
+            scenario=payload.scenario,
+            invoice_id=payload.invoice_id,
+            org_id=payload.org_id,
+            currency=payload.currency,
+            wrong_amount_mode=payload.wrong_amount_mode,
+            amount_delta=payload.amount_delta,
+            payer_inn=payload.payer_inn,
+            payer_name=payload.payer_name,
+            seed=payload.seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    bundle_id = new_uuid_str()
+    storage = FixtureStorage()
+    formats = [payload.format] if payload.format != "ALL" else list(files.keys())
+    response_files: list[ReconciliationFixtureFile] = []
+
+    for fmt in formats:
+        payload_bytes = files.get(fmt)
+        if payload_bytes is None:
+            continue
+        suffix = "csv" if fmt == "CSV" else "txt" if fmt == "CLIENT_BANK_1C" else "mt940"
+        file_name = f"{payload.scenario.lower()}.{suffix}"
+        object_key = storage.build_object_key(bundle_id=bundle_id, file_name=file_name)
+        content_type = "text/csv" if fmt == "CSV" else "text/plain"
+        try:
+            storage.put_bytes(object_key=object_key, payload=payload_bytes, content_type=content_type)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail="fixture_storage_unavailable") from exc
+        download_url = storage.presign_download(
+            object_key=object_key,
+            expires=settings.S3_SIGNED_URL_TTL_SECONDS,
+        )
+        if not download_url:
+            raise HTTPException(status_code=500, detail="fixture_presign_failed")
+        response_files.append(
+            ReconciliationFixtureFile(format=fmt, file_name=file_name, download_url=download_url)
+        )
+
+    AuditService(db).audit(
+        event_type="recon_fixture_generated",
+        entity_type="reconciliation_fixture_bundle",
+        entity_id=bundle_id,
+        action="GENERATE",
+        visibility=AuditVisibility.INTERNAL,
+        after={
+            "scenario": payload.scenario,
+            "invoice_id": payload.invoice_id,
+            "formats": formats,
+            "amount": str(meta.get("amount")),
+            "currency": meta.get("currency"),
+        },
+        request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
+    )
+    db.commit()
+
+    return ReconciliationFixtureBundleResponse(
+        bundle_id=bundle_id,
+        files=response_files,
+        notes="Upload any of these into reconciliation imports.",
+    )
+
+
+@router.post("/fixtures/{bundle_id}/create-import", response_model=ReconciliationFixtureImportCreateResponse)
+def create_fixture_import(
+    bundle_id: str,
+    payload: ReconciliationFixtureImportCreateRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> ReconciliationFixtureImportCreateResponse:
+    storage = FixtureStorage()
+    object_key = storage.build_object_key(bundle_id=bundle_id, file_name=payload.file_name)
+    if not storage.exists(object_key=object_key):
+        raise HTTPException(status_code=404, detail="fixture_file_not_found")
+
+    import_id = new_uuid_str()
+    record = create_import_record(
+        db,
+        import_id=import_id,
+        admin_id=token.get("user_id") or token.get("sub"),
+        file_object_key=object_key,
+        fmt=payload.format,
+        period_from=None,
+        period_to=None,
+    )
+    db.commit()
+    return ReconciliationFixtureImportCreateResponse(import_id=str(record["id"]), object_key=object_key)
 
 
 @router.get("/runs", response_model=ReconciliationRunListResponse)

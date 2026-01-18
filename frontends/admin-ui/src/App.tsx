@@ -48,6 +48,7 @@ import CaseDetailsPage from "./pages/support/CaseDetailsPage";
 import ReconciliationRunsPage from "./pages/reconciliation/ReconciliationRunsPage";
 import ReconciliationRunDetailsPage from "./pages/reconciliation/ReconciliationRunDetailsPage";
 import ReconciliationStatementsPage from "./pages/reconciliation/ReconciliationStatementsPage";
+import ReconciliationFixturesPage from "./pages/reconciliation/ReconciliationFixturesPage";
 import FleetCardsPage from "./pages/fleet/FleetCardsPage";
 import FleetGroupsPage from "./pages/fleet/FleetGroupsPage";
 import FleetEmployeesPage from "./pages/fleet/FleetEmployeesPage";
@@ -121,6 +122,7 @@ export function App() {
             <Route path="/reconciliation" element={<ReconciliationRunsPage />} />
             <Route path="/reconciliation/runs/:id" element={<ReconciliationRunDetailsPage />} />
             <Route path="/reconciliation/statements" element={<ReconciliationStatementsPage />} />
+            <Route path="/finance/reconciliation/fixtures" element={<ReconciliationFixturesPage />} />
             <Route path="/fleet/cards" element={<FleetCardsPage />} />
             <Route path="/fleet/groups" element={<FleetGroupsPage />} />
             <Route path="/fleet/employees" element={<FleetEmployeesPage />} />

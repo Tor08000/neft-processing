@@ -128,7 +128,7 @@ def parse_csv_statement(payload: bytes) -> list[ParsedBankTx]:
     reader = csv.DictReader(io.StringIO(decoded))
     transactions: list[ParsedBankTx] = []
     for row in reader:
-        posted_at = _parse_date(row.get("date"))
+        posted_at = _parse_date(row.get("date") or row.get("posted_at"))
         amount = _parse_decimal(row.get("amount"))
         if posted_at is None or amount is None:
             continue
@@ -139,7 +139,7 @@ def parse_csv_statement(payload: bytes) -> list[ParsedBankTx]:
             if not reference:
                 continue
             bank_tx_id = f"ref:{reference}:{amount}:{posted_at.date().isoformat()}"
-        purpose_text = _normalize_purpose(row.get("purpose_text"))
+        purpose_text = _normalize_purpose(row.get("purpose_text") or row.get("purpose"))
         transactions.append(
             ParsedBankTx(
                 posted_at=posted_at,

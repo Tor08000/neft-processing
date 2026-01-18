@@ -3,6 +3,9 @@ import { apiGet, apiPost } from "./client";
 export type ReconciliationScope = "internal" | "external" | "unknown";
 export type ReconciliationRunStatus = "completed" | "failed" | "started" | "running" | "unknown";
 export type ReconciliationDiscrepancyStatus = "open" | "resolved" | "ignored" | "unknown";
+export type ReconciliationFixtureScenario = "SCN2_WRONG_AMOUNT" | "SCN2_UNMATCHED" | "SCN3_DOUBLE_PAYMENT";
+export type ReconciliationFixtureFormat = "CSV" | "CLIENT_BANK_1C" | "MT940" | "ALL";
+export type ReconciliationFixtureWrongAmountMode = "LESS" | "MORE";
 
 export interface ReconciliationRun {
   id: string;
@@ -69,6 +72,31 @@ export interface ExternalStatementListResponse {
 
 export interface ExternalStatementResult {
   statement: ExternalStatement | null;
+  unavailable?: boolean;
+}
+
+export interface ReconciliationFixtureFile {
+  format: "CSV" | "CLIENT_BANK_1C" | "MT940";
+  file_name: string;
+  download_url: string;
+}
+
+export interface ReconciliationFixtureBundle {
+  bundle_id: string;
+  files: ReconciliationFixtureFile[];
+  notes: string;
+  unavailable?: boolean;
+}
+
+export interface ReconciliationFixtureImportResult {
+  import_id: string;
+  object_key: string;
+  unavailable?: boolean;
+}
+
+export interface ReconciliationImportCompleteResult {
+  id: string;
+  status: string;
   unavailable?: boolean;
 }
 
@@ -229,5 +257,65 @@ export const listStatements = async (params?: { provider?: string }): Promise<Ex
     return { statements: response.statements ?? [] };
   } catch (error) {
     return handleAvailability(error, { statements: [], unavailable: true });
+  }
+};
+
+export const createFixtureBundle = async (payload: {
+  scenario: ReconciliationFixtureScenario;
+  invoice_id: string;
+  org_id: number;
+  format: ReconciliationFixtureFormat;
+  currency: string;
+  wrong_amount_mode?: ReconciliationFixtureWrongAmountMode;
+  amount_delta?: number;
+  payer_inn?: string;
+  payer_name?: string;
+  seed?: string;
+}): Promise<ReconciliationFixtureBundle> => {
+  try {
+    return await apiPost<ReconciliationFixtureBundle>("/api/admin/reconciliation/fixtures", payload);
+  } catch (error) {
+    return handleAvailability(error, {
+      bundle_id: "",
+      files: [],
+      notes: "",
+      unavailable: true,
+    });
+  }
+};
+
+export const createFixtureImport = async (
+  bundleId: string,
+  payload: { format: "CSV" | "CLIENT_BANK_1C" | "MT940"; file_name: string },
+): Promise<ReconciliationFixtureImportResult> => {
+  try {
+    return await apiPost<ReconciliationFixtureImportResult>(
+      `/api/admin/reconciliation/fixtures/${bundleId}/create-import`,
+      payload,
+    );
+  } catch (error) {
+    return handleAvailability(error, {
+      import_id: "",
+      object_key: "",
+      unavailable: true,
+    });
+  }
+};
+
+export const completeStatementImport = async (
+  importId: string,
+  payload: { object_key: string },
+): Promise<ReconciliationImportCompleteResult> => {
+  try {
+    return await apiPost<ReconciliationImportCompleteResult>(
+      `/api/admin/reconciliation/imports/${importId}/complete`,
+      payload,
+    );
+  } catch (error) {
+    return handleAvailability(error, {
+      id: "",
+      status: "",
+      unavailable: true,
+    });
   }
 };
