@@ -98,6 +98,7 @@ from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
 from app.services.risk_v5.hook import register_shadow_hook
 from app.services.risk_v5.metrics import metrics as risk_v5_metrics
+from app.services.mor_metrics import metrics as mor_metrics
 from app.models.audit_log import AuditVisibility
 from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
 from app.models.export_jobs import ExportJob, ExportJobStatus
@@ -676,6 +677,20 @@ def _payout_metrics() -> list[str]:
     ]
 
 
+def _mor_metrics() -> list[str]:
+    lines = [
+        f"core_api_mor_settlement_immutable_violation_total {mor_metrics.settlement_immutable_violation_total}",
+        f"core_api_mor_clawback_required_total {mor_metrics.clawback_required_total}",
+        f"core_api_mor_admin_override_total {mor_metrics.admin_override_total}",
+    ]
+    if mor_metrics.payout_blocked_total:
+        for reason, count in mor_metrics.payout_blocked_total.items():
+            lines.append(f'core_api_mor_payout_blocked_total{{reason="{reason}"}} {count}')
+    else:
+        lines.append('core_api_mor_payout_blocked_total{reason="none"} 0')
+    return lines
+
+
 def _bi_metrics() -> list[str]:
     ingest_lines = [
         f'core_api_bi_ingest_events_total{{status="{status}"}} {count}'
@@ -1227,6 +1242,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     ]
     lines.extend(_billing_metrics())
     lines.extend(_payout_metrics())
+    lines.extend(_mor_metrics())
     lines.extend(_posting_metrics())
     lines.extend(_intake_metrics())
     lines.extend(_risk_metrics())
