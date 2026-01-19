@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+PaymentFlow = Literal["PLATFORM_MOR"]
+
 OrderStatus = Literal[
     "CREATED",
     "ACCEPTED",
@@ -30,6 +32,15 @@ OrderEventType = Literal[
 ]
 
 OrderActorType = Literal["client", "partner", "admin", "system"]
+
+
+class SettlementBreakdown(BaseModel):
+    gross_amount: Decimal
+    platform_fee_amount: Decimal
+    platform_fee_basis: Literal["PERCENT", "FIXED", "TIER"]
+    penalties_amount: Decimal
+    partner_net_amount: Decimal
+    currency: str
 
 
 class OrderCreateRequest(BaseModel):
@@ -96,6 +107,8 @@ class OrderOut(BaseModel):
     applied_promotions_json: dict | None = None
     coupon_code_used: str | None = None
     status: OrderStatus
+    payment_flow: PaymentFlow
+    settlement_breakdown: SettlementBreakdown | None = None
     created_at: datetime
     updated_at: datetime | None = None
     audit_event_id: str | None = None

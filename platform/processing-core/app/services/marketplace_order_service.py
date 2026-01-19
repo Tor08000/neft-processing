@@ -19,6 +19,7 @@ from app.models.marketplace_orders import (
     MarketplaceOrderActorType,
     MarketplaceOrderEvent,
     MarketplaceOrderEventType,
+    MarketplacePaymentFlow,
     MarketplaceOrderStatus,
 )
 from app.services.audit_service import RequestContext
@@ -326,6 +327,7 @@ class MarketplaceOrderService:
             discount=discount_amount,
             final_price=final_price,
             commission=Decimal("0"),
+            payment_flow=MarketplacePaymentFlow.PLATFORM_MOR.value,
             status=MarketplaceOrderStatus.CREATED.value,
             external_ref=external_ref,
         )

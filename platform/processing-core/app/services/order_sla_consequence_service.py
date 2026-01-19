@@ -35,6 +35,7 @@ from app.services.case_event_redaction import redact_deep
 from app.services.decision_memory.records import record_decision_memory
 from app.services.internal_ledger import InternalLedgerLine, InternalLedgerService
 from app.services.marketplace_settlement_service import MarketplaceSettlementService
+from app.services.partner_finance_service import PartnerFinanceService
 from app.services.client_notifications import (
     ADMIN_TARGET_ROLES,
     ClientNotificationSeverity,
@@ -440,6 +441,13 @@ def _apply_marketplace_penalty(
         meta={"evaluation_id": str(evaluation.id), "consequence_id": str(consequence.id)},
     )
     settlement_service.update_penalty_for_order(order_id=str(order.id), penalty_amount=amount)
+    PartnerFinanceService(db, request_ctx=request_ctx).record_sla_penalty(
+        partner_org_id=str(order.partner_id),
+        order_id=str(order.id),
+        amount=amount,
+        currency=order.currency or consequence.currency or "RUB",
+        reason=f"SLA_BREACH_{evaluation.breach_reason or 'UNKNOWN'}",
+    )
     AuditService(db).audit(
         event_type="MARKETPLACE_SLA_PENALTY_APPLIED",
         entity_type="marketplace_adjustment",

@@ -14,6 +14,7 @@ from app.models.partner_core import (
     PartnerProfile,
     PartnerProfileStatus,
 )
+from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderStatus
 from app.models.partner_finance import (
     PartnerAccount,
     PartnerAct,
@@ -149,6 +150,64 @@ class PartnerFinanceService:
             template_vars={
                 "order_id": str(order.id),
                 "amount": str(offer.base_price),
+                "currency": currency,
+            },
+            priority=NotificationPriority.NORMAL,
+            dedupe_key=f"partner_earned:{order.id}",
+            channels=[NotificationChannel.EMAIL, NotificationChannel.PUSH],
+        )
+        return entry
+
+    def record_marketplace_order_earned(
+        self,
+        *,
+        order: MarketplaceOrder,
+        partner_net_amount: Decimal,
+        currency: str,
+    ) -> PartnerLedgerEntry | None:
+        if order.status != MarketplaceOrderStatus.COMPLETED.value:
+            return None
+        existing = (
+            self.db.query(PartnerLedgerEntry)
+            .filter(
+                PartnerLedgerEntry.order_id == str(order.id),
+                PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.EARNED,
+            )
+            .one_or_none()
+        )
+        if existing:
+            return existing
+        entry = self.post_entry(
+            partner_org_id=str(order.partner_id),
+            order_id=str(order.id),
+            entry_type=PartnerLedgerEntryType.EARNED,
+            amount=partner_net_amount,
+            currency=currency,
+            direction=PartnerLedgerDirection.CREDIT,
+            meta_json={"source": "marketplace_order"},
+        )
+        AuditService(self.db).audit(
+            event_type="partner_earned",
+            entity_type="partner_ledger_entry",
+            entity_id=str(entry.id),
+            action="partner_earned",
+            after={
+                "partner_org_id": str(order.partner_id),
+                "order_id": str(order.id),
+                "amount": str(partner_net_amount),
+                "currency": currency,
+            },
+            request_ctx=self.request_ctx,
+        )
+        enqueue_notification_message(
+            self.db,
+            event_type="partner_earned",
+            subject_type=NotificationSubjectType.PARTNER,
+            subject_id=str(order.partner_id),
+            template_code="partner_earned",
+            template_vars={
+                "order_id": str(order.id),
+                "amount": str(partner_net_amount),
                 "currency": currency,
             },
             priority=NotificationPriority.NORMAL,

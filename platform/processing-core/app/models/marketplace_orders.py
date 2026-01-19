@@ -47,6 +47,10 @@ class MarketplaceOrderActorType(str, Enum):
     SYSTEM = "system"
 
 
+class MarketplacePaymentFlow(str, Enum):
+    PLATFORM_MOR = "PLATFORM_MOR"
+
+
 class MarketplaceOrderImmutableError(ValueError):
     """Raised when WORM-protected marketplace order records are mutated."""
 
@@ -70,6 +74,13 @@ class MarketplaceOrder(Base):
     final_price = Column(Numeric(18, 4), nullable=True)
     commission_snapshot = Column(JSON_TYPE, nullable=True)
     commission = Column(Numeric(18, 4), nullable=True)
+    payment_flow = Column(
+        ExistingEnum(MarketplacePaymentFlow, name="marketplace_payment_flow"),
+        nullable=False,
+        server_default=MarketplacePaymentFlow.PLATFORM_MOR.value,
+        default=MarketplacePaymentFlow.PLATFORM_MOR.value,
+    )
+    settlement_breakdown_json = Column(JSON_TYPE, nullable=True)
     status = Column(
         ExistingEnum(MarketplaceOrderStatus, name="marketplace_order_status"),
         nullable=False,
@@ -116,4 +127,5 @@ __all__ = [
     "MarketplaceOrderEventType",
     "MarketplaceOrderImmutableError",
     "MarketplaceOrderStatus",
+    "MarketplacePaymentFlow",
 ]
