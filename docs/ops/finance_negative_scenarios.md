@@ -1,4 +1,4 @@
-# Finance negative scenarios (integration + runbook)
+# Finance negative scenarios (integration + runbook, FINAL)
 
 This runbook covers deterministic negative scenarios for the finance contour and
 defines canonical billing behavior for failed or ambiguous payments.
@@ -359,3 +359,66 @@ Expected:
 - **403 on payments/refunds**: check that the JWT contains a `client_id` matching the invoice client.
 - **409 invalid transition**: ensure the invoice is in `SENT`/`PARTIALLY_PAID`/`OVERDUE` before payment.
 - **Ledger imbalance**: check `internal_ledger_entries` for the ledger transaction created for the payment/refund.
+
+## Ops notes for MoR (production)
+
+### Double payment detected (MoR)
+
+**Goal**: prevent double payout and ensure overpayment is handled as credit/refund.
+
+**Steps**
+
+1. Locate the invoice and payments:
+
+```cmd
+set CORE_PUBLIC=http://localhost/api/v1
+curl -s -H "Authorization: Bearer %ADMIN_TOKEN%" "%CORE_PUBLIC%/admin/finance/payments?invoice_id=%INVOICE_ID%"
+```
+
+2. Verify that the second payment is recorded as `OVERPAID` and a credit is issued.
+
+3. If payout was created, verify the batch amount matches `partner_net` (no double payout).
+
+**Expected outcome**
+
+- Invoice remains `PAID`.
+- Overpayment is recorded as credit, not an extra payout.
+- Partner ledger remains balanced (no extra earned entry).
+
+### Penalty dispute (MoR)
+
+**Goal**: verify penalty is applied before payout and dispute does not allow early payout.
+
+**Steps**
+
+1. Review penalty adjustments and settlement snapshot:
+
+```cmd
+psql "$DATABASE_URL" -c "select id, order_id, penalty_amount, net_partner_amount from marketplace_settlement_items where order_id='<ORDER_ID>';"
+psql "$DATABASE_URL" -c "select penalties, partner_net, finalized_at from marketplace_settlement_snapshots where order_id='<ORDER_ID>';"
+```
+
+2. Confirm payout batch totals include the penalty (net reduced).
+
+**Expected outcome**
+
+- Penalty appears in settlement snapshot before payout.
+- Payout amount reflects reduced partner net.
+
+### Admin override (when absolutely required)
+
+**Goal**: ensure override is audited and visible to finance/ops.
+
+**Steps**
+
+1. Run override with a reason via internal admin tooling (Python service call).
+2. Verify audit event:
+
+```cmd
+psql "$DATABASE_URL" -c "select created_at, event_type, after from audit_log where event_type='SETTLEMENT_OVERRIDE' order by created_at desc limit 3;"
+```
+
+**Expected outcome**
+
+- Override is logged in `audit_log`.
+- Metric `core_api_mor_admin_override_total` increments.

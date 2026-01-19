@@ -1,0 +1,52 @@
+groups:
+  - name: mor_runtime.rules
+    rules:
+      - alert: MorSettlementImmutableViolation
+        expr: increase(core_api_mor_settlement_immutable_violation_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          domain: mor
+        annotations:
+          summary: "MoR settlement immutable violation"
+          description: "A finalized settlement snapshot mutation was attempted. Immediate investigation required."
+
+      - alert: MorPayoutBlockedTooLong
+        expr: increase(core_api_mor_payout_blocked_total[4h]) > 0
+        for: 4h
+        labels:
+          severity: warning
+          domain: mor
+        annotations:
+          summary: "MoR payout blocked for over 4 hours"
+          description: "Payouts were blocked within the last 4 hours. Check blocker reasons and partner status."
+
+      - alert: MorClawbackRequired
+        expr: increase(core_api_mor_clawback_required_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          domain: mor
+        annotations:
+          summary: "MoR clawback required"
+          description: "A refund/penalty requires clawback before payout."
+
+      - alert: MorAdminOverridesSpike
+        expr: increase(core_api_mor_admin_override_total[1h]) > 2
+        for: 30m
+        labels:
+          severity: warning
+          domain: mor
+        annotations:
+          summary: "MoR admin overrides spike"
+          description: "Admin overrides exceeded expected baseline in the last hour."
+
+      - alert: MorPayoutMismatch
+        expr: increase(core_api_payout_reconcile_mismatch_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: critical
+          domain: mor
+        annotations:
+          summary: "MoR payout mismatch"
+          description: "Payout reconciliation mismatch detected. Verify payout batches and ledger alignment."
