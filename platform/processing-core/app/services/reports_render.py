@@ -323,26 +323,28 @@ def stream_settlement_chain_csv(
                 payout_id, payout_status = payout_map.get(str(snapshot.id), (None, None))
                 yield [
                     str(order.id),
+                    snapshot.finalized_at,
                     snapshot.gross_amount,
                     snapshot.platform_fee,
                     snapshot.penalties,
                     snapshot.partner_net,
                     payout_id,
                     payout_status,
-                    snapshot.finalized_at,
+                    snapshot.hash,
                 ]
 
     return ExportRenderStreamResult(
         filename=_build_filename(ExportJobReportType.SETTLEMENT_CHAIN),
         headers=[
             "order_id",
+            "finalized_at",
             "gross",
             "fee",
             "penalties",
             "net",
             "payout_id",
             "payout_status",
-            "finalized_at",
+            "snapshot_hash",
         ],
         rows=_rows(),
         estimated_total_rows=estimated_total_rows,

@@ -986,12 +986,18 @@ def _export_job_metrics() -> list[str]:
 
 def _partner_trust_metrics() -> list[str]:
     return [
-        "# HELP partner_settlement_breakdown_requests_total Partner settlement breakdown requests.",
-        "# TYPE partner_settlement_breakdown_requests_total counter",
-        f"partner_settlement_breakdown_requests_total {partner_trust_metrics.settlement_breakdown_requests_total}",
-        "# HELP partner_trust_exports_generated_total Partner trust export jobs generated.",
-        "# TYPE partner_trust_exports_generated_total counter",
-        f"partner_trust_exports_generated_total {partner_trust_metrics.exports_generated_total}",
+        "# HELP partner_trust_settlement_breakdown_requests_total Partner settlement breakdown requests.",
+        "# TYPE partner_trust_settlement_breakdown_requests_total counter",
+        f"partner_trust_settlement_breakdown_requests_total {partner_trust_metrics.settlement_breakdown_requests_total}",
+        "# HELP partner_trust_ledger_explain_requests_total Partner ledger explain requests.",
+        "# TYPE partner_trust_ledger_explain_requests_total counter",
+        f"partner_trust_ledger_explain_requests_total {partner_trust_metrics.ledger_explain_requests_total}",
+        "# HELP partner_trust_payout_trace_requests_total Partner payout trace requests.",
+        "# TYPE partner_trust_payout_trace_requests_total counter",
+        f"partner_trust_payout_trace_requests_total {partner_trust_metrics.payout_trace_requests_total}",
+        "# HELP partner_trust_exports_created_total Partner trust export jobs created.",
+        "# TYPE partner_trust_exports_created_total counter",
+        f"partner_trust_exports_created_total {partner_trust_metrics.exports_created_total}",
     ]
 
 

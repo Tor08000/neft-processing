@@ -32,6 +32,9 @@ export interface PartnerLedgerExplain {
   source_id?: string | null;
   source_label?: string | null;
   formula?: string | null;
+  settlement_snapshot_hash?: string | null;
+  settlement_breakdown_url?: string | null;
+  admin_actor_id?: string | null;
 }
 
 export interface PartnerPayoutRequest {
@@ -109,6 +112,7 @@ export interface PayoutTraceOrder {
   settlement_snapshot_id?: string | null;
   finalized_at?: string | null;
   hash?: string | null;
+  settlement_breakdown_url?: string | null;
 }
 
 export interface PayoutTraceSummary {

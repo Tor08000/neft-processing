@@ -199,7 +199,7 @@ def get_partner_order_settlement(
     order_record = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == order_id).one_or_none()
     if order_record and str(order_record.partner_id) != partner_id:
         AuditService(db).audit(
-            event_type="PARTNER_ACCESS_FORBIDDEN",
+            event_type="partner_trust_forbidden",
             entity_type="marketplace_order",
             entity_id=str(order_id),
             action="FORBIDDEN",
@@ -214,26 +214,18 @@ def get_partner_order_settlement(
         order = order_record or service.get_order_for_partner(order_id=order_id, partner_id=partner_id)
     except MarketplaceOrderServiceError as exc:
         _handle_service_error(exc)
-    status = order.status.value if hasattr(order.status, "value") else str(order.status)
-    if status not in {MarketplaceOrderStatus.ACCEPTED.value, MarketplaceOrderStatus.COMPLETED.value}:
-        raise HTTPException(status_code=409, detail="settlement_not_available")
     snapshot = (
         db.query(MarketplaceSettlementSnapshot)
         .filter(MarketplaceSettlementSnapshot.order_id == order_id)
         .one_or_none()
     )
-    breakdown_json = order.settlement_breakdown_json or {}
-    gross_amount = Decimal(snapshot.gross_amount) if snapshot else Decimal(breakdown_json.get("gross_amount") or 0)
-    platform_fee_amount = (
-        Decimal(snapshot.platform_fee) if snapshot else Decimal(breakdown_json.get("platform_fee_amount") or 0)
-    )
-    penalties_amount = Decimal(snapshot.penalties) if snapshot else Decimal(breakdown_json.get("penalties_amount") or 0)
-    partner_net = (
-        Decimal(snapshot.partner_net)
-        if snapshot
-        else Decimal(breakdown_json.get("partner_net_amount") or (gross_amount - platform_fee_amount - penalties_amount))
-    )
-    currency = snapshot.currency if snapshot else breakdown_json.get("currency") or "RUB"
+    if not snapshot or not snapshot.finalized_at:
+        raise HTTPException(status_code=409, detail={"error": "SETTLEMENT_NOT_FINALIZED"})
+    gross_amount = Decimal(snapshot.gross_amount)
+    platform_fee_amount = Decimal(snapshot.platform_fee)
+    penalties_amount = Decimal(snapshot.penalties)
+    partner_net = Decimal(snapshot.partner_net)
+    currency = snapshot.currency
     fee_explain = _fee_explain(
         order=order, gross_amount=gross_amount, platform_fee_amount=platform_fee_amount
     )

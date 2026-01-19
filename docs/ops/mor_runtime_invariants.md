@@ -48,6 +48,17 @@ Payment events alone never grant access.
 Any manual override, skip, or force operation must emit an **audit** event and
 is time-limited. Overrides are visible in the settlement snapshot and partner UI.
 
+## Trust visibility endpoints
+
+Operators can validate partner-visible transparency via the Partner Trust Layer endpoints:
+
+- `/api/core/partner/orders/{order_id}/settlement`
+- `/api/core/partner/ledger/{entry_id}/explain`
+- `/api/core/partner/payouts/{payout_id}/trace`
+- `/api/core/partner/exports/settlement-chain`
+
+These endpoints should always reflect the immutable settlement snapshot and enforce ABAC checks.
+
 ## Runtime guardrail reasons (payout)
 
 Payout creation and payout requests are blocked with explicit reasons, for example:

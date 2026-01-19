@@ -149,11 +149,12 @@ export function PartnerFinancePage() {
                 <th>Направление</th>
                 <th>Заказ</th>
                 <th>Источник</th>
+                <th>Explain</th>
               </tr>
             </thead>
             <tbody>
               {ledger.map((entry) => (
-                <tr key={entry.id} onClick={() => handleExplain(entry)} style={{ cursor: "pointer" }}>
+                <tr key={entry.id}>
                   <td>{formatDateTime(entry.created_at)}</td>
                   <td>
                     <StatusBadge status={entry.entry_type} />
@@ -162,6 +163,11 @@ export function PartnerFinancePage() {
                   <td>{entry.direction}</td>
                   <td className="mono">{entry.order_id ?? "—"}</td>
                   <td>{resolveLedgerSource(entry)}</td>
+                  <td>
+                    <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
+                      Explain
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -258,11 +264,29 @@ export function PartnerFinancePage() {
                     <div className="label">Источник</div>
                     <div>{explainEntry.source_label ?? "—"}</div>
                   </div>
+                  <div>
+                    <div className="label">Admin actor</div>
+                    <div className="mono">{explainEntry.admin_actor_id ?? "—"}</div>
+                  </div>
                 </div>
                 {explainEntry.formula ? (
                   <div>
                     <div className="label">Формула</div>
                     <div className="mono">{explainEntry.formula}</div>
+                  </div>
+                ) : null}
+                {explainEntry.settlement_snapshot_hash ? (
+                  <div>
+                    <div className="label">Snapshot hash</div>
+                    <div className="mono">{explainEntry.settlement_snapshot_hash}</div>
+                  </div>
+                ) : null}
+                {explainEntry.settlement_breakdown_url ? (
+                  <div>
+                    <div className="label">Settlement breakdown</div>
+                    <a className="link-button" href={explainEntry.settlement_breakdown_url}>
+                      Открыть
+                    </a>
                   </div>
                 ) : null}
               </div>

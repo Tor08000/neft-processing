@@ -53,6 +53,9 @@ class LedgerExplainOut(BaseModel):
     source_id: str | None = None
     source_label: str | None = None
     formula: str | None = None
+    settlement_snapshot_hash: str | None = None
+    settlement_breakdown_url: str | None = None
+    admin_actor_id: str | None = None
 
 
 class PayoutTraceOrderOut(BaseModel):
@@ -65,6 +68,7 @@ class PayoutTraceOrderOut(BaseModel):
     settlement_snapshot_id: str | None = None
     finalized_at: datetime | None = None
     hash: str | None = None
+    settlement_breakdown_url: str | None = None
 
 
 class PayoutTraceSummaryOut(BaseModel):

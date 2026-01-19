@@ -60,8 +60,20 @@ export function PayoutTracePage() {
             <div>{formatCurrency(trace.total_amount, trace.orders[0]?.currency ?? "RUB")}</div>
           </div>
           <div>
+            <div className="label">Gross</div>
+            <div>{formatCurrency(trace.summary.gross_total, trace.orders[0]?.currency ?? "RUB")}</div>
+          </div>
+          <div>
+            <div className="label">Fee</div>
+            <div>{formatCurrency(trace.summary.fee_total, trace.orders[0]?.currency ?? "RUB")}</div>
+          </div>
+          <div>
             <div className="label">Penalties</div>
             <div>{formatCurrency(trace.summary.penalties_total, trace.orders[0]?.currency ?? "RUB")}</div>
+          </div>
+          <div>
+            <div className="label">Net</div>
+            <div>{formatCurrency(trace.summary.net_total, trace.orders[0]?.currency ?? "RUB")}</div>
           </div>
         </div>
       </section>
@@ -80,6 +92,7 @@ export function PayoutTracePage() {
                 <th>Penalties</th>
                 <th>Net</th>
                 <th>Finalized</th>
+                <th>Link</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +104,11 @@ export function PayoutTracePage() {
                   <td>{formatCurrency(order.penalties, order.currency)}</td>
                   <td>{formatCurrency(order.partner_net, order.currency)}</td>
                   <td>{order.finalized_at ? formatDateTime(order.finalized_at) : "—"}</td>
+                  <td>
+                    <Link className="link-button" to={`/orders/${order.order_id}`}>
+                      Order
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
