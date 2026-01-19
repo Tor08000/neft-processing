@@ -42,7 +42,11 @@ from app.services.audit_service import AuditService, AuditVisibility, _sanitize_
 from app.models.partner_legal import PartnerLegalStatus
 from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 from app.services.export_metrics import metrics as export_metrics
-from app.services.partner_finance_service import PartnerFinanceService, PartnerPayoutPolicyError
+from app.services.partner_finance_service import (
+    PartnerFinanceService,
+    PartnerPayoutBlockedError,
+    PartnerPayoutPolicyError,
+)
 from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 from app.services.reports_render import ExportRenderValidationError, normalize_filters
 from app.services.s3_storage import S3Storage
@@ -237,6 +241,12 @@ def request_partner_payout(
         )
         db.commit()
         db.refresh(payout)
+    except PartnerPayoutBlockedError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PAYOUT_BLOCKED", "reasons": exc.reasons},
+        ) from exc
     except PartnerLegalError as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail={"error": "LEGAL_NOT_VERIFIED", "reason": exc.code}) from exc
@@ -467,14 +477,13 @@ def preview_partner_payout(
     service = PartnerFinanceService(db)
     account = service.get_account(partner_org_id=partner_org_id, currency="RUB")
     policy = service.get_payout_policy(partner_org_id=partner_org_id, currency=account.currency)
-    policy_reasons: list[str] = []
-    if policy:
-        policy_reasons = service.evaluate_payout_policy(
-            policy=policy,
-            amount=Decimal(account.balance_available or 0),
-            currency=account.currency,
-            now=datetime.now(timezone.utc),
-        )
+    now = datetime.now(timezone.utc)
+    payout_reasons = service.evaluate_payout_blockers(
+        partner_org_id=partner_org_id,
+        amount=Decimal(account.balance_available or 0),
+        currency=account.currency,
+        now=now,
+    )
     legal_service = PartnerLegalService(db)
     profile = legal_service.get_profile(partner_id=partner_org_id)
     tax_context = legal_service.build_tax_context(profile=profile)
@@ -495,7 +504,7 @@ def preview_partner_payout(
         min_payout_amount=Decimal(policy.min_payout_amount) if policy else None,
         payout_hold_days=int(policy.payout_hold_days) if policy else None,
         payout_schedule=policy.payout_schedule.value if policy else None,
-        payout_block_reasons=policy_reasons,
+        payout_block_reasons=payout_reasons,
         legal_status=legal_status,
         tax_context=tax_context.to_dict() if tax_context else None,
         warnings=warnings,

@@ -22,6 +22,7 @@ from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
 from app.services.audit_service import AuditService, RequestContext
 from app.services.partner_finance_service import PartnerFinanceService
 from app.services.platform_revenue_service import PlatformRevenueService
+from app.services.mor_metrics import metrics as mor_metrics
 
 
 @dataclass(frozen=True)
@@ -144,7 +145,9 @@ class MarketplaceSettlementService:
             self.db.add(snapshot)
         else:
             if snapshot.finalized_at and not allow_override:
-                raise SettlementSnapshotError("settlement_immutable")
+                self._audit_immutable_violation(item=item, snapshot=snapshot)
+                mor_metrics.mark_settlement_immutable_violation()
+                raise ImmutableSettlementError("settlement_immutable")
             snapshot.gross_amount = gross
             snapshot.platform_fee = fee
             snapshot.penalties = penalties
@@ -155,6 +158,22 @@ class MarketplaceSettlementService:
         snapshot.hash = self._snapshot_hash(snapshot)
         item.settlement_snapshot_id = snapshot.id
         return snapshot
+
+    def _audit_immutable_violation(
+        self, *, item: MarketplaceSettlementItem, snapshot: MarketplaceSettlementSnapshot
+    ) -> None:
+        AuditService(self.db).audit(
+            event_type="SETTLEMENT_IMMUTABLE_VIOLATION",
+            entity_type="marketplace_settlement_snapshot",
+            entity_id=str(snapshot.id),
+            action="SETTLEMENT_IMMUTABLE_VIOLATION",
+            after={
+                "settlement_id": str(item.id),
+                "order_id": str(item.order_id),
+                "finalized_at": snapshot.finalized_at.isoformat() if snapshot.finalized_at else None,
+            },
+            request_ctx=self.request_ctx,
+        )
 
     def create_settlement_item_for_order(self, *, order: MarketplaceOrder) -> MarketplaceSettlementItem:
         if not order.completed_at:
@@ -190,7 +209,7 @@ class MarketplaceSettlementService:
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(item)
-        self._upsert_snapshot(
+        snapshot = self._upsert_snapshot(
             item=item,
             order=order,
             gross=gross,
@@ -219,6 +238,8 @@ class MarketplaceSettlementService:
             order=order,
             partner_net_amount=self._decimal(breakdown["partner_net_amount"]),
             currency=breakdown["currency"],
+            settlement_snapshot_id=str(snapshot.id),
+            settlement_id=str(snapshot.settlement_id),
         )
         PlatformRevenueService(self.db, request_ctx=self.request_ctx).record_fee(
             order_id=str(order.id),
@@ -227,6 +248,8 @@ class MarketplaceSettlementService:
             currency=breakdown["currency"],
             fee_basis=breakdown["platform_fee_basis"],
             meta_json={"gross_amount": str(gross)},
+            settlement_snapshot_id=str(snapshot.id),
+            settlement_id=str(snapshot.settlement_id),
         )
         return item
 
@@ -270,7 +293,7 @@ class MarketplaceSettlementService:
         )
         return adjustment
 
-    def update_penalty_for_order(self, *, order_id: str, penalty_amount: Decimal) -> MarketplaceSettlementItem | None:
+    def update_penalty_for_order(self, *, order_id: str, penalty_amount: Decimal) -> PenaltyUpdateResult | None:
         item = (
             self.db.query(MarketplaceSettlementItem)
             .filter(MarketplaceSettlementItem.order_id == order_id)
@@ -278,6 +301,10 @@ class MarketplaceSettlementService:
         )
         if not item:
             return None
+        clawback_required = item.status in {
+            MarketplaceSettlementStatus.INCLUDED_IN_PAYOUT.value,
+            MarketplaceSettlementStatus.SETTLED.value,
+        }
         item.penalty_amount = self._decimal(item.penalty_amount) + penalty_amount
         item.adjustments_amount = self._decimal(item.adjustments_amount) + penalty_amount
         item.net_partner_amount = self._decimal(item.gross_amount) - self._decimal(item.commission_amount) - self._decimal(
@@ -300,7 +327,20 @@ class MarketplaceSettlementService:
                 partner_net=self._decimal(breakdown["partner_net_amount"]),
                 currency=breakdown["currency"],
             )
-        return item
+        if clawback_required:
+            mor_metrics.mark_clawback_required()
+            AuditService(self.db).audit(
+                event_type="MARKETPLACE_PENALTY_CLAWBACK_REQUIRED",
+                entity_type="marketplace_settlement_item",
+                entity_id=str(item.id),
+                action="MARKETPLACE_PENALTY_CLAWBACK_REQUIRED",
+                after={
+                    "order_id": str(order_id),
+                    "penalty_amount": str(penalty_amount),
+                },
+                request_ctx=self.request_ctx,
+            )
+        return PenaltyUpdateResult(item=item, clawback_required=clawback_required)
 
     def override_settlement_snapshot(
         self,
@@ -337,6 +377,7 @@ class MarketplaceSettlementService:
             finalized_at=now,
             allow_override=True,
         )
+        mor_metrics.mark_admin_override()
         item.gross_amount = gross
         item.commission_amount = platform_fee
         item.penalty_amount = penalties
@@ -408,21 +449,12 @@ class MarketplaceSettlementService:
                 .one_or_none()
             )
             if snapshot is None:
-                snapshot = self._upsert_snapshot(
-                    item=item,
-                    order=order,
-                    gross=self._decimal(item.gross_amount),
-                    fee=self._decimal(item.commission_amount),
-                    penalties=self._decimal(item.penalty_amount),
-                    partner_net=self._decimal(item.net_partner_amount),
-                    currency=self._resolve_currency(order),
-                    finalized_at=now,
-                )
-            else:
-                if snapshot.finalized_at is None:
-                    snapshot.finalized_at = now
-                    snapshot.hash = self._snapshot_hash(snapshot)
-                item.settlement_snapshot_id = snapshot.id
+                mor_metrics.mark_payout_blocked("NO_SNAPSHOT")
+                raise PayoutBlockedError(["NO_SNAPSHOT"])
+            if snapshot.finalized_at is None:
+                snapshot.finalized_at = now
+                snapshot.hash = self._snapshot_hash(snapshot)
+            item.settlement_snapshot_id = snapshot.id
             snapshots.append(snapshot)
 
         gross_total = sum((self._decimal(s.gross_amount) for s in snapshots), Decimal("0"))
@@ -451,7 +483,33 @@ class MarketplaceSettlementService:
         adjustment_total = self._decimal(adjustment_total)
         payout_amount = net_total - adjustment_total
         if payout_amount <= Decimal("0"):
-            raise ValueError("payout_blocked_negative_net")
+            mor_metrics.mark_payout_blocked("NEGATIVE_NET")
+            raise PayoutBlockedError(["NEGATIVE_NET"])
+        currency = snapshots[0].currency if snapshots else "RUB"
+        finance_service = PartnerFinanceService(self.db, request_ctx=self.request_ctx)
+        account = finance_service.get_account(partner_org_id=partner_id, currency=currency)
+        block_reasons = finance_service.evaluate_payout_blockers(
+            partner_org_id=partner_id,
+            amount=Decimal(account.balance_available or 0),
+            currency=currency,
+            now=now,
+        )
+        if block_reasons:
+            for reason in block_reasons:
+                mor_metrics.mark_payout_blocked(reason)
+            AuditService(self.db).audit(
+                event_type="MARKETPLACE_PAYOUT_BLOCKED",
+                entity_type="payout_batch",
+                entity_id=str(partner_id),
+                action="MARKETPLACE_PAYOUT_BLOCKED",
+                after={
+                    "partner_id": partner_id,
+                    "period": period,
+                    "reasons": block_reasons,
+                },
+                request_ctx=self.request_ctx,
+            )
+            raise PayoutBlockedError(block_reasons)
 
         batch = PayoutBatch(
             id=new_uuid_str(),
@@ -524,4 +582,27 @@ class SettlementSnapshotError(ValueError):
         self.code = code
 
 
-__all__ = ["MarketplaceSettlementService", "PayoutBatchResult", "SettlementSnapshotError"]
+@dataclass(frozen=True)
+class PenaltyUpdateResult:
+    item: MarketplaceSettlementItem
+    clawback_required: bool
+
+
+class ImmutableSettlementError(SettlementSnapshotError):
+    """Raised when attempting to mutate a finalized settlement snapshot."""
+
+
+class PayoutBlockedError(ValueError):
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("PAYOUT_BLOCKED")
+        self.reasons = reasons
+
+
+__all__ = [
+    "MarketplaceSettlementService",
+    "PayoutBatchResult",
+    "SettlementSnapshotError",
+    "PenaltyUpdateResult",
+    "ImmutableSettlementError",
+    "PayoutBlockedError",
+]

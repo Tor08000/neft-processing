@@ -440,7 +440,9 @@ def _apply_marketplace_penalty(
         reason_code=f"SLA_BREACH_{evaluation.breach_reason or 'UNKNOWN'}",
         meta={"evaluation_id": str(evaluation.id), "consequence_id": str(consequence.id)},
     )
-    settlement_service.update_penalty_for_order(order_id=str(order.id), penalty_amount=amount)
+    penalty_result = settlement_service.update_penalty_for_order(order_id=str(order.id), penalty_amount=amount)
+    if penalty_result and penalty_result.clawback_required:
+        adjustment.meta = {**(adjustment.meta or {}), "clawback_required": True}
     PartnerFinanceService(db, request_ctx=request_ctx).record_sla_penalty(
         partner_org_id=str(order.partner_id),
         order_id=str(order.id),

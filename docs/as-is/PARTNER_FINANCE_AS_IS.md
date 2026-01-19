@@ -7,6 +7,7 @@ Partner finance is modeled as a ledger-backed balance with explicit payout gatin
 - **EARNED** credits are created from completed marketplace orders (partner_net).  
 - **SLA_PENALTY** debits reduce the available balance before payout.  
 - Payout requests are allowed only from `balance_available` and move balance into `balance_blocked` until paid.
+- Ledger entries reference settlement snapshots to preserve MoR traceability.
 
 ## Ledger semantics
 
@@ -48,3 +49,4 @@ The partner portal displays this snapshot with a fee formula and penalty source 
 - Partner payouts are derived from `balance_available` only.  
 - Penalties are applied before payout, reducing available balance.  
 - This ensures partner documents and payouts match the ledger and settlement breakdown.
+- Runtime blockers expose explicit reasons (threshold, legal status, disputes) in the partner portal.

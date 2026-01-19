@@ -23,6 +23,8 @@ class PlatformRevenueService:
         currency: str,
         fee_basis: str,
         meta_json: dict | None = None,
+        settlement_snapshot_id: str | None = None,
+        settlement_id: str | None = None,
     ) -> PlatformRevenueEntry:
         existing = (
             self.db.query(PlatformRevenueEntry)
@@ -37,7 +39,11 @@ class PlatformRevenueService:
             amount=amount,
             currency=currency,
             fee_basis=fee_basis,
-            meta_json=meta_json,
+            meta_json={
+                **(meta_json or {}),
+                "settlement_snapshot_id": settlement_snapshot_id,
+                "settlement_id": settlement_id,
+            },
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(entry)
