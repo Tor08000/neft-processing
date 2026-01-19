@@ -293,7 +293,12 @@ def _apply_support_features(features: dict[str, dict[str, Any]], *, support_plan
         maybe_enable("slo.tiers")
 
 
-def get_org_entitlements_snapshot(db: Session, *, org_id: int) -> EntitlementsSnapshot:
+def get_org_entitlements_snapshot(
+    db: Session,
+    *,
+    org_id: int,
+    force_new_version: bool = False,
+) -> EntitlementsSnapshot:
     required_tables = [
         "org_subscriptions",
         "subscription_plans",
@@ -503,7 +508,7 @@ def get_org_entitlements_snapshot(db: Session, *, org_id: int) -> EntitlementsSn
             .mappings()
             .first()
         )
-        if latest and latest["hash"] == payload_hash:
+        if latest and latest["hash"] == payload_hash and not force_new_version:
             computed_at = latest["computed_at"]
             snapshot_payload["computed"]["computed_at"] = computed_at.isoformat()
         else:

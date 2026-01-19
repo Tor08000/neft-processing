@@ -80,6 +80,34 @@ class CommercialOverrideUpsertRequest(BaseModel):
     availability: str
     limits_json: dict[str, Any] | None = None
     reason: str | None = None
+    confirm: bool = False
+    expires_at: datetime | None = None
+
+
+class CommercialPlanUpdate(BaseModel):
+    plan_code: str
+    plan_version: int
+    billing_cycle: str
+    status: str
+
+
+class CommercialAddonUpdate(BaseModel):
+    addon_code: str
+    status: str
+    price_override: Decimal | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    config_json: dict[str, Any] | None = None
+
+
+class CommercialOverrideUpdate(BaseModel):
+    feature_key: str
+    availability: str | None = None
+    limits_json: dict[str, Any] | None = None
+    reason: str
+    confirm: bool
+    expires_at: datetime | None = None
+    remove: bool = False
 
 
 class CommercialStatusChangeRequest(BaseModel):
@@ -95,6 +123,28 @@ class CommercialRecomputeResponse(BaseModel):
     hash: str
     computed_at: datetime
     version: int
+
+
+class CommercialEntitlementsSnapshotOut(BaseModel):
+    version: int
+    hash: str
+    computed_at: datetime
+    entitlements: dict[str, Any]
+
+
+class CommercialEntitlementsSnapshotsResponse(BaseModel):
+    current: CommercialEntitlementsSnapshotOut | None = None
+    previous: list[CommercialEntitlementsSnapshotOut] = []
+
+
+class CommercialOrgUpdateRequest(BaseModel):
+    plan: CommercialPlanUpdate | None = None
+    addons: list[CommercialAddonUpdate] | None = None
+    support_plan: str | None = None
+    slo_tier: str | None = None
+    overrides: list[CommercialOverrideUpdate] | None = None
+    reason: str | None = None
+    dry_run: bool = False
 
 
 class CommercialOrgRoleRequest(BaseModel):

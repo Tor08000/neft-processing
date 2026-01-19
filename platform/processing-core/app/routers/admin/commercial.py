@@ -15,13 +15,19 @@ from app.schemas.commercial_admin import (
     CommercialAddonDisableRequest,
     CommercialAddonEnableRequest,
     CommercialAddonOut,
+    CommercialAddonUpdate,
+    CommercialEntitlementsSnapshotOut,
+    CommercialEntitlementsSnapshotsResponse,
     CommercialOrgInfo,
     CommercialOrgRoleRequest,
     CommercialOrgRolesResponse,
     CommercialOrgStateOut,
+    CommercialOrgUpdateRequest,
     CommercialOverrideOut,
     CommercialOverrideUpsertRequest,
+    CommercialOverrideUpdate,
     CommercialPlanChangeRequest,
+    CommercialPlanUpdate,
     CommercialRecomputeRequest,
     CommercialRecomputeResponse,
     CommercialSnapshotOut,
@@ -106,6 +112,34 @@ def _load_addon(db: Session, addon_code: str) -> dict[str, Any]:
     if not addon:
         raise HTTPException(status_code=404, detail="addon_not_found")
     return dict(addon)
+
+
+def _load_support_plan(db: Session, support_plan_code: str) -> dict[str, Any]:
+    if not _table_exists(db, "support_plans"):
+        raise HTTPException(status_code=404, detail="support_plan_not_found")
+    support_plans = _table(db, "support_plans")
+    support_plan = (
+        db.execute(select(support_plans).where(support_plans.c.code == support_plan_code))
+        .mappings()
+        .first()
+    )
+    if not support_plan:
+        raise HTTPException(status_code=404, detail="support_plan_not_found")
+    return dict(support_plan)
+
+
+def _load_slo_tier(db: Session, slo_tier_code: str) -> dict[str, Any]:
+    if not _table_exists(db, "slo_tiers"):
+        raise HTTPException(status_code=404, detail="slo_tier_not_found")
+    slo_tiers = _table(db, "slo_tiers")
+    slo_tier = (
+        db.execute(select(slo_tiers).where(slo_tiers.c.code == slo_tier_code))
+        .mappings()
+        .first()
+    )
+    if not slo_tier:
+        raise HTTPException(status_code=404, detail="slo_tier_not_found")
+    return dict(slo_tier)
 
 
 def _validate_feature_key(db: Session, feature_key: str) -> None:
@@ -285,7 +319,7 @@ def _audit_event(
     before: dict | None,
     after: dict | None,
     reason: str | None,
-    ) -> None:
+) -> None:
     audit_service = AuditService(db)
     audit_service.audit(
         event_type=event_type,
@@ -354,6 +388,305 @@ def _filter_columns(table: Table, values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if key in table.c}
 
 
+def _ensure_override_guardrails(reason: str | None, confirm: bool) -> None:
+    if not reason:
+        raise HTTPException(status_code=400, detail="override_reason_required")
+    if not confirm:
+        raise HTTPException(status_code=400, detail="override_confirmation_required")
+
+
+def _normalize_addon_status(status: str) -> str:
+    normalized = str(status).upper()
+    if normalized in {"DISABLED", "DISABLE", "INACTIVE"}:
+        return "CANCELED"
+    return normalized
+
+
+def _apply_plan_update(
+    db: Session,
+    *,
+    org_id: int,
+    subscription: dict[str, Any],
+    payload: CommercialPlanUpdate,
+    request: Request,
+    token: dict,
+    reason: str | None,
+    audit: bool,
+) -> None:
+    plan = _load_plan(db, plan_code=payload.plan_code, plan_version=payload.plan_version)
+    org_subscriptions = _table(db, "org_subscriptions")
+    before = {
+        "plan_id": subscription.get("plan_id"),
+        "billing_cycle": subscription.get("billing_cycle"),
+        "status": subscription.get("status"),
+    }
+    update_values: dict[str, Any] = {
+        "plan_id": plan["id"],
+        "billing_cycle": payload.billing_cycle,
+        "status": payload.status,
+    }
+    db.execute(
+        update(org_subscriptions)
+        .where(org_subscriptions.c.id == subscription["id"])
+        .values(**update_values)
+    )
+    if audit:
+        _audit_event(
+            db,
+            request,
+            token,
+            event_type="commercial_plan_changed",
+            entity_id=str(org_id),
+            before=before,
+            after={
+                "plan_id": plan["id"],
+                "plan_code": payload.plan_code,
+                "plan_version": payload.plan_version,
+                "billing_cycle": payload.billing_cycle,
+                "status": payload.status,
+            },
+            reason=reason,
+        )
+
+
+def _apply_support_plan_update(
+    db: Session,
+    *,
+    org_id: int,
+    subscription: dict[str, Any],
+    support_plan_code: str | None,
+    request: Request,
+    token: dict,
+    reason: str | None,
+    audit: bool,
+) -> None:
+    org_subscriptions = _table(db, "org_subscriptions")
+    if "support_plan_id" not in org_subscriptions.c:
+        raise HTTPException(status_code=404, detail="support_plan_not_supported")
+    before = {"support_plan_id": subscription.get("support_plan_id")}
+    support_plan_id = None
+    if support_plan_code:
+        support_plan = _load_support_plan(db, support_plan_code)
+        support_plan_id = support_plan["id"]
+    db.execute(
+        update(org_subscriptions)
+        .where(org_subscriptions.c.id == subscription["id"])
+        .values(support_plan_id=support_plan_id)
+    )
+    if audit:
+        _audit_event(
+            db,
+            request,
+            token,
+            event_type="commercial_support_plan_changed",
+            entity_id=str(org_id),
+            before=before,
+            after={"support_plan": support_plan_code},
+            reason=reason,
+        )
+
+
+def _apply_slo_tier_update(
+    db: Session,
+    *,
+    org_id: int,
+    subscription: dict[str, Any],
+    slo_tier_code: str | None,
+    request: Request,
+    token: dict,
+    reason: str | None,
+    audit: bool,
+) -> None:
+    org_subscriptions = _table(db, "org_subscriptions")
+    if "slo_tier_id" not in org_subscriptions.c:
+        raise HTTPException(status_code=404, detail="slo_tier_not_supported")
+    before = {"slo_tier_id": subscription.get("slo_tier_id")}
+    slo_tier_id = None
+    if slo_tier_code:
+        slo_tier = _load_slo_tier(db, slo_tier_code)
+        slo_tier_id = slo_tier["id"]
+    db.execute(
+        update(org_subscriptions)
+        .where(org_subscriptions.c.id == subscription["id"])
+        .values(slo_tier_id=slo_tier_id)
+    )
+    if audit:
+        _audit_event(
+            db,
+            request,
+            token,
+            event_type="commercial_slo_tier_changed",
+            entity_id=str(org_id),
+            before=before,
+            after={"slo_tier": slo_tier_code},
+            reason=reason,
+        )
+
+
+def _apply_addon_update(
+    db: Session,
+    *,
+    org_id: int,
+    subscription: dict[str, Any],
+    payload: CommercialAddonUpdate,
+    request: Request,
+    token: dict,
+    reason: str | None,
+    audit: bool,
+) -> None:
+    addon = _load_addon(db, payload.addon_code)
+    org_addons = _table(db, "org_subscription_addons")
+    before_row = (
+        db.execute(
+            select(org_addons).where(
+                org_addons.c.org_subscription_id == subscription["id"],
+                org_addons.c.addon_id == addon["id"],
+            )
+        )
+        .mappings()
+        .first()
+    )
+
+    normalized_status = _normalize_addon_status(payload.status)
+    values: dict[str, Any] = _filter_columns(
+        org_addons,
+        {
+            "org_subscription_id": subscription["id"],
+            "addon_id": addon["id"],
+            "status": normalized_status,
+            "price_override": payload.price_override,
+            "starts_at": payload.starts_at,
+            "ends_at": payload.ends_at,
+            "config_json": payload.config_json,
+            "updated_at": datetime.utcnow(),
+            "created_at": datetime.utcnow(),
+        },
+    )
+    stmt = pg_insert(org_addons).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["org_subscription_id", "addon_id"],
+        set_=_filter_columns(
+            org_addons,
+            {
+                "status": normalized_status,
+                "price_override": payload.price_override,
+                "starts_at": payload.starts_at,
+                "ends_at": payload.ends_at,
+                "config_json": payload.config_json,
+                "updated_at": datetime.utcnow(),
+            },
+        ),
+    )
+    db.execute(stmt)
+    if audit:
+        _audit_event(
+            db,
+            request,
+            token,
+            event_type="commercial_addon_enabled"
+            if normalized_status == "ACTIVE"
+            else "commercial_addon_disabled",
+            entity_id=str(org_id),
+            before=dict(before_row) if before_row else None,
+            after={
+                "addon_code": payload.addon_code,
+                "status": normalized_status,
+                "price_override": payload.price_override,
+                "starts_at": payload.starts_at,
+                "ends_at": payload.ends_at,
+                "config_json": payload.config_json,
+            },
+            reason=reason,
+        )
+
+
+def _apply_override_update(
+    db: Session,
+    *,
+    org_id: int,
+    subscription: dict[str, Any],
+    payload: CommercialOverrideUpdate,
+    request: Request,
+    token: dict,
+    audit: bool,
+) -> None:
+    _ensure_override_guardrails(payload.reason, payload.confirm)
+    _validate_feature_key(db, payload.feature_key)
+    overrides = _table(db, "org_subscription_overrides")
+    before_row = (
+        db.execute(
+            select(overrides).where(
+                overrides.c.org_subscription_id == subscription["id"],
+                overrides.c.feature_key == payload.feature_key,
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if payload.remove:
+        if before_row:
+            db.execute(
+                delete(overrides).where(
+                    overrides.c.org_subscription_id == subscription["id"],
+                    overrides.c.feature_key == payload.feature_key,
+                )
+            )
+        if audit:
+            _audit_event(
+                db,
+                request,
+                token,
+                event_type="commercial_override_removed",
+                entity_id=str(org_id),
+                before=dict(before_row) if before_row else None,
+                after={"feature_key": payload.feature_key},
+                reason=payload.reason,
+            )
+        return
+    if payload.availability is None:
+        raise HTTPException(status_code=400, detail="override_availability_required")
+    values: dict[str, Any] = _filter_columns(
+        overrides,
+        {
+            "org_subscription_id": subscription["id"],
+            "feature_key": payload.feature_key,
+            "availability": payload.availability,
+            "limits_json": payload.limits_json,
+            "updated_at": datetime.utcnow(),
+            "created_at": datetime.utcnow(),
+        },
+    )
+    stmt = pg_insert(overrides).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["org_subscription_id", "feature_key"],
+        set_=_filter_columns(
+            overrides,
+            {
+                "availability": payload.availability,
+                "limits_json": payload.limits_json,
+                "updated_at": datetime.utcnow(),
+            },
+        ),
+    )
+    db.execute(stmt)
+    if audit:
+        _audit_event(
+            db,
+            request,
+            token,
+            event_type="commercial_override_upserted",
+            entity_id=str(org_id),
+            before=dict(before_row) if before_row else None,
+            after={
+                "feature_key": payload.feature_key,
+                "availability": payload.availability,
+                "limits_json": payload.limits_json,
+                "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+            },
+            reason=payload.reason,
+        )
+
+
 @router.get("/orgs/{org_id}", response_model=CommercialOrgStateOut)
 def get_commercial_state(
     org_id: int,
@@ -362,6 +695,136 @@ def get_commercial_state(
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
     _ensure_role(token, write=False)
+    return _build_state(db, org_id)
+
+
+@router.get(
+    "/orgs/{org_id}/entitlements",
+    response_model=CommercialEntitlementsSnapshotsResponse,
+)
+def get_entitlements_snapshots(
+    org_id: int,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> CommercialEntitlementsSnapshotsResponse:
+    _ensure_role(token, write=False)
+    _load_subscription(db, org_id)
+    if not _table_exists(db, "org_entitlements_snapshot"):
+        return CommercialEntitlementsSnapshotsResponse(current=None, previous=[])
+    snapshots = _table(db, "org_entitlements_snapshot")
+    rows = (
+        db.execute(
+            select(
+                snapshots.c.version,
+                snapshots.c.hash,
+                snapshots.c.computed_at,
+                snapshots.c.entitlements_json,
+            )
+            .where(snapshots.c.org_id == org_id)
+            .order_by(snapshots.c.computed_at.desc())
+        )
+        .mappings()
+        .all()
+    )
+    snapshot_items = [
+        CommercialEntitlementsSnapshotOut(
+            version=row["version"],
+            hash=row["hash"],
+            computed_at=row["computed_at"],
+            entitlements=row["entitlements_json"],
+        )
+        for row in rows
+    ]
+    current = snapshot_items[0] if snapshot_items else None
+    previous = snapshot_items[1:] if len(snapshot_items) > 1 else []
+    return CommercialEntitlementsSnapshotsResponse(current=current, previous=previous)
+
+
+@router.post("/orgs/{org_id}/update", response_model=CommercialOrgStateOut)
+def update_commercial_state(
+    org_id: int,
+    payload: CommercialOrgUpdateRequest,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> CommercialOrgStateOut:
+    _ensure_role(token, write=True)
+    subscription = _load_subscription(db, org_id)
+    audit_enabled = not payload.dry_run
+
+    def apply_updates() -> None:
+        if payload.plan:
+            _apply_plan_update(
+                db,
+                org_id=org_id,
+                subscription=subscription,
+                payload=payload.plan,
+                request=request,
+                token=token,
+                reason=payload.reason,
+                audit=audit_enabled,
+            )
+        if payload.support_plan is not None:
+            _apply_support_plan_update(
+                db,
+                org_id=org_id,
+                subscription=subscription,
+                support_plan_code=payload.support_plan,
+                request=request,
+                token=token,
+                reason=payload.reason,
+                audit=audit_enabled,
+            )
+        if payload.slo_tier is not None:
+            _apply_slo_tier_update(
+                db,
+                org_id=org_id,
+                subscription=subscription,
+                slo_tier_code=payload.slo_tier,
+                request=request,
+                token=token,
+                reason=payload.reason,
+                audit=audit_enabled,
+            )
+        if payload.addons:
+            for addon in payload.addons:
+                _apply_addon_update(
+                    db,
+                    org_id=org_id,
+                    subscription=subscription,
+                    payload=addon,
+                    request=request,
+                    token=token,
+                    reason=payload.reason,
+                    audit=audit_enabled,
+                )
+        if payload.overrides:
+            for override in payload.overrides:
+                _apply_override_update(
+                    db,
+                    org_id=org_id,
+                    subscription=subscription,
+                    payload=override,
+                    request=request,
+                    token=token,
+                    audit=audit_enabled,
+                )
+
+    if payload.dry_run:
+        try:
+            db.begin()
+            apply_updates()
+            state = _build_state(db, org_id)
+            db.rollback()
+        except Exception:
+            db.rollback()
+            raise
+        return state
+
+    apply_updates()
+    get_org_entitlements_snapshot(db, org_id=org_id)
+    db.commit()
     return _build_state(db, org_id)
 
 
@@ -634,6 +1097,7 @@ def upsert_override(
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
     _ensure_role(token, write=True)
+    _ensure_override_guardrails(payload.reason, payload.confirm)
     subscription = _load_subscription(db, org_id)
     _validate_feature_key(db, payload.feature_key)
 
@@ -706,6 +1170,7 @@ def remove_override(
     db: Session = Depends(get_db),
 ) -> CommercialOrgStateOut:
     _ensure_role(token, write=True)
+    _ensure_override_guardrails(reason, True)
     subscription = _load_subscription(db, org_id)
     _validate_feature_key(db, feature_key)
 
@@ -793,7 +1258,7 @@ def recompute_entitlements(
     _ensure_role(token, write=True)
     _load_subscription(db, org_id)
 
-    snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
+    snapshot = get_org_entitlements_snapshot(db, org_id=org_id, force_new_version=True)
     version = _latest_snapshot_version(db, org_id)
 
     _audit_event(

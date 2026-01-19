@@ -21,6 +21,7 @@ const KpiPage = React.lazy(() => import("../pages/ops/KpiPage"));
 const SupportRequestsPage = React.lazy(() => import("../pages/SupportRequestsPage"));
 const CasesListPage = React.lazy(() => import("../pages/cases/CasesListPage"));
 const CaseDetailsPage = React.lazy(() => import("../pages/cases/CaseDetailsPage"));
+const CommercialOrgPage = React.lazy(() => import("../pages/admin/CommercialOrgPage"));
 
 export function AppRouter() {
   const { accessToken } = useAuth();
@@ -49,6 +50,8 @@ export function AppRouter() {
             <Route path="/ops/escalations" element={<EscalationsPage />} />
             <Route path="/ops/kpi" element={<KpiPage />} />
             <Route path="/support/requests" element={<SupportRequestsPage />} />
+            <Route path="/commercial" element={<CommercialOrgPage />} />
+            <Route path="/commercial/:orgId" element={<CommercialOrgPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         )}
