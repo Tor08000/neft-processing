@@ -59,9 +59,19 @@ class PartnerDocumentOut(BaseModel):
     total_amount: Decimal
     currency: str
     status: str
+    tax_context: dict | None = None
     pdf_object_key: str | None = None
     created_at: datetime
 
 
 class PartnerDocumentListResponse(BaseModel):
     items: list[PartnerDocumentOut]
+
+
+class PartnerPayoutPreviewOut(BaseModel):
+    partner_org_id: str
+    currency: str
+    available_amount: Decimal
+    legal_status: str | None = None
+    tax_context: dict | None = None
+    warnings: list[str] = []

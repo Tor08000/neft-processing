@@ -105,6 +105,7 @@ class PartnerInvoice(Base):
         nullable=False,
         server_default=PartnerDocumentStatus.DRAFT.value,
     )
+    tax_context = Column(JSON_TYPE, nullable=True)
     pdf_object_key = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -125,6 +126,7 @@ class PartnerAct(Base):
         nullable=False,
         server_default=PartnerDocumentStatus.DRAFT.value,
     )
+    tax_context = Column(JSON_TYPE, nullable=True)
     pdf_object_key = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

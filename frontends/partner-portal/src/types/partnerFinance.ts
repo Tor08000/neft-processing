@@ -46,10 +46,20 @@ export interface PartnerDocument {
   total_amount: number;
   currency: string;
   status: string;
+  tax_context?: Record<string, unknown> | null;
   pdf_object_key?: string | null;
   created_at: string;
 }
 
 export interface PartnerDocumentListResponse {
   items: PartnerDocument[];
+}
+
+export interface PartnerPayoutPreview {
+  partner_org_id: string;
+  currency: string;
+  available_amount: number;
+  legal_status?: string | null;
+  tax_context?: Record<string, unknown> | null;
+  warnings?: string[];
 }

@@ -16,6 +16,7 @@ const baseNavItems = [
   { to: "/marketplace", label: "Marketplace" },
   { to: "/users", label: "Users" },
   { to: "/legal", label: "Legal" },
+  { to: "/partners/legal", label: "Partner Legal" },
 ];
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {

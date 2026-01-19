@@ -56,6 +56,7 @@ import FleetLimitsPage from "./pages/fleet/FleetLimitsPage";
 import FleetSpendPage from "./pages/fleet/FleetSpendPage";
 import StubProvidersPage from "./pages/stubs/StubProvidersPage";
 import LegalPage from "./pages/legal/LegalPage";
+import PartnerLegalPage from "./pages/partners/PartnerLegalPage";
 
 export function App() {
   return (
@@ -130,6 +131,7 @@ export function App() {
             <Route path="/fleet/spend" element={<FleetSpendPage />} />
               <Route path="/stubs" element={<StubProvidersPage />} />
               <Route path="/legal" element={<LegalPage />} />
+              <Route path="/partners/legal" element={<PartnerLegalPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/login" replace />} />

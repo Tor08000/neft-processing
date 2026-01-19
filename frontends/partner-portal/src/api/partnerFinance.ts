@@ -3,6 +3,7 @@ import type {
   PartnerBalance,
   PartnerDocumentListResponse,
   PartnerLedgerListResponse,
+  PartnerPayoutPreview,
   PartnerPayoutListResponse,
 } from "../types/partnerFinance";
 
@@ -24,6 +25,9 @@ export const requestPartnerPayout = (token: string, amount: number, currency: st
 
 export const fetchPartnerPayouts = (token: string) =>
   request<PartnerPayoutListResponse>("/partner/payouts", {}, token, "core_root");
+
+export const fetchPartnerPayoutPreview = (token: string) =>
+  request<PartnerPayoutPreview>("/partner/payouts/preview", {}, token, "core_root");
 
 export const fetchPartnerInvoices = (token: string) =>
   request<PartnerDocumentListResponse>("/partner/invoices", {}, token, "core_root");

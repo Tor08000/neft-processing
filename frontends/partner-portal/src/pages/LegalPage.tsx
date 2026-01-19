@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLegalGate } from "../auth/LegalGateContext";
+import { useAuth } from "../auth/AuthContext";
+import { fetchPartnerLegalProfile } from "../api/partnerLegal";
+import type { PartnerLegalProfileResponse } from "../types/partnerLegal";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
@@ -11,12 +14,29 @@ const formatDate = (value?: string | null) => {
 };
 
 export function LegalPage() {
+  const { user } = useAuth();
   const { required, isBlocked, isLoading, document, loadDocument, accept, refresh } = useLegalGate();
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [profileState, setProfileState] = useState<PartnerLegalProfileResponse | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfileLoading(true);
+    setProfileError(null);
+    fetchPartnerLegalProfile(user.token)
+      .then((data) => setProfileState(data))
+      .catch((err) => {
+        console.error(err);
+        setProfileError("Не удалось загрузить юридический профиль");
+      })
+      .finally(() => setProfileLoading(false));
+  }, [user]);
 
   useEffect(() => {
     if (!selectedCode) return;
@@ -30,9 +50,61 @@ export function LegalPage() {
     return required.find((doc) => doc.code === selectedCode) ?? null;
   }, [required, selectedCode]);
 
+  const legalProfile = profileState?.profile ?? null;
+  const checklist = profileState?.checklist;
+  const statusLabel = legalProfile?.legal_status ?? "Не заполнен";
+  const taxContext = legalProfile?.tax_context as Record<string, unknown> | undefined;
+
   return (
     <div className="card">
-      <h1>Юридические документы</h1>
+      <h1>Legal & Tax</h1>
+      <div className="legal-summary">
+        <div>
+          <div className="muted">Статус профиля</div>
+          <div className="legal-status">{statusLabel}</div>
+        </div>
+        {profileLoading ? <div className="muted">Проверяем профиль...</div> : null}
+        {profileError ? <div className="error">{profileError}</div> : null}
+      </div>
+      {checklist ? (
+        <div className="legal-checklist">
+          <div className="legal-checklist__item">
+            <span>Юр. профиль</span>
+            <span>{checklist.legal_profile ? "✅" : "⛔"}</span>
+          </div>
+          <div className="legal-checklist__item">
+            <span>Реквизиты</span>
+            <span>{checklist.legal_details ? "✅" : "⛔"}</span>
+          </div>
+          <div className="legal-checklist__item">
+            <span>Верификация</span>
+            <span>{checklist.verified ? "✅" : "⛔"}</span>
+          </div>
+        </div>
+      ) : null}
+      {legalProfile ? (
+        <div className="legal-tax-card">
+          <div className="muted">Налоговый профиль</div>
+          <div className="legal-tax-grid">
+            <div>
+              <strong>Тип</strong>
+              <div>{legalProfile.legal_type}</div>
+            </div>
+            <div>
+              <strong>Режим</strong>
+              <div>{legalProfile.tax_regime ?? "—"}</div>
+            </div>
+            <div>
+              <strong>НДС</strong>
+              <div>{legalProfile.vat_applicable ? `Да (${legalProfile.vat_rate ?? 0}%)` : "Нет"}</div>
+            </div>
+            <div>
+              <strong>Ставка</strong>
+              <div>{taxContext?.tax_rate ?? "—"}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {isBlocked ? (
         <p className="muted">Для продолжения работы необходимо принять обязательные документы.</p>
       ) : (

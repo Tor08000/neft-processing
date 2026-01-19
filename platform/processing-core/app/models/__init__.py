@@ -172,6 +172,15 @@ from .partner_finance import (  # noqa: F401
     PartnerPayoutRequest,
     PartnerPayoutRequestStatus,
 )
+from .partner_legal import (  # noqa: F401
+    PartnerLegalDetails,
+    PartnerLegalPack,
+    PartnerLegalProfile,
+    PartnerLegalStatus,
+    PartnerLegalType,
+    PartnerTaxPolicy,
+    PartnerTaxRegime,
+)
 from .groups import (  # noqa: F401
     CardGroup,
     CardGroupMember,
@@ -796,6 +805,13 @@ __all__ = [
     "PartnerLedgerEntryType",
     "PartnerPayoutRequest",
     "PartnerPayoutRequestStatus",
+    "PartnerLegalDetails",
+    "PartnerLegalPack",
+    "PartnerLegalProfile",
+    "PartnerLegalStatus",
+    "PartnerLegalType",
+    "PartnerTaxPolicy",
+    "PartnerTaxRegime",
     "Settlement",
     "SettlementStatus",
     "PayoutOrder",
