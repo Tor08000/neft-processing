@@ -41,7 +41,10 @@ from app.models.marketplace_order_sla import (
 )
 from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderActorType, MarketplaceOrderEventType
 from app.models.marketplace_settlement import MarketplaceAdjustment, MarketplaceSettlementItem
+from app.models.notifications import NotificationMessage
+from app.models.partner_finance import PartnerAccount, PartnerLedgerEntry
 from app.models.payout_batch import PayoutBatch, PayoutItem
+from app.models.platform_revenue import PlatformRevenueEntry
 from app.services.marketplace_order_service import MarketplaceOrderService
 from app.services.marketplace_settlement_service import MarketplaceSettlementService
 from app.services.order_sla_consequence_service import apply_sla_consequences
@@ -92,6 +95,10 @@ def db_session() -> Session:
         MarketplaceCommissionRule.__table__,
         MarketplaceSettlementItem.__table__,
         MarketplaceAdjustment.__table__,
+        PartnerAccount.__table__,
+        PartnerLedgerEntry.__table__,
+        NotificationMessage.__table__,
+        PlatformRevenueEntry.__table__,
         PayoutBatch.__table__,
         PayoutItem.__table__,
         Invoice.__table__,

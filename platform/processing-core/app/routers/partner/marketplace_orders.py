@@ -44,6 +44,8 @@ def _order_out(order) -> OrderOut:
         quantity=order.quantity,
         price_snapshot=order.price_snapshot,
         status=order.status.value if hasattr(order.status, "value") else order.status,
+        payment_flow=order.payment_flow,
+        settlement_breakdown=order.settlement_breakdown_json,
         created_at=order.created_at,
         updated_at=order.updated_at,
         audit_event_id=str(order.audit_event_id) if order.audit_event_id else None,

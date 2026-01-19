@@ -172,6 +172,7 @@ from .partner_finance import (  # noqa: F401
     PartnerPayoutRequest,
     PartnerPayoutRequestStatus,
 )
+from .platform_revenue import PlatformRevenueEntry  # noqa: F401
 from .partner_legal import (  # noqa: F401
     PartnerLegalDetails,
     PartnerLegalPack,
@@ -805,6 +806,7 @@ __all__ = [
     "PartnerLedgerEntryType",
     "PartnerPayoutRequest",
     "PartnerPayoutRequestStatus",
+    "PlatformRevenueEntry",
     "PartnerLegalDetails",
     "PartnerLegalPack",
     "PartnerLegalProfile",

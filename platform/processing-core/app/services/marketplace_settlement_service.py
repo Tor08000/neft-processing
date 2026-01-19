@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.types import new_uuid_str
-from app.models.marketplace_orders import MarketplaceOrder
+from app.models.marketplace_orders import MarketplaceOrder, MarketplacePaymentFlow
 from app.models.marketplace_settlement import (
     MarketplaceAdjustment,
     MarketplaceAdjustmentType,
@@ -17,6 +17,8 @@ from app.models.marketplace_settlement import (
 )
 from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
 from app.services.audit_service import AuditService, RequestContext
+from app.services.partner_finance_service import PartnerFinanceService
+from app.services.platform_revenue_service import PlatformRevenueService
 
 
 @dataclass(frozen=True)
@@ -42,9 +44,55 @@ class MarketplaceSettlementService:
     def _period_for_date(self, dt: datetime) -> str:
         return dt.strftime("%Y-%m")
 
+    def _resolve_currency(self, order: MarketplaceOrder) -> str:
+        snapshot = order.price_snapshot or {}
+        return str(order.currency or snapshot.get("currency") or "RUB")
+
     def _gross_amount(self, order: MarketplaceOrder) -> Decimal:
         snapshot = order.price_snapshot or {}
         return self._decimal(snapshot.get("total") or snapshot.get("subtotal") or order.final_price or order.price)
+
+    def _fee_basis(self, order: MarketplaceOrder) -> str:
+        snapshot = order.commission_snapshot or {}
+        commission_type = (snapshot.get("type") or "").upper()
+        if commission_type == "PERCENT":
+            return "PERCENT"
+        if commission_type == "FIXED":
+            return "FIXED"
+        if commission_type == "TIERED":
+            return "TIER"
+        return "FIXED"
+
+    def _build_settlement_breakdown(
+        self,
+        *,
+        order: MarketplaceOrder,
+        gross: Decimal,
+        fee: Decimal,
+        penalties: Decimal,
+    ) -> dict[str, str]:
+        partner_net = gross - fee - penalties
+        return {
+            "gross_amount": str(gross),
+            "platform_fee_amount": str(fee),
+            "platform_fee_basis": self._fee_basis(order),
+            "penalties_amount": str(penalties),
+            "partner_net_amount": str(partner_net),
+            "currency": self._resolve_currency(order),
+        }
+
+    def _apply_settlement_breakdown(
+        self,
+        *,
+        order: MarketplaceOrder,
+        gross: Decimal,
+        fee: Decimal,
+        penalties: Decimal,
+    ) -> dict[str, str]:
+        breakdown = self._build_settlement_breakdown(order=order, gross=gross, fee=fee, penalties=penalties)
+        order.settlement_breakdown_json = breakdown
+        order.payment_flow = MarketplacePaymentFlow.PLATFORM_MOR.value
+        return breakdown
 
     def create_settlement_item_for_order(self, *, order: MarketplaceOrder) -> MarketplaceSettlementItem:
         if not order.completed_at:
@@ -59,7 +107,14 @@ class MarketplaceSettlementService:
             return existing
         gross = self._gross_amount(order)
         commission = self._decimal(order.commission or 0)
-        net = gross - commission
+        penalty_amount = Decimal("0")
+        breakdown = self._apply_settlement_breakdown(
+            order=order,
+            gross=gross,
+            fee=commission,
+            penalties=penalty_amount,
+        )
+        net = self._decimal(breakdown["partner_net_amount"])
         item = MarketplaceSettlementItem(
             id=new_uuid_str(),
             order_id=order.id,
@@ -67,8 +122,8 @@ class MarketplaceSettlementService:
             gross_amount=gross,
             commission_amount=commission,
             net_partner_amount=net,
-            penalty_amount=Decimal("0"),
-            adjustments_amount=Decimal("0"),
+            penalty_amount=penalty_amount,
+            adjustments_amount=penalty_amount,
             status=MarketplaceSettlementStatus.OPEN.value,
             created_at=datetime.now(timezone.utc),
         )
@@ -83,9 +138,24 @@ class MarketplaceSettlementService:
                 "period": period,
                 "gross_amount": str(gross),
                 "commission_amount": str(commission),
-                "net_partner_amount": str(net),
+                "penalties_amount": str(penalty_amount),
+                "net_partner_amount": breakdown["partner_net_amount"],
+                "currency": breakdown["currency"],
             },
             request_ctx=self.request_ctx,
+        )
+        PartnerFinanceService(self.db, request_ctx=self.request_ctx).record_marketplace_order_earned(
+            order=order,
+            partner_net_amount=self._decimal(breakdown["partner_net_amount"]),
+            currency=breakdown["currency"],
+        )
+        PlatformRevenueService(self.db, request_ctx=self.request_ctx).record_fee(
+            order_id=str(order.id),
+            partner_id=str(order.partner_id),
+            amount=commission,
+            currency=breakdown["currency"],
+            fee_basis=breakdown["platform_fee_basis"],
+            meta_json={"gross_amount": str(gross)},
         )
         return item
 
@@ -139,6 +209,17 @@ class MarketplaceSettlementService:
             return None
         item.penalty_amount = self._decimal(item.penalty_amount) + penalty_amount
         item.adjustments_amount = self._decimal(item.adjustments_amount) + penalty_amount
+        item.net_partner_amount = self._decimal(item.gross_amount) - self._decimal(item.commission_amount) - self._decimal(
+            item.penalty_amount
+        )
+        order = self.db.query(MarketplaceOrder).filter(MarketplaceOrder.id == item.order_id).one_or_none()
+        if order:
+            self._apply_settlement_breakdown(
+                order=order,
+                gross=self._decimal(item.gross_amount),
+                fee=self._decimal(item.commission_amount),
+                penalties=self._decimal(item.penalty_amount),
+            )
         return item
 
     def build_payout_batch(
@@ -170,11 +251,22 @@ class MarketplaceSettlementService:
         commission_total = sum((self._decimal(item.commission_amount) for item in settlement_items), Decimal("0"))
         net_total = sum((self._decimal(item.net_partner_amount) for item in settlement_items), Decimal("0"))
 
+        penalty_total = (
+            self.db.query(func.coalesce(func.sum(MarketplaceAdjustment.amount), 0))
+            .filter(
+                MarketplaceAdjustment.partner_id == partner_id,
+                MarketplaceAdjustment.period == period,
+                MarketplaceAdjustment.type == MarketplaceAdjustmentType.PENALTY.value,
+            )
+            .scalar()
+        )
+        penalty_total = self._decimal(penalty_total)
         adjustment_total = (
             self.db.query(func.coalesce(func.sum(MarketplaceAdjustment.amount), 0))
             .filter(
                 MarketplaceAdjustment.partner_id == partner_id,
                 MarketplaceAdjustment.period == period,
+                MarketplaceAdjustment.type != MarketplaceAdjustmentType.PENALTY.value,
             )
             .scalar()
         )
@@ -192,7 +284,11 @@ class MarketplaceSettlementService:
             total_qty=Decimal("0"),
             operations_count=len(settlement_items),
             created_at=datetime.now(timezone.utc),
-            meta={"marketplace_period": period, "adjustments_total": str(adjustment_total)},
+            meta={
+                "marketplace_period": period,
+                "adjustments_total": str(adjustment_total),
+                "penalties_total": str(penalty_total),
+            },
         )
         self.db.add(batch)
         payout_item = PayoutItem(
@@ -203,7 +299,11 @@ class MarketplaceSettlementService:
             amount_net=payout_amount,
             qty=Decimal("0"),
             operations_count=len(settlement_items),
-            meta={"marketplace_period": period, "adjustments_total": str(adjustment_total)},
+            meta={
+                "marketplace_period": period,
+                "adjustments_total": str(adjustment_total),
+                "penalties_total": str(penalty_total),
+            },
         )
         self.db.add(payout_item)
         for item in settlement_items:
