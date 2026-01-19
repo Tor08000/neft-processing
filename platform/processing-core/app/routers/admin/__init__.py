@@ -69,6 +69,7 @@ from app.routers.admin import (
     revenue,
     reconciliation_imports,
     me,
+    ops_runtime,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -140,5 +141,6 @@ router.include_router(bi_sync.router)
 router.include_router(commercial.router)
 router.include_router(revenue.router)
 router.include_router(me.router)
+router.include_router(ops_runtime.router)
 
 __all__ = ["router"]

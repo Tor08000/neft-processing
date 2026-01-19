@@ -10,6 +10,12 @@ import { AdminRBACGate } from "./admin/AdminRBACGate";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import ComingSoonPage from "./pages/admin/ComingSoonPage";
 import { AdminNotFoundPage } from "./pages/admin/AdminStatusPages";
+import OpsOverviewPage from "./pages/ops/OpsOverviewPage";
+import OpsBlockedPayoutsPage from "./pages/ops/OpsBlockedPayoutsPage";
+import OpsFailedExportsPage from "./pages/ops/OpsFailedExportsPage";
+import OpsFailedImportsPage from "./pages/ops/OpsFailedImportsPage";
+import OpsSupportBreachesPage from "./pages/ops/OpsSupportBreachesPage";
+import OpsDrilldownPlaceholderPage from "./pages/ops/OpsDrilldownPlaceholderPage";
 
 export function App() {
   return (
@@ -26,7 +32,47 @@ export function App() {
                     path="/ops"
                     element={
                       <AdminRBACGate permission="ops">
-                        <ComingSoonPage title="Ops" />
+                        <OpsOverviewPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/ops/payouts/blocked"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <OpsBlockedPayoutsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/ops/exports/failed"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <OpsFailedExportsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/ops/reconciliation/failed"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <OpsFailedImportsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/ops/support/breaches"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <OpsSupportBreachesPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/ops/drilldown"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <OpsDrilldownPlaceholderPage />
                       </AdminRBACGate>
                     }
                   />
