@@ -8,9 +8,12 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.marketplace_orders import MarketplaceOrderStatus
+from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
 from app.schemas.marketplace.orders import OrderDetailOut, OrderEventOut, OrderOut
+from app.schemas.marketplace.settlements import SettlementOverrideIn, SettlementSnapshotOut
 from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_order_service import MarketplaceOrderService, MarketplaceOrderServiceError
+from app.services.marketplace_settlement_service import MarketplaceSettlementService
 
 router = APIRouter(prefix="/marketplace/orders", tags=["admin"])
 
@@ -44,6 +47,21 @@ def _event_out(event) -> OrderEventOut:
         actor_id=str(event.actor_id) if event.actor_id else None,
         audit_event_id=str(event.audit_event_id),
         created_at=event.created_at,
+    )
+
+
+def _snapshot_out(snapshot: MarketplaceSettlementSnapshot) -> SettlementSnapshotOut:
+    return SettlementSnapshotOut(
+        settlement_snapshot_id=str(snapshot.id),
+        settlement_id=str(snapshot.settlement_id),
+        order_id=str(snapshot.order_id),
+        gross_amount=snapshot.gross_amount,
+        platform_fee=snapshot.platform_fee,
+        penalties=snapshot.penalties,
+        partner_net=snapshot.partner_net,
+        currency=snapshot.currency,
+        finalized_at=snapshot.finalized_at,
+        hash=snapshot.hash,
     )
 
 
@@ -97,3 +115,48 @@ def get_order(
     except MarketplaceOrderServiceError as exc:
         _handle_service_error(exc)
     return OrderDetailOut(**_order_out(order).dict(), events=[_event_out(event) for event in events])
+
+
+@router.get("/{order_id}/settlement-snapshot", response_model=SettlementSnapshotOut)
+def get_order_settlement_snapshot(
+    order_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> SettlementSnapshotOut:
+    _ = token
+    snapshot = (
+        db.query(MarketplaceSettlementSnapshot)
+        .filter(MarketplaceSettlementSnapshot.order_id == order_id)
+        .one_or_none()
+    )
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="settlement_snapshot_not_found")
+    return _snapshot_out(snapshot)
+
+
+@router.post("/{order_id}/settlement-override", response_model=SettlementSnapshotOut)
+def override_order_settlement(
+    order_id: str,
+    payload: SettlementOverrideIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> SettlementSnapshotOut:
+    service = MarketplaceSettlementService(
+        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    )
+    try:
+        snapshot = service.override_settlement_snapshot(
+            order_id=order_id,
+            gross=payload.gross_amount,
+            platform_fee=payload.platform_fee,
+            penalties=payload.penalties,
+            partner_net=payload.partner_net,
+            currency=payload.currency,
+            reason=payload.reason,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _snapshot_out(snapshot)

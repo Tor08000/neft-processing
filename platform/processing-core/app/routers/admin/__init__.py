@@ -47,6 +47,7 @@ from app.routers.admin import (
     ops,
     marketplace_contracts,
     marketplace_catalog,
+    marketplace_orders,
     marketplace_order_sla,
     marketplace_sponsored,
     marketplace_moderation,
@@ -115,6 +116,7 @@ router.include_router(what_if.router)
 router.include_router(ops.router)
 router.include_router(marketplace_contracts.router)
 router.include_router(marketplace_catalog.router)
+router.include_router(marketplace_orders.router)
 router.include_router(marketplace_moderation.router)
 router.include_router(marketplace_order_sla.router)
 router.include_router(marketplace_sponsored.router)
