@@ -31,6 +31,9 @@ CAPABILITY_CLIENT_BILLING = "CLIENT_BILLING"
 CAPABILITY_CLIENT_ANALYTICS = "CLIENT_ANALYTICS"
 CAPABILITY_PARTNER_CORE = "PARTNER_CORE"
 CAPABILITY_PARTNER_PRICING = "PARTNER_PRICING"
+CAPABILITY_PARTNER_CATALOG = "PARTNER_CATALOG"
+CAPABILITY_PARTNER_ORDERS = "PARTNER_ORDERS"
+CAPABILITY_PARTNER_ANALYTICS = "PARTNER_ANALYTICS"
 CAPABILITY_PARTNER_SETTLEMENTS = "PARTNER_SETTLEMENTS"
 CAPABILITY_MARKETPLACE = "MARKETPLACE"
 CAPABILITY_LOGISTICS = "LOGISTICS"
@@ -190,6 +193,27 @@ def _compute_capabilities(
             "roles": {PARTNER_ROLE},
             "feature_keys": ["feature.partner.pricing", "feature.partner.catalog"],
             "module_codes": ["PARTNER_PRICING"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_CATALOG,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.catalog", "feature.partner.pricing"],
+            "module_codes": ["PARTNER_PRICING"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_ORDERS,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.orders"],
+            "module_codes": ["PARTNER_ORDERS"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_ANALYTICS,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.analytics"],
+            "module_codes": ["PARTNER_ANALYTICS"],
             "billing_scoped": False,
         },
         {

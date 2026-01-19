@@ -10,8 +10,17 @@ from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
-from app.schemas.portal_me import PortalMeOrg, PortalMeResponse, PortalMeSubscription, PortalMeUser, PortalNavSection
+from app.schemas.portal_me import (
+    PortalMeOrg,
+    PortalMePartner,
+    PortalMePartnerProfile,
+    PortalMeResponse,
+    PortalMeSubscription,
+    PortalMeUser,
+    PortalNavSection,
+)
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
+from app.services.partner_core_service import ensure_partner_profile
 
 
 def _table(db: Session, name: str) -> Table:
@@ -75,7 +84,14 @@ def _load_org_fallback(db: Session, *, client_id: str | None, partner_id: str | 
 def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
     sections: list[PortalNavSection] = []
     client_caps = {"CLIENT_CORE", "CLIENT_BILLING", "CLIENT_ANALYTICS"}
-    partner_caps = {"PARTNER_CORE", "PARTNER_PRICING", "PARTNER_SETTLEMENTS"}
+    partner_caps = {
+        "PARTNER_CORE",
+        "PARTNER_PRICING",
+        "PARTNER_SETTLEMENTS",
+        "PARTNER_CATALOG",
+        "PARTNER_ORDERS",
+        "PARTNER_ANALYTICS",
+    }
 
     if any(cap in client_caps for cap in capabilities):
         sections.append(PortalNavSection(code="client", label="Client"))
@@ -140,6 +156,25 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     user_roles = _normalize_roles(token)
     nav_sections = _resolve_nav_sections(capabilities)
 
+    partner_payload = None
+    if (
+        "PARTNER" in {str(role).upper() for role in org_roles}
+        and org_id_int is not None
+        and _table_exists(db, "partner_profiles")
+    ):
+        profile = ensure_partner_profile(db, org_id=org_id_int, display_name=org_payload.name if org_payload else None)
+        if profile in db.new:
+            db.commit()
+            db.refresh(profile)
+        partner_payload = PortalMePartner(
+            status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
+            profile=PortalMePartnerProfile(
+                display_name=profile.display_name,
+                contacts_json=profile.contacts_json,
+                meta_json=profile.meta_json,
+            ),
+        )
+
     return PortalMeResponse(
         user=PortalMeUser(
             id=str(token.get("user_id") or token.get("sub") or ""),
@@ -154,6 +189,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),
         nav_sections=nav_sections or None,
+        partner=partner_payload,
     )
 
 

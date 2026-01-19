@@ -56,6 +56,14 @@ export type PortalMeResponse = {
   capabilities: string[];
   nav_sections?: Array<{ code: string; label: string }> | null;
   dashboard?: ClientDashboardSnapshot | null;
+  partner?: {
+    status?: string | null;
+    profile?: {
+      display_name?: string | null;
+      contacts_json?: Record<string, unknown> | null;
+      meta_json?: Record<string, unknown> | null;
+    } | null;
+  } | null;
 };
 
 export type ClientOrgPayload = {

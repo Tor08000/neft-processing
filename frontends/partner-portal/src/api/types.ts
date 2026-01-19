@@ -46,6 +46,14 @@ export interface PortalMeResponse {
   entitlements_snapshot?: Record<string, unknown> | null;
   capabilities: string[];
   nav_sections?: Array<{ code: string; label: string }> | null;
+  partner?: {
+    status?: string | null;
+    profile?: {
+      display_name?: string | null;
+      contacts_json?: Record<string, unknown> | null;
+      meta_json?: Record<string, unknown> | null;
+    } | null;
+  } | null;
 }
 
 export interface AuthSession {

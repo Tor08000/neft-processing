@@ -6,12 +6,14 @@
 - `/api/core/portal/me` возвращает `org_roles`, `capabilities`, `subscription` и snapshot entitlements; используется как базовый источник прав в UI.
 - `org_roles` и `capabilities` формируются из entitlements snapshot (если есть) с fallback на роли в токене.
 - Billing enforcement по-прежнему применяется в клиентских потоках, partner-capabilities не блокируются billing policy.
+- Для PARTNER orgs `portal/me` включает `partner.profile`/`partner.status` и partner-capabilities (`PARTNER_CORE`, `PARTNER_CATALOG`, `PARTNER_ORDERS`, `PARTNER_ANALYTICS`).
 
 ## Current Entry Points
 
 - Unified bootstrap: `GET /api/core/portal/me`.
 - Client legacy: `GET /api/core/client/me` (совместимый слой поверх `portal/me`).
 - Partner legacy: `GET /api/core/partner/me` (совместимый слой поверх `portal/me`).
+- Partner core: `GET /api/core/partner/*` (profile/offers/orders/analytics).
 - SPA entrypoints остаются отдельными (`/client/*`, `/partner/*`).
 
 ## Access Model
