@@ -26,6 +26,30 @@ const mockFetch = (url: string) => {
       { status: 200 },
     );
   }
+  if (url.includes("/partner/balance")) {
+    return new Response(
+      JSON.stringify({
+        partner_org_id: "partner-1",
+        currency: "RUB",
+        balance_available: 12000,
+        balance_pending: 0,
+        balance_blocked: 500,
+      }),
+      { status: 200 },
+    );
+  }
+  if (url.includes("/partner/ledger")) {
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  }
+  if (url.includes("/partner/payouts") && !url.includes("/payouts/request")) {
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  }
+  if (url.includes("/partner/invoices")) {
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  }
+  if (url.includes("/partner/acts")) {
+    return new Response(JSON.stringify({ items: [] }), { status: 200 });
+  }
   if (url.includes("/partner/prices/versions/") && url.includes("/items")) {
     return new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 });
   }

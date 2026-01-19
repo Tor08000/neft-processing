@@ -1,92 +1,117 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { fetchPartnerSettlements } from "../api/portal";
+import { useEffect, useMemo, useState } from "react";
+import { fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
-import { StatusBadge } from "../components/StatusBadge";
-import { formatCurrency, formatDate } from "../utils/format";
-import type { PartnerSettlementSummary } from "../types/portal";
 import { ErrorState, LoadingState } from "../components/states";
+import { StatusBadge } from "../components/StatusBadge";
+import { formatCurrency, formatDateTime } from "../utils/format";
+import type { PartnerPayoutRequest } from "../types/partnerFinance";
 
 export function PayoutsPage() {
   const { user } = useAuth();
-  const [settlements, setSettlements] = useState<PartnerSettlementSummary[]>([]);
+  const [amount, setAmount] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [items, setItems] = useState<PartnerPayoutRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const currency = useMemo(() => "RUB", []);
+
+  const loadPayouts = () => {
     if (!user) return;
     setIsLoading(true);
-    fetchPartnerSettlements(user)
-      .then((data) => {
-        if (active) {
-          setSettlements(data.items ?? []);
-        }
-      })
+    fetchPartnerPayouts(user.token)
+      .then((data) => setItems(data.items ?? []))
       .catch((err) => {
         console.error(err);
-        if (active) {
-          setError("Не удалось загрузить выплаты");
-        }
+        setError("Не удалось загрузить историю выплат");
       })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
+      .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    loadPayouts();
   }, [user]);
+
+  const handleRequest = async () => {
+    if (!user) return;
+    setSubmitError(null);
+    if (!amount || amount <= 0) {
+      setSubmitError("Укажите сумму выплаты");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await requestPartnerPayout(user.token, amount, currency);
+      setAmount(0);
+      loadPayouts();
+    } catch (err) {
+      console.error(err);
+      setSubmitError("Не удалось создать запрос на выплату");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="stack">
       <section className="card">
         <div className="section-title">
-          <h2>Выплаты / Settlements</h2>
-          <Link className="ghost" to="/payouts/batches">
-            Payout batches
-          </Link>
+          <h2>Запросить выплату</h2>
+        </div>
+        <div className="form-grid">
+          <label className="field">
+            <span className="label">Сумма</span>
+            <input
+              type="number"
+              min={0}
+              value={amount}
+              onChange={(event) => setAmount(Number(event.target.value))}
+              placeholder="0"
+            />
+          </label>
+          <label className="field">
+            <span className="label">Валюта</span>
+            <input type="text" value={currency} disabled />
+          </label>
+          <div className="field">
+            <button className="primary" type="button" disabled={isSubmitting} onClick={handleRequest}>
+              {isSubmitting ? "Отправка..." : "Запросить"}
+            </button>
+          </div>
+        </div>
+        {submitError ? <div className="error">{submitError}</div> : null}
+      </section>
+      <section className="card">
+        <div className="section-title">
+          <h2>История выплат</h2>
         </div>
         {isLoading ? (
           <LoadingState />
         ) : error ? (
           <ErrorState description={error} />
-        ) : settlements.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="empty-state">
-            <strong>Выплаты не найдены</strong>
-            <span className="muted">Данные появятся после расчёта.</span>
+            <strong>Пока нет запросов</strong>
+            <span className="muted">Создайте запрос, чтобы получить выплату.</span>
           </div>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Период</th>
-                <th>Gross</th>
-                <th>Fees</th>
-                <th>Refunds</th>
-                <th>Net</th>
+                <th>Дата</th>
+                <th>Сумма</th>
                 <th>Статус</th>
-                <th />
               </tr>
             </thead>
             <tbody>
-              {settlements.map((settlement) => (
-                <tr key={settlement.settlement_ref}>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{formatDateTime(item.created_at)}</td>
+                  <td>{formatCurrency(item.amount ?? null, item.currency)}</td>
                   <td>
-                    {formatDate(settlement.period_start)} — {formatDate(settlement.period_end)}
-                  </td>
-                  <td>{formatCurrency(settlement.gross, settlement.currency)}</td>
-                  <td>{formatCurrency(settlement.fees, settlement.currency)}</td>
-                  <td>{formatCurrency(settlement.refunds, settlement.currency)}</td>
-                  <td>{formatCurrency(settlement.net_amount, settlement.currency)}</td>
-                  <td>
-                    <StatusBadge status={settlement.status} />
-                  </td>
-                  <td>
-                    <Link className="ghost" to={`/payouts/${settlement.settlement_ref}`}>
-                      details
-                    </Link>
+                    <StatusBadge status={item.status} />
                   </td>
                 </tr>
               ))}
