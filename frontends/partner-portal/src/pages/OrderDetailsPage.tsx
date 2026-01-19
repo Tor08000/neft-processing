@@ -483,6 +483,8 @@ export function OrderDetailsPage() {
                           >
                             Почему?
                           </Link>
+                        ) : penalty.source_ref?.sla_event_id ? (
+                          <span className="muted">SLA {penalty.source_ref.sla_event_id}</span>
                         ) : (
                           <span className="muted">—</span>
                         )}

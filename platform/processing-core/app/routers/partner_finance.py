@@ -117,7 +117,7 @@ def _audit_forbidden_access(
     entity_id: str,
 ) -> None:
     AuditService(db).audit(
-        event_type="PARTNER_ACCESS_FORBIDDEN",
+        event_type="partner_trust_forbidden",
         entity_type=entity_type,
         entity_id=entity_id,
         action="FORBIDDEN",
@@ -197,6 +197,9 @@ def explain_partner_ledger_entry(
     source_id = meta.get("source_id")
     source_label = None
     formula = None
+    settlement_snapshot_hash = None
+    settlement_breakdown_url = None
+    admin_actor_id = None
     if source_type in {"marketplace_order", "partner_order", "order"}:
         order_id = entry.order_id or source_id
         if order_id:
@@ -209,8 +212,28 @@ def explain_partner_ledger_entry(
                 if gross is not None and fee is not None and penalties is not None:
                     formula = f"{gross} - {fee} - {penalties}"
             source_label = f"Order {order_id}"
+            settlement_snapshot_id = meta.get("settlement_snapshot_id")
+            if settlement_snapshot_id:
+                snapshot = (
+                    db.query(MarketplaceSettlementSnapshot)
+                    .filter(MarketplaceSettlementSnapshot.id == settlement_snapshot_id)
+                    .one_or_none()
+                )
+                if snapshot:
+                    settlement_snapshot_hash = snapshot.hash
+                    settlement_breakdown_url = f"/api/core/partner/orders/{order_id}/settlement"
     if source_type == "payout_request" and source_id:
         source_label = f"Payout request {source_id}"
+    if not source_type and not source_id:
+        admin_actor_id = (
+            meta.get("admin_actor_id")
+            or meta.get("actor_id")
+            or meta.get("admin_id")
+            or meta.get("actor")
+        )
+        source_label = "Manual adjustment"
+        source_type = "manual_adjustment"
+    partner_trust_metrics.mark_ledger_explain_requested()
     return LedgerExplainOut(
         entry_id=str(entry.id),
         operation=entry.entry_type.value if hasattr(entry.entry_type, "value") else str(entry.entry_type),
@@ -221,6 +244,9 @@ def explain_partner_ledger_entry(
         source_id=str(source_id) if source_id else None,
         source_label=source_label,
         formula=formula,
+        settlement_snapshot_hash=settlement_snapshot_hash,
+        settlement_breakdown_url=settlement_breakdown_url,
+        admin_actor_id=str(admin_actor_id) if admin_actor_id else None,
     )
 
 
@@ -361,9 +387,11 @@ def trace_partner_payout(
                 settlement_snapshot_id=str(snapshot.id),
                 finalized_at=snapshot.finalized_at,
                 hash=snapshot.hash,
+                settlement_breakdown_url=f"/api/core/partner/orders/{snapshot.order_id}/settlement",
             )
         )
     state_value = batch.state.value if hasattr(batch.state, "value") else str(batch.state)
+    partner_trust_metrics.mark_payout_trace_requested()
     return PayoutTraceOut(
         payout_id=str(batch.id),
         payout_state=state_value,
@@ -540,7 +568,7 @@ def export_settlement_chain(
     db.add(job)
     db.commit()
     export_metrics.mark_created(job.report_type.value, job.format.value)
-    partner_trust_metrics.mark_export_generated()
+    partner_trust_metrics.mark_export_created()
     try:
         from app.celery_client import celery_client
 
