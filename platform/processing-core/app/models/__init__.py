@@ -153,6 +153,14 @@ from .bi import (  # noqa: F401
     BiWatermark,
 )
 from .partner import Partner  # noqa: F401
+from .partner_core import (  # noqa: F401
+    PartnerOffer,
+    PartnerOfferStatus,
+    PartnerOrder,
+    PartnerOrderStatus,
+    PartnerProfile,
+    PartnerProfileStatus,
+)
 from .groups import (  # noqa: F401
     CardGroup,
     CardGroupMember,

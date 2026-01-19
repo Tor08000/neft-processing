@@ -34,6 +34,17 @@ class PortalNavSection(BaseModel):
     label: str
 
 
+class PortalMePartnerProfile(BaseModel):
+    display_name: str | None = None
+    contacts_json: dict[str, Any] | None = None
+    meta_json: dict[str, Any] | None = None
+
+
+class PortalMePartner(BaseModel):
+    status: str | None = None
+    profile: PortalMePartnerProfile | None = None
+
+
 class PortalMeResponse(BaseModel):
     user: PortalMeUser
     org: PortalMeOrg | None = None
@@ -43,3 +54,4 @@ class PortalMeResponse(BaseModel):
     entitlements_snapshot: dict[str, Any] | None = None
     capabilities: list[str]
     nav_sections: list[PortalNavSection] | None = None
+    partner: PortalMePartner | None = None

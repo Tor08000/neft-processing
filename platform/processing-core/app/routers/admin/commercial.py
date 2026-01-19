@@ -30,6 +30,7 @@ from app.schemas.commercial_admin import (
 )
 from app.services.audit_service import AuditService, request_context_from_request
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
+from app.services.partner_core_service import ensure_partner_profile
 
 router = APIRouter(prefix="/commercial", tags=["commercial-admin"])
 
@@ -378,6 +379,12 @@ def add_org_role(
     after_roles = sorted({*before_roles, role})
     if after_roles != before_roles:
         _save_org_roles(db, org_id=org_id, roles=after_roles)
+        if role == "PARTNER":
+            if _table_exists(db, "partner_profiles"):
+                profile = ensure_partner_profile(db, org_id=org_id)
+                if profile in db.new:
+                    db.commit()
+                    db.refresh(profile)
     _audit_role_change(
         db,
         request=request,

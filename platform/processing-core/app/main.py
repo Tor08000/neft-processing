@@ -10,7 +10,7 @@ from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from app.routers.client_auth_gateway import router as client_auth_gateway_router
 from app.routers.client_me import router as client_me_router
 from app.routers.portal_me import router as portal_me_router
 from app.routers.partner_me import router as partner_me_router
+from app.routers.partner_core import router as partner_core_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client_marketplace import router as client_marketplace_router
@@ -74,6 +75,7 @@ from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
 from app.fastapi_utils import generate_unique_id, safe_include_router
 from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
+from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
@@ -93,8 +95,10 @@ from app.services.posting_metrics import metrics as posting_metrics
 from app.services.risk_adapter import metrics as risk_metrics
 from app.services.risk_v5.hook import register_shadow_hook
 from app.services.risk_v5.metrics import metrics as risk_v5_metrics
+from app.models.audit_log import AuditVisibility
 from app.models.email_outbox import EmailOutbox, EmailOutboxStatus
 from app.models.export_jobs import ExportJob, ExportJobStatus
+from app.security.rbac.principal import Principal, get_principal
 
 
 # Если есть отдельный роутер для чтения операций из БД – подключим его
@@ -235,6 +239,38 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def partner_client_separation_guard(request, call_next):
+    path = request.url.path
+    if path.startswith("/api/core/client") or path.startswith("/api/client"):
+        try:
+            principal: Principal = get_principal(request)
+        except HTTPException:
+            return await call_next(request)
+        if principal.partner_id and principal.client_id is None and not principal.is_admin:
+            db = get_sessionmaker()()
+            try:
+                AuditService(db).audit(
+                    event_type="partner_client_forbidden",
+                    entity_type="client_endpoint",
+                    entity_id=path,
+                    action="forbidden",
+                    visibility=AuditVisibility.INTERNAL,
+                    external_refs={"method": request.method, "path": path},
+                    request_ctx=request_context_from_request(
+                        request, token=_sanitize_token_for_audit(principal.raw_claims)
+                    ),
+                )
+                db.commit()
+            finally:
+                db.close()
+            return JSONResponse(
+                status_code=403,
+                content={"error": "forbidden", "reason": "partner_client_separation"},
+            )
+    return await call_next(request)
+
+
 def custom_openapi() -> dict[str, Any]:
     if app.openapi_schema:
         return app.openapi_schema
@@ -353,6 +389,9 @@ if INCLUDE_CUSTOM_CORE_PREFIX:
 safe_include_router(app, portal_partner_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, portal_partner_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_core_router, prefix=LEGACY_API_PREFIX)
+if INCLUDE_CUSTOM_CORE_PREFIX:
+    safe_include_router(app, partner_core_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)
