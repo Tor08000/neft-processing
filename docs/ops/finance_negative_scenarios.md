@@ -9,6 +9,9 @@ defines canonical billing behavior for failed or ambiguous payments.
 - **SCN-4 Overdue** — invoice transitions to OVERDUE and can be paid after overdue, with audit trail.
 - **SCN-5 Cancel/Void** — cancellation is allowed only from permitted states, idempotent, and excluded from settlement.
 - **SCN-6 Refund after SLA penalty** — SLA breach → penalty/credit → payment → refund, with balanced ledger and settlement adjustment.
+- **SCN-7 Refund after payout (MoR)** — payout paid → refund posted → partner ledger negative → next payout blocked.
+- **SCN-8 Dispute after settlement (MoR)** — dispute opens → settlement frozen → payout blocked until admin resolution.
+- **SCN-9 SLA penalty after payout (MoR)** — SLA penalty after payout → clawback required and payout blocked.
 
 ## Canonical behavior (non-negotiable)
 

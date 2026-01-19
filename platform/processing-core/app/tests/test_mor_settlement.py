@@ -150,14 +150,17 @@ def test_mor_settlement_breakdown_and_ledgers(db_session: Session) -> None:
         .one()
     )
     assert ledger_entry.amount == Decimal("85")
+    assert ledger_entry.meta_json["settlement_snapshot_id"] == str(snapshot.id)
 
     revenue_entry = db_session.query(PlatformRevenueEntry).filter_by(order_id=order.id).one()
     assert revenue_entry.amount == Decimal("15")
+    assert revenue_entry.meta_json["settlement_snapshot_id"] == str(snapshot.id)
 
-    MarketplaceSettlementService(db_session).update_penalty_for_order(
+    penalty_result = MarketplaceSettlementService(db_session).update_penalty_for_order(
         order_id=str(order.id),
         penalty_amount=Decimal("5"),
     )
+    assert penalty_result is not None
     PartnerFinanceService(db_session).record_sla_penalty(
         partner_org_id=partner_id,
         order_id=str(order.id),

@@ -27,10 +27,14 @@ from app.models.partner_finance import (
     PartnerPayoutPolicy,
     PartnerPayoutSchedule,
 )
+from app.models.dispute import Dispute, DisputeStatus
+from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
+from app.models.operation import Operation
 from app.services.audit_service import AuditService, RequestContext
 from app.services.notifications_v1 import enqueue_notification_message
 from app.models.notifications import NotificationChannel, NotificationPriority, NotificationSubjectType
 from app.services.partner_legal_service import PartnerLegalService
+from app.services.mor_metrics import metrics as mor_metrics
 
 
 @dataclass
@@ -128,6 +132,26 @@ class PartnerFinanceService:
                 reasons.append("SCHEDULE_LOCK")
         return reasons
 
+    def _has_open_disputes(self, *, partner_org_id: str) -> bool:
+        return (
+            self.db.query(Dispute.id)
+            .join(Operation, Operation.id == Dispute.operation_id)
+            .filter(Operation.merchant_id == partner_org_id)
+            .filter(Dispute.status.in_([DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW]))
+            .first()
+            is not None
+        )
+
+    def _settlement_snapshot_for_order(self, *, order_id: str) -> MarketplaceSettlementSnapshot:
+        snapshot = (
+            self.db.query(MarketplaceSettlementSnapshot)
+            .filter(MarketplaceSettlementSnapshot.order_id == order_id)
+            .one_or_none()
+        )
+        if snapshot is None:
+            raise ValueError("settlement_snapshot_missing")
+        return snapshot
+
     def evaluate_payout_policy(
         self,
         *,
@@ -137,6 +161,35 @@ class PartnerFinanceService:
         now: datetime,
     ) -> list[str]:
         return self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
+
+    def evaluate_payout_blockers(
+        self,
+        *,
+        partner_org_id: str,
+        amount: Decimal,
+        currency: str,
+        now: datetime,
+    ) -> list[str]:
+        reasons: list[str] = []
+        policy = self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
+        if policy:
+            policy_reasons = self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
+            reasons.extend(
+                [
+                    "MIN_THRESHOLD" if reason == "BELOW_THRESHOLD" else reason
+                    for reason in policy_reasons
+                ]
+            )
+        legal_blocked = False
+        try:
+            PartnerLegalService(self.db, request_ctx=self.request_ctx).ensure_payout_allowed(partner_id=partner_org_id)
+        except Exception:
+            legal_blocked = True
+        if legal_blocked:
+            reasons.append("LEGAL_PENDING")
+        if self._has_open_disputes(partner_org_id=partner_org_id):
+            reasons.append("DISPUTES_OPEN")
+        return sorted(set(reasons))
 
     def post_entry(
         self,
@@ -233,6 +286,8 @@ class PartnerFinanceService:
         order: MarketplaceOrder,
         partner_net_amount: Decimal,
         currency: str,
+        settlement_snapshot_id: str | None = None,
+        settlement_id: str | None = None,
     ) -> PartnerLedgerEntry | None:
         if order.status != MarketplaceOrderStatus.COMPLETED.value:
             return None
@@ -246,6 +301,10 @@ class PartnerFinanceService:
         )
         if existing:
             return existing
+        if settlement_snapshot_id is None or settlement_id is None:
+            snapshot = self._settlement_snapshot_for_order(order_id=str(order.id))
+            settlement_snapshot_id = str(snapshot.id)
+            settlement_id = str(snapshot.settlement_id)
         entry = self.post_entry(
             partner_org_id=str(order.partner_id),
             order_id=str(order.id),
@@ -253,7 +312,12 @@ class PartnerFinanceService:
             amount=partner_net_amount,
             currency=currency,
             direction=PartnerLedgerDirection.CREDIT,
-            meta_json={"source_type": "marketplace_order", "source_id": str(order.id)},
+            meta_json={
+                "source_type": "marketplace_order",
+                "source_id": str(order.id),
+                "settlement_snapshot_id": settlement_snapshot_id,
+                "settlement_id": settlement_id,
+            },
         )
         AuditService(self.db).audit(
             event_type="partner_earned",
@@ -294,6 +358,7 @@ class PartnerFinanceService:
         currency: str,
         reason: str,
     ) -> PartnerLedgerEntry:
+        snapshot = self._settlement_snapshot_for_order(order_id=order_id)
         entry = self.post_entry(
             partner_org_id=partner_org_id,
             order_id=order_id,
@@ -301,7 +366,13 @@ class PartnerFinanceService:
             amount=amount,
             currency=currency,
             direction=PartnerLedgerDirection.DEBIT,
-            meta_json={"source_type": "order", "source_id": order_id, "reason": reason},
+            meta_json={
+                "source_type": "order",
+                "source_id": order_id,
+                "reason": reason,
+                "settlement_snapshot_id": str(snapshot.id),
+                "settlement_id": str(snapshot.settlement_id),
+            },
         )
         AuditService(self.db).audit(
             event_type="partner_sla_penalty",
@@ -355,26 +426,31 @@ class PartnerFinanceService:
         requested_by: str | None,
     ) -> PartnerPayoutRequest:
         self._ensure_partner_active(partner_org_id)
-        PartnerLegalService(self.db, request_ctx=self.request_ctx).ensure_payout_allowed(partner_id=partner_org_id)
-        policy = self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
-        if policy:
-            now = datetime.now(timezone.utc)
-            reasons = self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
-            if reasons:
-                AuditService(self.db).audit(
-                    event_type="partner_payout_blocked",
-                    entity_type="partner_payout_policy",
-                    entity_id=str(policy.id),
-                    action="partner_payout_blocked",
-                    after={
-                        "partner_org_id": partner_org_id,
-                        "amount": str(amount),
-                        "currency": currency,
-                        "reasons": reasons,
-                    },
-                    request_ctx=self.request_ctx,
-                )
-                raise PartnerPayoutPolicyError(reasons)
+        now = datetime.now(timezone.utc)
+        reasons = self.evaluate_payout_blockers(
+            partner_org_id=partner_org_id,
+            amount=amount,
+            currency=currency,
+            now=now,
+        )
+        if reasons:
+            policy = self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
+            AuditService(self.db).audit(
+                event_type="partner_payout_blocked",
+                entity_type="partner_payout_policy" if policy else "partner_payout_request",
+                entity_id=str(policy.id) if policy else partner_org_id,
+                action="partner_payout_blocked",
+                after={
+                    "partner_org_id": partner_org_id,
+                    "amount": str(amount),
+                    "currency": currency,
+                    "reasons": reasons,
+                },
+                request_ctx=self.request_ctx,
+            )
+            for reason in reasons:
+                mor_metrics.mark_payout_blocked(reason)
+            raise PartnerPayoutBlockedError(reasons)
         account = self.get_account(partner_org_id=partner_org_id, currency=currency)
         if amount > (account.balance_available or 0):
             raise ValueError("insufficient_balance")
@@ -652,4 +728,10 @@ class PartnerPayoutPolicyError(ValueError):
         self.reasons = reasons
 
 
-__all__ = ["PartnerFinanceService", "PartnerPayoutPolicyError"]
+class PartnerPayoutBlockedError(ValueError):
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("payout_blocked")
+        self.reasons = reasons
+
+
+__all__ = ["PartnerFinanceService", "PartnerPayoutPolicyError", "PartnerPayoutBlockedError"]
