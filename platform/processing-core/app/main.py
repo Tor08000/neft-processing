@@ -76,6 +76,7 @@ from app.services.integration_metrics import metrics as intake_metrics
 from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
 from app.fastapi_utils import generate_unique_id, safe_include_router
+from app.error_handlers import add_exception_handlers
 from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.fleet_metrics import metrics as fleet_metrics
@@ -241,6 +242,8 @@ app = FastAPI(
     lifespan=lifespan,
     generate_unique_id_function=generate_unique_id,
 )
+
+add_exception_handlers(app)
 
 
 @app.middleware("http")
