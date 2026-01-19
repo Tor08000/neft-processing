@@ -23,7 +23,7 @@ from app.models.marketplace_commissions import (
     MarketplaceCommissionType,
 )
 from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderActorType, MarketplaceOrderEvent, MarketplacePaymentFlow
-from app.models.marketplace_settlement import MarketplaceSettlementItem
+from app.models.marketplace_settlement import MarketplaceSettlementItem, MarketplaceSettlementSnapshot
 from app.models.notifications import NotificationMessage
 from app.models.partner_finance import PartnerAccount, PartnerLedgerEntry, PartnerLedgerEntryType
 from app.models.platform_revenue import PlatformRevenueEntry
@@ -47,6 +47,7 @@ def db_session() -> Session:
         MarketplaceCommissionRule.__table__,
         MarketplaceOrderEvent.__table__,
         MarketplaceSettlementItem.__table__,
+        MarketplaceSettlementSnapshot.__table__,
         PartnerAccount.__table__,
         PartnerLedgerEntry.__table__,
         NotificationMessage.__table__,
@@ -138,6 +139,9 @@ def test_mor_settlement_breakdown_and_ledgers(db_session: Session) -> None:
 
     settlement_item = db_session.query(MarketplaceSettlementItem).filter_by(order_id=order.id).one()
     assert settlement_item.net_partner_amount == Decimal("85")
+    snapshot = db_session.query(MarketplaceSettlementSnapshot).filter_by(order_id=order.id).one()
+    assert snapshot.partner_net == Decimal("85")
+    assert snapshot.hash is not None
 
     ledger_entry = (
         db_session.query(PartnerLedgerEntry)
@@ -169,6 +173,9 @@ def test_mor_settlement_breakdown_and_ledgers(db_session: Session) -> None:
 
     settlement_item = db_session.query(MarketplaceSettlementItem).filter_by(order_id=order.id).one()
     assert settlement_item.net_partner_amount == Decimal("80")
+    snapshot = db_session.query(MarketplaceSettlementSnapshot).filter_by(order_id=order.id).one()
+    assert snapshot.penalties == Decimal("5")
+    assert snapshot.partner_net == Decimal("80")
 
     account = db_session.query(PartnerAccount).filter_by(org_id=partner_id).one()
     assert account.balance_available == Decimal("80")

@@ -35,6 +35,12 @@ class PartnerPayoutRequestStatus(str, Enum):
     PAID = "PAID"
 
 
+class PartnerPayoutSchedule(str, Enum):
+    WEEKLY = "WEEKLY"
+    BIWEEKLY = "BIWEEKLY"
+    MONTHLY = "MONTHLY"
+
+
 class PartnerDocumentStatus(str, Enum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
@@ -90,6 +96,24 @@ class PartnerPayoutRequest(Base):
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class PartnerPayoutPolicy(Base):
+    __tablename__ = "partner_payout_policies"
+    __table_args__ = (Index("ix_partner_payout_policy_org_currency", "partner_org_id", "currency"),)
+
+    id = Column(String(36), primary_key=True, default=new_uuid_str)
+    partner_org_id = Column(String(64), nullable=False, index=True)
+    currency = Column(String(8), nullable=False, server_default="RUB")
+    min_payout_amount = Column(Numeric(18, 4), nullable=False, server_default="0")
+    payout_hold_days = Column(Numeric(10, 0), nullable=False, server_default="0")
+    payout_schedule = Column(
+        ExistingEnum(PartnerPayoutSchedule, name="partner_payout_schedule"),
+        nullable=False,
+        server_default=PartnerPayoutSchedule.WEEKLY.value,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class PartnerInvoice(Base):
     __tablename__ = "partner_invoices"
     __table_args__ = (Index("ix_partner_invoices_partner_period", "partner_org_id", "period_from", "period_to"),)
@@ -140,6 +164,8 @@ __all__ = [
     "PartnerLedgerDirection",
     "PartnerLedgerEntry",
     "PartnerLedgerEntryType",
+    "PartnerPayoutPolicy",
     "PartnerPayoutRequest",
+    "PartnerPayoutSchedule",
     "PartnerPayoutRequestStatus",
 ]

@@ -72,6 +72,10 @@ class PartnerPayoutPreviewOut(BaseModel):
     partner_org_id: str
     currency: str
     available_amount: Decimal
+    min_payout_amount: Decimal | None = None
+    payout_hold_days: int | None = None
+    payout_schedule: str | None = None
+    payout_block_reasons: list[str] = []
     legal_status: str | None = None
     tax_context: dict | None = None
     warnings: list[str] = []

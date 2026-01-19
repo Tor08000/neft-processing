@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, Numeric, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import JSON
 
@@ -30,6 +30,11 @@ class MarketplaceSettlementItem(Base):
     __tablename__ = "marketplace_settlement_items"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    settlement_snapshot_id = Column(
+        GUID(),
+        ForeignKey("marketplace_settlement_snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     order_id = Column(GUID(), nullable=False, index=True)
     period = Column(String(7), nullable=False, index=True)
     gross_amount = Column(Numeric(18, 4), nullable=False)
@@ -62,9 +67,28 @@ class MarketplaceAdjustment(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class MarketplaceSettlementSnapshot(Base):
+    __tablename__ = "marketplace_settlement_snapshots"
+    __table_args__ = (UniqueConstraint("settlement_id", name="uq_marketplace_settlement_snapshots_settlement"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid_str)
+    settlement_id = Column(GUID(), nullable=False, index=True)
+    order_id = Column(GUID(), nullable=False, index=True)
+    gross_amount = Column(Numeric(18, 4), nullable=False)
+    platform_fee = Column(Numeric(18, 4), nullable=False)
+    penalties = Column(Numeric(18, 4), nullable=False)
+    partner_net = Column(Numeric(18, 4), nullable=False)
+    currency = Column(String(8), nullable=False)
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    hash = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 __all__ = [
     "MarketplaceAdjustment",
     "MarketplaceAdjustmentType",
     "MarketplaceSettlementItem",
     "MarketplaceSettlementStatus",
+    "MarketplaceSettlementSnapshot",
 ]

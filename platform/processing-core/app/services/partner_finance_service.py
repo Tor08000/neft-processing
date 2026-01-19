@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.models.partner_core import (
@@ -25,6 +24,8 @@ from app.models.partner_finance import (
     PartnerLedgerEntryType,
     PartnerPayoutRequest,
     PartnerPayoutRequestStatus,
+    PartnerPayoutPolicy,
+    PartnerPayoutSchedule,
 )
 from app.services.audit_service import AuditService, RequestContext
 from app.services.notifications_v1 import enqueue_notification_message
@@ -68,6 +69,74 @@ class PartnerFinanceService:
     def _ledger_amount(self, amount: Decimal, direction: PartnerLedgerDirection) -> BalanceDelta:
         sign = Decimal("1") if direction == PartnerLedgerDirection.CREDIT else Decimal("-1")
         return BalanceDelta(available=amount * sign)
+
+    def _get_payout_policy(self, *, partner_org_id: str, currency: str) -> PartnerPayoutPolicy | None:
+        return (
+            self.db.query(PartnerPayoutPolicy)
+            .filter(
+                PartnerPayoutPolicy.partner_org_id == partner_org_id,
+                PartnerPayoutPolicy.currency == currency,
+            )
+            .one_or_none()
+        )
+
+    def get_payout_policy(self, *, partner_org_id: str, currency: str) -> PartnerPayoutPolicy | None:
+        return self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
+
+    def _evaluate_payout_policy(
+        self,
+        *,
+        policy: PartnerPayoutPolicy,
+        amount: Decimal,
+        currency: str,
+        now: datetime,
+    ) -> list[str]:
+        reasons: list[str] = []
+        if amount < Decimal(policy.min_payout_amount or 0):
+            reasons.append("BELOW_THRESHOLD")
+        hold_days = int(policy.payout_hold_days or 0)
+        if hold_days > 0:
+            last_earned = (
+                self.db.query(PartnerLedgerEntry)
+                .filter(
+                    PartnerLedgerEntry.partner_org_id == policy.partner_org_id,
+                    PartnerLedgerEntry.currency == currency,
+                    PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.EARNED,
+                )
+                .order_by(PartnerLedgerEntry.created_at.desc())
+                .first()
+            )
+            if last_earned and (now - last_earned.created_at).days < hold_days:
+                reasons.append("HOLD_ACTIVE")
+        schedule_days = {
+            PartnerPayoutSchedule.WEEKLY: 7,
+            PartnerPayoutSchedule.BIWEEKLY: 14,
+            PartnerPayoutSchedule.MONTHLY: 30,
+        }
+        cadence_days = schedule_days.get(policy.payout_schedule)
+        if cadence_days:
+            last_payout = (
+                self.db.query(PartnerPayoutRequest)
+                .filter(
+                    PartnerPayoutRequest.partner_org_id == policy.partner_org_id,
+                    PartnerPayoutRequest.currency == currency,
+                )
+                .order_by(PartnerPayoutRequest.created_at.desc())
+                .first()
+            )
+            if last_payout and (now - last_payout.created_at).days < cadence_days:
+                reasons.append("SCHEDULE_LOCK")
+        return reasons
+
+    def evaluate_payout_policy(
+        self,
+        *,
+        policy: PartnerPayoutPolicy,
+        amount: Decimal,
+        currency: str,
+        now: datetime,
+    ) -> list[str]:
+        return self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
 
     def post_entry(
         self,
@@ -287,6 +356,25 @@ class PartnerFinanceService:
     ) -> PartnerPayoutRequest:
         self._ensure_partner_active(partner_org_id)
         PartnerLegalService(self.db, request_ctx=self.request_ctx).ensure_payout_allowed(partner_id=partner_org_id)
+        policy = self._get_payout_policy(partner_org_id=partner_org_id, currency=currency)
+        if policy:
+            now = datetime.now(timezone.utc)
+            reasons = self._evaluate_payout_policy(policy=policy, amount=amount, currency=currency, now=now)
+            if reasons:
+                AuditService(self.db).audit(
+                    event_type="partner_payout_blocked",
+                    entity_type="partner_payout_policy",
+                    entity_id=str(policy.id),
+                    action="partner_payout_blocked",
+                    after={
+                        "partner_org_id": partner_org_id,
+                        "amount": str(amount),
+                        "currency": currency,
+                        "reasons": reasons,
+                    },
+                    request_ctx=self.request_ctx,
+                )
+                raise PartnerPayoutPolicyError(reasons)
         account = self.get_account(partner_org_id=partner_org_id, currency=currency)
         if amount > (account.balance_available or 0):
             raise ValueError("insufficient_balance")
@@ -554,4 +642,10 @@ class PartnerFinanceService:
         return total
 
 
-__all__ = ["PartnerFinanceService"]
+class PartnerPayoutPolicyError(ValueError):
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("payout_policy_blocked")
+        self.reasons = reasons
+
+
+__all__ = ["PartnerFinanceService", "PartnerPayoutPolicyError"]

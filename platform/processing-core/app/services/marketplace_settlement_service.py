@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+import hashlib
+import json
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -13,6 +15,7 @@ from app.models.marketplace_settlement import (
     MarketplaceAdjustment,
     MarketplaceAdjustmentType,
     MarketplaceSettlementItem,
+    MarketplaceSettlementSnapshot,
     MarketplaceSettlementStatus,
 )
 from app.models.payout_batch import PayoutBatch, PayoutBatchState, PayoutItem
@@ -94,6 +97,65 @@ class MarketplaceSettlementService:
         order.payment_flow = MarketplacePaymentFlow.PLATFORM_MOR.value
         return breakdown
 
+    def _snapshot_hash(self, snapshot: MarketplaceSettlementSnapshot) -> str:
+        payload = {
+            "settlement_id": str(snapshot.settlement_id),
+            "order_id": str(snapshot.order_id),
+            "gross_amount": str(snapshot.gross_amount),
+            "platform_fee": str(snapshot.platform_fee),
+            "penalties": str(snapshot.penalties),
+            "partner_net": str(snapshot.partner_net),
+            "currency": snapshot.currency,
+            "finalized_at": snapshot.finalized_at.isoformat() if snapshot.finalized_at else None,
+        }
+        encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _upsert_snapshot(
+        self,
+        *,
+        item: MarketplaceSettlementItem,
+        order: MarketplaceOrder,
+        gross: Decimal,
+        fee: Decimal,
+        penalties: Decimal,
+        partner_net: Decimal,
+        currency: str,
+        finalized_at: datetime | None = None,
+        allow_override: bool = False,
+    ) -> MarketplaceSettlementSnapshot:
+        snapshot = (
+            self.db.query(MarketplaceSettlementSnapshot)
+            .filter(MarketplaceSettlementSnapshot.settlement_id == item.id)
+            .one_or_none()
+        )
+        if snapshot is None:
+            snapshot = MarketplaceSettlementSnapshot(
+                id=new_uuid_str(),
+                settlement_id=item.id,
+                order_id=order.id,
+                gross_amount=gross,
+                platform_fee=fee,
+                penalties=penalties,
+                partner_net=partner_net,
+                currency=currency,
+                finalized_at=finalized_at,
+            )
+            self.db.add(snapshot)
+        else:
+            if snapshot.finalized_at and not allow_override:
+                raise SettlementSnapshotError("settlement_immutable")
+            snapshot.gross_amount = gross
+            snapshot.platform_fee = fee
+            snapshot.penalties = penalties
+            snapshot.partner_net = partner_net
+            snapshot.currency = currency
+            if finalized_at:
+                snapshot.finalized_at = finalized_at
+        snapshot.hash = self._snapshot_hash(snapshot)
+        item.settlement_snapshot_id = snapshot.id
+        return snapshot
+
     def create_settlement_item_for_order(self, *, order: MarketplaceOrder) -> MarketplaceSettlementItem:
         if not order.completed_at:
             raise ValueError("order_not_completed")
@@ -128,6 +190,15 @@ class MarketplaceSettlementService:
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(item)
+        self._upsert_snapshot(
+            item=item,
+            order=order,
+            gross=gross,
+            fee=commission,
+            penalties=penalty_amount,
+            partner_net=net,
+            currency=breakdown["currency"],
+        )
         AuditService(self.db).audit(
             event_type="MARKETPLACE_SETTLEMENT_ITEM_CREATED",
             entity_type="marketplace_settlement_item",
@@ -214,13 +285,89 @@ class MarketplaceSettlementService:
         )
         order = self.db.query(MarketplaceOrder).filter(MarketplaceOrder.id == item.order_id).one_or_none()
         if order:
-            self._apply_settlement_breakdown(
+            breakdown = self._apply_settlement_breakdown(
                 order=order,
                 gross=self._decimal(item.gross_amount),
                 fee=self._decimal(item.commission_amount),
                 penalties=self._decimal(item.penalty_amount),
             )
+            self._upsert_snapshot(
+                item=item,
+                order=order,
+                gross=self._decimal(item.gross_amount),
+                fee=self._decimal(item.commission_amount),
+                penalties=self._decimal(item.penalty_amount),
+                partner_net=self._decimal(breakdown["partner_net_amount"]),
+                currency=breakdown["currency"],
+            )
         return item
+
+    def override_settlement_snapshot(
+        self,
+        *,
+        order_id: str,
+        gross: Decimal,
+        platform_fee: Decimal,
+        penalties: Decimal,
+        partner_net: Decimal,
+        currency: str,
+        reason: str,
+    ) -> MarketplaceSettlementSnapshot:
+        if not reason or not reason.strip():
+            raise ValueError("override_reason_required")
+        item = (
+            self.db.query(MarketplaceSettlementItem)
+            .filter(MarketplaceSettlementItem.order_id == order_id)
+            .one_or_none()
+        )
+        if not item:
+            raise ValueError("settlement_item_not_found")
+        order = self.db.query(MarketplaceOrder).filter(MarketplaceOrder.id == item.order_id).one_or_none()
+        if not order:
+            raise ValueError("order_not_found")
+        now = datetime.now(timezone.utc)
+        snapshot = self._upsert_snapshot(
+            item=item,
+            order=order,
+            gross=gross,
+            fee=platform_fee,
+            penalties=penalties,
+            partner_net=partner_net,
+            currency=currency,
+            finalized_at=now,
+            allow_override=True,
+        )
+        item.gross_amount = gross
+        item.commission_amount = platform_fee
+        item.penalty_amount = penalties
+        item.adjustments_amount = penalties
+        item.net_partner_amount = partner_net
+        order.settlement_breakdown_json = {
+            "gross_amount": str(gross),
+            "platform_fee_amount": str(platform_fee),
+            "platform_fee_basis": self._fee_basis(order),
+            "penalties_amount": str(penalties),
+            "partner_net_amount": str(partner_net),
+            "currency": currency,
+        }
+        AuditService(self.db).audit(
+            event_type="SETTLEMENT_OVERRIDE",
+            entity_type="marketplace_settlement_snapshot",
+            entity_id=str(snapshot.id),
+            action="SETTLEMENT_OVERRIDE",
+            after={
+                "order_id": str(order.id),
+                "settlement_id": str(item.id),
+                "gross_amount": str(gross),
+                "platform_fee": str(platform_fee),
+                "penalties": str(penalties),
+                "partner_net": str(partner_net),
+                "currency": currency,
+                "reason": reason,
+            },
+            request_ctx=self.request_ctx,
+        )
+        return snapshot
 
     def build_payout_batch(
         self,
@@ -235,8 +382,8 @@ class MarketplaceSettlementService:
         else:
             date_to = date(date_from.year, date_from.month + 1, 1)
         date_to = date_to - timedelta(days=1)
-        settlement_items = (
-            self.db.query(MarketplaceSettlementItem)
+        settlement_rows = (
+            self.db.query(MarketplaceSettlementItem, MarketplaceOrder)
             .join(MarketplaceOrder, MarketplaceOrder.id == MarketplaceSettlementItem.order_id)
             .filter(
                 MarketplaceSettlementItem.period == period,
@@ -245,11 +392,42 @@ class MarketplaceSettlementService:
             )
             .all()
         )
-        if not settlement_items:
+        if not settlement_rows:
             raise ValueError("no_open_settlement_items")
-        gross_total = sum((self._decimal(item.gross_amount) for item in settlement_items), Decimal("0"))
-        commission_total = sum((self._decimal(item.commission_amount) for item in settlement_items), Decimal("0"))
-        net_total = sum((self._decimal(item.net_partner_amount) for item in settlement_items), Decimal("0"))
+        settlement_items = [row[0] for row in settlement_rows]
+        orders_by_id = {str(row[1].id): row[1] for row in settlement_rows}
+        now = datetime.now(timezone.utc)
+        snapshots: list[MarketplaceSettlementSnapshot] = []
+        for item in settlement_items:
+            order = orders_by_id.get(str(item.order_id))
+            if not order:
+                continue
+            snapshot = (
+                self.db.query(MarketplaceSettlementSnapshot)
+                .filter(MarketplaceSettlementSnapshot.settlement_id == item.id)
+                .one_or_none()
+            )
+            if snapshot is None:
+                snapshot = self._upsert_snapshot(
+                    item=item,
+                    order=order,
+                    gross=self._decimal(item.gross_amount),
+                    fee=self._decimal(item.commission_amount),
+                    penalties=self._decimal(item.penalty_amount),
+                    partner_net=self._decimal(item.net_partner_amount),
+                    currency=self._resolve_currency(order),
+                    finalized_at=now,
+                )
+            else:
+                if snapshot.finalized_at is None:
+                    snapshot.finalized_at = now
+                    snapshot.hash = self._snapshot_hash(snapshot)
+                item.settlement_snapshot_id = snapshot.id
+            snapshots.append(snapshot)
+
+        gross_total = sum((self._decimal(s.gross_amount) for s in snapshots), Decimal("0"))
+        commission_total = sum((self._decimal(s.platform_fee) for s in snapshots), Decimal("0"))
+        net_total = sum((self._decimal(s.partner_net) for s in snapshots), Decimal("0"))
 
         penalty_total = (
             self.db.query(func.coalesce(func.sum(MarketplaceAdjustment.amount), 0))
@@ -272,6 +450,8 @@ class MarketplaceSettlementService:
         )
         adjustment_total = self._decimal(adjustment_total)
         payout_amount = net_total - adjustment_total
+        if payout_amount <= Decimal("0"):
+            raise ValueError("payout_blocked_negative_net")
 
         batch = PayoutBatch(
             id=new_uuid_str(),
@@ -303,6 +483,7 @@ class MarketplaceSettlementService:
                 "marketplace_period": period,
                 "adjustments_total": str(adjustment_total),
                 "penalties_total": str(penalty_total),
+                "settlement_snapshot_ids": [str(snapshot.id) for snapshot in snapshots],
             },
         )
         self.db.add(payout_item)
@@ -337,4 +518,10 @@ class MarketplaceSettlementService:
             item.status = MarketplaceSettlementStatus.SETTLED.value
 
 
-__all__ = ["MarketplaceSettlementService", "PayoutBatchResult"]
+class SettlementSnapshotError(ValueError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+__all__ = ["MarketplaceSettlementService", "PayoutBatchResult", "SettlementSnapshotError"]
