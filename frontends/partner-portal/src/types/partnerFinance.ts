@@ -22,6 +22,18 @@ export interface PartnerLedgerListResponse {
   items: PartnerLedgerEntry[];
 }
 
+export interface PartnerLedgerExplain {
+  entry_id: string;
+  operation: string;
+  amount: number;
+  currency: string;
+  direction: string;
+  source_type?: string | null;
+  source_id?: string | null;
+  source_label?: string | null;
+  formula?: string | null;
+}
+
 export interface PartnerPayoutRequest {
   id: string;
   partner_org_id: string;
@@ -62,4 +74,57 @@ export interface PartnerPayoutPreview {
   legal_status?: string | null;
   tax_context?: Record<string, unknown> | null;
   warnings?: string[];
+}
+
+export interface PartnerExportJob {
+  id: string;
+  org_id: string;
+  created_by_user_id: string;
+  report_type: string;
+  format: string;
+  status: string;
+  filters: Record<string, unknown>;
+  file_name?: string | null;
+  content_type?: string | null;
+  row_count?: number | null;
+  processed_rows: number;
+  progress_percent?: number | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface PartnerExportJobListResponse {
+  items: PartnerExportJob[];
+}
+
+export interface PayoutTraceOrder {
+  order_id: string;
+  gross_amount: number;
+  platform_fee: number;
+  penalties: number;
+  partner_net: number;
+  currency: string;
+  settlement_snapshot_id?: string | null;
+  finalized_at?: string | null;
+  hash?: string | null;
+}
+
+export interface PayoutTraceSummary {
+  gross_total: number;
+  fee_total: number;
+  penalties_total: number;
+  net_total: number;
+}
+
+export interface PartnerPayoutTrace {
+  payout_id: string;
+  payout_state: string;
+  date_from: string;
+  date_to: string;
+  created_at: string;
+  total_amount: number;
+  summary: PayoutTraceSummary;
+  orders: PayoutTraceOrder[];
 }

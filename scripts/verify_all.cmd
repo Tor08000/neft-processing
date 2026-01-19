@@ -139,6 +139,7 @@ call :run_script_if_exists "scripts\smoke_invoice_state_machine.cmd" || set "fai
 call :run_script_if_exists "scripts\smoke_portal_unification_e2e.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_partner_core_e2e.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_partner_settlement_e2e.cmd" || set "failed=1"
+call :run_script_if_exists "scripts\smoke_partner_trust_e2e.cmd" || set "failed=1"
 
 if "%failed%"=="0" (
   call :mark_ok "%step%" "All smoke scripts OK"

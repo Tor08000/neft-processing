@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+import json
 import time
 from pathlib import Path
 from uuid import uuid4
+import zipfile
 
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_client import celery_client
 from app.db import get_sessionmaker
-from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobStatus
+from app.models.export_jobs import ExportJob, ExportJobFormat, ExportJobReportType, ExportJobStatus
 from app.models.report_schedules import ReportSchedule
 from app.services.reports_render import (
     ExportRenderError,
@@ -17,6 +19,7 @@ from app.services.reports_render import (
     ExportRenderValidationError,
     TOO_MANY_ROWS_ERROR,
     render_export_report_stream,
+    settlement_chain_summary,
     write_csv_stream,
     write_xlsx_stream,
 )
@@ -119,6 +122,11 @@ def _build_object_key(org_id: str, job_id: str, filename: str) -> str:
 def _build_xlsx_filename(report_type: str, job_id: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
     return f"{report_type}_{stamp}_{job_id}.xlsx"
+
+
+def _build_zip_filename(report_type: str, job_id: str) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    return f"{report_type}_{stamp}_{job_id}.zip"
 
 
 def _notify_schedule_if_needed(session, job: ExportJob, success: bool) -> None:
@@ -276,7 +284,7 @@ def generate_export_job(job_id: str) -> dict:
                 )
         temp_dir = Path(settings.NEFT_EXPORT_TMP_DIR)
         temp_dir.mkdir(parents=True, exist_ok=True)
-        temp_suffix = "xlsx" if job.format == ExportJobFormat.XLSX else "csv"
+        temp_suffix = "zip" if job.format == ExportJobFormat.ZIP else "xlsx" if job.format == ExportJobFormat.XLSX else "csv"
         temp_path = temp_dir / f"export_{job.id}_{uuid4().hex}.{temp_suffix}"
         if job.format == ExportJobFormat.XLSX:
             filename = _build_xlsx_filename(job.report_type.value, str(job.id))
@@ -287,6 +295,40 @@ def generate_export_job(job_id: str) -> dict:
                 max_rows=settings.NEFT_EXPORT_MAX_ROWS,
                 progress_callback=progress_callback,
             )
+        elif job.format == ExportJobFormat.ZIP:
+            filename = _build_zip_filename(job.report_type.value, str(job.id))
+            content_type = "application/zip"
+            csv_path = temp_dir / f"export_{job.id}_{uuid4().hex}.csv"
+            row_count = write_csv_stream(
+                render_result,
+                file_path=str(csv_path),
+                max_rows=settings.NEFT_EXPORT_MAX_ROWS,
+                progress_callback=progress_callback,
+            )
+            summary = {
+                "report_type": job.report_type.value,
+                "format": job.format.value,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "row_count": row_count,
+            }
+            if job.report_type == ExportJobReportType.SETTLEMENT_CHAIN:
+                filters_payload = job.filters_json if isinstance(job.filters_json, dict) else {}
+                date_from = filters_payload.get("from")
+                date_to = filters_payload.get("to")
+                if date_from and date_to:
+                    summary.update(
+                        settlement_chain_summary(
+                            session,
+                            partner_id=str(job.org_id),
+                            date_from=date.fromisoformat(date_from),
+                            date_to=date.fromisoformat(date_to),
+                        )
+                    )
+            summary_path = temp_dir / f"export_{job.id}_{uuid4().hex}_summary.json"
+            summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+            with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(csv_path, arcname=Path(render_result.filename).name)
+                archive.write(summary_path, arcname="summary.json")
         else:
             filename = render_result.filename
             content_type = "text/csv"

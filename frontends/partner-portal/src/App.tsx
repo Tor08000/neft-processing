@@ -16,6 +16,7 @@ import { PartnerContractsPage } from "./pages/PartnerContractsPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
 import { SettlementDetailsPage } from "./pages/SettlementDetailsPage";
 import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
+import { PayoutTracePage } from "./pages/PayoutTracePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DocumentDetailsPage } from "./pages/DocumentDetailsPage";
 import { PartnerFinancePage } from "./pages/PartnerFinancePage";
@@ -69,6 +70,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/payouts" element={<PayoutsPage />} />
                 <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
                 <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
+                <Route path="/payouts/batches/:id" element={<PayoutTracePage />} />
                 <Route path="/documents" element={<DocumentsPage />} />
                 <Route path="/documents/:id" element={<DocumentDetailsPage />} />
                 <Route path="/orders" element={<OrdersPage />} />

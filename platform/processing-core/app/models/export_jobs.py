@@ -15,11 +15,13 @@ class ExportJobReportType(str, Enum):
     DOCUMENTS = "documents"
     AUDIT = "audit"
     SUPPORT = "support"
+    SETTLEMENT_CHAIN = "settlement_chain"
 
 
 class ExportJobFormat(str, Enum):
     CSV = "CSV"
     XLSX = "XLSX"
+    ZIP = "ZIP"
 
 
 class ExportJobStatus(str, Enum):

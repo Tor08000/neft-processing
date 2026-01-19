@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from typing import Any, Callable, Iterable, Iterator
 
-from sqlalchemy import and_, cast, or_, String
+from sqlalchemy import and_, cast, func, or_, String
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -24,7 +24,10 @@ from app.models import (
     FuelLimitPeriod,
     FuelLimitScopeType,
     FuelLimitType,
+    MarketplaceOrder,
+    MarketplaceSettlementSnapshot,
     Operation,
+    PayoutBatch,
     SupportTicket,
     SupportTicketStatus,
 )
@@ -223,7 +226,127 @@ def normalize_filters(report_type: ExportJobReportType, filters: dict[str, Any])
         normalized["from"] = from_dt or None
         normalized["to"] = to_dt or None
         return normalized
+    if report_type == ExportJobReportType.SETTLEMENT_CHAIN:
+        date_from = _parse_date(raw_filters.get("from"), field="from")
+        date_to = _parse_date(raw_filters.get("to"), field="to")
+        if not date_from or not date_to:
+            raise ExportRenderValidationError("date_range_required")
+        normalized["from"] = date_from.isoformat()
+        normalized["to"] = date_to.isoformat()
+        return normalized
     raise ExportRenderValidationError("unsupported_report_type")
+
+
+def _settlement_chain_payout_map(db: Session, *, partner_id: str) -> dict[str, tuple[str, str]]:
+    payout_map: dict[str, tuple[str, str]] = {}
+    batches = db.query(PayoutBatch).filter(PayoutBatch.partner_id == partner_id).order_by(PayoutBatch.created_at.desc()).all()
+    for batch in batches:
+        state_value = batch.state.value if hasattr(batch.state, "value") else str(batch.state)
+        for item in batch.items or []:
+            meta = item.meta or {}
+            snapshot_ids = meta.get("settlement_snapshot_ids") if isinstance(meta, dict) else None
+            if not snapshot_ids:
+                continue
+            for snapshot_id in snapshot_ids:
+                payout_map[str(snapshot_id)] = (str(batch.id), state_value)
+    return payout_map
+
+
+def _settlement_chain_base_query(db: Session, *, partner_id: str):
+    return (
+        db.query(MarketplaceSettlementSnapshot, MarketplaceOrder)
+        .join(MarketplaceOrder, MarketplaceOrder.id == MarketplaceSettlementSnapshot.order_id)
+        .filter(MarketplaceOrder.partner_id == partner_id)
+    )
+
+
+def settlement_chain_summary(
+    db: Session,
+    *,
+    partner_id: str,
+    date_from: date,
+    date_to: date,
+) -> dict[str, object]:
+    start, end = _date_range_bounds(date_from, date_to)
+    ts_field = func.coalesce(MarketplaceSettlementSnapshot.finalized_at, MarketplaceOrder.completed_at, MarketplaceOrder.created_at)
+    query = _settlement_chain_base_query(db, partner_id=partner_id)
+    if start:
+        query = query.filter(ts_field >= start)
+    if end:
+        query = query.filter(ts_field <= end)
+    totals = query.with_entities(
+        func.count(MarketplaceSettlementSnapshot.id),
+        func.coalesce(func.sum(MarketplaceSettlementSnapshot.gross_amount), 0),
+        func.coalesce(func.sum(MarketplaceSettlementSnapshot.platform_fee), 0),
+        func.coalesce(func.sum(MarketplaceSettlementSnapshot.penalties), 0),
+        func.coalesce(func.sum(MarketplaceSettlementSnapshot.partner_net), 0),
+    ).one()
+    return {
+        "rows": int(totals[0] or 0),
+        "gross_total": totals[1],
+        "fee_total": totals[2],
+        "penalties_total": totals[3],
+        "net_total": totals[4],
+        "from": date_from.isoformat(),
+        "to": date_to.isoformat(),
+    }
+
+
+def stream_settlement_chain_csv(
+    db: Session,
+    *,
+    partner_id: str,
+    filters: dict[str, Any],
+    max_rows: int,
+    chunk_size: int,
+) -> ExportRenderStreamResult:
+    date_from = _parse_date(filters.get("from"), field="from")
+    date_to = _parse_date(filters.get("to"), field="to")
+    if not date_from or not date_to:
+        raise ExportRenderValidationError("date_range_required")
+    start, end = _date_range_bounds(date_from, date_to)
+    ts_field = func.coalesce(MarketplaceSettlementSnapshot.finalized_at, MarketplaceOrder.completed_at, MarketplaceOrder.created_at)
+    query = _settlement_chain_base_query(db, partner_id=partner_id)
+    if start:
+        query = query.filter(ts_field >= start)
+    if end:
+        query = query.filter(ts_field <= end)
+    query = query.order_by(MarketplaceSettlementSnapshot.finalized_at.desc(), MarketplaceSettlementSnapshot.id.desc())
+    payout_map = _settlement_chain_payout_map(db, partner_id=partner_id)
+    estimated_total_rows = query.count()
+    if estimated_total_rows > max_rows:
+        raise ExportRenderLimitError(TOO_MANY_ROWS_ERROR)
+
+    def _rows() -> Iterable[list[object | None]]:
+        for chunk in _chunked(_stream_query(query, chunk_size=chunk_size), chunk_size=chunk_size):
+            for snapshot, order in chunk:
+                payout_id, payout_status = payout_map.get(str(snapshot.id), (None, None))
+                yield [
+                    str(order.id),
+                    snapshot.gross_amount,
+                    snapshot.platform_fee,
+                    snapshot.penalties,
+                    snapshot.partner_net,
+                    payout_id,
+                    payout_status,
+                    snapshot.finalized_at,
+                ]
+
+    return ExportRenderStreamResult(
+        filename=_build_filename(ExportJobReportType.SETTLEMENT_CHAIN),
+        headers=[
+            "order_id",
+            "gross",
+            "fee",
+            "penalties",
+            "net",
+            "payout_id",
+            "payout_status",
+            "finalized_at",
+        ],
+        rows=_rows(),
+        estimated_total_rows=estimated_total_rows,
+    )
 
 
 def render_cards_csv(db: Session, *, client_id: str, filters: dict[str, Any]) -> ExportRenderResult:
@@ -1147,6 +1270,21 @@ def render_export_report(
             created_by_user_id=filter_user_id or created_by_user_id,
             filters=filters,
         )
+    if report_type == ExportJobReportType.SETTLEMENT_CHAIN:
+        if not org_id:
+            raise ExportRenderValidationError("missing_org")
+        stream_result = stream_settlement_chain_csv(
+            db,
+            partner_id=org_id,
+            filters=filters,
+            max_rows=10_000_000,
+            chunk_size=5_000,
+        )
+        return ExportRenderResult(
+            filename=stream_result.filename,
+            headers=stream_result.headers,
+            rows=list(stream_result.rows),
+        )
     raise ExportRenderValidationError("unsupported_report_type")
 
 
@@ -1200,6 +1338,16 @@ def render_export_report_stream(
             db,
             org_id=org_id,
             created_by_user_id=filter_user_id or created_by_user_id,
+            filters=filters,
+            max_rows=max_rows,
+            chunk_size=chunk_size,
+        )
+    if report_type == ExportJobReportType.SETTLEMENT_CHAIN:
+        if not org_id:
+            raise ExportRenderValidationError("missing_org")
+        return stream_settlement_chain_csv(
+            db,
+            partner_id=org_id,
             filters=filters,
             max_rows=max_rows,
             chunk_size=chunk_size,
@@ -1328,6 +1476,7 @@ __all__ = [
     "render_transactions_xlsx",
     "render_users_xlsx",
     "render_xlsx_payload",
+    "settlement_chain_summary",
     "write_csv_stream",
     "write_xlsx_stream",
 ]

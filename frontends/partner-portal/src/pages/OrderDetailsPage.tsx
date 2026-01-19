@@ -7,6 +7,7 @@ import {
   fetchOrder,
   fetchOrderEvents,
   fetchOrderSettlement,
+  fetchOrderSettlementBreakdown,
   fetchOrderSla,
   progressOrder,
   rejectOrder,
@@ -20,6 +21,7 @@ import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../compone
 import type {
   MarketplaceOrder,
   MarketplaceOrderEvent,
+  MarketplaceOrderSettlementBreakdown,
   MarketplaceOrderSlaMetric,
   MarketplaceSettlementLink,
 } from "../types/marketplace";
@@ -89,6 +91,11 @@ export function OrderDetailsPage() {
   const [settlementLoading, setSettlementLoading] = useState(true);
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [settlementCorrelationId, setSettlementCorrelationId] = useState<string | null>(null);
+
+  const [settlementBreakdown, setSettlementBreakdown] = useState<MarketplaceOrderSettlementBreakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(true);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
+  const [breakdownCorrelationId, setBreakdownCorrelationId] = useState<string | null>(null);
 
   const [actionModal, setActionModal] = useState<ActionModal>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -175,13 +182,30 @@ export function OrderDetailsPage() {
       .finally(() => setSettlementLoading(false));
   }, [user, orderId, t]);
 
+  const loadSettlementBreakdown = useCallback(() => {
+    if (!user || !orderId) return;
+    setBreakdownLoading(true);
+    setBreakdownError(null);
+    setBreakdownCorrelationId(null);
+    fetchOrderSettlementBreakdown(user.token, orderId)
+      .then((data) => setSettlementBreakdown(data))
+      .catch((err) => {
+        console.error(err);
+        const { message, correlationId } = describeError(err, t("orderDetails.errors.payoutFailed"));
+        setBreakdownError(message);
+        setBreakdownCorrelationId(correlationId);
+      })
+      .finally(() => setBreakdownLoading(false));
+  }, [user, orderId, t]);
+
   useEffect(() => {
     if (!canRead) return;
     loadOrder();
     loadEvents();
     loadSla();
     loadSettlement();
-  }, [canRead, loadOrder, loadEvents, loadSla, loadSettlement]);
+    loadSettlementBreakdown();
+  }, [canRead, loadOrder, loadEvents, loadSla, loadSettlement, loadSettlementBreakdown]);
 
   const handleAction = async () => {
     if (!user || !order || !actionModal) return;
@@ -231,6 +255,7 @@ export function OrderDetailsPage() {
       loadOrder();
       loadEvents();
       loadSla();
+      loadSettlementBreakdown();
     } catch (err) {
       console.error(err);
       const { message, correlationId } = describeError(err, t("orderDetails.errors.actionFailed"));
@@ -387,6 +412,108 @@ export function OrderDetailsPage() {
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section className="card">
+        <div className="section-title">
+          <h3>Settlement breakdown</h3>
+        </div>
+        {breakdownLoading ? (
+          <LoadingState label="Загружаем расчёт..." />
+        ) : breakdownError ? (
+          <ErrorState
+            title="Не удалось загрузить расчёт"
+            description={breakdownError}
+            correlationId={breakdownCorrelationId}
+            action={
+              <button type="button" className="secondary" onClick={loadSettlementBreakdown}>
+                {t("errors.retry")}
+              </button>
+            }
+          />
+        ) : settlementBreakdown ? (
+          <div className="stack">
+            <div className="meta-grid">
+              <div>
+                <div className="label">Gross</div>
+                <div>{formatCurrency(settlementBreakdown.gross_amount, settlementBreakdown.currency)}</div>
+              </div>
+              <div>
+                <div className="label">Fee</div>
+                <div>
+                  {formatCurrency(settlementBreakdown.platform_fee.amount, settlementBreakdown.currency)}
+                  <div className="muted small">{settlementBreakdown.platform_fee.explain}</div>
+                </div>
+              </div>
+              <div>
+                <div className="label">Penalties</div>
+                <div>
+                  {formatCurrency(
+                    settlementBreakdown.penalties.reduce((sum, item) => sum + item.amount, 0),
+                    settlementBreakdown.currency,
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="label">Net</div>
+                <div>{formatCurrency(settlementBreakdown.partner_net, settlementBreakdown.currency)}</div>
+              </div>
+            </div>
+            {settlementBreakdown.penalties.length ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Тип</th>
+                    <th>Причина</th>
+                    <th>Сумма</th>
+                    <th>Источник</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settlementBreakdown.penalties.map((penalty, index) => (
+                    <tr key={`${penalty.type}-${index}`}>
+                      <td>{penalty.type}</td>
+                      <td>{penalty.reason ?? "—"}</td>
+                      <td>{formatCurrency(penalty.amount, settlementBreakdown.currency)}</td>
+                      <td>
+                        {penalty.source_ref?.audit_event_id ? (
+                          <Link
+                            className="link-button"
+                            to={`/support/requests?audit_event_id=${penalty.source_ref.audit_event_id}`}
+                          >
+                            Почему?
+                          </Link>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="muted">Штрафы отсутствуют.</div>
+            )}
+            {settlementBreakdown.snapshot ? (
+              <div className="meta-grid">
+                <div>
+                  <div className="label">Finalized at</div>
+                  <div>
+                    {settlementBreakdown.snapshot.finalized_at
+                      ? formatDateTime(settlementBreakdown.snapshot.finalized_at)
+                      : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Snapshot hash</div>
+                  <div className="mono">{settlementBreakdown.snapshot.hash ?? "—"}</div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyState title="Нет данных" description="Расчёт будет доступен после принятия или завершения заказа." />
+        )}
       </section>
 
       <section className="card">

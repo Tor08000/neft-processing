@@ -82,6 +82,7 @@ from app.services.fleet_metrics import metrics as fleet_metrics
 from app.services.cases_metrics import metrics as cases_metrics
 from app.services.reconciliation_metrics import metrics as reconciliation_metrics
 from app.services.export_metrics import metrics as export_metrics
+from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 from app.services.email_metrics import metrics as email_metrics
 from app.services.report_schedule_metrics import metrics as report_schedule_metrics
 from app.services.notification_metrics import metrics as notification_metrics
@@ -968,6 +969,17 @@ def _export_job_metrics() -> list[str]:
     return lines
 
 
+def _partner_trust_metrics() -> list[str]:
+    return [
+        "# HELP partner_settlement_breakdown_requests_total Partner settlement breakdown requests.",
+        "# TYPE partner_settlement_breakdown_requests_total counter",
+        f"partner_settlement_breakdown_requests_total {partner_trust_metrics.settlement_breakdown_requests_total}",
+        "# HELP partner_trust_exports_generated_total Partner trust export jobs generated.",
+        "# TYPE partner_trust_exports_generated_total counter",
+        f"partner_trust_exports_generated_total {partner_trust_metrics.exports_generated_total}",
+    ]
+
+
 def _email_outbox_metrics() -> list[str]:
     enqueued_lines = [
         f'email_outbox_enqueued_total{{template_key="{template_key}"}} {count}'
@@ -1222,6 +1234,7 @@ def metrics() -> str:  # pragma: no cover - response verified via API test
     lines.extend(_audit_metrics())
     lines.extend(_cases_metrics())
     lines.extend(_export_job_metrics())
+    lines.extend(_partner_trust_metrics())
     lines.extend(_email_outbox_metrics())
     lines.extend(_report_schedule_metrics())
     lines.extend(_notification_metrics())

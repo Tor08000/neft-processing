@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.marketplace_orders import MarketplaceOrderActorType, MarketplaceOrderStatus
+from app.models.marketplace_orders import MarketplaceOrder, MarketplaceOrderActorType, MarketplaceOrderStatus
+from app.models.marketplace_settlement import MarketplaceAdjustment, MarketplaceAdjustmentType, MarketplaceSettlementSnapshot
+from app.models.marketplace_order_sla import OrderSlaEvaluation
 from app.schemas.marketplace.orders import (
     OrderAcceptRequest,
     OrderCompleteRequest,
@@ -18,10 +21,18 @@ from app.schemas.marketplace.orders import (
     OrderRejectRequest,
     OrderStartRequest,
 )
+from app.schemas.partner_trust import (
+    FeeExplainOut,
+    PartnerOrderSettlementOut,
+    PenaltySourceRefOut,
+    SettlementPenaltyOut,
+    SettlementSnapshotOut,
+)
 from app.security.rbac.guard import require_permission
 from app.security.rbac.principal import Principal
-from app.services.audit_service import _sanitize_token_for_audit, request_context_from_request
+from app.services.audit_service import AuditService, AuditVisibility, _sanitize_token_for_audit, request_context_from_request
 from app.services.marketplace_order_service import MarketplaceOrderService, MarketplaceOrderServiceError
+from app.services.partner_trust_metrics import metrics as partner_trust_metrics
 
 router = APIRouter(prefix="/partner/orders", tags=["partner-portal-v1"])
 
@@ -80,6 +91,58 @@ def _handle_service_error(exc: MarketplaceOrderServiceError) -> None:
     raise HTTPException(status_code=400, detail=exc.code) from exc
 
 
+def _fee_explain(*, order, gross_amount: Decimal, platform_fee_amount: Decimal) -> FeeExplainOut:
+    snapshot = order.commission_snapshot or {}
+    basis_raw = (snapshot.get("type") or "FIXED").upper()
+    basis = "TIER" if basis_raw == "TIERED" else basis_raw
+    rate = snapshot.get("rate")
+    rate_value = Decimal(str(rate)) if rate is not None else None
+    if basis == "PERCENT" and rate_value is not None:
+        explain = f"{(rate_value * 100):.2f}% of gross"
+    elif basis == "FIXED":
+        explain = f"Fixed fee {platform_fee_amount}"
+    else:
+        explain = "Tiered fee applied to gross"
+    return FeeExplainOut(
+        amount=platform_fee_amount,
+        basis=basis,
+        rate=rate_value,
+        explain=explain,
+    )
+
+
+def _penalties_for_order(db: Session, order_id: str) -> list[SettlementPenaltyOut]:
+    adjustments = (
+        db.query(MarketplaceAdjustment)
+        .filter(
+            MarketplaceAdjustment.order_id == order_id,
+            MarketplaceAdjustment.type == MarketplaceAdjustmentType.PENALTY,
+        )
+        .order_by(MarketplaceAdjustment.created_at.asc())
+        .all()
+    )
+    penalties: list[SettlementPenaltyOut] = []
+    for adjustment in adjustments:
+        source_ref = None
+        meta = adjustment.meta or {}
+        evaluation_id = meta.get("evaluation_id") if isinstance(meta, dict) else None
+        if evaluation_id:
+            evaluation = db.query(OrderSlaEvaluation).filter(OrderSlaEvaluation.id == evaluation_id).one_or_none()
+            source_ref = PenaltySourceRefOut(
+                audit_event_id=str(evaluation.audit_event_id) if evaluation else None,
+                sla_event_id=str(evaluation.id) if evaluation else str(evaluation_id),
+            )
+        penalties.append(
+            SettlementPenaltyOut(
+                type="SLA_PENALTY",
+                amount=Decimal(adjustment.amount),
+                reason=adjustment.reason_code or "SLA breach",
+                source_ref=source_ref,
+            )
+        )
+    return penalties
+
+
 @router.get("", response_model=list[OrderOut])
 def list_partner_orders(
     request: Request,
@@ -123,6 +186,74 @@ def get_partner_order(
     except MarketplaceOrderServiceError as exc:
         _handle_service_error(exc)
     return OrderDetailOut(**_order_out(order).dict(), events=[_event_out(event) for event in events])
+
+
+@router.get("/{order_id}/settlement", response_model=PartnerOrderSettlementOut)
+def get_partner_order_settlement(
+    order_id: str,
+    request: Request,
+    principal: Principal = Depends(require_permission("partner:marketplace:orders:*")),
+    db: Session = Depends(get_db),
+) -> PartnerOrderSettlementOut:
+    partner_id = _ensure_partner_context(principal)
+    order_record = db.query(MarketplaceOrder).filter(MarketplaceOrder.id == order_id).one_or_none()
+    if order_record and str(order_record.partner_id) != partner_id:
+        AuditService(db).audit(
+            event_type="PARTNER_ACCESS_FORBIDDEN",
+            entity_type="marketplace_order",
+            entity_id=str(order_id),
+            action="FORBIDDEN",
+            visibility=AuditVisibility.INTERNAL,
+            request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
+        )
+        raise HTTPException(status_code=403, detail="forbidden")
+    service = MarketplaceOrderService(
+        db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims))
+    )
+    try:
+        order = order_record or service.get_order_for_partner(order_id=order_id, partner_id=partner_id)
+    except MarketplaceOrderServiceError as exc:
+        _handle_service_error(exc)
+    status = order.status.value if hasattr(order.status, "value") else str(order.status)
+    if status not in {MarketplaceOrderStatus.ACCEPTED.value, MarketplaceOrderStatus.COMPLETED.value}:
+        raise HTTPException(status_code=409, detail="settlement_not_available")
+    snapshot = (
+        db.query(MarketplaceSettlementSnapshot)
+        .filter(MarketplaceSettlementSnapshot.order_id == order_id)
+        .one_or_none()
+    )
+    breakdown_json = order.settlement_breakdown_json or {}
+    gross_amount = Decimal(snapshot.gross_amount) if snapshot else Decimal(breakdown_json.get("gross_amount") or 0)
+    platform_fee_amount = (
+        Decimal(snapshot.platform_fee) if snapshot else Decimal(breakdown_json.get("platform_fee_amount") or 0)
+    )
+    penalties_amount = Decimal(snapshot.penalties) if snapshot else Decimal(breakdown_json.get("penalties_amount") or 0)
+    partner_net = (
+        Decimal(snapshot.partner_net)
+        if snapshot
+        else Decimal(breakdown_json.get("partner_net_amount") or (gross_amount - platform_fee_amount - penalties_amount))
+    )
+    currency = snapshot.currency if snapshot else breakdown_json.get("currency") or "RUB"
+    fee_explain = _fee_explain(
+        order=order, gross_amount=gross_amount, platform_fee_amount=platform_fee_amount
+    )
+    penalties = _penalties_for_order(db, str(order.id))
+    partner_trust_metrics.mark_settlement_breakdown_requested()
+    return PartnerOrderSettlementOut(
+        order_id=str(order.id),
+        currency=currency,
+        gross_amount=gross_amount,
+        platform_fee=fee_explain,
+        penalties=penalties,
+        partner_net=partner_net,
+        snapshot=SettlementSnapshotOut(
+            settlement_snapshot_id=str(snapshot.id) if snapshot else None,
+            finalized_at=snapshot.finalized_at if snapshot else None,
+            hash=snapshot.hash if snapshot else None,
+        )
+        if snapshot
+        else None,
+    )
 
 
 @router.post("/{order_id}/accept", response_model=OrderOut)

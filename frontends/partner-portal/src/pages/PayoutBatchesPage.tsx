@@ -73,7 +73,11 @@ export function PayoutBatchesPage() {
             <tbody>
               {batches.map((batch) => (
                 <tr key={batch.id}>
-                  <td>{batch.id}</td>
+                  <td>
+                    <Link className="link-button" to={`/payouts/batches/${batch.id}`}>
+                      {batch.id}
+                    </Link>
+                  </td>
                   <td>
                     <StatusBadge status={batch.status} />
                   </td>
