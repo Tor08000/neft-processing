@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import {
   BarChart3,
   Briefcase,
+  FileText,
   Package,
   Percent,
   ShoppingBag,
@@ -37,7 +38,9 @@ export function Layout() {
     { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
     { to: "/promotions", label: "Promotions", icon: <Percent size={18} />, capability: "PARTNER_PRICING" },
     { to: "/analytics", label: "Analytics", icon: <BarChart3 size={18} />, capability: "PARTNER_CORE" },
-    { to: "/payouts", label: "Payouts", icon: <Wallet size={18} />, capability: "PARTNER_SETTLEMENTS" },
+    { to: "/finance", label: "Финансы", icon: <Wallet size={18} />, capability: "PARTNER_FINANCE_VIEW" },
+    { to: "/payouts", label: "Выплаты", icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
+    { to: "/documents", label: "Документы", icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
     { to: "/legal", label: "Legal", icon: <Package size={18} /> },
   ];
 

@@ -35,6 +35,9 @@ CAPABILITY_PARTNER_CATALOG = "PARTNER_CATALOG"
 CAPABILITY_PARTNER_ORDERS = "PARTNER_ORDERS"
 CAPABILITY_PARTNER_ANALYTICS = "PARTNER_ANALYTICS"
 CAPABILITY_PARTNER_SETTLEMENTS = "PARTNER_SETTLEMENTS"
+CAPABILITY_PARTNER_FINANCE_VIEW = "PARTNER_FINANCE_VIEW"
+CAPABILITY_PARTNER_PAYOUT_REQUEST = "PARTNER_PAYOUT_REQUEST"
+CAPABILITY_PARTNER_PAYOUT_APPROVAL = "PARTNER_PAYOUT_APPROVAL"
 CAPABILITY_MARKETPLACE = "MARKETPLACE"
 CAPABILITY_LOGISTICS = "LOGISTICS"
 
@@ -220,6 +223,27 @@ def _compute_capabilities(
             "code": CAPABILITY_PARTNER_SETTLEMENTS,
             "roles": {PARTNER_ROLE},
             "feature_keys": ["feature.partner.settlements", "feature.partner.payouts"],
+            "module_codes": ["PARTNER_SETTLEMENTS"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_FINANCE_VIEW,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.settlements", "feature.partner.payouts"],
+            "module_codes": ["PARTNER_SETTLEMENTS"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_PAYOUT_REQUEST,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.payouts"],
+            "module_codes": ["PARTNER_SETTLEMENTS"],
+            "billing_scoped": False,
+        },
+        {
+            "code": CAPABILITY_PARTNER_PAYOUT_APPROVAL,
+            "roles": {PARTNER_ROLE},
+            "feature_keys": ["feature.partner.payouts"],
             "module_codes": ["PARTNER_SETTLEMENTS"],
             "billing_scoped": False,
         },

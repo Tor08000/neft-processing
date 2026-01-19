@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
@@ -35,6 +36,7 @@ from app.services.audit_service import AuditService, _sanitize_token_for_audit, 
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.notifications_v1 import enqueue_notification_message
 from app.services.partner_core_service import ensure_partner_profile, profile_payload
+from app.services.partner_finance_service import PartnerFinanceService
 
 router = APIRouter(prefix="/partner", tags=["partner-core"])
 
@@ -144,11 +146,11 @@ def _maybe_audit_sla_breach(
     order: PartnerOrder,
     due_at: datetime | None,
     reason: str,
-) -> None:
+) -> bool:
     if due_at is None:
-        return
+        return False
     if datetime.now(timezone.utc) <= due_at:
-        return
+        return False
     AuditService(db).audit(
         event_type="partner_sla_breached",
         entity_type="partner_order",
@@ -162,6 +164,7 @@ def _maybe_audit_sla_breach(
         },
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(principal.raw_claims)),
     )
+    return True
 
 
 def _notify_partner(
@@ -489,7 +492,7 @@ def update_partner_order_status(
         after=after,
         action="status_change",
     )
-    _maybe_audit_sla_breach(
+    sla_breached = _maybe_audit_sla_breach(
         db,
         request=request,
         principal=principal,
@@ -497,6 +500,22 @@ def update_partner_order_status(
         due_at=order.resolution_due_at,
         reason="resolution",
     )
+    request_ctx = request_context_from_request(request, token=principal.raw_claims)
+    finance_service = PartnerFinanceService(db, request_ctx=request_ctx)
+    if target_status == PartnerOrderStatus.DONE:
+        finance_service.record_order_earned(order=order)
+        if sla_breached:
+            offer = db.query(PartnerOffer).filter(PartnerOffer.id == order.offer_id).one_or_none()
+            if offer and offer.base_price:
+                penalty_amount = (Decimal(offer.base_price) * Decimal("0.10")).quantize(Decimal("0.01"))
+                if penalty_amount > 0:
+                    finance_service.record_sla_penalty(
+                        partner_org_id=str(order.partner_org_id),
+                        order_id=str(order.id),
+                        amount=penalty_amount,
+                        currency=offer.currency or "RUB",
+                        reason="sla_breach",
+                    )
     _notify_partner(
         db,
         event_type="partner_order_status_changed",

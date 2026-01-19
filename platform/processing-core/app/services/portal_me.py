@@ -88,6 +88,8 @@ def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
         "PARTNER_CORE",
         "PARTNER_PRICING",
         "PARTNER_SETTLEMENTS",
+        "PARTNER_FINANCE_VIEW",
+        "PARTNER_PAYOUT_REQUEST",
         "PARTNER_CATALOG",
         "PARTNER_ORDERS",
         "PARTNER_ANALYTICS",

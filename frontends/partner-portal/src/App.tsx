@@ -18,6 +18,7 @@ import { SettlementDetailsPage } from "./pages/SettlementDetailsPage";
 import { PayoutBatchesPage } from "./pages/PayoutBatchesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DocumentDetailsPage } from "./pages/DocumentDetailsPage";
+import { PartnerFinancePage } from "./pages/PartnerFinancePage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { OrderDetailsPage } from "./pages/OrderDetailsPage";
 import { RefundsPage } from "./pages/RefundsPage";
@@ -64,6 +65,7 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/prices" element={<PricesPage />} />
                 <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
                 <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
+                <Route path="/finance" element={<PartnerFinancePage />} />
                 <Route path="/payouts" element={<PayoutsPage />} />
                 <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
                 <Route path="/payouts/batches" element={<PayoutBatchesPage />} />

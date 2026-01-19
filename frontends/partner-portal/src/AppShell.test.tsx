@@ -35,7 +35,7 @@ describe("Partner portal shell", () => {
 
     expect(await screen.findByText(/Partner Portal/i)).toBeInTheDocument();
     expect(screen.getByText(/АЗС/)).toBeInTheDocument();
-    expect(screen.getByText(/Выплаты/)).toBeInTheDocument();
+    expect(screen.getByText(/Выплаты/i)).toBeInTheDocument();
   });
 
   it("mounts dashboard and payouts pages", async () => {
@@ -45,6 +45,6 @@ describe("Partner portal shell", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: /Выплаты/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Запросить выплату/i })).toBeInTheDocument();
   });
 });

@@ -40,6 +40,19 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.grid.three {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.metric-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--neft-radius-md);
+  border: 1px solid var(--neft-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
