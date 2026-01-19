@@ -28,6 +28,7 @@ from app.models.partner_finance import (
 from app.services.audit_service import AuditService, RequestContext
 from app.services.notifications_v1 import enqueue_notification_message
 from app.models.notifications import NotificationChannel, NotificationPriority, NotificationSubjectType
+from app.services.partner_legal_service import PartnerLegalService
 
 
 @dataclass
@@ -226,6 +227,7 @@ class PartnerFinanceService:
         requested_by: str | None,
     ) -> PartnerPayoutRequest:
         self._ensure_partner_active(partner_org_id)
+        PartnerLegalService(self.db, request_ctx=self.request_ctx).ensure_payout_allowed(partner_id=partner_org_id)
         account = self.get_account(partner_org_id=partner_org_id, currency=currency)
         if amount > (account.balance_available or 0):
             raise ValueError("insufficient_balance")
@@ -402,6 +404,11 @@ class PartnerFinanceService:
         period_to: date,
         currency: str,
     ) -> tuple[PartnerInvoice, PartnerAct]:
+        legal_service = PartnerLegalService(self.db, request_ctx=self.request_ctx)
+        tax_context = legal_service.build_tax_context(
+            profile=legal_service.get_profile(partner_id=partner_org_id)
+        )
+        tax_context_payload = tax_context.to_dict() if tax_context else None
         invoice = (
             self.db.query(PartnerInvoice)
             .filter(
@@ -439,8 +446,11 @@ class PartnerFinanceService:
                 currency=currency,
                 status=PartnerDocumentStatus.DRAFT,
                 total_amount=total,
+                tax_context=tax_context_payload,
             )
             self.db.add(invoice)
+        elif invoice.tax_context is None and tax_context_payload is not None:
+            invoice.tax_context = tax_context_payload
         if act is None:
             act = PartnerAct(
                 partner_org_id=partner_org_id,
@@ -449,8 +459,11 @@ class PartnerFinanceService:
                 currency=currency,
                 status=PartnerDocumentStatus.DRAFT,
                 total_amount=total,
+                tax_context=tax_context_payload,
             )
             self.db.add(act)
+        elif act.tax_context is None and tax_context_payload is not None:
+            act.tax_context = tax_context_payload
         return invoice, act
 
     def _calculate_period_earnings(

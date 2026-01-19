@@ -53,6 +53,7 @@ from app.routers.admin import (
     contract_packs,
     notifications,
     partner_finance,
+    partner_legal,
     service_bookings,
     audit,
     exports,
@@ -120,6 +121,7 @@ router.include_router(marketplace_sponsored.router)
 router.include_router(contract_packs.router)
 router.include_router(service_bookings.router)
 router.include_router(partner_finance.router)
+router.include_router(partner_legal.router)
 router.include_router(audit.router)
 router.include_router(exports.router)
 router.include_router(notifications.router)

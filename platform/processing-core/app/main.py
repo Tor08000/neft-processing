@@ -31,6 +31,7 @@ from app.routers.portal_me import router as portal_me_router
 from app.routers.partner_me import router as partner_me_router
 from app.routers.partner_core import router as partner_core_router
 from app.routers.partner_finance import router as partner_finance_router
+from app.routers.partner_legal import router as partner_legal_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
 from app.routers.client_marketplace import router as client_marketplace_router
@@ -394,8 +395,10 @@ safe_include_router(app, partner_core_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_core_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_finance_router, prefix=LEGACY_API_PREFIX)
+safe_include_router(app, partner_legal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_finance_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, partner_legal_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)

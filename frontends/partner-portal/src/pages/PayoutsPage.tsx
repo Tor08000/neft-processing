@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
+import { fetchPartnerPayoutPreview, fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorState, LoadingState } from "../components/states";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import type { PartnerPayoutRequest } from "../types/partnerFinance";
+import { ApiError } from "../api/http";
 
 export function PayoutsPage() {
   const { user } = useAuth();
@@ -14,6 +15,8 @@ export function PayoutsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [payoutPreview, setPayoutPreview] = useState<{ legal_status?: string | null; warnings?: string[] } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const currency = useMemo(() => "RUB", []);
 
@@ -34,6 +37,17 @@ export function PayoutsPage() {
     loadPayouts();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    setPreviewError(null);
+    fetchPartnerPayoutPreview(user.token)
+      .then((data) => setPayoutPreview({ legal_status: data.legal_status, warnings: data.warnings ?? [] }))
+      .catch((err) => {
+        console.error(err);
+        setPreviewError("Не удалось загрузить статус выплат");
+      });
+  }, [user]);
+
   const handleRequest = async () => {
     if (!user) return;
     setSubmitError(null);
@@ -48,7 +62,11 @@ export function PayoutsPage() {
       loadPayouts();
     } catch (err) {
       console.error(err);
-      setSubmitError("Не удалось создать запрос на выплату");
+      if (err instanceof ApiError && err.status === 403) {
+        setSubmitError("Профиль не верифицирован. Заполните юридический профиль.");
+      } else {
+        setSubmitError("Не удалось создать запрос на выплату");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -60,6 +78,17 @@ export function PayoutsPage() {
         <div className="section-title">
           <h2>Запросить выплату</h2>
         </div>
+        {payoutPreview?.legal_status && payoutPreview.legal_status !== "VERIFIED" ? (
+          <div className="warning">
+            Выплата недоступна: юридический профиль не подтверждён ({payoutPreview.legal_status}).
+          </div>
+        ) : null}
+        {payoutPreview?.warnings?.length ? (
+          <div className="warning">
+            Есть предупреждения по профилю: {payoutPreview.warnings.join(", ")}.
+          </div>
+        ) : null}
+        {previewError ? <div className="error">{previewError}</div> : null}
         <div className="form-grid">
           <label className="field">
             <span className="label">Сумма</span>

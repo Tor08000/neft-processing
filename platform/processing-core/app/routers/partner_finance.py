@@ -16,6 +16,7 @@ from app.schemas.partner_finance import (
     PartnerLedgerEntryOut,
     PartnerLedgerListResponse,
     PartnerPayoutListResponse,
+    PartnerPayoutPreviewOut,
     PartnerPayoutRequestIn,
     PartnerPayoutRequestOut,
 )
@@ -24,6 +25,8 @@ from app.security.rbac.principal import Principal
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.partner_finance_service import PartnerFinanceService
 from app.services.audit_service import request_context_from_request
+from app.models.partner_legal import PartnerLegalStatus
+from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 
 router = APIRouter(prefix="/partner", tags=["partner-finance"])
 
@@ -119,6 +122,9 @@ def request_partner_payout(
         )
         db.commit()
         db.refresh(payout)
+    except PartnerLegalError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail={"error": "LEGAL_NOT_VERIFIED", "reason": exc.code}) from exc
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -203,6 +209,7 @@ def list_partner_invoices(
                 total_amount=Decimal(item.total_amount),
                 currency=item.currency,
                 status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                tax_context=item.tax_context,
                 pdf_object_key=item.pdf_object_key,
                 created_at=item.created_at,
             )
@@ -242,9 +249,40 @@ def list_partner_acts(
                 total_amount=Decimal(item.total_amount),
                 currency=item.currency,
                 status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                tax_context=item.tax_context,
                 pdf_object_key=item.pdf_object_key,
                 created_at=item.created_at,
             )
             for item in acts
         ]
+    )
+
+
+@router.get("/payouts/preview", response_model=PartnerPayoutPreviewOut)
+def preview_partner_payout(
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutPreviewOut:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    account = PartnerFinanceService(db).get_account(partner_org_id=partner_org_id, currency="RUB")
+    legal_service = PartnerLegalService(db)
+    profile = legal_service.get_profile(partner_id=partner_org_id)
+    tax_context = legal_service.build_tax_context(profile=profile)
+    warnings: list[str] = []
+    legal_status = (
+        profile.legal_status.value
+        if profile and hasattr(profile.legal_status, "value")
+        else (str(profile.legal_status) if profile else None)
+    )
+    if profile and profile.legal_status == PartnerLegalStatus.VERIFIED:
+        details = legal_service.get_details(partner_id=partner_org_id)
+        if details:
+            warnings = legal_service.collect_warnings(profile=profile, details=details)
+    return PartnerPayoutPreviewOut(
+        partner_org_id=partner_org_id,
+        currency=account.currency,
+        available_amount=Decimal(account.balance_available or 0),
+        legal_status=legal_status,
+        tax_context=tax_context.to_dict() if tax_context else None,
+        warnings=warnings,
     )

@@ -105,6 +105,15 @@ button:disabled {
   border-color: rgba(148, 163, 184, 0.35);
 }
 
+.warning {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: rgba(255, 176, 32, 0.16);
+  color: var(--neft-warning);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+}
+
 .section-title {
   display: flex;
   align-items: center;
@@ -216,6 +225,50 @@ button {
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: 1rem;
   margin-top: 1rem;
+}
+
+.legal-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.legal-status {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.legal-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.legal-checklist__item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px dashed var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-tax-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--neft-border);
+  background: var(--neft-surface2);
+}
+
+.legal-tax-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .legal-item {
