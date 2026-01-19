@@ -91,3 +91,42 @@ export interface PayoutExportFormatInfo {
   code: string;
   title: string;
 }
+
+export interface PayoutQueueItem {
+  payout_id: string;
+  partner_org: string;
+  amount: number | string;
+  currency: string;
+  status: string;
+  blockers: string[];
+  created_at?: string | null;
+}
+
+export interface PayoutQueueListResponse {
+  items: PayoutQueueItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PayoutPolicyInfo {
+  min_payout_amount?: number | string | null;
+  payout_hold_days?: number | null;
+  payout_schedule?: string | null;
+}
+
+export interface PayoutTraceItem {
+  entity_type: string;
+  entity_id: string;
+  amount?: number | string | null;
+  currency?: string | null;
+  created_at?: string | null;
+}
+
+export interface PayoutDetail extends PayoutQueueItem {
+  processed_at?: string | null;
+  policy?: PayoutPolicyInfo | null;
+  trace?: PayoutTraceItem[];
+  totals?: Record<string, number | string> | null;
+  legal_status?: string | null;
+}

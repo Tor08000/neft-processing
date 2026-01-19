@@ -70,3 +70,12 @@ class BankStatementTransactionListResponse(BaseModel):
 
 class BankStatementTransactionApplyRequest(BaseModel):
     invoice_id: str = Field(..., min_length=1, max_length=36)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class BankStatementTransactionIgnoreRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class BankStatementImportActionRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)

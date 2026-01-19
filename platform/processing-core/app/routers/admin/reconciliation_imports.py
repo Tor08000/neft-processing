@@ -13,7 +13,9 @@ from app.schemas.admin.reconciliation_imports import (
     BankStatementImportCreateResponse,
     BankStatementImportListResponse,
     BankStatementImportRead,
+    BankStatementImportActionRequest,
     BankStatementTransactionApplyRequest,
+    BankStatementTransactionIgnoreRequest,
     BankStatementTransactionListResponse,
 )
 from app.db.types import new_uuid_str
@@ -136,6 +138,82 @@ def complete_import(
     return BankStatementImportRead.model_validate(updated)
 
 
+@router.post("/imports/{import_id}/parse", response_model=BankStatementImportRead)
+def parse_import(
+    import_id: str,
+    payload: BankStatementImportActionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> BankStatementImportRead:
+    record = get_import(db, import_id=import_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="import_not_found")
+    storage = BankStatementImportStorage()
+    payload_bytes = storage.fetch_bytes(object_key=record.get("file_object_key"))
+    if not payload_bytes:
+        mark_import_status(db, import_id=import_id, status="FAILED", error="file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="file_missing")
+    actor = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    try:
+        parse_statement_import(
+            db,
+            import_id=import_id,
+            payload=payload_bytes,
+            fmt=record.get("format"),
+            actor=actor,
+        )
+    except Exception as exc:  # noqa: BLE001
+        mark_import_status(db, import_id=import_id, status="FAILED", error=str(exc))
+        db.commit()
+        raise HTTPException(status_code=400, detail="parse_failed") from exc
+    AuditService(db).audit(
+        event_type="bank_statement_parsed",
+        entity_type="bank_statement_import",
+        entity_id=str(import_id),
+        action="PARSE",
+        visibility=AuditVisibility.INTERNAL,
+        reason=payload.reason,
+        request_ctx=actor,
+    )
+    updated = mark_import_status(db, import_id=import_id, status="PARSED")
+    db.commit()
+    if not updated:
+        raise HTTPException(status_code=404, detail="import_not_found")
+    return BankStatementImportRead.model_validate(updated)
+
+
+@router.post("/imports/{import_id}/match", response_model=BankStatementImportRead)
+def match_import(
+    import_id: str,
+    payload: BankStatementImportActionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_admin_user),
+) -> BankStatementImportRead:
+    record = get_import(db, import_id=import_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="import_not_found")
+    actor = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    match_transactions(db, import_id=import_id, actor=actor)
+    apply_matches(db, import_id=import_id, actor=actor)
+    AuditService(db).audit(
+        event_type="bank_statement_matched",
+        entity_type="bank_statement_import",
+        entity_id=str(import_id),
+        action="MATCH",
+        visibility=AuditVisibility.INTERNAL,
+        reason=payload.reason,
+        request_ctx=actor,
+    )
+    updated = mark_import_status(db, import_id=import_id, status="MATCHED")
+    db.commit()
+    if not updated:
+        raise HTTPException(status_code=404, detail="import_not_found")
+    return BankStatementImportRead.model_validate(updated)
+
+
 @router.get("/imports", response_model=BankStatementImportListResponse)
 def list_imports_view(db: Session = Depends(get_db)) -> BankStatementImportListResponse:
     items = list_imports(db)
@@ -174,6 +252,7 @@ def apply_transaction(
         transaction_id=transaction_id,
         invoice_id=payload.invoice_id,
         actor=actor,
+        reason=payload.reason,
     )
     if not intake:
         raise HTTPException(status_code=404, detail="transaction_not_found")
@@ -184,12 +263,13 @@ def apply_transaction(
 @router.post("/transactions/{transaction_id}/ignore")
 def ignore_transaction_view(
     transaction_id: str,
+    payload: BankStatementTransactionIgnoreRequest,
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(require_admin_user),
 ) -> dict:
     actor = request_context_from_request(request, token=_sanitize_token_for_audit(token))
-    if not ignore_transaction(db, transaction_id=transaction_id, actor=actor):
+    if not ignore_transaction(db, transaction_id=transaction_id, actor=actor, reason=payload.reason):
         raise HTTPException(status_code=404, detail="transaction_not_found")
     db.commit()
     return {"status": "ok"}

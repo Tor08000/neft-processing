@@ -1,4 +1,9 @@
 import { apiGet, apiPost } from "./client";
+import type {
+  ReconciliationImport,
+  ReconciliationImportListResponse,
+  ReconciliationTransactionListResponse,
+} from "../types/reconciliationImports";
 
 export type ReconciliationScope = "internal" | "external" | "unknown";
 export type ReconciliationRunStatus = "completed" | "failed" | "started" | "running" | "unknown";
@@ -149,6 +154,30 @@ export const listRuns = async (params?: {
     return handleAvailability(error, { runs: [], unavailable: true });
   }
 };
+
+export const listImports = async (): Promise<ReconciliationImportListResponse> =>
+  apiGet("/api/core/v1/admin/reconciliation/imports");
+
+export const getImport = async (importId: string): Promise<ReconciliationImport> =>
+  apiGet(`/api/core/v1/admin/reconciliation/imports/${importId}`);
+
+export const listImportTransactions = async (params: {
+  import_id?: string;
+  status?: string;
+}): Promise<ReconciliationTransactionListResponse> =>
+  apiGet("/api/core/v1/admin/reconciliation/transactions", params);
+
+export const parseImport = async (importId: string, reason: string) =>
+  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/parse`, { reason });
+
+export const matchImport = async (importId: string, reason: string) =>
+  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/match`, { reason });
+
+export const applyImportTransaction = async (transactionId: string, payload: { invoice_id: string; reason: string }) =>
+  apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/apply`, payload);
+
+export const ignoreImportTransaction = async (transactionId: string, reason: string) =>
+  apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/ignore`, { reason });
 
 export const createInternalRun = async (payload: {
   period_start: string;
