@@ -16,6 +16,14 @@ import OpsFailedExportsPage from "./pages/ops/OpsFailedExportsPage";
 import OpsFailedImportsPage from "./pages/ops/OpsFailedImportsPage";
 import OpsSupportBreachesPage from "./pages/ops/OpsSupportBreachesPage";
 import OpsDrilldownPlaceholderPage from "./pages/ops/OpsDrilldownPlaceholderPage";
+import FinanceOverviewPage from "./pages/finance/FinanceOverviewPage";
+import InvoicesPage from "./pages/finance/InvoicesPage";
+import InvoiceDetailsPage from "./pages/finance/InvoiceDetailsPage";
+import PaymentIntakesPage from "./pages/finance/PaymentIntakesPage";
+import ReconciliationImportsPage from "./pages/finance/ReconciliationImportsPage";
+import ReconciliationImportDetailsPage from "./pages/finance/ReconciliationImportDetailsPage";
+import PayoutQueuePage from "./pages/finance/PayoutQueuePage";
+import PayoutDetailsPage from "./pages/finance/PayoutDetailsPage";
 
 export function App() {
   return (
@@ -80,7 +88,63 @@ export function App() {
                     path="/finance"
                     element={
                       <AdminRBACGate permission="finance">
-                        <ComingSoonPage title="Finance" />
+                        <FinanceOverviewPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/invoices"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <InvoicesPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/invoices/:invoiceId"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <InvoiceDetailsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/payment-intakes"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <PaymentIntakesPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/reconciliation/imports"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <ReconciliationImportsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/reconciliation/imports/:importId"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <ReconciliationImportDetailsPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/payouts"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <PayoutQueuePage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/finance/payouts/:payoutId"
+                    element={
+                      <AdminRBACGate permission="finance">
+                        <PayoutDetailsPage />
                       </AdminRBACGate>
                     }
                   />

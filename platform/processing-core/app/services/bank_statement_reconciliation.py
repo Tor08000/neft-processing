@@ -733,6 +733,7 @@ def apply_transaction_to_invoice(
     transaction_id: str,
     invoice_id: str,
     actor: RequestContext,
+    reason: str | None = None,
 ) -> dict[str, Any] | None:
     required_tables = ["bank_statement_transactions", "billing_invoices", "billing_payment_intakes", "org_subscriptions"]
     if not _tables_ready(db, required_tables):
@@ -763,6 +764,7 @@ def apply_transaction_to_invoice(
         entity_id=str(transaction_id),
         action="MANUAL_APPLY",
         visibility=AuditVisibility.INTERNAL,
+        reason=reason,
         after={"invoice_id": invoice_id, "payment_intake_id": intake["id"]},
         request_ctx=actor,
     )
@@ -774,6 +776,7 @@ def ignore_transaction(
     *,
     transaction_id: str,
     actor: RequestContext,
+    reason: str | None = None,
 ) -> bool:
     if not _tables_ready(db, ["bank_statement_transactions"]):
         return False
@@ -794,6 +797,7 @@ def ignore_transaction(
             entity_id=str(transaction_id),
             action="IGNORE",
             visibility=AuditVisibility.INTERNAL,
+            reason=reason,
             request_ctx=actor,
         )
     return bool(updated)
