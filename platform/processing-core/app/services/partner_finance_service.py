@@ -195,7 +195,7 @@ class PartnerFinanceService:
             amount=Decimal(offer.base_price),
             currency=currency,
             direction=PartnerLedgerDirection.CREDIT,
-            meta_json={"source": "partner_order", "offer_id": str(offer.id)},
+            meta_json={"source_type": "partner_order", "source_id": str(order.id), "offer_id": str(offer.id)},
         )
         AuditService(self.db).audit(
             event_type="partner_earned",
@@ -253,7 +253,7 @@ class PartnerFinanceService:
             amount=partner_net_amount,
             currency=currency,
             direction=PartnerLedgerDirection.CREDIT,
-            meta_json={"source": "marketplace_order"},
+            meta_json={"source_type": "marketplace_order", "source_id": str(order.id)},
         )
         AuditService(self.db).audit(
             event_type="partner_earned",
@@ -301,7 +301,7 @@ class PartnerFinanceService:
             amount=amount,
             currency=currency,
             direction=PartnerLedgerDirection.DEBIT,
-            meta_json={"reason": reason},
+            meta_json={"source_type": "order", "source_id": order_id, "reason": reason},
         )
         AuditService(self.db).audit(
             event_type="partner_sla_penalty",
@@ -392,7 +392,7 @@ class PartnerFinanceService:
             amount=amount,
             currency=currency,
             entry_type=PartnerLedgerEntryType.PAYOUT_REQUESTED,
-            meta_json={"payout_request_id": str(payout.id)},
+            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
         )
         AuditService(self.db).audit(
             event_type="partner_payout_requested",
@@ -431,7 +431,7 @@ class PartnerFinanceService:
             amount=Decimal("0"),
             currency=payout.currency,
             direction=PartnerLedgerDirection.CREDIT,
-            meta_json={"payout_request_id": str(payout.id)},
+            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
         )
         AuditService(self.db).audit(
             event_type="partner_payout_approved",
@@ -467,7 +467,11 @@ class PartnerFinanceService:
             amount=payout.amount,
             currency=payout.currency,
             entry_type=PartnerLedgerEntryType.ADJUSTMENT,
-            meta_json={"payout_request_id": str(payout.id), "reason": reason or "rejected"},
+            meta_json={
+                "source_type": "payout_request",
+                "source_id": str(payout.id),
+                "reason": reason or "rejected",
+            },
         )
         AuditService(self.db).audit(
             event_type="partner_payout_rejected",
@@ -491,7 +495,7 @@ class PartnerFinanceService:
             amount=payout.amount,
             currency=payout.currency,
             direction=PartnerLedgerDirection.DEBIT,
-            meta_json={"payout_request_id": str(payout.id)},
+            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
             apply_balance=False,
         )
         AuditService(self.db).audit(

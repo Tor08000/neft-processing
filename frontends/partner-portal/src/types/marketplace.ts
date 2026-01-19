@@ -190,6 +190,41 @@ export interface MarketplaceOrder {
   updatedAt: string;
 }
 
+export interface SettlementFeeExplain {
+  amount: number;
+  basis: string;
+  rate?: number | null;
+  explain: string;
+}
+
+export interface SettlementPenaltySourceRef {
+  audit_event_id?: string | null;
+  sla_event_id?: string | null;
+}
+
+export interface SettlementPenalty {
+  type: string;
+  amount: number;
+  reason?: string | null;
+  source_ref?: SettlementPenaltySourceRef | null;
+}
+
+export interface OrderSettlementSnapshot {
+  settlement_snapshot_id?: string | null;
+  finalized_at?: string | null;
+  hash?: string | null;
+}
+
+export interface MarketplaceOrderSettlementBreakdown {
+  order_id: string;
+  currency: string;
+  gross_amount: number;
+  platform_fee: SettlementFeeExplain;
+  penalties: SettlementPenalty[];
+  partner_net: number;
+  snapshot?: OrderSettlementSnapshot | null;
+}
+
 export interface MarketplaceOrderActionResult {
   orderId: string;
   status: OrderStatus;

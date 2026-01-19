@@ -8,6 +8,7 @@ import type {
   MarketplaceOrderEvent,
   MarketplaceOrderSlaResponse,
   MarketplaceSettlementLink,
+  MarketplaceOrderSettlementBreakdown,
 } from "../types/marketplace";
 
 export interface OrderFilters {
@@ -74,6 +75,9 @@ export const fetchOrderSettlement = (token: string, orderId: string) =>
     {},
     token,
   );
+
+export const fetchOrderSettlementBreakdown = (token: string, orderId: string) =>
+  request<MarketplaceOrderSettlementBreakdown>(`/partner/orders/${orderId}/settlement`, {}, token);
 
 export const fetchOrderSla = (token: string, id: string) =>
   request<MarketplaceOrderSlaResponse>(`/partner/orders/${id}/sla`, {}, token);

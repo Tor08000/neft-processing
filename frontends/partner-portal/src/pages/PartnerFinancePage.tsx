@@ -1,17 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchPartnerBalance, fetchPartnerLedger } from "../api/partnerFinance";
+import {
+  createSettlementChainExport,
+  fetchPartnerBalance,
+  fetchPartnerExportJobs,
+  fetchPartnerLedger,
+  fetchPartnerLedgerExplain,
+  getPartnerExportDownloadUrl,
+} from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorState, LoadingState } from "../components/states";
 import { formatCurrency, formatDateTime } from "../utils/format";
-import type { PartnerBalance, PartnerLedgerEntry } from "../types/partnerFinance";
+import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../types/partnerFinance";
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
   const [balance, setBalance] = useState<PartnerBalance | null>(null);
   const [ledger, setLedger] = useState<PartnerLedgerEntry[]>([]);
+  const [exportJobs, setExportJobs] = useState<PartnerExportJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [explainEntry, setExplainEntry] = useState<PartnerLedgerExplain | null>(null);
+  const [isExplainOpen, setIsExplainOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
+  const [exportFormat, setExportFormat] = useState<"CSV" | "ZIP">("CSV");
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const currency = useMemo(() => balance?.currency ?? "RUB", [balance]);
 
@@ -19,11 +34,12 @@ export function PartnerFinancePage() {
     let active = true;
     if (!user) return;
     setIsLoading(true);
-    Promise.all([fetchPartnerBalance(user.token), fetchPartnerLedger(user.token)])
-      .then(([balanceResp, ledgerResp]) => {
+    Promise.all([fetchPartnerBalance(user.token), fetchPartnerLedger(user.token), fetchPartnerExportJobs(user.token)])
+      .then(([balanceResp, ledgerResp, exportResp]) => {
         if (!active) return;
         setBalance(balanceResp);
         setLedger(ledgerResp.items ?? []);
+        setExportJobs(exportResp.items ?? []);
       })
       .catch((err) => {
         console.error(err);
@@ -36,6 +52,52 @@ export function PartnerFinancePage() {
       active = false;
     };
   }, [user]);
+
+  const handleExplain = async (entry: PartnerLedgerEntry) => {
+    if (!user) return;
+    setExplainEntry(null);
+    setIsExplainOpen(true);
+    try {
+      const data = await fetchPartnerLedgerExplain(user.token, entry.id);
+      setExplainEntry(data);
+    } catch (err) {
+      console.error(err);
+      setExplainEntry({
+        entry_id: entry.id,
+        operation: entry.entry_type,
+        amount: entry.amount,
+        currency: entry.currency,
+        direction: entry.direction,
+        source_label: "Не удалось загрузить объяснение",
+      });
+    }
+  };
+
+  const handleExport = async () => {
+    if (!user || !exportFrom || !exportTo) return;
+    setExportError(null);
+    setExportLoading(true);
+    try {
+      const result = await createSettlementChainExport(user.token, { from: exportFrom, to: exportTo, format: exportFormat });
+      const updated = await fetchPartnerExportJobs(user.token);
+      setExportJobs(updated.items ?? []);
+      setExportLoading(false);
+      setExportError(result.status === "FAILED" ? "Экспорт не создан" : null);
+    } catch (err) {
+      console.error(err);
+      setExportError("Не удалось запустить экспорт");
+      setExportLoading(false);
+    }
+  };
+
+  const resolveLedgerSource = (entry: PartnerLedgerEntry) => {
+    const meta = entry.meta_json ?? {};
+    const sourceType = typeof meta.source_type === "string" ? meta.source_type : null;
+    const sourceId = typeof meta.source_id === "string" ? meta.source_id : null;
+    if (sourceType === "payout_request") return `Payout ${sourceId ?? "—"}`;
+    if (sourceType === "marketplace_order" || sourceType === "partner_order" || sourceType === "order") return `Order ${sourceId ?? entry.order_id ?? "—"}`;
+    return sourceId ? `${sourceType ?? "Источник"} ${sourceId}` : "—";
+  };
 
   return (
     <div className="stack">
@@ -86,11 +148,12 @@ export function PartnerFinancePage() {
                 <th>Сумма</th>
                 <th>Направление</th>
                 <th>Заказ</th>
+                <th>Источник</th>
               </tr>
             </thead>
             <tbody>
               {ledger.map((entry) => (
-                <tr key={entry.id}>
+                <tr key={entry.id} onClick={() => handleExplain(entry)} style={{ cursor: "pointer" }}>
                   <td>{formatDateTime(entry.created_at)}</td>
                   <td>
                     <StatusBadge status={entry.entry_type} />
@@ -98,12 +161,117 @@ export function PartnerFinancePage() {
                   <td>{formatCurrency(entry.amount ?? null, entry.currency)}</td>
                   <td>{entry.direction}</td>
                   <td className="mono">{entry.order_id ?? "—"}</td>
+                  <td>{resolveLedgerSource(entry)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+
+      <section className="card">
+        <div className="section-title">
+          <h2>Export settlements</h2>
+        </div>
+        <div className="stack">
+          <div className="grid three">
+            <label className="form-field">
+              Период с
+              <input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} />
+            </label>
+            <label className="form-field">
+              Период по
+              <input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} />
+            </label>
+            <label className="form-field">
+              Формат
+              <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as "CSV" | "ZIP")}>
+                <option value="CSV">CSV</option>
+                <option value="ZIP">ZIP</option>
+              </select>
+            </label>
+          </div>
+          <button type="button" className="primary" onClick={handleExport} disabled={!exportFrom || !exportTo || exportLoading}>
+            {exportLoading ? "Готовим..." : "Export settlements"}
+          </button>
+          {exportError ? <div className="notice error">{exportError}</div> : null}
+          {exportJobs.length ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Статус</th>
+                  <th>Создано</th>
+                  <th>Скачать</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exportJobs.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.file_name ?? job.id}</td>
+                    <td>{job.status}</td>
+                    <td>{formatDateTime(job.created_at)}</td>
+                    <td>
+                      {job.status === "DONE" ? (
+                        <a className="link-button" href={getPartnerExportDownloadUrl(job.id)}>
+                          Скачать
+                        </a>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="muted">Экспортов пока нет.</div>
+          )}
+        </div>
+      </section>
+
+      {isExplainOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="section-title">
+              <h3>Explain</h3>
+              <button type="button" className="ghost" onClick={() => setIsExplainOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+            {explainEntry ? (
+              <div className="stack">
+                <div className="meta-grid">
+                  <div>
+                    <div className="label">Операция</div>
+                    <div>{explainEntry.operation}</div>
+                  </div>
+                  <div>
+                    <div className="label">Сумма</div>
+                    <div>{formatCurrency(explainEntry.amount, explainEntry.currency)}</div>
+                  </div>
+                  <div>
+                    <div className="label">Направление</div>
+                    <div>{explainEntry.direction}</div>
+                  </div>
+                  <div>
+                    <div className="label">Источник</div>
+                    <div>{explainEntry.source_label ?? "—"}</div>
+                  </div>
+                </div>
+                {explainEntry.formula ? (
+                  <div>
+                    <div className="label">Формула</div>
+                    <div className="mono">{explainEntry.formula}</div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <LoadingState />
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
