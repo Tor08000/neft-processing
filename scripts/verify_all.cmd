@@ -44,7 +44,9 @@ REM ===== Run =====
 call :run_cmd "0.1 Local neft_shared/app.main import" "scripts\\dev_python_env.cmd" || goto finalize
 call :run_cmd "0. Reset volumes" "docker compose down -v" || goto finalize
 call :run_cmd "1. Stack up" "docker compose up -d --build" || goto finalize
-call :run_cmd "1.0 Docker neft_shared/app.main import" "docker run --rm --network neft-processing_default neft-processing-core-api python -c ^\"import neft_shared; import app.main^\"" || goto finalize
+call :run_cmd "1.0 Docker neft_shared/app.main import" "docker run --rm --network neft-processing_default neft-processing-core-api python -c ^\"import neft_shared; import app.main; print('OK')^\"" || goto finalize
+call :run_cmd "1.0.1 Docker neft_shared import (ai-service)" "docker run --rm neft-processing-ai-service python -c ^\"import neft_shared; print('OK')^\"" || goto finalize
+call :run_cmd "1.0.2 Docker neft_shared import (workers)" "docker run --rm neft-processing-workers python -c ^\"import neft_shared; print('OK')^\"" || goto finalize
 call :run_cmd "1.1 Alembic core-api upgrade head (clean DB)" "docker compose exec -T core-api sh -lc ^"alembic -c app/alembic.ini upgrade head^"" || goto finalize
 call :run_cmd "2.0 Alembic core-api heads guard" "docker run --rm --network neft-processing_default neft-processing-core-api sh -lc ^"cd /app/app && alembic -c alembic.ini heads^"" || goto finalize
 call :run_cmd "2.1 Migrations" "scripts\migrate.cmd" || goto finalize
