@@ -14,11 +14,6 @@ from sqlalchemy.sql import text
 from db.types import GUID
 from db.schema import resolve_db_schema
 from alembic_helpers import ensure_pg_enum, ensure_pg_enum_value, column_exists, constraint_exists, index_exists, table_exists
-from models.financial_adjustment import FinancialAdjustmentKind, RelatedEntityType
-from models.billing_reconciliation import (
-    BillingReconciliationStatus,
-    BillingReconciliationVerdict,
-)
 
 # revision identifiers, used by Alembic.
 revision = "20271030_0034_billing_hardening_v11"
@@ -29,14 +24,19 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 
+FINANCIAL_ADJUSTMENT_KIND_VALUES = ["CREDIT", "DEBIT"]
+RELATED_ENTITY_TYPE_VALUES = ["BILLING_PERIOD"]
+BILLING_RECONCILIATION_STATUS_VALUES = ["OK", "FAILED", "PARTIAL"]
+BILLING_RECONCILIATION_VERDICT_VALUES = ["OK", "MISMATCH", "MISSING_LEDGER", "ERROR"]
+
 recon_status_enum = ENUM(
-    BillingReconciliationStatus,
+    *BILLING_RECONCILIATION_STATUS_VALUES,
     name="billing_reconciliation_status",
     schema=SCHEMA,
     create_type=False,
 )
 recon_verdict_enum = ENUM(
-    BillingReconciliationVerdict,
+    *BILLING_RECONCILIATION_VERDICT_VALUES,
     name="billing_reconciliation_verdict",
     schema=SCHEMA,
     create_type=False,
@@ -48,19 +48,20 @@ def upgrade() -> None:
 
     # Extend enums
     if bind.dialect.name == "postgresql":
-        for value in (FinancialAdjustmentKind.CREDIT.value, FinancialAdjustmentKind.DEBIT.value):
+        for value in FINANCIAL_ADJUSTMENT_KIND_VALUES:
             ensure_pg_enum_value(bind, "financial_adjustment_kind", value, schema=SCHEMA)
-        ensure_pg_enum_value(bind, "financial_adjustment_related", RelatedEntityType.BILLING_PERIOD.value, schema=SCHEMA)
+        for value in RELATED_ENTITY_TYPE_VALUES:
+            ensure_pg_enum_value(bind, "financial_adjustment_related", value, schema=SCHEMA)
         ensure_pg_enum(
             bind,
             "billing_reconciliation_status",
-            values=[item.value for item in BillingReconciliationStatus],
+            values=BILLING_RECONCILIATION_STATUS_VALUES,
             schema=SCHEMA,
         )
         ensure_pg_enum(
             bind,
             "billing_reconciliation_verdict",
-            values=[item.value for item in BillingReconciliationVerdict],
+            values=BILLING_RECONCILIATION_VERDICT_VALUES,
             schema=SCHEMA,
         )
 
@@ -134,7 +135,7 @@ def upgrade() -> None:
                 "status",
                 recon_status_enum,
                 nullable=False,
-                server_default=BillingReconciliationStatus.OK.value,
+                server_default="OK",
             ),
             sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
@@ -170,7 +171,7 @@ def upgrade() -> None:
                 "verdict",
                 recon_verdict_enum,
                 nullable=False,
-                server_default=BillingReconciliationVerdict.OK.value,
+                server_default="OK",
             ),
             sa.Column("diff_json", sa.JSON(), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
