@@ -2142,6 +2142,7 @@ def delete_report_schedule(
         entity_id=str(schedule.id),
         action="report_schedule_deleted",
     )
+    return None
 
 
 def _date_range_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:
