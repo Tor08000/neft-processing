@@ -9,7 +9,6 @@ from alembic import op
 import sqlalchemy as sa
 
 from alembic_helpers import constraint_exists, ensure_pg_enum, index_exists, safe_enum
-from models.operation import ProductType
 from db.schema import resolve_db_schema
 
 
@@ -22,7 +21,7 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 
 
-product_type_values = [value.value for value in ProductType]
+product_type_values = ["DIESEL", "AI92", "AI95", "AI98", "GAS", "OTHER"]
 billing_status_values = ["PENDING", "FINALIZED"]
 
 

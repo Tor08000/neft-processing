@@ -18,7 +18,6 @@ from alembic_helpers import (
     safe_enum,
     table_exists,
 )
-from models.invoice import InvoiceStatus
 from db.schema import resolve_db_schema
 
 # revision identifiers, used by Alembic.
@@ -30,7 +29,16 @@ depends_on = None
 SCHEMA = resolve_db_schema().schema
 SCHEMA_QUOTED = f'"{SCHEMA}"'
 
-INVOICE_STATUS_VALUES = [status.value for status in InvoiceStatus]
+INVOICE_STATUS_VALUES = [
+    "DRAFT",
+    "ISSUED",
+    "SENT",
+    "PARTIALLY_PAID",
+    "PAID",
+    "OVERDUE",
+    "CANCELLED",
+    "CREDITED",
+]
 
 
 def upgrade() -> None:
@@ -54,7 +62,7 @@ def upgrade() -> None:
             "status",
             invoice_status_enum,
             nullable=False,
-            server_default=InvoiceStatus.DRAFT.value,
+            server_default="DRAFT",
         ),
         sa.Column(
             "created_at",
