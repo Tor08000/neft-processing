@@ -1,7 +1,7 @@
 """Allow usage meter pricing in catalog.
 
 Revision ID: 20299160_0146_pricing_catalog_usage_meter
-Revises: 20299150_0145_service_slo_framework
+Revises: 20299155_0145a_pricing_catalog_base
 Create Date: 2026-02-20 00:00:00.000000
 """
 
@@ -13,7 +13,7 @@ from alembic_helpers import DB_SCHEMA
 
 
 revision = "20299160_0146_pricing_catalog_usage_meter"
-down_revision = "20299150_0145_service_slo_framework"
+down_revision = "20299155_0145a_pricing_catalog_base"
 branch_labels = None
 depends_on = None
 
