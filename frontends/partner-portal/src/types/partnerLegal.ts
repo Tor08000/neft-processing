@@ -12,6 +12,10 @@ export interface PartnerLegalDetails {
   updated_at?: string | null;
 }
 
+export type PartnerTaxContext = {
+  tax_rate?: number | string | null;
+};
+
 export interface PartnerLegalProfile {
   partner_id: string;
   legal_type: string;
@@ -22,7 +26,7 @@ export interface PartnerLegalProfile {
   vat_rate?: number | null;
   legal_status: string;
   details?: PartnerLegalDetails | null;
-  tax_context?: Record<string, unknown> | null;
+  tax_context?: PartnerTaxContext | null;
 }
 
 export interface PartnerLegalChecklist {
