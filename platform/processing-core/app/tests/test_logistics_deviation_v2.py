@@ -9,8 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import logistics as logistics_models
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.schemas.logistics import LogisticsStopIn, LogisticsTrackingEventIn
 from app.services.logistics.defaults import OFF_ROUTE_DEFAULTS
@@ -64,7 +64,7 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
     )
@@ -77,19 +77,19 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=55.76,
                 lon=37.61,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )
@@ -99,7 +99,7 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
         db,
         order_id=str(order.id),
         payload=LogisticsTrackingEventIn(
-            event_type=models.LogisticsTrackingEventType.LOCATION,
+            event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
             ts=base_ts,
             lat=55.7505,
             lon=37.6005,
@@ -113,7 +113,7 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
             db,
             order_id=str(order.id),
             payload=LogisticsTrackingEventIn(
-                event_type=models.LogisticsTrackingEventType.LOCATION,
+                event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
                 ts=base_ts + timedelta(minutes=5 + idx * 8),
                 lat=56.5,
                 lon=38.0,
@@ -127,7 +127,7 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
         db,
         order_id=str(order.id),
         payload=LogisticsTrackingEventIn(
-            event_type=models.LogisticsTrackingEventType.LOCATION,
+            event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
             ts=base_ts + timedelta(minutes=30),
             lat=55.7508,
             lon=37.6008,
@@ -138,7 +138,7 @@ def test_deviation_events(db_session: Tuple[Session, sessionmaker]):
         db,
         order_id=str(order.id),
         payload=LogisticsTrackingEventIn(
-            event_type=models.LogisticsTrackingEventType.LOCATION,
+            event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
             ts=base_ts + timedelta(minutes=32),
             lat=55.7509,
             lon=37.6009,
@@ -156,7 +156,7 @@ def test_deviation_state_machine_out_of_order(db_session: Tuple[Session, session
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
     )
@@ -168,19 +168,19 @@ def test_deviation_state_machine_out_of_order(db_session: Tuple[Session, session
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=55.76,
                 lon=37.61,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )
@@ -190,7 +190,7 @@ def test_deviation_state_machine_out_of_order(db_session: Tuple[Session, session
             db,
             order_id=str(order.id),
             payload=LogisticsTrackingEventIn(
-                event_type=models.LogisticsTrackingEventType.LOCATION,
+                event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
                 ts=base_ts + timedelta(minutes=5 + idx * 6),
                 lat=56.5,
                 lon=38.0,
@@ -204,7 +204,7 @@ def test_deviation_state_machine_out_of_order(db_session: Tuple[Session, session
         db,
         order_id=str(order.id),
         payload=LogisticsTrackingEventIn(
-            event_type=models.LogisticsTrackingEventType.LOCATION,
+            event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
             ts=base_ts - timedelta(minutes=1),
             lat=56.5,
             lon=38.0,
@@ -218,7 +218,7 @@ def test_deviation_state_machine_out_of_order(db_session: Tuple[Session, session
         db,
         order_id=str(order.id),
         payload=LogisticsTrackingEventIn(
-            event_type=models.LogisticsTrackingEventType.LOCATION,
+            event_type=logistics_models.LogisticsTrackingEventType.LOCATION,
             ts=base_ts + timedelta(minutes=5 + (OFF_ROUTE_DEFAULTS.off_route_consecutive_points - 1) * 6),
             lat=56.5,
             lon=38.0,

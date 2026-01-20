@@ -9,8 +9,10 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import fleet as fleet_models
+from app.models import fuel as fuel_models
+from app.models import logistics as logistics_models
 from app.models.fuel import FuelCard, FuelNetwork, FuelStation
 from app.models.logistics import LogisticsRiskSignal, LogisticsRiskSignalType, LogisticsDeviationEvent, LogisticsDeviationEventType, LogisticsDeviationSeverity
 from app.schemas.logistics import LogisticsStopIn
@@ -39,17 +41,17 @@ def db_session() -> Tuple[Session, sessionmaker]:
 
 def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessionmaker]):
     db, _ = db_session
-    vehicle = models.FleetVehicle(
+    vehicle = fleet_models.FleetVehicle(
         tenant_id=1,
         client_id="client-1",
         plate_number="RISK123",
-        status=models.FleetVehicleStatus.ACTIVE,
+        status=fleet_models.FleetVehicleStatus.ACTIVE,
     )
-    driver = models.FleetDriver(
+    driver = fleet_models.FleetDriver(
         tenant_id=1,
         client_id="client-1",
         full_name="Risk Driver",
-        status=models.FleetDriverStatus.ACTIVE,
+        status=fleet_models.FleetDriverStatus.ACTIVE,
     )
     db.add_all([vehicle, driver])
     db.commit()
@@ -60,7 +62,7 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
@@ -77,19 +79,19 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=56.75,
                 lon=37.8,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )
@@ -137,7 +139,7 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
     )
     db.add(deviation_event)
 
-    network = FuelNetwork(name="RiskNet", provider_code="RNET", status=models.FuelNetworkStatus.ACTIVE)
+    network = FuelNetwork(name="RiskNet", provider_code="RNET", status=fuel_models.FuelNetworkStatus.ACTIVE)
     db.add(network)
     db.commit()
     db.refresh(network)
@@ -152,13 +154,13 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         city="Moscow",
         lat="55.75",
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     card = FuelCard(
         tenant_id=1,
         client_id="client-1",
         card_token="risk-token",
-        status=models.FuelCardStatus.ACTIVE,
+        status=fuel_models.FuelCardStatus.ACTIVE,
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
@@ -174,7 +176,7 @@ def test_risk_signals_enriched_in_fuel_context(db_session: Tuple[Session, sessio
         station=station,
         vehicle=vehicle,
         driver=driver,
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         amount_minor=1000,
         volume_ml=1000,
         occurred_at=datetime.now(timezone.utc) - timedelta(minutes=5),

@@ -12,8 +12,10 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base, get_db
+from app.models import fleet as fleet_models
+from app.models import fuel as fuel_models
+from app.models import logistics as logistics_models
 from app.models.fuel import FuelCard, FuelNetwork, FuelStation, FuelTransaction, FuelTransactionStatus
 from app.routers.admin.logistics import router as admin_logistics_router
 from app.schemas.logistics import LogisticsStopIn
@@ -52,7 +54,7 @@ def admin_client() -> Tuple[TestClient, sessionmaker]:
 
 
 def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
-    network = FuelNetwork(name="Net", provider_code="NET-1", status=models.FuelNetworkStatus.ACTIVE)
+    network = FuelNetwork(name="Net", provider_code="NET-1", status=fuel_models.FuelNetworkStatus.ACTIVE)
     db.add(network)
     db.commit()
     db.refresh(network)
@@ -66,13 +68,13 @@ def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
         city="Moscow",
         lat="55.75",
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     card = FuelCard(
         tenant_id=1,
         client_id="client-1",
         card_token="token-1",
-        status=models.FuelCardStatus.ACTIVE,
+        status=fuel_models.FuelCardStatus.ACTIVE,
     )
     db.add_all([station, card])
     db.commit()
@@ -84,17 +86,17 @@ def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
 def test_health_and_recompute_idempotent(admin_client: Tuple[TestClient, sessionmaker]):
     client, SessionLocal = admin_client
     with SessionLocal() as db:
-        vehicle = models.FleetVehicle(
+        vehicle = fleet_models.FleetVehicle(
             tenant_id=1,
             client_id="client-1",
             plate_number="HEALTH1",
-            status=models.FleetVehicleStatus.ACTIVE,
+            status=fleet_models.FleetVehicleStatus.ACTIVE,
         )
-        driver = models.FleetDriver(
+        driver = fleet_models.FleetDriver(
             tenant_id=1,
             client_id="client-1",
             full_name="Health Driver",
-            status=models.FleetDriverStatus.ACTIVE,
+            status=fleet_models.FleetDriverStatus.ACTIVE,
         )
         db.add_all([vehicle, driver])
         db.commit()
@@ -105,7 +107,7 @@ def test_health_and_recompute_idempotent(admin_client: Tuple[TestClient, session
             db,
             tenant_id=1,
             client_id="client-1",
-            order_type=models.LogisticsOrderType.DELIVERY,
+            order_type=logistics_models.LogisticsOrderType.DELIVERY,
             vehicle_id=str(vehicle.id),
             driver_id=str(driver.id),
         )
@@ -119,12 +121,12 @@ def test_health_and_recompute_idempotent(admin_client: Tuple[TestClient, session
             stops=[
                 LogisticsStopIn(
                     sequence=0,
-                    stop_type=models.LogisticsStopType.FUEL,
+                    stop_type=logistics_models.LogisticsStopType.FUEL,
                     name="Fuel Stop",
                     lat=55.75,
                     lon=37.6,
                     planned_arrival_at=datetime.now(timezone.utc),
-                    status=models.LogisticsStopStatus.PENDING,
+                    status=logistics_models.LogisticsStopStatus.PENDING,
                 )
             ],
         )
@@ -139,7 +141,7 @@ def test_health_and_recompute_idempotent(admin_client: Tuple[TestClient, session
             station_id=str(station.id),
             network_id=str(station.network_id),
             occurred_at=datetime.now(timezone.utc),
-            fuel_type=models.FuelType.DIESEL,
+            fuel_type=fuel_models.FuelType.DIESEL,
             volume_ml=1000,
             unit_price_minor=50,
             amount_total_minor=50,

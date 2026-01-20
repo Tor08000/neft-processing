@@ -10,8 +10,8 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import logistics as logistics_models
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus
 from app.schemas.logistics import LogisticsStopIn
 from app.services.logistics import deviation, eta, routes
@@ -91,8 +91,8 @@ def test_eta_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_session:
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.TRIP,
-        status=models.LogisticsOrderStatus.PLANNED,
+        order_type=logistics_models.LogisticsOrderType.TRIP,
+        status=logistics_models.LogisticsOrderStatus.PLANNED,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
         planned_end_at=datetime.now(timezone.utc) + timedelta(hours=2),
@@ -105,19 +105,19 @@ def test_eta_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_session:
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=55.76,
                 lon=37.61,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )
@@ -140,8 +140,8 @@ def test_eta_fallback_when_disabled(monkeypatch: pytest.MonkeyPatch, db_session:
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.TRIP,
-        status=models.LogisticsOrderStatus.PLANNED,
+        order_type=logistics_models.LogisticsOrderType.TRIP,
+        status=logistics_models.LogisticsOrderStatus.PLANNED,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
         planned_end_at=planned_end,
@@ -149,7 +149,7 @@ def test_eta_fallback_when_disabled(monkeypatch: pytest.MonkeyPatch, db_session:
 
     snapshot = eta.compute_eta_snapshot(db, order_id=str(order.id), reason="test")
     assert snapshot is not None
-    assert snapshot.method == models.LogisticsETAMethod.PLANNED
+    assert snapshot.method == logistics_models.LogisticsETAMethod.PLANNED
     assert snapshot.eta_end_at.isoformat().startswith(planned_end.isoformat()[:19])
 
 
@@ -173,7 +173,7 @@ def test_deviation_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_se
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.TRIP,
+        order_type=logistics_models.LogisticsOrderType.TRIP,
         vehicle_id=vehicle_id,
         driver_id=driver_id,
     )
@@ -185,19 +185,19 @@ def test_deviation_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_se
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=55.76,
                 lon=37.61,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )
@@ -213,4 +213,3 @@ def test_deviation_uses_logistics_service(monkeypatch: pytest.MonkeyPatch, db_se
     assert result.event is not None
     assert result.risk_signal is not None
     assert result.event.explain["primary_reason"] == "ROUTE_DEVIATION"
-

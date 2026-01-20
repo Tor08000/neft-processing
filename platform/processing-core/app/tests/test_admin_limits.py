@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 # Ensure Celery is disabled for tests so the local evaluator is used
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.api.v1.endpoints.admin_limits import router as admin_router
 from app.db import Base, get_db
 from app.models import groups as group_models  # noqa: F401

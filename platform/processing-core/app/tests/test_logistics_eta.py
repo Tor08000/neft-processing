@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.api.v1.endpoints.logistics import router as logistics_router
 from app.db import Base, get_db
 from app.models.fleet import FleetDriver, FleetDriverStatus, FleetVehicle, FleetVehicleStatus

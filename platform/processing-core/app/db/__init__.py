@@ -157,7 +157,6 @@ def init_db() -> None:
     """
 
     # Импорт нужен только для регистрации моделей, переменные не используются
-    from app import models  # noqa: F401
     from app.models.operation import Operation  # noqa: F401
     from app.models.merchant import Merchant  # noqa: F401
     from app.models.terminal import Terminal  # noqa: F401

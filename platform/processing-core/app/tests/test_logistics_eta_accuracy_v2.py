@@ -9,8 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import logistics as logistics_models
 from app.services.logistics import eta, repository
 from app.services.logistics.defaults import ETA_ACCURACY_DEFAULTS
 from app.services.logistics.orders import complete_order, create_order, start_order
@@ -42,7 +42,7 @@ def test_eta_accuracy_on_completion(db_session: Tuple[Session, sessionmaker]):
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.TRIP,
+        order_type=logistics_models.LogisticsOrderType.TRIP,
         planned_start_at=planned_start,
         planned_end_at=planned_end,
     )

@@ -7,7 +7,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401
 from app.db import Base
 from app.db.types import new_uuid_str
 from app.models.fleet_intelligence_actions import (

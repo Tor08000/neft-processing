@@ -62,7 +62,6 @@ os.environ.setdefault("NEFT_AUTH_ISSUER", "neft-auth")
 os.environ.setdefault("NEFT_AUTH_AUDIENCE", "neft-admin")
 os.environ.setdefault("RISK_V5_SHADOW_ENABLED", "false")
 
-from app import models  # noqa: F401
 from app.db.schema import DB_SCHEMA
 from app.integrations.fuel import models as fuel_models  # noqa: F401
 

@@ -7,9 +7,10 @@ WORKDIR /app
 
 # Кладём общий код
 COPY shared/python /opt/python
+RUN pip install -e /opt/python
 
 # Очень важно: чтобы neft_shared был виден
-ENV PYTHONPATH="/opt/python:/app"
+ENV PYTHONPATH="/app"
 
 # подключаем sitecustomize.py, чтобы он подхватывался автоматически
 COPY sitecustomize.py /app/sitecustomize.py

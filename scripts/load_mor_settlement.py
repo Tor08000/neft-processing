@@ -17,7 +17,6 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
-from app import models  # noqa: F401
 from app.db import Base
 from app.models.audit_log import AuditLog
 from app.models.marketplace_catalog import (

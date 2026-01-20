@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir -r /tmp/worker-requirements.txt \
 
 # Кладём общую питон-библиотеку и код воркеров, чтобы Celery app был доступен
 COPY shared/python /opt/python
-COPY shared/python/neft_shared /app/neft_shared
-ENV PYTHONPATH="/app/services/workers:/opt/python:/app"
+RUN pip install -e /opt/python
+ENV PYTHONPATH="/app/services/workers:/app"
 
 # подключаем sitecustomize.py, чтобы он подхватывался автоматически
 COPY sitecustomize.py /app/sitecustomize.py
