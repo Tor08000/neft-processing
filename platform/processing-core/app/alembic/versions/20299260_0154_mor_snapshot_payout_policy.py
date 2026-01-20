@@ -23,7 +23,7 @@ from db.types import GUID
 
 
 revision = "20299260_0154_mor_snapshot_payout_policy"
-down_revision = "20299250_0153_marketplace_mor_settlement"
+down_revision = "20299255_0153a_marketplace_settlement_items_base"
 branch_labels = None
 depends_on = None
 
