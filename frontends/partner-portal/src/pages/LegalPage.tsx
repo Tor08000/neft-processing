@@ -13,6 +13,12 @@ const formatDate = (value?: string | null) => {
   }
 };
 
+const renderScalar = (value: unknown) => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return "—";
+};
+
 export function LegalPage() {
   const { user } = useAuth();
   const { required, isBlocked, isLoading, document, loadDocument, accept, refresh } = useLegalGate();
@@ -53,7 +59,7 @@ export function LegalPage() {
   const legalProfile = profileState?.profile ?? null;
   const checklist = profileState?.checklist;
   const statusLabel = legalProfile?.legal_status ?? "Не заполнен";
-  const taxContext = legalProfile?.tax_context as Record<string, unknown> | undefined;
+  const taxContext = legalProfile?.tax_context ?? null;
 
   return (
     <div className="card">
@@ -100,7 +106,7 @@ export function LegalPage() {
             </div>
             <div>
               <strong>Ставка</strong>
-              <div>{taxContext?.tax_rate ?? "—"}</div>
+              <div>{renderScalar(taxContext?.tax_rate)}</div>
             </div>
           </div>
         </div>

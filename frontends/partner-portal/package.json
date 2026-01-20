@@ -7,6 +7,7 @@
     "dev": "vite",
     "prebuild": "node ../shared/brand/check-brand-imports.js && node ../shared/check-shared-imports.js",
     "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest"
