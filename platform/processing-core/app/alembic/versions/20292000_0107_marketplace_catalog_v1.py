@@ -100,7 +100,7 @@ def upgrade() -> None:
 
     create_table_if_not_exists(
         bind,
-        "partner_profiles",
+        "marketplace_partner_profiles",
         sa.Column("id", GUID(), primary_key=True),
         sa.Column("partner_id", GUID(), nullable=False),
         sa.Column("company_name", sa.Text(), nullable=False),
@@ -123,16 +123,16 @@ def upgrade() -> None:
     )
     create_index_if_not_exists(
         bind,
-        "uq_partner_profiles_partner",
-        "partner_profiles",
+        "uq_marketplace_partner_profiles_partner",
+        "marketplace_partner_profiles",
         ["partner_id"],
         unique=True,
         schema=DB_SCHEMA,
     )
     create_index_if_not_exists(
         bind,
-        "ix_partner_profiles_verification_status",
-        "partner_profiles",
+        "ix_marketplace_partner_profiles_verification_status",
+        "marketplace_partner_profiles",
         ["verification_status"],
         schema=DB_SCHEMA,
     )
@@ -198,7 +198,7 @@ def upgrade() -> None:
         schema=DB_SCHEMA,
     )
 
-    _create_worm_delete_trigger("partner_profiles")
+    _create_worm_delete_trigger("marketplace_partner_profiles")
     _create_worm_delete_trigger("marketplace_products")
 
 

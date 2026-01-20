@@ -115,6 +115,7 @@ def _clean_db() -> None:
         "marketplace_order_events",
         "marketplace_orders",
         "marketplace_products",
+        "marketplace_partner_profiles",
         "partner_profiles",
         "fleet_policy_executions",
         "fleet_action_policies",

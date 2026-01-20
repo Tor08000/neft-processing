@@ -48,7 +48,7 @@ class MarketplaceCatalogImmutableError(ValueError):
 
 
 class PartnerProfile(Base):
-    __tablename__ = "partner_profiles"
+    __tablename__ = "marketplace_partner_profiles"
 
     id = Column(GUID(), primary_key=True, default=new_uuid_str)
     partner_id = Column(GUID(), nullable=False, unique=True, index=True)
