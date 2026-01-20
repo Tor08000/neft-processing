@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
 from sqlalchemy import Date, MetaData, String, Table, and_, cast, desc, func, or_, select
-from sqlalchemy.orm import Query, Session
+from sqlalchemy.orm import Session, Query as SAQuery
 
 from app.db import get_db
 from app.db.schema import DB_SCHEMA
@@ -626,7 +626,7 @@ def _build_drill_transactions_query(
     client_id: str,
     start_dt: datetime,
     end_dt: datetime,
-) -> Query:
+) -> SAQuery:
     return (
         db.query(FuelTransaction, FuelCard, FleetDriver, FuelStation)
         .join(FuelCard, FuelCard.id == FuelTransaction.card_id)
