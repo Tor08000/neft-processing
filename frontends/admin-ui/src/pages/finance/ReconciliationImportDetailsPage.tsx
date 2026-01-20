@@ -173,7 +173,7 @@ export const ReconciliationImportDetailsPage: React.FC = () => {
         onCancel={() => setAction(null)}
       />
 
-      <Toast message={toast.message} type={toast.type} visible={toast.visible} onDismiss={toast.onDismiss} />
+      <Toast toast={toast} />
     </div>
   );
 };
