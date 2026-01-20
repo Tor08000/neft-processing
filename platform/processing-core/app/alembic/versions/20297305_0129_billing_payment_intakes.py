@@ -8,6 +8,7 @@ Create Date: 2025-03-20 00:00:00.000000
 from __future__ import annotations
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -50,7 +51,7 @@ def upgrade() -> None:
         "billing_payment_intakes",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("org_id", sa.BigInteger(), nullable=False),
-        sa.Column("invoice_id", sa.BigInteger(), nullable=False),
+        sa.Column("invoice_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(
             "status",
             safe_enum(
