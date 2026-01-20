@@ -42,6 +42,7 @@ export type PortalMeResponse = {
     status: string;
     timezone?: string | null;
   } | null;
+  org_status: string;
   org_roles: string[];
   user_roles: string[];
   subscription?: {

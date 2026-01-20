@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type ToastKind = "success" | "error" | "info";
+export type ToastKind = "success" | "error" | "info" | "warning";
 
 export type ToastMessage = {
   kind: ToastKind;

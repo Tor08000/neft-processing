@@ -25,8 +25,6 @@ export function SubscriptionPage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  const disabledModules = benefits?.unavailable_modules ?? [];
-  const enabledModules = benefits?.modules ?? [];
   const getRecordString = (value: unknown, key: string): string | undefined => {
     if (!value || typeof value !== "object") return undefined;
     const record = value as Record<string, unknown>;
@@ -151,10 +149,6 @@ export function SubscriptionPage() {
     if (upper.includes("ENTERPRISE")) return "ENTERPRISE";
     return null;
   };
-  const currentPlanLabel = subscription.plan?.title ?? subscription.plan_id;
-  const currentPlanKey = normalizePlanKey(subscription.plan?.code ?? subscription.plan_id);
-  const highlightStyle = { background: "rgba(58, 130, 255, 0.12)" };
-
   if (loading) {
     return <div>{t("common.loading")}</div>;
   }
@@ -162,6 +156,12 @@ export function SubscriptionPage() {
   if (!subscription || !benefits) {
     return <div>{t("subscription.empty")}</div>;
   }
+
+  const disabledModules = benefits.unavailable_modules ?? [];
+  const enabledModules = benefits.modules ?? [];
+  const currentPlanLabel = subscription.plan?.title ?? subscription.plan_id;
+  const currentPlanKey = normalizePlanKey(subscription.plan?.code ?? subscription.plan_id);
+  const highlightStyle = { background: "rgba(58, 130, 255, 0.12)" };
 
   return (
     <div style={{ display: "grid", gap: 16 }}>

@@ -205,7 +205,9 @@ export function ClientInvoicesPage() {
             key: "amount_total",
             title: "Сумма",
             className: "neft-num",
-            render: (invoice) => <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />,
+            render: (invoice) => (
+              <MoneyValue amount={invoice.amount_total ?? 0} currency={invoice.currency ?? undefined} />
+            ),
           },
           {
             key: "status",
