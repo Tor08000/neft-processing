@@ -1,7 +1,7 @@
 """Add partner core tables.
 
 Revision ID: 20299220_0150_partner_core_tables
-Revises: 20299210_0149_bank_statement_imports
+Revises: 20299215_0149a_orgs_base
 Create Date: 2026-02-28 00:00:00.000000
 """
 
@@ -16,7 +16,7 @@ from alembic_helpers import DB_SCHEMA, create_table_if_not_exists, ensure_pg_enu
 
 
 revision = "20299220_0150_partner_core_tables"
-down_revision = "20299210_0149_bank_statement_imports"
+down_revision = "20299215_0149a_orgs_base"
 branch_labels = None
 depends_on = None
 
