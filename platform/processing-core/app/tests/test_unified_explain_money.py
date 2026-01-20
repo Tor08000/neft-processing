@@ -10,7 +10,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401
 from app.db import Base, get_db
 from app.models.internal_ledger import (
     InternalLedgerAccount,

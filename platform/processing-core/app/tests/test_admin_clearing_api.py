@@ -13,7 +13,6 @@ from sqlalchemy.pool import StaticPool
 # Ensure Celery is disabled for tests so the local evaluator is used
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.api.v1.endpoints.admin_clearing import router as admin_router
 from app.db import Base, get_db
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType

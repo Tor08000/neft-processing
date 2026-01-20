@@ -9,8 +9,10 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import fleet as fleet_models
+from app.models import fuel as fuel_models
+from app.models import logistics as logistics_models
 from app.models.fuel import FuelCard, FuelCardStatus, FuelNetwork, FuelStation, FuelTransaction, FuelTransactionStatus
 from app.schemas.logistics import LogisticsStopIn
 from app.services.logistics.defaults import FUEL_LINK_DEFAULTS
@@ -37,7 +39,7 @@ def db_session() -> Tuple[Session, sessionmaker]:
 
 
 def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
-    network = FuelNetwork(name="Network", provider_code="NET", status=models.FuelNetworkStatus.ACTIVE)
+    network = FuelNetwork(name="Network", provider_code="NET", status=fuel_models.FuelNetworkStatus.ACTIVE)
     db.add(network)
     db.commit()
     db.refresh(network)
@@ -52,7 +54,7 @@ def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
         city="Moscow",
         lat="55.75",
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     db.add(station)
 
@@ -71,17 +73,17 @@ def _seed_fuel(db: Session) -> tuple[FuelCard, FuelStation]:
 
 def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionmaker]):
     db, _ = db_session
-    vehicle = models.FleetVehicle(
+    vehicle = fleet_models.FleetVehicle(
         tenant_id=1,
         client_id="client-1",
         plate_number="FUEL123",
-        status=models.FleetVehicleStatus.ACTIVE,
+        status=fleet_models.FleetVehicleStatus.ACTIVE,
     )
-    driver = models.FleetDriver(
+    driver = fleet_models.FleetDriver(
         tenant_id=1,
         client_id="client-1",
         full_name="Fuel Driver",
-        status=models.FleetDriverStatus.ACTIVE,
+        status=fleet_models.FleetDriverStatus.ACTIVE,
     )
     db.add_all([vehicle, driver])
     db.commit()
@@ -94,7 +96,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
@@ -108,12 +110,12 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.FUEL,
+                stop_type=logistics_models.LogisticsStopType.FUEL,
                 name="Fuel Stop",
                 lat=55.75,
                 lon=37.6,
                 planned_arrival_at=planned_arrival,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             )
         ],
     )
@@ -127,7 +129,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
         station_id=str(station.id),
         network_id=str(station.network_id),
         occurred_at=planned_arrival + timedelta(minutes=FUEL_LINK_DEFAULTS.allowed_fuel_window_minutes - 1),
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         volume_ml=1000,
         unit_price_minor=50,
         amount_total_minor=50,
@@ -153,7 +155,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
         city="SPB",
         lat=str(55.75 + 0.020),
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     db.add(far_station)
     db.commit()
@@ -168,7 +170,7 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
         station_id=str(far_station.id),
         network_id=str(far_station.network_id),
         occurred_at=planned_arrival + timedelta(minutes=FUEL_LINK_DEFAULTS.allowed_fuel_window_minutes + 1),
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         volume_ml=1000,
         unit_price_minor=50,
         amount_total_minor=50,
@@ -187,17 +189,17 @@ def test_fuel_auto_link_and_off_route_signal(db_session: Tuple[Session, sessionm
 
 def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
     db, _ = db_session
-    vehicle = models.FleetVehicle(
+    vehicle = fleet_models.FleetVehicle(
         tenant_id=1,
         client_id="client-1",
         plate_number="FUEL124",
-        status=models.FleetVehicleStatus.ACTIVE,
+        status=fleet_models.FleetVehicleStatus.ACTIVE,
     )
-    driver = models.FleetDriver(
+    driver = fleet_models.FleetDriver(
         tenant_id=1,
         client_id="client-1",
         full_name="Fuel Driver 2",
-        status=models.FleetDriverStatus.ACTIVE,
+        status=fleet_models.FleetDriverStatus.ACTIVE,
     )
     db.add_all([vehicle, driver])
     db.commit()
@@ -209,7 +211,7 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
@@ -222,12 +224,12 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.FUEL,
+                stop_type=logistics_models.LogisticsStopType.FUEL,
                 name="Fuel Stop",
                 lat=55.75,
                 lon=37.6,
                 planned_arrival_at=planned_arrival,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             )
         ],
     )
@@ -242,7 +244,7 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         city="Moscow",
         lat=str(55.75 + 0.0045),
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     mid_station = FuelStation(
         network_id=str(station.network_id),
@@ -254,7 +256,7 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         city="Moscow",
         lat=str(55.75 + 0.0065),
         lon="37.6",
-        status=models.FuelStationStatus.ACTIVE,
+        status=fuel_models.FuelStationStatus.ACTIVE,
     )
     db.add_all([near_station, mid_station])
     db.commit()
@@ -270,7 +272,7 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         station_id=str(near_station.id),
         network_id=str(near_station.network_id),
         occurred_at=planned_arrival,
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         volume_ml=1000,
         unit_price_minor=50,
         amount_total_minor=50,
@@ -293,7 +295,7 @@ def test_fuel_distance_thresholds(db_session: Tuple[Session, sessionmaker]):
         station_id=str(mid_station.id),
         network_id=str(mid_station.network_id),
         occurred_at=planned_arrival,
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         volume_ml=1000,
         unit_price_minor=50,
         amount_total_minor=50,

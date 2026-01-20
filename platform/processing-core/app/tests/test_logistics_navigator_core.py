@@ -8,8 +8,9 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DISABLE_CELERY"] = "1"
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import fleet as fleet_models
+from app.models import logistics as logistics_models
 from app.schemas.logistics import LogisticsStopIn
 from app.services.logistics import navigator, repository, routes
 from app.services.logistics.orders import create_order
@@ -33,18 +34,18 @@ def db_session() -> Tuple[Session, sessionmaker]:
         engine.dispose()
 
 
-def _seed_order(db: Session) -> models.LogisticsOrder:
-    vehicle = models.FleetVehicle(
+def _seed_order(db: Session) -> logistics_models.LogisticsOrder:
+    vehicle = fleet_models.FleetVehicle(
         tenant_id=1,
         client_id="client-1",
         plate_number="NAV123",
-        status=models.FleetVehicleStatus.ACTIVE,
+        status=fleet_models.FleetVehicleStatus.ACTIVE,
     )
-    driver = models.FleetDriver(
+    driver = fleet_models.FleetDriver(
         tenant_id=1,
         client_id="client-1",
         full_name="Navigator Driver",
-        status=models.FleetDriverStatus.ACTIVE,
+        status=fleet_models.FleetDriverStatus.ACTIVE,
     )
     db.add_all([vehicle, driver])
     db.commit()
@@ -54,7 +55,7 @@ def _seed_order(db: Session) -> models.LogisticsOrder:
         db,
         tenant_id=1,
         client_id="client-1",
-        order_type=models.LogisticsOrderType.DELIVERY,
+        order_type=logistics_models.LogisticsOrderType.DELIVERY,
         vehicle_id=str(vehicle.id),
         driver_id=str(driver.id),
     )
@@ -70,19 +71,19 @@ def test_route_snapshot_created(db_session: Tuple[Session, sessionmaker]):
         stops=[
             LogisticsStopIn(
                 sequence=0,
-                stop_type=models.LogisticsStopType.START,
+                stop_type=logistics_models.LogisticsStopType.START,
                 name="Start",
                 lat=55.75,
                 lon=37.6,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
             LogisticsStopIn(
                 sequence=1,
-                stop_type=models.LogisticsStopType.END,
+                stop_type=logistics_models.LogisticsStopType.END,
                 name="End",
                 lat=55.76,
                 lon=37.61,
-                status=models.LogisticsStopStatus.PENDING,
+                status=logistics_models.LogisticsStopStatus.PENDING,
             ),
         ],
     )

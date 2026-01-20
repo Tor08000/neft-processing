@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from app.db import Base, SessionLocal, engine
-from app.models import ImmutableRecordError
+from app.models.immutability import ImmutableRecordError
 from app.models.billing_period import BillingPeriod, BillingPeriodStatus, BillingPeriodType
 from app.models.client_actions import DocumentAcknowledgement
 from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType

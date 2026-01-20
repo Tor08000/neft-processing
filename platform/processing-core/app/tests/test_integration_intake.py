@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 
 from app.db import Base, SessionLocal, engine, get_db
 from app.main import app
-from app.models import Card, Client, Merchant, Partner, Terminal
+from app.models.card import Card
+from app.models.client import Client
+from app.models.merchant import Merchant
+from app.models.partner import Partner
+from app.models.terminal import Terminal
 from app.services import transactions_service
 
 

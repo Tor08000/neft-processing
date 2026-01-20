@@ -8,29 +8,17 @@ from typing import Any, Callable, Iterable, Iterator
 from sqlalchemy import and_, cast, func, or_, String
 from sqlalchemy.orm import Session
 
-from app.models import (
-    Card,
-    ClientEmployee,
-    ClientUserRole,
-    Document,
-    DocumentFile,
-    DocumentFileType,
-    DocumentStatus,
-    DocumentType,
-    ExportJobReportType,
-    FleetDriver,
-    FuelCard,
-    FuelLimit,
-    FuelLimitPeriod,
-    FuelLimitScopeType,
-    FuelLimitType,
-    MarketplaceOrder,
-    MarketplaceSettlementSnapshot,
-    Operation,
-    PayoutBatch,
-    SupportTicket,
-    SupportTicketStatus,
-)
+from app.models.card import Card
+from app.models.client_portal import ClientUserRole
+from app.models.documents import Document, DocumentFile, DocumentFileType, DocumentStatus, DocumentType
+from app.models.export_jobs import ExportJobReportType
+from app.models.fleet import ClientEmployee, FleetDriver
+from app.models.fuel import FuelCard, FuelLimit, FuelLimitPeriod, FuelLimitScopeType, FuelLimitType
+from app.models.marketplace_orders import MarketplaceOrder
+from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
+from app.models.operation import Operation
+from app.models.payout_batch import PayoutBatch
+from app.models.support_ticket import SupportTicket, SupportTicketStatus
 from app.models.fleet import EmployeeStatus
 from app.models.audit_log import AuditLog
 

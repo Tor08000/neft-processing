@@ -7,7 +7,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401
 from app.api.routes.rules import router as rules_router
 from app.db import Base, get_db
 from app.models.operation import Operation, OperationStatus, OperationType

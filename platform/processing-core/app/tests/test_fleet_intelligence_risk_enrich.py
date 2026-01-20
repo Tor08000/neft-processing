@@ -10,8 +10,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401
 from app.db import Base
+from app.models import fuel as fuel_models
 from app.deps.db import get_db
 from app.models.fleet import FleetDriver, FleetVehicle, FleetDriverStatus, FleetVehicleStatus
 from app.models.fleet_intelligence import (
@@ -168,7 +168,7 @@ def test_risk_context_enriched(db_session: Tuple[Session, sessionmaker]):
         station=station,
         vehicle=vehicle,
         driver=driver,
-        fuel_type=models.FuelType.DIESEL,
+        fuel_type=fuel_models.FuelType.DIESEL,
         amount_minor=1000,
         volume_ml=10000,
         occurred_at=datetime(2025, 1, 10, tzinfo=timezone.utc),
@@ -213,7 +213,7 @@ def test_unified_explain_includes_fleet_intelligence(admin_client: Tuple[TestCli
             unit_price_minor=500,
             amount_total_minor=7500,
             currency="RUB",
-            status=models.FuelTransactionStatus.SETTLED,
+            status=fuel_models.FuelTransactionStatus.SETTLED,
         )
         db.add(tx)
         db.commit()

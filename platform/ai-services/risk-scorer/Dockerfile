@@ -12,7 +12,8 @@ RUN pip install --upgrade pip && \
     rm /tmp/requirements.txt
 
 COPY shared/python /opt/python
-ENV PYTHONPATH="/opt/python:/app"
+RUN pip install -e /opt/python
+ENV PYTHONPATH="/app"
 
 # подключаем sitecustomize.py, чтобы он подхватывался автоматически
 COPY sitecustomize.py /app/sitecustomize.py

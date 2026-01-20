@@ -8,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # shared python modules
 COPY shared/python /opt/python
-ENV PYTHONPATH=/opt/python:/app
+RUN pip install -e /opt/python
+ENV PYTHONPATH=/app
 
 # sitecustomize
 COPY sitecustomize.py /app/sitecustomize.py

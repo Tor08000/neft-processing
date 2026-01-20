@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models import Client
+from app.models.client import Client
 
 def create_client(db: Session, name: str, inn: str|None):
     obj = Client(name=name, inn=inn)

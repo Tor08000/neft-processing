@@ -7,7 +7,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401
 from app.db import Base
 from app.models.decision_memory import DecisionMemoryEffectLabel, DecisionMemoryEntityType, DecisionOutcome
 from app.services.decision_memory import cooldown as memory_cooldown
