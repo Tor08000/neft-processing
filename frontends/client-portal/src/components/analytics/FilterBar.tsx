@@ -11,7 +11,7 @@ export interface DateFilters {
 
 interface FilterBarProps {
   filters: DateFilters;
-  presets?: Array<{ value: DatePreset; label: string }>;
+  presets?: readonly { value: DatePreset; label: string }[];
   onChange: (next: DateFilters) => void;
 }
 

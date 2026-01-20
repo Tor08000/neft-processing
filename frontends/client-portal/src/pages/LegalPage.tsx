@@ -58,7 +58,9 @@ export function LegalPage() {
                 <label className="checkbox">
                   <input type="checkbox" checked={item.accepted} readOnly />
                   <span>
-                    {item.accepted ? `Принято ${formatDateTime(item.accepted_at, user?.timezone)}` : "Не принято"}
+                    {item.accepted && item.accepted_at
+                      ? `Принято ${formatDateTime(item.accepted_at, user?.timezone)}`
+                      : "Не принято"}
                   </span>
                 </label>
                 {!item.accepted ? (
@@ -79,7 +81,9 @@ export function LegalPage() {
             <>
               <h2>{document.title}</h2>
               <div className="muted">Версия {document.version}</div>
-              <div className="muted">Опубликован: {formatDateTime(document.published_at, user?.timezone)}</div>
+              <div className="muted">
+                Опубликован: {document.published_at ? formatDateTime(document.published_at, user?.timezone) : "—"}
+              </div>
               <pre className="legal-content">{document.content}</pre>
             </>
           ) : (

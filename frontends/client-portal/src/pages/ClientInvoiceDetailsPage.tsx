@@ -64,6 +64,7 @@ export function ClientInvoiceDetailsPage() {
   const refunds = invoice.refunds ?? [];
   const latestIntake = intakeList[0];
   const defaultAmount = Number(invoice.amount_due ?? invoice.amount_total ?? 0);
+  const invoiceCurrency = invoice.currency ?? "RUB";
   const usageLines = invoice.lines?.filter((line) => line.line_type === "USAGE") ?? [];
   const subscriptionStatusLabels: Record<string, string> = {
     ACTIVE: "Активна",
@@ -124,7 +125,7 @@ export function ClientInvoiceDetailsPage() {
       }
       const result = await submitPaymentIntake(user, id, {
         amount: resolvedAmount,
-        currency: invoice.currency,
+        currency: invoiceCurrency,
         paid_at_claimed: paidAt || undefined,
         bank_reference: bankReference || undefined,
         comment: comment || undefined,
@@ -181,19 +182,19 @@ export function ClientInvoiceDetailsPage() {
           <div className="stat">
             <span className="muted">Сумма</span>
             <strong>
-              <MoneyValue amount={invoice.amount_total} currency={invoice.currency} />
+              <MoneyValue amount={invoice.amount_total ?? 0} currency={invoiceCurrency} />
             </strong>
           </div>
           <div className="stat">
             <span className="muted">Оплачено</span>
             <strong>
-              <MoneyValue amount={invoice.amount_paid} currency={invoice.currency} />
+              <MoneyValue amount={invoice.amount_paid ?? 0} currency={invoiceCurrency} />
             </strong>
           </div>
           <div className="stat">
             <span className="muted">Остаток</span>
             <strong>
-              <MoneyValue amount={invoice.amount_due} currency={invoice.currency} />
+              <MoneyValue amount={invoice.amount_due ?? 0} currency={invoiceCurrency} />
             </strong>
           </div>
           <div className="stat">
@@ -250,7 +251,7 @@ export function ClientInvoiceDetailsPage() {
           <div className="form-field">
             <span className="muted">Сумма</span>
             <strong>
-              <MoneyValue amount={defaultAmount} currency={invoice.currency} />
+              <MoneyValue amount={defaultAmount} currency={invoiceCurrency} />
             </strong>
           </div>
           <div className="form-field">
@@ -313,7 +314,7 @@ export function ClientInvoiceDetailsPage() {
                   <tr key={intake.id}>
                     <td>{formatDateTime(intake.created_at)}</td>
                     <td>
-                      <MoneyValue amount={intake.amount} currency={intake.currency} />
+                      <MoneyValue amount={intake.amount} currency={intake.currency ?? invoiceCurrency} />
                     </td>
                     <td>{renderIntakeStatus(intake)}</td>
                     <td>{intake.review_note ?? intake.comment ?? "—"}</td>
@@ -345,7 +346,7 @@ export function ClientInvoiceDetailsPage() {
                 <tr key={`${payment.external_ref}-${payment.created_at}`}>
                   <td>{formatDateTime(payment.created_at)}</td>
                   <td>
-                    <MoneyValue amount={payment.amount} currency={invoice.currency} />
+                    <MoneyValue amount={payment.amount} currency={invoiceCurrency} />
                   </td>
                   <td>{payment.status}</td>
                   <td>{payment.provider ?? "—"}</td>
@@ -383,14 +384,14 @@ export function ClientInvoiceDetailsPage() {
                   </td>
                   <td>
                     {line.unit_price !== null && line.unit_price !== undefined ? (
-                      <MoneyValue amount={line.unit_price} currency={invoice.currency} />
+                      <MoneyValue amount={line.unit_price} currency={invoiceCurrency} />
                     ) : (
                       "—"
                     )}
                   </td>
                   <td>
                     {line.amount !== null && line.amount !== undefined ? (
-                      <MoneyValue amount={line.amount} currency={invoice.currency} />
+                      <MoneyValue amount={line.amount} currency={invoiceCurrency} />
                     ) : (
                       "—"
                     )}
@@ -423,7 +424,7 @@ export function ClientInvoiceDetailsPage() {
                 <tr key={`${refund.external_ref}-${refund.created_at}`}>
                   <td>{formatDateTime(refund.created_at)}</td>
                   <td>
-                    <MoneyValue amount={refund.amount} currency={invoice.currency} />
+                    <MoneyValue amount={refund.amount} currency={invoiceCurrency} />
                   </td>
                   <td>{refund.status}</td>
                   <td>{refund.reason ?? "—"}</td>
