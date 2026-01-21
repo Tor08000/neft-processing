@@ -179,7 +179,7 @@ export async function request<T>(
         payload = null;
       }
     }
-    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
     throw new ApiError(
       message,
       response.status,
