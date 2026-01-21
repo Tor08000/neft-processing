@@ -104,6 +104,20 @@ if "%CLIENT_TOKEN%"=="" (
 call :run_cmd "4.9 core portal/me (client token)" "curl -f -H \"Authorization: Bearer %CLIENT_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
 call :check_not_401 "4.10 core legal/required (client token)" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "Authorization: Bearer %CLIENT_TOKEN%" || goto finalize
 
+set "PARTNER_EMAIL=%NEFT_BOOTSTRAP_PARTNER_EMAIL%"
+if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
+set "PARTNER_PASSWORD=%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"
+if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
+
+set "PARTNER_LOGIN_FILE=%TEMP%\\verify_partner_login_%RANDOM%.json"
+call :run_cmd "4.11 partner login via gateway" "curl -sS -o \"%PARTNER_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"%PARTNER_EMAIL%\\\",\\\"password\\\":\\\"%PARTNER_PASSWORD%\\\",\\\"portal\\\":\\\"partner\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "PARTNER_TOKEN=%%T"
+if "%PARTNER_TOKEN%"=="" (
+  call :mark_fail "4.11 partner login via gateway" "No partner token returned"
+  goto finalize
+)
+call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize
 

@@ -48,7 +48,7 @@ def _resolve_portal(value: str | None, *, default: str) -> str:
     portal = (value or "").strip().lower()
     if not portal:
         return default
-    if portal in {"client", "admin"}:
+    if portal in {"client", "admin", "partner"}:
         return portal
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_portal")
 
@@ -208,14 +208,26 @@ async def auth_me(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
 ) -> AuthMeResponse:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    if credentials is None:
+        logger.info("auth_me unauthorized: missing token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+    if credentials.scheme.lower() != "bearer":
+        logger.info("auth_me unauthorized: invalid auth scheme", extra={"scheme": credentials.scheme})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+    if not credentials.credentials:
+        logger.info("auth_me unauthorized: empty bearer token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
 
     portal = _resolve_portal(request.headers.get("X-Portal"), default="client")
     issuer, audience = _portal_token_config(portal)
-    payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    try:
+        payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)
+    except HTTPException as exc:
+        logger.info("auth_me unauthorized: invalid token", extra={"detail": exc.detail})
+        raise
     subject = payload.get("sub")
     if not subject:
+        logger.info("auth_me unauthorized: missing subject")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token")
 
     roles = payload.get("roles") or []

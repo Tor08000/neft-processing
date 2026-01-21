@@ -4,9 +4,10 @@ import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./typ
 export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
+  const loginPayload = { ...payload, portal: payload.portal ?? "partner" };
   const body = await request<LoginResponse>(
     "/v1/auth/login",
-    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify(loginPayload) },
     { base: "auth" },
   );
   return {
