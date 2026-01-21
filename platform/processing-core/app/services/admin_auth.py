@@ -35,7 +35,10 @@ ALLOWED_ALGS = parse_allowed_algs()
 
 ADMIN_ROLES = {
     role.strip()
-    for role in os.getenv("ADMIN_ROLES", os.getenv("NEFT_ADMIN_ROLES", "ADMIN")).split(",")
+    for role in os.getenv(
+        "ADMIN_ROLES",
+        os.getenv("NEFT_ADMIN_ROLES", "ADMIN,NEFT_ADMIN,NEFT_SUPERADMIN"),
+    ).split(",")
     if role.strip()
 }
 if not ADMIN_ROLES:
