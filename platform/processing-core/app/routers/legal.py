@@ -24,16 +24,26 @@ router = APIRouter(prefix="/legal", tags=["legal"])
 
 def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str]:
     context = principal_context(principal)
+    raw_claims = principal.raw_claims if isinstance(principal.raw_claims, dict) else {}
+
+    def _fallback_user_subject() -> tuple[LegalSubjectType, str]:
+        actor_id = context.get("actor_id") or raw_claims.get("user_id") or raw_claims.get("sub")
+        if actor_id:
+            return LegalSubjectType.USER, str(actor_id)
+        if principal.user_id:
+            return LegalSubjectType.USER, str(principal.user_id)
+        raise HTTPException(status_code=403, detail="missing_subject")
+
     if context["actor_type"] == "client":
         if principal.client_id is None:
-            raise HTTPException(status_code=403, detail="missing_client_context")
+            return _fallback_user_subject()
         org_id = context.get("org_id")
         if org_id and str(org_id) != str(principal.client_id):
             raise HTTPException(status_code=403, detail="client_org_mismatch")
         return LegalSubjectType.CLIENT, str(principal.client_id)
     if context["actor_type"] == "partner":
         if principal.partner_id is None:
-            raise HTTPException(status_code=403, detail="missing_partner_context")
+            return _fallback_user_subject()
         partner_id = context.get("partner_id") or context.get("org_id")
         if partner_id and str(partner_id) != str(principal.partner_id):
             raise HTTPException(status_code=403, detail="partner_mismatch")
@@ -41,11 +51,11 @@ def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str
     if context["actor_type"] == "admin":
         actor_id = context.get("actor_id")
         if not actor_id:
-            raise HTTPException(status_code=403, detail="missing_actor")
+            return _fallback_user_subject()
         return LegalSubjectType.USER, str(actor_id)
     if principal.user_id:
         return LegalSubjectType.USER, str(principal.user_id)
-    raise HTTPException(status_code=403, detail="missing_subject")
+    return _fallback_user_subject()
 
 
 @router.get("/required", response_model=LegalRequiredResponse)

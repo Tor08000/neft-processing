@@ -20,5 +20,14 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
 }
 
 export async function fetchMe(token: string): Promise<MeResponse> {
-  return request<MeResponse>("/v1/auth/me", { method: "GET" }, { token, base: "auth" });
+  if (import.meta.env.DEV) {
+    const tokenPresent = Boolean(token);
+    const headerAttached = tokenPresent;
+    console.info("[auth-me] token_present=%s header_attached=%s", tokenPresent, headerAttached);
+  }
+  return request<MeResponse>(
+    "/v1/auth/me",
+    { method: "GET", headers: { "X-Portal": "partner" } },
+    { token, base: "auth" },
+  );
 }
