@@ -16,6 +16,7 @@ from app.schemas.portal_me import (
     PortalMeOrg,
     PortalMePartner,
     PortalMePartnerProfile,
+    PortalMeLegal,
     PortalMeResponse,
     PortalMeSubscription,
     PortalMeUser,
@@ -84,6 +85,17 @@ def _resolve_legal_payload(db: Session, token: dict) -> PortalMeLegal | None:
     missing_docs = [item["code"] for item in required if not item["accepted"]]
     accepted = not missing_docs
     return PortalMeLegal(required=bool(required), accepted=accepted, missing_docs=missing_docs)
+
+
+def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
+    required_codes = legal_gate_required_codes()
+    required_enabled = bool(required_codes)
+    accepted_flag = _resolve_legal_flag(db, token)
+    if not required_enabled:
+        accepted = True
+    else:
+        accepted = bool(accepted_flag) if accepted_flag is not None else False
+    return PortalMeLegal(required_enabled=required_enabled, accepted=accepted)
 
 
 def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
@@ -200,11 +212,8 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     nav_sections = _resolve_nav_sections(capabilities)
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)
-    legal_payload = _resolve_legal_payload(db, token)
-    flags = {"accepted_legal": legal_payload.accepted if legal_payload else None}
-    modules_payload = None
-    if isinstance(entitlements_snapshot, dict):
-        modules_payload = entitlements_snapshot.get("modules") or None
+    flags = {"accepted_legal": _resolve_legal_flag(db, token)}
+    legal = _resolve_legal_status(db, token)
 
     partner_payload = None
     if (
@@ -240,9 +249,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         user_roles=user_roles,
         scopes=scopes or None,
         flags=flags,
-        legal=legal_payload,
-        modules=modules_payload,
-        features={"onboarding": settings.CORE_ONBOARDING_ENABLED},
+        legal=legal,
         subscription=subscription_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),

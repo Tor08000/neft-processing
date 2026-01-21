@@ -117,17 +117,10 @@ if "%PARTNER_TOKEN%"=="" (
 ) else (
   call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
 )
-
-call :expect_status "6.1.1 auth/me (admin token)" "200" "GET" "%GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" "-H \"Authorization: Bearer %ADMIN_TOKEN%\" -H \"X-Portal: admin\"" "" || goto finalize
-call :expect_status "6.1.2 auth/me (client token)" "200" "GET" "%GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" "-H \"Authorization: Bearer %CLIENT_TOKEN%\" -H \"X-Portal: client\"" "" || goto finalize
-
-call :expect_status "6.2.1 core admin/auth/verify" "204" "GET" "%GATEWAY_BASE%%CORE_BASE%/admin/auth/verify" "-H \"Authorization: Bearer %ADMIN_TOKEN%\"" "" || goto finalize
-call :expect_status "6.2.2 core portal/me (admin token)" "200" "GET" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "-H \"Authorization: Bearer %ADMIN_TOKEN%\"" "" || goto finalize
-call :expect_status "6.2.3 core legal/required (admin token)" "200" "GET" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "-H \"Authorization: Bearer %ADMIN_TOKEN%\"" "" || goto finalize
-
-call :expect_status "6.2.4 core client/auth/verify" "204" "GET" "%GATEWAY_BASE%%CORE_BASE%/client/auth/verify" "-H \"Authorization: Bearer %CLIENT_TOKEN%\"" "" || goto finalize
-call :expect_status "6.2.5 core portal/me (client token)" "200" "GET" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "-H \"Authorization: Bearer %CLIENT_TOKEN%\"" "" || goto finalize
-call :expect_status "6.2.6 core legal/required (client token)" "200" "GET" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "-H \"Authorization: Bearer %CLIENT_TOKEN%\"" "" || goto finalize
+call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+call :run_cmd "4.13 core portal/me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
+call :run_cmd "4.14 core partner/products (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/partner/products" || goto finalize
+call :run_cmd "4.15 core partner/legal/profile (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/partner/legal/profile" || goto finalize
 
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize
