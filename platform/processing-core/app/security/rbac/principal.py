@@ -105,16 +105,19 @@ def _principal_from_claims(claims: dict) -> Principal:
 
 def get_principal(request: Request) -> Principal:
     token = _get_bearer_token(request)
-    claims = get_unverified_claims(token)
-    token_kind = detect_token_kind(claims)
-    verifier_map = {
-        "admin": admin_auth.verify_admin_token,
-        "client": client_auth.verify_client_token,
-        "partner": partner_auth.verify_partner_token,
-    }
-    verifier = verifier_map.get(token_kind, admin_auth.verify_admin_token)
-    verified_claims = verifier(token)
-    return _principal_from_claims(verified_claims)
+    last_exc: HTTPException | None = None
+    for verifier in (
+        admin_auth.verify_admin_token,
+        partner_auth.verify_partner_token,
+        client_auth.verify_client_token,
+    ):
+        try:
+            verified_claims = verifier(token)
+        except HTTPException as exc:
+            last_exc = exc
+            continue
+        return _principal_from_claims(verified_claims)
+    raise HTTPException(status_code=401, detail="Invalid bearer token") from last_exc
 
 
 def get_portal_principal(request: Request) -> Principal:
