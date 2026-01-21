@@ -111,6 +111,7 @@ def get_portal_principal(request: Request) -> Principal:
     for verifier in (
         client_auth.verify_client_token,
         partner_auth.verify_partner_token,
+        admin_auth.verify_admin_token,
     ):
         try:
             claims = verifier(token)
