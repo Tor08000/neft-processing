@@ -16,6 +16,7 @@ export type LegalRequiredResponse = {
   subject: { type: string; id: string };
   required: LegalRequiredItem[];
   is_blocked: boolean;
+  enabled?: boolean;
 };
 
 export type LegalDocumentResponse = {

@@ -6,6 +6,8 @@ type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
+const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/v1/auth/me");
+
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
     super(message);
@@ -137,7 +139,9 @@ export async function request<T>(
   }
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("client-auth-logout"));
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("client-auth-logout"));
+    }
     throw new UnauthorizedError();
   }
   if (response.status === 422) {
@@ -222,7 +226,9 @@ export async function requestWithMeta<T>(
   };
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("client-auth-logout"));
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("client-auth-logout"));
+    }
     throw new UnauthorizedError();
   }
   if (response.status === 422) {

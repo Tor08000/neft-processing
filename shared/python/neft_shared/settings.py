@@ -198,6 +198,11 @@ class Settings:
         "true",
         "yes",
     }
+    CORE_ONBOARDING_ENABLED: bool = os.getenv("CORE_ONBOARDING_ENABLED", "0").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     LEGAL_GATE_EXEMPT_ROLES: str = os.getenv("LEGAL_GATE_EXEMPT_ROLES", "")
     LEGAL_REQUIRED_DOCS: str = os.getenv(
         "LEGAL_REQUIRED_DOCS",

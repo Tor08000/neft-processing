@@ -66,7 +66,7 @@ export async function listLegalAcceptances(token: string, params?: Record<string
 }
 
 export async function fetchLegalRequired(token: string) {
-  return request<{ required: unknown[]; is_blocked: boolean }>("/legal/required", { method: "GET" }, token);
+  return request<{ required: unknown[]; is_blocked: boolean; enabled?: boolean }>("/legal/required", { method: "GET" }, token);
 }
 
 export async function acceptLegalDocument(token: string, payload: { code: string; version: string; locale: string }) {

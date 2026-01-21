@@ -17,7 +17,7 @@ import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 export function Layout() {
   const { user, logout } = useAuth();
   const { portal } = usePortal();
-  const { isBlocked } = useLegalGate();
+  const { isBlocked, isFeatureDisabled } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
   const capabilities = new Set((portal?.capabilities ?? []).map((cap) => cap.toUpperCase()));
@@ -75,6 +75,11 @@ export function Layout() {
           }
         />
         <div className="brand-content">
+          {isFeatureDisabled ? (
+            <div className="card">
+              <div className="muted">Онбординг выключен администратором.</div>
+            </div>
+          ) : null}
           <PageShell key={location.pathname}>
             <Outlet />
           </PageShell>
