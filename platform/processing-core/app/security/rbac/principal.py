@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException, Request
 
 from app.services import admin_auth, client_auth, partner_auth
+from app.services.jwt_support import detect_token_kind, get_unverified_claims
 
 from .roles import canonical_role_for_subject_type, canonicalize_roles
 
@@ -20,6 +21,22 @@ class Principal:
     partner_id: UUID | None
     is_admin: bool
     raw_claims: dict
+
+
+def principal_context(principal: Principal) -> dict[str, Any]:
+    raw_claims = principal.raw_claims if isinstance(principal.raw_claims, dict) else {}
+    actor_type = "admin" if principal.is_admin else "client" if principal.client_id else "partner" if principal.partner_id else "user"
+    actor_id = principal.user_id or principal.client_id or principal.partner_id or raw_claims.get("sub")
+    org_id = raw_claims.get("org_id") or principal.client_id or principal.partner_id
+    partner_id = principal.partner_id or raw_claims.get("partner_id")
+    return {
+        "actor_type": actor_type,
+        "actor_id": str(actor_id) if actor_id is not None else None,
+        "org_id": str(org_id) if org_id is not None else None,
+        "partner_id": str(partner_id) if partner_id is not None else None,
+        "roles": sorted(principal.roles),
+        "scopes": sorted(principal.scopes),
+    }
 
 
 def _get_bearer_token(request: Request) -> str:
@@ -88,40 +105,30 @@ def _principal_from_claims(claims: dict) -> Principal:
 
 def get_principal(request: Request) -> Principal:
     token = _get_bearer_token(request)
-    exceptions: list[HTTPException] = []
-    for verifier in (
-        admin_auth.verify_admin_token,
-        client_auth.verify_client_token,
-        partner_auth.verify_partner_token,
-    ):
-        try:
-            claims = verifier(token)
-            return _principal_from_claims(claims)
-        except HTTPException as exc:
-            exceptions.append(exc)
-
-    if any(exc.status_code == 403 for exc in exceptions):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    raise HTTPException(status_code=401, detail="Invalid token")
+    claims = get_unverified_claims(token)
+    token_kind = detect_token_kind(claims)
+    verifier_map = {
+        "admin": admin_auth.verify_admin_token,
+        "client": client_auth.verify_client_token,
+        "partner": partner_auth.verify_partner_token,
+    }
+    verifier = verifier_map.get(token_kind, admin_auth.verify_admin_token)
+    verified_claims = verifier(token)
+    return _principal_from_claims(verified_claims)
 
 
 def get_portal_principal(request: Request) -> Principal:
     token = _get_bearer_token(request)
-    exceptions: list[HTTPException] = []
-    for verifier in (
-        client_auth.verify_client_token,
-        partner_auth.verify_partner_token,
-        admin_auth.verify_admin_token,
-    ):
-        try:
-            claims = verifier(token)
-            return _principal_from_claims(claims)
-        except HTTPException as exc:
-            exceptions.append(exc)
-
-    if any(exc.status_code == 403 for exc in exceptions):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    raise HTTPException(status_code=401, detail="Invalid token")
+    claims = get_unverified_claims(token)
+    token_kind = detect_token_kind(claims)
+    verifier_map = {
+        "admin": admin_auth.verify_admin_token,
+        "client": client_auth.verify_client_token,
+        "partner": partner_auth.verify_partner_token,
+    }
+    verifier = verifier_map.get(token_kind, client_auth.verify_client_token)
+    verified_claims = verifier(token)
+    return _principal_from_claims(verified_claims)
 
 
-__all__ = ["Principal", "get_principal", "get_portal_principal"]
+__all__ = ["Principal", "get_principal", "get_portal_principal", "principal_context"]

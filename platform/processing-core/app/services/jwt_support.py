@@ -60,6 +60,83 @@ def get_unverified_claims(token: str) -> dict:
         return {}
 
 
+def _normalize_audience(value: Any) -> set[str]:
+    if not value:
+        return set()
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, (list, tuple, set)):
+        return {str(item) for item in value if str(item)}
+    return {str(value)}
+
+
+def _collect_roles_for_detection(claims: dict) -> set[str]:
+    roles: set[str] = set()
+    raw_roles = claims.get("roles") or []
+    if isinstance(raw_roles, str):
+        raw_roles = [raw_roles]
+    for role in raw_roles:
+        if role:
+            roles.add(str(role))
+    if claims.get("role"):
+        roles.add(str(claims["role"]))
+    realm_access = claims.get("realm_access")
+    if isinstance(realm_access, dict):
+        realm_roles = realm_access.get("roles") or []
+        if isinstance(realm_roles, str):
+            realm_roles = [realm_roles]
+        for role in realm_roles:
+            if role:
+                roles.add(str(role))
+    return roles
+
+
+def detect_token_kind(claims: dict) -> str:
+    issuer = str(claims.get("iss") or "")
+    audiences = _normalize_audience(claims.get("aud"))
+    subject_type = str(claims.get("subject_type") or "")
+    token_use = str(claims.get("token_use") or claims.get("typ") or "")
+    realm = str(claims.get("realm") or "")
+    azp = str(claims.get("azp") or "")
+    roles = _collect_roles_for_detection(claims)
+
+    client_issuer = os.getenv(
+        "NEFT_CLIENT_ISSUER",
+        os.getenv("CLIENT_AUTH_ISSUER", "neft-client"),
+    )
+    client_audience = os.getenv(
+        "NEFT_CLIENT_AUDIENCE",
+        os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"),
+    )
+    admin_issuer = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
+    admin_audience = os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
+
+    normalized_roles = {role.upper() for role in roles}
+    subject_type_normalized = subject_type.strip().lower()
+    token_use_normalized = token_use.strip().lower()
+
+    if issuer == client_issuer or client_audience in audiences:
+        return "client"
+    if subject_type_normalized == "client_user" or any(role.startswith("CLIENT_") for role in normalized_roles):
+        return "client"
+    if claims.get("client_id"):
+        return "client"
+
+    if subject_type_normalized == "partner_user" or any(role.startswith("PARTNER_") for role in normalized_roles):
+        return "partner"
+    if claims.get("partner_id"):
+        return "partner"
+    if "partner" in token_use_normalized or "partner" in azp.lower() or "partner" in realm.lower():
+        return "partner"
+
+    if issuer == admin_issuer or admin_audience in audiences:
+        return "admin"
+    if any(role.startswith("ADMIN") for role in normalized_roles):
+        return "admin"
+
+    return "admin"
+
+
 def classify_jwt_error(exc: Exception) -> str:
     if isinstance(exc, ExpiredSignatureError):
         return "expired"
