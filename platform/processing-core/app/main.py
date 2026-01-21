@@ -404,10 +404,8 @@ safe_include_router(app, partner_legal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_finance_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, partner_legal_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, partner_marketplace_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, partner_marketplace_orders_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_marketplace_orders_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_marketplace_promotions_router, prefix=LEGACY_API_PREFIX)
