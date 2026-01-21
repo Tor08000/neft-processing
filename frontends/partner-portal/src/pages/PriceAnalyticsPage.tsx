@@ -70,7 +70,9 @@ export function PriceAnalyticsPage() {
       })
       .catch((err) => {
         console.error(err);
-        setError(err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null));
+        setError(
+          err instanceof ApiError ? err : new ApiError(t("priceAnalyticsPage.errors.loadFailed"), 500, null, null, null),
+        );
       })
       .finally(() => {
         setIsLoading(false);

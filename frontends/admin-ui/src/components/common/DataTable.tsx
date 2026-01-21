@@ -22,6 +22,8 @@ interface DataTableProps<T> {
     actionLabel?: string;
     actionOnClick?: () => void;
     details?: string;
+    requestId?: string | null;
+    correlationId?: string | null;
   };
   emptyMessage?: string;
   emptyState?: {
@@ -86,6 +88,8 @@ export function DataTable<T>({
           actionLabel={errorState.actionLabel}
           onAction={errorState.actionOnClick}
           details={errorState.details}
+          requestId={errorState.requestId}
+          correlationId={errorState.correlationId}
         />
       </div>
     );

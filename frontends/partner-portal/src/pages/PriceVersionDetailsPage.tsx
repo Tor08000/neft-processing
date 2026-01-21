@@ -67,7 +67,9 @@ export function PriceVersionDetailsPage() {
       .catch((err) => {
         console.error(err);
         if (active) {
-          setError(err instanceof ApiError ? err : new ApiError(t("priceVersionPage.errors.loadFailed"), 500, null));
+          setError(
+            err instanceof ApiError ? err : new ApiError(t("priceVersionPage.errors.loadFailed"), 500, null, null, null),
+          );
         }
       })
       .finally(() => {
