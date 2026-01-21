@@ -128,6 +128,16 @@ curl -i -X POST http://localhost/api/auth/v1/auth/login \
 * Для повторного принудительного сброса демо-паролей увеличьте `NEFT_BOOTSTRAP_PASSWORD_VERSION` (по умолчанию `1`). При старте `auth-host` пароли будут сброшены один раз на пользователя, если `users.bootstrap_password_version` меньше указанной версии. Режим сброса управляется `DEMO_SEED_FORCE_PASSWORD_RESET` (0/1): при `0` версия не применяется.
 * Данные MinIO лежат в `minio-data`; бакеты создаются при старте `minio-init` (используются переменные `NEFT_S3_*` из `.env`, включена идемпотентная настройка версиирования и политик доступа). `minio-init` — одноразовый job: после сообщения `init complete` контейнер корректно завершается со статусом `Exited (0)`. Зелёный статус в `docker compose ps` важен для `minio-health` (который проверяет `http://minio:9000/minio/health/ready`); сам контейнер `minio` может быть без healthcheck, это нормально.
 
+### JWT-проверка между auth-host и core-api
+
+Core API валидирует токены по ключам auth-host. Основные переменные окружения:
+
+* `AUTH_JWKS_URL` — URL JWKS auth-host (например, `http://auth-host:8000/api/auth/.well-known/jwks.json`).
+* `AUTH_PUBLIC_KEY_URL` — fallback URL публичного ключа (например, `http://auth-host:8000/api/auth/v1/auth/public-key`).
+* `NEFT_AUTH_ISSUER`, `NEFT_AUTH_AUDIENCE` — issuer/audience для admin/partner токенов.
+* `NEFT_CLIENT_ISSUER`, `NEFT_CLIENT_AUDIENCE` — issuer/audience для client токенов.
+* `NEFT_AUTH_ALLOWED_ALGS` — допустимые алгоритмы (например, `RS256`).
+
 ### Вход в админ-панель
 
 - Откройте `http://localhost/admin/`.
