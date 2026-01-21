@@ -10,6 +10,7 @@ from app.services.jwt_support import (
     DEFAULT_JWKS_URL,
     DEFAULT_PUBLIC_KEY_URL,
     classify_jwt_error,
+    fetch_jwks as fetch_jwks_support,
     fetch_public_key,
     log_token_rejection,
     parse_allowed_algs,
@@ -109,6 +110,42 @@ def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str
         event_prefix="client_auth",
     )
     return public_key, False
+
+
+def get_public_key(*, force_refresh: bool = False) -> str:
+    if not force_refresh:
+        static_key = _static_public_key()
+        if static_key:
+            return static_key
+
+    return fetch_public_key(
+        PUBLIC_KEY_URL,
+        ttl=PUBLIC_KEY_CACHE_TTL,
+        force_refresh=force_refresh,
+        log_info=lambda event, payload: _logger.info(event, extra=payload),
+        log_warning=lambda event, payload: _logger.warning(event, extra=payload),
+        event_prefix="client_auth",
+    )
+
+
+def fetch_jwks(
+    url: str | None = None,
+    *,
+    ttl: int = PUBLIC_KEY_CACHE_TTL,
+    force_refresh: bool = False,
+) -> dict:
+    return fetch_jwks_support(
+        url or JWKS_URL,
+        ttl=ttl,
+        force_refresh=force_refresh,
+        log_info=lambda event, payload: _logger.info(event, extra=payload),
+        log_warning=lambda event, payload: _logger.warning(event, extra=payload),
+        event_prefix="client_auth",
+    )
+
+
+def get_jwks(*, ttl: int = PUBLIC_KEY_CACHE_TTL, force_refresh: bool = False) -> dict:
+    return fetch_jwks(ttl=ttl, force_refresh=force_refresh)
 
 
 def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
