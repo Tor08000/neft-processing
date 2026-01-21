@@ -3,7 +3,7 @@ import type { AuthSession, AuthUser, LoginRequest, LoginResponse, MeResponse } f
 
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
-    "/v1/auth/login",
+    "/login",
     { method: "POST", body: JSON.stringify({ ...payload, portal: "admin" }) },
     { base: "auth" },
   );
@@ -22,7 +22,7 @@ export async function me(token: string): Promise<AuthUser> {
     console.info("[auth-me] token_present=%s header_attached=%s", tokenPresent, headerAttached);
   }
   const body = await request<MeResponse>(
-    "/v1/auth/me",
+    "/me",
     { method: "GET", headers: { "X-Portal": "admin" } },
     { token, base: "auth" },
   );

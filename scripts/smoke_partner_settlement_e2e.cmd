@@ -18,7 +18,7 @@ if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
 if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%BASE_URL%/api/core/v1/admin"
 if "%CORE_PARTNER_URL%"=="" set "CORE_PARTNER_URL=%BASE_URL%/api/core/partner"
 if "%CORE_PORTAL_URL%"=="" set "CORE_PORTAL_URL=%BASE_URL%/api/core/portal"
-if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/auth"
+if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/v1/auth"
 
 if not exist logs mkdir logs
 set "LOG_DATE=%DATE:/=-%"

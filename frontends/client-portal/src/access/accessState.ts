@@ -31,9 +31,13 @@ export type AccessDecision = {
 
 const BUSINESS_ERROR_TO_STATE: Record<string, AccessState> = {
   billing_soft_blocked: AccessState.OVERDUE,
+  billing_hard_blocked: AccessState.SUSPENDED,
   billing_suspended: AccessState.SUSPENDED,
   feature_not_entitled: AccessState.MISSING_CAPABILITY,
+  addon_required: AccessState.MISSING_CAPABILITY,
   org_not_active: AccessState.NEEDS_ONBOARDING,
+  legal_not_verified: AccessState.NEEDS_ONBOARDING,
+  settlement_not_finalized: AccessState.COMING_SOON,
   admin_forbidden: AccessState.FORBIDDEN_ROLE,
 };
 

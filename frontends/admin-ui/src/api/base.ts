@@ -3,7 +3,9 @@ const normalizeApiPath = (path: string): string =>
   path
     .replace(/\/{2,}/g, "/")
     .replace(/\/api(\/api)+/g, "/api")
-    .replace(/\/api\/auth(\/auth)+/g, "/api/auth");
+    .replace(/\/api\/v1\/auth(\/v1\/auth)+/g, "/api/v1/auth")
+    .replace(/\/api\/auth(\/v1\/auth)+/g, "/api/v1/auth")
+    .replace(/\/api\/auth(\/auth)+/g, "/api/v1/auth");
 
 const normalizeApiBase = (raw: string): string => {
   const trimmed = normalizeBase(raw);
@@ -65,7 +67,7 @@ const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): str
 };
 
 export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core");
-export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "api/auth");
+export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "api/v1/auth");
 export const AI_API_BASE = buildBase(import.meta.env.VITE_AI_API_BASE, "api/ai");
 export const ADMIN_BASE_URL = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/+$/, "") || "/";
 export const API_BASE_URL = API_BASE;

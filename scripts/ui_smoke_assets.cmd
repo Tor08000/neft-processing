@@ -19,7 +19,7 @@ for %%A in (admin client partner) do (
 
 echo.
 echo === Auth login ===
-curl -i -X POST %BASE_URL%/api/auth/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}" | findstr /I "HTTP/ Content-Type"
+curl -i -X POST %BASE_URL%/api/v1/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@example.com\",\"password\":\"admin\"}" | findstr /I "HTTP/ Content-Type"
 
 echo.
 echo Checking missing asset responses...

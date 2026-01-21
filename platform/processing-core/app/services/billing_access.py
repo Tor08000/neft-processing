@@ -44,7 +44,7 @@ class EntitlementDecision:
 ERROR_MESSAGES = {
     "billing_soft_blocked": "Функция недоступна из-за задолженности. Оплатите счёт или смените тариф.",
     "billing_hard_blocked": "Доступ временно приостановлен. Оплатите счёт или обратитесь в поддержку.",
-    "entitlement_disabled": "Функция недоступна для текущего тарифа.",
+    "feature_not_entitled": "Функция недоступна для текущего тарифа.",
     "addon_required": "Требуется дополнительный модуль или аддон для этой функции.",
 }
 
@@ -120,11 +120,11 @@ def _feature_decision(features: dict[str, dict[str, str]], feature_keys: Iterabl
         if availability == AVAILABILITY_ADDON:
             seen_addon = True
 
-    error_code = "addon_required" if seen_addon else "entitlement_disabled"
+    error_code = "feature_not_entitled"
     return EntitlementDecision(
         allowed=False,
         error_code=error_code,
-        message=ERROR_MESSAGES[error_code],
+        message=ERROR_MESSAGES["addon_required"] if seen_addon else ERROR_MESSAGES["feature_not_entitled"],
         feature_key=feature_key,
         subscription_status=None,
         block_mode=None,

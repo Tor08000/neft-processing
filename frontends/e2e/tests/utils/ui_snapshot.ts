@@ -285,7 +285,7 @@ export async function login(
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(300);
 
-    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/v1/auth/login";
     const loginState = await loginViaUi({
       page,
       baseUrl,
@@ -419,7 +419,7 @@ export async function login(
     return false;
   } catch (error) {
     tracker.stop();
-    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/v1/auth/login";
+    const authUrl = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/v1/auth/login";
     report.loginStates[app] = {
       state: "ERROR",
       authUrl,
@@ -478,7 +478,7 @@ async function visitAndSnap({
     if (failureReason === "FAIL_APP_SHELL_MISSING" && report.loginStates[app]?.state === "LOGIN_OK") {
       report.loginStates[app] = {
         state: "FAIL_LOGIN_NOT_COMPLETED",
-        authUrl: report.loginStates[app]?.authUrl ?? "http://localhost/api/auth/v1/auth/login",
+        authUrl: report.loginStates[app]?.authUrl ?? "http://localhost/api/v1/auth/login",
         notes: "app shell missing after login",
       };
     }

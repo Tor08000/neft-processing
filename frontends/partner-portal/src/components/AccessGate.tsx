@@ -68,6 +68,37 @@ const AccessStateView = ({
         </Link>
       ),
     },
+    billing_soft_blocked: {
+      title: "Выплаты временно заблокированы",
+      description: "Есть задолженность по оплате. Погасите счета или обратитесь к менеджеру.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Обратиться в поддержку
+        </Link>
+      ),
+    },
+    billing_hard_blocked: {
+      title: "Выплаты приостановлены",
+      description: "Доступ к выплатам приостановлен. Свяжитесь с поддержкой для разблокировки.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Обратиться в поддержку
+        </Link>
+      ),
+    },
+    feature_not_entitled: {
+      title: "Функция недоступна",
+      description: "Опция недоступна для вашего тарифа. Свяжитесь с менеджером.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Связаться с менеджером
+        </Link>
+      ),
+    },
+    org_not_active: {
+      title: "Организация не активна",
+      description: "Доступ будет открыт после активации организации.",
+    },
   };
 
   const presentation = reason && byReason[reason] ? byReason[reason] : base;

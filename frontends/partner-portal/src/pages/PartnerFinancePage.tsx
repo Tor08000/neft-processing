@@ -10,10 +10,13 @@ import {
 } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { usePortal } from "../auth/PortalContext";
+import { mapBusinessErrorToAccessDecision, type AccessDecision } from "../access/accessState";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorState, LoadingState } from "../components/states";
+import { AccessStateView } from "../components/AccessGate";
 import { formatCurrency, formatDateTime } from "../utils/format";
 import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedgerExplain } from "../types/partnerFinance";
+import { ApiError } from "../api/http";
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
@@ -30,6 +33,7 @@ export function PartnerFinancePage() {
   const [exportFormat, setExportFormat] = useState<"CSV" | "ZIP">("CSV");
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [blockedDecision, setBlockedDecision] = useState<AccessDecision | null>(null);
 
   const currency = useMemo(() => balance?.currency ?? "RUB", [balance]);
   const meta = portal?.partner?.profile?.meta_json ?? {};
@@ -43,6 +47,7 @@ export function PartnerFinancePage() {
     let active = true;
     if (!user) return;
     setIsLoading(true);
+    setBlockedDecision(null);
     Promise.all([fetchPartnerBalance(user.token), fetchPartnerLedger(user.token), fetchPartnerExportJobs(user.token)])
       .then(([balanceResp, ledgerResp, exportResp]) => {
         if (!active) return;
@@ -52,7 +57,15 @@ export function PartnerFinancePage() {
       })
       .catch((err) => {
         console.error(err);
-        if (active) setError("Не удалось загрузить финансы партнёра");
+        if (!active) return;
+        if (err instanceof ApiError) {
+          const decision = mapBusinessErrorToAccessDecision(err.errorCode);
+          if (decision) {
+            setBlockedDecision(decision);
+            return;
+          }
+        }
+        setError("Не удалось загрузить финансы партнёра");
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -107,6 +120,10 @@ export function PartnerFinancePage() {
     if (sourceType === "marketplace_order" || sourceType === "partner_order" || sourceType === "order") return `Order ${sourceId ?? entry.order_id ?? "—"}`;
     return sourceId ? `${sourceType ?? "Источник"} ${sourceId}` : "—";
   };
+
+  if (blockedDecision) {
+    return <AccessStateView state={blockedDecision.state} title="Финансы" reason={blockedDecision.reason} />;
+  }
 
   return (
     <div className="stack">

@@ -36,7 +36,7 @@ login() {
 
   payload=$(printf '{"email":"%s","password":"%s"}' "$email" "$password")
   echo ">>> login ${label}"
-  curl -sS -o /tmp/auth_login.json -w "%{http_code}" -X POST "${AUTH_BASE_URL}/api/auth/v1/auth/login" \
+  curl -sS -o /tmp/auth_login.json -w "%{http_code}" -X POST "${AUTH_BASE_URL}/api/v1/auth/login" \
     -H "Content-Type: application/json" \
     -d "${payload}" | {
       read -r status
@@ -54,7 +54,7 @@ login "client" "${NEFT_BOOTSTRAP_CLIENT_EMAIL}" "${NEFT_BOOTSTRAP_CLIENT_PASSWOR
 login "partner" "${NEFT_BOOTSTRAP_PARTNER_EMAIL}" "${NEFT_BOOTSTRAP_PARTNER_PASSWORD}"
 
 echo ">>> public key"
-curl -sS -o /tmp/auth_public_key.pem -w "%{http_code}" "${AUTH_BASE_URL}/api/auth/v1/auth/public-key" | {
+curl -sS -o /tmp/auth_public_key.pem -w "%{http_code}" "${AUTH_BASE_URL}/api/v1/auth/public-key" | {
   read -r status
   if [ "${status}" != "200" ]; then
     echo "public key failed (status=${status})" >&2

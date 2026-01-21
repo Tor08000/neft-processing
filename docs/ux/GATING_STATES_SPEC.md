@@ -1,55 +1,34 @@
-# UX Gating States Spec
+# Gating states spec
 
-## AccessState (frontend enum)
+## Access state mapping
 
-| State | Meaning |
+| Access state | When it applies | Primary UI intent | Example CTA |
+| --- | --- | --- | --- |
+| OK | Access allowed | Render dashboard/feature | — |
+| NEEDS_ONBOARDING | Org/partner inactive or legal profile not verified | Onboarding checklist | Go to onboarding/legal profile |
+| NEEDS_PLAN | Subscription/plan missing | Plan selection/paywall | Choose plan |
+| OVERDUE | Billing soft block (overdue) | Payment required | Open invoices |
+| SUSPENDED | Billing hard block/suspended | Access paused | Contact support |
+| FORBIDDEN_ROLE | Missing required role | Permission denied | Request access |
+| MISSING_CAPABILITY | Feature not entitled/addon required | Module unavailable | Contact manager |
+| COMING_SOON | Feature/settlement not finalized | Coming soon info | Back to dashboard |
+| TECH_ERROR | 5xx/network/invalid JSON | Technical error | Retry later |
+
+## Backend error code mapping
+
+| Backend error code | Access state |
 | --- | --- |
-| `OK` | Access granted, render content. |
-| `NEEDS_ONBOARDING` | Org/partner not active, onboarding incomplete. |
-| `NEEDS_PLAN` | Subscription missing (no plan). |
-| `OVERDUE` | Billing overdue, payment required. |
-| `SUSPENDED` | Billing suspended, access paused. |
-| `FORBIDDEN_ROLE` | Role does not allow access. |
-| `MISSING_CAPABILITY` | Capability/entitlement is disabled. |
-| `COMING_SOON` | Feature is not implemented yet. |
-| `TECH_ERROR` | 5xx/network/parse errors. |
+| billing_soft_blocked | OVERDUE |
+| billing_hard_blocked | SUSPENDED |
+| billing_suspended | SUSPENDED |
+| feature_not_entitled | MISSING_CAPABILITY |
+| org_not_active | NEEDS_ONBOARDING |
+| legal_not_verified | NEEDS_ONBOARDING |
+| settlement_not_finalized | COMING_SOON |
+| admin_forbidden | FORBIDDEN_ROLE |
 
-## State → UI mapping
+## Notes
 
-| AccessState | UI |
-| --- | --- |
-| `NEEDS_ONBOARDING` | “Подключить компанию” / onboarding CTA. |
-| `NEEDS_PLAN` | “Выбрать тариф” + “Связаться с менеджером”. |
-| `OVERDUE` | “Оплатите счёт” + invoices link. |
-| `SUSPENDED` | “Доступ приостановлен” + support/billing CTA. |
-| `FORBIDDEN_ROLE` | “Недостаточно прав”. |
-| `MISSING_CAPABILITY` | Paywall / “Недоступно по подписке”. |
-| `COMING_SOON` | Coming soon placeholder. |
-| `TECH_ERROR` | Error page with `request_id` / `correlation_id` + retry. |
-
-## Canonical backend error codes → AccessState
-
-| Error code | AccessState |
-| --- | --- |
-| `billing_soft_blocked` | `OVERDUE` |
-| `billing_suspended` | `SUSPENDED` |
-| `feature_not_entitled` | `MISSING_CAPABILITY` |
-| `org_not_active` | `NEEDS_ONBOARDING` |
-| `partner_not_verified` | `NEEDS_ONBOARDING` |
-| `legal_not_verified` | `NEEDS_ONBOARDING` |
-| `settlement_not_finalized` | `COMING_SOON` |
-| `admin_forbidden` | `FORBIDDEN_ROLE` |
-
-## Error payload format (403/409 example)
-
-```json
-{
-  "error": "billing_soft_blocked",
-  "message": "Subscription overdue",
-  "request_id": "req-123",
-  "details": {
-    "org_id": "org-1",
-    "invoice_id": "inv-1"
-  }
-}
-```
+- Business blocks (403/409 with the codes above) must render the corresponding state, not a generic error.
+- Legacy code `addon_required` should be treated as `feature_not_entitled` on the frontend until fully removed.
+- Dashboards should avoid loading snapshot data when the access state is not OK.

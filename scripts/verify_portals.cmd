@@ -78,7 +78,7 @@ set "PASSWORD=%~3"
 set "LOGIN_FILE=%TEMP%\login_%PORTAL%_%RANDOM%.json"
 set "STATUS_FILE=%TEMP%\login_%PORTAL%_%RANDOM%.status"
 
-curl -sS -o "%LOGIN_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\",\"portal\":\"%PORTAL%\"}" "%BASE_URL%/api/auth/v1/auth/login" > "%STATUS_FILE%"
+curl -sS -o "%LOGIN_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\",\"portal\":\"%PORTAL%\"}" "%BASE_URL%/api/v1/auth/login" > "%STATUS_FILE%"
 if errorlevel 1 (
   echo [%PORTAL%] Login request failed.
   exit /b 1
@@ -97,7 +97,7 @@ if "%TOKEN%"=="" (
   exit /b 1
 )
 
-call :check_api "%PORTAL% auth/me" "%BASE_URL%/api/auth/v1/auth/me" "Authorization: Bearer %TOKEN%" "X-Portal: %PORTAL%" || exit /b 1
+call :check_api "%PORTAL% auth/me" "%BASE_URL%/api/v1/auth/me" "Authorization: Bearer %TOKEN%" "X-Portal: %PORTAL%" || exit /b 1
 call :check_api "%PORTAL% portal/me" "%BASE_URL%/api/core/portal/me" "Authorization: Bearer %TOKEN%" || exit /b 1
 call :check_api "%PORTAL% legal/required" "%BASE_URL%/api/core/legal/required" "Authorization: Bearer %TOKEN%" || exit /b 1
 call :try_legal_accept "%PORTAL%" "%TOKEN%"

@@ -25,6 +25,14 @@ export class AdminMeError extends Error {
 
 const buildUrl = (path: string) => `${CORE_API_BASE}${path}`;
 
+const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
+  try {
+    return (await response.json()) as T;
+  } catch (err) {
+    return null;
+  }
+};
+
 const buildPermissions = (roles: string[]) => {
   const roleSet = new Set(roles.map((role) => role.toUpperCase()));
   const superadminEnabled =
@@ -52,7 +60,7 @@ const buildPermissions = (roles: string[]) => {
 };
 
 export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
-  const response = await fetch(buildUrl("/portal/me"), {
+  const response = await fetch(buildUrl("/v1/admin/me"), {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -60,9 +68,19 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
     },
   });
 
-  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.includes("application/json");
+  const requestId = response.headers.get("x-request-id") ?? response.headers.get("x-correlation-id");
+
   if (response.ok) {
-    const portal = (await response.json()) as PortalMeResponse;
+    const portal = isJson ? await parseJsonSafely<PortalMeResponse>(response) : null;
+    if (!portal) {
+      throw new AdminMeError(502, "Invalid JSON response from admin me", {
+        error: "admin_error",
+        message: "Invalid JSON response from admin me",
+        request_id: requestId,
+      });
+    }
     const roles = portal.user_roles?.length ? portal.user_roles : portal.org_roles ?? [];
     return {
       admin_user: {
@@ -80,7 +98,14 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
     };
   }
 
-  const payload = isJson ? ((await response.json()) as AdminErrorPayload) : undefined;
+  const payload = isJson ? await parseJsonSafely<AdminErrorPayload>(response) : null;
+  const inferredError =
+    response.status === 401 ? "admin_unauthorized" : response.status === 403 ? "admin_forbidden" : "admin_error";
   const message = payload?.message ?? `Admin me failed with status ${response.status}`;
-  throw new AdminMeError(response.status, message, payload);
+  throw new AdminMeError(response.status, message, {
+    error: payload?.error ?? inferredError,
+    message,
+    request_id: payload?.request_id ?? requestId,
+    required_roles: payload?.required_roles,
+  });
 }

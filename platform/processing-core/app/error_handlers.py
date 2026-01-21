@@ -44,6 +44,11 @@ def add_exception_handlers(app: FastAPI):
                     required_roles=required_roles,
                 ),
             )
+        if exc.status_code in {403, 409} and isinstance(exc.detail, dict) and "error" in exc.detail:
+            payload = dict(exc.detail)
+            payload.setdefault("message", exc.detail.get("detail"))
+            payload["request_id"] = payload.get("request_id") or request.headers.get("x-request-id")
+            return JSONResponse(status_code=exc.status_code, content=payload)
         return JSONResponse(
             status_code=exc.status_code,
             content={

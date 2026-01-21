@@ -16,6 +16,10 @@ export type AccessReason =
   | "partner_onboarding"
   | "legal_not_verified"
   | "settlement_not_finalized"
+  | "billing_soft_blocked"
+  | "billing_hard_blocked"
+  | "feature_not_entitled"
+  | "org_not_active"
   | "missing_capability"
   | "forbidden_role"
   | "tech_error"
@@ -33,12 +37,21 @@ const BUSINESS_ERROR_TO_STATE: Record<string, AccessState> = {
   feature_not_entitled: AccessState.MISSING_CAPABILITY,
   admin_forbidden: AccessState.FORBIDDEN_ROLE,
   billing_soft_blocked: AccessState.OVERDUE,
+  billing_hard_blocked: AccessState.SUSPENDED,
   billing_suspended: AccessState.SUSPENDED,
+  org_not_active: AccessState.NEEDS_ONBOARDING,
 };
 
 export const mapBusinessErrorToAccessState = (errorCode?: string | null): AccessState | null => {
   if (!errorCode) return null;
   return BUSINESS_ERROR_TO_STATE[errorCode] ?? null;
+};
+
+export const mapBusinessErrorToAccessDecision = (errorCode?: string | null): AccessDecision | null => {
+  if (!errorCode) return null;
+  const state = BUSINESS_ERROR_TO_STATE[errorCode];
+  if (!state) return null;
+  return { state, reason: errorCode as AccessReason };
 };
 
 type ResolveAccessStateParams = {
