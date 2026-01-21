@@ -9,7 +9,7 @@ from app.db import get_db
 from app.models.legal_acceptance import LegalSubjectType
 from app.models.legal_document import LegalDocumentStatus
 from app.schemas.legal import LegalAcceptRequest, LegalDocumentResponse, LegalRequiredResponse
-from app.security.rbac.principal import Principal, get_portal_principal
+from app.security.rbac.principal import Principal, get_portal_principal, principal_context
 from app.services.audit_service import request_context_from_request
 from app.services.legal import (
     LegalService,
@@ -23,10 +23,26 @@ router = APIRouter(prefix="/legal", tags=["legal"])
 
 
 def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str]:
-    if principal.client_id:
+    context = principal_context(principal)
+    if context["actor_type"] == "client":
+        if principal.client_id is None:
+            raise HTTPException(status_code=403, detail="missing_client_context")
+        org_id = context.get("org_id")
+        if org_id and str(org_id) != str(principal.client_id):
+            raise HTTPException(status_code=403, detail="client_org_mismatch")
         return LegalSubjectType.CLIENT, str(principal.client_id)
-    if principal.partner_id:
+    if context["actor_type"] == "partner":
+        if principal.partner_id is None:
+            raise HTTPException(status_code=403, detail="missing_partner_context")
+        partner_id = context.get("partner_id") or context.get("org_id")
+        if partner_id and str(partner_id) != str(principal.partner_id):
+            raise HTTPException(status_code=403, detail="partner_mismatch")
         return LegalSubjectType.PARTNER, str(principal.partner_id)
+    if context["actor_type"] == "admin":
+        actor_id = context.get("actor_id")
+        if not actor_id:
+            raise HTTPException(status_code=403, detail="missing_actor")
+        return LegalSubjectType.USER, str(actor_id)
     if principal.user_id:
         return LegalSubjectType.USER, str(principal.user_id)
     raise HTTPException(status_code=403, detail="missing_subject")
