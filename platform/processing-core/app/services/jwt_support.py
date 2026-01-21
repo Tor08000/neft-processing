@@ -24,6 +24,7 @@ class JwksKeyResolution:
     header: dict
     selected_kid: str | None
     missing_kid: bool = False
+    kid_not_found: bool = False
 
 
 _jwks_cache: dict[str, tuple[float, dict]] = {}
@@ -64,15 +65,23 @@ def classify_jwt_error(exc: Exception) -> str:
         return "expired"
     if isinstance(exc, JWTClaimsError):
         msg = str(exc).lower()
+        if "nbf" in msg or "not yet valid" in msg:
+            return "nbf"
         if "aud" in msg or "audience" in msg:
-            return "wrong_aud"
+            return "aud_mismatch"
         if "issuer" in msg or "iss" in msg:
-            return "wrong_iss"
+            return "iss_mismatch"
+        if "alg" in msg or "algorithm" in msg:
+            return "alg_mismatch"
         return "invalid_claims"
     if isinstance(exc, JWTError):
         msg = str(exc).lower()
         if "signature" in msg:
             return "signature_invalid"
+        if "alg" in msg or "algorithm" in msg:
+            return "alg_mismatch"
+        if "segments" in msg or "format" in msg or "malformed" in msg:
+            return "bad_format"
     return "invalid_token"
 
 
@@ -91,6 +100,7 @@ def log_token_rejection(
         "aud": claims.get("aud"),
         "alg": header.get("alg"),
         "kid": header.get("kid"),
+        "subject": claims.get("sub"),
         "reason": reason,
     }
     if exc is not None:
@@ -193,6 +203,7 @@ def resolve_jwks_key(
 ) -> JwksKeyResolution:
     header = get_unverified_header(token)
     kid = header.get("kid")
+    kid_not_found = False
 
     jwks_payload = fetch_jwks(
         jwks_url,
@@ -207,6 +218,8 @@ def resolve_jwks_key(
     jwk_data = None
     if kid:
         jwk_data = next((item for item in keys if item.get("kid") == kid), None)
+        if jwk_data is None and keys:
+            kid_not_found = True
     if jwk_data is None and keys:
         jwk_data = keys[0]
     if jwk_data is None:
@@ -218,4 +231,5 @@ def resolve_jwks_key(
         header=header,
         selected_kid=jwk_data.get("kid"),
         missing_kid=not bool(kid),
+        kid_not_found=kid_not_found,
     )

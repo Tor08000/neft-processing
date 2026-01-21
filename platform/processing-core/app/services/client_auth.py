@@ -29,11 +29,11 @@ JWKS_URL = os.getenv(
 PUBLIC_KEY_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 EXPECTED_ISSUER = os.getenv(
     "NEFT_CLIENT_ISSUER",
-    os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-client")),
+    os.getenv("CLIENT_AUTH_ISSUER", "neft-client"),
 )
 EXPECTED_AUDIENCE = os.getenv(
     "NEFT_CLIENT_AUDIENCE",
-    os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-client")),
+    os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"),
 )
 ALLOWED_ALGS = parse_allowed_algs()
 
@@ -53,11 +53,16 @@ def _static_public_key() -> str | None:
 
 def _get_bearer_token(request: Request) -> str:
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    if not auth_header:
+        _log_rejection("", reason="missing_token")
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    if not auth_header.startswith("Bearer "):
+        _log_rejection("", reason="bad_format")
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     token = auth_header.split(" ", 1)[1].strip()
     if not token:
+        _log_rejection("", reason="missing_token")
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     return token
@@ -83,11 +88,11 @@ def _log_rejection(token: str, *, reason: str, exc: Exception | None = None) -> 
     )
 
 
-def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str, bool]:
+def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str, bool, bool]:
     if not force_refresh:
         static_key = _static_public_key()
         if static_key:
-            return static_key, False
+            return static_key, False, False
 
     if JWKS_URL:
         resolution = resolve_jwks_key(
@@ -99,7 +104,7 @@ def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str
             log_warning=lambda event, payload: _logger.warning(event, extra=payload),
             event_prefix="client_auth",
         )
-        return resolution.public_key, resolution.missing_kid
+        return resolution.public_key, resolution.missing_kid, resolution.kid_not_found
 
     public_key = fetch_public_key(
         PUBLIC_KEY_URL,
@@ -109,7 +114,7 @@ def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str
         log_warning=lambda event, payload: _logger.warning(event, extra=payload),
         event_prefix="client_auth",
     )
-    return public_key, False
+    return public_key, False, False
 
 
 def get_public_key(*, force_refresh: bool = False) -> str:
@@ -150,16 +155,16 @@ def get_jwks(*, ttl: int = PUBLIC_KEY_CACHE_TTL, force_refresh: bool = False) ->
 
 def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
     try:
-        public_key, missing_kid = _resolve_public_key(token)
+        public_key, missing_kid, kid_not_found = _resolve_public_key(token)
         payload = _decode_token(token, public_key)
     except (JWTError, ValueError, HTTPException):
-        public_key, missing_kid = _resolve_public_key(token, force_refresh=True)
+        public_key, missing_kid, kid_not_found = _resolve_public_key(token, force_refresh=True)
         try:
             payload = _decode_token(token, public_key)
         except (JWTError, ValueError) as inner_exc:
             reason = classify_jwt_error(inner_exc)
-            if missing_kid and reason == "signature_invalid":
-                reason = "no_kid"
+            if kid_not_found:
+                reason = "kid_not_found"
             _log_rejection(token, reason=reason, exc=inner_exc)
             raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -183,16 +188,16 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
 
 def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
     try:
-        public_key, missing_kid = _resolve_public_key(token)
+        public_key, missing_kid, kid_not_found = _resolve_public_key(token)
         payload = _decode_token(token, public_key)
     except (JWTError, ValueError, HTTPException):
-        public_key, missing_kid = _resolve_public_key(token, force_refresh=True)
+        public_key, missing_kid, kid_not_found = _resolve_public_key(token, force_refresh=True)
         try:
             payload = _decode_token(token, public_key)
         except (JWTError, ValueError) as inner_exc:
             reason = classify_jwt_error(inner_exc)
-            if missing_kid and reason == "signature_invalid":
-                reason = "no_kid"
+            if kid_not_found:
+                reason = "kid_not_found"
             _log_rejection(token, reason=reason, exc=inner_exc)
             raise HTTPException(status_code=401, detail="Invalid token")
 

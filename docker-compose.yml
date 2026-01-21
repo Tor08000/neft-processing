@@ -196,6 +196,8 @@ services:
       NEFT_BOOTSTRAP_PASSWORD_VERSION: ${NEFT_BOOTSTRAP_PASSWORD_VERSION:-1}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
       NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
+      NEFT_CLIENT_ISSUER: ${NEFT_CLIENT_ISSUER:-neft-client}
+      NEFT_CLIENT_AUDIENCE: ${NEFT_CLIENT_AUDIENCE:-neft-client}
       BANK_STUB_ENABLED: ${BANK_STUB_ENABLED:-1}
       BANK_STUB_IMMEDIATE_SETTLE: ${BANK_STUB_IMMEDIATE_SETTLE:-1}
       ERP_STUB_ENABLED: ${ERP_STUB_ENABLED:-1}
@@ -251,6 +253,10 @@ services:
       LOGISTICS_SERVICE_URL: ${LOGISTICS_SERVICE_URL:-http://logistics-service:8000}
       NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
       NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
+      NEFT_CLIENT_ISSUER: ${NEFT_CLIENT_ISSUER:-neft-client}
+      NEFT_CLIENT_AUDIENCE: ${NEFT_CLIENT_AUDIENCE:-neft-client}
+      AUTH_PUBLIC_KEY_URL: ${AUTH_PUBLIC_KEY_URL:-http://auth-host:8000/api/auth/v1/auth/public-key}
+      AUTH_JWKS_URL: ${AUTH_JWKS_URL:-http://auth-host:8000/api/auth/.well-known/jwks.json}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_FROM: ${SMTP_FROM:-no-reply@neft.local}

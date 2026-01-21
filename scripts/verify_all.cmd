@@ -44,8 +44,7 @@ REM ===== Run =====
 call :run_cmd "0.1 Local neft_shared/app.main import" "scripts\\dev_python_env.cmd" || goto finalize
 call :run_cmd "0. Reset volumes" "docker compose down -v" || goto finalize
 call :run_cmd "1. Stack up" "docker compose up -d --build" || goto finalize
-call :run_cmd "1.0 Docker neft_shared/app.main import" "docker run --rm --network neft-processing_default neft-processing-core-api python -c ^\"import neft_shared; import app.main; print('OK')^\"" || goto finalize
-call :run_cmd "1.0.0 Docker app.main import (core-api)" "docker run --rm neft-processing-core-api python -c ^\"import app.main; print('OK')^\"" || goto finalize
+call :run_cmd "1.0 Docker app.main import (core-api)" "docker compose exec -T core-api python -c ^\"import app.main; print('OK')^\"" || goto finalize
 call :run_cmd "1.0.1 Docker neft_shared import (ai-service)" "docker run --rm neft-processing-ai-service python -c ^\"import neft_shared; print('OK')^\"" || goto finalize
 call :run_cmd "1.0.2 Docker neft_shared import (workers)" "docker run --rm neft-processing-workers python -c ^\"import neft_shared; print('OK')^\"" || goto finalize
 call :run_cmd "1.1 Alembic core-api upgrade head (clean DB)" "docker compose exec -T core-api sh -lc ^"alembic -c app/alembic.ini upgrade head^"" || goto finalize
@@ -93,7 +92,17 @@ if "%ADMIN_TOKEN%"=="" (
 )
 call :run_cmd "4.5 core portal/me (admin token)" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
 call :run_cmd "4.6 core v1 admin/me" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/v1/admin/me" || goto finalize
-call :run_cmd "4.7 core legal/required" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/legal/required" || goto finalize
+call :check_not_401 "4.7 core legal/required (admin token)" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "Authorization: Bearer %ADMIN_TOKEN%" || goto finalize
+
+set "CLIENT_LOGIN_FILE=%TEMP%\\verify_client_login_%RANDOM%.json"
+call :run_cmd "4.8 client login via gateway" "curl -sS -o \"%CLIENT_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"client@neft.local\\\",\\\"password\\\":\\\"client\\\",\\\"portal\\\":\\\"client\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%CLIENT_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "CLIENT_TOKEN=%%T"
+if "%CLIENT_TOKEN%"=="" (
+  call :mark_fail "4.8 client login via gateway" "No client token returned"
+  goto finalize
+)
+call :run_cmd "4.9 core portal/me (client token)" "curl -f -H \"Authorization: Bearer %CLIENT_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
+call :check_not_401 "4.10 core legal/required (client token)" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "Authorization: Bearer %CLIENT_TOKEN%" || goto finalize
 
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize
@@ -153,6 +162,27 @@ if "%failed%"=="0" (
 )
 call :mark_fail "%step%" "One or more endpoints failed"
 exit /b 1
+
+:check_not_401
+set "step=%~1"
+set "url=%~2"
+set "header=%~3"
+
+for /f "usebackq delims=" %%S in (`curl -s -o NUL -w "%%{http_code}" -H "%header%" "%url%"`) do set "status=%%S"
+if "%status%"=="401" (
+  call :mark_fail "%step%" "Unauthorized (401) for %url%"
+  exit /b 1
+)
+if "%status%"=="" (
+  call :mark_fail "%step%" "No status for %url%"
+  exit /b 1
+)
+if "%status%"=="000" (
+  call :mark_fail "%step%" "Request failed for %url%"
+  exit /b 1
+)
+call :mark_ok "%step%" "HTTP %status%"
+exit /b 0
 
 :run_smoke_scripts
 set "step=5. Smoke scripts"
