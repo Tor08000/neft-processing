@@ -139,7 +139,7 @@ services:
           raise RuntimeError(f"service {url} unhealthy")
 
       print("[smoke] waiting for services...")
-      wait_health("http://core-api:8000/api/core/health")
+      wait_health("http://core-api:8000/health")
       wait_health("http://auth-host:8000/api/auth/health")
 
       print("[smoke] login...")
