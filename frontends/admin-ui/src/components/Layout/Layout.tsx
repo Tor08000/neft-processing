@@ -36,7 +36,7 @@ export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
-  const { isBlocked } = useLegalGate();
+  const { isBlocked, isFeatureDisabled } = useLegalGate();
   const [theme, setTheme] = useState(getInitialTheme());
 
   const navItems = isBlocked ? baseNavItems.filter((item) => item.to === "/legal") : baseNavItems;
@@ -85,6 +85,11 @@ export const Layout: React.FC = () => {
           }
         />
         <div className="brand-content">
+          {isFeatureDisabled ? (
+            <div className="card">
+              <div className="muted">Онбординг выключен администратором.</div>
+            </div>
+          ) : null}
           <PageShell key={location.pathname}>
             <Outlet />
           </PageShell>

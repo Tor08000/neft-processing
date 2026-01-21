@@ -47,7 +47,7 @@ const buildContextLabel = (section: string, path: string, basePath?: string) => 
 export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
   const { user, logout } = useAuth();
   const { client } = useClient();
-  const { isBlocked } = useLegalGate();
+  const { isBlocked, isFeatureDisabled } = useLegalGate();
   const { t } = useI18n();
   const location = useLocation();
   const [theme, setTheme] = useState(getInitialTheme());
@@ -199,6 +199,11 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
           }
         />
         <div className="brand-content">
+          {isFeatureDisabled ? (
+            <div className="card">
+              <div className="muted">Онбординг выключен администратором.</div>
+            </div>
+          ) : null}
           {pwaMode ? <PwaNotificationsPrompt /> : null}
           <PageShell key={location.pathname}>
             <Outlet />

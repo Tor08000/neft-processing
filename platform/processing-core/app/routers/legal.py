@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.models.legal_acceptance import LegalSubjectType
 from app.models.legal_document import LegalDocumentStatus
@@ -65,6 +66,13 @@ def get_required(
 ) -> LegalRequiredResponse:
     subject_type, subject_id = _subject_from_principal(principal)
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
+    if not settings.CORE_ONBOARDING_ENABLED:
+        return LegalRequiredResponse(
+            subject={"type": subject.subject_type.value, "id": subject.subject_id},
+            required=[],
+            is_blocked=False,
+            enabled=False,
+        )
     service = LegalService(db)
     required = service.required_documents(subject=subject, required_codes=legal_gate_required_codes())
     return LegalRequiredResponse(
@@ -109,10 +117,17 @@ def accept_document(
     principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
 ) -> LegalRequiredResponse:
-    if not payload.accepted:
-        raise HTTPException(status_code=400, detail="legal_acceptance_required")
     subject_type, subject_id = _subject_from_principal(principal)
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
+    if not settings.CORE_ONBOARDING_ENABLED:
+        return LegalRequiredResponse(
+            subject={"type": subject.subject_type.value, "id": subject.subject_id},
+            required=[],
+            is_blocked=False,
+            enabled=False,
+        )
+    if not payload.accepted:
+        raise HTTPException(status_code=400, detail="legal_acceptance_required")
 
     service = LegalService(db)
     document = service.resolve_document(code=payload.code, version=payload.version, locale=payload.locale)

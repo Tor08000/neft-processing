@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_MARKETPLACE_ORDERING?: string;
   readonly VITE_SELF_SIGNUP_ENABLED?: string;
   readonly VITE_ONBOARDING_DOCS_REQUIRED?: string;
+  readonly VITE_ONBOARDING_ENABLED?: string;
   readonly VITE_CONTRACT_SIMPLE_SIGN_ENABLED?: string;
   readonly VITE_AUTO_ACTIVATE_AFTER_SIGN?: string;
   readonly VITE_INDIVIDUAL_SIGNUP_ENABLED?: string;

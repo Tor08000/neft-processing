@@ -6,6 +6,8 @@ type ApiBase = "core" | "auth" | "core_root";
 
 export type HttpHeaders = Record<string, string>;
 
+const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/v1/auth/me");
+
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
     super(message);
@@ -141,7 +143,9 @@ export async function request<T>(
   }
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("partner-auth-logout"));
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("partner-auth-logout"));
+    }
     throw new UnauthorizedError();
   }
   if (response.status === 422) {
@@ -223,7 +227,9 @@ export async function requestWithMeta<T>(
   };
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("partner-auth-logout"));
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("partner-auth-logout"));
+    }
     throw new UnauthorizedError();
   }
   if (response.status === 422) {
@@ -288,7 +294,9 @@ export async function requestFormData<T>(
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("partner-auth-logout"));
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("partner-auth-logout"));
+    }
     throw new UnauthorizedError();
   }
   if (response.status === 422) {

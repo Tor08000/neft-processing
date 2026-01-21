@@ -51,7 +51,6 @@ const requestJson = async <T>(
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("client-auth-logout"));
     throw new UnauthorizedError();
   }
   if (response.status === 422) {

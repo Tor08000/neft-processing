@@ -33,6 +33,7 @@ class LegalRequiredResponse(BaseModel):
     subject: LegalSubject
     required: list[LegalRequiredItem]
     is_blocked: bool
+    enabled: bool = True
 
 
 class LegalDocumentResponse(BaseModel):
