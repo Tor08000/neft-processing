@@ -7,6 +7,52 @@ services:
     profiles:
       - smoke
 
+  smoke-core-api-import:
+    profiles:
+      - smoke
+    build:
+      context: .
+      dockerfile: platform/processing-core/Dockerfile
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: core-api
+      NEFT_DB_SCHEMA: ${NEFT_DB_SCHEMA:-processing_core}
+      NEFT_S3_ENDPOINT: ${NEFT_S3_ENDPOINT:-http://minio:9000}
+      NEFT_S3_ACCESS_KEY: ${NEFT_S3_ACCESS_KEY:-change-me}
+      NEFT_S3_SECRET_KEY: ${NEFT_S3_SECRET_KEY:-change-me}
+      NEFT_S3_BUCKET: ${NEFT_S3_BUCKET:-neft}
+      NEFT_S3_BUCKET_INVOICES: ${NEFT_S3_BUCKET_INVOICES:-neft-invoices}
+      NEFT_S3_BUCKET_PAYOUTS: ${NEFT_S3_BUCKET_PAYOUTS:-neft-payouts}
+      NEFT_S3_BUCKET_ACCOUNTING_EXPORTS: ${NEFT_S3_BUCKET_ACCOUNTING_EXPORTS:-accounting-exports}
+      NEFT_S3_BUCKET_DOCUMENTS: ${NEFT_S3_BUCKET_DOCUMENTS:-neft-documents}
+      NEFT_S3_REGION: ${NEFT_S3_REGION:-us-east-1}
+      NEFT_PDF_AUTO_GENERATE: ${NEFT_PDF_AUTO_GENERATE:-1}
+      BI_CLICKHOUSE_ENABLED: ${BI_CLICKHOUSE_ENABLED:-0}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-default}
+      DOCUMENT_SERVICE_ENABLED: ${DOCUMENT_SERVICE_ENABLED:-0}
+      DOCUMENT_SERVICE_URL: ${DOCUMENT_SERVICE_URL:-http://document-service:8000}
+      LOGISTICS_SERVICE_ENABLED: ${LOGISTICS_SERVICE_ENABLED:-0}
+      LOGISTICS_SERVICE_URL: ${LOGISTICS_SERVICE_URL:-http://logistics-service:8000}
+      NEFT_AUTH_ISSUER: ${NEFT_AUTH_ISSUER:-neft-auth}
+      NEFT_AUTH_AUDIENCE: ${NEFT_AUTH_AUDIENCE:-neft-admin}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@neft.local}
+      SMTP_TLS: ${SMTP_TLS:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    entrypoint: >
+      /bin/sh -c '
+      python -c "import app.main; print(\"OK\")"
+      '
+
   mailpit:
     profiles:
       - smoke

@@ -2102,7 +2102,7 @@ def resume_report_schedule(
     return _schedule_out(schedule, tzinfo=tzinfo)
 
 
-@router.delete("/reports/schedules/{schedule_id}", status_code=204, response_class=Response)
+@router.delete("/reports/schedules/{schedule_id}", status_code=204)
 def delete_report_schedule(
     schedule_id: str,
     request: Request,
