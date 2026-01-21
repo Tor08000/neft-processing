@@ -79,7 +79,7 @@ export class LegalRequiredError extends ApiError {
   details: unknown;
 
   constructor(message: string, status: number, correlationId: string | null, details: unknown) {
-    super(message, status, correlationId);
+    super(message, status, correlationId, null, null, details);
     this.name = "LegalRequiredError";
     this.details = details;
   }
@@ -196,7 +196,7 @@ export async function request<T>(
         payload = null;
       }
     }
-    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
     throw new ApiError(
       message,
       response.status,
@@ -296,7 +296,7 @@ export async function requestWithMeta<T>(
         payload = null;
       }
     }
-    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
     throw new ApiError(
       message,
       response.status,
