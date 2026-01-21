@@ -105,4 +105,22 @@ def get_principal(request: Request) -> Principal:
     raise HTTPException(status_code=401, detail="Invalid token")
 
 
-__all__ = ["Principal", "get_principal"]
+def get_portal_principal(request: Request) -> Principal:
+    token = _get_bearer_token(request)
+    exceptions: list[HTTPException] = []
+    for verifier in (
+        client_auth.verify_client_token,
+        partner_auth.verify_partner_token,
+    ):
+        try:
+            claims = verifier(token)
+            return _principal_from_claims(claims)
+        except HTTPException as exc:
+            exceptions.append(exc)
+
+    if any(exc.status_code == 403 for exc in exceptions):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    raise HTTPException(status_code=401, detail="Invalid token")
+
+
+__all__ = ["Principal", "get_principal", "get_portal_principal"]

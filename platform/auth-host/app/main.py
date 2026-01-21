@@ -12,7 +12,7 @@ from app.api.routes.processing import router as processing_router
 from app.bootstrap import bootstrap_required_users
 from app.db import ensure_users_table
 from app.healthcheck import build_health_response
-from app.services.keys import initialize_keys
+from app.services.keys import get_public_jwk, initialize_keys
 from app.settings import get_settings
 from app.metrics import metrics_middleware, metrics_response
 
@@ -74,6 +74,12 @@ def health_root():
 @app.get("/api/v1/metrics", include_in_schema=False)
 def metrics_root():
     return metrics_response()
+
+
+@app.get("/.well-known/jwks.json", include_in_schema=False)
+@app.get(f"{API_PREFIX_AUTH}/.well-known/jwks.json", include_in_schema=False)
+def jwks_root():
+    return {"keys": [get_public_jwk()]}
 
 
 @api_prefixed_router.get("/health")

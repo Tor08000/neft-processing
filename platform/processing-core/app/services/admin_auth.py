@@ -13,6 +13,10 @@ PUBLIC_KEY_URL = os.getenv(
     "ADMIN_PUBLIC_KEY_URL",
     os.getenv("CLIENT_PUBLIC_KEY_URL", "http://auth-host:8000/api/v1/auth/public-key"),
 )
+JWKS_URL = os.getenv(
+    "ADMIN_JWKS_URL",
+    os.getenv("AUTH_JWKS_URL", "http://auth-host:8000/.well-known/jwks.json"),
+)
 PUBLIC_KEY_CACHE_TTL = 300
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
 EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
@@ -27,6 +31,8 @@ if not ADMIN_ROLES:
 
 _cached_public_key: Optional[str] = None
 _public_key_cached_at: float = 0.0
+_cached_jwks: Optional[dict] = None
+_jwks_cached_at: float = 0.0
 _logger = get_logger(__name__)
 
 
@@ -56,6 +62,67 @@ def get_public_key(force_refresh: bool = False) -> str:
             _public_key_cached_at = now
             return fallback_key
         raise HTTPException(status_code=503, detail="Unable to fetch public key") from exc
+
+
+def _fetch_jwks(force_refresh: bool = False) -> dict:
+    global _cached_jwks, _jwks_cached_at
+
+    now = time.time()
+    if not force_refresh and _cached_jwks and now - _jwks_cached_at < PUBLIC_KEY_CACHE_TTL:
+        return _cached_jwks
+
+    try:
+        response = requests.get(JWKS_URL, timeout=5)
+        _logger.info(
+            "admin_auth.jwks.refresh",
+            extra={"url": JWKS_URL, "status_code": response.status_code},
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:  # pragma: no cover - network errors
+        _logger.warning(
+            "admin_auth.jwks.refresh_failed",
+            extra={"url": JWKS_URL, "error": str(exc)},
+        )
+        if _cached_jwks:
+            return _cached_jwks
+        raise HTTPException(status_code=503, detail="Unable to fetch JWKS") from exc
+    except ValueError as exc:
+        _logger.warning(
+            "admin_auth.jwks.invalid_payload",
+            extra={"url": JWKS_URL, "error": str(exc)},
+        )
+        if _cached_jwks:
+            return _cached_jwks
+        raise HTTPException(status_code=503, detail="Unable to parse JWKS") from exc
+
+    if not isinstance(payload, dict) or "keys" not in payload:
+        _logger.warning(
+            "admin_auth.jwks.invalid_payload",
+            extra={"url": JWKS_URL, "detail": "missing_keys"},
+        )
+        if _cached_jwks:
+            return _cached_jwks
+        raise HTTPException(status_code=503, detail="Invalid JWKS payload")
+
+    _cached_jwks = payload
+    _jwks_cached_at = now
+    return payload
+
+
+def _key_from_jwks(token: str, *, force_refresh: bool = False) -> str:
+    jwks_payload = _fetch_jwks(force_refresh=force_refresh)
+    keys = jwks_payload.get("keys") or []
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    jwk_data = None
+    if kid:
+        jwk_data = next((item for item in keys if item.get("kid") == kid), None)
+    if jwk_data is None and keys:
+        jwk_data = keys[0]
+    if jwk_data is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return jwk.construct(jwk_data).to_pem().decode("utf-8")
 
 
 def _get_bearer_token(request: Request) -> str:
@@ -97,13 +164,15 @@ def _log_rejection(token: str, *, detail: str, exc: Exception | None = None) -> 
 
 
 def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
-    public_key = get_public_key()
-
     try:
+        public_key = _key_from_jwks(token)
         payload = _decode_token(token, public_key)
-    except (JWTError, jwk.JWKError, ValueError) as exc:
-        _logger.info("admin_auth.decode_failed_refreshing_key", extra={"error": str(exc)})
-        public_key = get_public_key(force_refresh=True)
+    except (JWTError, jwk.JWKError, ValueError, HTTPException) as exc:
+        _logger.info(
+            "admin_auth.decode_failed_refreshing_key",
+            extra={"error": str(exc), "jwks_url": JWKS_URL},
+        )
+        public_key = _key_from_jwks(token, force_refresh=True)
         try:
             payload = _decode_token(token, public_key)
         except (JWTError, jwk.JWKError, ValueError) as inner_exc:

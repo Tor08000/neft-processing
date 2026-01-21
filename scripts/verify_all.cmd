@@ -77,6 +77,10 @@ call :check_endpoints "4. Metrics checks" ^
   "http://localhost:8010/metrics" ^
   || goto finalize
 
+call :run_cmd "4.1 core portal/me smoke" "curl -i %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
+call :run_cmd "4.2 auth-host jwks smoke" "curl -i http://localhost:8002/.well-known/jwks.json" || goto finalize
+call :run_cmd "4.3 core openapi portal/me" "curl -s http://localhost:8001/api/openapi.json ^| findstr /I \"portal/me\"" || goto finalize
+
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize
 
