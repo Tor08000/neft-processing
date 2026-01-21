@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchPartnerPayoutPreview, fetchPartnerPayouts, requestPartnerPayout } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorState, LoadingState } from "../components/states";
@@ -79,13 +80,25 @@ export function PayoutsPage() {
           <h2>Запросить выплату</h2>
         </div>
         {payoutPreview?.legal_status && payoutPreview.legal_status !== "VERIFIED" ? (
-          <div className="warning">
-            Выплата недоступна: юридический профиль не подтверждён ({payoutPreview.legal_status}).
+          <div className="notice warning">
+            <strong>Выплата заблокирована</strong>
+            <div className="muted">Юридический профиль не подтверждён ({payoutPreview.legal_status}).</div>
+            <div className="actions">
+              <Link className="ghost" to="/legal">
+                Завершить юридический профиль
+              </Link>
+            </div>
           </div>
         ) : null}
         {payoutPreview?.warnings?.length ? (
-          <div className="warning">
-            Есть предупреждения по профилю: {payoutPreview.warnings.join(", ")}.
+          <div className="notice warning">
+            <strong>Есть предупреждения по профилю</strong>
+            <div className="muted">{payoutPreview.warnings.join(", ")}.</div>
+            <div className="actions">
+              <Link className="ghost" to="/legal">
+                Перейти к юридическим данным
+              </Link>
+            </div>
           </div>
         ) : null}
         {previewError ? <div className="error">{previewError}</div> : null}

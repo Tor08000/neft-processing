@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   createSettlementChainExport,
   fetchPartnerBalance,
@@ -8,6 +9,7 @@ import {
   getPartnerExportDownloadUrl,
 } from "../api/partnerFinance";
 import { useAuth } from "../auth/AuthContext";
+import { usePortal } from "../auth/PortalContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorState, LoadingState } from "../components/states";
 import { formatCurrency, formatDateTime } from "../utils/format";
@@ -15,6 +17,7 @@ import type { PartnerBalance, PartnerExportJob, PartnerLedgerEntry, PartnerLedge
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
+  const { portal } = usePortal();
   const [balance, setBalance] = useState<PartnerBalance | null>(null);
   const [ledger, setLedger] = useState<PartnerLedgerEntry[]>([]);
   const [exportJobs, setExportJobs] = useState<PartnerExportJob[]>([]);
@@ -29,6 +32,12 @@ export function PartnerFinancePage() {
   const [exportLoading, setExportLoading] = useState(false);
 
   const currency = useMemo(() => balance?.currency ?? "RUB", [balance]);
+  const meta = portal?.partner?.profile?.meta_json ?? {};
+  const legalStatus =
+    typeof (meta as Record<string, unknown>).legal_status === "string"
+      ? ((meta as Record<string, unknown>).legal_status as string)
+      : null;
+  const needsLegal = Boolean(legalStatus && legalStatus !== "VERIFIED");
 
   useEffect(() => {
     let active = true;
@@ -101,6 +110,22 @@ export function PartnerFinancePage() {
 
   return (
     <div className="stack">
+      {needsLegal ? (
+        <section className="card">
+          <div className="section-title">
+            <h2>Блокировки выплат</h2>
+          </div>
+          <div className="notice warning">
+            <strong>Юридический профиль не подтверждён</strong>
+            <div className="muted">Заполните юридические данные и загрузите документы для разблокировки выплат.</div>
+            <div className="actions">
+              <Link className="ghost" to="/legal">
+                Перейти к юридическим данным
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
       <section className="card">
         <div className="section-title">
           <h2>Баланс</h2>

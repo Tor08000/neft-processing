@@ -59,7 +59,7 @@ const requestJson = async <T>(
   }
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
+    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId, null, null);
   }
   return (await response.json()) as T;
 };

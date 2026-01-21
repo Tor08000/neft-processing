@@ -251,7 +251,7 @@ export const exportAuditEvents = async (user: AuthSession | null, filters: Audit
   }
   if (!response.ok) {
     const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
-    throw new ApiError(await response.text(), response.status, correlationId);
+    throw new ApiError(await response.text(), response.status, correlationId, null, null);
   }
   const blob = await response.blob();
   const filename = parseFilename(response.headers.get("Content-Disposition")) ?? "audit_events.csv";

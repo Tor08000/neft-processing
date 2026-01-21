@@ -6,6 +6,7 @@ import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ModuleGate } from "./components/ModuleGate";
+import { AccessGate } from "./components/AccessGate";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -128,63 +129,98 @@ export function App({ initialSession = null }: AppProps) {
               ) : (
                 <>
                   <Route index element={<IndexRedirect />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                <Route
-                  path="/vehicles"
-                  element={
-                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetGroupsPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route
-                  path="/vehicles/:id"
-                  element={
-                    <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
-                      <FleetGroupDetailsPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route path="/cards" element={<ClientCardsPage />} />
-                <Route path="/limits/templates" element={<LimitTemplatesPage />} />
-                <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
-                <Route path="/cards/:id/limits" element={<ClientCardDetailsPage />} />
-                <Route path="/cards/:id/access" element={<ClientCardDetailsPage />} />
-                <Route
-                  path="/orders"
-                  element={
-                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceOrdersPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route
-                  path="/orders/:orderId"
-                  element={
-                    <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
-                      <MarketplaceOrderDetailsPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route
-                  path="/billing"
-                  element={
-                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
-                      <ClientInvoicesPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route
-                  path="/billing/:id"
-                  element={
-                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
-                      <ClientInvoiceDetailsPage />
-                    </ModuleGate>
-                  }
-                />
-                <Route path="/client/support" element={<SupportTicketsPage />} />
-                <Route path="/client/support/new" element={<SupportTicketNewPage />} />
-                <Route path="/client/support/:id" element={<SupportTicketDetailsPage />} />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <AccessGate title="Дашборд" capability="CLIENT_DASHBOARD">
+                        <DashboardPage />
+                      </AccessGate>
+                    }
+                  />
+                  <Route
+                    path="/vehicles"
+                    element={
+                      <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
+                        <FleetGroupsPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/vehicles/:id"
+                    element={
+                      <ModuleGate module="FLEET" capability="CLIENT_CORE" title="Флот">
+                        <FleetGroupDetailsPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/cards"
+                    element={
+                      <AccessGate title="Карты">
+                        <ClientCardsPage />
+                      </AccessGate>
+                    }
+                  />
+                  <Route path="/limits/templates" element={<LimitTemplatesPage />} />
+                  <Route path="/cards/:id" element={<ClientCardDetailsPage />} />
+                  <Route path="/cards/:id/limits" element={<ClientCardDetailsPage />} />
+                  <Route path="/cards/:id/access" element={<ClientCardDetailsPage />} />
+                  <Route
+                    path="/orders"
+                    element={
+                      <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
+                        <MarketplaceOrdersPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/orders/:orderId"
+                    element={
+                      <ModuleGate module="MARKETPLACE" capability="MARKETPLACE" title="Маркетплейс">
+                        <MarketplaceOrderDetailsPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/billing"
+                    element={
+                      <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                        <ClientInvoicesPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/billing/:id"
+                    element={
+                      <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                        <ClientInvoiceDetailsPage />
+                      </ModuleGate>
+                    }
+                  />
+                  <Route
+                    path="/client/support"
+                    element={
+                      <AccessGate title="Поддержка">
+                        <SupportTicketsPage />
+                      </AccessGate>
+                    }
+                  />
+                  <Route
+                    path="/client/support/new"
+                    element={
+                      <AccessGate title="Поддержка">
+                        <SupportTicketNewPage />
+                      </AccessGate>
+                    }
+                  />
+                  <Route
+                    path="/client/support/:id"
+                    element={
+                      <AccessGate title="Поддержка">
+                        <SupportTicketDetailsPage />
+                      </AccessGate>
+                    }
+                  />
                 <Route path="/client/notifications" element={<NotificationsPage />} />
                 <Route
                   path="/client/analytics"
@@ -297,15 +333,27 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/client/documents/:id" element={<ClientDocumentDetailsPage />} />
                 <Route
                   path="/client/docs/contracts"
-                  element={<ClientDocsListPage title="Договоры" docType="CONTRACT" />}
+                  element={
+                    <AccessGate title="Документы">
+                      <ClientDocsListPage title="Договоры" docType="CONTRACT" />
+                    </AccessGate>
+                  }
                 />
                 <Route
                   path="/client/docs/invoices"
-                  element={<ClientDocsListPage title="Счета" docType="INVOICE" />}
+                  element={
+                    <AccessGate title="Документы">
+                      <ClientDocsListPage title="Счета" docType="INVOICE" />
+                    </AccessGate>
+                  }
                 />
                 <Route
                   path="/client/docs/acts"
-                  element={<ClientDocsListPage title="Акты" docType="ACT" />}
+                  element={
+                    <AccessGate title="Документы">
+                      <ClientDocsListPage title="Акты" docType="ACT" />
+                    </AccessGate>
+                  }
                 />
                 <Route path="/finance/reconciliation" element={<ReconciliationRequestsPage />} />
                 <Route path="/finance/exports" element={<FinanceExportsPage />} />
@@ -353,8 +401,22 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/management" element={<ClientControlsPage />} />
                 <Route path="/audit" element={<AuditPage />} />
-                <Route path="/client/reports" element={<ReportsPage />} />
-                <Route path="/client/exports" element={<ExportsPage />} />
+                <Route
+                  path="/client/reports"
+                  element={
+                    <AccessGate title="Отчёты">
+                      <ReportsPage />
+                    </AccessGate>
+                  }
+                />
+                <Route
+                  path="/client/exports"
+                  element={
+                    <AccessGate title="Экспорты">
+                      <ExportsPage />
+                    </AccessGate>
+                  }
+                />
                 <Route path="/client/slo" element={<ServiceSloPage />} />
                 <Route path="/legal" element={<LegalPage />} />
                 <Route

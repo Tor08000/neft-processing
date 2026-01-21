@@ -28,12 +28,25 @@ export class ValidationError extends Error {
 export class ApiError extends Error {
   status: number;
   correlationId: string | null;
+  requestId: string | null;
+  errorCode: string | null;
+  details?: unknown;
 
-  constructor(message: string, status: number, correlationId: string | null) {
+  constructor(
+    message: string,
+    status: number,
+    correlationId: string | null,
+    requestId: string | null,
+    errorCode: string | null,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.correlationId = correlationId;
+    this.requestId = requestId;
+    this.errorCode = errorCode;
+    this.details = details;
   }
 }
 
@@ -175,7 +188,23 @@ export async function request<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
+    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    if (isJson && text) {
+      try {
+        payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
+      } catch (err) {
+        payload = null;
+      }
+    }
+    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    throw new ApiError(
+      message,
+      response.status,
+      correlationId,
+      payload?.request_id ?? null,
+      payload?.error ?? null,
+      payload?.details,
+    );
   }
 
   if (response.status === 204) {
@@ -259,7 +288,23 @@ export async function requestWithMeta<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
+    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    if (isJson && text) {
+      try {
+        payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
+      } catch (err) {
+        payload = null;
+      }
+    }
+    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    throw new ApiError(
+      message,
+      response.status,
+      correlationId,
+      payload?.request_id ?? null,
+      payload?.error ?? null,
+      payload?.details,
+    );
   }
 
   if (response.status === 204) {
@@ -305,7 +350,7 @@ export async function requestFormData<T>(
   }
   if (!response.ok) {
     const text = await response.text();
-    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId);
+    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId, null, null);
   }
 
   if (response.status === 204) {

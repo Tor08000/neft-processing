@@ -42,11 +42,26 @@ export class LegalRequiredError extends Error {
 
 export class ApiError extends Error {
   status: number;
+  requestId: string | null;
+  correlationId: string | null;
+  errorCode: string | null;
+  details?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    requestId: string | null,
+    correlationId: string | null,
+    errorCode: string | null,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.requestId = requestId;
+    this.correlationId = correlationId;
+    this.errorCode = errorCode;
+    this.details = details;
   }
 }
 
@@ -110,6 +125,7 @@ export async function request<T>(
   const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   const response = await fetch(url, { ...init, headers });
+  const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
   const isAuthLogin = base === "auth" && path.includes("/v1/auth/login");
@@ -154,8 +170,24 @@ export async function request<T>(
     throw new HtmlResponseError("HTML response from gateway", response.status, url, contentType, body.slice(0, 200));
   }
   if (!response.ok) {
-    const details = await readResponseText();
-    throw new ApiError(details || `Request failed with status ${response.status}`, response.status);
+    const text = await readResponseText();
+    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    if (isJson && text) {
+      try {
+        payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
+      } catch (err) {
+        payload = null;
+      }
+    }
+    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    throw new ApiError(
+      message,
+      response.status,
+      payload?.request_id ?? null,
+      correlationId,
+      payload?.error ?? null,
+      payload?.details,
+    );
   }
 
   return isJson ? (response.json() as Promise<T>) : ({} as Promise<T>);

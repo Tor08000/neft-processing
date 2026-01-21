@@ -64,7 +64,7 @@ export function PricesPage() {
       .catch((err) => {
         console.error(err);
         if (active) {
-          setError(err instanceof ApiError ? err : new ApiError(t("pricesPage.errors.loadFailed"), 500, null));
+          setError(err instanceof ApiError ? err : new ApiError(t("pricesPage.errors.loadFailed"), 500, null, null, null));
         }
       })
       .finally(() => {

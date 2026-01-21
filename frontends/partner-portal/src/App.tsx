@@ -5,6 +5,7 @@ import { LegalGateProvider } from "./auth/LegalGateContext";
 import type { AuthSession } from "./api/types";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AccessGate } from "./components/AccessGate";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -51,7 +52,14 @@ export function App({ initialSession = null }: AppProps) {
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route index element={<Navigate to="/products" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <AccessGate title="Дашборд">
+                      <DashboardPage />
+                    </AccessGate>
+                  }
+                />
                 <Route path="/products" element={<MarketplaceProductsPage />} />
                 <Route path="/products/:id" element={<MarketplaceProductsPage />} />
                 <Route path="/bookings" element={<ServicesCatalogPage />} />
@@ -66,13 +74,48 @@ export function App({ initialSession = null }: AppProps) {
                 <Route path="/prices" element={<PricesPage />} />
                 <Route path="/prices/analytics" element={<PriceAnalyticsPage />} />
                 <Route path="/prices/:id" element={<PriceVersionDetailsPage />} />
-                <Route path="/finance" element={<PartnerFinancePage />} />
-                <Route path="/payouts" element={<PayoutsPage />} />
-                <Route path="/payouts/:id" element={<SettlementDetailsPage />} />
+                <Route
+                  path="/finance"
+                  element={
+                    <AccessGate title="Финансы">
+                      <PartnerFinancePage />
+                    </AccessGate>
+                  }
+                />
+                <Route
+                  path="/payouts"
+                  element={
+                    <AccessGate title="Выплаты">
+                      <PayoutsPage />
+                    </AccessGate>
+                  }
+                />
+                <Route
+                  path="/payouts/:id"
+                  element={
+                    <AccessGate title="Выплаты">
+                      <SettlementDetailsPage />
+                    </AccessGate>
+                  }
+                />
                 <Route path="/payouts/batches" element={<PayoutBatchesPage />} />
                 <Route path="/payouts/batches/:id" element={<PayoutTracePage />} />
-                <Route path="/documents" element={<DocumentsPage />} />
-                <Route path="/documents/:id" element={<DocumentDetailsPage />} />
+                <Route
+                  path="/documents"
+                  element={
+                    <AccessGate title="Документы">
+                      <DocumentsPage />
+                    </AccessGate>
+                  }
+                />
+                <Route
+                  path="/documents/:id"
+                  element={
+                    <AccessGate title="Документы">
+                      <DocumentDetailsPage />
+                    </AccessGate>
+                  }
+                />
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/orders/:id" element={<OrderDetailsPage />} />
                 <Route path="/refunds" element={<RefundsPage />} />
