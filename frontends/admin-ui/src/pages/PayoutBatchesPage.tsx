@@ -12,7 +12,7 @@ import { StatusBadge } from "../components/StatusBadge/StatusBadge";
 import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDate } from "../utils/format";
 import { PayoutBatchDetail, PayoutBatchSummary, PayoutExportFile } from "../types/payouts";
-import { TOKEN_STORAGE_KEY } from "../api/client";
+import { getStoredToken } from "../api/client";
 import { CORE_API_BASE } from "../api/base";
 
 export const PayoutBatchesPage: React.FC = () => {
@@ -120,7 +120,7 @@ export const PayoutBatchesPage: React.FC = () => {
 
   const handleDownload = async (exportFile: PayoutExportFile) => {
     try {
-      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+      const token = getStoredToken();
       const base = CORE_API_BASE.replace(/\/+$/, "");
       const downloadUrl = exportFile.download_url.startsWith("http")
         ? exportFile.download_url

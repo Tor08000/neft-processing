@@ -42,7 +42,7 @@ describe("api client caching and auth", () => {
       return Promise.resolve(buildResponse(body));
     });
 
-    localStorage.setItem(TOKEN_STORAGE_KEY, "initial-token");
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ accessToken: "initial-token" }));
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -59,7 +59,7 @@ describe("api client caching and auth", () => {
     );
 
     const token = await login("demo@example.com", "secret");
-    localStorage.setItem(TOKEN_STORAGE_KEY, token.accessToken);
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ accessToken: token.accessToken }));
     await queryClient.invalidateQueries({ queryKey: ["operations"] });
 
     await queryClient.fetchQuery({

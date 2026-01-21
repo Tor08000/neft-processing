@@ -1,6 +1,11 @@
 import { ADMIN_BASE_URL, CORE_API_BASE, joinUrl } from "./base";
 
-export const TOKEN_STORAGE_KEY = "neft_admin_token";
+export const TOKEN_STORAGE_KEY = "neft_admin_auth";
+
+type StoredSession = {
+  accessToken?: string;
+  token?: string;
+};
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
@@ -40,8 +45,21 @@ function buildUrl(path: string, params?: Record<string, unknown>): string {
   return url.toString();
 }
 
+export function getStoredToken(): string | null {
+  const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as StoredSession;
+    return parsed.accessToken ?? parsed.token ?? null;
+  } catch (error) {
+    return raw;
+  }
+}
+
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const token = getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
