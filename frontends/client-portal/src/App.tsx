@@ -86,7 +86,8 @@ function IndexRedirect() {
   const { user } = useAuth();
   const { client } = useClient();
   if (user) {
-    if (!client?.org || client.org.status !== "ACTIVE") {
+    const onboardingEnabled = client?.features?.onboarding ?? true;
+    if (onboardingEnabled && (!client?.org || client.org.status !== "ACTIVE")) {
       return <Navigate to="/client/connect" replace />;
     }
     return <Navigate to="/dashboard" replace />;

@@ -4,6 +4,7 @@ import { acceptLegalDocument, fetchLegalDocument, fetchLegalRequired } from "../
 import { ApiError, UnauthorizedError } from "../api/http";
 import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } from "../api/legal";
 import { useAuth } from "./AuthContext";
+import { useClient } from "./ClientContext";
 
 const CACHE_TTL_MS = 60_000;
 
@@ -23,6 +24,7 @@ const LegalGateContext = createContext<LegalGateContextValue | undefined>(undefi
 
 export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { client } = useClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [required, setRequired] = useState<LegalRequiredItem[]>([]);
@@ -32,9 +34,10 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isFeatureDisabled, setIsFeatureDisabled] = useState(false);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
   const [document, setDocument] = useState<LegalDocumentResponse | null>(null);
-  const onboardingEnabled =
+  const onboardingEnabledEnv =
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "1" ||
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
+  const onboardingEnabled = client?.features?.onboarding ?? onboardingEnabledEnv;
 
   const resolveErrorMessage = (error: unknown) => {
     if (error instanceof UnauthorizedError) {
@@ -100,18 +103,8 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsLoading(true);
       setErrorMessage(null);
       try {
-        const data = await acceptLegalDocument(user.token, { code, version, locale });
-        if (data.enabled === false) {
-          setRequired([]);
-          setIsBlocked(false);
-          setIsFeatureDisabled(true);
-          setLastFetched(Date.now());
-          return;
-        }
-        setRequired(data.required ?? []);
-        setIsBlocked(Boolean(data.is_blocked));
-        setLastFetched(Date.now());
-        setIsFeatureDisabled(false);
+        await acceptLegalDocument(user.token, { code, version, locale });
+        await refresh(true);
       } catch (error) {
         if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
           setRequired([]);

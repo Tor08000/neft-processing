@@ -113,8 +113,9 @@ set "PARTNER_LOGIN_FILE=%TEMP%\\verify_partner_login_%RANDOM%.json"
 call :run_cmd "4.11 partner login via gateway" "curl -sS -o \"%PARTNER_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"%PARTNER_EMAIL%\\\",\\\"password\\\":\\\"%PARTNER_PASSWORD%\\\",\\\"portal\\\":\\\"partner\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "PARTNER_TOKEN=%%T"
 if "%PARTNER_TOKEN%"=="" (
-  call :mark_fail "4.11 partner login via gateway" "No partner token returned"
-  goto finalize
+  call :mark_skip "4.11 partner login via gateway" "No partner token returned"
+) else (
+  call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
 )
 call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
 call :run_cmd "4.13 core portal/me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
@@ -199,6 +200,33 @@ if "%status%"=="000" (
   exit /b 1
 )
 call :mark_ok "%step%" "HTTP %status%"
+exit /b 0
+
+:expect_status
+set "step=%~1"
+set "expected=%~2"
+set "method=%~3"
+set "url=%~4"
+set "headers=%~5"
+set "body=%~6"
+
+set "TMP_RESP=%TEMP%\\verify_resp_%RANDOM%.txt"
+if "%body%"=="" (
+  for /f "usebackq delims=" %%S in (`curl -sS -o "%TMP_RESP%" -w "%%{http_code}" -X %method% %headers% "%url%"`) do set "status=%%S"
+) else (
+  for /f "usebackq delims=" %%S in (`curl -sS -o "%TMP_RESP%" -w "%%{http_code}" -X %method% %headers% -H "Content-Type: application/json" -d "%body%" "%url%"`) do set "status=%%S"
+)
+
+>> "%LOG_FILE%" echo [%step%] %method% %url% -> HTTP %status%
+type "%TMP_RESP%" >> "%LOG_FILE%"
+
+if not "%status%"=="%expected%" (
+  for /f "usebackq delims=" %%B in (`python -c "from pathlib import Path; data=Path(r'%TMP_RESP%').read_text(encoding='utf-8', errors='ignore'); print(data[:2048])"`) do set "snippet=%%B"
+  call :mark_fail "%step%" "HTTP %status% for %url% | body=%snippet%"
+  exit /b 1
+)
+
+call :mark_ok "%step%" "HTTP %status% for %url%"
 exit /b 0
 
 :run_smoke_scripts

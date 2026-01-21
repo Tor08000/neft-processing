@@ -32,7 +32,8 @@ export function ProtectedRoute() {
     return <div className="centered">Загружаем профиль...</div>;
   }
 
-  if (client && client.org_status !== "ACTIVE" && location.pathname !== "/client/connect") {
+  const onboardingEnabled = client?.features?.onboarding ?? true;
+  if (onboardingEnabled && client && client.org_status !== "ACTIVE" && location.pathname !== "/client/connect") {
     return <Navigate to="/client/connect" replace />;
   }
 

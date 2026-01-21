@@ -12,6 +12,7 @@ from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
 from app.models.legal_acceptance import LegalSubjectType
 from app.schemas.portal_me import (
+    PortalMeLegal,
     PortalMeOrg,
     PortalMePartner,
     PortalMePartnerProfile,
@@ -24,6 +25,7 @@ from app.schemas.portal_me import (
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.jwt_support import parse_scopes
 from app.services.legal import LegalService, legal_gate_required_codes, subject_from_request
+from app.config import settings
 from app.services.partner_core_service import ensure_partner_profile
 
 
@@ -67,18 +69,22 @@ def _resolve_subject(token: dict) -> tuple[LegalSubjectType, str] | None:
     return None
 
 
-def _resolve_legal_flag(db: Session, token: dict) -> bool | None:
+def _resolve_legal_payload(db: Session, token: dict) -> PortalMeLegal | None:
     subject_info = _resolve_subject(token)
     if subject_info is None:
         return None
     subject_type, subject_id = subject_info
+    if not settings.CORE_ONBOARDING_ENABLED:
+        return PortalMeLegal(required=False, accepted=True, missing_docs=[])
     required_codes = legal_gate_required_codes()
     if not required_codes:
-        return True
+        return PortalMeLegal(required=False, accepted=True, missing_docs=[])
     service = LegalService(db)
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     required = service.required_documents(subject=subject, required_codes=required_codes)
-    return not any(not item["accepted"] for item in required)
+    missing_docs = [item["code"] for item in required if not item["accepted"]]
+    accepted = not missing_docs
+    return PortalMeLegal(required=bool(required), accepted=accepted, missing_docs=missing_docs)
 
 
 def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
@@ -228,15 +234,17 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
             ),
         )
 
+    resolved_timezone = employee_timezone or (org_payload.timezone if org_payload else None) or "UTC"
     return PortalMeResponse(
         actor_type=actor_type,
         user=PortalMeUser(
             id=str(token.get("user_id") or token.get("sub") or ""),
             email=token.get("email") or token.get("sub"),
             subject_type=token.get("subject_type"),
-            timezone=employee_timezone,
+            timezone=resolved_timezone,
         ),
         org=org_payload,
+        org_status=org_payload.status if org_payload else None,
         org_roles=sorted({str(role).upper() for role in org_roles if role}),
         user_roles=user_roles,
         scopes=scopes or None,

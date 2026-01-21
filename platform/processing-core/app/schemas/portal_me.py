@@ -54,6 +54,7 @@ class PortalMeResponse(BaseModel):
     actor_type: str
     user: PortalMeUser
     org: PortalMeOrg | None = None
+    org_status: str | None = None
     org_roles: list[str]
     user_roles: list[str]
     scopes: list[str] | None = None

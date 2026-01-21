@@ -32,6 +32,7 @@ export function OnboardingPage() {
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onboardingEnabled = client?.features?.onboarding ?? SELF_SIGNUP_ENABLED;
 
   const [clientType, setClientType] = useState<"LEGAL" | "IP" | "INDIVIDUAL">("LEGAL");
   const [companyName, setCompanyName] = useState("");
@@ -61,7 +62,7 @@ export function OnboardingPage() {
   }, [client?.org_status]);
 
   useEffect(() => {
-    if (!user || !SELF_SIGNUP_ENABLED) return;
+    if (!user || !onboardingEnabled) return;
     if (client?.org_status === "ACTIVE") {
       setStep("activation");
       return;
@@ -75,7 +76,7 @@ export function OnboardingPage() {
       return;
     }
     setStep("profile");
-  }, [client?.org, client?.org_status, client?.subscription?.plan_code, user]);
+  }, [client?.org, client?.org_status, client?.subscription?.plan_code, onboardingEnabled, user]);
 
   useEffect(() => {
     if (step !== "plan" || !user) return;
@@ -111,14 +112,14 @@ export function OnboardingPage() {
       });
   }, [contractReady, step, user]);
 
-  if (!SELF_SIGNUP_ENABLED) {
+  if (!onboardingEnabled) {
     return (
       <EmptyState
-        title="Модуль недоступен"
-        description="Онбординг клиента отключён."
+        title="Онбординг отключён"
+        description="Онбординг клиента отключён администратором."
         action={
-          <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate("/login")}>
-            Вернуться к входу
+          <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate("/dashboard")}>
+            Перейти в кабинет
           </button>
         }
       />
