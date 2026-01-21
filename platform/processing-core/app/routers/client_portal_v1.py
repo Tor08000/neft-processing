@@ -116,6 +116,7 @@ from app.schemas.client_portal_v1 import (
     ExportJobListResponse,
     ExportJobOut,
     ReportScheduleCreateRequest,
+    ReportScheduleDeleteResponse,
     ReportScheduleDelivery,
     ReportScheduleListResponse,
     ReportScheduleOut,
@@ -2102,13 +2103,17 @@ def resume_report_schedule(
     return _schedule_out(schedule, tzinfo=tzinfo)
 
 
-@router.delete("/reports/schedules/{schedule_id}", status_code=204)
+@router.delete(
+    "/reports/schedules/{schedule_id}",
+    status_code=200,
+    response_model=ReportScheduleDeleteResponse,
+)
 def delete_report_schedule(
     schedule_id: str,
     request: Request,
     token: dict = Depends(client_portal_user),
     db: Session = Depends(get_db),
-) -> None:
+) -> ReportScheduleDeleteResponse:
     _ensure_schedule_admin(token)
     client = _resolve_client(db, token)
     if client is None:
@@ -2142,7 +2147,7 @@ def delete_report_schedule(
         entity_id=str(schedule.id),
         action="report_schedule_deleted",
     )
-    return None
+    return ReportScheduleDeleteResponse(deleted=True)
 
 
 def _date_range_bounds(date_from: date | None, date_to: date | None) -> tuple[datetime | None, datetime | None]:

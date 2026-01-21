@@ -235,6 +235,12 @@ class ReportScheduleListResponse(BaseModel):
     items: list[ReportScheduleOut]
 
 
+class ReportScheduleDeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    deleted: bool
+
+
 class ClientAnalyticsPeriod(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
