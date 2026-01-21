@@ -117,6 +117,9 @@ if "%PARTNER_TOKEN%"=="" (
   goto finalize
 )
 call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+call :run_cmd "4.13 core portal/me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
+call :run_cmd "4.14 core partner/products (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/partner/products" || goto finalize
+call :run_cmd "4.15 core partner/legal/profile (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/partner/legal/profile" || goto finalize
 
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize

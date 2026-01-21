@@ -15,6 +15,7 @@ from app.schemas.portal_me import (
     PortalMeOrg,
     PortalMePartner,
     PortalMePartnerProfile,
+    PortalMeLegal,
     PortalMeResponse,
     PortalMeSubscription,
     PortalMeUser,
@@ -78,6 +79,17 @@ def _resolve_legal_flag(db: Session, token: dict) -> bool | None:
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     required = service.required_documents(subject=subject, required_codes=required_codes)
     return not any(not item["accepted"] for item in required)
+
+
+def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
+    required_codes = legal_gate_required_codes()
+    required_enabled = bool(required_codes)
+    accepted_flag = _resolve_legal_flag(db, token)
+    if not required_enabled:
+        accepted = True
+    else:
+        accepted = bool(accepted_flag) if accepted_flag is not None else False
+    return PortalMeLegal(required_enabled=required_enabled, accepted=accepted)
 
 
 def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
@@ -195,6 +207,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)
     flags = {"accepted_legal": _resolve_legal_flag(db, token)}
+    legal = _resolve_legal_status(db, token)
 
     partner_payload = None
     if (
@@ -228,6 +241,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         user_roles=user_roles,
         scopes=scopes or None,
         flags=flags,
+        legal=legal,
         subscription=subscription_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),
