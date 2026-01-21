@@ -10,6 +10,7 @@ from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
+from app.models.legal_acceptance import LegalSubjectType
 from app.schemas.portal_me import (
     PortalMeOrg,
     PortalMePartner,
@@ -20,6 +21,8 @@ from app.schemas.portal_me import (
     PortalNavSection,
 )
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
+from app.services.jwt_support import parse_scopes
+from app.services.legal import LegalService, legal_gate_required_codes, subject_from_request
 from app.services.partner_core_service import ensure_partner_profile
 
 
@@ -43,6 +46,38 @@ def _normalize_roles(token: dict) -> list[str]:
 
 def _resolve_org_id(token: dict) -> str | None:
     return token.get("org_id") or token.get("client_id") or token.get("partner_id")
+
+
+def _resolve_actor_type(token: dict, org_roles: list[str]) -> str:
+    if token.get("client_id") or "CLIENT" in org_roles:
+        return "client"
+    if token.get("partner_id") or "PARTNER" in org_roles:
+        return "partner"
+    return "admin"
+
+
+def _resolve_subject(token: dict) -> tuple[LegalSubjectType, str] | None:
+    if token.get("client_id"):
+        return LegalSubjectType.CLIENT, str(token["client_id"])
+    if token.get("partner_id"):
+        return LegalSubjectType.PARTNER, str(token["partner_id"])
+    if token.get("user_id") or token.get("sub"):
+        return LegalSubjectType.USER, str(token.get("user_id") or token.get("sub"))
+    return None
+
+
+def _resolve_legal_flag(db: Session, token: dict) -> bool | None:
+    subject_info = _resolve_subject(token)
+    if subject_info is None:
+        return None
+    subject_type, subject_id = subject_info
+    required_codes = legal_gate_required_codes()
+    if not required_codes:
+        return True
+    service = LegalService(db)
+    subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
+    required = service.required_documents(subject=subject, required_codes=required_codes)
+    return not any(not item["accepted"] for item in required)
 
 
 def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
@@ -157,6 +192,9 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     user_roles = _normalize_roles(token)
     nav_sections = _resolve_nav_sections(capabilities)
+    scopes = parse_scopes(token)
+    actor_type = _resolve_actor_type(token, org_roles)
+    flags = {"accepted_legal": _resolve_legal_flag(db, token)}
 
     partner_payload = None
     if (
@@ -178,6 +216,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         )
 
     return PortalMeResponse(
+        actor_type=actor_type,
         user=PortalMeUser(
             id=str(token.get("user_id") or token.get("sub") or ""),
             email=token.get("email") or token.get("sub"),
@@ -187,6 +226,8 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         org=org_payload,
         org_roles=sorted({str(role).upper() for role in org_roles if role}),
         user_roles=user_roles,
+        scopes=scopes or None,
+        flags=flags,
         subscription=subscription_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),

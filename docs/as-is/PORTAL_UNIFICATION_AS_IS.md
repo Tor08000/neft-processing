@@ -3,7 +3,7 @@
 ## Summary
 
 - Client Portal и Partner Portal — отдельные фронтенды, но оба используют общий bootstrap `GET /api/core/portal/me`.
-- `/api/core/portal/me` возвращает `org_roles`, `capabilities`, `subscription` и snapshot entitlements; используется как базовый источник прав в UI.
+- `/api/core/portal/me` возвращает `actor_type`, `org_roles`, `capabilities`, `subscription`, `scopes`, `flags` и snapshot entitlements; используется как базовый источник прав в UI.
 - `org_roles` и `capabilities` формируются из entitlements snapshot (если есть) с fallback на роли в токене.
 - Billing enforcement по-прежнему применяется в клиентских потоках, partner-capabilities не блокируются billing policy.
 - Для PARTNER orgs `portal/me` включает `partner.profile`/`partner.status` и partner-capabilities (`PARTNER_CORE`, `PARTNER_CATALOG`, `PARTNER_ORDERS`, `PARTNER_ANALYTICS`).

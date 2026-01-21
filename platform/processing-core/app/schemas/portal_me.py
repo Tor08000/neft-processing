@@ -46,10 +46,13 @@ class PortalMePartner(BaseModel):
 
 
 class PortalMeResponse(BaseModel):
+    actor_type: str
     user: PortalMeUser
     org: PortalMeOrg | None = None
     org_roles: list[str]
     user_roles: list[str]
+    scopes: list[str] | None = None
+    flags: dict[str, Any] | None = None
     subscription: PortalMeSubscription | None = None
     entitlements_snapshot: dict[str, Any] | None = None
     capabilities: list[str]

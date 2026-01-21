@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 import os
-import time
-from typing import Optional
 
-import requests
 from fastapi import Depends, HTTPException, Request
-from jose import JWTError, jwk, jwt
+from jose import JWTError, jwt
+from neft_shared.logging_setup import get_logger
+
+from app.services.jwt_support import (
+    DEFAULT_JWKS_URL,
+    DEFAULT_PUBLIC_KEY_URL,
+    classify_jwt_error,
+    fetch_public_key,
+    log_token_rejection,
+    parse_allowed_algs,
+    parse_scopes,
+    resolve_jwks_key,
+)
 
 PUBLIC_KEY_URL = os.getenv(
     "CLIENT_PUBLIC_KEY_URL",
-    os.getenv("ADMIN_PUBLIC_KEY_URL", "http://auth-host:8000/api/v1/auth/public-key"),
+    os.getenv("AUTH_PUBLIC_KEY_URL", DEFAULT_PUBLIC_KEY_URL),
 )
-PUBLIC_KEY_CACHE_TTL = 300
+JWKS_URL = os.getenv(
+    "CLIENT_JWKS_URL",
+    os.getenv("AUTH_JWKS_URL", DEFAULT_JWKS_URL),
+)
+PUBLIC_KEY_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 EXPECTED_ISSUER = os.getenv(
     "NEFT_CLIENT_ISSUER",
     os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-client")),
@@ -21,6 +34,7 @@ EXPECTED_AUDIENCE = os.getenv(
     "NEFT_CLIENT_AUDIENCE",
     os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-client")),
 )
+ALLOWED_ALGS = parse_allowed_algs()
 
 ALLOWED_CLIENT_ROLES = {
     "CLIENT_ADMIN",
@@ -29,35 +43,11 @@ ALLOWED_CLIENT_ROLES = {
     "CLIENT_USER",
 }
 
-_cached_public_key: Optional[str] = None
-_public_key_cached_at: float = 0.0
+_logger = get_logger(__name__)
 
 
-def get_public_key(force_refresh: bool = False) -> str:
-    global _cached_public_key, _public_key_cached_at
-
-    now = time.time()
-    if not force_refresh and _cached_public_key and now - _public_key_cached_at < PUBLIC_KEY_CACHE_TTL:
-        return _cached_public_key
-
-    fallback_key = os.getenv("CLIENT_PUBLIC_KEY") or os.getenv("ADMIN_PUBLIC_KEY")
-    if fallback_key and not force_refresh and not _cached_public_key:
-        _cached_public_key = fallback_key
-        _public_key_cached_at = now
-        return fallback_key
-
-    try:
-        response = requests.get(PUBLIC_KEY_URL, timeout=5)
-        response.raise_for_status()
-        _cached_public_key = response.text
-        _public_key_cached_at = now
-        return _cached_public_key
-    except requests.RequestException as exc:  # pragma: no cover - network errors
-        if fallback_key:
-            _cached_public_key = fallback_key
-            _public_key_cached_at = now
-            return fallback_key
-        raise HTTPException(status_code=503, detail="Unable to fetch public key") from exc
+def _static_public_key() -> str | None:
+    return os.getenv("CLIENT_PUBLIC_KEY") or os.getenv("ADMIN_PUBLIC_KEY")
 
 
 def _get_bearer_token(request: Request) -> str:
@@ -72,28 +62,68 @@ def _get_bearer_token(request: Request) -> str:
     return token
 
 
-def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
-    public_key = get_public_key()
+def _decode_token(token: str, key: str) -> dict:
+    return jwt.decode(
+        token,
+        key,
+        algorithms=ALLOWED_ALGS,
+        audience=EXPECTED_AUDIENCE,
+        issuer=EXPECTED_ISSUER,
+    )
 
-    try:
-        payload = jwt.decode(
+
+def _log_rejection(token: str, *, reason: str, exc: Exception | None = None) -> None:
+    log_token_rejection(
+        logger=_logger,
+        token=token,
+        reason=reason,
+        event="client_auth.token_rejected",
+        exc=exc,
+    )
+
+
+def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str, bool]:
+    if not force_refresh:
+        static_key = _static_public_key()
+        if static_key:
+            return static_key, False
+
+    if JWKS_URL:
+        resolution = resolve_jwks_key(
             token,
-            public_key,
-            algorithms=["RS256"],
-            audience=EXPECTED_AUDIENCE,
-            issuer=EXPECTED_ISSUER,
+            jwks_url=JWKS_URL,
+            ttl=PUBLIC_KEY_CACHE_TTL,
+            force_refresh=force_refresh,
+            log_info=lambda event, payload: _logger.info(event, extra=payload),
+            log_warning=lambda event, payload: _logger.warning(event, extra=payload),
+            event_prefix="client_auth",
         )
-    except (JWTError, jwk.JWKError, ValueError):
-        public_key = get_public_key(force_refresh=True)
+        return resolution.public_key, resolution.missing_kid
+
+    public_key = fetch_public_key(
+        PUBLIC_KEY_URL,
+        ttl=PUBLIC_KEY_CACHE_TTL,
+        force_refresh=force_refresh,
+        log_info=lambda event, payload: _logger.info(event, extra=payload),
+        log_warning=lambda event, payload: _logger.warning(event, extra=payload),
+        event_prefix="client_auth",
+    )
+    return public_key, False
+
+
+def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
+    try:
+        public_key, missing_kid = _resolve_public_key(token)
+        payload = _decode_token(token, public_key)
+    except (JWTError, ValueError, HTTPException):
+        public_key, missing_kid = _resolve_public_key(token, force_refresh=True)
         try:
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                audience=EXPECTED_AUDIENCE,
-                issuer=EXPECTED_ISSUER,
-            )
-        except (JWTError, jwk.JWKError, ValueError):
+            payload = _decode_token(token, public_key)
+        except (JWTError, ValueError) as inner_exc:
+            reason = classify_jwt_error(inner_exc)
+            if missing_kid and reason == "signature_invalid":
+                reason = "no_kid"
+            _log_rejection(token, reason=reason, exc=inner_exc)
             raise HTTPException(status_code=401, detail="Invalid token")
 
     roles = payload.get("roles") or []
@@ -110,31 +140,23 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
     if role:
         payload["role"] = role
     payload["client_id"] = client_id
+    payload["scopes"] = parse_scopes(payload)
     return payload
 
 
 def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
-    public_key = get_public_key()
-
     try:
-        payload = jwt.decode(
-            token,
-            public_key,
-            algorithms=["RS256"],
-            audience=EXPECTED_AUDIENCE,
-            issuer=EXPECTED_ISSUER,
-        )
-    except (JWTError, jwk.JWKError, ValueError):
-        public_key = get_public_key(force_refresh=True)
+        public_key, missing_kid = _resolve_public_key(token)
+        payload = _decode_token(token, public_key)
+    except (JWTError, ValueError, HTTPException):
+        public_key, missing_kid = _resolve_public_key(token, force_refresh=True)
         try:
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                audience=EXPECTED_AUDIENCE,
-                issuer=EXPECTED_ISSUER,
-            )
-        except (JWTError, jwk.JWKError, ValueError):
+            payload = _decode_token(token, public_key)
+        except (JWTError, ValueError) as inner_exc:
+            reason = classify_jwt_error(inner_exc)
+            if missing_kid and reason == "signature_invalid":
+                reason = "no_kid"
+            _log_rejection(token, reason=reason, exc=inner_exc)
             raise HTTPException(status_code=401, detail="Invalid token")
 
     roles = payload.get("roles") or []
@@ -146,6 +168,7 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
     payload["user_id"] = payload.get("user_id") or payload.get("sub")
     if role:
         payload["role"] = role
+    payload["scopes"] = parse_scopes(payload)
     return payload
 
 

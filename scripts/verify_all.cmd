@@ -84,6 +84,17 @@ call :run_cmd "4.1 core portal/me smoke" "curl -i %GATEWAY_BASE%%CORE_BASE%/port
 call :run_cmd "4.2 auth-host jwks smoke" "curl -i http://localhost:8002/.well-known/jwks.json" || goto finalize
 call :run_cmd "4.3 core openapi portal/me" "curl -s http://localhost:8001/api/openapi.json ^| findstr /I \"portal/me\"" || goto finalize
 
+set "ADMIN_LOGIN_FILE=%TEMP%\\verify_admin_login_%RANDOM%.json"
+call :run_cmd "4.4 admin login via gateway" "curl -sS -o \"%ADMIN_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"admin@example.com\\\",\\\"password\\\":\\\"admin\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "ADMIN_TOKEN=%%T"
+if "%ADMIN_TOKEN%"=="" (
+  call :mark_fail "4.4 admin login via gateway" "No admin token returned"
+  goto finalize
+)
+call :run_cmd "4.5 core portal/me (admin token)" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
+call :run_cmd "4.6 core v1 admin/me" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/v1/admin/me" || goto finalize
+call :run_cmd "4.7 core legal/required" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/legal/required" || goto finalize
+
 call :run_smoke_scripts || goto finalize
 call :run_pytest_subset || goto finalize
 
