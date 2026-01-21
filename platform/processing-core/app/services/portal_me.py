@@ -12,11 +12,11 @@ from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
 from app.models.legal_acceptance import LegalSubjectType
 from app.schemas.portal_me import (
-    PortalMeLegal,
     PortalMeOrg,
     PortalMePartner,
     PortalMePartnerProfile,
     PortalMeLegal,
+    PortalMeFeatures,
     PortalMeResponse,
     PortalMeSubscription,
     PortalMeUser,
@@ -69,33 +69,33 @@ def _resolve_subject(token: dict) -> tuple[LegalSubjectType, str] | None:
     return None
 
 
-def _resolve_legal_payload(db: Session, token: dict) -> PortalMeLegal | None:
+def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
+    required_codes = legal_gate_required_codes()
+    required_enabled = bool(required_codes)
+    if not settings.CORE_ONBOARDING_ENABLED:
+        return PortalMeLegal(required_count=0, accepted=True, missing=[], required_enabled=False)
+
     subject_info = _resolve_subject(token)
     if subject_info is None:
-        return None
+        accepted_flag = _resolve_legal_flag(db, token)
+        accepted = bool(accepted_flag) if required_enabled else True
+        return PortalMeLegal(required_count=0, accepted=accepted, missing=[], required_enabled=required_enabled)
+
     subject_type, subject_id = subject_info
-    if not settings.CORE_ONBOARDING_ENABLED:
-        return PortalMeLegal(required=False, accepted=True, missing_docs=[])
-    required_codes = legal_gate_required_codes()
-    if not required_codes:
-        return PortalMeLegal(required=False, accepted=True, missing_docs=[])
+    if not required_enabled:
+        return PortalMeLegal(required_count=0, accepted=True, missing=[], required_enabled=False)
+
     service = LegalService(db)
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     required = service.required_documents(subject=subject, required_codes=required_codes)
     missing_docs = [item["code"] for item in required if not item["accepted"]]
     accepted = not missing_docs
-    return PortalMeLegal(required=bool(required), accepted=accepted, missing_docs=missing_docs)
-
-
-def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
-    required_codes = legal_gate_required_codes()
-    required_enabled = bool(required_codes)
-    accepted_flag = _resolve_legal_flag(db, token)
-    if not required_enabled:
-        accepted = True
-    else:
-        accepted = bool(accepted_flag) if accepted_flag is not None else False
-    return PortalMeLegal(required_enabled=required_enabled, accepted=accepted)
+    return PortalMeLegal(
+        required_count=len(required),
+        accepted=accepted,
+        missing=missing_docs,
+        required_enabled=required_enabled,
+    )
 
 
 def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
@@ -214,6 +214,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     actor_type = _resolve_actor_type(token, org_roles)
     flags = {"accepted_legal": _resolve_legal_flag(db, token)}
     legal = _resolve_legal_status(db, token)
+    features = PortalMeFeatures(
+        onboarding_enabled=settings.CORE_ONBOARDING_ENABLED,
+        legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
+    )
 
     partner_payload = None
     if (
@@ -250,6 +254,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         scopes=scopes or None,
         flags=flags,
         legal=legal,
+        features=features,
         subscription=subscription_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),

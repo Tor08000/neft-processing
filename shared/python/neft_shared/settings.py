@@ -198,7 +198,7 @@ class Settings:
         "true",
         "yes",
     }
-    CORE_ONBOARDING_ENABLED: bool = os.getenv("CORE_ONBOARDING_ENABLED", "0").lower() in {
+    CORE_ONBOARDING_ENABLED: bool = os.getenv("CORE_ONBOARDING_ENABLED", "1").lower() in {
         "1",
         "true",
         "yes",
