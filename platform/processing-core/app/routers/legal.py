@@ -59,20 +59,39 @@ def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str
     return _fallback_user_subject()
 
 
+def _subject_from_principal_relaxed(principal: Principal) -> tuple[LegalSubjectType, str]:
+    context = principal_context(principal)
+    actor_type = context.get("actor_type")
+    if actor_type == "client":
+        subject_type = LegalSubjectType.CLIENT
+        subject_id = context.get("org_id") or context.get("actor_id")
+    elif actor_type == "partner":
+        subject_type = LegalSubjectType.PARTNER
+        subject_id = context.get("partner_id") or context.get("org_id") or context.get("actor_id")
+    else:
+        subject_type = LegalSubjectType.USER
+        subject_id = context.get("actor_id")
+    if not subject_id:
+        subject_id = "unknown"
+    return subject_type, str(subject_id)
+
+
 @router.get("/required", response_model=LegalRequiredResponse)
 def get_required(
     principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
 ) -> LegalRequiredResponse:
-    subject_type, subject_id = _subject_from_principal(principal)
-    subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     if not settings.CORE_ONBOARDING_ENABLED:
+        subject_type, subject_id = _subject_from_principal_relaxed(principal)
+        subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
         return LegalRequiredResponse(
             subject={"type": subject.subject_type.value, "id": subject.subject_id},
             required=[],
             is_blocked=False,
             enabled=False,
         )
+    subject_type, subject_id = _subject_from_principal(principal)
+    subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     service = LegalService(db)
     required = service.required_documents(subject=subject, required_codes=legal_gate_required_codes())
     return LegalRequiredResponse(

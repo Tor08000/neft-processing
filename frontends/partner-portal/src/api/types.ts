@@ -11,6 +11,7 @@ export interface LoginResponse {
 export interface LoginRequest {
   email: string;
   password: string;
+  portal?: "partner";
 }
 
 export interface MeResponse {

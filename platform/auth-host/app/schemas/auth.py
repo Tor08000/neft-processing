@@ -31,7 +31,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
-    portal: str | None = Field(default=None, description="client or admin")
+    portal: str | None = Field(default=None, description="client, admin, or partner")
 
     @field_validator("email")
     @classmethod
