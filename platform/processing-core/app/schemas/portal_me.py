@@ -46,8 +46,15 @@ class PortalMePartner(BaseModel):
 
 
 class PortalMeLegal(BaseModel):
-    required_enabled: bool
+    required_count: int
     accepted: bool
+    missing: list[str]
+    required_enabled: bool | None = None
+
+
+class PortalMeFeatures(BaseModel):
+    onboarding_enabled: bool
+    legal_gate_enabled: bool
 
 
 class PortalMeResponse(BaseModel):
@@ -60,6 +67,7 @@ class PortalMeResponse(BaseModel):
     scopes: list[str] | None = None
     flags: dict[str, Any] | None = None
     legal: PortalMeLegal | None = None
+    features: PortalMeFeatures | None = None
     subscription: PortalMeSubscription | None = None
     entitlements_snapshot: dict[str, Any] | None = None
     capabilities: list[str]
