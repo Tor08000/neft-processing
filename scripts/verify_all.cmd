@@ -57,6 +57,39 @@ call :run_cmd "2.5 admin base href" "docker compose exec -T admin-web sh -lc ^"g
 call :run_cmd "2.6 admin asset path" "docker compose exec -T admin-web sh -lc ^"grep -E '/admin/assets/' /usr/share/nginx/html/index.html^"" || goto finalize
 call :run_cmd "2.7 client base href" "docker compose exec -T client-web sh -lc ^"grep -E '<base href=\\\"/client/\\\">' /usr/share/nginx/html/index.html^"" || goto finalize
 call :run_cmd "2.8 client asset path" "docker compose exec -T client-web sh -lc ^"grep -E '/client/assets/' /usr/share/nginx/html/index.html^"" || goto finalize
+call :run_cmd "2.8.1 gateway client index base/assets" "curl -s %GATEWAY_BASE%/client/ ^| findstr /I /C:\"<base href=\\\"/client/\\\">\" /C:\"/client/assets/\"" || goto finalize
+set "CLIENT_INDEX_FILE=%TEMP%\\verify_client_index_%RANDOM%.html"
+call :run_cmd "2.8.2 gateway client index save" "curl -s %GATEWAY_BASE%/client/ > \"%CLIENT_INDEX_FILE%\"" || goto finalize
+call :run_cmd "2.8.2.1 client index no root assets" "python -c \"import re; from pathlib import Path; data=Path(r'%CLIENT_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); raise SystemExit(1) if re.search(r'[\\\"\\\']\\/assets\\/', data) else print('OK')\"" || goto finalize
+for /f "usebackq delims=" %%T in (`python -c "import re; from pathlib import Path; data=Path(r'%CLIENT_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); js=re.search(r'/client/assets/([^\"']+)\\.js', data); css=re.search(r'/client/assets/([^\"']+)\\.css', data); print(js.group(1) if js else '')"`) do set "CLIENT_JS_HASH=%%T"
+for /f "usebackq delims=" %%T in (`python -c "import re; from pathlib import Path; data=Path(r'%CLIENT_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); css=re.search(r'/client/assets/([^\"']+)\\.css', data); print(css.group(1) if css else '')"`) do set "CLIENT_CSS_HASH=%%T"
+if "%CLIENT_JS_HASH%"=="" (
+  call :mark_fail "2.8.3 client js hash" "No client js asset found"
+  goto finalize
+)
+if "%CLIENT_CSS_HASH%"=="" (
+  call :mark_fail "2.8.4 client css hash" "No client css asset found"
+  goto finalize
+)
+call :run_cmd "2.8.5 client js asset via gateway" "curl -i %GATEWAY_BASE%/client/assets/%CLIENT_JS_HASH%.js ^| findstr /I \"200 Content-Type\"" || goto finalize
+call :run_cmd "2.8.6 client css asset via gateway" "curl -i %GATEWAY_BASE%/client/assets/%CLIENT_CSS_HASH%.css ^| findstr /I \"200 Content-Type\"" || goto finalize
+
+call :run_cmd "2.8.7 gateway admin index base/assets" "curl -s %GATEWAY_BASE%/admin/ ^| findstr /I /C:\"<base href=\\\"/admin/\\\">\" /C:\"/admin/assets/\"" || goto finalize
+set "ADMIN_INDEX_FILE=%TEMP%\\verify_admin_index_%RANDOM%.html"
+call :run_cmd "2.8.8 gateway admin index save" "curl -s %GATEWAY_BASE%/admin/ > \"%ADMIN_INDEX_FILE%\"" || goto finalize
+call :run_cmd "2.8.8.1 admin index no root assets" "python -c \"import re; from pathlib import Path; data=Path(r'%ADMIN_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); raise SystemExit(1) if re.search(r'[\\\"\\\']\\/assets\\/', data) else print('OK')\"" || goto finalize
+for /f "usebackq delims=" %%T in (`python -c "import re; from pathlib import Path; data=Path(r'%ADMIN_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); js=re.search(r'/admin/assets/([^\"']+)\\.js', data); print(js.group(1) if js else '')"`) do set "ADMIN_JS_HASH=%%T"
+for /f "usebackq delims=" %%T in (`python -c "import re; from pathlib import Path; data=Path(r'%ADMIN_INDEX_FILE%').read_text(encoding='utf-8',errors='ignore'); css=re.search(r'/admin/assets/([^\"']+)\\.css', data); print(css.group(1) if css else '')"`) do set "ADMIN_CSS_HASH=%%T"
+if "%ADMIN_JS_HASH%"=="" (
+  call :mark_fail "2.8.9 admin js hash" "No admin js asset found"
+  goto finalize
+)
+if "%ADMIN_CSS_HASH%"=="" (
+  call :mark_fail "2.8.10 admin css hash" "No admin css asset found"
+  goto finalize
+)
+call :run_cmd "2.8.11 admin js asset via gateway" "curl -i %GATEWAY_BASE%/admin/assets/%ADMIN_JS_HASH%.js ^| findstr /I \"200 Content-Type\"" || goto finalize
+call :run_cmd "2.8.12 admin css asset via gateway" "curl -i %GATEWAY_BASE%/admin/assets/%ADMIN_CSS_HASH%.css ^| findstr /I \"200 Content-Type\"" || goto finalize
 
 call :wait_endpoint "%GATEWAY_BASE%%CORE_BASE%/health" 30 2
 if errorlevel 1 (
