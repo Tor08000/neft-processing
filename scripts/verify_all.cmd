@@ -63,6 +63,9 @@ if errorlevel 1 (
   call :mark_ok "2.9 Wait core-api via gateway" "core-api ready"
 )
 
+call :run_cmd "2.9.1 Gateway core health" "curl -f %GATEWAY_BASE%%CORE_BASE%/health" || goto finalize
+call :run_cmd "2.9.2 Core API internal health" "docker compose exec -T core-api sh -lc \"curl -f http://localhost:8000/health\"" || goto finalize
+
 call :check_endpoints "3. Health checks" ^
   "%GATEWAY_BASE%/health" ^
   "%GATEWAY_BASE%%CORE_BASE%/health" ^
