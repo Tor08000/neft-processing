@@ -146,6 +146,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
 
     subject_type = "user"
     user_email = normalized_email
+    client_id = None
 
     logger.info(
         "login attempt: email=%s -> normalized=%s", payload.email, normalized_email
@@ -181,11 +182,15 @@ async def login(payload: LoginRequest) -> TokenResponse:
     settings = get_settings()
     expires_in = settings.access_token_expires_min * 60
     issuer, audience = _portal_token_config(portal)
+    if portal == "client":
+        subject_type = "client_user"
+        client_id = settings.demo_client_id
     try:
         token = create_access_token(
             user_email,
             roles=roles,
             subject_type=subject_type,
+            client_id=client_id,
             issuer=issuer,
             audience=audience,
         )
@@ -199,6 +204,7 @@ async def login(payload: LoginRequest) -> TokenResponse:
         expires_in=expires_in,
         email=user_email,
         subject_type=subject_type,
+        client_id=client_id,
         roles=roles,
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -36,19 +36,21 @@ def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str
         raise HTTPException(status_code=403, detail="missing_subject")
 
     if context["actor_type"] == "client":
-        if principal.client_id is None:
+        client_id = principal.client_id or raw_claims.get("client_id")
+        if client_id is None:
             return _fallback_user_subject()
         org_id = context.get("org_id")
-        if org_id and str(org_id) != str(principal.client_id):
+        if org_id and str(org_id) != str(client_id):
             raise HTTPException(status_code=403, detail="client_org_mismatch")
-        return LegalSubjectType.CLIENT, str(principal.client_id)
+        return LegalSubjectType.CLIENT, str(client_id)
     if context["actor_type"] == "partner":
-        if principal.partner_id is None:
+        partner_claim = principal.partner_id or raw_claims.get("partner_id")
+        if partner_claim is None:
             return _fallback_user_subject()
         partner_id = context.get("partner_id") or context.get("org_id")
-        if partner_id and str(partner_id) != str(principal.partner_id):
+        if partner_id and str(partner_id) != str(partner_claim):
             raise HTTPException(status_code=403, detail="partner_mismatch")
-        return LegalSubjectType.PARTNER, str(principal.partner_id)
+        return LegalSubjectType.PARTNER, str(partner_claim)
     if context["actor_type"] == "admin":
         actor_id = context.get("actor_id")
         if not actor_id:
@@ -129,22 +131,17 @@ def get_document(
     )
 
 
-@router.post("/accept", response_model=LegalRequiredResponse)
+@router.post("/accept", status_code=204)
 def accept_document(
     payload: LegalAcceptRequest,
     request: Request,
     principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
-) -> LegalRequiredResponse:
+) -> Response:
     subject_type, subject_id = _subject_from_principal(principal)
     subject = subject_from_request(subject_type=subject_type, subject_id=subject_id)
     if not settings.CORE_ONBOARDING_ENABLED:
-        return LegalRequiredResponse(
-            subject={"type": subject.subject_type.value, "id": subject.subject_id},
-            required=[],
-            is_blocked=False,
-            enabled=False,
-        )
+        return Response(status_code=204)
     if not payload.accepted:
         raise HTTPException(status_code=400, detail="legal_acceptance_required")
 
@@ -169,12 +166,7 @@ def accept_document(
     )
     db.commit()
 
-    required = service.required_documents(subject=subject, required_codes=legal_gate_required_codes())
-    return LegalRequiredResponse(
-        subject={"type": subject.subject_type.value, "id": subject.subject_id},
-        required=required,
-        is_blocked=any(not item["accepted"] for item in required),
-    )
+    return Response(status_code=204)
 
 
 __all__ = ["router"]

@@ -14,6 +14,7 @@ from app.services.jwt_support import (
     fetch_public_key,
     log_token_rejection,
     parse_allowed_algs,
+    parse_expected_audience,
     parse_scopes,
     resolve_jwks_key,
 )
@@ -31,9 +32,8 @@ EXPECTED_ISSUER = os.getenv(
     "NEFT_CLIENT_ISSUER",
     os.getenv("CLIENT_AUTH_ISSUER", "neft-client"),
 )
-EXPECTED_AUDIENCE = os.getenv(
-    "NEFT_CLIENT_AUDIENCE",
-    os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"),
+EXPECTED_AUDIENCE = parse_expected_audience(
+    os.getenv("NEFT_CLIENT_AUDIENCE", os.getenv("CLIENT_AUTH_AUDIENCE", "neft-client"))
 )
 ALLOWED_ALGS = parse_allowed_algs()
 

@@ -54,8 +54,8 @@ export async function fetchLegalDocument(
 export async function acceptLegalDocument(
   token: string,
   payload: { code: string; version: string; locale: string },
-): Promise<LegalRequiredResponse> {
-  return request<LegalRequiredResponse>(
+): Promise<void> {
+  await request<void>(
     "/legal/accept",
     {
       method: "POST",

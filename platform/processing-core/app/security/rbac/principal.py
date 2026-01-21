@@ -25,7 +25,15 @@ class Principal:
 
 def principal_context(principal: Principal) -> dict[str, Any]:
     raw_claims = principal.raw_claims if isinstance(principal.raw_claims, dict) else {}
-    actor_type = "admin" if principal.is_admin else "client" if principal.client_id else "partner" if principal.partner_id else "user"
+    actor_type = (
+        "admin"
+        if principal.is_admin
+        else "client"
+        if principal.client_id or raw_claims.get("client_id")
+        else "partner"
+        if principal.partner_id or raw_claims.get("partner_id")
+        else "user"
+    )
     actor_id = principal.user_id or principal.client_id or principal.partner_id or raw_claims.get("sub")
     org_id = raw_claims.get("org_id") or principal.client_id or principal.partner_id
     partner_id = principal.partner_id or raw_claims.get("partner_id")

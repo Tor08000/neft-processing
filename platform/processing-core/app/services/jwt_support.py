@@ -16,6 +16,7 @@ DEFAULT_PUBLIC_KEY_URL = os.getenv(
     "http://auth-host:8000/api/auth/v1/auth/public-key",
 )
 DEFAULT_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
+DEFAULT_JWKS_BACKOFF_SECONDS = int(os.getenv("AUTH_JWKS_BACKOFF_SECONDS", "30"))
 
 
 @dataclass
@@ -29,12 +30,23 @@ class JwksKeyResolution:
 
 _jwks_cache: dict[str, tuple[float, dict]] = {}
 _public_key_cache: dict[str, tuple[float, str]] = {}
+_jwks_failure_cache: dict[str, tuple[float, int]] = {}
+_public_key_failure_cache: dict[str, tuple[float, int]] = {}
 
 
 def parse_allowed_algs(default: str = "RS256") -> list[str]:
     raw = os.getenv("NEFT_AUTH_ALLOWED_ALGS", os.getenv("AUTH_ALLOWED_ALGS", default))
     algs = [item.strip() for item in raw.split(",") if item.strip()]
     return algs or [default]
+
+
+def parse_expected_audience(raw: str | None) -> str | list[str]:
+    if not raw:
+        return ""
+    value = raw.strip()
+    if "," in value:
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return value
 
 
 def parse_scopes(claims: dict) -> list[str]:
@@ -203,6 +215,31 @@ def _fetch_cached(
     return None
 
 
+def _backoff_ready(cache: dict[str, tuple[float, int]], url: str) -> bool:
+    cached = cache.get(url)
+    if not cached:
+        return True
+    next_retry_at, _ = cached
+    return time.time() >= next_retry_at
+
+
+def _register_failure(
+    cache: dict[str, tuple[float, int]],
+    url: str,
+    *,
+    max_backoff: int = DEFAULT_JWKS_BACKOFF_SECONDS,
+) -> int:
+    now = time.time()
+    _, prev_delay = cache.get(url, (0.0, 0))
+    delay = 1 if prev_delay <= 0 else min(prev_delay * 2, max_backoff)
+    cache[url] = (now + delay, delay)
+    return delay
+
+
+def _clear_failure(cache: dict[str, tuple[float, int]], url: str) -> None:
+    cache.pop(url, None)
+
+
 def fetch_public_key(
     url: str,
     *,
@@ -216,6 +253,9 @@ def fetch_public_key(
     if cached:
         return cached
 
+    if not force_refresh and not _backoff_ready(_public_key_failure_cache, url):
+        raise HTTPException(status_code=503, detail="Public key refresh backoff")
+
     try:
         response = requests.get(url, timeout=5)
         if log_info:
@@ -225,7 +265,10 @@ def fetch_public_key(
     except requests.RequestException as exc:  # pragma: no cover - network errors
         if log_warning:
             log_warning(f"{event_prefix}.public_key.refresh_failed", {"url": url, "error": str(exc)})
+        _register_failure(_public_key_failure_cache, url, max_backoff=DEFAULT_JWKS_BACKOFF_SECONDS)
         raise HTTPException(status_code=503, detail="Unable to fetch public key") from exc
+
+    _clear_failure(_public_key_failure_cache, url)
 
     _public_key_cache[url] = (time.time(), key)
     return key
@@ -244,6 +287,9 @@ def fetch_jwks(
     if cached:
         return cached
 
+    if not force_refresh and not _backoff_ready(_jwks_failure_cache, url):
+        raise HTTPException(status_code=503, detail="JWKS refresh backoff")
+
     try:
         response = requests.get(url, timeout=5)
         if log_info:
@@ -253,16 +299,21 @@ def fetch_jwks(
     except requests.RequestException as exc:  # pragma: no cover - network errors
         if log_warning:
             log_warning(f"{event_prefix}.jwks.refresh_failed", {"url": url, "error": str(exc)})
+        _register_failure(_jwks_failure_cache, url, max_backoff=DEFAULT_JWKS_BACKOFF_SECONDS)
         raise HTTPException(status_code=503, detail="Unable to fetch JWKS") from exc
     except ValueError as exc:
         if log_warning:
             log_warning(f"{event_prefix}.jwks.invalid_payload", {"url": url, "error": str(exc)})
+        _register_failure(_jwks_failure_cache, url, max_backoff=DEFAULT_JWKS_BACKOFF_SECONDS)
         raise HTTPException(status_code=503, detail="Unable to parse JWKS") from exc
 
     if not isinstance(payload, dict) or "keys" not in payload:
         if log_warning:
             log_warning(f"{event_prefix}.jwks.invalid_payload", {"url": url, "detail": "missing_keys"})
+        _register_failure(_jwks_failure_cache, url, max_backoff=DEFAULT_JWKS_BACKOFF_SECONDS)
         raise HTTPException(status_code=503, detail="Invalid JWKS payload")
+
+    _clear_failure(_jwks_failure_cache, url)
 
     _jwks_cache[url] = (time.time(), payload)
     return payload

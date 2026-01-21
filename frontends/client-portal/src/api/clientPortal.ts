@@ -42,9 +42,16 @@ export type PortalMeResponse = {
     status: string;
     timezone?: string | null;
   } | null;
-  org_status: string;
+  org_status?: string | null;
   org_roles: string[];
   user_roles: string[];
+  legal?: {
+    required: boolean;
+    accepted: boolean;
+    missing_docs: string[];
+  } | null;
+  modules?: Record<string, unknown> | null;
+  features?: Record<string, unknown> | null;
   subscription?: {
     plan_code?: string | null;
     status?: string | null;
