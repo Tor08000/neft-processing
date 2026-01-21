@@ -79,17 +79,24 @@ export class LegalRequiredError extends ApiError {
   details: unknown;
 
   constructor(message: string, status: number, correlationId: string | null, details: unknown) {
-    super(message, status, correlationId);
+    super(message, status, correlationId, null, null, details);
     this.name = "LegalRequiredError";
     this.details = details;
   }
 }
 
-const buildHeaders = (token?: string, body?: BodyInit | null): HttpHeaders => {
-  const headers: HttpHeaders = {};
-  if (!(body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
+const buildHeaders = (token?: string): HttpHeaders => {
+  const headers: HttpHeaders = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
+  return headers;
+};
+
+const buildAuthHeaders = (token?: string): HttpHeaders => {
+  const headers: HttpHeaders = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -119,10 +126,7 @@ export async function request<T>(
     }
   }
 
-  const headers: HttpHeaders = {
-    ...buildHeaders(token ?? undefined, init.body),
-    ...(init.headers as HttpHeaders | undefined),
-  };
+  const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   const response = await fetch(url, { ...init, headers });
@@ -192,7 +196,7 @@ export async function request<T>(
         payload = null;
       }
     }
-    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
     throw new ApiError(
       message,
       response.status,
@@ -234,10 +238,7 @@ export async function requestWithMeta<T>(
     }
   }
 
-  const headers: HttpHeaders = {
-    ...buildHeaders(token ?? undefined, init.body),
-    ...(init.headers as HttpHeaders | undefined),
-  };
+  const headers: HttpHeaders = { ...buildHeaders(token ?? undefined), ...(init.headers as HttpHeaders | undefined) };
   const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
   const url = `${apiBase}${path}`;
   const response = await fetch(url, { ...init, headers });
@@ -295,7 +296,7 @@ export async function requestWithMeta<T>(
         payload = null;
       }
     }
-    const message = payload?.message ?? payload?.error ?? text || `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
     throw new ApiError(
       message,
       response.status,
@@ -312,4 +313,49 @@ export async function requestWithMeta<T>(
 
   const data = isJson ? ((await response.json()) as T) : ({} as T);
   return { data, correlationId, status: response.status };
+}
+
+export async function requestFormData<T>(
+  path: string,
+  data: FormData,
+  tokenOrOptions?: string | null | RequestOptions,
+  maybeBase?: ApiBase,
+): Promise<T> {
+  let token: string | null | undefined;
+  let base: ApiBase = "core";
+  if (tokenOrOptions && typeof tokenOrOptions === "object" && !Array.isArray(tokenOrOptions)) {
+    token = tokenOrOptions.token ?? undefined;
+    base = tokenOrOptions.base ?? base;
+  } else {
+    token = (tokenOrOptions as string | null | undefined) ?? undefined;
+    if (typeof maybeBase === "string") {
+      base = maybeBase;
+    }
+  }
+
+  const headers: HttpHeaders = buildAuthHeaders(token ?? undefined);
+  const apiBase = base === "auth" ? AUTH_API_BASE : base === "core_root" ? CORE_ROOT_API_BASE : CORE_API_BASE;
+  const response = await fetch(`${apiBase}${path}`, { method: "POST", body: data, headers });
+  const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
+
+  if (response.status === 401) {
+    if (isAuthMeRequest(base, path)) {
+      window.dispatchEvent(new Event("client-auth-logout"));
+    }
+    throw new UnauthorizedError();
+  }
+  if (response.status === 422) {
+    const details = await response.json().catch(() => undefined);
+    throw new ValidationError("Ошибка валидации", details);
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId, null, null);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return response.json() as Promise<T>;
 }
