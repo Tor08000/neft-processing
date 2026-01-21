@@ -13,7 +13,7 @@ from redis import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_redis
+from app.api.dependencies.redis import get_redis
 from app.db import get_db
 from app.models.helpdesk import HelpdeskInboundEvent, HelpdeskInboundEventStatus, HelpdeskProvider, HelpdeskTicketLink
 from app.services.helpdesk_service import (
