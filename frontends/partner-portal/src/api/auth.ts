@@ -6,7 +6,7 @@ export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const loginPayload = { ...payload, portal: payload.portal ?? "partner" };
   const body = await request<LoginResponse>(
-    "/v1/auth/login",
+    "/login",
     { method: "POST", body: JSON.stringify(loginPayload) },
     { base: "auth" },
   );
@@ -27,7 +27,7 @@ export async function fetchMe(token: string): Promise<MeResponse> {
     console.info("[auth-me] token_present=%s header_attached=%s", tokenPresent, headerAttached);
   }
   return request<MeResponse>(
-    "/v1/auth/me",
+    "/me",
     { method: "GET", headers: { "X-Portal": "partner" } },
     { token, base: "auth" },
   );

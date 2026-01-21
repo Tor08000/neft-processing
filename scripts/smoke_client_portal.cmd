@@ -59,7 +59,7 @@ set "SMOKE_EMAIL=client_portal_smoke_%RANDOM%@example.com"
 set "SMOKE_PASSWORD=ClientPortal123!"
 
 echo ^>^>^> auth register
-curl -sS -o "%TEMP%\auth_register.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/auth/v1/auth/register" ^
+curl -sS -o "%TEMP%\auth_register.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/v1/auth/register" ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"%SMOKE_EMAIL%\",\"password\":\"%SMOKE_PASSWORD%\",\"full_name\":\"Client Portal Smoke\"}" > "%TEMP%\auth_register.status"
 set /p AUTH_REGISTER_STATUS=<"%TEMP%\auth_register.status"
@@ -71,7 +71,7 @@ if not "%AUTH_REGISTER_STATUS%"=="201" (
 echo.
 
 echo ^>^>^> auth login
-curl -sS -o "%TEMP%\auth_login.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/auth/v1/auth/login" ^
+curl -sS -o "%TEMP%\auth_login.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/v1/auth/login" ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"%SMOKE_EMAIL%\",\"password\":\"%SMOKE_PASSWORD%\",\"portal\":\"client\"}" > "%TEMP%\auth_login.status"
 set /p AUTH_LOGIN_STATUS=<"%TEMP%\auth_login.status"
@@ -90,7 +90,7 @@ if "%AUTH_TOKEN%"=="" (
 echo.
 
 echo ^>^>^> auth me
-curl -sS -o "%TEMP%\auth_me.json" -w "%%{http_code}" "%AUTH_BASE_URL%/api/auth/v1/auth/me" ^
+curl -sS -o "%TEMP%\auth_me.json" -w "%%{http_code}" "%AUTH_BASE_URL%/api/v1/auth/me" ^
   -H "Authorization: Bearer %AUTH_TOKEN%" > "%TEMP%\auth_me.status"
 set /p AUTH_ME_STATUS=<"%TEMP%\auth_me.status"
 if not "%AUTH_ME_STATUS%"=="200" (

@@ -17,7 +17,7 @@ set "SNAPSHOT_FILE=%SNAPSHOT_DIR%\STATUS_SNAPSHOT_RUNTIME_%ts%.md"
 set "ERROR_FILE=%LOG_DIR%\verify_all_%ts%_errors.tmp"
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
-if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
 
 del "%ERROR_FILE%" 2>NUL
@@ -121,26 +121,26 @@ call :run_cmd "4.2 auth-host jwks smoke" "curl -i http://localhost:8002/.well-kn
 call :run_cmd "4.3 core openapi portal/me" "curl -s http://localhost:8001/api/openapi.json ^| findstr /I \"portal/me\"" || goto finalize
 
 set "ADMIN_LOGIN_FILE=%TEMP%\\verify_admin_login_%RANDOM%.json"
-call :run_cmd "4.4 admin login via gateway" "curl -sS -o \"%ADMIN_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"admin@example.com\\\",\\\"password\\\":\\\"admin\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+call :run_cmd "4.4 admin login via gateway" "curl -sS -o \"%ADMIN_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"admin@example.com\\\",\\\"password\\\":\\\"admin\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "ADMIN_TOKEN=%%T"
 if "%ADMIN_TOKEN%"=="" (
   call :mark_fail "4.4 admin login via gateway" "No admin token returned"
   goto finalize
 )
-call :run_cmd "4.4.1 auth /me (admin token)" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" -H \"X-Portal: admin\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+call :run_cmd "4.4.1 auth /me (admin token)" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" -H \"X-Portal: admin\" %GATEWAY_BASE%%AUTH_BASE%/me" || goto finalize
 call :run_cmd "4.5 core portal/me (admin token)" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
 call :run_cmd "4.6 core v1 admin/me" "curl -f -H \"Authorization: Bearer %ADMIN_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/v1/admin/me" || goto finalize
 call :check_not_401 "4.7 core legal/required (admin token)" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "Authorization: Bearer %ADMIN_TOKEN%" || goto finalize
 call :run_cmd "4.7.1 core legal accept (admin token)" "python scripts\\smoke_legal_accept.py --base %GATEWAY_BASE%%CORE_BASE% --token %ADMIN_TOKEN%" || goto finalize
 
 set "CLIENT_LOGIN_FILE=%TEMP%\\verify_client_login_%RANDOM%.json"
-call :run_cmd "4.8 client login via gateway" "curl -sS -o \"%CLIENT_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"client@neft.local\\\",\\\"password\\\":\\\"client\\\",\\\"portal\\\":\\\"client\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+call :run_cmd "4.8 client login via gateway" "curl -sS -o \"%CLIENT_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"client@neft.local\\\",\\\"password\\\":\\\"client\\\",\\\"portal\\\":\\\"client\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%CLIENT_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "CLIENT_TOKEN=%%T"
 if "%CLIENT_TOKEN%"=="" (
   call :mark_fail "4.8 client login via gateway" "No client token returned"
   goto finalize
 )
-call :run_cmd "4.8.1 auth /me (client token)" "curl -f -H \"Authorization: Bearer %CLIENT_TOKEN%\" -H \"X-Portal: client\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+call :run_cmd "4.8.1 auth /me (client token)" "curl -f -H \"Authorization: Bearer %CLIENT_TOKEN%\" -H \"X-Portal: client\" %GATEWAY_BASE%%AUTH_BASE%/me" || goto finalize
 call :run_cmd "4.9 core portal/me (client token)" "curl -f -H \"Authorization: Bearer %CLIENT_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
 call :check_not_401 "4.10 core legal/required (client token)" "%GATEWAY_BASE%%CORE_BASE%/legal/required" "Authorization: Bearer %CLIENT_TOKEN%" || goto finalize
 call :run_cmd "4.10.1 core legal accept (client token)" "python scripts\\smoke_legal_accept.py --base %GATEWAY_BASE%%CORE_BASE% --token %CLIENT_TOKEN%" || goto finalize
@@ -151,12 +151,12 @@ set "PARTNER_PASSWORD=%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
 
 set "PARTNER_LOGIN_FILE=%TEMP%\\verify_partner_login_%RANDOM%.json"
-call :run_cmd "4.11 partner login via gateway" "curl -sS -o \"%PARTNER_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"%PARTNER_EMAIL%\\\",\\\"password\\\":\\\"%PARTNER_PASSWORD%\\\",\\\"portal\\\":\\\"partner\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/login" || goto finalize
+call :run_cmd "4.11 partner login via gateway" "curl -sS -o \"%PARTNER_LOGIN_FILE%\" -H \"Content-Type: application/json\" -d \"{\\\"email\\\":\\\"%PARTNER_EMAIL%\\\",\\\"password\\\":\\\"%PARTNER_PASSWORD%\\\",\\\"portal\\\":\\\"partner\\\"}\" %GATEWAY_BASE%%AUTH_BASE%/login" || goto finalize
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8',errors='ignore') or '{}'); print(data.get('access_token',''))"`) do set "PARTNER_TOKEN=%%T"
 if "%PARTNER_TOKEN%"=="" (
   call :mark_skip "4.11 partner login via gateway" "No partner token returned"
 ) else (
-  call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/v1/auth/me" || goto finalize
+  call :run_cmd "4.12 auth /me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" -H \"X-Portal: partner\" %GATEWAY_BASE%%AUTH_BASE%/me" || goto finalize
 )
 call :run_cmd "4.13 core portal/me (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/portal/me" || goto finalize
 call :run_cmd "4.14 core partner/products (partner token)" "curl -f -H \"Authorization: Bearer %PARTNER_TOKEN%\" %GATEWAY_BASE%%CORE_BASE%/partner/products" || goto finalize
@@ -275,6 +275,9 @@ set "failed=0"
 
 call :run_script_if_exists "scripts\smoke_gateway.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_gateway_assets.cmd" || set "failed=1"
+call :run_script_if_exists "scripts\smoke_client_bootstrap.cmd" || set "failed=1"
+call :run_script_if_exists "scripts\smoke_partner_bootstrap.cmd" || set "failed=1"
+call :run_script_if_exists "scripts\smoke_admin_bootstrap.cmd" || set "failed=1"
 call :run_cmd "5.1 auth-host tests subset" "docker compose exec -T auth-host pytest app/tests/test_health.py app/tests/test_metrics.py -q" || set "failed=1"
 call :run_script_if_exists "scripts\billing_smoke.cmd" || set "failed=1"
 call :run_script_if_exists "scripts\smoke_billing_finance.cmd" || set "failed=1"

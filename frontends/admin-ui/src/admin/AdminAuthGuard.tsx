@@ -1,7 +1,12 @@
 import React from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { useAdmin } from "./AdminContext";
-import { AdminForbiddenPage, AdminLoadingPage, AdminUnauthorizedPage } from "../pages/admin/AdminStatusPages";
+import {
+  AdminForbiddenPage,
+  AdminLoadingPage,
+  AdminTechErrorPage,
+  AdminUnauthorizedPage,
+} from "../pages/admin/AdminStatusPages";
 
 export const AdminAuthGuard: React.FC = () => {
   const { profile, isLoading, error } = useAdmin();
@@ -12,12 +17,12 @@ export const AdminAuthGuard: React.FC = () => {
 
   if (!profile) {
     if (error?.error === "admin_unauthorized") {
-      return <Navigate to="/login" replace />;
+      return <AdminUnauthorizedPage requestId={error?.request_id ?? undefined} />;
     }
     if (error?.error === "admin_forbidden") {
       return <AdminForbiddenPage requestId={error.request_id ?? undefined} />;
     }
-    return <AdminUnauthorizedPage requestId={error?.request_id ?? undefined} />;
+    return <AdminTechErrorPage requestId={error?.request_id ?? undefined} />;
   }
 
   return <Outlet />;

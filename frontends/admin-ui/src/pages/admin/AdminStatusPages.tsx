@@ -72,3 +72,20 @@ export const AdminCrashPage: React.FC = () => (
     }
   />
 );
+
+export const AdminTechErrorPage: React.FC<AdminStatusProps> = ({ requestId }) => (
+  <EmptyState
+    title="Техническая ошибка"
+    description={
+      <>
+        Не удалось загрузить данные админ-портала. Попробуйте позже.
+        <RequestId requestId={requestId} />
+      </>
+    }
+    action={
+      <Link className="ghost neft-btn-secondary" to="/login">
+        Перейти к входу
+      </Link>
+    }
+  />
+);

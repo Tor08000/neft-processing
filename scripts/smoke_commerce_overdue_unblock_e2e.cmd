@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 set "SCRIPT_NAME=smoke_commerce_overdue_unblock_e2e"
 
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
-if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/auth"
+if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/v1/auth"
 if "%CORE_CLIENT_URL%"=="" set "CORE_CLIENT_URL=%BASE_URL%/api/core/client"
 if "%CORE_PORTAL_URL%"=="" set "CORE_PORTAL_URL=%BASE_URL%/api/core/portal"
 if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%BASE_URL%/api/core/v1/admin"

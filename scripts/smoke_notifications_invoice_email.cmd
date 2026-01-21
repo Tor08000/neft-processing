@@ -2,9 +2,9 @@
 setlocal enabledelayedexpansion
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
-if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
-set "AUTH_BASE=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
+set "AUTH_BASE=%GATEWAY_BASE%%AUTH_BASE%"
 set "CORE_BASE=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 set SMOKE_CLIENT_ID=smoke-client
 set SMOKE_EMAIL=%SMOKE_NOTIFICATION_EMAIL%

@@ -2,9 +2,9 @@
 setlocal enabledelayedexpansion
 
 if "%GATEWAY_BASE%"=="" set "GATEWAY_BASE=http://localhost"
-if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/auth"
+if "%AUTH_BASE%"=="" set "AUTH_BASE=/api/v1/auth"
 if "%CORE_BASE%"=="" set "CORE_BASE=/api/core"
-set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%/v1/auth"
+set "AUTH_URL=%GATEWAY_BASE%%AUTH_BASE%"
 set "CORE_ADMIN_URL=%GATEWAY_BASE%%CORE_BASE%/api/v1/admin"
 set "CORE_CLIENT_URL=%GATEWAY_BASE%%CORE_BASE%/client/api/v1"
 

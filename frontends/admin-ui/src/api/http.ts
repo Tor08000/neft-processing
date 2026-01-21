@@ -128,7 +128,7 @@ export async function request<T>(
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
-  const isAuthLogin = base === "auth" && path.includes("/v1/auth/login");
+  const isAuthLogin = base === "auth" && path.includes("/login");
   const shouldLogAuth = import.meta.env.DEV && isAuthLogin;
   let responseText: string | null = null;
 

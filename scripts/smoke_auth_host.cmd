@@ -33,7 +33,7 @@ call :login client "%NEFT_BOOTSTRAP_CLIENT_EMAIL%" "%NEFT_BOOTSTRAP_CLIENT_PASSW
 call :login partner "%NEFT_BOOTSTRAP_PARTNER_EMAIL%" "%NEFT_BOOTSTRAP_PARTNER_PASSWORD%"
 
 echo ^>^>^> public key
-curl -sS -o "%TEMP%\auth_public_key.pem" -w "%%{http_code}" "%AUTH_BASE_URL%/api/auth/v1/auth/public-key" > "%TEMP%\auth_public_key.status"
+curl -sS -o "%TEMP%\auth_public_key.pem" -w "%%{http_code}" "%AUTH_BASE_URL%/api/v1/auth/public-key" > "%TEMP%\auth_public_key.status"
 set /p AUTH_PUBLIC_STATUS=<"%TEMP%\auth_public_key.status"
 if not "%AUTH_PUBLIC_STATUS%"=="200" (
   echo public key failed (status=%AUTH_PUBLIC_STATUS%) 1>&2
@@ -51,7 +51,7 @@ set LABEL=%~1
 set EMAIL=%~2
 set PASSWORD=%~3
 echo ^>^>^> login %LABEL%
-curl -sS -o "%TEMP%\auth_login.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/auth/v1/auth/login" ^
+curl -sS -o "%TEMP%\auth_login.json" -w "%%{http_code}" -X POST "%AUTH_BASE_URL%/api/v1/auth/login" ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"%EMAIL%\",\"password\":\"%PASSWORD%\"}" > "%TEMP%\auth_login.status"
 set /p LOGIN_STATUS=<"%TEMP%\auth_login.status"
