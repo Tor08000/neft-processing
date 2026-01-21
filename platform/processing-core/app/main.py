@@ -356,7 +356,7 @@ safe_include_router(app, admin_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, admin_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, legal_router, prefix=LEGACY_API_PREFIX)
-if INCLUDE_CUSTOM_CORE_PREFIX:
+if API_PREFIX_CORE != LEGACY_API_PREFIX:
     safe_include_router(app, legal_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, kpi_router, prefix=API_PREFIX_CORE)
@@ -368,13 +368,11 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, client_router)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
-if INCLUDE_CORE_PREFIX_ROUTES:
-    safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
-if INCLUDE_CORE_PREFIX_ROUTES:
-    safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_me_router, prefix=API_PREFIX_CORE)
-    safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, partner_me_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, notifications_router)
 if INCLUDE_CORE_PREFIX_ROUTES:

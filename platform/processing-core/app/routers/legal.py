@@ -9,7 +9,7 @@ from app.db import get_db
 from app.models.legal_acceptance import LegalSubjectType
 from app.models.legal_document import LegalDocumentStatus
 from app.schemas.legal import LegalAcceptRequest, LegalDocumentResponse, LegalRequiredResponse
-from app.security.rbac.principal import Principal, get_principal
+from app.security.rbac.principal import Principal, get_portal_principal
 from app.services.audit_service import request_context_from_request
 from app.services.legal import (
     LegalService,
@@ -34,7 +34,7 @@ def _subject_from_principal(principal: Principal) -> tuple[LegalSubjectType, str
 
 @router.get("/required", response_model=LegalRequiredResponse)
 def get_required(
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
 ) -> LegalRequiredResponse:
     subject_type, subject_id = _subject_from_principal(principal)
@@ -53,7 +53,7 @@ def get_document(
     code: str,
     version: str | None = Query(None),
     locale: str | None = Query(None),
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
 ) -> LegalDocumentResponse:
     _subject_from_principal(principal)
@@ -80,7 +80,7 @@ def get_document(
 def accept_document(
     payload: LegalAcceptRequest,
     request: Request,
-    principal: Principal = Depends(get_principal),
+    principal: Principal = Depends(get_portal_principal),
     db: Session = Depends(get_db),
 ) -> LegalRequiredResponse:
     if not payload.accepted:

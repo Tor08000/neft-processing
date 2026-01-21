@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import os
 import threading
@@ -66,6 +68,20 @@ def _validate_public_key(public_pem: str) -> rsa.RSAPublicKey:
     if public_key.key_size < 2048:
         raise InvalidRSAKeyError("rsa_key_too_small")
     return public_key
+
+
+def _base64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _rsa_int_to_base64(value: int) -> str:
+    length = (value.bit_length() + 7) // 8
+    return _base64url_encode(value.to_bytes(length, "big"))
+
+
+def _kid_from_public_key(public_pem: str) -> str:
+    digest = hashlib.sha256(public_pem.encode("utf-8")).digest()
+    return _base64url_encode(digest)
 
 
 def _validate_key_pair(private_pem: str, public_pem: str) -> None:
@@ -174,6 +190,20 @@ def get_public_key_pem() -> str:
         raise InvalidRSAKeyError(_KEY_ERROR)
     assert _PUBLIC_KEY_PEM is not None
     return _PUBLIC_KEY_PEM
+
+
+def get_public_jwk() -> dict:
+    public_pem = get_public_key_pem()
+    public_key = _validate_public_key(public_pem)
+    numbers = public_key.public_numbers()
+    return {
+        "kty": "RSA",
+        "use": "sig",
+        "alg": "RS256",
+        "kid": _kid_from_public_key(public_pem),
+        "n": _rsa_int_to_base64(numbers.n),
+        "e": _rsa_int_to_base64(numbers.e),
+    }
 
 
 def initialize_keys() -> None:
