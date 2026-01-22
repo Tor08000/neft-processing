@@ -5,7 +5,8 @@ const normalizeApiPath = (path: string): string =>
     .replace(/\/api(\/api)+/g, "/api")
     .replace(/\/api\/v1\/auth(\/v1\/auth)+/g, "/api/v1/auth")
     .replace(/\/api\/auth(\/v1\/auth)+/g, "/api/v1/auth")
-    .replace(/\/api\/auth(\/auth)+/g, "/api/v1/auth");
+    .replace(/\/api\/auth(\/auth)+/g, "/api/v1/auth")
+    .replace(/\/api\/auth(\/|$)/g, "/api/v1/auth$1");
 
 const normalizeApiBase = (raw: string): string => {
   const trimmed = normalizeBase(raw);
