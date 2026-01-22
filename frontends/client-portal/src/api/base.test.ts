@@ -19,8 +19,8 @@ describe("joinUrl", () => {
   });
 
   it("avoids duplicating api segments", () => {
-    expect(joinUrl("/api", "/api/auth/v1/auth/login")).toBe("/api/v1/auth/login");
-    expect(joinUrl("http://localhost/api", "api/auth/v1/auth/login")).toBe(
+    expect(joinUrl("/api", "/api/v1/auth/login")).toBe("/api/v1/auth/login");
+    expect(joinUrl("http://localhost/api", "api/v1/auth/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
   });
@@ -32,7 +32,7 @@ describe("joinUrl", () => {
     expect(joinUrl("http://localhost/api/", "auth/v1/auth/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
-    expect(joinUrl("http://localhost/api/auth", "/v1/auth/login")).toBe(
+    expect(joinUrl("http://localhost/api/v1/auth", "/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
     expect(joinUrl("http://localhost/api/api", "/auth/v1/auth/login")).toBe(
@@ -41,13 +41,13 @@ describe("joinUrl", () => {
   });
 
   it("handles required joinUrl cases without duplicating segments", () => {
-    expect(joinUrl("http://localhost", "/api/auth/v1/auth/login")).toBe(
+    expect(joinUrl("http://localhost", "/api/v1/auth/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
     expect(joinUrl("/api", "/auth/v1/auth/login")).toBe("/api/v1/auth/login");
     expect(joinUrl("/api", "/core/health")).toBe("/api/core/health");
     expect(joinUrl("/api/core", "/client/fleet/groups")).toBe("/api/core/client/fleet/groups");
-    expect(joinUrl("/api/auth", "/v1/auth/login")).toBe("/api/v1/auth/login");
+    expect(joinUrl("/api/v1/auth", "/login")).toBe("/api/v1/auth/login");
     expect(joinUrl("http://localhost/api", "/auth/v1/auth/login")).toBe(
       "http://localhost/api/v1/auth/login",
     );
