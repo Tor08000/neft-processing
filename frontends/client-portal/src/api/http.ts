@@ -7,6 +7,11 @@ type ApiBase = "core" | "auth" | "core_root";
 export type HttpHeaders = Record<string, string>;
 
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
+const logErrorUrl = (url: string, status: number) => {
+  if (import.meta.env.DEV && status >= 400) {
+    console.info("[api-error]", { final_url: url, status });
+  }
+};
 const toMessageString = (value: unknown, fallback: string): string => {
   if (typeof value === "string" && value.trim() !== "") {
     return value;
@@ -181,6 +186,8 @@ export async function request<T>(
     });
   }
 
+  logErrorUrl(url, response.status);
+
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       window.dispatchEvent(new Event("client-auth-logout"));
@@ -231,7 +238,13 @@ export async function request<T>(
       }
     }
     const rawMessage = payload?.message ?? payload?.error ?? text;
-    const message = toMessageString(rawMessage, `Request failed with status ${response.status}`);
+    const fallbackMessage =
+      response.status === 404
+        ? "Неверный маршрут запроса"
+        : response.status === 502 || response.status === 503
+          ? "Сервис временно недоступен"
+          : `Request failed with status ${response.status}`;
+    const message = toMessageString(rawMessage, fallbackMessage);
     const code =
       typeof payload?.error === "string"
         ? payload?.error
@@ -297,6 +310,8 @@ export async function requestWithMeta<T>(
     return responseText;
   };
 
+  logErrorUrl(url, response.status);
+
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       window.dispatchEvent(new Event("client-auth-logout"));
@@ -347,7 +362,13 @@ export async function requestWithMeta<T>(
       }
     }
     const rawMessage = payload?.message ?? payload?.error ?? text;
-    const message = toMessageString(rawMessage, `Request failed with status ${response.status}`);
+    const fallbackMessage =
+      response.status === 404
+        ? "Неверный маршрут запроса"
+        : response.status === 502 || response.status === 503
+          ? "Сервис временно недоступен"
+          : `Request failed with status ${response.status}`;
+    const message = toMessageString(rawMessage, fallbackMessage);
     const code =
       typeof payload?.error === "string"
         ? payload?.error
@@ -396,6 +417,8 @@ export async function requestFormData<T>(
   const response = await fetch(`${apiBase}${path}`, { method: "POST", body: data, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
 
+  logErrorUrl(`${apiBase}${path}`, response.status);
+
   if (response.status === 401) {
     if (isAuthMeRequest(base, path)) {
       window.dispatchEvent(new Event("client-auth-logout"));
@@ -408,7 +431,13 @@ export async function requestFormData<T>(
   }
   if (!response.ok) {
     const text = await response.text();
-    const message = toMessageString(text, `Request failed with status ${response.status}`);
+    const fallbackMessage =
+      response.status === 404
+        ? "Неверный маршрут запроса"
+        : response.status === 502 || response.status === 503
+          ? "Сервис временно недоступен"
+          : `Request failed with status ${response.status}`;
+    const message = toMessageString(text, fallbackMessage);
     throw new ApiError(message, response.status, correlationId, null, null);
   }
 

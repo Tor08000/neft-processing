@@ -55,7 +55,7 @@ export function DashboardPage() {
           return;
         }
         console.error("Не удалось загрузить дашборд", err);
-        setError({ message: "Дашборд временно недоступен" });
+        setError({ message: "Ошибка приложения" });
       } finally {
         setIsLoading(false);
       }
