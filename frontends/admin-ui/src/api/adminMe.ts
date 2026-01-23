@@ -78,6 +78,7 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
       throw new AdminMeError(502, "Invalid JSON response from admin me", {
         error: "admin_error",
         message: "Invalid JSON response from admin me",
+        status: 502,
         request_id: requestId,
       });
     }
@@ -105,6 +106,7 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
   throw new AdminMeError(response.status, message, {
     error: payload?.error ?? inferredError,
     message,
+    status: response.status,
     request_id: payload?.request_id ?? requestId,
     required_roles: payload?.required_roles,
   });
