@@ -43,6 +43,7 @@ export interface AdminMeResponse {
 export interface AdminErrorPayload {
   error: string;
   message: string;
+  status?: number;
   request_id?: string | null;
   required_roles?: string[];
 }

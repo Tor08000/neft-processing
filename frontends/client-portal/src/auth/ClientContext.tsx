@@ -22,6 +22,26 @@ type ClientContextValue = {
 };
 
 const ClientContext = createContext<ClientContextValue | undefined>(undefined);
+const STORAGE_KEY = "neft_client_portal";
+
+const readStoredPortal = (): PortalMeResponse | null => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PortalMeResponse;
+  } catch (err) {
+    console.warn("Не удалось прочитать сохраненный portal/me", err);
+    return null;
+  }
+};
+
+const persistPortal = (portal: PortalMeResponse | null) => {
+  if (!portal) {
+    localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(portal));
+};
 
 const extractModules = (client: PortalMeResponse | null): unknown[] | null => {
   if (!client) return null;
@@ -62,6 +82,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       setClient(null);
       setError(null);
       setPortalState("AUTH_REQUIRED");
+      persistPortal(null);
       return;
     }
     setIsLoading(true);
@@ -71,6 +92,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       const data = await fetchClientMe(user);
       setClient(data);
       setPortalState(resolvePortalState(data));
+      persistPortal(data);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         setPortalState("AUTH_REQUIRED");
@@ -83,8 +105,20 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (err instanceof ApiError && (err.status === 502 || err.status === 503)) {
+        const cached = readStoredPortal();
+        if (cached) {
+          setClient(cached);
+          setPortalState(resolvePortalState(cached));
+          return;
+        }
         setError("Профиль клиента временно недоступен");
         setPortalState("SERVICE_UNAVAILABLE");
+        return;
+      }
+      const cached = readStoredPortal();
+      if (cached) {
+        setClient(cached);
+        setPortalState(resolvePortalState(cached));
         return;
       }
       console.error("Не удалось загрузить профиль клиента", err);

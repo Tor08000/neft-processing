@@ -26,7 +26,7 @@ export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId })
     }
     action={
       <Link className="ghost neft-btn-secondary" to="/login">
-        Перейти к входу
+        Войти
       </Link>
     }
   />
@@ -73,12 +73,12 @@ export const AdminCrashPage: React.FC = () => (
   />
 );
 
-export const AdminTechErrorPage: React.FC<AdminStatusProps> = ({ requestId }) => (
+export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string }> = ({ requestId, message }) => (
   <EmptyState
     title="Техническая ошибка"
     description={
       <>
-        Не удалось загрузить данные админ-портала. Попробуйте позже.
+        {message ?? "Не удалось загрузить данные админ-портала. Попробуйте позже."}
         <RequestId requestId={requestId} />
       </>
     }

@@ -40,12 +40,17 @@ export const AdminProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       .catch((err) => {
         if (cancelled) return;
         if (err instanceof AdminMeError) {
-          setError(err.payload ?? { error: "admin_error", message: err.message });
+          const payload = err.payload ?? { error: "admin_error", message: err.message, status: err.status };
+          if (import.meta.env.DEV && err.status === 404) {
+            setError({ ...payload, message: "api route misconfigured", status: err.status });
+          } else {
+            setError(payload);
+          }
           if (err.status === 401) {
             logout();
           }
         } else {
-          setError({ error: "admin_error", message: "Admin bootstrap failed" });
+          setError({ error: "admin_error", message: "Admin bootstrap failed", status: 500 });
         }
         setProfile(null);
       })
