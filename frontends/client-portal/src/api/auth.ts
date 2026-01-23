@@ -3,6 +3,14 @@ import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./typ
 
 export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 
+const resolveToken = (body: LoginResponse | VerifyResponse): string => {
+  const token = body.access_token ?? (body as LoginResponse & { token?: string }).token;
+  if (!token) {
+    throw new ApiError("Missing token in auth response", 500, null, null, "missing_token");
+  }
+  return token;
+};
+
 export async function login(payload: LoginRequest): Promise<AuthSession> {
   const body = await request<LoginResponse>(
     "/login",
@@ -10,7 +18,7 @@ export async function login(payload: LoginRequest): Promise<AuthSession> {
     { base: "auth" },
   );
   return {
-    token: body.access_token,
+    token: resolveToken(body),
     email: body.email,
     roles: body.roles,
     subjectType: body.subject_type,
@@ -51,7 +59,8 @@ export interface VerifyPayload {
 }
 
 export interface VerifyResponse {
-  access_token: string;
+  access_token?: string;
+  token?: string;
   token_type: string;
   expires_in: number;
   email: string;
@@ -71,7 +80,7 @@ export async function verifyRegistration(payload: VerifyPayload): Promise<AuthSe
     { base: "auth" },
   );
   return {
-    token: body.access_token,
+    token: resolveToken(body),
     email: body.email,
     roles: body.roles,
     subjectType: body.subject_type,

@@ -7,6 +7,22 @@ type ApiBase = "core" | "auth" | "core_root";
 export type HttpHeaders = Record<string, string>;
 
 const isAuthMeRequest = (base: ApiBase, path: string) => base === "auth" && path.includes("/me");
+const toMessageString = (value: unknown, fallback: string): string => {
+  if (typeof value === "string" && value.trim() !== "") {
+    return value;
+  }
+  if (value != null && typeof value !== "string") {
+    try {
+      const serialized = JSON.stringify(value);
+      if (serialized && serialized !== "{}") {
+        return serialized;
+      }
+    } catch (err) {
+      return String(value);
+    }
+  }
+  return fallback;
+};
 
 export class UnauthorizedError extends Error {
   constructor(message = "Требуется повторный вход") {
@@ -29,6 +45,8 @@ export class ApiError extends Error {
   status: number;
   correlationId: string | null;
   requestId: string | null;
+  code: string | null;
+  detail?: unknown;
   errorCode: string | null;
   details?: unknown;
 
@@ -37,16 +55,24 @@ export class ApiError extends Error {
     status: number,
     correlationId: string | null,
     requestId: string | null,
-    errorCode: string | null,
-    details?: unknown,
+    code: string | null,
+    detail?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.correlationId = correlationId;
     this.requestId = requestId;
-    this.errorCode = errorCode;
-    this.details = details;
+    this.code = code;
+    this.detail = detail;
+    this.errorCode = code;
+    this.details = detail;
+  }
+
+  override toString(): string {
+    const codePart = this.code ?? "UNKNOWN";
+    const message = this.message || "";
+    return `${this.name}: ${codePart} ${this.status} ${message}`.trim();
   }
 }
 
@@ -188,22 +214,38 @@ export async function request<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    let payload:
+      | { error?: unknown; message?: unknown; request_id?: string; details?: unknown; detail?: unknown }
+      | null = null;
     if (isJson && text) {
       try {
-        payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
+        payload = JSON.parse(text) as {
+          error?: unknown;
+          message?: unknown;
+          request_id?: string;
+          details?: unknown;
+          detail?: unknown;
+        };
       } catch (err) {
         payload = null;
       }
     }
-    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
+    const rawMessage = payload?.message ?? payload?.error ?? text;
+    const message = toMessageString(rawMessage, `Request failed with status ${response.status}`);
+    const code =
+      typeof payload?.error === "string"
+        ? payload?.error
+        : typeof payload?.message === "string"
+          ? payload?.message
+          : null;
+    const detail = payload?.detail ?? payload?.details;
     throw new ApiError(
       message,
       response.status,
       correlationId,
       payload?.request_id ?? null,
-      payload?.error ?? null,
-      payload?.details,
+      code,
+      detail,
     );
   }
 
@@ -288,22 +330,38 @@ export async function requestWithMeta<T>(
   }
   if (!response.ok) {
     const text = await readResponseText();
-    let payload: { error?: string; message?: string; request_id?: string; details?: unknown } | null = null;
+    let payload:
+      | { error?: unknown; message?: unknown; request_id?: string; details?: unknown; detail?: unknown }
+      | null = null;
     if (isJson && text) {
       try {
-        payload = JSON.parse(text) as { error?: string; message?: string; request_id?: string; details?: unknown };
+        payload = JSON.parse(text) as {
+          error?: unknown;
+          message?: unknown;
+          request_id?: string;
+          details?: unknown;
+          detail?: unknown;
+        };
       } catch (err) {
         payload = null;
       }
     }
-    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
+    const rawMessage = payload?.message ?? payload?.error ?? text;
+    const message = toMessageString(rawMessage, `Request failed with status ${response.status}`);
+    const code =
+      typeof payload?.error === "string"
+        ? payload?.error
+        : typeof payload?.message === "string"
+          ? payload?.message
+          : null;
+    const detail = payload?.detail ?? payload?.details;
     throw new ApiError(
       message,
       response.status,
       correlationId,
       payload?.request_id ?? null,
-      payload?.error ?? null,
-      payload?.details,
+      code,
+      detail,
     );
   }
 
@@ -350,7 +408,8 @@ export async function requestFormData<T>(
   }
   if (!response.ok) {
     const text = await response.text();
-    throw new ApiError(text || `Request failed with status ${response.status}`, response.status, correlationId, null, null);
+    const message = toMessageString(text, `Request failed with status ${response.status}`);
+    throw new ApiError(message, response.status, correlationId, null, null);
   }
 
   if (response.status === 204) {

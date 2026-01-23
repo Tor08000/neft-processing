@@ -2,7 +2,8 @@ import { AUTH_API_BASE, CLIENT_BASE_PATH, CORE_API_BASE } from "./api/base";
 import type { ClientUser, DashboardSummary, Limit, Operation } from "./types";
 
 interface TokenResponse {
-  access_token: string;
+  access_token?: string;
+  token?: string;
   token_type: string;
   expires_in: number;
   email: string;
@@ -79,8 +80,12 @@ export async function login(email: string, password: string): Promise<LoginResul
   }
 
   const body = (await response.json()) as TokenResponse;
+  const token = body.access_token ?? body.token;
+  if (!token) {
+    throw new Error("Не удалось получить токен авторизации");
+  }
   return {
-    token: body.access_token,
+    token,
     tokenType: body.token_type,
     expiresIn: body.expires_in,
     email: body.email,
