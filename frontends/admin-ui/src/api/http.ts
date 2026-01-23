@@ -192,7 +192,7 @@ export async function request<T>(
         : response.status === 502 || response.status === 503
           ? "Сервис временно недоступен"
           : `Request failed with status ${response.status}`;
-    const message = (payload?.message ?? payload?.error ?? text) || fallbackMessage;
+    const message = payload?.message ?? payload?.error ?? (text || fallbackMessage);
     throw new ApiError(
       message,
       response.status,
