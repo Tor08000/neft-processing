@@ -197,7 +197,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
         await finalizeSession(session);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
-          setError("Неверный email или пароль");
+          setError("Неверный логин/пароль");
           return;
         }
         if (err instanceof ValidationError) {
@@ -214,12 +214,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           setError("Gateway returned HTML (wrong endpoint or SPA fallback)");
           return;
         }
-        if (err instanceof ApiError && err.status >= 500) {
-          setError("Сервис временно недоступен");
-          return;
+        if (err instanceof ApiError) {
+          if (err.status === 404) {
+            setError(
+              import.meta.env.DEV
+                ? "Неверный URL API (ошибка конфигурации)"
+                : "Сервис временно недоступен",
+            );
+            return;
+          }
+          if (err.status >= 500) {
+            setError("Сервис временно недоступен");
+            return;
+          }
         }
         if (err instanceof TypeError) {
-          setError("Сервис временно недоступен");
+          setError("Нет соединения");
           return;
         }
         console.error("Ошибка авторизации", err);
@@ -239,8 +249,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialSes
           setError("Требуется повторный вход");
           return;
         }
-        if (err instanceof ApiError && err.status >= 500) {
-          setError("Сервис временно недоступен");
+        if (err instanceof ApiError) {
+          if (err.status === 404) {
+            setError(
+              import.meta.env.DEV
+                ? "Неверный URL API (ошибка конфигурации)"
+                : "Сервис временно недоступен",
+            );
+            return;
+          }
+          if (err.status >= 500) {
+            setError("Сервис временно недоступен");
+            return;
+          }
+        }
+        if (err instanceof TypeError) {
+          setError("Нет соединения");
           return;
         }
         console.error("Ошибка авторизации", err);

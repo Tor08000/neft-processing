@@ -1,5 +1,6 @@
 export interface LoginResponse {
-  access_token: string;
+  access_token?: string;
+  token?: string;
   token_type: string;
   expires_in: number;
   email: string;
