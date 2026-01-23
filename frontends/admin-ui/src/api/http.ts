@@ -3,6 +3,11 @@ import { AUTH_API_BASE, CORE_API_BASE } from "./base";
 type ApiBase = "core" | "auth";
 
 export type HttpHeaders = Record<string, string>;
+const logErrorUrl = (url: string, status: number) => {
+  if (import.meta.env.DEV && status >= 400) {
+    console.info("[api-error]", { final_url: url, status });
+  }
+};
 
 export class UnauthorizedError extends Error {
   constructor(message = "Необходим повторный вход") {
@@ -150,6 +155,8 @@ export async function request<T>(
     });
   }
 
+  logErrorUrl(url, response.status);
+
   if (response.status === 401) {
     throw new UnauthorizedError();
   }
@@ -179,7 +186,13 @@ export async function request<T>(
         payload = null;
       }
     }
-    const message = (payload?.message ?? payload?.error ?? text) || `Request failed with status ${response.status}`;
+    const fallbackMessage =
+      response.status === 404
+        ? "Неверный маршрут запроса"
+        : response.status === 502 || response.status === 503
+          ? "Сервис временно недоступен"
+          : `Request failed with status ${response.status}`;
+    const message = (payload?.message ?? payload?.error ?? text) || fallbackMessage;
     throw new ApiError(
       message,
       response.status,

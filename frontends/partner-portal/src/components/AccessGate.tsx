@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { usePortal } from "../auth/PortalContext";
+import { usePortal, type PortalState } from "../auth/PortalContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { ErrorState, ForbiddenState, LoadingState } from "./states";
@@ -16,6 +16,51 @@ type AccessPresentation = {
   title: string;
   description: string;
   action?: ReactNode;
+};
+
+const PortalStateView = ({
+  state,
+  error,
+}: {
+  state: PortalState;
+  error?: string | null;
+}) => {
+  switch (state) {
+    case "AUTH_REQUIRED":
+      return (
+        <div className="empty-state">
+          <h1>Требуется вход</h1>
+          <p className="muted">Пожалуйста, войдите, чтобы продолжить.</p>
+          <div className="actions">
+            <Link className="ghost" to="/login">
+              Перейти к входу
+            </Link>
+          </div>
+        </div>
+      );
+    case "NO_SUBSCRIPTION":
+      return (
+        <div className="empty-state">
+          <h1>Подключите продукт</h1>
+          <p className="muted">Для доступа нужна активная подписка.</p>
+        </div>
+      );
+    case "NO_MODULES_ENABLED":
+      return (
+        <div className="empty-state">
+          <h1>Нет активных модулей</h1>
+          <p className="muted">Подключите модули, чтобы открыть раздел.</p>
+        </div>
+      );
+    case "SERVICE_UNAVAILABLE":
+      return <ErrorState description="Сервис временно недоступен. Попробуйте позже." />;
+    case "ERROR_FATAL":
+      return <ErrorState description={error ?? "Ошибка приложения"} />;
+    case "LOADING":
+    case "READY":
+    default:
+      return null;
+  }
 };
 
 const AccessStateView = ({
@@ -114,18 +159,19 @@ const AccessStateView = ({
 
 export const AccessGate = ({ capability, requiredRoles, title, children }: AccessGateProps) => {
   const { user } = useAuth();
-  const { portal, isLoading, error } = usePortal();
+  const { portal, isLoading, error, portalState } = usePortal();
 
   if (!user) {
     return null;
   }
 
-  if (isLoading) {
+  if (portalState === "LOADING" || isLoading) {
     return <LoadingState label="Проверяем доступ..." />;
   }
 
-  if (error) {
-    return <AccessStateView state={AccessState.TECH_ERROR} title={title} />;
+  const portalView = PortalStateView({ state: portalState, error });
+  if (portalView) {
+    return portalView;
   }
 
   const decision = resolveAccessState({ portal, requiredRoles, capability });
