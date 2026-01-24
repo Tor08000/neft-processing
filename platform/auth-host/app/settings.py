@@ -23,6 +23,18 @@ def _env_bool(key: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _env_int(key: str, default: int, *, fallback_keys: Iterable[str] = ()) -> int:
+    for candidate in (key, *fallback_keys):
+        raw = os.getenv(candidate)
+        if raw is None:
+            continue
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
 def _roles_env(key: str, default: list[str], *, fallback_keys: Iterable[str] = ()) -> list[str]:
     for candidate in (key, *fallback_keys):
         raw = os.getenv(candidate)
@@ -84,9 +96,7 @@ class Settings(SharedSettings):
     demo_client_id: str = _env_or_default(
         "NEFT_DEMO_CLIENT_ID", "demo-client", fallback_keys=("DEMO_CLIENT_ID",)
     )
-    demo_org_id: str = _env_or_default(
-        "NEFT_DEMO_ORG_ID", "1", fallback_keys=("DEMO_ORG_ID",)
-    )
+    demo_org_id: int = _env_int("NEFT_DEMO_ORG_ID", 1, fallback_keys=("DEMO_ORG_ID",))
     demo_client_full_name: str = _env_or_default(
         "NEFT_DEMO_CLIENT_FULL_NAME",
         "Demo Client",
@@ -100,7 +110,7 @@ class Settings(SharedSettings):
 
     demo_admin_email: str = _env_or_default(
         "NEFT_DEMO_ADMIN_EMAIL",
-        "admin@example.com",
+        "admin@neft.local",
         fallback_keys=("DEMO_ADMIN_EMAIL",),
     )
     demo_admin_password: str = _env_or_default(
@@ -121,7 +131,7 @@ class Settings(SharedSettings):
     bootstrap_enabled: bool = _env_bool("NEFT_BOOTSTRAP_ENABLED", True)
     bootstrap_admin_email: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_EMAIL",
-        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@example.com", fallback_keys=("DEMO_ADMIN_EMAIL",)),
+        _env_or_default("NEFT_DEMO_ADMIN_EMAIL", "admin@neft.local", fallback_keys=("DEMO_ADMIN_EMAIL",)),
     )
     bootstrap_admin_password: str = _env_or_default(
         "NEFT_BOOTSTRAP_ADMIN_PASSWORD",
@@ -164,7 +174,7 @@ class Settings(SharedSettings):
             "NEFT_DEMO_CLIENT_PASSWORD", self.demo_client_password, fallback_keys=("DEMO_CLIENT_PASSWORD",)
         )
         self.demo_client_id = _env_or_default("NEFT_DEMO_CLIENT_ID", self.demo_client_id, fallback_keys=("DEMO_CLIENT_ID",))
-        self.demo_org_id = _env_or_default("NEFT_DEMO_ORG_ID", self.demo_org_id, fallback_keys=("DEMO_ORG_ID",))
+        self.demo_org_id = _env_int("NEFT_DEMO_ORG_ID", self.demo_org_id, fallback_keys=("DEMO_ORG_ID",))
         self.demo_client_full_name = _env_or_default(
             "NEFT_DEMO_CLIENT_FULL_NAME", self.demo_client_full_name, fallback_keys=("DEMO_CLIENT_FULL_NAME",)
         )

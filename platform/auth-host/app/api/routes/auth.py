@@ -5,7 +5,7 @@ import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.db import get_conn
@@ -26,7 +26,7 @@ from app.security import (
     verify_password,
 )
 from app.healthcheck import build_health_response
-from app.services.keys import InvalidRSAKeyError, get_public_key_pem
+from app.services.keys import InvalidRSAKeyError, get_public_key_pem, get_public_jwk
 from app.settings import get_settings
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -123,6 +123,16 @@ async def public_key() -> str:
         return get_public_key_pem()
     except InvalidRSAKeyError:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
+
+
+@router.get("/.well-known/jwks.json", include_in_schema=False)
+async def jwks() -> dict:
+    return {"keys": [get_public_jwk()]}
+
+
+@router.get("/jwks", include_in_schema=False)
+async def jwks_legacy() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/auth/.well-known/jwks.json", status_code=status.HTTP_308_PERMANENT_REDIRECT)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

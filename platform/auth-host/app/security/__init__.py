@@ -52,7 +52,7 @@ def create_access_token(
     subject_type: str = "user",
     client_id: str | None = None,
     user_id: str | None = None,
-    org_id: str | None = None,
+    org_id: int | str | None = None,
     issuer: str | None = None,
     audience: str | None = None,
 ) -> str:
