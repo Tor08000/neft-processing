@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import MetaData, Table, insert, inspect, select, update
+from sqlalchemy import MetaData, Table, insert, inspect, select, text, update
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSING_ROOT = ROOT / "platform" / "processing-core"
@@ -22,7 +22,6 @@ for path in (PROCESSING_ROOT, SHARED):
 
 from app.db import get_sessionmaker, init_db  # noqa: E402
 from app.db.schema import DB_SCHEMA  # noqa: E402
-from app.models.client import Client  # noqa: E402
 from app.models.fleet import ClientEmployee, EmployeeStatus  # noqa: E402
 from app.models.client_portal import ClientUserRole  # noqa: E402
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot  # noqa: E402
@@ -55,6 +54,27 @@ def _filter_columns(table: Table, values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if key in table.c}
 
 
+_COLUMNS_CACHE: dict[tuple[str, str], set[str]] = {}
+
+
+def has_column(conn, table: str, column: str, schema: str = "processing_core") -> bool:
+    cache_key = (schema, table)
+    if cache_key not in _COLUMNS_CACHE:
+        rows = conn.execute(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = :table
+                """
+            ),
+            {"schema": schema, "table": table},
+        ).fetchall()
+        _COLUMNS_CACHE[cache_key] = {row[0] for row in rows}
+    return column in _COLUMNS_CACHE[cache_key]
+
+
 @dataclass(frozen=True)
 class DemoSeedConfig:
     org_id: int
@@ -84,24 +104,27 @@ def _load_config() -> DemoSeedConfig:
     )
 
 
-def _ensure_client(session, config: DemoSeedConfig) -> str:
+def _ensure_client(conn, config: DemoSeedConfig, *, has_client_email: bool) -> str:
     if not _is_uuid(config.client_id):
         raise ValueError(f"NEFT_DEMO_CLIENT_UUID must be a UUID, got {config.client_id!r}")
-    client = session.get(Client, config.client_id)
-    if client:
-        client.name = client.name or "Demo Client"
-        client.email = client.email or config.email
-        client.status = client.status or "ACTIVE"
-        return "noop"
-    client = Client(
-        id=config.client_id,
-        name="Demo Client",
-        external_id=config.org_name,
-        email=config.email,
-        full_name="Demo Client",
-        status="ACTIVE",
-    )
-    session.add(client)
+    if not _table_exists(conn, "clients"):
+        return "skipped_missing_table"
+    clients = _table(conn, "clients")
+    existing = conn.execute(select(clients).where(clients.c.id == config.client_id)).mappings().first()
+    values = {
+        "id": config.client_id,
+        "name": existing["name"] if existing and existing.get("name") else "Demo Client",
+        "external_id": config.org_name,
+        "full_name": existing["full_name"] if existing and existing.get("full_name") else "Demo Client",
+        "status": existing["status"] if existing and existing.get("status") else "ACTIVE",
+    }
+    if has_client_email:
+        values["email"] = existing.get("email") if existing and existing.get("email") else config.email
+    values = _filter_columns(clients, values)
+    if existing:
+        conn.execute(update(clients).where(clients.c.id == config.client_id).values(**values))
+        return "updated"
+    conn.execute(insert(clients).values(**values))
     return "created"
 
 
@@ -282,7 +305,9 @@ def main() -> None:
         summary["items"].append({"item": label, "status": status})
 
     with SessionLocal() as session:
-        _record("client", _ensure_client(session, config))
+        conn = session.connection()
+        has_client_email = has_column(conn, "clients", "email")
+        _record("client", _ensure_client(conn, config, has_client_email=has_client_email))
         _record("client_employee", _ensure_client_employee(session, config))
         _record("client_role", _ensure_client_role(session, config))
         session.commit()
