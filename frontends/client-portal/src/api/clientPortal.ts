@@ -29,6 +29,8 @@ export type ClientDashboardSnapshot = {
 };
 
 export type PortalMeResponse = {
+  actor_type?: string;
+  context?: string | null;
   user: {
     id: string;
     email?: string | null;
@@ -45,6 +47,8 @@ export type PortalMeResponse = {
   org_status?: string | null;
   org_roles: string[];
   user_roles: string[];
+  roles?: string[] | null;
+  memberships?: string[] | null;
   legal?: {
     required: boolean;
     accepted: boolean;
@@ -52,6 +56,10 @@ export type PortalMeResponse = {
   } | null;
   modules?: Record<string, unknown> | null;
   features?: Record<string, unknown> | null;
+  gating?: {
+    onboarding_enabled: boolean;
+    legal_gate_enabled: boolean;
+  } | null;
   subscription?: {
     plan_code?: string | null;
     status?: string | null;

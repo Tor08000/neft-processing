@@ -21,6 +21,17 @@ export function Layout() {
   const { t } = useI18n();
   const location = useLocation();
   const capabilities = new Set((portal?.capabilities ?? []).map((cap) => cap.toUpperCase()));
+  const modulesPayload = portal?.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;
+  const enabledModules = new Set(
+    Object.entries(modulesPayload ?? {})
+      .filter(([, payload]) => payload?.enabled)
+      .map(([code]) => code.toUpperCase()),
+  );
+  const roleSet = new Set([...(portal?.user_roles ?? []), ...(portal?.org_roles ?? [])].map((role) => role.toUpperCase()));
+  const isModuleEnabled = (module?: string) => (module ? enabledModules.has(module.toUpperCase()) : true);
+  const hasCapability = (capability?: string) => (capability ? capabilities.has(capability.toUpperCase()) : true);
+  const hasRoles = (requiredRoles?: string[]) =>
+    requiredRoles?.length ? requiredRoles.some((role) => roleSet.has(role.toUpperCase())) : true;
 
   const buildContextLabel = (section: string, path: string, basePath?: string) => {
     if (!basePath) return section;
@@ -42,11 +53,27 @@ export function Layout() {
     { to: "/payouts", label: "Выплаты", icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
     { to: "/documents", label: "Документы", icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
     { to: "/legal", label: "Legal", icon: <Package size={18} /> },
-  ];
+  ].map((item) => {
+    const lacksModule = item.module && !isModuleEnabled(item.module);
+    const lacksCapability = item.capability && !hasCapability(item.capability);
+    const lacksRole = item.requiredRoles && !hasRoles(item.requiredRoles);
+    const disabledReason = lacksRole
+      ? "Нужна роль"
+      : lacksModule || lacksCapability
+        ? "Недоступно по подписке"
+        : null;
+    if (disabledReason) {
+      return { ...item, disabledReason };
+    }
+    return item;
+  });
 
-  const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
-    (item) => !item.capability || capabilities.has(item.capability),
-  );
+  const visibleNavItems = isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems;
+  const sidebarItems = visibleNavItems.map((item) => ({
+    ...item,
+    disabled: Boolean(item.disabledReason),
+    hint: item.disabledReason ?? undefined,
+  }));
   const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
@@ -55,7 +82,7 @@ export function Layout() {
 
   return (
     <div className="brand-shell neft-page">
-      <BrandSidebar items={visibleNavItems} title="Partner" />
+      <BrandSidebar items={sidebarItems} title="Partner" />
       <main className="brand-main">
         <BrandHeader
           title={sectionTitle}

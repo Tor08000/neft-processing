@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ApiError, UnauthorizedError } from "../api/http";
 import { AppLoadingState, AppErrorState } from "../components/states";
 import { DashboardRenderer } from "./dashboard/DashboardRenderer";
-import { AccessState, mapBusinessErrorToAccessState, resolveAccessState } from "../access/accessState";
+import { AccessState, resolveAccessState } from "../access/accessState";
 import { AccessStateView, PortalStateView } from "../components/AccessGate";
 import { useClient } from "../auth/ClientContext";
 
@@ -41,11 +41,6 @@ export function DashboardPage() {
           return;
         }
         if (err instanceof ApiError) {
-          const businessState = mapBusinessErrorToAccessState(err.errorCode);
-          if (businessState) {
-            setBlockedState(businessState);
-            return;
-          }
           setError({
             message: "Не удалось загрузить дашборд. Попробуйте позже.",
             status: err.status,

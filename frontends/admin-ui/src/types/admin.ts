@@ -36,8 +36,15 @@ export interface AdminUserProfile {
 
 export interface AdminMeResponse {
   admin_user: AdminUserProfile;
+  roles: AdminRole[];
   permissions: AdminPermissions;
   env: AdminEnv;
+  environment?: AdminEnv;
+  read_only?: boolean;
+  audit_context?: {
+    require_reason: boolean;
+    require_correlation_id: boolean;
+  };
 }
 
 export interface AdminErrorPayload {
