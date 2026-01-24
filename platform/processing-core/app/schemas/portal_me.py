@@ -58,6 +58,11 @@ class PortalMeFeatures(BaseModel):
     legal_gate_enabled: bool
 
 
+class PortalMeGating(BaseModel):
+    onboarding_enabled: bool
+    legal_gate_enabled: bool
+
+
 class PortalAccessState(str, Enum):
     AUTH_REQUIRED = "AUTH_REQUIRED"
     NEEDS_ONBOARDING = "NEEDS_ONBOARDING"
@@ -78,15 +83,19 @@ class PortalAccessState(str, Enum):
 
 class PortalMeResponse(BaseModel):
     actor_type: str
+    context: str | None = None
     user: PortalMeUser
     org: PortalMeOrg | None = None
     org_status: str | None = None
     org_roles: list[str]
     user_roles: list[str]
+    roles: list[str] | None = None
+    memberships: list[str] | None = None
     scopes: list[str] | None = None
     flags: dict[str, Any] | None = None
     legal: PortalMeLegal | None = None
     features: PortalMeFeatures | None = None
+    gating: PortalMeGating | None = None
     subscription: PortalMeSubscription | None = None
     entitlements_snapshot: dict[str, Any] | None = None
     capabilities: list[str]

@@ -18,6 +18,7 @@ from app.schemas.portal_me import (
     PortalMePartnerProfile,
     PortalMeLegal,
     PortalMeFeatures,
+    PortalMeGating,
     PortalMeResponse,
     PortalMeSubscription,
     PortalMeUser,
@@ -232,6 +233,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         onboarding_enabled=settings.CORE_ONBOARDING_ENABLED,
         legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
     )
+    gating = PortalMeGating(
+        onboarding_enabled=settings.CORE_ONBOARDING_ENABLED,
+        legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
+    )
 
     partner_payload = None
     if (
@@ -265,6 +270,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     )
     return PortalMeResponse(
         actor_type=actor_type,
+        context=actor_type,
         user=PortalMeUser(
             id=str(token.get("user_id") or token.get("sub") or ""),
             email=token.get("email") or token.get("sub"),
@@ -275,10 +281,13 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         org_status=org_payload.status if org_payload else None,
         org_roles=sorted({str(role).upper() for role in org_roles if role}),
         user_roles=user_roles,
+        roles=user_roles,
+        memberships=sorted({str(role).upper() for role in org_roles if role}),
         scopes=scopes or None,
         flags=flags,
         legal=legal,
         features=features,
+        gating=gating,
         subscription=subscription_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=sorted({str(cap) for cap in capabilities if cap}),

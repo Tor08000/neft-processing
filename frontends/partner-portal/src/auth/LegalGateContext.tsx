@@ -4,6 +4,7 @@ import { acceptLegalDocument, fetchLegalDocument, fetchLegalRequired } from "../
 import type { LegalDocumentResponse, LegalRequiredItem, LegalRequiredResponse } from "../api/legal";
 import { ApiError } from "../api/http";
 import { useAuth } from "./AuthContext";
+import { usePortal } from "./PortalContext";
 
 const CACHE_TTL_MS = 60_000;
 
@@ -22,6 +23,7 @@ const LegalGateContext = createContext<LegalGateContextValue | undefined>(undefi
 
 export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const { portal } = usePortal();
   const navigate = useNavigate();
   const location = useLocation();
   const [required, setRequired] = useState<LegalRequiredItem[]>([]);
@@ -33,11 +35,13 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const onboardingEnabled =
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "1" ||
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
+  const onboardingEnabledPortal =
+    portal?.gating?.onboarding_enabled ?? portal?.features?.onboarding_enabled ?? onboardingEnabled;
 
   const refresh = useCallback(
     async (force = false) => {
       if (!user?.token) return;
-      if (!onboardingEnabled) {
+      if (!onboardingEnabledPortal) {
         setRequired([]);
         setIsBlocked(false);
         setIsFeatureDisabled(false);
@@ -74,12 +78,12 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [lastFetched, onboardingEnabled, user?.token],
+    [lastFetched, onboardingEnabledPortal, user?.token],
   );
 
   const accept = useCallback(
     async (code: string, version: string, locale: string) => {
-      if (!user?.token || !onboardingEnabled || isFeatureDisabled) return;
+      if (!user?.token || !onboardingEnabledPortal || isFeatureDisabled) return;
       setIsLoading(true);
       try {
         const data = await acceptLegalDocument(user.token, { code, version, locale });
@@ -106,12 +110,12 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [isFeatureDisabled, onboardingEnabled, user?.token],
+    [isFeatureDisabled, onboardingEnabledPortal, user?.token],
   );
 
   const loadDocument = useCallback(
     async (code: string, version: string, locale: string) => {
-      if (!user?.token || !onboardingEnabled || isFeatureDisabled) return;
+      if (!user?.token || !onboardingEnabledPortal || isFeatureDisabled) return;
       setIsLoading(true);
       try {
         const data = await fetchLegalDocument(user.token, code, { version, locale });
@@ -120,7 +124,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsLoading(false);
       }
     },
-    [isFeatureDisabled, onboardingEnabled, user?.token],
+    [isFeatureDisabled, onboardingEnabledPortal, user?.token],
   );
 
   useEffect(() => {
@@ -130,7 +134,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [refresh, user?.token]);
 
   useEffect(() => {
-    if (!onboardingEnabled || isFeatureDisabled) {
+    if (!onboardingEnabledPortal || isFeatureDisabled) {
       return;
     }
     const handler = () => {
@@ -141,7 +145,7 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     window.addEventListener("legal-required", handler);
     return () => window.removeEventListener("legal-required", handler);
-  }, [isFeatureDisabled, location.pathname, navigate, onboardingEnabled, refresh]);
+  }, [isFeatureDisabled, location.pathname, navigate, onboardingEnabledPortal, refresh]);
 
   const value = useMemo(
     () => ({

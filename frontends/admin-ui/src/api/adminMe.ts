@@ -73,8 +73,8 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
   const requestId = response.headers.get("x-request-id") ?? response.headers.get("x-correlation-id");
 
   if (response.ok) {
-    const portal = isJson ? await parseJsonSafely<PortalMeResponse>(response) : null;
-    if (!portal) {
+    const payload = isJson ? await parseJsonSafely<AdminMeResponse | PortalMeResponse>(response) : null;
+    if (!payload) {
       throw new AdminMeError(502, "Invalid JSON response from admin me", {
         error: "admin_error",
         message: "Invalid JSON response from admin me",
@@ -82,19 +82,41 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
         request_id: requestId,
       });
     }
-    const roles = portal.user_roles?.length ? portal.user_roles : portal.org_roles ?? [];
+    if ("admin_user" in payload) {
+      const env = payload.environment ?? payload.env;
+      return {
+        ...payload,
+        roles: payload.roles ?? payload.admin_user.roles,
+        env,
+        environment: env,
+        read_only: payload.read_only ?? false,
+        audit_context: payload.audit_context,
+      };
+    }
+    const roles = payload.user_roles?.length ? payload.user_roles : payload.org_roles ?? [];
     return {
       admin_user: {
-        id: portal.user?.id ?? "unknown",
-        email: portal.user?.email ?? null,
+        id: payload.user?.id ?? "unknown",
+        email: payload.user?.email ?? null,
         roles,
         issuer: null,
       },
+      roles,
       permissions: buildPermissions(roles),
       env: {
         name: (import.meta.env.MODE ?? "dev") as AdminMeResponse["env"]["name"],
         build: import.meta.env.VITE_BUILD_SHA ?? "unknown",
         region: import.meta.env.VITE_REGION ?? "local",
+      },
+      environment: {
+        name: (import.meta.env.MODE ?? "dev") as AdminMeResponse["env"]["name"],
+        build: import.meta.env.VITE_BUILD_SHA ?? "unknown",
+        region: import.meta.env.VITE_REGION ?? "local",
+      },
+      read_only: false,
+      audit_context: {
+        require_reason: false,
+        require_correlation_id: false,
       },
     };
   }

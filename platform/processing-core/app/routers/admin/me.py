@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies.admin import require_admin_user
 from app.api.dependencies.admin_rbac import extract_admin_roles
+from app.config import settings
 
 
 class AdminPermission(BaseModel):
@@ -28,6 +29,11 @@ class AdminEnv(BaseModel):
     region: str
 
 
+class AdminAuditContext(BaseModel):
+    require_reason: bool
+    require_correlation_id: bool
+
+
 class AdminUser(BaseModel):
     id: str
     email: str | None
@@ -37,8 +43,12 @@ class AdminUser(BaseModel):
 
 class AdminMeResponse(BaseModel):
     admin_user: AdminUser
+    roles: list[str]
     permissions: AdminPermissions
     env: AdminEnv
+    environment: AdminEnv
+    read_only: bool
+    audit_context: AdminAuditContext
 
 
 router = APIRouter()
@@ -95,7 +105,19 @@ async def admin_me(token: dict = Depends(require_admin_user)) -> AdminMeResponse
         build=os.getenv("GIT_SHA", os.getenv("BUILD_SHA", "unknown")),
         region=os.getenv("NEFT_REGION", "local"),
     )
-    return AdminMeResponse(admin_user=admin_user, permissions=permissions, env=env)
+    audit_context = AdminAuditContext(
+        require_reason=settings.AUDIT_REQUIRE_REASON,
+        require_correlation_id=settings.AUDIT_REQUIRE_CORRELATION_ID,
+    )
+    return AdminMeResponse(
+        admin_user=admin_user,
+        roles=roles,
+        permissions=permissions,
+        env=env,
+        environment=env,
+        read_only=settings.ADMIN_READ_ONLY,
+        audit_context=audit_context,
+    )
 
 
 __all__ = ["router"]

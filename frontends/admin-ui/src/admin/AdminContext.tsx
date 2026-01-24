@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { fetchAdminMe, AdminMeError } from "../api/adminMe";
 import type { AdminErrorPayload, AdminMeResponse } from "../types/admin";
 import { useAuth } from "../auth/AuthContext";
+import { hasAdminRole } from "../auth/roles";
 
 interface AdminContextValue {
   profile: AdminMeResponse | null;
@@ -34,6 +35,11 @@ export const AdminProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     fetchAdminMe(accessToken)
       .then((data) => {
         if (cancelled) return;
+        if (!hasAdminRole(data.admin_user.roles)) {
+          setProfile(null);
+          setError({ error: "admin_forbidden", message: "Forbidden", status: 403 });
+          return;
+        }
         setProfile(data);
         setError(null);
       })

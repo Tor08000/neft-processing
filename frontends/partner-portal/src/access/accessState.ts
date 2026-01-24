@@ -36,29 +36,6 @@ export type AccessDecision = {
   reason?: AccessReason;
 };
 
-const BUSINESS_ERROR_TO_STATE: Record<string, AccessState> = {
-  partner_not_verified: AccessState.NEEDS_ONBOARDING,
-  legal_not_verified: AccessState.LEGAL_PENDING,
-  feature_not_entitled: AccessState.MISSING_CAPABILITY,
-  admin_forbidden: AccessState.FORBIDDEN_ROLE,
-  billing_soft_blocked: AccessState.OVERDUE,
-  billing_hard_blocked: AccessState.SUSPENDED,
-  billing_suspended: AccessState.SUSPENDED,
-  org_not_active: AccessState.NEEDS_ONBOARDING,
-};
-
-export const mapBusinessErrorToAccessState = (errorCode?: string | null): AccessState | null => {
-  if (!errorCode) return null;
-  return BUSINESS_ERROR_TO_STATE[errorCode] ?? null;
-};
-
-export const mapBusinessErrorToAccessDecision = (errorCode?: string | null): AccessDecision | null => {
-  if (!errorCode) return null;
-  const state = BUSINESS_ERROR_TO_STATE[errorCode];
-  if (!state) return null;
-  return { state, reason: errorCode as AccessReason };
-};
-
 type ResolveAccessStateParams = {
   portal: PortalMeResponse | null;
   requiredRoles?: string[];
@@ -67,38 +44,26 @@ type ResolveAccessStateParams = {
 
 export const resolveAccessState = ({
   portal,
-  requiredRoles,
-  capability,
+  requiredRoles: _requiredRoles,
+  capability: _capability,
 }: ResolveAccessStateParams): AccessDecision => {
   if (!portal) {
     return { state: AccessState.TECH_ERROR, reason: "tech_error" };
   }
 
-  if (portal.access_state) {
-    if (Object.values(AccessState).includes(portal.access_state as AccessState)) {
-      if (portal.access_state !== AccessState.ACTIVE) {
-        return { state: portal.access_state as AccessState, reason: (portal.access_reason as AccessReason) ?? undefined };
-      }
-    } else {
-      return { state: AccessState.TECH_ERROR, reason: (portal.access_reason as AccessReason) ?? "tech_error" };
-    }
+  if (!portal.access_state) {
+    return { state: AccessState.TECH_ERROR, reason: (portal.access_reason as AccessReason) ?? "tech_error" };
   }
 
-  if (requiredRoles?.length) {
-    const roles = new Set(
-      [...(portal.user_roles ?? []), ...(portal.org_roles ?? [])].map((role) => role.toUpperCase()),
-    );
-    const hasRole = requiredRoles.some((role) => roles.has(role.toUpperCase()));
-    if (!hasRole) {
-      return { state: AccessState.FORBIDDEN_ROLE, reason: "forbidden_role" };
-    }
+  if (!Object.values(AccessState).includes(portal.access_state as AccessState)) {
+    return {
+      state: AccessState.TECH_ERROR,
+      reason: (portal.access_reason as AccessReason) ?? (portal.access_state as AccessReason),
+    };
   }
 
-  if (capability) {
-    const caps = new Set((portal.capabilities ?? []).map((item) => item.toUpperCase()));
-    if (!caps.has(capability.toUpperCase())) {
-      return { state: AccessState.MISSING_CAPABILITY, reason: "missing_capability" };
-    }
+  if (portal.access_state !== AccessState.ACTIVE) {
+    return { state: portal.access_state as AccessState, reason: (portal.access_reason as AccessReason) ?? undefined };
   }
 
   return { state: AccessState.ACTIVE };

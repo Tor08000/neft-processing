@@ -70,6 +70,21 @@ class Settings:
         "true",
         "yes",
     }
+    AUDIT_REQUIRE_REASON: bool = os.getenv("AUDIT_REQUIRE_REASON", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    AUDIT_REQUIRE_CORRELATION_ID: bool = os.getenv("AUDIT_REQUIRE_CORRELATION_ID", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    ADMIN_READ_ONLY: bool = os.getenv("ADMIN_READ_ONLY", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     AUDIT_SIGNING_ALG: str = os.getenv("AUDIT_SIGNING_ALG", "ed25519")
     AUDIT_SIGNING_KEY_ID: str = os.getenv("AUDIT_SIGNING_KEY_ID", "local-dev-key-v1")
     AUDIT_SIGNING_PRIVATE_KEY_B64: str = os.getenv("AUDIT_SIGNING_PRIVATE_KEY_B64", "")

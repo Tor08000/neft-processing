@@ -23,6 +23,8 @@ export interface MeResponse {
 }
 
 export interface PortalMeResponse {
+  actor_type?: string;
+  context?: string | null;
   user: {
     id: string;
     email?: string | null;
@@ -36,6 +38,8 @@ export interface PortalMeResponse {
   } | null;
   org_roles: string[];
   user_roles: string[];
+  roles?: string[] | null;
+  memberships?: string[] | null;
   subscription?: {
     plan_code?: string | null;
     status?: string | null;
@@ -47,6 +51,14 @@ export interface PortalMeResponse {
   entitlements_snapshot?: Record<string, unknown> | null;
   capabilities: string[];
   nav_sections?: Array<{ code: string; label: string }> | null;
+  gating?: {
+    onboarding_enabled: boolean;
+    legal_gate_enabled: boolean;
+  } | null;
+  features?: {
+    onboarding_enabled?: boolean;
+    legal_gate_enabled?: boolean;
+  } | null;
   partner?: {
     status?: string | null;
     profile?: {
