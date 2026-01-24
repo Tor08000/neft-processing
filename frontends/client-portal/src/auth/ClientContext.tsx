@@ -86,12 +86,12 @@ const PORTAL_ME_URL = `${CORE_API_BASE}${PORTAL_ME_PATH}`;
 
 const resolvePortalError = (err: unknown): { portalState: PortalState; error: PortalError } => {
   if (err instanceof ApiError) {
-    if (err.status === 403) {
+    if (err.status === 402 || err.status === 403) {
       const isBilling =
+        err.status === 402 ||
         err.errorCode?.includes("billing") ||
         err.errorCode?.includes("subscription") ||
-        err.errorCode?.includes("plan") ||
-        err.status === 402;
+        err.errorCode?.includes("plan");
       return {
         portalState: "FORBIDDEN",
         error: {

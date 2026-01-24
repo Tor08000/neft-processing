@@ -136,7 +136,7 @@ describe("CaseDetailsPage", () => {
           trace_id: "trace-1",
           meta: {
             changes: [{ field: "status", from: "OPEN", to: "IN_PROGRESS" }],
-            export_ref: { kind: "explain_export", id: "exp-1", url: "/api/admin/exports/exp-1" },
+            export_ref: { kind: "explain_export", id: "exp-1", url: "/v1/admin/exports/exp-1" },
           },
         },
       ],
@@ -158,7 +158,7 @@ describe("CaseDetailsPage", () => {
     expect(within(timeline).getByText("Request ID")).toBeInTheDocument();
     expect(within(timeline).getByText("Trace ID")).toBeInTheDocument();
     const exportLink = within(timeline).getByRole("link", { name: "Open export" });
-    expect(exportLink).toHaveAttribute("href", "/api/admin/exports/exp-1");
+    expect(exportLink).toHaveAttribute("href", "/v1/admin/exports/exp-1");
   });
 
   it("falls back to synthetic events when unavailable", async () => {

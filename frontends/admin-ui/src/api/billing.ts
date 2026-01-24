@@ -77,8 +77,8 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
   return apiPost<Invoice>(`/api/core/v1/admin/billing/invoices/${invoiceId}/status`, { status });
 }
 
-const BILLING_FLOW_BASE = "/api/admin/billing/flows";
-const RECONCILIATION_LINKS_BASE = "/api/admin/reconciliation/links";
+const BILLING_FLOW_BASE = "/v1/admin/billing/flows";
+const RECONCILIATION_LINKS_BASE = "/v1/admin/reconciliation/links";
 const BILLING_PAYMENT_INTAKES_BASE = "/api/core/v1/admin/billing/payment-intakes";
 
 const isNotAvailableMessage = (message?: string) => Boolean(message && /HTTP (404|501)\b/.test(message));

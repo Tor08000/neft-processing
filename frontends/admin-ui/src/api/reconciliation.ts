@@ -148,7 +148,7 @@ export const listRuns = async (params?: {
   status?: string;
 }): Promise<ReconciliationRunListResponse> => {
   try {
-    const response = await apiGet<{ runs: ReconciliationRun[] }>("/api/admin/reconciliation/runs", params);
+    const response = await apiGet<{ runs: ReconciliationRun[] }>("/v1/admin/reconciliation/runs", params);
     return { runs: response.runs ?? [] };
   } catch (error) {
     return handleAvailability(error, { runs: [], unavailable: true });
@@ -184,7 +184,7 @@ export const createInternalRun = async (payload: {
   period_end: string;
 }): Promise<ReconciliationRunResult> => {
   try {
-    const run = await apiPost<ReconciliationRun>("/api/admin/reconciliation/internal", payload);
+    const run = await apiPost<ReconciliationRun>("/v1/admin/reconciliation/internal", payload);
     return { run };
   } catch (error) {
     return handleAvailability(error, { run: null, unavailable: true });
@@ -193,7 +193,7 @@ export const createInternalRun = async (payload: {
 
 export const createExternalRun = async (payload: { statement_id: string }): Promise<ReconciliationRunResult> => {
   try {
-    const run = await apiPost<ReconciliationRun>("/api/admin/reconciliation/external/run", payload);
+    const run = await apiPost<ReconciliationRun>("/v1/admin/reconciliation/external/run", payload);
     return { run };
   } catch (error) {
     return handleAvailability(error, { run: null, unavailable: true });
@@ -202,7 +202,7 @@ export const createExternalRun = async (payload: { statement_id: string }): Prom
 
 export const getRun = async (runId: string): Promise<ReconciliationRunResult> => {
   try {
-    const run = await apiGet<ReconciliationRun>(`/api/admin/reconciliation/runs/${runId}`);
+    const run = await apiGet<ReconciliationRun>(`/v1/admin/reconciliation/runs/${runId}`);
     return { run };
   } catch (error) {
     return handleAvailability(error, { run: null, unavailable: true });
@@ -215,7 +215,7 @@ export const listDiscrepancies = async (
 ): Promise<ReconciliationDiscrepancyListResponse> => {
   try {
     const response = await apiGet<{ discrepancies: ReconciliationDiscrepancy[] }>(
-      `/api/admin/reconciliation/runs/${runId}/discrepancies`,
+      `/v1/admin/reconciliation/runs/${runId}/discrepancies`,
       params,
     );
     return { discrepancies: response.discrepancies ?? [] };
@@ -230,7 +230,7 @@ export const resolveDiscrepancy = async (
 ): Promise<ResolveDiscrepancyResult> => {
   try {
     return await apiPost<ResolveDiscrepancyResult>(
-      `/api/admin/reconciliation/discrepancies/${discrepancyId}/resolve-adjustment`,
+      `/v1/admin/reconciliation/discrepancies/${discrepancyId}/resolve-adjustment`,
       payload,
     );
   } catch (error) {
@@ -244,7 +244,7 @@ export const ignoreDiscrepancy = async (
 ): Promise<IgnoreDiscrepancyResult> => {
   try {
     return await apiPost<IgnoreDiscrepancyResult>(
-      `/api/admin/reconciliation/discrepancies/${discrepancyId}/ignore`,
+      `/v1/admin/reconciliation/discrepancies/${discrepancyId}/ignore`,
       payload,
     );
   } catch (error) {
@@ -261,7 +261,7 @@ export const uploadStatement = async (payload: {
   lines?: Record<string, unknown>[] | null;
 }): Promise<ExternalStatementResult> => {
   try {
-    const response = await apiPost<ExternalStatement>("/api/admin/reconciliation/external/statements", {
+    const response = await apiPost<ExternalStatement>("/v1/admin/reconciliation/external/statements", {
       provider: payload.provider,
       period_start: payload.period_start,
       period_end: payload.period_end,
@@ -280,7 +280,7 @@ export const uploadStatement = async (payload: {
 export const listStatements = async (params?: { provider?: string }): Promise<ExternalStatementListResponse> => {
   try {
     const response = await apiGet<{ statements: ExternalStatement[] }>(
-      "/api/admin/reconciliation/external/statements",
+      "/v1/admin/reconciliation/external/statements",
       params,
     );
     return { statements: response.statements ?? [] };
@@ -302,7 +302,7 @@ export const createFixtureBundle = async (payload: {
   seed?: string;
 }): Promise<ReconciliationFixtureBundle> => {
   try {
-    return await apiPost<ReconciliationFixtureBundle>("/api/admin/reconciliation/fixtures", payload);
+    return await apiPost<ReconciliationFixtureBundle>("/v1/admin/reconciliation/fixtures", payload);
   } catch (error) {
     return handleAvailability(error, {
       bundle_id: "",
@@ -319,7 +319,7 @@ export const createFixtureImport = async (
 ): Promise<ReconciliationFixtureImportResult> => {
   try {
     return await apiPost<ReconciliationFixtureImportResult>(
-      `/api/admin/reconciliation/fixtures/${bundleId}/create-import`,
+      `/v1/admin/reconciliation/fixtures/${bundleId}/create-import`,
       payload,
     );
   } catch (error) {
@@ -337,7 +337,7 @@ export const completeStatementImport = async (
 ): Promise<ReconciliationImportCompleteResult> => {
   try {
     return await apiPost<ReconciliationImportCompleteResult>(
-      `/api/admin/reconciliation/imports/${importId}/complete`,
+      `/v1/admin/reconciliation/imports/${importId}/complete`,
       payload,
     );
   } catch (error) {
