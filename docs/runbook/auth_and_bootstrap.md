@@ -91,7 +91,7 @@ curl -s -X POST http://localhost/api/v1/auth/login ^
 
 curl -s -X POST http://localhost/api/v1/auth/login ^
   -H "Content-Type: application/json" ^
-  -d "{\"email\":\"admin@neft.local\",\"password\":\"admin\",\"portal\":\"admin\"}"
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin\",\"portal\":\"admin\"}"
 ```
 
 DoD: ответы не `404`, и в JSON есть `access_token`. Если используются другие demo креды — зафиксировать их в этом runbook.
