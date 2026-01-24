@@ -44,4 +44,5 @@ scripts\smoke_slice_0_tokens.cmd
 ```
 
 This script logs into each portal, calls the matching verifier endpoint with the correct token,
-and asserts that cross-portal token use returns `401 TOKEN_WRONG_PORTAL`.
+asserts that cross-portal token use returns `401 TOKEN_WRONG_PORTAL`, and ends with `ALL PASS`
+or a `[FAIL]` line plus the response body for the failing endpoint.
