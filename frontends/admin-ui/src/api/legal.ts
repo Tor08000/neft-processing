@@ -34,31 +34,35 @@ export type LegalAcceptance = {
 export async function listLegalDocuments(token: string, params?: Record<string, string>): Promise<LegalDocument[]> {
   const search = new URLSearchParams(params ?? {}).toString();
   const suffix = search ? `?${search}` : "";
-  const response = await request<{ items: LegalDocument[] }>(`/admin/legal/documents${suffix}`, { method: "GET" }, token);
+  const response = await request<{ items: LegalDocument[] }>(
+    `/v1/admin/legal/documents${suffix}`,
+    { method: "GET" },
+    token,
+  );
   return response.items ?? [];
 }
 
 export async function createLegalDocument(token: string, payload: Omit<LegalDocument, "id" | "status" | "content_hash" | "published_at" | "created_at" | "updated_at">) {
   return request<LegalDocument>(
-    "/admin/legal/documents",
+    "/v1/admin/legal/documents",
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
 }
 
 export async function updateLegalDocument(token: string, id: string, payload: Partial<LegalDocument>) {
-  return request<LegalDocument>(`/admin/legal/documents/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
+  return request<LegalDocument>(`/v1/admin/legal/documents/${id}`, { method: "PUT", body: JSON.stringify(payload) }, token);
 }
 
 export async function publishLegalDocument(token: string, id: string) {
-  return request<LegalDocument>(`/admin/legal/documents/${id}/publish`, { method: "POST" }, token);
+  return request<LegalDocument>(`/v1/admin/legal/documents/${id}/publish`, { method: "POST" }, token);
 }
 
 export async function listLegalAcceptances(token: string, params?: Record<string, string>): Promise<LegalAcceptance[]> {
   const search = new URLSearchParams(params ?? {}).toString();
   const suffix = search ? `?${search}` : "";
   const response = await request<{ items: LegalAcceptance[] }>(
-    `/admin/legal/acceptances${suffix}`,
+    `/v1/admin/legal/acceptances${suffix}`,
     { method: "GET" },
     token,
   );
