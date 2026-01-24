@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useClient, type PortalState } from "../auth/ClientContext";
+import { useClient, type PortalError, type PortalState } from "../auth/ClientContext";
 import { useAuth } from "../auth/AuthContext";
 import { AccessState, resolveAccessState } from "../access/accessState";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "./states";
@@ -16,7 +16,48 @@ type AccessGateProps = {
   children: ReactNode;
 };
 
-const PortalStateView = ({ state, error }: { state: PortalState; error?: string | null }) => {
+const DiagnosticsSummary = ({ error }: { error?: PortalError | null }) => {
+  if (!error) return null;
+  return (
+    <div className="muted small">
+      {error.path ? <div>Endpoint: {error.path}</div> : null}
+      {error.status ? <div>Status: {error.status}</div> : null}
+      {error.requestId ? <div>Request ID: {error.requestId}</div> : null}
+    </div>
+  );
+};
+
+const DiagnosticsDetails = ({ error }: { error?: PortalError | null }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  if (!error) return null;
+  if (!import.meta.env.DEV) {
+    return <DiagnosticsSummary error={error} />;
+  }
+  return (
+    <div className="stack">
+      <DiagnosticsSummary error={error} />
+      <button type="button" className="ghost neft-btn-secondary" onClick={() => setIsOpen((prev) => !prev)}>
+        {isOpen ? "Скрыть диагностику" : "Показать диагностику"}
+      </button>
+      {isOpen ? (
+        <div className="muted small">
+          {error.message ? <div>Error: {error.message}</div> : null}
+          {error.kind ? <div>Kind: {error.kind}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const PortalStateView = ({
+  state,
+  error,
+  onRetry,
+}: {
+  state: PortalState;
+  error?: PortalError | null;
+  onRetry?: () => void;
+}) => {
   switch (state) {
     case "AUTH_REQUIRED":
       return (
@@ -45,10 +86,72 @@ const PortalStateView = ({ state, error }: { state: PortalState; error?: string 
           actionTo="/subscription"
         />
       );
+    case "FORBIDDEN":
+      return (
+        <StatusPage
+          title="Доступ ограничен"
+          description={
+            <>
+              Недостаточно прав для доступа к порталу.
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          actionLabel="Вернуться на дашборд"
+          actionTo="/dashboard"
+        />
+      );
     case "SERVICE_UNAVAILABLE":
-      return <AppErrorState message="Сервис временно недоступен. Попробуйте позже." />;
+      return (
+        <AppErrorState
+          message={
+            <>
+              Сервис временно недоступен. Попробуйте позже.
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          onRetry={onRetry}
+          status={error?.status}
+        />
+      );
+    case "NETWORK_DOWN":
+      return (
+        <AppErrorState
+          message={
+            <>
+              Нет соединения с сервером. Проверьте подключение к интернету.
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          onRetry={onRetry}
+          status={error?.status}
+        />
+      );
+    case "API_MISCONFIGURED":
+      return (
+        <AppErrorState
+          message={
+            <>
+              Версия API не совпала или маршрут недоступен.
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          onRetry={onRetry}
+          status={error?.status}
+        />
+      );
     case "ERROR_FATAL":
-      return <AppErrorState message={error ?? "Ошибка приложения"} />;
+      return (
+        <AppErrorState
+          message={
+            <>
+              {error?.message ?? "Ошибка приложения"}
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          onRetry={onRetry}
+          status={error?.status}
+        />
+      );
     case "LOADING":
     case "READY":
     default:
@@ -61,11 +164,13 @@ const AccessStateView = ({
   title = "Раздел",
   requestId,
   correlationId,
+  error,
 }: {
   state: AccessState;
   title?: string;
   requestId?: string | null;
   correlationId?: string | null;
+  error?: PortalError | null;
 }) => {
   switch (state) {
     case AccessState.NEEDS_ONBOARDING:
@@ -111,8 +216,17 @@ const AccessStateView = ({
       );
     case AccessState.FORBIDDEN_ROLE:
       return <AppForbiddenState message="Недостаточно прав для просмотра раздела." />;
-    case AccessState.MISSING_CAPABILITY:
+    case AccessState.MODULE_DISABLED:
       return <ModuleUnavailablePage title={title} />;
+    case AccessState.MISSING_CAPABILITY:
+      return (
+        <StatusPage
+          title="Недоступно по подписке"
+          description="Для доступа требуется расширенный тариф или подключение модуля."
+          actionLabel="Перейти к подписке"
+          actionTo="/subscription"
+        />
+      );
     case AccessState.COMING_SOON:
       return (
         <StatusPage
@@ -122,13 +236,14 @@ const AccessStateView = ({
           actionTo="/dashboard"
         />
       );
-    case AccessState.TECH_ERROR:
+    case AccessState.SERVICE_UNAVAILABLE:
       return (
         <AppErrorState
           message={
             <>
               Сервис временно недоступен. Попробуйте позже.
-              {requestId ? <div>Request ID: {requestId}</div> : null}
+              <DiagnosticsDetails error={error} />
+              {requestId && requestId !== error?.requestId ? <div>Request ID: {requestId}</div> : null}
               {correlationId ? <div>Correlation ID: {correlationId}</div> : null}
             </>
           }
@@ -150,7 +265,7 @@ export const AccessGate = ({
   children,
 }: AccessGateProps) => {
   const { user } = useAuth();
-  const { client, isLoading, error, portalState } = useClient();
+  const { client, isLoading, error, portalState, refresh } = useClient();
 
   if (!user) {
     return null;
@@ -160,14 +275,17 @@ export const AccessGate = ({
     return <AppLoadingState label="Проверяем доступ..." />;
   }
 
-  const portalView = PortalStateView({ state: portalState, error });
+  const portalView = PortalStateView({ state: portalState, error, onRetry: refresh });
   if (portalView) {
     return portalView;
   }
 
   let decision = resolveAccessState({ client, requiredRoles, capability, module });
 
-  if (decision.state === AccessState.MISSING_CAPABILITY && fallbackMode !== "paywall") {
+  if (
+    (decision.state === AccessState.MISSING_CAPABILITY || decision.state === AccessState.MODULE_DISABLED) &&
+    fallbackMode !== "paywall"
+  ) {
     decision =
       fallbackMode === "coming_soon"
         ? { state: AccessState.COMING_SOON }
@@ -183,4 +301,4 @@ export const AccessGate = ({
   return <>{children}</>;
 };
 
-export { AccessStateView };
+export { AccessStateView, PortalStateView };

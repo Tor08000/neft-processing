@@ -7,9 +7,10 @@ export enum AccessState {
   OVERDUE = "OVERDUE",
   SUSPENDED = "SUSPENDED",
   FORBIDDEN_ROLE = "FORBIDDEN_ROLE",
+  MODULE_DISABLED = "MODULE_DISABLED",
   MISSING_CAPABILITY = "MISSING_CAPABILITY",
   COMING_SOON = "COMING_SOON",
-  TECH_ERROR = "TECH_ERROR",
+  SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
 }
 
 export type AccessReason =
@@ -18,9 +19,10 @@ export type AccessReason =
   | "billing_overdue"
   | "billing_suspended"
   | "forbidden_role"
+  | "module_disabled"
   | "missing_capability"
   | "coming_soon"
-  | "tech_error"
+  | "service_unavailable"
   | "business_block"
   | null;
 
@@ -65,7 +67,7 @@ export const resolveAccessState = ({
   module,
 }: ResolveAccessStateParams): AccessDecision => {
   if (!client) {
-    return { state: AccessState.TECH_ERROR, reason: "tech_error" };
+    return { state: AccessState.SERVICE_UNAVAILABLE, reason: "service_unavailable" };
   }
 
   const orgStatus = client.org_status ?? client.org?.status ?? null;
@@ -104,6 +106,11 @@ export const resolveAccessState = ({
 
   if (module) {
     const modulesPayload = client.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;
+    const moduleKey = Object.keys(modulesPayload ?? {}).find((key) => key.toUpperCase() === module.toUpperCase());
+    const entry = moduleKey ? modulesPayload?.[moduleKey] : undefined;
+    if (entry && entry.enabled === false) {
+      return { state: AccessState.MODULE_DISABLED, reason: "module_disabled" };
+    }
     const enabledModules = new Set(
       Object.entries(modulesPayload ?? {})
         .filter(([, payload]) => payload?.enabled)

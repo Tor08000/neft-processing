@@ -7,6 +7,8 @@ export type BrandNavItem = {
   label: string;
   icon?: ReactNode;
   end?: boolean;
+  disabled?: boolean;
+  hint?: string;
 };
 
 export type BrandSidebarProps = {
@@ -30,17 +32,20 @@ export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebar
         <span>{title}</span>
       </div>
       <nav className="brand-sidebar__nav">
-        {items.map((item: BrandNavItem) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={navLinkClassName}
-          >
-            {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
+        {items.map((item: BrandNavItem) =>
+          item.disabled ? (
+            <span key={item.to} className="brand-nav-link is-disabled" aria-disabled="true">
+              {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
+              <span className="brand-nav-link__label">{item.label}</span>
+              {item.hint ? <span className="brand-nav-link__hint">{item.hint}</span> : null}
+            </span>
+          ) : (
+            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClassName}>
+              {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
+              <span className="brand-nav-link__label">{item.label}</span>
+            </NavLink>
+          ),
+        )}
       </nav>
       {footerSlot ? <div className="brand-sidebar__footer">{footerSlot}</div> : null}
     </aside>
