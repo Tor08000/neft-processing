@@ -59,7 +59,7 @@ def test_auth_me_returns_user_payload(monkeypatch: pytest.MonkeyPatch):
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin"},
+        json={"email": "admin@example.com", "password": "admin", "portal": "admin"},
     )
     assert login.status_code == 200
 
@@ -113,7 +113,7 @@ def test_login_token_valid_for_me(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "admin"},
+        json={"email": "admin@example.com", "password": "admin", "portal": "admin"},
     )
     assert login.status_code == 200
 

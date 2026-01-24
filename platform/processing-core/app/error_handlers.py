@@ -1,4 +1,7 @@
 
+import logging
+from uuid import uuid4
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -15,6 +18,8 @@ def _admin_error_payload(
     error: str,
     message: str,
     required_roles: list[str] | None = None,
+    error_id: str | None = None,
+    reason_code: str | None = None,
 ) -> dict:
     payload = {
         "error": error,
@@ -23,7 +28,14 @@ def _admin_error_payload(
     }
     if required_roles:
         payload["required_roles"] = required_roles
+    if error_id:
+        payload["error_id"] = error_id
+    if reason_code:
+        payload["reason_code"] = reason_code
     return payload
+
+logger = logging.getLogger(__name__)
+
 
 def add_exception_handlers(app: FastAPI):
     @app.exception_handler(StarletteHTTPException)
@@ -44,7 +56,7 @@ def add_exception_handlers(app: FastAPI):
                     required_roles=required_roles,
                 ),
             )
-        if exc.status_code in {403, 409} and isinstance(exc.detail, dict) and "error" in exc.detail:
+        if isinstance(exc.detail, dict) and "error" in exc.detail:
             payload = dict(exc.detail)
             payload.setdefault("message", exc.detail.get("detail"))
             payload["request_id"] = payload.get("request_id") or request.headers.get("x-request-id")
@@ -90,7 +102,17 @@ def add_exception_handlers(app: FastAPI):
         try:
             response = await call_next(request)
             return response
-        except Exception:
+        except Exception as exc:
+            error_id = str(uuid4())
+            reason_code = getattr(exc, "reason_code", None) or "internal_error"
+            logger.exception(
+                "Unhandled application error",
+                extra={
+                    "error_id": error_id,
+                    "reason_code": reason_code,
+                    "path": str(request.url.path),
+                },
+            )
             if _is_admin_request(request):
                 return JSONResponse(
                     status_code=500,
@@ -98,12 +120,20 @@ def add_exception_handlers(app: FastAPI):
                         request,
                         error="admin_internal_error",
                         message="Internal Server Error",
+                        required_roles=None,
+                        error_id=error_id,
+                        reason_code=reason_code,
                     ),
                 )
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": {"type": "internal_error", "message": "Internal Server Error"},
+                    "error": {
+                        "type": "internal_error",
+                        "message": "Internal Server Error",
+                        "error_id": error_id,
+                        "reason_code": reason_code,
+                    },
                     "meta": {
                         "correlation_id": getattr(request.state, "correlation_id", None),
                         "path": str(request.url.path),

@@ -39,6 +39,22 @@ def _resolve_org_status(client: Client | None) -> str:
     return str(client.status or "UNKNOWN").upper()
 
 
+def _resolve_org_id(token: dict) -> int | None:
+    raw = token.get("org_id")
+    if raw:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+    raw = token.get("client_id")
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/me", response_model=ClientMeResponse)
 def get_client_me(
     token: dict = Depends(require_onboarding_user),
@@ -63,11 +79,14 @@ def get_client_me(
     entitlements_hash = None
     entitlements_computed_at = None
 
+    org_id = _resolve_org_id(token)
+
     if client_id and client is not None:
         entitlements = entitlements_service.get_entitlements(db, client_id=str(client_id))
-        entitlements_snapshot = get_org_entitlements_snapshot(db, org_id=int(client_id))
-        entitlements_hash = entitlements_snapshot.hash
-        entitlements_computed_at = entitlements_snapshot.computed_at
+        if org_id is not None:
+            entitlements_snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
+            entitlements_hash = entitlements_snapshot.hash
+            entitlements_computed_at = entitlements_snapshot.computed_at
         entitlements_limits = entitlements.limits
         entitlements_modules = entitlements.modules
         tenant_id = int(token.get("tenant_id") or DEFAULT_TENANT_ID)
@@ -150,7 +169,10 @@ def get_client_entitlements(
     client_id = token.get("client_id")
     if not client_id:
         raise HTTPException(status_code=403, detail="missing_client_context")
-    snapshot = get_org_entitlements_snapshot(db, org_id=int(client_id))
+    org_id = _resolve_org_id(token)
+    if org_id is None:
+        raise HTTPException(status_code=403, detail="missing_org_context")
+    snapshot = get_org_entitlements_snapshot(db, org_id=org_id)
     return snapshot.entitlements
 
 

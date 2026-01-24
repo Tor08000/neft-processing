@@ -44,13 +44,34 @@ def _admin_credentials() -> tuple[str, str]:
     return email, password
 
 
-def _resolve_portal(value: str | None, *, default: str) -> str:
+def _resolve_portal(value: str | None) -> str | None:
     portal = (value or "").strip().lower()
     if not portal:
-        return default
+        return None
     if portal in {"client", "admin", "partner"}:
         return portal
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_portal")
+
+
+def _resolve_login_portal(request: Request, payload: LoginRequest) -> str:
+    portal = _resolve_portal(payload.portal)
+    if portal:
+        return portal
+    portal = _resolve_portal(request.headers.get("X-Portal"))
+    if portal:
+        return portal
+    portal = _resolve_portal(request.query_params.get("portal"))
+    if portal:
+        return portal
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"error": "portal_required", "reason_code": "PORTAL_REQUIRED"},
+    )
+
+
+def _is_dev_env() -> bool:
+    env = (os.getenv("NEFT_ENV") or "local").lower()
+    return env in {"local", "dev", "development", "test"}
 
 
 def _portal_token_config(portal: str) -> tuple[str, str]:
@@ -140,13 +161,14 @@ async def register(payload: RegisterRequest) -> UserResponse:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest) -> TokenResponse:
+async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     normalized_email = payload.email.strip().lower()
-    portal = _resolve_portal(payload.portal, default="admin")
+    portal = _resolve_login_portal(request, payload)
 
     subject_type = "user"
     user_email = normalized_email
     client_id = None
+    org_id = None
 
     logger.info(
         "login attempt: email=%s -> normalized=%s", payload.email, normalized_email
@@ -184,13 +206,17 @@ async def login(payload: LoginRequest) -> TokenResponse:
     issuer, audience = _portal_token_config(portal)
     if portal == "client":
         subject_type = "client_user"
-        client_id = settings.demo_client_id
+        if _is_dev_env():
+            client_id = settings.demo_client_uuid
+            org_id = settings.demo_org_id
     try:
         token = create_access_token(
             user_email,
             roles=roles,
             subject_type=subject_type,
             client_id=client_id,
+            user_id=str(user.id),
+            org_id=org_id,
             issuer=issuer,
             audience=audience,
         )
@@ -224,7 +250,7 @@ async def auth_me(
         logger.info("auth_me unauthorized: empty bearer token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
 
-    portal = _resolve_portal(request.headers.get("X-Portal"), default="client")
+    portal = _resolve_portal(request.headers.get("X-Portal")) or "client"
     issuer, audience = _portal_token_config(portal)
     try:
         payload = decode_access_token(credentials.credentials, issuer=issuer, audience=audience)

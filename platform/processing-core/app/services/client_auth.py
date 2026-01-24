@@ -166,7 +166,16 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
             if kid_not_found:
                 reason = "kid_not_found"
             _log_rejection(token, reason=reason, exc=inner_exc)
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": {
+                        "type": "token_rejected",
+                        "reason_code": "TOKEN_REJECTED",
+                        "message": "Invalid token",
+                    }
+                },
+            )
 
     roles = payload.get("roles") or []
     role = payload.get("role") or next((r for r in roles if r in ALLOWED_CLIENT_ROLES), None)
@@ -178,7 +187,7 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
     if not client_id:
         raise HTTPException(status_code=403, detail="Missing client context")
 
-    payload["user_id"] = payload.get("sub")
+    payload["user_id"] = payload.get("user_id") or payload.get("sub")
     if role:
         payload["role"] = role
     payload["client_id"] = client_id
@@ -199,7 +208,16 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
             if kid_not_found:
                 reason = "kid_not_found"
             _log_rejection(token, reason=reason, exc=inner_exc)
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": {
+                        "type": "token_rejected",
+                        "reason_code": "TOKEN_REJECTED",
+                        "message": "Invalid token",
+                    }
+                },
+            )
 
     roles = payload.get("roles") or []
     role = payload.get("role") or next((r for r in roles if r in ALLOWED_CLIENT_ROLES), None)
