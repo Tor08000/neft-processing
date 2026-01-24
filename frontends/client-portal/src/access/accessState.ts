@@ -1,29 +1,38 @@
 import type { PortalMeResponse } from "../api/clientPortal";
 
 export enum AccessState {
-  OK = "OK",
+  AUTH_REQUIRED = "AUTH_REQUIRED",
   NEEDS_ONBOARDING = "NEEDS_ONBOARDING",
   NEEDS_PLAN = "NEEDS_PLAN",
+  ACTIVE = "ACTIVE",
   OVERDUE = "OVERDUE",
   SUSPENDED = "SUSPENDED",
+  LEGAL_PENDING = "LEGAL_PENDING",
+  PAYOUT_BLOCKED = "PAYOUT_BLOCKED",
+  SLA_PENALTY = "SLA_PENALTY",
   FORBIDDEN_ROLE = "FORBIDDEN_ROLE",
   MODULE_DISABLED = "MODULE_DISABLED",
   MISSING_CAPABILITY = "MISSING_CAPABILITY",
-  COMING_SOON = "COMING_SOON",
   SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
+  MISCONFIG = "MISCONFIG",
+  TECH_ERROR = "TECH_ERROR",
 }
 
 export type AccessReason =
   | "org_not_active"
+  | "legal_not_verified"
   | "subscription_missing"
   | "billing_overdue"
   | "billing_suspended"
   | "forbidden_role"
   | "module_disabled"
   | "missing_capability"
-  | "coming_soon"
   | "service_unavailable"
   | "business_block"
+  | "partner_onboarding"
+  | "payout_blocked"
+  | "sla_penalty"
+  | "tech_error"
   | null;
 
 export type AccessDecision = {
@@ -38,8 +47,7 @@ const BUSINESS_ERROR_TO_STATE: Record<string, AccessState> = {
   feature_not_entitled: AccessState.MISSING_CAPABILITY,
   addon_required: AccessState.MISSING_CAPABILITY,
   org_not_active: AccessState.NEEDS_ONBOARDING,
-  legal_not_verified: AccessState.NEEDS_ONBOARDING,
-  settlement_not_finalized: AccessState.COMING_SOON,
+  legal_not_verified: AccessState.LEGAL_PENDING,
   admin_forbidden: AccessState.FORBIDDEN_ROLE,
 };
 
@@ -47,11 +55,6 @@ export const mapBusinessErrorToAccessState = (errorCode?: string | null): Access
   if (!errorCode) return null;
   return BUSINESS_ERROR_TO_STATE[errorCode] ?? null;
 };
-
-const normalize = (value?: string | null) => value?.toUpperCase();
-
-const OVERDUE_STATUSES = new Set(["OVERDUE", "PAST_DUE", "PASTDUE", "DELINQUENT"]);
-const SUSPENDED_STATUSES = new Set(["SUSPENDED", "BLOCKED", "PAUSED"]);
 
 type ResolveAccessStateParams = {
   client: PortalMeResponse | null;
@@ -67,24 +70,17 @@ export const resolveAccessState = ({
   module,
 }: ResolveAccessStateParams): AccessDecision => {
   if (!client) {
-    return { state: AccessState.SERVICE_UNAVAILABLE, reason: "service_unavailable" };
+    return { state: AccessState.TECH_ERROR, reason: "service_unavailable" };
   }
 
-  const orgStatus = client.org_status ?? client.org?.status ?? null;
-  if (orgStatus && orgStatus !== "ACTIVE") {
-    return { state: AccessState.NEEDS_ONBOARDING, reason: "org_not_active" };
-  }
-
-  if (!client.subscription?.plan_code) {
-    return { state: AccessState.NEEDS_PLAN, reason: "subscription_missing" };
-  }
-
-  const subscriptionStatus = normalize(client.subscription?.status);
-  if (subscriptionStatus && OVERDUE_STATUSES.has(subscriptionStatus)) {
-    return { state: AccessState.OVERDUE, reason: "billing_overdue" };
-  }
-  if (subscriptionStatus && SUSPENDED_STATUSES.has(subscriptionStatus)) {
-    return { state: AccessState.SUSPENDED, reason: "billing_suspended" };
+  if (client.access_state) {
+    if (Object.values(AccessState).includes(client.access_state as AccessState)) {
+      if (client.access_state !== AccessState.ACTIVE) {
+        return { state: client.access_state as AccessState, reason: (client.access_reason as AccessReason) ?? undefined };
+      }
+    } else {
+      return { state: AccessState.TECH_ERROR, reason: (client.access_reason as AccessReason) ?? "tech_error" };
+    }
   }
 
   if (requiredRoles?.length) {
@@ -121,5 +117,5 @@ export const resolveAccessState = ({
     }
   }
 
-  return { state: AccessState.OK };
+  return { state: AccessState.ACTIVE };
 };

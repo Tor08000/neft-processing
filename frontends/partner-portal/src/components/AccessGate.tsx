@@ -38,20 +38,6 @@ const PortalStateView = ({
           </div>
         </div>
       );
-    case "NO_SUBSCRIPTION":
-      return (
-        <div className="empty-state">
-          <h1>Подключите продукт</h1>
-          <p className="muted">Для доступа нужна активная подписка.</p>
-        </div>
-      );
-    case "NO_MODULES_ENABLED":
-      return (
-        <div className="empty-state">
-          <h1>Нет активных модулей</h1>
-          <p className="muted">Подключите модули, чтобы открыть раздел.</p>
-        </div>
-      );
     case "SERVICE_UNAVAILABLE":
       return <ErrorState description="Сервис временно недоступен. Попробуйте позже." />;
     case "ERROR_FATAL":
@@ -76,8 +62,114 @@ const AccessStateView = ({
     return <ForbiddenState description="Недостаточно прав для просмотра раздела." />;
   }
 
-  if (state === AccessState.TECH_ERROR) {
-    return <ErrorState description="Сервис временно недоступен. Попробуйте позже." />;
+  if (state === AccessState.AUTH_REQUIRED) {
+    return (
+      <div className="empty-state">
+        <h1>Требуется вход</h1>
+        <p className="muted">Пожалуйста, войдите, чтобы продолжить.</p>
+        <div className="actions">
+          <Link className="ghost" to="/login">
+            Перейти к входу
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.MISCONFIG) {
+    return <ErrorState description="Конфигурация портала недоступна. Обратитесь в поддержку." />;
+  }
+
+  if (state === AccessState.TECH_ERROR || state === AccessState.SERVICE_UNAVAILABLE) {
+    return (
+      <ErrorState
+        description={`Сервис временно недоступен. Попробуйте позже.${reason ? ` Error ID: ${reason}` : ""}`}
+      />
+    );
+  }
+
+  if (state === AccessState.NEEDS_PLAN) {
+    return (
+      <div className="empty-state">
+        <h1>Выберите тариф</h1>
+        <p className="muted">Для доступа нужен активный тариф.</p>
+        <div className="actions">
+          <Link className="ghost" to="/support/requests">
+            Связаться с менеджером
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.OVERDUE) {
+    return (
+      <div className="empty-state">
+        <h1>Оплатите счёт</h1>
+        <p className="muted">Доступ ограничен из-за просроченных счетов.</p>
+        <div className="actions">
+          <Link className="ghost" to="/support/requests">
+            Связаться с поддержкой
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.SUSPENDED) {
+    return (
+      <div className="empty-state">
+        <h1>Доступ приостановлен</h1>
+        <p className="muted">Оплата просрочена, доступ временно приостановлен.</p>
+        <div className="actions">
+          <Link className="ghost" to="/support/requests">
+            Связаться с поддержкой
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.LEGAL_PENDING) {
+    return (
+      <div className="empty-state">
+        <h1>Проверка документов</h1>
+        <p className="muted">Доступ ограничен до завершения проверки документов.</p>
+        <div className="actions">
+          <Link className="ghost" to="/legal">
+            Перейти к документам
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.PAYOUT_BLOCKED) {
+    return (
+      <div className="empty-state">
+        <h1>Выплаты заблокированы</h1>
+        <p className="muted">Выплаты временно заблокированы. Обратитесь в поддержку.</p>
+        <div className="actions">
+          <Link className="ghost" to="/support/requests">
+            Обратиться в поддержку
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === AccessState.MODULE_DISABLED || state === AccessState.MISSING_CAPABILITY) {
+    return (
+      <div className="empty-state">
+        <h1>Функция недоступна</h1>
+        <p className="muted">Опция недоступна для вашего тарифа. Свяжитесь с менеджером.</p>
+        <div className="actions">
+          <Link className="ghost" to="/support/requests">
+            Связаться с менеджером
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   const base: AccessPresentation = {
@@ -95,54 +187,54 @@ const AccessStateView = ({
         </Link>
       ),
     },
+    org_not_active: {
+      title: "Организация не активна",
+      description: "Доступ будет открыт после активации организации.",
+    },
     legal_not_verified: {
-      title: "Юридический профиль не подтверждён",
-      description: "Заполните юридические данные и загрузите документы.",
+      title: "Проверка документов",
+      description: "Доступ ограничен до завершения проверки документов.",
       action: (
         <Link className="ghost" to="/legal">
-          Перейти к юридическим данным
+          Перейти к документам
         </Link>
       ),
     },
-    settlement_not_finalized: {
-      title: "Ожидается финализация settlement",
-      description: "Settlement ещё не финализирован. Проверьте позже.",
-      action: (
-        <Link className="ghost" to="/payouts">
-          К settlements
-        </Link>
-      ),
-    },
-    billing_soft_blocked: {
-      title: "Выплаты временно заблокированы",
-      description: "Есть задолженность по оплате. Погасите счета или обратитесь к менеджеру.",
-      action: (
-        <Link className="ghost" to="/support/requests">
-          Обратиться в поддержку
-        </Link>
-      ),
-    },
-    billing_hard_blocked: {
-      title: "Выплаты приостановлены",
-      description: "Доступ к выплатам приостановлен. Свяжитесь с поддержкой для разблокировки.",
-      action: (
-        <Link className="ghost" to="/support/requests">
-          Обратиться в поддержку
-        </Link>
-      ),
-    },
-    feature_not_entitled: {
-      title: "Функция недоступна",
-      description: "Опция недоступна для вашего тарифа. Свяжитесь с менеджером.",
+    subscription_missing: {
+      title: "Выберите тариф",
+      description: "Для доступа нужен активный тариф.",
       action: (
         <Link className="ghost" to="/support/requests">
           Связаться с менеджером
         </Link>
       ),
     },
-    org_not_active: {
-      title: "Организация не активна",
-      description: "Доступ будет открыт после активации организации.",
+    billing_overdue: {
+      title: "Оплатите счёт",
+      description: "Доступ ограничен из-за просроченных счетов.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Связаться с поддержкой
+        </Link>
+      ),
+    },
+    billing_suspended: {
+      title: "Доступ приостановлен",
+      description: "Оплата просрочена, доступ временно приостановлен.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Связаться с поддержкой
+        </Link>
+      ),
+    },
+    payout_blocked: {
+      title: "Выплаты заблокированы",
+      description: "Выплаты временно заблокированы. Обратитесь в поддержку.",
+      action: (
+        <Link className="ghost" to="/support/requests">
+          Обратиться в поддержку
+        </Link>
+      ),
     },
   };
 
@@ -175,7 +267,7 @@ export const AccessGate = ({ capability, requiredRoles, title, children }: Acces
   }
 
   const decision = resolveAccessState({ portal, requiredRoles, capability });
-  if (decision.state !== AccessState.OK) {
+  if (decision.state !== AccessState.ACTIVE) {
     return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
   }
 

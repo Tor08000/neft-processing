@@ -55,6 +55,8 @@ export interface PortalMeResponse {
       meta_json?: Record<string, unknown> | null;
     } | null;
   } | null;
+  access_state: string;
+  access_reason?: string | null;
 }
 
 export interface AuthSession {

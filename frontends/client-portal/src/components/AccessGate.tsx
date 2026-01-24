@@ -11,7 +11,7 @@ type AccessGateProps = {
   capability?: string;
   module?: string;
   requiredRoles?: string[];
-  fallbackMode?: "paywall" | "activation" | "forbidden" | "coming_soon";
+  fallbackMode?: "paywall" | "activation" | "forbidden";
   title?: string;
   children: ReactNode;
 };
@@ -66,24 +66,6 @@ const PortalStateView = ({
           description="Пожалуйста, войдите, чтобы продолжить."
           actionLabel="Перейти к входу"
           actionTo="/login"
-        />
-      );
-    case "NO_SUBSCRIPTION":
-      return (
-        <StatusPage
-          title="Подключите продукт"
-          description="Для доступа необходима активная подписка."
-          actionLabel="Перейти к подписке"
-          actionTo="/subscription"
-        />
-      );
-    case "NO_MODULES_ENABLED":
-      return (
-        <StatusPage
-          title="Нет активных модулей"
-          description="Подключите модули, чтобы открыть раздел."
-          actionLabel="Перейти к подписке"
-          actionTo="/subscription"
         />
       );
     case "FORBIDDEN":
@@ -162,12 +144,14 @@ const PortalStateView = ({
 const AccessStateView = ({
   state,
   title = "Раздел",
+  reason,
   requestId,
   correlationId,
   error,
 }: {
   state: AccessState;
   title?: string;
+  reason?: string | null;
   requestId?: string | null;
   correlationId?: string | null;
   error?: PortalError | null;
@@ -214,6 +198,33 @@ const AccessStateView = ({
           actionTo="/client/support/new?topic=billing"
         />
       );
+    case AccessState.LEGAL_PENDING:
+      return (
+        <StatusPage
+          title="Проверка документов"
+          description="Доступ временно ограничен до завершения проверки документов."
+          actionLabel="Перейти к документам"
+          actionTo="/documents"
+        />
+      );
+    case AccessState.PAYOUT_BLOCKED:
+      return (
+        <StatusPage
+          title="Выплаты заблокированы"
+          description="Выплаты временно заблокированы. Обратитесь в поддержку для уточнения."
+          actionLabel="Связаться с поддержкой"
+          actionTo="/client/support/new?topic=payout"
+        />
+      );
+    case AccessState.SLA_PENALTY:
+      return (
+        <StatusPage
+          title="Санкции SLA"
+          description="Доступ ограничен из-за санкций SLA. Свяжитесь с поддержкой."
+          actionLabel="Связаться с поддержкой"
+          actionTo="/client/support/new?topic=sla"
+        />
+      );
     case AccessState.FORBIDDEN_ROLE:
       return <AppForbiddenState message="Недостаточно прав для просмотра раздела." />;
     case AccessState.MODULE_DISABLED:
@@ -225,15 +236,6 @@ const AccessStateView = ({
           description="Для доступа требуется расширенный тариф или подключение модуля."
           actionLabel="Перейти к подписке"
           actionTo="/subscription"
-        />
-      );
-    case AccessState.COMING_SOON:
-      return (
-        <StatusPage
-          title="Скоро"
-          description="Раздел ещё в разработке. Мы сообщим, когда он станет доступен."
-          actionLabel="Вернуться на дашборд"
-          actionTo="/dashboard"
         />
       );
     case AccessState.SERVICE_UNAVAILABLE:
@@ -250,7 +252,41 @@ const AccessStateView = ({
           correlationId={correlationId ?? undefined}
         />
       );
-    case AccessState.OK:
+    case AccessState.MISCONFIG:
+      return (
+        <AppErrorState
+          message={
+            <>
+              Конфигурация портала недоступна. Попробуйте позже или обратитесь в поддержку.
+              <DiagnosticsDetails error={error} />
+            </>
+          }
+          correlationId={correlationId ?? undefined}
+        />
+      );
+    case AccessState.TECH_ERROR:
+      return (
+        <AppErrorState
+          message={
+            <>
+              Техническая ошибка. Попробуйте снова позже.
+              <DiagnosticsDetails error={error} />
+              {reason ? <div>Error ID: {reason}</div> : null}
+            </>
+          }
+          correlationId={correlationId ?? undefined}
+        />
+      );
+    case AccessState.AUTH_REQUIRED:
+      return (
+        <StatusPage
+          title="Требуется вход"
+          description="Пожалуйста, войдите, чтобы продолжить."
+          actionLabel="Перейти к входу"
+          actionTo="/login"
+        />
+      );
+    case AccessState.ACTIVE:
     default:
       return null;
   }
@@ -287,15 +323,11 @@ export const AccessGate = ({
     fallbackMode !== "paywall"
   ) {
     decision =
-      fallbackMode === "coming_soon"
-        ? { state: AccessState.COMING_SOON }
-        : fallbackMode === "forbidden"
-          ? { state: AccessState.FORBIDDEN_ROLE }
-          : { state: AccessState.NEEDS_ONBOARDING };
+      fallbackMode === "forbidden" ? { state: AccessState.FORBIDDEN_ROLE } : { state: AccessState.NEEDS_ONBOARDING };
   }
 
-  if (decision.state !== AccessState.OK) {
-    return <AccessStateView state={decision.state} title={title} />;
+  if (decision.state !== AccessState.ACTIVE) {
+    return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
   }
 
   return <>{children}</>;

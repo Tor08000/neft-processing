@@ -9,8 +9,6 @@ export type PortalState =
   | "AUTH_REQUIRED"
   | "LOADING"
   | "READY"
-  | "NO_SUBSCRIPTION"
-  | "NO_MODULES_ENABLED"
   | "FORBIDDEN"
   | "SERVICE_UNAVAILABLE"
   | "NETWORK_DOWN"
@@ -53,33 +51,6 @@ const persistPortal = (portal: PortalMeResponse | null) => {
     return;
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(portal));
-};
-
-const extractModules = (client: PortalMeResponse | null): unknown[] | null => {
-  if (!client) return null;
-  const candidate =
-    (client as { modules?: unknown }).modules ??
-    (client.subscription as { modules?: unknown } | null | undefined)?.modules ??
-    (client.entitlements_snapshot as { modules?: unknown } | null | undefined)?.modules;
-  if (Array.isArray(candidate)) {
-    return candidate;
-  }
-  if (candidate && typeof candidate === "object") {
-    const entries = Object.values(candidate as Record<string, unknown>);
-    return entries.length === 0 ? [] : null;
-  }
-  return null;
-};
-
-const resolvePortalState = (client: PortalMeResponse): PortalState => {
-  if (!client.subscription) {
-    return "NO_SUBSCRIPTION";
-  }
-  const modules = extractModules(client);
-  if (modules && modules.length === 0) {
-    return "NO_MODULES_ENABLED";
-  }
-  return "READY";
 };
 
 const PORTAL_ME_URL = `${CORE_API_BASE}${PORTAL_ME_PATH}`;
@@ -201,7 +172,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await fetchClientMe(user);
       setClient(data);
-      setPortalState(resolvePortalState(data));
+      setPortalState("READY");
       persistPortal(data);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -214,14 +185,14 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         const cached = readStoredPortal();
         if (cached) {
           setClient(cached);
-          setPortalState(resolvePortalState(cached));
+          setPortalState("READY");
           return;
         }
       }
       const cached = readStoredPortal();
       if (cached) {
         setClient(cached);
-        setPortalState(resolvePortalState(cached));
+        setPortalState("READY");
         return;
       }
       console.error("Не удалось загрузить профиль клиента", err);

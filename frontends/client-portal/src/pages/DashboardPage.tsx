@@ -70,7 +70,7 @@ export function DashboardPage() {
     if (portalState !== "READY") {
       return;
     }
-    if (accessDecision.state !== AccessState.OK) {
+    if (accessDecision.state !== AccessState.ACTIVE) {
       setBlockedState(accessDecision.state);
       return;
     }

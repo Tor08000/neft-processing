@@ -1,24 +1,30 @@
 import type { PortalMeResponse } from "../api/types";
 
 export enum AccessState {
-  OK = "OK",
+  AUTH_REQUIRED = "AUTH_REQUIRED",
   NEEDS_ONBOARDING = "NEEDS_ONBOARDING",
   NEEDS_PLAN = "NEEDS_PLAN",
+  ACTIVE = "ACTIVE",
   OVERDUE = "OVERDUE",
   SUSPENDED = "SUSPENDED",
+  LEGAL_PENDING = "LEGAL_PENDING",
+  PAYOUT_BLOCKED = "PAYOUT_BLOCKED",
+  SLA_PENALTY = "SLA_PENALTY",
   FORBIDDEN_ROLE = "FORBIDDEN_ROLE",
+  MODULE_DISABLED = "MODULE_DISABLED",
   MISSING_CAPABILITY = "MISSING_CAPABILITY",
-  COMING_SOON = "COMING_SOON",
+  SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
+  MISCONFIG = "MISCONFIG",
   TECH_ERROR = "TECH_ERROR",
 }
 
 export type AccessReason =
   | "partner_onboarding"
   | "legal_not_verified"
-  | "settlement_not_finalized"
-  | "billing_soft_blocked"
-  | "billing_hard_blocked"
-  | "feature_not_entitled"
+  | "subscription_missing"
+  | "billing_overdue"
+  | "billing_suspended"
+  | "payout_blocked"
   | "org_not_active"
   | "missing_capability"
   | "forbidden_role"
@@ -32,8 +38,7 @@ export type AccessDecision = {
 
 const BUSINESS_ERROR_TO_STATE: Record<string, AccessState> = {
   partner_not_verified: AccessState.NEEDS_ONBOARDING,
-  legal_not_verified: AccessState.NEEDS_ONBOARDING,
-  settlement_not_finalized: AccessState.COMING_SOON,
+  legal_not_verified: AccessState.LEGAL_PENDING,
   feature_not_entitled: AccessState.MISSING_CAPABILITY,
   admin_forbidden: AccessState.FORBIDDEN_ROLE,
   billing_soft_blocked: AccessState.OVERDUE,
@@ -69,18 +74,14 @@ export const resolveAccessState = ({
     return { state: AccessState.TECH_ERROR, reason: "tech_error" };
   }
 
-  const partnerStatus = portal.partner?.status ?? null;
-  if (partnerStatus && partnerStatus !== "ACTIVE") {
-    return { state: AccessState.NEEDS_ONBOARDING, reason: "partner_onboarding" };
-  }
-
-  const meta = portal.partner?.profile?.meta_json ?? {};
-  const legalStatus =
-    typeof (meta as Record<string, unknown>).legal_status === "string"
-      ? ((meta as Record<string, unknown>).legal_status as string)
-      : null;
-  if (legalStatus && legalStatus !== "VERIFIED") {
-    return { state: AccessState.NEEDS_ONBOARDING, reason: "legal_not_verified" };
+  if (portal.access_state) {
+    if (Object.values(AccessState).includes(portal.access_state as AccessState)) {
+      if (portal.access_state !== AccessState.ACTIVE) {
+        return { state: portal.access_state as AccessState, reason: (portal.access_reason as AccessReason) ?? undefined };
+      }
+    } else {
+      return { state: AccessState.TECH_ERROR, reason: (portal.access_reason as AccessReason) ?? "tech_error" };
+    }
   }
 
   if (requiredRoles?.length) {
@@ -100,5 +101,5 @@ export const resolveAccessState = ({
     }
   }
 
-  return { state: AccessState.OK };
+  return { state: AccessState.ACTIVE };
 };

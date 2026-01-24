@@ -28,6 +28,7 @@ from app.services.jwt_support import parse_scopes
 from app.services.legal import LegalService, legal_gate_required_codes, subject_from_request
 from app.config import settings
 from app.services.partner_core_service import ensure_partner_profile
+from app.services.portal_access_state import resolve_access_state
 
 
 def _table(db: Session, name: str) -> Table:
@@ -252,6 +253,16 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         )
 
     resolved_timezone = employee_timezone or (org_payload.timezone if org_payload else None) or "UTC"
+    access_state, access_reason = resolve_access_state(
+        actor_type=actor_type,
+        org_status=org_payload.status if org_payload else None,
+        org_roles=org_roles,
+        subscription=subscription_payload,
+        legal=legal,
+        partner=partner_payload,
+        entitlements_snapshot=entitlements_snapshot,
+        capabilities=capabilities,
+    )
     return PortalMeResponse(
         actor_type=actor_type,
         user=PortalMeUser(
@@ -273,6 +284,8 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         capabilities=sorted({str(cap) for cap in capabilities if cap}),
         nav_sections=nav_sections or None,
         partner=partner_payload,
+        access_state=access_state,
+        access_reason=access_reason,
     )
 
 

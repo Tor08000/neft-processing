@@ -168,6 +168,9 @@ def _has_integration_path(config: pytest.Config) -> bool:
 def _should_skip_db_bootstrap(config: pytest.Config) -> bool:
     if os.getenv("NEFT_SKIP_DB_BOOTSTRAP") == "1":
         return True
+    for arg in config.args:
+        if str(arg).endswith("test_portal_access_state.py"):
+            return True
     markexpr = (config.getoption("-m") or "").strip().lower()
     if markexpr:
         if any(
