@@ -84,6 +84,9 @@ class Settings(SharedSettings):
     demo_client_id: str = _env_or_default(
         "NEFT_DEMO_CLIENT_ID", "demo-client", fallback_keys=("DEMO_CLIENT_ID",)
     )
+    demo_org_id: str = _env_or_default(
+        "NEFT_DEMO_ORG_ID", "1", fallback_keys=("DEMO_ORG_ID",)
+    )
     demo_client_full_name: str = _env_or_default(
         "NEFT_DEMO_CLIENT_FULL_NAME",
         "Demo Client",
@@ -161,6 +164,7 @@ class Settings(SharedSettings):
             "NEFT_DEMO_CLIENT_PASSWORD", self.demo_client_password, fallback_keys=("DEMO_CLIENT_PASSWORD",)
         )
         self.demo_client_id = _env_or_default("NEFT_DEMO_CLIENT_ID", self.demo_client_id, fallback_keys=("DEMO_CLIENT_ID",))
+        self.demo_org_id = _env_or_default("NEFT_DEMO_ORG_ID", self.demo_org_id, fallback_keys=("DEMO_ORG_ID",))
         self.demo_client_full_name = _env_or_default(
             "NEFT_DEMO_CLIENT_FULL_NAME", self.demo_client_full_name, fallback_keys=("DEMO_CLIENT_FULL_NAME",)
         )

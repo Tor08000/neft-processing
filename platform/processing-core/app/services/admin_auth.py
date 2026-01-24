@@ -170,7 +170,16 @@ def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
             if kid_not_found:
                 reason = "kid_not_found"
             _log_rejection(token, reason=reason, exc=inner_exc)
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": {
+                        "type": "token_rejected",
+                        "reason_code": "TOKEN_REJECTED",
+                        "message": "Invalid token",
+                    }
+                },
+            )
 
     admin_roles = set()
 

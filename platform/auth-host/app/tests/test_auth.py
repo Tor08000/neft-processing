@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from jose import jwt
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -51,14 +52,14 @@ def test_client_demo_login_local_domain_ok(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client"},
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
     )
 
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert data["subject_type"] == "user"
+    assert data["subject_type"] == "client_user"
     assert data["roles"] == ["CLIENT_OWNER"]
 
 
@@ -86,7 +87,7 @@ def test_client_login_invalid_password(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "wrong"},
+        json={"email": "client@neft.local", "password": "wrong", "portal": "client"},
     )
 
     assert response.status_code == 401
@@ -121,8 +122,152 @@ def test_login_returns_503_when_rsa_invalid(monkeypatch):
 
     response = _client().post(
         "/api/v1/auth/login",
-        json={"email": "client@neft.local", "password": "client"},
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
     )
 
     assert response.status_code == 503
     assert response.json() == {"detail": "rsa_keys_unavailable"}
+
+
+def test_login_requires_portal(monkeypatch):
+    password_hash = hash_password("client")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000004",
+        email="client@neft.local",
+        full_name="Demo Client",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(email: str):
+        if email.lower() == "client@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "client"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": {"error": "portal_required", "reason_code": "PORTAL_REQUIRED"}}
+
+
+def _decode_claims(token: str) -> dict:
+    return jwt.get_unverified_claims(token)
+
+
+def test_login_sets_client_portal_claims(monkeypatch):
+    password_hash = hash_password("client")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000005",
+        email="client@neft.local",
+        full_name="Demo Client",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(email: str):
+        if email.lower() == "client@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+    monkeypatch.setenv("NEFT_ENV", "local")
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+    )
+
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    claims = _decode_claims(token)
+    settings = auth.get_settings()
+    assert claims["iss"] == settings.auth_client_issuer
+    assert claims["aud"] == settings.auth_client_audience
+    assert claims.get("client_id") == settings.demo_client_uuid
+    assert claims.get("org_id") == settings.demo_org_id
+    assert claims.get("user_id") == str(demo_user.id)
+
+
+def test_login_sets_admin_portal_claims(monkeypatch):
+    password_hash = hash_password("admin")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000006",
+        email="admin@neft.local",
+        full_name="Demo Admin",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(email: str):
+        if email.lower() == "admin@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["ADMIN"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "admin@neft.local", "password": "admin", "portal": "admin"},
+    )
+
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    claims = _decode_claims(token)
+    settings = auth.get_settings()
+    assert claims["iss"] == settings.auth_issuer
+    assert claims["aud"] == settings.auth_audience
+
+
+def test_login_omits_demo_org_in_prod(monkeypatch):
+    password_hash = hash_password("client")
+    demo_user = User(
+        id="00000000-0000-0000-0000-000000000007",
+        email="client@neft.local",
+        full_name="Demo Client",
+        password_hash=password_hash,
+        is_active=True,
+        created_at=None,
+    )
+
+    async def fake_get_user(email: str):
+        if email.lower() == "client@neft.local":
+            return demo_user
+        return None
+
+    async def fake_get_roles(_user_id: str):
+        return ["CLIENT_OWNER"]
+
+    monkeypatch.setattr(auth, "_get_user_from_db", fake_get_user)
+    monkeypatch.setattr(auth, "_get_roles_for_user", fake_get_roles)
+    monkeypatch.setenv("NEFT_ENV", "prod")
+
+    response = _client().post(
+        "/api/v1/auth/login",
+        json={"email": "client@neft.local", "password": "client", "portal": "client"},
+    )
+
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    claims = _decode_claims(token)
+    assert "org_id" not in claims
+    assert "client_id" not in claims

@@ -34,7 +34,7 @@ async def test_demo_login_against_real_db():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
-            json={"email": DEMO_CLIENT_EMAIL, "password": DEMO_CLIENT_PASSWORD},
+            json={"email": DEMO_CLIENT_EMAIL, "password": DEMO_CLIENT_PASSWORD, "portal": "client"},
         )
 
     assert response.status_code == 200
@@ -42,7 +42,7 @@ async def test_demo_login_against_real_db():
     assert data["access_token"]
     assert data["token_type"] == "bearer"
     assert data["email"] == DEMO_CLIENT_EMAIL
-    assert data["subject_type"] == "user"
+    assert data["subject_type"] == "client_user"
 
 
 @pytest.mark.anyio
@@ -63,12 +63,12 @@ async def test_demo_admin_login_and_wrong_password():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         ok_response = await client.post(
             "/api/v1/auth/login",
-            json={"email": settings.demo_admin_email, "password": settings.demo_admin_password},
+            json={"email": settings.demo_admin_email, "password": settings.demo_admin_password, "portal": "admin"},
         )
 
         wrong_password_response = await client.post(
             "/api/v1/auth/login",
-            json={"email": settings.demo_admin_email, "password": "definitely-wrong"},
+            json={"email": settings.demo_admin_email, "password": "definitely-wrong", "portal": "admin"},
         )
 
     assert ok_response.status_code == 200

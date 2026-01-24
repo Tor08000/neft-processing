@@ -12,6 +12,8 @@ ROLE_CHOICES = [
     "CLIENT_VIEWER",
 ]
 
+RoleChoice = Literal["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "CLIENT_VIEWER"]
+
 
 def _normalize_email(value: str) -> str:
     value = value.strip()
@@ -40,7 +42,7 @@ class AdminUserBase(BaseModel):
 
 class AdminUserCreateRequest(AdminUserBase):
     password: str = Field(min_length=6)
-    roles: list[Literal[*ROLE_CHOICES]]
+    roles: list[RoleChoice]
 
     @field_validator("roles")
     @classmethod
@@ -51,7 +53,7 @@ class AdminUserCreateRequest(AdminUserBase):
 class AdminUserUpdateRequest(BaseModel):
     full_name: str | None = None
     is_active: bool | None = None
-    roles: list[Literal[*ROLE_CHOICES]] | None = None
+    roles: list[RoleChoice] | None = None
 
     @field_validator("roles")
     @classmethod

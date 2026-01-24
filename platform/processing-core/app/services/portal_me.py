@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.orm import Session
@@ -49,6 +50,16 @@ def _normalize_roles(token: dict) -> list[str]:
 
 def _resolve_org_id(token: dict) -> str | None:
     return token.get("org_id") or token.get("client_id") or token.get("partner_id")
+
+
+def _is_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _resolve_actor_type(token: dict, org_roles: list[str]) -> str:
@@ -117,6 +128,8 @@ def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
 
 def _load_org_fallback(db: Session, *, client_id: str | None, partner_id: str | None) -> PortalMeOrg | None:
     if client_id:
+        if not _is_uuid(client_id):
+            return None
         client = db.get(Client, client_id)
         if client:
             crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
@@ -200,7 +213,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     employee_timezone = None
     user_id = token.get("user_id") or token.get("sub")
-    if user_id and client_id:
+    if user_id and client_id and _is_uuid(user_id):
         employee = (
             db.query(ClientEmployee)
             .filter(ClientEmployee.id == str(user_id), ClientEmployee.client_id == str(client_id))
