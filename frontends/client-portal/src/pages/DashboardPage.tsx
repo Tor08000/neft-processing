@@ -6,14 +6,14 @@ import { ApiError, UnauthorizedError } from "../api/http";
 import { AppLoadingState, AppErrorState } from "../components/states";
 import { DashboardRenderer } from "./dashboard/DashboardRenderer";
 import { AccessState, mapBusinessErrorToAccessState, resolveAccessState } from "../access/accessState";
-import { AccessStateView } from "../components/AccessGate";
+import { AccessStateView, PortalStateView } from "../components/AccessGate";
 import { useClient } from "../auth/ClientContext";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
 export function DashboardPage() {
   const { user, logout } = useAuth();
-  const { client, isLoading: clientLoading, error: clientError } = useClient();
+  const { client, isLoading: clientLoading, error: portalError, portalState, refresh } = useClient();
   const [dashboard, setDashboard] = useState<ClientDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<{ message: string; status?: number; correlationId?: string | null; requestId?: string | null } | null>(null);
@@ -67,8 +67,7 @@ export function DashboardPage() {
     if (!user || clientLoading) {
       return;
     }
-    if (clientError) {
-      setBlockedState(AccessState.TECH_ERROR);
+    if (portalState !== "READY") {
       return;
     }
     if (accessDecision.state !== AccessState.OK) {
@@ -76,7 +75,7 @@ export function DashboardPage() {
       return;
     }
     void loadDashboard(true);
-  }, [accessDecision.state, clientError, clientLoading, loadDashboard, user]);
+  }, [accessDecision.state, clientLoading, loadDashboard, portalState, user]);
 
   const content = useMemo(() => {
     if (!dashboard && isLoading) {
@@ -92,12 +91,13 @@ export function DashboardPage() {
     return <AppLoadingState label="Проверяем доступ..." />;
   }
 
-  if (clientError) {
-    return <AccessStateView state={AccessState.TECH_ERROR} title="Дашборд" />;
+  const portalStateView = PortalStateView({ state: portalState, error: portalError, onRetry: refresh });
+  if (portalStateView) {
+    return portalStateView;
   }
 
   if (blockedState) {
-    return <AccessStateView state={blockedState} title="Дашборд" />;
+    return <AccessStateView state={blockedState} title="Дашборд" error={portalError} />;
   }
 
   if (error) {

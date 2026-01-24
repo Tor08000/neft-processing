@@ -167,8 +167,10 @@ export type AuditEventsFilters = {
 
 const withToken = (user: AuthSession | null) => ({ token: user?.token, base: "core" as const });
 
+export const PORTAL_ME_PATH = "/portal/me";
+
 export const fetchClientMe = (user: AuthSession | null) =>
-  request<PortalMeResponse>("/portal/me", { method: "GET" }, withToken(user));
+  request<PortalMeResponse>(PORTAL_ME_PATH, { method: "GET" }, withToken(user));
 
 export type ClientTimezoneUpdateResponse = {
   id: string;

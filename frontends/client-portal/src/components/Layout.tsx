@@ -29,9 +29,10 @@ type NavItem = {
   to: string;
   label: string;
   icon?: ReactNode;
-  isHidden?: boolean;
   module?: string;
   capability?: string;
+  requiredRole?: boolean;
+  disabledReason?: string | null;
 };
 
 const buildContextLabel = (section: string, path: string, basePath?: string) => {
@@ -91,25 +92,37 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
       to: "/client/analytics",
       label: "Analytics",
       icon: <LineChart size={18} />,
-      isHidden: !canSeeAnalytics,
+      requiredRole: canSeeAnalytics,
       module: "ANALYTICS",
       capability: "CLIENT_ANALYTICS",
     },
-    { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports, capability: "CLIENT_CORE" },
-    { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, isHidden: !canSeeReports, capability: "CLIENT_CORE" },
-    { to: "/client/slo", label: "SLO / SLA", icon: <LineChart size={18} />, isHidden: !canSeeSlo, capability: "CLIENT_CORE" },
+    { to: "/client/reports", label: "Reports", icon: <FileSpreadsheet size={18} />, requiredRole: canSeeReports, capability: "CLIENT_CORE" },
+    { to: "/client/exports", label: "Exports", icon: <FileSpreadsheet size={18} />, requiredRole: canSeeReports, capability: "CLIENT_CORE" },
+    { to: "/client/slo", label: "SLO / SLA", icon: <LineChart size={18} />, requiredRole: canSeeSlo, capability: "CLIENT_CORE" },
     { to: "/marketplace", label: "Marketplace", icon: <ShoppingCart size={18} />, module: "MARKETPLACE", capability: "MARKETPLACE" },
     { to: "/legal", label: "Legal" },
   ].map((item) => {
-    if (!isModuleEnabled(item.module) || !hasCapability(item.capability)) {
-      return { ...item, label: `${item.label} · Недоступно` };
+    const lacksModule = item.module && !isModuleEnabled(item.module);
+    const lacksCapability = item.capability && !hasCapability(item.capability);
+    const lacksRole = item.requiredRole === false;
+    const disabledReason = lacksRole
+      ? "Нужна роль"
+      : lacksModule || lacksCapability
+        ? "Недоступно по подписке"
+        : null;
+    if (disabledReason) {
+      return { ...item, disabledReason };
     }
     return item;
   });
 
-  const visibleNavItems = (isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems).filter(
-    (item) => !item.isHidden && hasCapability(item.capability),
-  );
+  const visibleNavItems = isBlocked ? navItems.filter((item) => item.to === "/legal") : navItems;
+  const sidebarItems = visibleNavItems.map((item) => ({
+    ...item,
+    disabled: Boolean(item.disabledReason),
+    hint: item.disabledReason ?? undefined,
+  }));
+
   const activeItem = visibleNavItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
@@ -170,7 +183,7 @@ export function Layout({ pwaMode = isPwaMode }: LayoutProps) {
 
   return (
     <div className="brand-shell neft-page neft-app">
-      <BrandSidebar items={visibleNavItems} title="Client" />
+      <BrandSidebar items={sidebarItems} title="Client" />
       <main className="brand-main">
         <BrandHeader
           title={sectionTitle}
