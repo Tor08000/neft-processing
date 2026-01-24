@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from uuid import uuid4
 from datetime import datetime, timezone
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
 from app.routers.achievements import router as achievements_router
 from app.routers.admin import router as admin_router
+from app.routers.admin_runtime import router as admin_runtime_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
@@ -78,6 +80,7 @@ from app.services.bi.metrics import metrics as bi_metrics
 from app.services.audit_metrics import metrics as audit_metrics
 from app.fastapi_utils import generate_unique_id, safe_include_router
 from app.error_handlers import add_exception_handlers
+from app.config import settings
 from app.services.audit_signing import AuditSigningService, get_audit_signing_health, set_audit_signing_health
 from app.services.audit_service import AuditService, _sanitize_token_for_audit, request_context_from_request
 from app.services.fleet_metrics import metrics as fleet_metrics
@@ -275,6 +278,25 @@ async def partner_client_separation_guard(request, call_next):
             return JSONResponse(
                 status_code=403,
                 content={"error": "forbidden", "reason": "partner_client_separation"},
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def admin_read_only_guard(request, call_next):
+    path = str(request.url.path)
+    if settings.ADMIN_READ_ONLY and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        if path.startswith(("/api/core/v1/admin", "/api/v1/admin", "/api/core/admin")):
+            error_id = str(uuid4())
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "admin_read_only",
+                    "message": "Admin API is in read-only mode",
+                    "request_id": request.headers.get("x-request-id"),
+                    "error_id": error_id,
+                    "reason_code": "READ_ONLY",
+                },
             )
     return await call_next(request)
 
@@ -484,6 +506,7 @@ if payouts_router is not None:
     safe_include_router(core_prefixed_router, payouts_router, prefix="")
 
 safe_include_router(core_prefixed_router, admin_router)
+safe_include_router(core_prefixed_router, admin_runtime_router)
 safe_include_router(core_prefixed_router, kpi_router)
 safe_include_router(core_prefixed_router, explain_v2_router)
 safe_include_router(core_prefixed_router, cases_router)

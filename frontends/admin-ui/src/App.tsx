@@ -16,6 +16,7 @@ import OpsFailedExportsPage from "./pages/ops/OpsFailedExportsPage";
 import OpsFailedImportsPage from "./pages/ops/OpsFailedImportsPage";
 import OpsSupportBreachesPage from "./pages/ops/OpsSupportBreachesPage";
 import OpsDrilldownPlaceholderPage from "./pages/ops/OpsDrilldownPlaceholderPage";
+import RuntimeCenterPage from "./pages/admin/RuntimeCenterPage";
 import FinanceOverviewPage from "./pages/finance/FinanceOverviewPage";
 import InvoicesPage from "./pages/finance/InvoicesPage";
 import InvoiceDetailsPage from "./pages/finance/InvoiceDetailsPage";
@@ -41,6 +42,14 @@ export function App() {
                     element={
                       <AdminRBACGate permission="ops">
                         <OpsOverviewPage />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/runtime"
+                    element={
+                      <AdminRBACGate permission="ops">
+                        <RuntimeCenterPage />
                       </AdminRBACGate>
                     }
                   />

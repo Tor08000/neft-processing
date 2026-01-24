@@ -6,6 +6,7 @@ import { AdminEnvBadge } from "../components/admin/AdminEnvBadge";
 
 const NAV_ITEMS = [
   { key: "ops", label: "Ops", to: "/ops" },
+  { key: "runtime", label: "Runtime", to: "/runtime", permissionKey: "ops" },
   { key: "finance", label: "Finance", to: "/finance" },
   { key: "sales", label: "Sales", to: "/sales" },
   { key: "legal", label: "Legal", to: "/legal" },
@@ -16,7 +17,9 @@ export const AdminShell: React.FC = () => {
   const location = useLocation();
   const { profile } = useAdmin();
   const permissions = profile?.permissions;
-  const availableItems = NAV_ITEMS.filter((item) => permissions?.[item.key as keyof typeof permissions]?.read);
+  const availableItems = NAV_ITEMS.filter(
+    (item) => permissions?.[(item.permissionKey ?? item.key) as keyof typeof permissions]?.read,
+  );
   const activeItem = availableItems.find(
     (item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`),
   );
