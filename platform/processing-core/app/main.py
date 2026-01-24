@@ -26,6 +26,7 @@ from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.admin_auth_gateway import router as admin_auth_gateway_router
 from app.routers.client_auth_gateway import router as client_auth_gateway_router
+from app.routers.partner_auth_gateway import router as partner_auth_gateway_router
 from app.routers.client_me import router as client_me_router
 from app.routers.portal_me import router as portal_me_router
 from app.routers.partner_me import router as partner_me_router
@@ -371,6 +372,7 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, partner_auth_gateway_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_me_router, prefix=API_PREFIX_CORE)
@@ -491,6 +493,7 @@ safe_include_router(core_prefixed_router, subscriptions_admin_router)
 safe_include_router(core_prefixed_router, client_router)
 safe_include_router(core_prefixed_router, client_auth_gateway_router)
 safe_include_router(core_prefixed_router, admin_auth_gateway_router)
+safe_include_router(core_prefixed_router, partner_auth_gateway_router)
 safe_include_router(core_prefixed_router, portal_me_router)
 safe_include_router(core_prefixed_router, client_me_router)
 safe_include_router(core_prefixed_router, client_portal_v1_router)
