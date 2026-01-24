@@ -149,6 +149,18 @@ def detect_token_kind(claims: dict) -> str:
     return "admin"
 
 
+def detect_portal_mismatch(token: str, expected_kind: str, *, claims: dict | None = None) -> bool:
+    if not expected_kind:
+        return False
+    resolved_claims = claims if claims is not None else get_unverified_claims(token)
+    if not resolved_claims:
+        return False
+    token_kind = detect_token_kind(resolved_claims)
+    if token_kind == expected_kind:
+        return False
+    return token_kind in {"client", "partner", "admin"}
+
+
 def classify_jwt_error(exc: Exception) -> str:
     if isinstance(exc, ExpiredSignatureError):
         return "expired"
@@ -172,6 +184,14 @@ def classify_jwt_error(exc: Exception) -> str:
         if "segments" in msg or "format" in msg or "malformed" in msg:
             return "bad_format"
     return "invalid_token"
+
+
+def should_refresh_jwks(reason: str, *, missing_kid: bool = False, kid_not_found: bool = False) -> bool:
+    if kid_not_found:
+        return True
+    if reason == "signature_invalid":
+        return True
+    return False
 
 
 def log_token_rejection(

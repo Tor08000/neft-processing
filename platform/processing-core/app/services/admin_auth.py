@@ -6,16 +6,20 @@ from fastapi import Depends, HTTPException, Request
 from jose import JWTError, jwt
 from neft_shared.logging_setup import get_logger
 
+from uuid import uuid4
+
 from app.services.jwt_support import (
     DEFAULT_JWKS_URL,
     DEFAULT_PUBLIC_KEY_URL,
     classify_jwt_error,
+    detect_portal_mismatch,
     fetch_jwks as fetch_jwks_support,
     fetch_public_key,
     log_token_rejection,
     parse_allowed_algs,
     parse_expected_audience,
     resolve_jwks_key,
+    should_refresh_jwks,
 )
 
 PUBLIC_KEY_URL = os.getenv(
@@ -88,6 +92,21 @@ def _log_rejection(token: str, *, reason: str, exc: Exception | None = None) -> 
     )
 
 
+def _reject_wrong_portal(token: str, *, claims: dict | None = None) -> None:
+    if detect_portal_mismatch(token, "admin", claims=claims):
+        _log_rejection(token, reason="wrong_portal")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "detail": {
+                    "error": "token_rejected",
+                    "reason_code": "TOKEN_WRONG_PORTAL",
+                    "error_id": str(uuid4()),
+                }
+            },
+        )
+
+
 def _resolve_public_key(token: str, *, force_refresh: bool = False) -> tuple[str, bool, bool]:
     if not force_refresh:
         static_key = _static_public_key()
@@ -156,20 +175,39 @@ def get_jwks(*, ttl: int = PUBLIC_KEY_CACHE_TTL, force_refresh: bool = False) ->
 def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
     try:
         public_key, missing_kid, kid_not_found = _resolve_public_key(token)
+    except HTTPException:
+        raise
+
+    try:
         payload = _decode_token(token, public_key)
-    except (JWTError, ValueError, HTTPException) as exc:
-        _logger.info(
-            "admin_auth.decode_failed_refreshing_key",
-            extra={"error": str(exc), "jwks_url": JWKS_URL},
-        )
-        public_key, missing_kid, kid_not_found = _resolve_public_key(token, force_refresh=True)
-        try:
-            payload = _decode_token(token, public_key)
-        except (JWTError, ValueError) as inner_exc:
-            reason = classify_jwt_error(inner_exc)
-            if kid_not_found:
-                reason = "kid_not_found"
-            _log_rejection(token, reason=reason, exc=inner_exc)
+    except (JWTError, ValueError) as exc:
+        _reject_wrong_portal(token)
+        reason = classify_jwt_error(exc)
+        if should_refresh_jwks(reason, missing_kid=missing_kid, kid_not_found=kid_not_found):
+            _logger.info(
+                "admin_auth.decode_failed_refreshing_key",
+                extra={"error": str(exc), "jwks_url": JWKS_URL},
+            )
+            public_key, missing_kid, kid_not_found = _resolve_public_key(token, force_refresh=True)
+            try:
+                payload = _decode_token(token, public_key)
+            except (JWTError, ValueError) as inner_exc:
+                reason = classify_jwt_error(inner_exc)
+                if kid_not_found:
+                    reason = "kid_not_found"
+                _log_rejection(token, reason=reason, exc=inner_exc)
+                raise HTTPException(
+                    status_code=401,
+                    detail={
+                        "error": {
+                            "type": "token_rejected",
+                            "reason_code": "TOKEN_REJECTED",
+                            "message": "Invalid token",
+                        }
+                    },
+                )
+        else:
+            _log_rejection(token, reason=reason, exc=exc)
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -180,6 +218,8 @@ def verify_admin_token(token: str = Depends(_get_bearer_token)) -> dict:
                     }
                 },
             )
+
+    _reject_wrong_portal(token, claims=payload)
 
     admin_roles = set()
 

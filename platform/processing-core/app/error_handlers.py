@@ -56,6 +56,8 @@ def add_exception_handlers(app: FastAPI):
                     required_roles=required_roles,
                 ),
             )
+        if isinstance(exc.detail, dict) and "detail" in exc.detail:
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
         if isinstance(exc.detail, dict) and "error" in exc.detail:
             payload = dict(exc.detail)
             payload.setdefault("message", exc.detail.get("detail"))
