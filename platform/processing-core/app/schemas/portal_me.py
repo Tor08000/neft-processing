@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel
@@ -57,6 +58,24 @@ class PortalMeFeatures(BaseModel):
     legal_gate_enabled: bool
 
 
+class PortalAccessState(str, Enum):
+    AUTH_REQUIRED = "AUTH_REQUIRED"
+    NEEDS_ONBOARDING = "NEEDS_ONBOARDING"
+    NEEDS_PLAN = "NEEDS_PLAN"
+    ACTIVE = "ACTIVE"
+    OVERDUE = "OVERDUE"
+    SUSPENDED = "SUSPENDED"
+    LEGAL_PENDING = "LEGAL_PENDING"
+    PAYOUT_BLOCKED = "PAYOUT_BLOCKED"
+    SLA_PENALTY = "SLA_PENALTY"
+    MODULE_DISABLED = "MODULE_DISABLED"
+    MISSING_CAPABILITY = "MISSING_CAPABILITY"
+    FORBIDDEN_ROLE = "FORBIDDEN_ROLE"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+    MISCONFIG = "MISCONFIG"
+    TECH_ERROR = "TECH_ERROR"
+
+
 class PortalMeResponse(BaseModel):
     actor_type: str
     user: PortalMeUser
@@ -73,3 +92,5 @@ class PortalMeResponse(BaseModel):
     capabilities: list[str]
     nav_sections: list[PortalNavSection] | None = None
     partner: PortalMePartner | None = None
+    access_state: PortalAccessState
+    access_reason: str | None = None

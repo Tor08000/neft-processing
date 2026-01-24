@@ -8,8 +8,6 @@ export type PortalState =
   | "AUTH_REQUIRED"
   | "LOADING"
   | "READY"
-  | "NO_SUBSCRIPTION"
-  | "NO_MODULES_ENABLED"
   | "SERVICE_UNAVAILABLE"
   | "ERROR_FATAL";
 
@@ -22,33 +20,6 @@ interface PortalContextValue {
 }
 
 const PortalContext = createContext<PortalContextValue | undefined>(undefined);
-
-const extractModules = (portal: PortalMeResponse | null): unknown[] | null => {
-  if (!portal) return null;
-  const candidate =
-    (portal as { modules?: unknown }).modules ??
-    (portal.subscription as { modules?: unknown } | null | undefined)?.modules ??
-    (portal.entitlements_snapshot as { modules?: unknown } | null | undefined)?.modules;
-  if (Array.isArray(candidate)) {
-    return candidate;
-  }
-  if (candidate && typeof candidate === "object") {
-    const entries = Object.values(candidate as Record<string, unknown>);
-    return entries.length === 0 ? [] : null;
-  }
-  return null;
-};
-
-const resolvePortalState = (portal: PortalMeResponse): PortalState => {
-  if (!portal.subscription) {
-    return "NO_SUBSCRIPTION";
-  }
-  const modules = extractModules(portal);
-  if (modules && modules.length === 0) {
-    return "NO_MODULES_ENABLED";
-  }
-  return "READY";
-};
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -70,7 +41,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await fetchPortalMe(user);
       setPortal(data);
-      setPortalState(resolvePortalState(data));
+      setPortalState("READY");
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         setPortalState("AUTH_REQUIRED");
