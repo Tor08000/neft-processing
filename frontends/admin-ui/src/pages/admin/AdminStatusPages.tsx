@@ -63,7 +63,7 @@ export const AdminNotFoundPage: React.FC = () => (
 
 export const AdminCrashPage: React.FC = () => (
   <EmptyState
-    title="Ошибка"
+    title="TECH_ERROR"
     description="Произошла непредвиденная ошибка. Попробуйте обновить страницу."
     action={
       <Link className="ghost neft-btn-secondary" to="/">
@@ -75,7 +75,7 @@ export const AdminCrashPage: React.FC = () => (
 
 export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string }> = ({ requestId, message }) => (
   <EmptyState
-    title="Техническая ошибка"
+    title="TECH_ERROR"
     description={
       <>
         {message ?? "Не удалось загрузить данные админ-портала. Попробуйте позже."}
@@ -85,6 +85,23 @@ export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string 
     action={
       <Link className="ghost neft-btn-secondary" to="/login">
         Перейти к входу
+      </Link>
+    }
+  />
+);
+
+export const AdminServiceUnavailablePage: React.FC<AdminStatusProps> = ({ requestId }) => (
+  <EmptyState
+    title="SERVICE_UNAVAILABLE"
+    description={
+      <>
+        Сервис временно недоступен. Попробуйте позже.
+        <RequestId requestId={requestId} />
+      </>
+    }
+    action={
+      <Link className="ghost neft-btn-secondary" to="/">
+        На главную
       </Link>
     }
   />

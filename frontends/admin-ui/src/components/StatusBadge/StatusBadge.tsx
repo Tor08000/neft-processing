@@ -2,14 +2,17 @@ import React from "react";
 
 const variantMap: Record<string, string> = {
   ok: "ok",
+  up: "ok",
   finalized: "ok",
   confirmed: "ok",
   capture: "ok",
   pending: "warn",
+  degraded: "warn",
   sent: "warn",
   auth: "warn",
   failed: "err",
   error: "err",
+  down: "err",
   declined: "err",
   draft: "muted",
   unknown: "muted",
