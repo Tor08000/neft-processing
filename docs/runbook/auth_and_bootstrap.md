@@ -1,12 +1,21 @@
-# Auth + Portal Bootstrap Runbook
+# Auth + Portal Bootstrap Runbook (Windows CMD)
+
+Цель: подтвердить в docker compose, что auth выдаёт токены для client/partner/admin, core-api принимает токены, seed idempotent, а portal bootstrap отвечает корректно.
 
 ## Canonical login path
 
-* Login endpoint: `POST /api/v1/auth/login` (gateway `/api/auth/v1/auth/login`).
-* **Portal is required**. It can be provided in one of the following ways (in this order):
-  1. Request body: `{"portal": "client|partner|admin"}`
-  2. Header: `X-Portal: client|partner|admin`
-  3. Query param: `?portal=client|partner|admin`
+**Canonical gateway URLs (use these in smoke):**
+
+* Login: `POST http://localhost/api/v1/auth/login`
+* JWKS: `GET http://localhost/api/v1/auth/.well-known/jwks.json`
+* Portal bootstrap: `GET http://localhost/api/core/portal/me`
+
+**Portal is required. Official option:** send it in the JSON body.
+
+Fallbacks (if body omitted) are supported in this order:
+
+1. Header: `X-Portal: client|partner|admin`
+2. Query param: `?portal=client|partner|admin`
 
 If no portal is resolved, auth-host returns `400` with:
 
@@ -40,25 +49,64 @@ NEFT_DEMO_PLAN_CODE=DEMO
 NEFT_DEMO_PLAN_TITLE=Demo
 ```
 
-## Smoke commands
+## Runbook order (mandatory)
 
-### Tokens
+1) docker compose up
+2) login (get tokens)
+3) seed core (twice)
+4) portal bootstrap checks
+5) logs review
+
+## Smoke commands (Windows CMD)
+
+> Все команды ниже — для **Windows CMD** (не PowerShell). Используйте `^` для переноса строк.
+
+### 1) Поднять систему
 
 ```
-curl -s -X POST http://localhost/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"client@neft.local","password":"client","portal":"client"}'
-
-curl -s -X POST http://localhost/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"partner@neft.local","password":"partner","portal":"partner"}'
-
-curl -s -X POST http://localhost/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@neft.local","password":"admin","portal":"admin"}'
+cd C:\neft-processing
+docker compose down -v
+docker compose up -d --build
+docker compose ps
 ```
 
-### Portal bootstrap
+### 2) Проверить auth живой
+
+```
+curl -i http://localhost/api/v1/auth/health
+curl -i http://localhost/api/v1/auth/.well-known/jwks.json
+```
+
+### 3) Tokens (client/partner/admin)
+
+```
+curl -s -X POST http://localhost/api/v1/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"client@neft.local\",\"password\":\"client\",\"portal\":\"client\"}"
+
+curl -s -X POST http://localhost/api/v1/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"partner@neft.local\",\"password\":\"partner\",\"portal\":\"partner\"}"
+
+curl -s -X POST http://localhost/api/v1/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"admin@neft.local\",\"password\":\"admin\",\"portal\":\"admin\"}"
+```
+
+DoD: ответы не `404`, и в JSON есть `access_token`. Если используются другие demo креды — зафиксировать их в этом runbook.
+
+### 4) Seed core (idempotent)
+
+```
+docker compose exec -T core-api python scripts/dev_seed_core.py
+docker compose exec -T core-api python scripts/dev_seed_core.py
+```
+
+DoD: второй запуск не падает, вывод показывает idempotent поведение.
+
+### 5) Portal bootstrap
+
+Подставьте `<CLIENT_TOKEN>` из шага 3.
 
 ```
 curl -i http://localhost/api/core/portal/me -H "Authorization: Bearer <CLIENT_TOKEN>"
@@ -66,8 +114,31 @@ curl -i http://localhost/api/core/portal/me -H "Authorization: Bearer <PARTNER_T
 curl -i http://localhost/api/core/portal/me -H "Authorization: Bearer <ADMIN_TOKEN>"
 ```
 
-### Notifications unread count
+### 6) Notifications unread count (client)
 
 ```
 curl -i http://localhost/api/core/client/notifications/unread-count -H "Authorization: Bearer <CLIENT_TOKEN>"
 ```
+
+DoD:
+
+* client `portal/me` → `200`.
+* client `unread-count` → `200`.
+* partner/admin `portal/me` → `200` **или** ожидаемый бизнес-статус (например, `MODULE_DISABLED` / `SUBSCRIPTION_REQUIRED`), но не `500` и не `token_rejected`.
+
+### 7) Проверка логов
+
+```
+docker compose logs --tail=200 auth-host
+docker compose logs --tail=200 core-api
+docker compose logs --tail=200 gateway
+```
+
+DoD по логам:
+
+* нет циклического `token_rejected` при валидных токенах;
+* нет `500` на `portal/me` после seed (если есть, должен быть `reason_code` + `error_id`).
+
+## Important: NEFT_SKIP_DB_BOOTSTRAP
+
+`NEFT_SKIP_DB_BOOTSTRAP` допустима **только** для unit-tests/CI. В `docker-compose`/prod профилях эту переменную использовать нельзя — иначе core может стартовать без DB инвариантов. Убедитесь, что она не задана в compose-файлах.
