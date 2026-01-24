@@ -25,6 +25,9 @@ RUN apt-get update && \
 # сам код core-api
 COPY platform/processing-core /app
 
+# dev seed scripts
+COPY scripts /app/scripts
+
 # docs (contracts event schema registry)
 COPY docs /app/docs
 

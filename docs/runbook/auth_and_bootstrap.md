@@ -28,6 +28,7 @@ If no portal is resolved, auth-host returns `400` with:
 * `iss`/`aud` are selected by portal (`client` uses client issuer/audience; `admin/partner` use admin issuer/audience).
 * `user_id` is always included when available.
 * `client_id` and `org_id` are **only auto-injected in dev/local** (`NEFT_ENV=local|dev|development|test`).
+* `org_id` is an integer (matches `orgs.id` in core) for dev seed flows.
 
 ## Dev seed (core)
 
