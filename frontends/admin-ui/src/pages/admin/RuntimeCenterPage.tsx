@@ -170,7 +170,7 @@ export const RuntimeCenterPage: React.FC = () => {
   ];
   const hasViolations = violationRows.some((row) => row.count > 0);
 
-  const criticalEvents: CriticalEvent[] = summary?.events?.critical_last_10 ?? [];
+  const events: CriticalEvent[] = summary?.events?.critical_last_10 ?? [];
 
   return (
     <div>
@@ -267,29 +267,14 @@ export const RuntimeCenterPage: React.FC = () => {
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Critical events (last 10)</h2>
-        {criticalEvents.length ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Kind</th>
-                <th>Message</th>
-                <th>Correlation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {criticalEvents.map((event) => (
-                <tr key={`${event.ts}-${event.kind}-${event.message}`}>
-                  <td>{event.ts}</td>
-                  <td>{event.kind}</td>
-                  <td>{event.message}</td>
-                  <td>{event.correlation_id ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {events.length === 0 ? (
+          <div className="muted">Нет критических событий</div>
         ) : (
-          <p>Нет событий</p>
+          events.map((event) => (
+            <div key={`${event.ts}-${event.kind}-${event.correlation_id ?? ""}`}>
+              <div>{event.message}</div>
+            </div>
+          ))
         )}
       </div>
     </div>
