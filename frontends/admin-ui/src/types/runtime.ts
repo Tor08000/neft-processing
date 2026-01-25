@@ -46,7 +46,7 @@ export type CriticalEvent = {
   ts: string;
   kind: string;
   message: string;
-  correlation_id?: string | null;
+  correlation_id?: string;
 };
 
 export interface RuntimeEvents {
