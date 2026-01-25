@@ -33,6 +33,17 @@ export function Layout() {
   const hasRoles = (requiredRoles?: string[]) =>
     requiredRoles?.length ? requiredRoles.some((role) => roleSet.has(role.toUpperCase())) : true;
 
+  type NavItem = {
+    to: string;
+    label: string;
+    icon: JSX.Element;
+    capability?: string;
+    module?: string;
+    requiredRoles?: string[];
+    disabledReason?: string;
+    hidden?: boolean;
+  };
+
   const buildContextLabel = (section: string, path: string, basePath?: string) => {
     if (!basePath) return section;
     const suffix = path.replace(basePath, "");
@@ -43,7 +54,7 @@ export function Layout() {
     return trail.length ? `${section} → ${trail.join(" / ")}` : section;
   };
 
-  const navItems = [
+  const NAV_ITEMS: NavItem[] = [
     { to: "/products", label: "Products", icon: <Package size={18} />, capability: "PARTNER_PRICING" },
     { to: "/orders", label: "Orders", icon: <ShoppingBag size={18} />, capability: "PARTNER_CORE" },
     { to: "/bookings", label: "Bookings", icon: <Briefcase size={18} />, capability: "PARTNER_CORE" },
@@ -53,7 +64,9 @@ export function Layout() {
     { to: "/payouts", label: "Выплаты", icon: <Wallet size={18} />, capability: "PARTNER_PAYOUT_REQUEST" },
     { to: "/documents", label: "Документы", icon: <FileText size={18} />, capability: "PARTNER_DOCUMENTS_LIST" },
     { to: "/legal", label: "Legal", icon: <Package size={18} /> },
-  ].map((item) => {
+  ];
+
+  const navItems = NAV_ITEMS.map((item) => {
     const lacksModule = item.module && !isModuleEnabled(item.module);
     const lacksCapability = item.capability && !hasCapability(item.capability);
     const lacksRole = item.requiredRoles && !hasRoles(item.requiredRoles);
