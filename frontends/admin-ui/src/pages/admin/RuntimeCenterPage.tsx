@@ -5,7 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAdmin } from "../../admin/AdminContext";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
 import { Loader } from "../../components/Loader/Loader";
-import type { RuntimeHealthSummary, RuntimeSummary } from "../../types/runtime";
+import type { CriticalEvent, RuntimeHealthSummary, RuntimeSummary } from "../../types/runtime";
 import {
   AdminForbiddenPage,
   AdminLoadingPage,
@@ -170,7 +170,7 @@ export const RuntimeCenterPage: React.FC = () => {
   ];
   const hasViolations = violationRows.some((row) => row.count > 0);
 
-  const criticalEvents = summary.events.critical_last_10 ?? [];
+  const criticalEvents: CriticalEvent[] = summary?.events?.critical_last_10 ?? [];
 
   return (
     <div>

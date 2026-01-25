@@ -42,15 +42,15 @@ export interface RuntimeMoneyRisk {
   overdue_clients: number;
 }
 
-export interface RuntimeCriticalEvent {
+export type CriticalEvent = {
   ts: string;
   kind: string;
   message: string;
   correlation_id?: string | null;
-}
+};
 
 export interface RuntimeEvents {
-  critical_last_10: RuntimeCriticalEvent[];
+  critical_last_10: CriticalEvent[];
 }
 
 export interface RuntimeSummary {
