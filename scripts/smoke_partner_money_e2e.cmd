@@ -6,7 +6,7 @@ set "SCRIPT_NAME=smoke_partner_money_e2e"
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
 if "%CORE_PORTAL_URL%"=="" set "CORE_PORTAL_URL=%BASE_URL%/api/core/portal"
 if "%CORE_PARTNER_URL%"=="" set "CORE_PARTNER_URL=%BASE_URL%/api/core/partner"
-if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%BASE_URL%/api/core/admin"
+if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%BASE_URL%/api/core/v1/admin"
 if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN_URL%/finance"
 if "%CORE_ADMIN_AUDIT_URL%"=="" set "CORE_ADMIN_AUDIT_URL=%CORE_ADMIN_URL%/audit"
 if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/v1/auth"
@@ -31,22 +31,24 @@ call :log "AUTH_URL=%AUTH_URL%"
 set "STEP=0_seed_partner_money"
 call :log "[%STEP%] call scripts\\seed_partner_money_e2e.cmd"
 call scripts\seed_partner_money_e2e.cmd
-if errorlevel 1 call :fail "%STEP%"
+if errorlevel 1 (
+  call :fail "%STEP%" "seed failed"
+  exit /b 1
+)
 
 set "STEP=1_partner_login"
 call :log "[%STEP%] POST %AUTH_URL%/login"
-set "HTTP_HEADER="
+set "HTTP_METHOD=POST"
+set "HTTP_BODY="
 set "LOGIN_PAYLOAD={""email"":""%PARTNER_EMAIL%"",""password"":""%PARTNER_PASSWORD%"",""portal"":""partner""}"
-call :http_post "%AUTH_URL%/login" "!LOGIN_PAYLOAD!" "%TEMP%\partner_login.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_login.json"
-if "!LAST_STATUS!"=="422" (
-  type "%TEMP%\partner_login.json"
-)
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_BODY=!LOGIN_PAYLOAD!"
+call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\partner_login.json"
 set "PARTNER_TOKEN_FILE=%TEMP%\\partner_token.txt"
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\partner_login.json').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%PARTNER_TOKEN_FILE%').write_text(token); print(token)"`) do set "PARTNER_TOKEN=%%T"
-if "!PARTNER_TOKEN!"=="" call :fail "%STEP%"
+if "!PARTNER_TOKEN!"=="" (
+  call :fail "%STEP%" "missing partner token"
+  exit /b 1
+)
 
 set "PARTNER_AUTH_HEADER=Authorization: Bearer %PARTNER_TOKEN%"
 if /i "%PARTNER_TOKEN:~0,7%"=="Bearer " set "PARTNER_AUTH_HEADER=Authorization: %PARTNER_TOKEN%"
@@ -54,23 +56,23 @@ if /i "%PARTNER_TOKEN:~0,7%"=="Bearer " set "PARTNER_AUTH_HEADER=Authorization: 
 set "STEP=2_partner_verify"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %BASE_URL%/api/core/partner/auth/verify"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_get "%BASE_URL%/api/core/partner/auth/verify" "%TEMP%\partner_verify.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_verify.json"
-if not "!LAST_STATUS!"=="204" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "204" "%BASE_URL%/api/core/partner/auth/verify" "%TEMP%\partner_verify.json" "%PARTNER_AUTH_HEADER%"
 
 set "STEP=3_admin_login"
 call :log "[%STEP%] POST %AUTH_URL%/login"
-set "HTTP_HEADER="
+set "HTTP_METHOD=POST"
+set "HTTP_BODY="
 set "LOGIN_PAYLOAD={""email"":""%ADMIN_EMAIL%"",""password"":""%ADMIN_PASSWORD%"",""portal"":""admin""}"
-call :http_post "%AUTH_URL%/login" "!LOGIN_PAYLOAD!" "%TEMP%\admin_login.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\admin_login.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_BODY=!LOGIN_PAYLOAD!"
+call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\admin_login.json"
 set "ADMIN_TOKEN_FILE=%TEMP%\\admin_token.txt"
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\admin_login.json').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%ADMIN_TOKEN_FILE%').write_text(token); print(token)"`) do set "ADMIN_TOKEN=%%T"
-if "!ADMIN_TOKEN!"=="" call :fail "%STEP%"
+if "!ADMIN_TOKEN!"=="" (
+  call :fail "%STEP%" "missing admin token"
+  exit /b 1
+)
 
 set "ADMIN_AUTH_HEADER=Authorization: Bearer %ADMIN_TOKEN%"
 if /i "%ADMIN_TOKEN:~0,7%"=="Bearer " set "ADMIN_AUTH_HEADER=Authorization: %ADMIN_TOKEN%"
@@ -78,104 +80,109 @@ if /i "%ADMIN_TOKEN:~0,7%"=="Bearer " set "ADMIN_AUTH_HEADER=Authorization: %ADM
 set "STEP=4_portal_me"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_PORTAL_URL%/me"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_get "%CORE_PORTAL_URL%/me" "%TEMP%\portal_me_partner.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\portal_me_partner.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
-call :expect_contains "%TEMP%\portal_me_partner.json" "\"partner\"" || call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_PORTAL_URL%/me" "%TEMP%\portal_me_partner.json" "%PARTNER_AUTH_HEADER%"
+call :expect_contains "%TEMP%\portal_me_partner.json" "\"partner\"" || (
+  call :fail "%STEP%" "portal role missing"
+  exit /b 1
+)
 
 set "STEP=5_partner_dashboard"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_PARTNER_URL%/dashboard"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_get "%CORE_PARTNER_URL%/dashboard" "%TEMP%\partner_dashboard.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_dashboard.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/dashboard" "%TEMP%\partner_dashboard.json" "%PARTNER_AUTH_HEADER%"
 
 set "STEP=6_partner_ledger"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_PARTNER_URL%/ledger"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_get "%CORE_PARTNER_URL%/ledger?limit=5" "%TEMP%\partner_ledger.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_ledger.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/ledger?limit=5" "%TEMP%\partner_ledger.json" "%PARTNER_AUTH_HEADER%"
 
 set "STEP=7_payout_preview"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] POST %CORE_PARTNER_URL%/payouts/preview"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_post "%CORE_PARTNER_URL%/payouts/preview" "{}" "%TEMP%\partner_payout_preview.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_payout_preview.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=POST"
+set "HTTP_BODY={}"
+call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/payouts/preview" "%TEMP%\partner_payout_preview.json" "%PARTNER_AUTH_HEADER%"
 
 set "STEP=8_payout_request"
 set "PAYOUT_PAYLOAD={""amount"":1000,""currency"":""RUB""}"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] POST %CORE_PARTNER_URL%/payouts/request"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_post "%CORE_PARTNER_URL%/payouts/request" "!PAYOUT_PAYLOAD!" "%TEMP%\partner_payout_request.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_payout_request.json"
-if not "!LAST_STATUS!"=="201" call :fail "%STEP%"
+set "HTTP_METHOD=POST"
+set "HTTP_BODY=!PAYOUT_PAYLOAD!"
+call :assert_http "%STEP%" "201" "%CORE_PARTNER_URL%/payouts/request" "%TEMP%\partner_payout_request.json" "%PARTNER_AUTH_HEADER%"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open(r'%TEMP%\\partner_payout_request.json')).get('id',''))"`) do set "PAYOUT_ID=%%t"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open(r'%TEMP%\\partner_payout_request.json')).get('correlation_id',''))"`) do set "CORRELATION_ID=%%t"
-if "!PAYOUT_ID!"=="" call :fail "%STEP%"
-if "!CORRELATION_ID!"=="" call :fail "%STEP%"
+if "!PAYOUT_ID!"=="" (
+  call :fail "%STEP%" "missing payout id"
+  exit /b 1
+)
+if "!CORRELATION_ID!"=="" (
+  call :fail "%STEP%" "missing correlation id"
+  exit /b 1
+)
 
 set "STEP=9_admin_payout_queue"
 call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_ADMIN_FINANCE_URL%/payouts"
-set "HTTP_HEADER=%ADMIN_AUTH_HEADER%"
-call :http_get "%CORE_ADMIN_FINANCE_URL%/payouts" "%TEMP%\admin_payouts.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\admin_payouts.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts" "%TEMP%\admin_payouts.json" "%ADMIN_AUTH_HEADER%"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\admin_payouts.json')); items=data.get('items') or []; print(any(item.get('payout_id')=='%PAYOUT_ID%' for item in items))"`) do set "PAYOUT_FOUND=%%t"
-if /i not "!PAYOUT_FOUND!"=="True" call :fail "%STEP%"
+if /i not "!PAYOUT_FOUND!"=="True" (
+  call :fail "%STEP%" "payout not found in admin queue"
+  exit /b 1
+)
 
 set "STEP=10_admin_approve"
 set "APPROVE_PAYLOAD={""reason"":""Smoke approval"",""correlation_id"":""!CORRELATION_ID!""}"
 call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] POST %CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve"
-call :http_post "%CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve" "!APPROVE_PAYLOAD!" "%TEMP%\admin_payout_approve.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\admin_payout_approve.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=POST"
+set "HTTP_BODY=!APPROVE_PAYLOAD!"
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve" "%TEMP%\admin_payout_approve.json" "%ADMIN_AUTH_HEADER%"
 
 set "STEP=11_partner_payout_detail"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_PARTNER_URL%/payouts/!PAYOUT_ID!"
-set "HTTP_HEADER=%PARTNER_AUTH_HEADER%"
-call :http_get "%CORE_PARTNER_URL%/payouts/!PAYOUT_ID!" "%TEMP%\partner_payout_detail.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\partner_payout_detail.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/payouts/!PAYOUT_ID!" "%TEMP%\partner_payout_detail.json" "%PARTNER_AUTH_HEADER%"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; status=json.load(open(r'%TEMP%\\partner_payout_detail.json')).get('status',''); print(status in {'APPROVED','PAID'})"`) do set "PAYOUT_STATUS_OK=%%t"
-if /i not "!PAYOUT_STATUS_OK!"=="True" call :fail "%STEP%"
+if /i not "!PAYOUT_STATUS_OK!"=="True" (
+  call :fail "%STEP%" "payout status not approved"
+  exit /b 1
+)
 
 set "STEP=12_admin_audit"
 call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!"
-set "HTTP_HEADER=%ADMIN_AUTH_HEADER%"
-call :http_get "%CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!" "%TEMP%\admin_audit.json"
-call :log "Status: !LAST_STATUS!"
-call :append_response "%TEMP%\admin_audit.json"
-if not "!LAST_STATUS!"=="200" call :fail "%STEP%"
+set "HTTP_METHOD=GET"
+set "HTTP_BODY="
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!" "%TEMP%\admin_audit.json" "%ADMIN_AUTH_HEADER%"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\admin_audit.json')); items=data.get('items') or []; print(len(items) >= 2)"`) do set "AUDIT_OK=%%t"
-if /i not "!AUDIT_OK!"=="True" call :fail "%STEP%"
+if /i not "!AUDIT_OK!"=="True" (
+  call :fail "%STEP%" "audit entries missing"
+  exit /b 1
+)
 
-call :log "E2E_PARTNER_MONEY: PASS"
 echo E2E_PARTNER_MONEY: PASS
+echo E2E_PARTNER_MONEY: PASS>>"%LOG_FILE%"
 exit /b 0
 
 :fail
 set "FAILED_STEP=%~1"
-call :log "E2E_PARTNER_MONEY: FAIL at %FAILED_STEP%"
-echo E2E_PARTNER_MONEY: FAIL at %FAILED_STEP%
+set "FAILED_MSG=%~2"
+echo E2E_PARTNER_MONEY: FAIL
+echo E2E_PARTNER_MONEY: FAIL>>"%LOG_FILE%"
+if not "%FAILED_STEP%"=="" (
+  echo [%FAILED_STEP%] %FAILED_MSG%>>"%LOG_FILE%"
+)
 exit /b 1
 
 :log
@@ -193,28 +200,32 @@ if exist "%RESP_FILE%" (
 )
 exit /b 0
 
-:http_get
-set "URL=%~1"
-set "OUT=%~2"
-if "!HTTP_HEADER!"=="" (
-  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" "%URL%"`) do set "LAST_STATUS=%%c"
+:assert_http
+set "STEP_NAME=%~1"
+set "EXPECTED=%~2"
+set "URL=%~3"
+set "OUT=%~4"
+set "CURL_HEADERS="
+shift
+shift
+shift
+shift
+:assert_http_headers
+if "%~1"=="" goto assert_http_request
+set "CURL_HEADERS=!CURL_HEADERS! -H \"%~1\""
+shift
+goto assert_http_headers
+:assert_http_request
+if "!HTTP_METHOD!"=="" set "HTTP_METHOD=GET"
+if "!HTTP_METHOD!"=="GET" (
+  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -X GET !CURL_HEADERS! "%URL%"`) do set "LAST_STATUS=%%c"
 ) else (
-  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -H "!HTTP_HEADER!" "%URL%"`) do set "LAST_STATUS=%%c"
+  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -X !HTTP_METHOD! !CURL_HEADERS! -H "Content-Type: application/json" -d "!HTTP_BODY!" "%URL%"`) do set "LAST_STATUS=%%c"
 )
-exit /b 0
-
-:http_post
-set "URL=%~1"
-set "BODY=%~2"
-set "OUT=%~3"
-set "REQ_FILE=%TEMP%\\%SCRIPT_NAME%_req.json"
-> "!REQ_FILE!" echo(!BODY!
-if "!HTTP_HEADER!"=="" (
-  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -X POST -H "Content-Type: application/json" --data-binary @"!REQ_FILE!" "%URL%"`) do set "LAST_STATUS=%%c"
-) else (
-  for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -X POST -H "!HTTP_HEADER!" -H "Content-Type: application/json" --data-binary @"!REQ_FILE!" "%URL%"`) do set "LAST_STATUS=%%c"
-)
-exit /b 0
+call :append_response "%OUT%"
+if "!LAST_STATUS!"=="%EXPECTED%" exit /b 0
+call :fail "%STEP_NAME%" "expected %EXPECTED% got !LAST_STATUS!"
+exit /b 1
 
 :expect_contains
 set "FILE=%~1"
@@ -248,6 +259,7 @@ exit /b 0
 set "TOKEN_VALUE=%~1"
 set "TOKEN_STEP=%~2"
 if "%TOKEN_VALUE%"=="" (
-  call :fail "%TOKEN_STEP%"
+  call :fail "%TOKEN_STEP%" "missing auth token"
+  exit /b 1
 )
 exit /b 0
