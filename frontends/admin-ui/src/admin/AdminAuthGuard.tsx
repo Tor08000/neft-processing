@@ -29,7 +29,13 @@ export const AdminAuthGuard: React.FC = () => {
         : import.meta.env.DEV && status === 404
           ? "api route misconfigured"
           : undefined;
-    return <AdminTechErrorPage requestId={error?.request_id ?? undefined} message={message} />;
+    return (
+      <AdminTechErrorPage
+        requestId={error?.request_id ?? undefined}
+        errorId={error?.error ?? undefined}
+        message={message}
+      />
+    );
   }
 
   return <Outlet />;

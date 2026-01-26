@@ -167,17 +167,21 @@ export const listImportTransactions = async (params: {
 }): Promise<ReconciliationTransactionListResponse> =>
   apiGet("/api/core/v1/admin/reconciliation/transactions", params);
 
-export const parseImport = async (importId: string, reason: string) =>
-  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/parse`, { reason });
+export const parseImport = async (importId: string, payload: { reason: string; correlation_id: string }) =>
+  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/parse`, payload);
 
-export const matchImport = async (importId: string, reason: string) =>
-  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/match`, { reason });
+export const matchImport = async (importId: string, payload: { reason: string; correlation_id: string }) =>
+  apiPost(`/api/core/v1/admin/reconciliation/imports/${importId}/match`, payload);
 
-export const applyImportTransaction = async (transactionId: string, payload: { invoice_id: string; reason: string }) =>
-  apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/apply`, payload);
+export const applyImportTransaction = async (
+  transactionId: string,
+  payload: { invoice_id: string; reason: string; correlation_id: string },
+) => apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/apply`, payload);
 
-export const ignoreImportTransaction = async (transactionId: string, reason: string) =>
-  apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/ignore`, { reason });
+export const ignoreImportTransaction = async (
+  transactionId: string,
+  payload: { reason: string; correlation_id: string },
+) => apiPost(`/api/core/v1/admin/reconciliation/transactions/${transactionId}/ignore`, payload);
 
 export const createInternalRun = async (payload: {
   period_start: string;

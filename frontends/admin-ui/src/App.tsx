@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { LegalGateProvider } from "./auth/LegalGateContext";
 import { LoginPage } from "./pages/LoginPage";
@@ -25,6 +25,8 @@ import ReconciliationImportsPage from "./pages/finance/ReconciliationImportsPage
 import ReconciliationImportDetailsPage from "./pages/finance/ReconciliationImportDetailsPage";
 import PayoutQueuePage from "./pages/finance/PayoutQueuePage";
 import PayoutDetailsPage from "./pages/finance/PayoutDetailsPage";
+import LegalPartnersPage from "./pages/legal/LegalPartnersPage";
+import AuditPage from "./pages/admin/AuditPage";
 
 export function App() {
   return (
@@ -169,7 +171,15 @@ export function App() {
                     path="/legal"
                     element={
                       <AdminRBACGate permission="legal">
-                        <ComingSoonPage title="Legal" />
+                        <Navigate to="/legal/partners" replace />
+                      </AdminRBACGate>
+                    }
+                  />
+                  <Route
+                    path="/legal/partners"
+                    element={
+                      <AdminRBACGate permission="legal">
+                        <LegalPartnersPage />
                       </AdminRBACGate>
                     }
                   />
@@ -177,7 +187,7 @@ export function App() {
                     path="/audit"
                     element={
                       <AdminRBACGate permission="superadmin">
-                        <ComingSoonPage title="Audit" />
+                        <AuditPage />
                       </AdminRBACGate>
                     }
                   />

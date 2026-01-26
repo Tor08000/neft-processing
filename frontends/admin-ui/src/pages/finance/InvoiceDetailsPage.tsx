@@ -7,14 +7,17 @@ import { Loader } from "../../components/Loader/Loader";
 import { useToast } from "../../components/Toast/useToast";
 import { Toast } from "../../components/Toast/Toast";
 import { extractRequestId } from "../ops/opsUtils";
+import { useAdmin } from "../../admin/AdminContext";
 
 type ActionType = "mark-paid" | "void" | "mark-overdue" | null;
 
 export const InvoiceDetailsPage: React.FC = () => {
   const { invoiceId } = useParams();
   const { toast, showToast } = useToast();
+  const { profile } = useAdmin();
   const [action, setAction] = useState<ActionType>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const canWrite = Boolean(profile?.permissions.finance?.write) && !profile?.read_only;
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["finance-invoice", invoiceId],
@@ -24,15 +27,16 @@ export const InvoiceDetailsPage: React.FC = () => {
 
   const requestId = useMemo(() => (errorMessage ? extractRequestId(new Error(errorMessage)) : null), [errorMessage]);
 
-  const handleConfirm = async ({ reason }: { reason: string }) => {
+  const handleConfirm = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
     if (!invoiceId) return;
+    if (!canWrite) return;
     try {
       if (action === "mark-paid") {
-        await markInvoicePaid(invoiceId, reason);
+        await markInvoicePaid(invoiceId, { reason, correlation_id: correlationId });
       } else if (action === "void") {
-        await voidInvoice(invoiceId, reason);
+        await voidInvoice(invoiceId, { reason, correlation_id: correlationId });
       } else if (action === "mark-overdue") {
-        await markInvoiceOverdue(invoiceId, reason);
+        await markInvoiceOverdue(invoiceId, { reason, correlation_id: correlationId });
       }
       setAction(null);
       setErrorMessage(null);
@@ -91,15 +95,16 @@ export const InvoiceDetailsPage: React.FC = () => {
       </div>
 
       <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="neft-btn" onClick={() => setAction("mark-paid")}>
+        <button type="button" className="neft-btn" onClick={() => setAction("mark-paid")} disabled={!canWrite}>
           Mark paid
         </button>
-        <button type="button" className="neft-btn-secondary" onClick={() => setAction("mark-overdue")}>
+        <button type="button" className="neft-btn-secondary" onClick={() => setAction("mark-overdue")} disabled={!canWrite}>
           Mark overdue
         </button>
-        <button type="button" className="ghost" onClick={() => setAction("void")}>
+        <button type="button" className="ghost" onClick={() => setAction("void")} disabled={!canWrite}>
           Void
         </button>
+        {!canWrite ? <span className="muted">Read-only mode enabled</span> : null}
       </div>
 
       <AdminWriteActionModal

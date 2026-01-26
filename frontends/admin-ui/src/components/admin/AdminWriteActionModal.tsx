@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CopyButton } from "../CopyButton/CopyButton";
+import { createCorrelationId } from "../../utils/correlationId";
 
 interface AdminWriteActionModalProps {
   isOpen: boolean;
   title?: string;
   confirmPhrase?: string;
   requirePhrase?: boolean;
-  onConfirm: (payload: { reason: string; requestId?: string }) => void;
+  onConfirm: (payload: { reason: string; correlationId: string; requestId?: string }) => void;
   onCancel: () => void;
   requestId?: string;
 }
@@ -21,12 +23,21 @@ export const AdminWriteActionModal: React.FC<AdminWriteActionModalProps> = ({
 }) => {
   const [reason, setReason] = useState("");
   const [typedPhrase, setTypedPhrase] = useState("");
+  const [correlationId, setCorrelationId] = useState(() => createCorrelationId());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setReason("");
+    setTypedPhrase("");
+    setCorrelationId(createCorrelationId());
+  }, [isOpen]);
 
   const canConfirm = useMemo(() => {
     if (!reason.trim()) return false;
+    if (!correlationId.trim()) return false;
     if (!requirePhrase) return true;
     return typedPhrase.trim().toUpperCase() === confirmPhrase;
-  }, [reason, typedPhrase, requirePhrase, confirmPhrase]);
+  }, [reason, correlationId, typedPhrase, requirePhrase, confirmPhrase]);
 
   if (!isOpen) {
     return null;
@@ -35,11 +46,13 @@ export const AdminWriteActionModal: React.FC<AdminWriteActionModalProps> = ({
   const handleConfirm = () => {
     const trimmedReason = reason.trim();
     if (!trimmedReason) return;
+    if (!correlationId.trim()) return;
     console.info("admin.write.attempt", {
       reason: trimmedReason,
+      correlation_id: correlationId,
       request_id: requestId ?? null,
     });
-    onConfirm({ reason: trimmedReason, requestId });
+    onConfirm({ reason: trimmedReason, correlationId, requestId });
   };
 
   return (
@@ -71,6 +84,22 @@ export const AdminWriteActionModal: React.FC<AdminWriteActionModalProps> = ({
           </>
         )}
         {requestId && <div className="admin-modal__request">Request ID: {requestId}</div>}
+        <label className="admin-modal__label" htmlFor="admin-write-correlation">
+          Correlation ID (обязательное поле)
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            id="admin-write-correlation"
+            type="text"
+            value={correlationId}
+            readOnly
+            aria-readonly="true"
+          />
+          <CopyButton value={correlationId} label="Copy" />
+          <button type="button" className="ghost" onClick={() => setCorrelationId(createCorrelationId())}>
+            Regenerate
+          </button>
+        </div>
         <div className="admin-modal__actions">
           <button type="button" className="neft-btn-secondary" onClick={onCancel}>
             Отмена

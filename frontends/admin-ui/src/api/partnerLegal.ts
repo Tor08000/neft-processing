@@ -31,7 +31,7 @@ export async function fetchPartnerLegalProfile(token: string, partnerId: string)
 export async function updatePartnerLegalStatus(
   token: string,
   partnerId: string,
-  payload: { status: string; comment?: string | null },
+  payload: { status: string; reason: string; correlation_id: string; comment?: string | null },
 ) {
   return request<PartnerLegalProfileAdmin>(
     `/admin/partners/${partnerId}/legal-profile/status`,
