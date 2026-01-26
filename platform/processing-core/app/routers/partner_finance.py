@@ -151,6 +151,27 @@ def _ledger_entry_summary(entry: PartnerLedgerEntry) -> PartnerLedgerEntrySummar
     )
 
 
+def _partner_payout_status(status_value: str) -> str:
+    mapping = {"REQUESTED": "PENDING"}
+    return mapping.get(status_value, status_value)
+
+
+def _payout_request_out(payout: PartnerPayoutRequest) -> PartnerPayoutRequestOut:
+    status_value = payout.status.value if hasattr(payout.status, "value") else str(payout.status)
+    return PartnerPayoutRequestOut(
+        id=str(payout.id),
+        partner_org_id=str(payout.partner_org_id),
+        amount=Decimal(payout.amount),
+        currency=payout.currency,
+        status=_partner_payout_status(status_value),
+        correlation_id=payout.correlation_id,
+        requested_by=str(payout.requested_by) if payout.requested_by else None,
+        approved_by=str(payout.approved_by) if payout.approved_by else None,
+        created_at=payout.created_at,
+        processed_at=payout.processed_at,
+    )
+
+
 def _audit_forbidden_access(
     *,
     principal: Principal,
@@ -269,6 +290,7 @@ def get_partner_ledger(
         query = query.filter(PartnerLedgerEntry.created_at >= date_from)
     if date_to:
         query = query.filter(PartnerLedgerEntry.created_at <= date_to)
+    total = query.count()
     entries = (
         query.order_by(PartnerLedgerEntry.created_at.desc())
         .offset(resolved_offset)
@@ -295,6 +317,7 @@ def get_partner_ledger(
         ],
         entries=[_ledger_entry_summary(entry) for entry in entries],
         cursor=next_cursor,
+        total=total,
     )
 
 
@@ -399,7 +422,10 @@ def request_partner_payout(
         ) from exc
     except PartnerLegalError as exc:
         db.rollback()
-        raise HTTPException(status_code=403, detail={"error": "LEGAL_NOT_VERIFIED", "reason": exc.code}) from exc
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "LEGAL_NOT_VERIFIED", "reason": exc.code, "reason_code": exc.code},
+        ) from exc
     except PartnerPayoutPolicyError as exc:
         db.rollback()
         reason = exc.reasons[0] if exc.reasons else "PAYOUT_BLOCKED"
@@ -410,18 +436,7 @@ def request_partner_payout(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return PartnerPayoutRequestOut(
-        id=str(payout.id),
-        partner_org_id=str(payout.partner_org_id),
-        amount=Decimal(payout.amount),
-        currency=payout.currency,
-        status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
-        correlation_id=payout.correlation_id,
-        requested_by=str(payout.requested_by) if payout.requested_by else None,
-        approved_by=str(payout.approved_by) if payout.approved_by else None,
-        created_at=payout.created_at,
-        processed_at=payout.processed_at,
-    )
+    return _payout_request_out(payout)
 
 
 @router.get("/payouts", response_model=PartnerPayoutListResponse)
@@ -437,22 +452,21 @@ def list_partner_payouts(
         .all()
     )
     return PartnerPayoutListResponse(
-        items=[
-            PartnerPayoutRequestOut(
-                id=str(item.id),
-                partner_org_id=str(item.partner_org_id),
-                amount=Decimal(item.amount),
-                currency=item.currency,
-                status=item.status.value if hasattr(item.status, "value") else str(item.status),
-                correlation_id=item.correlation_id,
-                requested_by=str(item.requested_by) if item.requested_by else None,
-                approved_by=str(item.approved_by) if item.approved_by else None,
-                created_at=item.created_at,
-                processed_at=item.processed_at,
-            )
-            for item in items
-        ]
+        items=[_payout_request_out(item) for item in items]
     )
+
+
+@router.get("/payouts/{payout_id}", response_model=PartnerPayoutRequestOut)
+def get_partner_payout(
+    payout_id: str,
+    principal: Principal = Depends(require_permission("partner:payouts:list")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutRequestOut:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    payout = db.query(PartnerPayoutRequest).filter(PartnerPayoutRequest.id == payout_id).one_or_none()
+    if payout is None or str(payout.partner_org_id) != str(partner_org_id):
+        raise HTTPException(status_code=404, detail="payout_not_found")
+    return _payout_request_out(payout)
 
 
 @router.get("/payouts/history", response_model=PartnerPayoutHistoryResponse)
@@ -479,10 +493,11 @@ def list_partner_payout_history(
         )
         approved_at = payout.processed_at if payout.status == PartnerPayoutRequestStatus.APPROVED else None
         paid_at = payout.processed_at if payout.status == PartnerPayoutRequestStatus.PAID else None
+        status_value = payout.status.value if hasattr(payout.status, "value") else str(payout.status)
         items.append(
             PartnerPayoutHistoryItem(
                 id=str(payout.id),
-                status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
+                status=_partner_payout_status(status_value),
                 amount=Decimal(payout.amount),
                 created_at=payout.created_at,
                 approved_at=approved_at,
@@ -750,6 +765,22 @@ def download_partner_doc(
 def preview_partner_payout(
     principal: Principal = Depends(require_permission("partner:finance:view")),
     db: Session = Depends(get_db),
+) -> PartnerPayoutPreviewOut:
+    return _preview_partner_payout(principal=principal, db=db)
+
+
+@router.post("/payouts/preview", response_model=PartnerPayoutPreviewOut)
+def preview_partner_payout_post(
+    principal: Principal = Depends(require_permission("partner:finance:view")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutPreviewOut:
+    return _preview_partner_payout(principal=principal, db=db)
+
+
+def _preview_partner_payout(
+    *,
+    principal: Principal,
+    db: Session,
 ) -> PartnerPayoutPreviewOut:
     partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
     service = PartnerFinanceService(db)

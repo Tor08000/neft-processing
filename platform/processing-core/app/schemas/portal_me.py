@@ -57,11 +57,18 @@ class PortalMePartnerLegalState(BaseModel):
     block_reason: str | None = None
 
 
+class PortalMePartnerSlaState(BaseModel):
+    penalty_active: bool
+    penalty_amount: Decimal
+
+
 class PortalMePartner(BaseModel):
     status: str | None = None
     profile: PortalMePartnerProfile | None = None
     finance_state: PortalMePartnerFinanceState | None = None
     legal: PortalMePartnerLegalState | None = None
+    legal_state: PortalMePartnerLegalState | None = None
+    sla_state: PortalMePartnerSlaState | None = None
 
 
 class PortalMeLegal(BaseModel):

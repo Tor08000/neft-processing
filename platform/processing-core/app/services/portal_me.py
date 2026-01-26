@@ -22,6 +22,7 @@ from app.schemas.portal_me import (
     PortalMePartnerFinanceState,
     PortalMePartnerLegalState,
     PortalMePartnerProfile,
+    PortalMePartnerSlaState,
     PortalMeLegal,
     PortalMeFeatures,
     PortalMeGating,
@@ -496,12 +497,12 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                     if _table_exists(db, "partner_legal_profiles")
                     else None
                 )
-                legal_status_label = "OK"
+                legal_status_label = "VERIFIED"
                 if settings.LEGAL_GATE_ENABLED:
                     if legal_profile is None:
                         legal_status_label = "PENDING"
                     elif legal_profile.legal_status == PartnerLegalStatus.VERIFIED:
-                        legal_status_label = "OK"
+                        legal_status_label = "VERIFIED"
                     elif legal_profile.legal_status == PartnerLegalStatus.BLOCKED:
                         legal_status_label = "REJECTED"
                     else:
@@ -561,6 +562,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                     sla_penalties_count = len(penalty_rows)
                     if penalty_rows:
                         sla_penalties_total = sum((Decimal(entry.amount or 0) for entry in penalty_rows), Decimal("0"))
+                sla_state = PortalMePartnerSlaState(
+                    penalty_active=sla_penalties_count > 0,
+                    penalty_amount=sla_penalties_total,
+                )
                 partner_payload = PortalMePartner(
                     status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
                     profile=PortalMePartnerProfile(
@@ -570,6 +575,8 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                     ),
                     finance_state=partner_finance_state,
                     legal=partner_legal_state,
+                    legal_state=partner_legal_state,
+                    sla_state=sla_state,
                 )
         except Exception:
             partner_payload = None
