@@ -1,6 +1,22 @@
 import { request } from "./http";
 import type { LegalPartnerDetail, LegalPartnerListResponse } from "../types/legalPartners";
 
+function normalizeLegalPartnerList(raw: unknown): LegalPartnerListResponse {
+  const r: any = raw ?? {};
+  const container =
+    r && typeof r === "object" && "data" in r && r.data ? r.data : r;
+  const items: LegalPartnerDetail[] = Array.isArray(container?.items)
+    ? container.items
+    : [];
+  const total: number =
+    typeof container?.total === "number" ? container.total : items.length;
+  const cursor: string | null =
+    typeof container?.cursor === "string" || container?.cursor === null
+      ? container.cursor
+      : null;
+  return { items, total, cursor };
+}
+
 const buildQuery = (params: Record<string, string | number | boolean | undefined>) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -16,25 +32,12 @@ export async function fetchLegalPartners(
   params: { status?: string; search?: string; limit?: number; offset?: number } = {},
 ) {
   const suffix = buildQuery(params);
-  const response = await request<
-    | LegalPartnerListResponse
-    | LegalPartnerDetail[]
-    | { items?: LegalPartnerDetail[]; total?: number; cursor?: string | null; data?: { items?: LegalPartnerDetail[]; total?: number; cursor?: string | null } }
-  >(
+  const raw = await request<unknown>(
     `/admin/legal/partners${suffix}`,
     { method: "GET" },
     token,
   );
-  const items = Array.isArray(response)
-    ? response
-    : response.items ?? response.data?.items ?? [];
-  const total = Array.isArray(response)
-    ? response.length
-    : response.total ?? response.data?.total ?? items.length ?? 0;
-  const cursor = Array.isArray(response)
-    ? null
-    : response.cursor ?? response.data?.cursor ?? null;
-  return { items, total, cursor };
+  return normalizeLegalPartnerList(raw);
 }
 
 export async function fetchLegalPartner(token: string, partnerId: string): Promise<LegalPartnerDetail> {
