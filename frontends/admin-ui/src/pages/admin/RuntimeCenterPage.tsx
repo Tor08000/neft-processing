@@ -5,7 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAdmin } from "../../admin/AdminContext";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
 import { Loader } from "../../components/Loader/Loader";
-import type { CriticalEvent, RuntimeHealthSummary, RuntimeSummary } from "../../types/runtime";
+import type { RuntimeHealthSummary, RuntimeSummary } from "../../types/runtime";
 import {
   AdminForbiddenPage,
   AdminLoadingPage,
@@ -47,6 +47,8 @@ const DEFAULT_SUMMARY: RuntimeSummary = {
     critical_last_10: [],
   },
 };
+
+type CriticalEvent = { ts: string; kind: string; message: string; correlation_id?: string };
 
 const resolveErrorScreen = (error: unknown) => {
   if (error instanceof UnauthorizedError) {
@@ -181,7 +183,6 @@ export const RuntimeCenterPage: React.FC = () => {
             Refresh
           </button>
           {(isLoading || isFetching) && <Loader label="Загрузка статуса" />}
-          {error && <span style={{ color: "#dc2626" }}>{error.message}</span>}
         </div>
       </div>
 
