@@ -8,9 +8,8 @@ export interface LegalPartnerSummary {
 
 export interface LegalPartnerListResponse {
   items: LegalPartnerSummary[];
-  total?: number;
-  limit?: number;
-  offset?: number;
+  total: number;
+  cursor?: string | null;
 }
 
 export interface LegalPartnerDocument {
