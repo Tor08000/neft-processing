@@ -64,6 +64,8 @@ NEFT_DEMO_PLAN_TITLE=Demo
 
 ### 1) Поднять систему
 
+Если auth-host падает с ошибкой `FAILED: Multiple head revisions are present for given argument 'head'`, нужно создать merge migration в `platform/auth-host` (alembic merge для двух head). Затем повторить запуск.
+
 ```
 cd C:\neft-processing
 docker compose down -v
