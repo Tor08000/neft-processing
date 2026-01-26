@@ -296,6 +296,10 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
         if not client_id and _is_dev_env():
             client_id = settings.demo_client_uuid
             org_id = settings.demo_org_id
+    if portal == "partner":
+        subject_type = "partner_user"
+        if org_id is None and _is_dev_env():
+            org_id = settings.demo_org_id
     try:
         token = create_access_token(
             user_email,
