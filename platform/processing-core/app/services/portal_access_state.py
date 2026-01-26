@@ -23,6 +23,7 @@ def resolve_access_state(
     entitlements_snapshot: dict[str, Any] | None,
     capabilities: list[str],
     contract_status: str | None = None,
+    onboarding_profile_complete: bool | None = None,
 ) -> tuple[PortalAccessState, str | None]:
     if actor_type == "admin":
         return PortalAccessState.ACTIVE, None
@@ -40,6 +41,8 @@ def resolve_access_state(
         return PortalAccessState.LEGAL_PENDING, "legal_not_verified"
 
     if "CLIENT" in upper_roles:
+        if onboarding_profile_complete is False:
+            return PortalAccessState.NEEDS_ONBOARDING, "profile_missing"
         normalized_org_status = _normalize_status(org_status)
         if not normalized_org_status or normalized_org_status != "ACTIVE":
             if org_status is None:

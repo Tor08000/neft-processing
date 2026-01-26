@@ -213,7 +213,7 @@ export const updateClientTimezone = (user: AuthSession | null, timezone: string)
   );
 
 export const createOrg = (user: AuthSession | null, payload: ClientOrgPayload) =>
-  request<ClientOrgResponse>("/client/org", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+  request<ClientOrgResponse>("/client/onboarding/profile", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
 
 export const updateOrg = (user: AuthSession | null, payload: ClientOrgPayload) =>
   request<ClientOrgResponse>("/client/org", { method: "PATCH", body: JSON.stringify(payload) }, withToken(user));
@@ -222,11 +222,7 @@ export const fetchPlans = (user: AuthSession | null) =>
   request<SubscriptionPlan[]>("/client/plans", { method: "GET" }, withToken(user));
 
 export const selectSubscription = (user: AuthSession | null, payload: SubscriptionSelectPayload) =>
-  request<ClientSubscriptionResponse>(
-    "/client/subscription/select",
-    { method: "POST", body: JSON.stringify(payload) },
-    withToken(user),
-  );
+  request<ClientSubscriptionResponse>("/client/subscription", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
 
 export const fetchSubscription = (user: AuthSession | null) =>
   request<ClientSubscriptionResponse>("/client/subscription", { method: "GET" }, withToken(user));

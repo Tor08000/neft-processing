@@ -3519,6 +3519,15 @@ def create_org(
     )
 
 
+@router.post("/onboarding/profile", response_model=ClientOrgOut)
+def create_onboarding_profile(
+    payload: ClientOrgIn,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientOrgOut:
+    return create_org(payload=payload, token=token, db=db)
+
+
 @router.patch("/org", response_model=ClientOrgOut)
 def update_org(
     payload: ClientOrgIn,
@@ -3572,6 +3581,28 @@ def get_current_contract(
         pdf_url=contract.pdf_url,
         version=int(contract.version or 1),
     )
+
+
+@router.get("/contracts", response_model=list[ContractInfo])
+def list_contracts(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> list[ContractInfo]:
+    client = _resolve_client(db, token)
+    if client is None:
+        return []
+    if not _table_exists(db, "client_onboarding_contracts"):
+        return []
+    contracts = db.query(ClientOnboardingContract).filter(ClientOnboardingContract.client_id == str(client.id)).all()
+    return [
+        ContractInfo(
+            contract_id=str(contract.id),
+            status=contract.status,
+            pdf_url=contract.pdf_url,
+            version=int(contract.version or 1),
+        )
+        for contract in contracts
+    ]
 
 
 @router.get("/contracts/{contract_id}", response_model=ContractInfo)
@@ -6297,6 +6328,15 @@ def select_subscription(
         modules=modules,
         limits=limits,
     )
+
+
+@router.post("/subscription", response_model=ClientSubscriptionOut)
+def select_subscription_alias(
+    payload: ClientSubscriptionSelectRequest,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientSubscriptionOut:
+    return select_subscription(payload=payload, token=token, db=db)
 
 
 @router.get("/subscriptions/plans", response_model=list[SubscriptionPlanOut])
