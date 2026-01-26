@@ -70,6 +70,7 @@ from app.routers.admin import (
     reconciliation_imports,
     me,
     ops_runtime,
+    seed_partner_money,
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_user)])
@@ -142,5 +143,6 @@ router.include_router(commercial.router)
 router.include_router(revenue.router)
 router.include_router(me.router)
 router.include_router(ops_runtime.router)
+router.include_router(seed_partner_money.router)
 
 __all__ = ["router"]
