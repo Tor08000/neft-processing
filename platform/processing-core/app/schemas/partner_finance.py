@@ -39,6 +39,7 @@ class PartnerLedgerListResponse(BaseModel):
     items: list[PartnerLedgerEntryOut] | None = None
     entries: list[PartnerLedgerEntrySummary] | None = None
     cursor: str | None = None
+    total: int | None = None
     totals: dict[str, Decimal] | None = None
 
 
