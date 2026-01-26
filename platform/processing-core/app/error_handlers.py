@@ -37,6 +37,17 @@ def _admin_error_payload(
 logger = logging.getLogger(__name__)
 
 
+def _resolve_actor_type(request: Request) -> str | None:
+    if getattr(request.state, "service_principal", None) is not None:
+        return "service"
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer svc_"):
+        return "service"
+    if _is_admin_request(request):
+        return "admin"
+    return None
+
+
 def add_exception_handlers(app: FastAPI):
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
@@ -107,12 +118,15 @@ def add_exception_handlers(app: FastAPI):
         except Exception as exc:
             error_id = str(uuid4())
             reason_code = getattr(exc, "reason_code", None) or "internal_error"
+            actor_type = _resolve_actor_type(request)
             logger.exception(
                 "Unhandled application error",
                 extra={
                     "error_id": error_id,
                     "reason_code": reason_code,
                     "path": str(request.url.path),
+                    "method": request.method,
+                    "actor_type": actor_type,
                 },
             )
             if _is_admin_request(request):
