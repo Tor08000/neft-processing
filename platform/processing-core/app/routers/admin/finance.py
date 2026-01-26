@@ -10,7 +10,14 @@ from app.api.dependencies.admin_rbac import require_any_admin_roles
 from app.db import get_db
 from app.models.audit_log import AuditVisibility
 from app.models.finance import CreditNoteStatus, PaymentStatus
-from app.models.partner_finance import PartnerPayoutPolicy, PartnerPayoutRequest, PartnerPayoutRequestStatus
+from app.models.partner_finance import (
+    PartnerLedgerDirection,
+    PartnerLedgerEntryType,
+    PartnerPayoutPolicy,
+    PartnerPayoutRequest,
+    PartnerPayoutRequestStatus,
+    PartnerPayoutSchedule,
+)
 from app.models.reconciliation import ReconciliationDiscrepancy, ReconciliationDiscrepancyStatus
 from app.schemas.admin.finance import (
     AdminInvoiceActionResponse,
@@ -24,6 +31,9 @@ from app.schemas.admin.finance import (
     CreditNoteResponse,
     FinanceOverviewBlockedReason,
     FinanceOverviewResponse,
+    PartnerLedgerSeedRequest,
+    PartnerLedgerSeedResponse,
+    PartnerPayoutPolicyUpsertRequest,
     PaymentRequest,
     PaymentResponse,
     PayoutActionResponse,
@@ -591,6 +601,73 @@ def reject_finance_payment_intake(
     return AdminPaymentIntakeActionResponse(
         intake=_serialize_payment_intake(updated),
         correlation_id=_correlation_id(request),
+    )
+
+
+@router.post("/partners/{partner_id}/payout-policy", response_model=PayoutPolicyInfo)
+def upsert_partner_payout_policy(
+    partner_id: str,
+    payload: PartnerPayoutPolicyUpsertRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_any_admin_roles(WRITE_ROLES)),
+) -> PayoutPolicyInfo:
+    _ = request_context_from_request(request, token=_sanitize_token_for_audit(token))
+    policy = (
+        db.query(PartnerPayoutPolicy)
+        .filter(PartnerPayoutPolicy.partner_org_id == partner_id)
+        .filter(PartnerPayoutPolicy.currency == payload.currency)
+        .one_or_none()
+    )
+    if policy is None:
+        policy = PartnerPayoutPolicy(partner_org_id=partner_id, currency=payload.currency)
+        db.add(policy)
+    policy.min_payout_amount = payload.min_payout_amount
+    policy.payout_hold_days = payload.payout_hold_days
+    try:
+        policy.payout_schedule = PartnerPayoutSchedule(payload.payout_schedule)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_payout_schedule") from exc
+    db.commit()
+    return PayoutPolicyInfo(
+        min_payout_amount=Decimal(policy.min_payout_amount),
+        payout_hold_days=int(policy.payout_hold_days),
+        payout_schedule=policy.payout_schedule.value if hasattr(policy.payout_schedule, "value") else str(policy.payout_schedule),
+    )
+
+
+@router.post("/partners/{partner_id}/ledger/seed", response_model=PartnerLedgerSeedResponse, status_code=201)
+def seed_partner_ledger_entry(
+    partner_id: str,
+    payload: PartnerLedgerSeedRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(require_any_admin_roles(WRITE_ROLES)),
+) -> PartnerLedgerSeedResponse:
+    service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
+    try:
+        entry_type = PartnerLedgerEntryType(payload.entry_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_entry_type") from exc
+    try:
+        direction = PartnerLedgerDirection(payload.direction)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_direction") from exc
+    entry = service.post_entry(
+        partner_org_id=partner_id,
+        entry_type=entry_type,
+        amount=payload.amount,
+        currency=payload.currency,
+        direction=direction,
+        meta_json={"description": payload.description} if payload.description else None,
+    )
+    db.commit()
+    account = service.get_account(partner_org_id=partner_id, currency=payload.currency)
+    return PartnerLedgerSeedResponse(
+        entry_id=str(entry.id),
+        partner_org_id=partner_id,
+        balance_available=Decimal(account.balance_available or 0),
+        currency=account.currency,
     )
 
 

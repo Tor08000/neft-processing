@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +19,8 @@ from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (
     PortalMeOrg,
     PortalMePartner,
+    PortalMePartnerFinanceState,
+    PortalMePartnerLegalState,
     PortalMePartnerProfile,
     PortalMeLegal,
     PortalMeFeatures,
@@ -25,12 +29,17 @@ from app.schemas.portal_me import (
     PortalMeSubscription,
     PortalMeUser,
     PortalNavSection,
+    PortalAccessState,
 )
+from app.models.partner_finance import PartnerLedgerEntry, PartnerLedgerEntryType
+from app.models.partner_legal import PartnerLegalStatus
 from app.services.entitlements_v2_service import get_org_entitlements_snapshot
 from app.services.jwt_support import parse_scopes
 from app.services.legal import LegalService, legal_gate_required_codes, subject_from_request
 from app.config import settings
 from app.services.partner_core_service import ensure_partner_profile
+from app.services.partner_finance_service import PartnerFinanceService
+from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 from app.services.portal_access_state import resolve_access_state
 from app.services.subscription_service import DEFAULT_TENANT_ID, get_client_subscription
 
@@ -316,6 +325,11 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     )
 
     partner_payload = None
+    partner_finance_state = None
+    partner_legal_state = None
+    payout_block_reasons: list[str] = []
+    sla_penalties_total = Decimal("0")
+    sla_penalties_count = 0
     if (
         "PARTNER" in {str(role).upper() for role in org_roles}
         and org_id_int is not None
@@ -325,6 +339,56 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         if profile in db.new:
             db.commit()
             db.refresh(profile)
+        legal_service = PartnerLegalService(db)
+        legal_profile = legal_service.get_profile(partner_id=str(org_id_int))
+        legal_status_label = "OK"
+        if settings.LEGAL_GATE_ENABLED:
+            if legal_profile is None:
+                legal_status_label = "PENDING"
+            elif legal_profile.legal_status == PartnerLegalStatus.VERIFIED:
+                legal_status_label = "OK"
+            elif legal_profile.legal_status == PartnerLegalStatus.BLOCKED:
+                legal_status_label = "REJECTED"
+            else:
+                legal_status_label = "PENDING"
+        legal_block_reason = None
+        if settings.LEGAL_GATE_ENABLED:
+            try:
+                legal_service.ensure_payout_allowed(partner_id=str(org_id_int))
+            except PartnerLegalError as exc:
+                legal_block_reason = exc.code
+
+        finance_service = PartnerFinanceService(db)
+        account = finance_service.get_account(partner_org_id=str(org_id_int), currency="RUB")
+        policy = finance_service.get_payout_policy(partner_org_id=str(org_id_int), currency=account.currency)
+        threshold = Decimal(policy.min_payout_amount) if policy else Decimal("0")
+        partner_finance_state = PortalMePartnerFinanceState(
+            balance=Decimal(account.balance_available or 0),
+            pending=Decimal(account.balance_pending or 0),
+            blocked=Decimal(account.balance_blocked or 0),
+            currency=account.currency,
+            threshold=threshold,
+        )
+        partner_legal_state = PortalMePartnerLegalState(
+            required_enabled=settings.LEGAL_GATE_ENABLED,
+            status=legal_status_label,
+            block_reason=legal_block_reason,
+        )
+        payout_block_reasons = finance_service.evaluate_payout_blockers(
+            partner_org_id=str(org_id_int),
+            amount=Decimal(account.balance_available or 0),
+            currency=account.currency,
+            now=datetime.now(timezone.utc),
+        )
+        penalty_rows = (
+            db.query(PartnerLedgerEntry)
+            .filter(PartnerLedgerEntry.partner_org_id == str(org_id_int))
+            .filter(PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.SLA_PENALTY)
+            .all()
+        )
+        sla_penalties_count = len(penalty_rows)
+        if penalty_rows:
+            sla_penalties_total = sum((Decimal(entry.amount or 0) for entry in penalty_rows), Decimal("0"))
         partner_payload = PortalMePartner(
             status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
             profile=PortalMePartnerProfile(
@@ -332,6 +396,8 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                 contacts_json=profile.contacts_json,
                 meta_json=profile.meta_json,
             ),
+            finance_state=partner_finance_state,
+            legal=partner_legal_state,
         )
 
     resolved_timezone = employee_timezone or (org_payload.timezone if org_payload else None) or "UTC"
@@ -346,6 +412,20 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         capabilities=capabilities,
         contract_status=contract_status,
     )
+    if actor_type == "partner" and partner_payload:
+        if partner_legal_state and partner_legal_state.required_enabled:
+            if partner_legal_state.status == "PENDING":
+                access_state = PortalAccessState.LEGAL_PENDING
+                access_reason = partner_legal_state.block_reason or "legal_pending"
+            elif partner_legal_state.status == "REJECTED":
+                access_state = PortalAccessState.PAYOUT_BLOCKED
+                access_reason = partner_legal_state.block_reason or "legal_rejected"
+        if access_state == PortalAccessState.ACTIVE and payout_block_reasons:
+            access_state = PortalAccessState.PAYOUT_BLOCKED
+            access_reason = payout_block_reasons[0] if payout_block_reasons else "payout_blocked"
+        if access_state == PortalAccessState.ACTIVE and sla_penalties_count > 0:
+            access_state = PortalAccessState.SLA_PENALTY
+            access_reason = "sla_penalty"
     return PortalMeResponse(
         actor_type=actor_type,
         context=actor_type,

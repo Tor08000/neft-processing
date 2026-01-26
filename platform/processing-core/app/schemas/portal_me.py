@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 
@@ -41,9 +42,25 @@ class PortalMePartnerProfile(BaseModel):
     meta_json: dict[str, Any] | None = None
 
 
+class PortalMePartnerFinanceState(BaseModel):
+    balance: Decimal
+    pending: Decimal
+    blocked: Decimal
+    currency: str
+    threshold: Decimal
+
+
+class PortalMePartnerLegalState(BaseModel):
+    required_enabled: bool | None = None
+    status: str | None = None
+    block_reason: str | None = None
+
+
 class PortalMePartner(BaseModel):
     status: str | None = None
     profile: PortalMePartnerProfile | None = None
+    finance_state: PortalMePartnerFinanceState | None = None
+    legal: PortalMePartnerLegalState | None = None
 
 
 class PortalMeLegal(BaseModel):
