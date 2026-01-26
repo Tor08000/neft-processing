@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PartnerLegalProfileStatusUpdate(BaseModel):
     status: str
-    comment: str | None = None
+    comment: str = Field(..., min_length=1, max_length=500)
 
 
 class PartnerLegalPackRequest(BaseModel):
