@@ -74,3 +74,6 @@ export interface PaymentIntakeListResponse {
   limit: number;
   offset: number;
 }
+
+export type PartnerLedgerSnapshot = Record<string, unknown>;
+export type PartnerSettlementSnapshot = Record<string, unknown>;

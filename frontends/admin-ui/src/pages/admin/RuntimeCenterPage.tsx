@@ -14,6 +14,7 @@ import {
   AdminUnauthorizedPage,
 } from "./AdminStatusPages";
 import { ApiError, ForbiddenError, UnauthorizedError } from "../../api/http";
+import { CopyButton } from "../../components/CopyButton/CopyButton";
 
 const DEFAULT_SUMMARY: RuntimeSummary = {
   ts: "",
@@ -61,7 +62,7 @@ const resolveErrorScreen = (error: unknown) => {
     if (error.status === 502 || error.status === 503) {
       return <AdminServiceUnavailablePage requestId={error.requestId ?? undefined} />;
     }
-    return <AdminTechErrorPage requestId={error.requestId ?? undefined} />;
+    return <AdminTechErrorPage requestId={error.requestId ?? undefined} errorId={error.errorCode ?? undefined} />;
   }
   if (error instanceof TypeError) {
     return <AdminServiceUnavailablePage />;
@@ -273,7 +274,10 @@ export const RuntimeCenterPage: React.FC = () => {
         ) : (
           events.map((event) => (
             <div key={`${event.ts}-${event.kind}-${event.correlation_id ?? ""}`}>
-              <div>{event.message}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div>{event.message}</div>
+                {event.correlation_id ? <CopyButton value={event.correlation_id} label="Copy correlation_id" /> : null}
+              </div>
             </div>
           ))
         )}

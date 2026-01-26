@@ -8,15 +8,20 @@ import {
   type PartnerLegalPack,
   type PartnerLegalProfileAdmin,
 } from "../../api/partnerLegal";
+import AdminWriteActionModal from "../../components/admin/AdminWriteActionModal";
+import { useAdmin } from "../../admin/AdminContext";
 
 export default function PartnerLegalPage() {
   const { accessToken } = useAuth();
+  const { profile: adminProfile } = useAdmin();
   const [partnerId, setPartnerId] = useState("");
   const [profile, setProfile] = useState<PartnerLegalProfileAdmin | null>(null);
   const [packs, setPacks] = useState<PartnerLegalPack[]>([]);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const canWrite = Boolean(adminProfile?.permissions.legal?.write) && !adminProfile?.read_only;
 
   const loadProfile = async () => {
     if (!accessToken || !partnerId.trim()) return;
@@ -35,12 +40,18 @@ export default function PartnerLegalPage() {
     }
   };
 
-  const updateStatus = async (status: string) => {
+  const updateStatus = async (status: string, reason: string, correlationId: string) => {
     if (!accessToken || !partnerId.trim()) return;
+    if (!canWrite) return;
     setIsLoading(true);
     setError(null);
     try {
-      const updated = await updatePartnerLegalStatus(accessToken, partnerId.trim(), { status, comment });
+      const updated = await updatePartnerLegalStatus(accessToken, partnerId.trim(), {
+        status,
+        reason,
+        correlation_id: correlationId,
+        comment,
+      });
       setProfile(updated);
       setComment("");
     } catch (err) {
@@ -136,15 +147,31 @@ export default function PartnerLegalPage() {
               <input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Комментарий" />
             </label>
             <div className="button-row" style={{ marginTop: "1rem" }}>
-              <button className="primary" type="button" onClick={() => updateStatus("VERIFIED")} disabled={isLoading}>
+              <button
+                className="primary"
+                type="button"
+                onClick={() => setPendingStatus("VERIFIED")}
+                disabled={isLoading || !canWrite}
+              >
                 Подтвердить
               </button>
-              <button className="ghost" type="button" onClick={() => updateStatus("BLOCKED")} disabled={isLoading}>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setPendingStatus("BLOCKED")}
+                disabled={isLoading || !canWrite}
+              >
                 Заблокировать
               </button>
-              <button className="ghost" type="button" onClick={() => updateStatus("PENDING_REVIEW")} disabled={isLoading}>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setPendingStatus("PENDING_REVIEW")}
+                disabled={isLoading || !canWrite}
+              >
                 На проверку
               </button>
+              {!canWrite ? <span className="muted">Read-only mode enabled</span> : null}
             </div>
           </section>
 
@@ -184,6 +211,18 @@ export default function PartnerLegalPage() {
           </section>
         </>
       ) : null}
+
+      <AdminWriteActionModal
+        isOpen={pendingStatus !== null}
+        title="Confirm legal status change"
+        requirePhrase
+        confirmPhrase="CONFIRM"
+        onConfirm={({ reason, correlationId }) => {
+          if (!pendingStatus) return;
+          return updateStatus(pendingStatus, reason, correlationId).finally(() => setPendingStatus(null));
+        }}
+        onCancel={() => setPendingStatus(null)}
+      />
     </div>
   );
 }

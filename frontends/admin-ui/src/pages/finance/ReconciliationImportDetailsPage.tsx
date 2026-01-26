@@ -15,6 +15,7 @@ import { Loader } from "../../components/Loader/Loader";
 import { useToast } from "../../components/Toast/useToast";
 import { Toast } from "../../components/Toast/Toast";
 import { extractRequestId } from "../ops/opsUtils";
+import { useAdmin } from "../../admin/AdminContext";
 
 type ActionState =
   | { type: "parse" | "match"; transaction?: undefined }
@@ -24,9 +25,11 @@ type ActionState =
 export const ReconciliationImportDetailsPage: React.FC = () => {
   const { importId } = useParams();
   const { toast, showToast } = useToast();
+  const { profile } = useAdmin();
   const [action, setAction] = useState<ActionState>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [invoiceIds, setInvoiceIds] = useState<Record<string, string>>({});
+  const canWrite = Boolean(profile?.permissions.finance?.write) && !profile?.read_only;
 
   const { data: importData, isLoading: importLoading, refetch: refetchImport } = useQuery({
     queryKey: ["reconciliation-import", importId],
@@ -53,22 +56,27 @@ export const ReconciliationImportDetailsPage: React.FC = () => {
 
   const requestId = errorMessage ? extractRequestId(new Error(errorMessage)) : null;
 
-  const handleConfirm = async ({ reason }: { reason: string }) => {
+  const handleConfirm = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
     if (!importId || !action) return;
+    if (!canWrite) return;
     try {
       if (action.type === "parse") {
-        await parseImport(importId, reason);
+        await parseImport(importId, { reason, correlation_id: correlationId });
       } else if (action.type === "match") {
-        await matchImport(importId, reason);
+        await matchImport(importId, { reason, correlation_id: correlationId });
       } else if (action.type === "apply" && action.transaction) {
         const invoiceId = invoiceIds[action.transaction.id];
         if (!invoiceId) {
           showToast("error", "Enter invoice ID before applying");
           return;
         }
-        await applyImportTransaction(action.transaction.id, { invoice_id: invoiceId, reason });
+        await applyImportTransaction(action.transaction.id, {
+          invoice_id: invoiceId,
+          reason,
+          correlation_id: correlationId,
+        });
       } else if (action.type === "ignore" && action.transaction) {
-        await ignoreImportTransaction(action.transaction.id, reason);
+        await ignoreImportTransaction(action.transaction.id, { reason, correlation_id: correlationId });
       }
       setAction(null);
       setErrorMessage(null);
@@ -97,10 +105,10 @@ export const ReconciliationImportDetailsPage: React.FC = () => {
           <button type="button" className="ghost" onClick={() => refetchImport()}>
             Refresh
           </button>
-          <button type="button" className="ghost" onClick={() => setAction({ type: "parse" })}>
+          <button type="button" className="ghost" onClick={() => setAction({ type: "parse" })} disabled={!canWrite}>
             Parse
           </button>
-          <button type="button" className="ghost" onClick={() => setAction({ type: "match" })}>
+          <button type="button" className="ghost" onClick={() => setAction({ type: "match" })} disabled={!canWrite}>
             Match
           </button>
         </div>
@@ -149,11 +157,22 @@ export const ReconciliationImportDetailsPage: React.FC = () => {
                         }))
                       }
                       style={{ minWidth: 220 }}
+                      disabled={!canWrite}
                     />
-                    <button type="button" className="ghost" onClick={() => setAction({ type: "apply", transaction: tx })}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => setAction({ type: "apply", transaction: tx })}
+                      disabled={!canWrite}
+                    >
                       Apply
                     </button>
-                    <button type="button" className="ghost" onClick={() => setAction({ type: "ignore", transaction: tx })}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => setAction({ type: "ignore", transaction: tx })}
+                      disabled={!canWrite}
+                    >
                       Ignore
                     </button>
                   </div>
@@ -163,6 +182,7 @@ export const ReconciliationImportDetailsPage: React.FC = () => {
           )}
         </div>
       ))}
+      {!canWrite ? <div className="muted">Read-only mode enabled</div> : null}
 
       <AdminWriteActionModal
         isOpen={action !== null}

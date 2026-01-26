@@ -4,11 +4,17 @@ import { EmptyState } from "@shared/brand/components";
 
 interface AdminStatusProps {
   requestId?: string;
+  errorId?: string;
 }
 
-const RequestId: React.FC<AdminStatusProps> = ({ requestId }) => {
-  if (!requestId) return null;
-  return <div className="admin-request-id">Request ID: {requestId}</div>;
+const RequestMeta: React.FC<AdminStatusProps> = ({ requestId, errorId }) => {
+  if (!requestId && !errorId) return null;
+  return (
+    <div className="admin-request-id">
+      {errorId ? <div>Error ID: {errorId}</div> : null}
+      {requestId ? <div>Request ID: {requestId}</div> : null}
+    </div>
+  );
 };
 
 export const AdminLoadingPage: React.FC = () => (
@@ -21,7 +27,7 @@ export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId })
     description={
       <>
         Требуется повторный вход.
-        <RequestId requestId={requestId} />
+        <RequestMeta requestId={requestId} />
       </>
     }
     action={
@@ -38,7 +44,7 @@ export const AdminForbiddenPage: React.FC<AdminStatusProps> = ({ requestId }) =>
     description={
       <>
         У вас нет прав доступа к этому разделу.
-        <RequestId requestId={requestId} />
+        <RequestMeta requestId={requestId} />
       </>
     }
     action={
@@ -73,13 +79,17 @@ export const AdminCrashPage: React.FC = () => (
   />
 );
 
-export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string }> = ({ requestId, message }) => (
+export const AdminTechErrorPage: React.FC<AdminStatusProps & { message?: string }> = ({
+  requestId,
+  errorId,
+  message,
+}) => (
   <EmptyState
     title="TECH_ERROR"
     description={
       <>
         {message ?? "Не удалось загрузить данные админ-портала. Попробуйте позже."}
-        <RequestId requestId={requestId} />
+        <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
@@ -96,7 +106,7 @@ export const AdminServiceUnavailablePage: React.FC<AdminStatusProps> = ({ reques
     description={
       <>
         Сервис временно недоступен. Попробуйте позже.
-        <RequestId requestId={requestId} />
+        <RequestMeta requestId={requestId} />
       </>
     }
     action={

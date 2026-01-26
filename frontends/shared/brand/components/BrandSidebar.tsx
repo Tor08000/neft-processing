@@ -43,6 +43,7 @@ export function BrandSidebar({ title = "NEFT", items, footerSlot }: BrandSidebar
             <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClassName}>
               {item.icon ? <span className="brand-nav-link__icon">{item.icon}</span> : null}
               <span className="brand-nav-link__label">{item.label}</span>
+              {item.hint ? <span className="brand-nav-link__hint">{item.hint}</span> : null}
             </NavLink>
           ),
         )}

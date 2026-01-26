@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPayoutQueue } from "../../api/finance";
 import type { PayoutQueueItem } from "../../types/payouts";
@@ -7,6 +7,7 @@ import { Table, type Column } from "../../components/Table/Table";
 import { Pagination } from "../../components/Pagination/Pagination";
 import { Loader } from "../../components/Loader/Loader";
 import { extractRequestId } from "../ops/opsUtils";
+import { CopyButton } from "../../components/CopyButton/CopyButton";
 
 export const PayoutQueuePage: React.FC = () => {
   const navigate = useNavigate();
@@ -55,6 +56,8 @@ export const PayoutQueuePage: React.FC = () => {
     { key: "partner_org", title: "Partner", render: (row) => row.partner_org },
     { key: "amount", title: "Amount", render: (row) => `${row.amount} ${row.currency}` },
     { key: "status", title: "Status", render: (row) => row.status },
+    { key: "legal_status", title: "Legal", render: (row) => row.legal_status ?? "—" },
+    { key: "settlement_status", title: "Settlement", render: (row) => row.settlement_status ?? "—" },
     {
       key: "blockers",
       title: "Blockers",
@@ -66,6 +69,19 @@ export const PayoutQueuePage: React.FC = () => {
                 {item}
               </span>
             ))}
+          </div>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "correlation",
+      title: "Correlation",
+      render: (row) =>
+        row.correlation_id ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <Link to={`/audit?correlation_id=${encodeURIComponent(row.correlation_id)}`}>Open</Link>
+            <CopyButton value={row.correlation_id} label="Copy" />
           </div>
         ) : (
           "—"

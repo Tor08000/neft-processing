@@ -94,12 +94,16 @@ export interface PayoutExportFormatInfo {
 
 export interface PayoutQueueItem {
   payout_id: string;
+  partner_id?: string | null;
   partner_org: string;
   amount: number | string;
   currency: string;
   status: string;
   blockers: string[];
   created_at?: string | null;
+  legal_status?: string | null;
+  settlement_status?: string | null;
+  correlation_id?: string | null;
 }
 
 export interface PayoutQueueListResponse {
@@ -129,4 +133,7 @@ export interface PayoutDetail extends PayoutQueueItem {
   trace?: PayoutTraceItem[];
   totals?: Record<string, number | string> | null;
   legal_status?: string | null;
+  settlement_snapshot?: Record<string, unknown> | null;
+  block_reason_tree?: Record<string, unknown> | string[] | null;
+  correlation_chain?: string[] | null;
 }

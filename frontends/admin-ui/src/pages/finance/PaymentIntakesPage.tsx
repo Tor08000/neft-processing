@@ -9,17 +9,20 @@ import AdminWriteActionModal from "../../components/admin/AdminWriteActionModal"
 import { useToast } from "../../components/Toast/useToast";
 import { Toast } from "../../components/Toast/Toast";
 import { extractRequestId } from "../ops/opsUtils";
+import { useAdmin } from "../../admin/AdminContext";
 
 type IntakeAction = { type: "approve" | "reject"; intake: PaymentIntakeDetail } | null;
 
 export const PaymentIntakesPage: React.FC = () => {
   const { toast, showToast } = useToast();
+  const { profile } = useAdmin();
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
   const [status, setStatus] = useState("");
   const [debouncedStatus, setDebouncedStatus] = useState("");
   const [action, setAction] = useState<IntakeAction>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const canWrite = Boolean(profile?.permissions.finance?.write) && !profile?.read_only;
 
   useEffect(() => {
     const handler = window.setTimeout(() => setDebouncedStatus(status), 400);
@@ -73,10 +76,20 @@ export const PaymentIntakesPage: React.FC = () => {
       title: "Actions",
       render: (row) => (
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="ghost" onClick={() => setAction({ type: "approve", intake: row })}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setAction({ type: "approve", intake: row })}
+            disabled={!canWrite}
+          >
             Approve
           </button>
-          <button type="button" className="ghost" onClick={() => setAction({ type: "reject", intake: row })}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setAction({ type: "reject", intake: row })}
+            disabled={!canWrite}
+          >
             Reject
           </button>
         </div>
@@ -84,13 +97,14 @@ export const PaymentIntakesPage: React.FC = () => {
     },
   ];
 
-  const handleConfirm = async ({ reason }: { reason: string }) => {
+  const handleConfirm = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
     if (!action) return;
+    if (!canWrite) return;
     try {
       if (action.type === "approve") {
-        await approvePaymentIntake(action.intake.id, reason);
+        await approvePaymentIntake(action.intake.id, { reason, correlation_id: correlationId });
       } else {
-        await rejectPaymentIntake(action.intake.id, reason);
+        await rejectPaymentIntake(action.intake.id, { reason, correlation_id: correlationId });
       }
       setAction(null);
       setErrorMessage(null);
@@ -137,6 +151,7 @@ export const PaymentIntakesPage: React.FC = () => {
 
       <Table columns={columns} data={items} loading={isLoading} />
       <Pagination total={total} limit={limit} offset={offset} onChange={(value) => setOffset(value)} />
+      {!canWrite ? <div className="muted">Read-only mode enabled</div> : null}
 
       <AdminWriteActionModal
         isOpen={action !== null}

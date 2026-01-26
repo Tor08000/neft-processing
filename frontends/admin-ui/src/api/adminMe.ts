@@ -37,10 +37,11 @@ const buildPermissions = (roles: string[]) => {
   const roleSet = new Set(roles.map((role) => role.toUpperCase()));
   const superadminEnabled =
     roleSet.has("NEFT_SUPERADMIN") || roleSet.has("NEFT_ADMIN") || roleSet.has("ADMIN") || roleSet.has("SUPERADMIN");
-  const ops = { read: roleSet.has("NEFT_OPS"), write: false };
-  const finance = { read: roleSet.has("NEFT_FINANCE"), write: roleSet.has("NEFT_FINANCE") };
+  const supportEnabled = roleSet.has("NEFT_SUPPORT") || roleSet.has("SUPPORT");
+  const ops = { read: roleSet.has("NEFT_OPS") || supportEnabled, write: false };
+  const finance = { read: roleSet.has("NEFT_FINANCE") || supportEnabled, write: roleSet.has("NEFT_FINANCE") };
   const sales = { read: roleSet.has("NEFT_SALES"), write: false };
-  const legal = { read: roleSet.has("NEFT_LEGAL"), write: false };
+  const legal = { read: roleSet.has("NEFT_LEGAL") || supportEnabled, write: roleSet.has("NEFT_LEGAL") };
   if (superadminEnabled) {
     return {
       ops: { read: true, write: true },
@@ -60,7 +61,7 @@ const buildPermissions = (roles: string[]) => {
 };
 
 export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
-  const response = await fetch(buildUrl("/v1/admin/me"), {
+  const response = await fetch(buildUrl("/admin/me"), {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -84,9 +85,11 @@ export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
     }
     if ("admin_user" in payload) {
       const env = payload.environment ?? payload.env;
+      const permissions = payload.permissions ?? buildPermissions(payload.roles ?? payload.admin_user.roles ?? []);
       return {
         ...payload,
         roles: payload.roles ?? payload.admin_user.roles,
+        permissions,
         env,
         environment: env,
         read_only: payload.read_only ?? false,
