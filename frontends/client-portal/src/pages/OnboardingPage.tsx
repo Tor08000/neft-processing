@@ -13,6 +13,7 @@ import {
   type ContractInfo,
   type SubscriptionPlan,
 } from "../api/clientPortal";
+import { AccessState } from "../access/accessState";
 import {
   AUTO_ACTIVATE_AFTER_SIGN,
   CONTRACT_SIMPLE_SIGN_ENABLED,
@@ -32,7 +33,7 @@ export function OnboardingPage() {
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const onboardingEnabled = client?.features?.onboarding ?? SELF_SIGNUP_ENABLED;
+  const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? SELF_SIGNUP_ENABLED;
 
   const [clientType, setClientType] = useState<"LEGAL" | "IP" | "INDIVIDUAL">("LEGAL");
   const [companyName, setCompanyName] = useState("");
@@ -63,20 +64,20 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (!user || !onboardingEnabled) return;
-    if (client?.org_status === "ACTIVE") {
+    if (client?.access_state === AccessState.ACTIVE) {
       setStep("activation");
       return;
     }
-    if (client?.org) {
-      if (client.subscription?.plan_code) {
-        setStep("contract");
-      } else {
-        setStep("plan");
-      }
+    if (client?.access_state === AccessState.NEEDS_CONTRACT) {
+      setStep("contract");
+      return;
+    }
+    if (client?.access_state === AccessState.NEEDS_PLAN) {
+      setStep("plan");
       return;
     }
     setStep("profile");
-  }, [client?.org, client?.org_status, client?.subscription?.plan_code, onboardingEnabled, user]);
+  }, [client?.access_state, onboardingEnabled, user]);
 
   useEffect(() => {
     if (step !== "plan" || !user) return;
@@ -217,8 +218,12 @@ export function OnboardingPage() {
     }
     setIsLoading(true);
     setError(null);
+    if (!contractInfo?.contract_id) {
+      setError("Сначала сформируйте договор");
+      return;
+    }
     try {
-      const response = await signContract(user, { otp: otp.trim() });
+      const response = await signContract(user, contractInfo.contract_id, { otp: otp.trim() });
       setContractInfo(response);
       await refresh();
       setStep("activation");

@@ -21,6 +21,8 @@ class RegisterRequest(BaseModel):
     email: str
     password: str = Field(min_length=6)
     full_name: str | None = None
+    consent_personal_data: bool | None = None
+    consent_offer: bool | None = None
 
     @field_validator("email")
     @classmethod

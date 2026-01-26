@@ -171,13 +171,22 @@ const AccessStateView = ({
         <StatusPage
           title="Выберите тариф"
           description="Для доступа к разделу нужен активный тариф."
-          actionLabel="Выбрать тариф"
-          actionTo="/subscription"
+          actionLabel="Продолжить подключение"
+          actionTo="/client/connect"
           secondaryAction={
             <Link className="ghost neft-btn-secondary" to="/client/support/new?topic=plan">
               Связаться с менеджером
             </Link>
           }
+        />
+      );
+    case AccessState.NEEDS_CONTRACT:
+      return (
+        <StatusPage
+          title="Подпишите договор"
+          description="Завершите подписание договора, чтобы открыть этот раздел."
+          actionLabel="Перейти к подписанию"
+          actionTo="/client/connect"
         />
       );
     case AccessState.OVERDUE:

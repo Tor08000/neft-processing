@@ -55,7 +55,7 @@
       "meta_json": { "any": "value" } | null
     } | null
   } | null,
-  "access_state": "AUTH_REQUIRED|NEEDS_ONBOARDING|NEEDS_PLAN|ACTIVE|OVERDUE|SUSPENDED|LEGAL_PENDING|PAYOUT_BLOCKED|SLA_PENALTY|MODULE_DISABLED|MISSING_CAPABILITY|FORBIDDEN_ROLE|SERVICE_UNAVAILABLE|MISCONFIG|TECH_ERROR",
+  "access_state": "AUTH_REQUIRED|NEEDS_ONBOARDING|NEEDS_PLAN|NEEDS_CONTRACT|ACTIVE|OVERDUE|SUSPENDED|LEGAL_PENDING|PAYOUT_BLOCKED|SLA_PENALTY|MODULE_DISABLED|MISSING_CAPABILITY|FORBIDDEN_ROLE|SERVICE_UNAVAILABLE|MISCONFIG|TECH_ERROR",
   "access_reason": "string|null"
 }
 ```
@@ -65,6 +65,7 @@
 - `AUTH_REQUIRED`
 - `NEEDS_ONBOARDING`
 - `NEEDS_PLAN`
+- `NEEDS_CONTRACT`
 - `ACTIVE`
 - `OVERDUE`
 - `SUSPENDED`
@@ -84,6 +85,7 @@
 
 - `org.status`
 - `subscription.status`
+- onboarding `contract.status` (client)
 - `entitlements_snapshot` (modules/features/capabilities)
 - `partner.status` / partner finance state (when available)
 - `org_roles` and `user_roles`
@@ -118,6 +120,7 @@ The first matching rule wins. For the same inputs, the output must be identical 
 | SLA penalty active (when provided) | SLA_PENALTY | sla_penalty |
 | Org status is missing or not `ACTIVE` | NEEDS_ONBOARDING | org_not_active |
 | Subscription missing or no plan | NEEDS_PLAN | subscription_missing |
+| Contract missing or not signed | NEEDS_CONTRACT | contract_missing / contract_not_signed |
 | All modules disabled in entitlements snapshot | MODULE_DISABLED | module_disabled |
 | Capabilities snapshot is empty | MISSING_CAPABILITY | missing_capability |
 | None of the above | ACTIVE | null |

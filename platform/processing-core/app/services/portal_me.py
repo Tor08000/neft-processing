@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
 from app.models.client import Client
+from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
 from app.models.legal_acceptance import LegalSubjectType
+from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (
     PortalMeOrg,
     PortalMePartner,
@@ -30,6 +32,7 @@ from app.services.legal import LegalService, legal_gate_required_codes, subject_
 from app.config import settings
 from app.services.partner_core_service import ensure_partner_profile
 from app.services.portal_access_state import resolve_access_state
+from app.services.subscription_service import DEFAULT_TENANT_ID, get_client_subscription
 
 
 def _table(db: Session, name: str) -> Table:
@@ -65,7 +68,7 @@ def _is_uuid(value: str | None) -> bool:
 
 
 def _resolve_actor_type(token: dict, org_roles: list[str]) -> str:
-    if token.get("client_id") or "CLIENT" in org_roles:
+    if token.get("client_id") or token.get("subject_type") == "client_user" or "CLIENT" in org_roles:
         return "client"
     if token.get("partner_id") or "PARTNER" in org_roles:
         return "partner"
@@ -170,10 +173,77 @@ def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
     return sections
 
 
+def _resolve_client_contract_status(db: Session, *, client_id: str | None) -> str | None:
+    if not client_id or not _is_uuid(client_id):
+        return None
+    onboarding = (
+        db.query(ClientOnboarding)
+        .filter(ClientOnboarding.client_id == str(client_id))
+        .order_by(ClientOnboarding.updated_at.desc())
+        .first()
+    )
+    if not onboarding or not onboarding.contract_id:
+        return None
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == onboarding.contract_id)
+        .one_or_none()
+    )
+    if not contract:
+        return None
+    return contract.status
+
+
+def _resolve_onboarding_client_id(db: Session, token: dict) -> str | None:
+    owner_id = token.get("user_id") or token.get("sub")
+    if not owner_id:
+        return None
+    onboarding = (
+        db.query(ClientOnboarding)
+        .filter(ClientOnboarding.owner_user_id == str(owner_id))
+        .order_by(ClientOnboarding.created_at.desc())
+        .first()
+    )
+    if not onboarding:
+        return None
+    return str(onboarding.client_id)
+
+
+def _resolve_client_subscription(
+    db: Session,
+    *,
+    client_id: str | None,
+    existing: PortalMeSubscription | None,
+) -> PortalMeSubscription | None:
+    if existing and existing.plan_code:
+        return existing
+    if not client_id or not _is_uuid(client_id):
+        return existing
+    subscription = get_client_subscription(db, tenant_id=DEFAULT_TENANT_ID, client_id=str(client_id))
+    if not subscription:
+        return existing
+    plan_code = None
+    if subscription.plan_id:
+        plan = db.get(SubscriptionPlan, subscription.plan_id)
+        plan_code = plan.code if plan else None
+    return PortalMeSubscription(
+        plan_code=plan_code,
+        status=str(subscription.status),
+        billing_cycle=None,
+        support_plan=None,
+        slo_tier=None,
+        addons=None,
+    )
+
+
 def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     org_id_raw = _resolve_org_id(token)
     client_id = token.get("client_id")
     partner_id = token.get("partner_id")
+    if not client_id:
+        client_id = _resolve_onboarding_client_id(db, token)
+        if client_id and not org_id_raw:
+            org_id_raw = client_id
     org_id_int = None
     if org_id_raw is not None:
         try:
@@ -207,12 +277,19 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         if partner_id:
             org_roles.append("PARTNER")
 
+    subscription_payload = _resolve_client_subscription(
+        db,
+        client_id=client_id,
+        existing=subscription_payload,
+    )
+
     org_payload = None
     if org_id_int is not None:
         org_payload = _load_org_from_orgs(db, org_id=org_id_int)
     if org_payload is None:
         org_payload = _load_org_fallback(db, client_id=client_id, partner_id=partner_id)
 
+    contract_status = _resolve_client_contract_status(db, client_id=client_id)
     employee_timezone = None
     user_id = token.get("user_id") or token.get("sub")
     if user_id and client_id and _is_uuid(user_id):
@@ -267,6 +344,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         partner=partner_payload,
         entitlements_snapshot=entitlements_snapshot,
         capabilities=capabilities,
+        contract_status=contract_status,
     )
     return PortalMeResponse(
         actor_type=actor_type,
