@@ -86,6 +86,18 @@ export type PortalMeResponse = {
   } | null;
   access_state: string;
   access_reason?: string | null;
+  billing?: {
+    overdue_invoices?: Array<{
+      id: number | string;
+      number?: string | null;
+      amount?: number | string | null;
+      currency?: string | null;
+      due_at?: string | null;
+      download_url?: string | null;
+      status?: string | null;
+    }>;
+    next_action?: string | null;
+  } | null;
 };
 
 export type ClientOrgPayload = {

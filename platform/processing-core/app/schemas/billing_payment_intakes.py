@@ -76,3 +76,11 @@ class PaymentIntakeApproveRequest(BaseModel):
 
 class PaymentIntakeRejectRequest(BaseModel):
     review_note: str = Field(..., min_length=1)
+
+
+class ClientPaymentIntakeRequest(BaseModel):
+    invoice_id: int
+    amount: Decimal = Field(..., gt=0)
+    method: str = Field(..., min_length=1, max_length=64)
+    reference: str | None = None
+    attachment: str | None = None
