@@ -43,6 +43,7 @@ export interface PartnerPayoutRequest {
   amount: number;
   currency: string;
   status: string;
+  correlation_id?: string | null;
   requested_by?: string | null;
   approved_by?: string | null;
   created_at: string;

@@ -98,6 +98,10 @@ def _write_error(request: Request, status_code: int, error: str) -> HTTPExceptio
     return HTTPException(status_code=status_code, detail={"error": error, "request_id": _correlation_id(request)})
 
 
+class SettlementSnapshotMissing(Exception):
+    pass
+
+
 def _serialize_invoice(row: dict) -> AdminInvoiceSummary:
     org_id = row.get("org_id") or row.get("client_id")
     period_start = row.get("period_start") or row.get("period_from")
@@ -210,7 +214,10 @@ def _correlation_chain_by_payout(db: Session, payout_ids: list[str]) -> dict[str
     )
     chains: dict[str, list[str]] = {payout_id: [] for payout_id in payout_ids}
     for item in logs:
-        correlation_id = item.trace_id or item.request_id
+        correlation_id = None
+        if isinstance(item.external_refs, dict):
+            correlation_id = item.external_refs.get("correlation_id")
+        correlation_id = correlation_id or item.trace_id or item.request_id
         if not correlation_id:
             continue
         chain = chains.setdefault(item.entity_id, [])
@@ -231,7 +238,7 @@ def _ensure_settlement_snapshot(db: Session, *, partner_id: str, currency: str) 
         is not None
     )
     if not has_snapshot:
-        raise ValueError("settlement_snapshot_missing")
+        raise SettlementSnapshotMissing("settlement_snapshot_missing")
 
 
 def _serialize_payout(
@@ -262,6 +269,7 @@ def _serialize_payout(
         amount=Decimal(payout.amount),
         currency=payout.currency,
         status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
+        correlation_id=payout.correlation_id,
         blockers=blockers,
         block_reason=blockers[0] if blockers else None,
         legal_status=legal_status,
@@ -781,6 +789,9 @@ def list_payout_queue(
             partner_id=str(payout.partner_org_id),
             currency=payout.currency,
         )
+        chain = correlation_chains.get(str(payout.id), [])
+        if payout.correlation_id and payout.correlation_id not in chain:
+            chain = [*chain, payout.correlation_id]
         items.append(
             PayoutQueueItem(
                 payout_id=str(payout.id),
@@ -788,11 +799,12 @@ def list_payout_queue(
                 amount=Decimal(payout.amount),
                 currency=payout.currency,
                 status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
+                correlation_id=payout.correlation_id,
                 blockers=blockers,
                 block_reason=blockers[0] if blockers else None,
                 legal_status=legal_statuses.get(str(payout.partner_org_id)),
                 settlement_state=settlement_state,
-                correlation_chain=correlation_chains.get(str(payout.id), []),
+                correlation_chain=chain,
                 created_at=payout.created_at,
             )
         )
@@ -821,6 +833,8 @@ def get_payout_detail(
     )
     legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
     correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    if payout.correlation_id and payout.correlation_id not in correlation_chain:
+        correlation_chain = [*correlation_chain, payout.correlation_id]
     return _serialize_payout(
         payout,
         blockers,
@@ -844,10 +858,22 @@ def approve_payout(
     if not payout:
         raise _write_error(request, 404, "payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
+    previous_status = payout.status
+    correlation_id = payload.correlation_id or payout.correlation_id
     try:
         _ensure_settlement_snapshot(db, partner_id=str(payout.partner_org_id), currency=payout.currency)
         service.approve_payout(payout=payout, approved_by=str(token.get("user_id") or token.get("sub") or "admin"))
         db.commit()
+    except SettlementSnapshotMissing as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": str(exc),
+                "reason_code": "SETTLEMENT_SNAPSHOT_MISSING",
+                "request_id": _correlation_id(request),
+            },
+        ) from exc
     except ValueError as exc:
         db.rollback()
         raise _write_error(request, 400, str(exc)) from exc
@@ -858,7 +884,9 @@ def approve_payout(
         action="APPROVE",
         visibility=AuditVisibility.INTERNAL,
         reason=payload.reason,
+        before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
+        external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     settlement_state = _settlement_state_for_partner(
@@ -868,6 +896,8 @@ def approve_payout(
     )
     legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
     correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    if correlation_id and correlation_id not in correlation_chain:
+        correlation_chain = [*correlation_chain, correlation_id]
     detail = _serialize_payout(
         payout,
         _payout_blockers(service, payout),
@@ -875,7 +905,7 @@ def approve_payout(
         settlement_state=settlement_state,
         correlation_chain=correlation_chain,
     )
-    return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
+    return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 
 @router.post("/payouts/{payout_id}/reject", response_model=PayoutActionResponse)
@@ -890,6 +920,8 @@ def reject_payout(
     if not payout:
         raise _write_error(request, 404, "payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
+    previous_status = payout.status
+    correlation_id = payload.correlation_id or payout.correlation_id
     try:
         service.reject_payout(
             payout=payout,
@@ -907,7 +939,9 @@ def reject_payout(
         action="REJECT",
         visibility=AuditVisibility.INTERNAL,
         reason=payload.reason,
+        before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
+        external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     settlement_state = _settlement_state_for_partner(
@@ -917,6 +951,8 @@ def reject_payout(
     )
     legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
     correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    if correlation_id and correlation_id not in correlation_chain:
+        correlation_chain = [*correlation_chain, correlation_id]
     detail = _serialize_payout(
         payout,
         _payout_blockers(service, payout),
@@ -924,7 +960,7 @@ def reject_payout(
         settlement_state=settlement_state,
         correlation_chain=correlation_chain,
     )
-    return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
+    return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 
 @router.post("/payouts/{payout_id}/mark-paid", response_model=PayoutActionResponse)
@@ -939,10 +975,22 @@ def mark_payout_paid(
     if not payout:
         raise _write_error(request, 404, "payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
+    previous_status = payout.status
+    correlation_id = payload.correlation_id or payout.correlation_id
     try:
         _ensure_settlement_snapshot(db, partner_id=str(payout.partner_org_id), currency=payout.currency)
         service.mark_paid(payout=payout)
         db.commit()
+    except SettlementSnapshotMissing as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": str(exc),
+                "reason_code": "SETTLEMENT_SNAPSHOT_MISSING",
+                "request_id": _correlation_id(request),
+            },
+        ) from exc
     except ValueError as exc:
         db.rollback()
         raise _write_error(request, 400, str(exc)) from exc
@@ -953,7 +1001,9 @@ def mark_payout_paid(
         action="MARK_PAID",
         visibility=AuditVisibility.INTERNAL,
         reason=payload.reason,
+        before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
+        external_refs={"correlation_id": correlation_id} if correlation_id else None,
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
     settlement_state = _settlement_state_for_partner(
@@ -963,6 +1013,8 @@ def mark_payout_paid(
     )
     legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
     correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    if correlation_id and correlation_id not in correlation_chain:
+        correlation_chain = [*correlation_chain, correlation_id]
     detail = _serialize_payout(
         payout,
         _payout_blockers(service, payout),
@@ -970,7 +1022,7 @@ def mark_payout_paid(
         settlement_state=settlement_state,
         correlation_chain=correlation_chain,
     )
-    return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
+    return PayoutActionResponse(payout=detail, correlation_id=correlation_id)
 
 
 @router.post("/payments", response_model=PaymentResponse, status_code=201)

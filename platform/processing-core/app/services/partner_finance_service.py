@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.db.types import new_uuid_str
 from app.models.partner_core import (
     PartnerOffer,
     PartnerOrder,
@@ -427,6 +428,7 @@ class PartnerFinanceService:
     ) -> PartnerPayoutRequest:
         self._ensure_partner_active(partner_org_id)
         now = datetime.now(timezone.utc)
+        correlation_id = new_uuid_str()
         reasons = self.evaluate_payout_blockers(
             partner_org_id=partner_org_id,
             amount=amount,
@@ -460,6 +462,7 @@ class PartnerFinanceService:
             currency=currency,
             status=PartnerPayoutRequestStatus.REQUESTED,
             requested_by=requested_by,
+            correlation_id=correlation_id,
         )
         self.db.add(payout)
         self._apply_delta(account, BalanceDelta(available=-amount, blocked=amount))
@@ -468,7 +471,7 @@ class PartnerFinanceService:
             amount=amount,
             currency=currency,
             entry_type=PartnerLedgerEntryType.PAYOUT_REQUESTED,
-            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
+            meta_json={"source_type": "payout_request", "source_id": str(payout.id), "correlation_id": correlation_id},
         )
         AuditService(self.db).audit(
             event_type="partner_payout_requested",
@@ -479,7 +482,9 @@ class PartnerFinanceService:
                 "partner_org_id": partner_org_id,
                 "amount": str(amount),
                 "currency": currency,
+                "correlation_id": correlation_id,
             },
+            external_refs={"correlation_id": correlation_id},
             request_ctx=self.request_ctx,
         )
         enqueue_notification_message(
@@ -498,6 +503,8 @@ class PartnerFinanceService:
     def approve_payout(self, *, payout: PartnerPayoutRequest, approved_by: str | None) -> PartnerPayoutRequest:
         if payout.status != PartnerPayoutRequestStatus.REQUESTED:
             raise ValueError("invalid_status")
+        previous_status = payout.status
+        correlation_id = payout.correlation_id
         payout.status = PartnerPayoutRequestStatus.APPROVED
         payout.approved_by = approved_by
         payout.processed_at = datetime.now(timezone.utc)
@@ -507,14 +514,20 @@ class PartnerFinanceService:
             amount=Decimal("0"),
             currency=payout.currency,
             direction=PartnerLedgerDirection.CREDIT,
-            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
+            meta_json={
+                "source_type": "payout_request",
+                "source_id": str(payout.id),
+                "correlation_id": correlation_id,
+            },
         )
         AuditService(self.db).audit(
             event_type="partner_payout_approved",
             entity_type="partner_payout_request",
             entity_id=str(payout.id),
             action="partner_payout_approved",
-            after={"partner_org_id": payout.partner_org_id, "amount": str(payout.amount)},
+            before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
+            after={"partner_org_id": payout.partner_org_id, "amount": str(payout.amount), "status": "APPROVED"},
+            external_refs={"correlation_id": correlation_id} if correlation_id else None,
             request_ctx=self.request_ctx,
         )
         enqueue_notification_message(
@@ -533,6 +546,8 @@ class PartnerFinanceService:
     def reject_payout(self, *, payout: PartnerPayoutRequest, approved_by: str | None, reason: str | None = None) -> None:
         if payout.status != PartnerPayoutRequestStatus.REQUESTED:
             raise ValueError("invalid_status")
+        previous_status = payout.status
+        correlation_id = payout.correlation_id
         payout.status = PartnerPayoutRequestStatus.REJECTED
         payout.approved_by = approved_by
         payout.processed_at = datetime.now(timezone.utc)
@@ -547,6 +562,7 @@ class PartnerFinanceService:
                 "source_type": "payout_request",
                 "source_id": str(payout.id),
                 "reason": reason or "rejected",
+                "correlation_id": correlation_id,
             },
         )
         AuditService(self.db).audit(
@@ -554,13 +570,17 @@ class PartnerFinanceService:
             entity_type="partner_payout_request",
             entity_id=str(payout.id),
             action="partner_payout_rejected",
-            after={"partner_org_id": payout.partner_org_id, "reason": reason},
+            before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
+            after={"partner_org_id": payout.partner_org_id, "reason": reason, "status": "REJECTED"},
+            external_refs={"correlation_id": correlation_id} if correlation_id else None,
             request_ctx=self.request_ctx,
         )
 
     def mark_paid(self, *, payout: PartnerPayoutRequest) -> PartnerPayoutRequest:
         if payout.status not in {PartnerPayoutRequestStatus.REQUESTED, PartnerPayoutRequestStatus.APPROVED}:
             raise ValueError("invalid_status")
+        previous_status = payout.status
+        correlation_id = payout.correlation_id
         payout.status = PartnerPayoutRequestStatus.PAID
         payout.processed_at = datetime.now(timezone.utc)
         account = self.get_account(partner_org_id=payout.partner_org_id, currency=payout.currency)
@@ -571,7 +591,11 @@ class PartnerFinanceService:
             amount=payout.amount,
             currency=payout.currency,
             direction=PartnerLedgerDirection.DEBIT,
-            meta_json={"source_type": "payout_request", "source_id": str(payout.id)},
+            meta_json={
+                "source_type": "payout_request",
+                "source_id": str(payout.id),
+                "correlation_id": correlation_id,
+            },
             apply_balance=False,
         )
         AuditService(self.db).audit(
@@ -579,7 +603,9 @@ class PartnerFinanceService:
             entity_type="partner_payout_request",
             entity_id=str(payout.id),
             action="partner_payout_paid",
-            after={"partner_org_id": payout.partner_org_id, "amount": str(payout.amount)},
+            before={"status": previous_status.value if hasattr(previous_status, "value") else str(previous_status)},
+            after={"partner_org_id": payout.partner_org_id, "amount": str(payout.amount), "status": "PAID"},
+            external_refs={"correlation_id": correlation_id} if correlation_id else None,
             request_ctx=self.request_ctx,
         )
         enqueue_notification_message(
