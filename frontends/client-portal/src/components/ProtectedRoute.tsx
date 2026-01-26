@@ -37,9 +37,9 @@ export function ProtectedRoute() {
     onboardingEnabled &&
     client?.access_state &&
     ["NEEDS_ONBOARDING", "NEEDS_PLAN", "NEEDS_CONTRACT"].includes(client.access_state) &&
-    location.pathname !== "/client/connect"
+    !location.pathname.startsWith("/onboarding")
   ) {
-    return <Navigate to="/client/connect" replace />;
+    return <Navigate to="/onboarding" replace />;
   }
 
   if (isBlocked && location.pathname !== "/legal") {

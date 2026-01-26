@@ -22,13 +22,15 @@ import {
 } from "../config/features";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
+import { AppErrorState, AppForbiddenState, AppLoadingState } from "../components/states";
+import { StatusPage } from "../components/StatusPage";
 
 type Step = "profile" | "plan" | "contract" | "activation";
 
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { client, refresh } = useClient();
+  const { client, refresh, portalState, error: portalError, isLoading: isPortalLoading } = useClient();
   const { toast, showToast } = useToast();
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
@@ -112,6 +114,65 @@ export function OnboardingPage() {
         setContractReady(false);
       });
   }, [contractReady, step, user]);
+
+  if (portalState === "LOADING" || isPortalLoading) {
+    return <AppLoadingState label="Загружаем профиль клиента..." />;
+  }
+
+  if (portalState === "AUTH_REQUIRED") {
+    return (
+      <StatusPage
+        title="Требуется вход"
+        description="Пожалуйста, войдите, чтобы продолжить подключение."
+        actionLabel="Перейти к входу"
+        actionTo="/login"
+      />
+    );
+  }
+
+  if (portalState === "FORBIDDEN") {
+    return <AppForbiddenState message="Недостаточно прав для подключения клиента." />;
+  }
+
+  if (portalState === "SERVICE_UNAVAILABLE") {
+    return (
+      <AppErrorState
+        message="Сервис временно недоступен. Попробуйте позже."
+        onRetry={refresh}
+        status={portalError?.status}
+      />
+    );
+  }
+
+  if (portalState === "NETWORK_DOWN") {
+    return (
+      <AppErrorState
+        message="Нет соединения с сервером. Проверьте подключение к интернету."
+        onRetry={refresh}
+        status={portalError?.status}
+      />
+    );
+  }
+
+  if (portalState === "API_MISCONFIGURED") {
+    return (
+      <AppErrorState
+        message="Маршрут портала недоступен. Проверьте настройки API."
+        onRetry={refresh}
+        status={portalError?.status}
+      />
+    );
+  }
+
+  if (portalState === "ERROR_FATAL") {
+    return (
+      <AppErrorState
+        message={portalError?.message ?? "Не удалось загрузить профиль клиента."}
+        onRetry={refresh}
+        status={portalError?.status}
+      />
+    );
+  }
 
   if (!onboardingEnabled) {
     return (

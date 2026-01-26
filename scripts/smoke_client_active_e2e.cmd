@@ -24,7 +24,7 @@ if "%CLIENT_TOKEN%"=="" (
 call :portal_me "NEEDS_ONBOARDING" || exit /b 1
 
 set "ORG_PAYLOAD={\"org_type\":\"LEGAL\",\"name\":\"Smoke Client\",\"inn\":\"7701234567\",\"kpp\":\"770101001\",\"ogrn\":\"1027700132195\",\"address\":\"Москва\"}"
-call :http_post "org create" "%GATEWAY_BASE%%CORE_BASE%/client/org" "%ORG_PAYLOAD%" "200" "%TMP_DIR%\client_active_org.json" || exit /b 1
+call :http_post "org create" "%GATEWAY_BASE%%CORE_BASE%/client/onboarding/profile" "%ORG_PAYLOAD%" "200" "%TMP_DIR%\client_active_org.json" || exit /b 1
 
 call :portal_me "NEEDS_PLAN" || exit /b 1
 
@@ -35,7 +35,7 @@ if "%PLAN_CODE%"=="" (
   exit /b 1
 )
 
-call :http_post "plan select" "%GATEWAY_BASE%%CORE_BASE%/client/subscription/select" "{\"plan_code\":\"%PLAN_CODE%\"}" "200" "%TMP_DIR%\client_active_plan_select.json" || exit /b 1
+call :http_post "plan select" "%GATEWAY_BASE%%CORE_BASE%/client/subscription" "{\"plan_code\":\"%PLAN_CODE%\"}" "200" "%TMP_DIR%\client_active_plan_select.json" || exit /b 1
 
 call :portal_me "NEEDS_CONTRACT" || exit /b 1
 
@@ -45,6 +45,8 @@ if "%CONTRACT_ID%"=="" (
   echo [FAIL] missing contract_id
   exit /b 1
 )
+
+call :http_get "contracts list" "%GATEWAY_BASE%%CORE_BASE%/client/contracts" "200" "%TMP_DIR%\client_active_contracts.json" || exit /b 1
 
 call :http_get "contract get" "%GATEWAY_BASE%%CORE_BASE%/client/contracts/%CONTRACT_ID%" "200" "%TMP_DIR%\client_active_contract_get.json" || exit /b 1
 

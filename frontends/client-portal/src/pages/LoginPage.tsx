@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
 import { CopyChip } from "../components/common/CopyChip";
@@ -7,10 +7,11 @@ import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
 import { SELF_SIGNUP_ENABLED } from "../config/features";
+import { AppErrorState, AppLoadingState } from "../components/states";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
-  const { client, isLoading: isClientLoading } = useClient();
+  const { client, portalState, refresh, isLoading: isClientLoading } = useClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/vehicles", [searchParams]);
@@ -23,9 +24,30 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  if (user && client?.org_status === "ACTIVE") {
-    return <Navigate to={returnUrl} replace />;
-  }
+  const accessState = client?.access_state;
+  const redirectTarget = useMemo(() => {
+    switch (accessState) {
+      case "NEEDS_ONBOARDING":
+        return "/onboarding";
+      case "NEEDS_PLAN":
+        return "/onboarding/plan";
+      case "NEEDS_CONTRACT":
+        return "/onboarding/contract";
+      case "OVERDUE":
+        return "/billing/overdue";
+      case "ACTIVE":
+        return returnUrl;
+      default:
+        return returnUrl;
+    }
+  }, [accessState, returnUrl]);
+
+  useEffect(() => {
+    if (!user || portalState !== "READY") return;
+    if (redirectTarget) {
+      navigate(redirectTarget, { replace: true });
+    }
+  }, [navigate, portalState, redirectTarget, user]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -33,7 +55,7 @@ export function LoginPage() {
     setFieldError(null);
     try {
       await login(email, password);
-      navigate(returnUrl, { replace: true });
+      await refresh();
     } catch (err) {
       console.error("Ошибка входа", err);
       setFieldError("Сервис временно недоступен");
@@ -52,6 +74,41 @@ export function LoginPage() {
       errorRef.current?.focus();
     }
   }, [error, fieldError]);
+
+  if (user && portalState === "LOADING") {
+    return <AppLoadingState label="Проверяем доступ..." />;
+  }
+
+  if (user && portalState === "SERVICE_UNAVAILABLE") {
+    return (
+      <AppErrorState
+        message="Сервис временно недоступен. Попробуйте позже."
+        onRetry={refresh}
+      />
+    );
+  }
+
+  if (user && portalState === "NETWORK_DOWN") {
+    return (
+      <AppErrorState
+        message="Нет соединения с сервером. Проверьте подключение к интернету."
+        onRetry={refresh}
+      />
+    );
+  }
+
+  if (user && portalState === "API_MISCONFIGURED") {
+    return (
+      <AppErrorState
+        message="Маршрут портала недоступен. Проверьте настройки API."
+        onRetry={refresh}
+      />
+    );
+  }
+
+  if (user && portalState === "ERROR_FATAL") {
+    return <AppErrorState message="Не удалось загрузить профиль клиента." onRetry={refresh} />;
+  }
 
   const showSelfSignup = SELF_SIGNUP_ENABLED && (!user || client?.org_status !== "ACTIVE");
   const selfSignupLabel = user ? "Продолжить подключение" : "Подключиться / Стать клиентом";
@@ -122,7 +179,7 @@ export function LoginPage() {
           <button
             type="button"
             className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
-            onClick={() => navigate(user ? "/client/connect" : "/client/signup")}
+            onClick={() => navigate(user ? "/onboarding" : "/client/signup")}
             disabled={isClientLoading}
           >
             {isClientLoading && user ? "Проверяем статус..." : selfSignupLabel}

@@ -3,7 +3,7 @@ import type { AuthSession, LoginRequest, LoginResponse, MeResponse } from "./typ
 
 export { ApiError, HtmlResponseError, UnauthorizedError, ValidationError };
 
-const resolveToken = (body: LoginResponse | VerifyResponse): string => {
+const resolveToken = (body: LoginResponse): string => {
   const token = body.access_token ?? (body as LoginResponse & { token?: string }).token;
   if (!token) {
     throw new ApiError("Missing token in auth response", 500, null, null, "missing_token");
@@ -49,42 +49,13 @@ export interface RegisterPayload {
 }
 
 export interface RegisterResponse {
-  verification_id: string;
-  channel: "email" | "sms";
-}
-
-export interface VerifyPayload {
-  verification_id: string;
-  otp: string;
-}
-
-export interface VerifyResponse {
-  access_token?: string;
-  token?: string;
-  token_type: string;
-  expires_in: number;
+  id: string;
   email: string;
-  subject_type: string;
-  client_id?: string | null;
-  roles: string[];
+  full_name?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
 }
 
 export async function register(payload: RegisterPayload): Promise<RegisterResponse> {
-  return request<RegisterResponse>("/register", { method: "POST", body: JSON.stringify(payload) }, { base: "auth" });
-}
-
-export async function verifyRegistration(payload: VerifyPayload): Promise<AuthSession> {
-  const body = await request<VerifyResponse>(
-    "/verify",
-    { method: "POST", body: JSON.stringify(payload) },
-    { base: "auth" },
-  );
-  return {
-    token: resolveToken(body),
-    email: body.email,
-    roles: body.roles,
-    subjectType: body.subject_type,
-    clientId: body.client_id ?? undefined,
-    expiresAt: Date.now() + body.expires_in * 1000,
-  };
+  return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(payload) }, { base: "auth" });
 }

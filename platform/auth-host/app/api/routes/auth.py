@@ -4,11 +4,14 @@ import logging
 import os
 from uuid import uuid4
 
+import psycopg
+from psycopg import sql
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.db import get_conn
+from app.db import DSN_ASYNC, get_conn
 from app.models import User
 from app.schemas.auth import (
     AuthMeResponse,
@@ -31,6 +34,53 @@ from app.settings import get_settings
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
+CORE_DB_SCHEMA = os.getenv("NEFT_DB_SCHEMA", "processing_core")
+
+
+async def _core_table_exists(cur: psycopg.AsyncCursor, table_name: str) -> bool:
+    await cur.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
+        (CORE_DB_SCHEMA, table_name),
+    )
+    return await cur.fetchone() is not None
+
+
+async def _create_core_client(*, user_id: str, email: str, full_name: str | None) -> str:
+    client_id = str(uuid4())
+    async with psycopg.AsyncConnection.connect(DSN_ASYNC) as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                sql.SQL("SET search_path TO {}, public").format(sql.Identifier(CORE_DB_SCHEMA))
+            )
+            if not await _core_table_exists(cur, "clients"):
+                raise HTTPException(status_code=503, detail="core_clients_table_missing")
+            if not await _core_table_exists(cur, "client_onboarding"):
+                raise HTTPException(status_code=503, detail="core_onboarding_table_missing")
+
+            display_name = full_name or email.split("@", 1)[0] or "Client"
+            await cur.execute(
+                "INSERT INTO clients (id, name, email, status) VALUES (%s, %s, %s, %s)",
+                (client_id, display_name, email, "ONBOARDING"),
+            )
+            await cur.execute(
+                "INSERT INTO client_onboarding (client_id, owner_user_id, step, status) VALUES (%s, %s, %s, %s)",
+                (client_id, user_id, "PROFILE", "DRAFT"),
+            )
+            await conn.commit()
+    return client_id
+
+
+async def _get_client_id_for_user(user_id: str) -> str | None:
+    async with get_conn() as (_conn, cur):
+        try:
+            await cur.execute(
+                "SELECT client_id FROM user_clients WHERE user_id=%s",
+                (user_id,),
+            )
+            row = await cur.fetchone()
+        except Exception:
+            return None
+        return row["client_id"] if row else None
 
 
 def _admin_credentials() -> tuple[str, str]:
@@ -152,17 +202,34 @@ async def register(payload: RegisterRequest) -> UserResponse:
     password_hash = hash_password(payload.password)
     new_user_id = uuid4()
     async with get_conn() as (conn, cur):
-        await cur.execute(
-            "INSERT INTO users (id, email, full_name, password_hash) VALUES (%s, %s, %s, %s)"
-            " RETURNING id, email, full_name, password_hash, is_active, created_at",
-            (new_user_id, payload.email, payload.full_name, password_hash),
-        )
-        row = await cur.fetchone()
-        await cur.execute(
-            "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (new_user_id, "CLIENT_OWNER"),
-        )
-        await conn.commit()
+        try:
+            await cur.execute(
+                "INSERT INTO users (id, email, full_name, password_hash) VALUES (%s, %s, %s, %s)"
+                " RETURNING id, email, full_name, password_hash, is_active, created_at",
+                (new_user_id, payload.email, payload.full_name, password_hash),
+            )
+            row = await cur.fetchone()
+            await cur.execute(
+                "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (new_user_id, "CLIENT_OWNER"),
+            )
+            client_id = await _create_core_client(
+                user_id=str(new_user_id),
+                email=payload.email,
+                full_name=payload.full_name,
+            )
+            await cur.execute(
+                "INSERT INTO user_clients (user_id, client_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (new_user_id, client_id),
+            )
+            await conn.commit()
+        except HTTPException:
+            await conn.rollback()
+            raise
+        except Exception:
+            await conn.rollback()
+            logger.exception("Failed to register user")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="signup_failed")
 
     user = User.from_row(row)
     return UserResponse(
@@ -225,7 +292,8 @@ async def login(request: Request, payload: LoginRequest) -> TokenResponse:
     issuer, audience = _portal_token_config(portal)
     if portal == "client":
         subject_type = "client_user"
-        if _is_dev_env():
+        client_id = await _get_client_id_for_user(str(user.id))
+        if not client_id and _is_dev_env():
             client_id = settings.demo_client_uuid
             org_id = settings.demo_org_id
     try:

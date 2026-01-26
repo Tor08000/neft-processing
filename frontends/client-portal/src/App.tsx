@@ -78,6 +78,7 @@ import { LegalPage } from "./pages/LegalPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ExportsPage } from "./pages/ExportsPage";
 import { ServiceSloPage } from "./pages/ServiceSloPage";
+import { BillingOverduePage } from "./pages/BillingOverduePage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -88,12 +89,19 @@ function IndexRedirect() {
   const { client } = useClient();
   if (user) {
     const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? true;
-    if (
-      onboardingEnabled &&
-      client?.access_state &&
-      ["NEEDS_ONBOARDING", "NEEDS_PLAN", "NEEDS_CONTRACT"].includes(client.access_state)
-    ) {
-      return <Navigate to="/client/connect" replace />;
+    if (onboardingEnabled && client?.access_state) {
+      if (client.access_state === "NEEDS_ONBOARDING") {
+        return <Navigate to="/onboarding" replace />;
+      }
+      if (client.access_state === "NEEDS_PLAN") {
+        return <Navigate to="/onboarding/plan" replace />;
+      }
+      if (client.access_state === "NEEDS_CONTRACT") {
+        return <Navigate to="/onboarding/contract" replace />;
+      }
+      if (client.access_state === "OVERDUE") {
+        return <Navigate to="/billing/overdue" replace />;
+      }
     }
     return <Navigate to="/dashboard" replace />;
   }
@@ -118,8 +126,11 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/client/signup" element={<SignupPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route element={<ProtectedRoute />}>
-              <Route path="/client/connect" element={<OnboardingPage />} />
-              <Route path="/client/onboarding" element={<OnboardingPage />} />
+              <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/client/onboarding" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/onboarding/plan" element={<OnboardingPage />} />
+              <Route path="/onboarding/contract" element={<OnboardingPage />} />
               <Route element={<Layout pwaMode={isPwaMode} />}>
               {isPwaMode ? (
                 <>
@@ -185,14 +196,15 @@ export function App({ initialSession = null }: AppProps) {
                       </ModuleGate>
                     }
                   />
-                  <Route
-                    path="/billing"
-                    element={
-                      <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
-                        <ClientInvoicesPage />
-                      </ModuleGate>
-                    }
-                  />
+                <Route
+                  path="/billing"
+                  element={
+                    <ModuleGate module="DOCS" capability="CLIENT_BILLING" title="Биллинг">
+                      <ClientInvoicesPage />
+                    </ModuleGate>
+                  }
+                />
+                <Route path="/billing/overdue" element={<BillingOverduePage />} />
                   <Route
                     path="/billing/:id"
                     element={
