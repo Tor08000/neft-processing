@@ -1,24 +1,24 @@
 # Admin Portal + Partner Portal — Master Backlog (P0–P2)
 
-Source of truth: **SSoT** payloads must drive UI behavior. Admin UI must rely solely on `GET /api/core/admin/me`. Partner Portal must rely solely on `GET /api/core/portal/me`.
+Source of truth: **SSoT** payloads must drive UI behavior. Admin UI must rely solely on `GET /api/core/v1/admin/me`. Partner Portal must rely solely on `GET /api/core/portal/me`.
 
 ## 🟥 P0 — Критический контур (инварианты, деньги, контроль)
 
 ### A. Admin Portal — P0
 
 **A1. Admin SSoT bootstrap**
-- Title: Admin SSoT `/api/core/admin/me` — канон
+- Title: Admin SSoT `/api/core/v1/admin/me` — канон
 - Why: UI не имеет права гадать
-- API: `GET /api/core/admin/me`
+- API: `GET /api/core/v1/admin/me`
 - DoD:
   - возвращает `roles`, `permissions`, `environment`, `read_only`
   - UI строится только по этому ответу
 - Smoke:
-  - `curl -i http://localhost/api/core/admin/me -H "Authorization: Bearer <ADMIN_TOKEN>"`
+  - `curl -i http://localhost/api/core/v1/admin/me -H "Authorization: Bearer <ADMIN_TOKEN>"`
 
 **A2. Global read-only mode**
 - Why: инциденты / ночь / регламент
-- API: `/api/core/admin/me → read_only=true`
+- API: `/api/core/v1/admin/me → read_only=true`
 - DoD: все write-кнопки disabled, backend запрещает writes
 - Smoke: попытка write → `403 + reason_code=READ_ONLY`
 

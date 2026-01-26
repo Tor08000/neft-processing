@@ -28,7 +28,7 @@ if "%TOKEN%"=="" goto fail
 set "AUTH_HEADER=Authorization: Bearer %TOKEN%"
 
 call :log "[3/10] admin me"
-call :curl_check "%CORE_URL%/admin/me" "admin_me.json" "200"
+call :curl_check "%CORE_URL%/v1/admin/me" "admin_me.json" "200"
 if errorlevel 1 goto fail
 
 call :log "[4/10] runtime summary"

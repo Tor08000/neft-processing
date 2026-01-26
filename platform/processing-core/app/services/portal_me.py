@@ -14,7 +14,7 @@ from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContr
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
-from app.models.legal_acceptance import LegalSubjectType
+from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (
     PortalMeOrg,
@@ -98,6 +98,25 @@ def _resolve_subject(token: dict) -> tuple[LegalSubjectType, str] | None:
     if token.get("user_id") or token.get("sub"):
         return LegalSubjectType.USER, str(token.get("user_id") or token.get("sub"))
     return None
+
+
+def _resolve_legal_flag(db: Session, token: dict) -> bool:
+    subject_info = _resolve_subject(token)
+    if subject_info is None:
+        return False
+    if not _table_exists(db, "legal_acceptances"):
+        return False
+    subject_type, subject_id = subject_info
+    try:
+        accepted = (
+            db.query(LegalAcceptance.id)
+            .filter(LegalAcceptance.subject_type == subject_type)
+            .filter(LegalAcceptance.subject_id == str(subject_id))
+            .first()
+        )
+    except Exception:
+        return False
+    return accepted is not None
 
 
 def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
@@ -191,6 +210,8 @@ def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
 def _resolve_client_contract_status(db: Session, *, client_id: str | None) -> str | None:
     if not client_id or not _is_uuid(client_id):
         return None
+    if not _table_exists(db, "client_onboarding") or not _table_exists(db, "client_onboarding_contracts"):
+        return None
     onboarding = (
         db.query(ClientOnboarding)
         .filter(ClientOnboarding.client_id == str(client_id))
@@ -254,6 +275,8 @@ def _resolve_overdue_invoices(db: Session, *, org_id: int | None) -> list[Portal
 def _resolve_onboarding_client_id(db: Session, token: dict) -> str | None:
     owner_id = token.get("user_id") or token.get("sub")
     if not owner_id:
+        return None
+    if not _table_exists(db, "client_onboarding"):
         return None
     onboarding = (
         db.query(ClientOnboarding)
@@ -378,75 +401,97 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     payout_block_reasons: list[str] = []
     sla_penalties_total = Decimal("0")
     sla_penalties_count = 0
-    if (
-        "PARTNER" in {str(role).upper() for role in org_roles}
-        and org_id_int is not None
-        and _table_exists(db, "partner_profiles")
-    ):
-        profile = ensure_partner_profile(db, org_id=org_id_int, display_name=org_payload.name if org_payload else None)
-        if profile in db.new:
-            db.commit()
-            db.refresh(profile)
-        legal_service = PartnerLegalService(db)
-        legal_profile = legal_service.get_profile(partner_id=str(org_id_int))
-        legal_status_label = "OK"
-        if settings.LEGAL_GATE_ENABLED:
-            if legal_profile is None:
-                legal_status_label = "PENDING"
-            elif legal_profile.legal_status == PartnerLegalStatus.VERIFIED:
-                legal_status_label = "OK"
-            elif legal_profile.legal_status == PartnerLegalStatus.BLOCKED:
-                legal_status_label = "REJECTED"
-            else:
-                legal_status_label = "PENDING"
-        legal_block_reason = None
-        if settings.LEGAL_GATE_ENABLED:
-            try:
-                legal_service.ensure_payout_allowed(partner_id=str(org_id_int))
-            except PartnerLegalError as exc:
-                legal_block_reason = exc.code
+    if "PARTNER" in {str(role).upper() for role in org_roles} and org_id_int is not None:
+        if _table_exists(db, "partner_profiles"):
+            profile = ensure_partner_profile(
+                db,
+                org_id=org_id_int,
+                display_name=org_payload.name if org_payload else None,
+            )
+            if profile in db.new:
+                db.commit()
+                db.refresh(profile)
+            legal_service = PartnerLegalService(db)
+            legal_profile = (
+                legal_service.get_profile(partner_id=str(org_id_int))
+                if _table_exists(db, "partner_legal_profiles")
+                else None
+            )
+            legal_status_label = "OK"
+            if settings.LEGAL_GATE_ENABLED:
+                if legal_profile is None:
+                    legal_status_label = "PENDING"
+                elif legal_profile.legal_status == PartnerLegalStatus.VERIFIED:
+                    legal_status_label = "OK"
+                elif legal_profile.legal_status == PartnerLegalStatus.BLOCKED:
+                    legal_status_label = "REJECTED"
+                else:
+                    legal_status_label = "PENDING"
+            legal_block_reason = None
+            if (
+                settings.LEGAL_GATE_ENABLED
+                and _table_exists(db, "partner_legal_profiles")
+                and _table_exists(db, "partner_legal_details")
+            ):
+                try:
+                    legal_service.ensure_payout_allowed(partner_id=str(org_id_int))
+                except PartnerLegalError as exc:
+                    legal_block_reason = exc.code
 
-        finance_service = PartnerFinanceService(db)
-        account = finance_service.get_account(partner_org_id=str(org_id_int), currency="RUB")
-        policy = finance_service.get_payout_policy(partner_org_id=str(org_id_int), currency=account.currency)
-        threshold = Decimal(policy.min_payout_amount) if policy else Decimal("0")
-        partner_finance_state = PortalMePartnerFinanceState(
-            balance=Decimal(account.balance_available or 0),
-            pending=Decimal(account.balance_pending or 0),
-            blocked=Decimal(account.balance_blocked or 0),
-            currency=account.currency,
-            threshold=threshold,
-        )
-        partner_legal_state = PortalMePartnerLegalState(
-            required_enabled=settings.LEGAL_GATE_ENABLED,
-            status=legal_status_label,
-            block_reason=legal_block_reason,
-        )
-        payout_block_reasons = finance_service.evaluate_payout_blockers(
-            partner_org_id=str(org_id_int),
-            amount=Decimal(account.balance_available or 0),
-            currency=account.currency,
-            now=datetime.now(timezone.utc),
-        )
-        penalty_rows = (
-            db.query(PartnerLedgerEntry)
-            .filter(PartnerLedgerEntry.partner_org_id == str(org_id_int))
-            .filter(PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.SLA_PENALTY)
-            .all()
-        )
-        sla_penalties_count = len(penalty_rows)
-        if penalty_rows:
-            sla_penalties_total = sum((Decimal(entry.amount or 0) for entry in penalty_rows), Decimal("0"))
-        partner_payload = PortalMePartner(
-            status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
-            profile=PortalMePartnerProfile(
-                display_name=profile.display_name,
-                contacts_json=profile.contacts_json,
-                meta_json=profile.meta_json,
-            ),
-            finance_state=partner_finance_state,
-            legal=partner_legal_state,
-        )
+            finance_service = PartnerFinanceService(db)
+            account = None
+            if _table_exists(db, "partner_accounts"):
+                account = finance_service.get_account(partner_org_id=str(org_id_int), currency="RUB")
+            policy = None
+            if account is not None and _table_exists(db, "partner_payout_policies"):
+                policy = finance_service.get_payout_policy(partner_org_id=str(org_id_int), currency=account.currency)
+            threshold = Decimal(policy.min_payout_amount) if policy else Decimal("0")
+            if account is not None:
+                partner_finance_state = PortalMePartnerFinanceState(
+                    balance=Decimal(account.balance_available or 0),
+                    pending=Decimal(account.balance_pending or 0),
+                    blocked=Decimal(account.balance_blocked or 0),
+                    currency=account.currency,
+                    threshold=threshold,
+                )
+            partner_legal_state = PortalMePartnerLegalState(
+                required_enabled=settings.LEGAL_GATE_ENABLED,
+                status=legal_status_label,
+                block_reason=legal_block_reason,
+            )
+            if (
+                account is not None
+                and _table_exists(db, "partner_payout_policies")
+                and _table_exists(db, "partner_payout_requests")
+                and _table_exists(db, "disputes")
+                and _table_exists(db, "operations")
+            ):
+                payout_block_reasons = finance_service.evaluate_payout_blockers(
+                    partner_org_id=str(org_id_int),
+                    amount=Decimal(account.balance_available or 0),
+                    currency=account.currency,
+                    now=datetime.now(timezone.utc),
+                )
+            if _table_exists(db, "partner_ledger_entries"):
+                penalty_rows = (
+                    db.query(PartnerLedgerEntry)
+                    .filter(PartnerLedgerEntry.partner_org_id == str(org_id_int))
+                    .filter(PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.SLA_PENALTY)
+                    .all()
+                )
+                sla_penalties_count = len(penalty_rows)
+                if penalty_rows:
+                    sla_penalties_total = sum((Decimal(entry.amount or 0) for entry in penalty_rows), Decimal("0"))
+            partner_payload = PortalMePartner(
+                status=profile.status.value if hasattr(profile.status, "value") else str(profile.status),
+                profile=PortalMePartnerProfile(
+                    display_name=profile.display_name,
+                    contacts_json=profile.contacts_json,
+                    meta_json=profile.meta_json,
+                ),
+                finance_state=partner_finance_state,
+                legal=partner_legal_state,
+            )
 
     resolved_timezone = employee_timezone or (org_payload.timezone if org_payload else None) or "UTC"
     access_state, access_reason = resolve_access_state(
