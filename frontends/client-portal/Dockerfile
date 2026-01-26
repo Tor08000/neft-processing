@@ -17,12 +17,12 @@ ENV npm_config_optional=true
 ENV npm_config_fund=false
 ENV npm_config_audit=false
 
+COPY frontends/shared/ /app/frontends/shared/
 COPY frontends/client-portal/package.json frontends/client-portal/package-lock.json ./
 RUN npm ci
 RUN mkdir -p /app/frontends && ln -sf /app/frontends/client-portal/node_modules /app/frontends/node_modules
 
 COPY frontends/client-portal/ ./
-COPY frontends/shared/ /app/frontends/shared/
 RUN npm run build
 
 # ---------- Stage 2: nginx + статические файлы ----------
