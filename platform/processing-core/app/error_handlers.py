@@ -116,12 +116,11 @@ def add_exception_handlers(app: FastAPI):
             response = await call_next(request)
             return response
         except Exception as exc:
-            error_id = str(uuid4())
+            error_id = getattr(exc, "error_id", None) or str(uuid4())
             reason_code = getattr(exc, "reason_code", None) or "internal_error"
             actor_type = _resolve_actor_type(request)
             logger.exception(
                 "Unhandled application error",
-                exc_info=exc,
                 extra={
                     "error_id": error_id,
                     "reason_code": reason_code,
