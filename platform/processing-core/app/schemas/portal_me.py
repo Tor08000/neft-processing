@@ -122,7 +122,7 @@ class PortalMeResponse(BaseModel):
     partner: PortalMePartner | None = None
     access_state: PortalAccessState
     access_reason: str | None = None
-    billing: "PortalMeBilling" | None = None
+    billing: PortalMeBilling | None = None
 
 
 class PortalMeBillingInvoice(BaseModel):
