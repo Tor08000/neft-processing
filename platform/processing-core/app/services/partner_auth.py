@@ -17,6 +17,7 @@ from app.services.jwt_support import (
     fetch_public_key,
     log_token_rejection,
     parse_allowed_algs,
+    parse_expected_audience,
     parse_scopes,
     resolve_jwks_key,
     should_refresh_jwks,
@@ -32,7 +33,9 @@ JWKS_URL = os.getenv(
 )
 PUBLIC_KEY_CACHE_TTL = int(os.getenv("AUTH_PUBLIC_KEY_CACHE_TTL", "300"))
 EXPECTED_ISSUER = os.getenv("NEFT_AUTH_ISSUER", os.getenv("AUTH_ISSUER", "neft-auth"))
-EXPECTED_AUDIENCE = os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
+EXPECTED_AUDIENCE = parse_expected_audience(
+    os.getenv("NEFT_AUTH_AUDIENCE", os.getenv("AUTH_AUDIENCE", "neft-admin"))
+)
 ALLOWED_ALGS = parse_allowed_algs()
 
 _logger = get_logger(__name__)
@@ -216,12 +219,12 @@ def verify_partner_token(token: str = Depends(_get_bearer_token)) -> dict:
     if not has_partner_role and subject_type != "partner_user":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    partner_id = payload.get("partner_id")
+    partner_id = payload.get("partner_id") or payload.get("org_id")
     if not partner_id:
         raise HTTPException(status_code=403, detail="Missing partner context")
 
     payload["user_id"] = payload.get("user_id") or payload.get("sub")
-    payload["partner_id"] = partner_id
+    payload["partner_id"] = str(partner_id)
     payload["scopes"] = parse_scopes(payload)
     return payload
 
