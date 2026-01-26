@@ -416,6 +416,7 @@ def request_partner_payout(
         amount=Decimal(payout.amount),
         currency=payout.currency,
         status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
+        correlation_id=payout.correlation_id,
         requested_by=str(payout.requested_by) if payout.requested_by else None,
         approved_by=str(payout.approved_by) if payout.approved_by else None,
         created_at=payout.created_at,
@@ -443,6 +444,7 @@ def list_partner_payouts(
                 amount=Decimal(item.amount),
                 currency=item.currency,
                 status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                correlation_id=item.correlation_id,
                 requested_by=str(item.requested_by) if item.requested_by else None,
                 approved_by=str(item.approved_by) if item.approved_by else None,
                 created_at=item.created_at,
@@ -486,7 +488,7 @@ def list_partner_payout_history(
                 approved_at=approved_at,
                 paid_at=paid_at,
                 block_reason=reasons[0] if reasons else None,
-                correlation_id=None,
+                correlation_id=payout.correlation_id,
             )
         )
     return PartnerPayoutHistoryResponse(requests=items)

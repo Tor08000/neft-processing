@@ -49,6 +49,7 @@ class CreditNoteResponse(BaseModel):
 
 class WriteActionRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
+    correlation_id: str | None = None
     idempotency_key: str | None = None
 
 
@@ -140,6 +141,7 @@ class PayoutQueueItem(BaseModel):
     amount: Decimal
     currency: str
     status: str
+    correlation_id: str | None = None
     blockers: list[str]
     block_reason: str | None = None
     legal_status: str | None = None

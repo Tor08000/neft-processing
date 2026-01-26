@@ -53,6 +53,7 @@ class PartnerPayoutRequestOut(BaseModel):
     amount: Decimal
     currency: str
     status: str
+    correlation_id: str | None = None
     requested_by: str | None = None
     approved_by: str | None = None
     created_at: datetime

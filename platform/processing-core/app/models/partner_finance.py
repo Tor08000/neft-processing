@@ -79,12 +79,16 @@ class PartnerLedgerEntry(Base):
 
 class PartnerPayoutRequest(Base):
     __tablename__ = "partner_payout_requests"
-    __table_args__ = (Index("ix_partner_payout_partner_status", "partner_org_id", "status"),)
+    __table_args__ = (
+        Index("ix_partner_payout_partner_status", "partner_org_id", "status"),
+        Index("ix_partner_payout_correlation_id", "correlation_id"),
+    )
 
     id = Column(String(36), primary_key=True, default=new_uuid_str)
     partner_org_id = Column(String(64), nullable=False, index=True)
     amount = Column(Numeric(18, 4), nullable=False)
     currency = Column(String(8), nullable=False)
+    correlation_id = Column(String(128), nullable=True)
     status = Column(
         ExistingEnum(PartnerPayoutRequestStatus, name="partner_payout_request_status"),
         nullable=False,
