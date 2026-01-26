@@ -141,6 +141,10 @@ class PayoutQueueItem(BaseModel):
     currency: str
     status: str
     blockers: list[str]
+    block_reason: str | None = None
+    legal_status: str | None = None
+    settlement_state: str | None = None
+    correlation_chain: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
 
 
@@ -170,7 +174,23 @@ class PayoutDetail(PayoutQueueItem):
     policy: PayoutPolicyInfo | None = None
     trace: list[PayoutTraceItem] = []
     totals: dict[str, Decimal] | None = None
-    legal_status: str | None = None
+
+
+class PartnerSettlementBreakdown(BaseModel):
+    gross: Decimal
+    fee: Decimal
+    penalty: Decimal
+    net: Decimal
+
+
+class PartnerSettlementSnapshotResponse(BaseModel):
+    partner_org_id: str
+    settlement_id: str
+    currency: str
+    status: str
+    period_start: datetime
+    period_end: datetime
+    breakdown: PartnerSettlementBreakdown
 
 
 class PayoutActionResponse(BaseModel):

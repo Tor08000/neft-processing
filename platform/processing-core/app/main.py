@@ -22,6 +22,7 @@ from app.api.routes import router as api_router
 from app.db import get_db, get_sessionmaker, init_db
 from app.routers.achievements import router as achievements_router
 from app.routers.admin import router as admin_router
+from app.routers.admin_core_finance import router as admin_core_finance_router
 from app.routers.admin_runtime import router as admin_runtime_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
@@ -506,6 +507,7 @@ if payouts_router is not None:
     safe_include_router(core_prefixed_router, payouts_router, prefix="")
 
 safe_include_router(core_prefixed_router, admin_router)
+safe_include_router(core_prefixed_router, admin_core_finance_router)
 safe_include_router(core_prefixed_router, admin_runtime_router)
 safe_include_router(core_prefixed_router, kpi_router)
 safe_include_router(core_prefixed_router, explain_v2_router)

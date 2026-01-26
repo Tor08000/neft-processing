@@ -46,6 +46,7 @@ class RuntimeViolationTop(BaseModel):
 class RuntimeViolations(BaseModel):
     immutable: RuntimeViolationTop
     invariants: RuntimeViolationTop
+    sla_penalties: RuntimeViolationTop
 
 
 class RuntimeMoneyRisk(BaseModel):

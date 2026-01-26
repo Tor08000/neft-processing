@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.admin import require_admin_user
 from app.api.dependencies.admin_rbac import require_any_admin_roles
 from app.db import get_db
-from app.models.audit_log import AuditVisibility
+from app.models.audit_log import AuditLog, AuditVisibility
 from app.models.finance import CreditNoteStatus, PaymentStatus
 from app.models.partner_finance import (
     PartnerLedgerDirection,
@@ -18,6 +18,8 @@ from app.models.partner_finance import (
     PartnerPayoutRequestStatus,
     PartnerPayoutSchedule,
 )
+from app.models.partner_legal import PartnerLegalProfile
+from app.models.settlement_v1 import SettlementPeriod
 from app.models.reconciliation import ReconciliationDiscrepancy, ReconciliationDiscrepancyStatus
 from app.schemas.admin.finance import (
     AdminInvoiceActionResponse,
@@ -163,11 +165,83 @@ def _payout_blockers(service: PartnerFinanceService, payout: PartnerPayoutReques
         return []
 
 
+def _legal_status_by_partner(db: Session, partner_ids: list[str]) -> dict[str, str | None]:
+    if not partner_ids:
+        return {}
+    profiles = (
+        db.query(PartnerLegalProfile)
+        .filter(PartnerLegalProfile.partner_id.in_(partner_ids))
+        .all()
+    )
+    return {
+        str(profile.partner_id): (
+            profile.legal_status.value if hasattr(profile.legal_status, "value") else str(profile.legal_status)
+        )
+        for profile in profiles
+    }
+
+
+def _settlement_state_for_partner(db: Session, *, partner_id: str, currency: str) -> str | None:
+    period = (
+        db.query(SettlementPeriod)
+        .filter(
+            SettlementPeriod.partner_id == partner_id,
+            SettlementPeriod.currency == currency,
+        )
+        .order_by(SettlementPeriod.period_end.desc())
+        .first()
+    )
+    if not period:
+        return None
+    return period.status.value if hasattr(period.status, "value") else str(period.status)
+
+
+def _correlation_chain_by_payout(db: Session, payout_ids: list[str]) -> dict[str, list[str]]:
+    if not payout_ids:
+        return {}
+    logs = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.entity_type == "partner_payout_request",
+            AuditLog.entity_id.in_(payout_ids),
+        )
+        .order_by(AuditLog.ts.asc())
+        .all()
+    )
+    chains: dict[str, list[str]] = {payout_id: [] for payout_id in payout_ids}
+    for item in logs:
+        correlation_id = item.trace_id or item.request_id
+        if not correlation_id:
+            continue
+        chain = chains.setdefault(item.entity_id, [])
+        if correlation_id not in chain:
+            chain.append(correlation_id)
+    return chains
+
+
+def _ensure_settlement_snapshot(db: Session, *, partner_id: str, currency: str) -> None:
+    has_snapshot = (
+        db.query(SettlementPeriod.id)
+        .filter(
+            SettlementPeriod.partner_id == partner_id,
+            SettlementPeriod.currency == currency,
+        )
+        .order_by(SettlementPeriod.period_end.desc())
+        .first()
+        is not None
+    )
+    if not has_snapshot:
+        raise ValueError("settlement_snapshot_missing")
+
+
 def _serialize_payout(
     payout: PartnerPayoutRequest,
     blockers: list[str],
     policy: PartnerPayoutPolicy | None = None,
     trace: list[PayoutTraceItem] | None = None,
+    legal_status: str | None = None,
+    settlement_state: str | None = None,
+    correlation_chain: list[str] | None = None,
 ) -> PayoutDetail:
     totals = {
         "gross": Decimal(payout.amount),
@@ -189,12 +263,15 @@ def _serialize_payout(
         currency=payout.currency,
         status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
         blockers=blockers,
+        block_reason=blockers[0] if blockers else None,
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain or [],
         created_at=payout.created_at,
         processed_at=payout.processed_at,
         policy=policy_info,
         trace=trace or [],
         totals=totals,
-        legal_status=None,
     )
 
 
@@ -686,6 +763,10 @@ def list_payout_queue(
     total = query.count()
     payouts = query.order_by(PartnerPayoutRequest.created_at.desc()).offset(offset).limit(limit).all()
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(None))
+    payout_ids = [str(payout.id) for payout in payouts]
+    partner_ids = [str(payout.partner_org_id) for payout in payouts]
+    legal_statuses = _legal_status_by_partner(db, partner_ids)
+    correlation_chains = _correlation_chain_by_payout(db, payout_ids)
     items = []
     for payout in payouts:
         blockers = _payout_blockers(service, payout)
@@ -695,6 +776,11 @@ def list_payout_queue(
             continue
         if reason and reason not in blockers:
             continue
+        settlement_state = _settlement_state_for_partner(
+            db,
+            partner_id=str(payout.partner_org_id),
+            currency=payout.currency,
+        )
         items.append(
             PayoutQueueItem(
                 payout_id=str(payout.id),
@@ -703,6 +789,10 @@ def list_payout_queue(
                 currency=payout.currency,
                 status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
                 blockers=blockers,
+                block_reason=blockers[0] if blockers else None,
+                legal_status=legal_statuses.get(str(payout.partner_org_id)),
+                settlement_state=settlement_state,
+                correlation_chain=correlation_chains.get(str(payout.id), []),
                 created_at=payout.created_at,
             )
         )
@@ -724,7 +814,22 @@ def get_payout_detail(
     blockers = _payout_blockers(service, payout)
     policy = service.get_payout_policy(partner_org_id=payout.partner_org_id, currency=payout.currency)
     trace: list[PayoutTraceItem] = []
-    return _serialize_payout(payout, blockers, policy=policy, trace=trace)
+    settlement_state = _settlement_state_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
+    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    return _serialize_payout(
+        payout,
+        blockers,
+        policy=policy,
+        trace=trace,
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain,
+    )
 
 
 @router.post("/payouts/{payout_id}/approve", response_model=PayoutActionResponse)
@@ -740,6 +845,7 @@ def approve_payout(
         raise _write_error(request, 404, "payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
     try:
+        _ensure_settlement_snapshot(db, partner_id=str(payout.partner_org_id), currency=payout.currency)
         service.approve_payout(payout=payout, approved_by=str(token.get("user_id") or token.get("sub") or "admin"))
         db.commit()
     except ValueError as exc:
@@ -755,7 +861,20 @@ def approve_payout(
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    detail = _serialize_payout(payout, _payout_blockers(service, payout))
+    settlement_state = _settlement_state_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
+    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    detail = _serialize_payout(
+        payout,
+        _payout_blockers(service, payout),
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain,
+    )
     return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
 
 
@@ -791,7 +910,20 @@ def reject_payout(
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    detail = _serialize_payout(payout, _payout_blockers(service, payout))
+    settlement_state = _settlement_state_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
+    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    detail = _serialize_payout(
+        payout,
+        _payout_blockers(service, payout),
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain,
+    )
     return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
 
 
@@ -808,6 +940,7 @@ def mark_payout_paid(
         raise _write_error(request, 404, "payout_not_found")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)))
     try:
+        _ensure_settlement_snapshot(db, partner_id=str(payout.partner_org_id), currency=payout.currency)
         service.mark_paid(payout=payout)
         db.commit()
     except ValueError as exc:
@@ -823,7 +956,20 @@ def mark_payout_paid(
         after={"status": payout.status.value if hasattr(payout.status, "value") else str(payout.status)},
         request_ctx=request_context_from_request(request, token=_sanitize_token_for_audit(token)),
     )
-    detail = _serialize_payout(payout, _payout_blockers(service, payout))
+    settlement_state = _settlement_state_for_partner(
+        db,
+        partner_id=str(payout.partner_org_id),
+        currency=payout.currency,
+    )
+    legal_status = _legal_status_by_partner(db, [str(payout.partner_org_id)]).get(str(payout.partner_org_id))
+    correlation_chain = _correlation_chain_by_payout(db, [str(payout.id)]).get(str(payout.id), [])
+    detail = _serialize_payout(
+        payout,
+        _payout_blockers(service, payout),
+        legal_status=legal_status,
+        settlement_state=settlement_state,
+        correlation_chain=correlation_chain,
+    )
     return PayoutActionResponse(payout=detail, correlation_id=_correlation_id(request))
 
 
