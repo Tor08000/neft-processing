@@ -176,3 +176,25 @@ class PayoutDetail(PayoutQueueItem):
 class PayoutActionResponse(BaseModel):
     payout: PayoutDetail
     correlation_id: str | None = None
+
+
+class PartnerPayoutPolicyUpsertRequest(BaseModel):
+    currency: str = "RUB"
+    min_payout_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    payout_hold_days: int = Field(default=0, ge=0)
+    payout_schedule: str = "WEEKLY"
+
+
+class PartnerLedgerSeedRequest(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    currency: str = "RUB"
+    entry_type: str = "EARNED"
+    direction: str = "CREDIT"
+    description: str | None = None
+
+
+class PartnerLedgerSeedResponse(BaseModel):
+    entry_id: str
+    partner_org_id: str
+    balance_available: Decimal
+    currency: str

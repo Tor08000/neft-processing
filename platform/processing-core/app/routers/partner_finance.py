@@ -12,14 +12,30 @@ from app.db import get_db
 from app.models.export_jobs import ExportJob, ExportJobReportType, ExportJobStatus
 from app.models.marketplace_orders import MarketplaceOrder
 from app.models.marketplace_settlement import MarketplaceSettlementSnapshot
-from app.models.partner_finance import PartnerAct, PartnerInvoice, PartnerLedgerEntry, PartnerPayoutRequest
+from app.models.partner_finance import (
+    PartnerAct,
+    PartnerInvoice,
+    PartnerLedgerEntry,
+    PartnerLedgerEntryType,
+    PartnerPayoutRequest,
+    PartnerPayoutRequestStatus,
+)
 from app.models.payout_batch import PayoutBatch
 from app.schemas.partner_finance import (
     PartnerBalanceOut,
+    PartnerDashboardBlockedPayouts,
+    PartnerDashboardLegalSummary,
+    PartnerDashboardSlaPenalties,
+    PartnerDashboardSummary,
+    PartnerDocSummary,
+    PartnerDocsResponse,
     PartnerDocumentListResponse,
     PartnerDocumentOut,
     PartnerLedgerEntryOut,
+    PartnerLedgerEntrySummary,
     PartnerLedgerListResponse,
+    PartnerPayoutHistoryItem,
+    PartnerPayoutHistoryResponse,
     PartnerPayoutListResponse,
     PartnerPayoutPreviewOut,
     PartnerPayoutRequestIn,
@@ -108,6 +124,33 @@ def _resolve_user_id(principal: Principal) -> str:
     return user_id
 
 
+def _ledger_entry_summary(entry: PartnerLedgerEntry) -> PartnerLedgerEntrySummary:
+    entry_type = entry.entry_type.value if hasattr(entry.entry_type, "value") else str(entry.entry_type)
+    type_map = {
+        "EARNED": "earn",
+        "SLA_PENALTY": "penalty",
+        "ADJUSTMENT": "fee",
+        "PAYOUT_REQUESTED": "payout",
+        "PAYOUT_APPROVED": "payout",
+        "PAYOUT_PAID": "payout",
+    }
+    meta = entry.meta_json or {}
+    description = meta.get("description")
+    if not description:
+        if entry.order_id:
+            description = f"Order {entry.order_id}"
+        else:
+            description = entry_type.replace("_", " ").lower()
+    return PartnerLedgerEntrySummary(
+        ts=entry.created_at,
+        type=type_map.get(entry_type, entry_type.lower()),
+        amount=Decimal(entry.amount),
+        ref_id=str(entry.order_id) if entry.order_id else str(entry.id),
+        correlation_id=meta.get("correlation_id") or meta.get("source_id"),
+        description=description,
+    )
+
+
 def _audit_forbidden_access(
     *,
     principal: Principal,
@@ -142,22 +185,99 @@ def get_partner_balance(
     )
 
 
+@router.get("/dashboard", response_model=PartnerDashboardSummary)
+def get_partner_dashboard(
+    principal: Principal = Depends(require_permission("partner:dashboard:view")),
+    db: Session = Depends(get_db),
+) -> PartnerDashboardSummary:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    service = PartnerFinanceService(db)
+    account = service.get_account(partner_org_id=partner_org_id, currency="RUB")
+    payouts = (
+        db.query(PartnerPayoutRequest)
+        .filter(PartnerPayoutRequest.partner_org_id == partner_org_id)
+        .order_by(PartnerPayoutRequest.created_at.desc())
+        .all()
+    )
+    blocked_reasons: dict[str, int] = {}
+    blocked_total = 0
+    now = datetime.now(timezone.utc)
+    for payout in payouts:
+        reasons = service.evaluate_payout_blockers(
+            partner_org_id=partner_org_id,
+            amount=Decimal(payout.amount),
+            currency=payout.currency,
+            now=now,
+        )
+        if reasons:
+            blocked_total += 1
+            for reason in reasons:
+                blocked_reasons[reason] = blocked_reasons.get(reason, 0) + 1
+    penalties = (
+        db.query(PartnerLedgerEntry)
+        .filter(PartnerLedgerEntry.partner_org_id == partner_org_id)
+        .filter(PartnerLedgerEntry.entry_type == PartnerLedgerEntryType.SLA_PENALTY)
+        .all()
+    )
+    penalties_total = sum((Decimal(entry.amount or 0) for entry in penalties), Decimal("0"))
+    legal_service = PartnerLegalService(db)
+    legal_profile = legal_service.get_profile(partner_id=partner_org_id)
+    legal_status = None
+    if legal_profile:
+        legal_status = (
+            legal_profile.legal_status.value if hasattr(legal_profile.legal_status, "value") else str(legal_profile.legal_status)
+        )
+    block_reason = None
+    try:
+        legal_service.ensure_payout_allowed(partner_id=partner_org_id)
+    except PartnerLegalError as exc:
+        block_reason = exc.code
+    return PartnerDashboardSummary(
+        balance=Decimal(account.balance_available or 0),
+        pending=Decimal(account.balance_pending or 0),
+        blocked=Decimal(account.balance_blocked or 0),
+        currency=account.currency,
+        blocked_payouts=PartnerDashboardBlockedPayouts(total=blocked_total, reasons=blocked_reasons),
+        sla_penalties=PartnerDashboardSlaPenalties(count=len(penalties), total_amount=penalties_total),
+        legal=PartnerDashboardLegalSummary(
+            status=legal_status,
+            required_enabled=settings.LEGAL_GATE_ENABLED,
+            block_reason=block_reason,
+        ),
+    )
+
+
 @router.get("/ledger", response_model=PartnerLedgerListResponse)
 def get_partner_ledger(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    cursor: str | None = Query(None),
+    date_from: datetime | None = Query(None, alias="from"),
+    date_to: datetime | None = Query(None, alias="to"),
     principal: Principal = Depends(require_permission("partner:finance:view")),
     db: Session = Depends(get_db),
 ) -> PartnerLedgerListResponse:
     partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    resolved_offset = offset
+    if cursor:
+        try:
+            resolved_offset = int(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+    query = db.query(PartnerLedgerEntry).filter(PartnerLedgerEntry.partner_org_id == partner_org_id)
+    if date_from:
+        query = query.filter(PartnerLedgerEntry.created_at >= date_from)
+    if date_to:
+        query = query.filter(PartnerLedgerEntry.created_at <= date_to)
     entries = (
-        db.query(PartnerLedgerEntry)
-        .filter(PartnerLedgerEntry.partner_org_id == partner_org_id)
-        .order_by(PartnerLedgerEntry.created_at.desc())
-        .offset(offset)
+        query.order_by(PartnerLedgerEntry.created_at.desc())
+        .offset(resolved_offset)
         .limit(limit)
         .all()
     )
+    next_cursor = None
+    if len(entries) == limit:
+        next_cursor = str(resolved_offset + limit)
     return PartnerLedgerListResponse(
         items=[
             PartnerLedgerEntryOut(
@@ -172,7 +292,9 @@ def get_partner_ledger(
                 created_at=entry.created_at,
             )
             for entry in entries
-        ]
+        ],
+        entries=[_ledger_entry_summary(entry) for entry in entries],
+        cursor=next_cursor,
     )
 
 
@@ -259,9 +381,11 @@ def request_partner_payout(
     partner_org_id = _ensure_capability(db, principal, "PARTNER_PAYOUT_REQUEST")
     service = PartnerFinanceService(db, request_ctx=request_context_from_request(None, token=principal.raw_claims))
     try:
+        account = service.get_account(partner_org_id=partner_org_id, currency=payload.currency)
+        amount = payload.amount if payload.amount is not None else Decimal(account.balance_available or 0)
         payout = service.request_payout(
             partner_org_id=partner_org_id,
-            amount=payload.amount,
+            amount=amount,
             currency=payload.currency,
             requested_by=str(principal.user_id) if principal.user_id else None,
         )
@@ -327,6 +451,45 @@ def list_partner_payouts(
             for item in items
         ]
     )
+
+
+@router.get("/payouts/history", response_model=PartnerPayoutHistoryResponse)
+def list_partner_payout_history(
+    principal: Principal = Depends(require_permission("partner:payouts:list")),
+    db: Session = Depends(get_db),
+) -> PartnerPayoutHistoryResponse:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    service = PartnerFinanceService(db)
+    payouts = (
+        db.query(PartnerPayoutRequest)
+        .filter(PartnerPayoutRequest.partner_org_id == partner_org_id)
+        .order_by(PartnerPayoutRequest.created_at.desc())
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    items: list[PartnerPayoutHistoryItem] = []
+    for payout in payouts:
+        reasons = service.evaluate_payout_blockers(
+            partner_org_id=partner_org_id,
+            amount=Decimal(payout.amount),
+            currency=payout.currency,
+            now=now,
+        )
+        approved_at = payout.processed_at if payout.status == PartnerPayoutRequestStatus.APPROVED else None
+        paid_at = payout.processed_at if payout.status == PartnerPayoutRequestStatus.PAID else None
+        items.append(
+            PartnerPayoutHistoryItem(
+                id=str(payout.id),
+                status=payout.status.value if hasattr(payout.status, "value") else str(payout.status),
+                amount=Decimal(payout.amount),
+                created_at=payout.created_at,
+                approved_at=approved_at,
+                paid_at=paid_at,
+                block_reason=reasons[0] if reasons else None,
+                correlation_id=None,
+            )
+        )
+    return PartnerPayoutHistoryResponse(requests=items)
 
 
 @router.get("/payouts/{payout_id}/trace", response_model=PayoutTraceOut)
@@ -496,6 +659,91 @@ def list_partner_acts(
     )
 
 
+@router.get("/docs", response_model=PartnerDocsResponse)
+def list_partner_docs(
+    principal: Principal = Depends(require_permission("partner:documents:list")),
+    db: Session = Depends(get_db),
+) -> PartnerDocsResponse:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    period_from, period_to = _current_month_period()
+    service = PartnerFinanceService(db)
+    service.ensure_monthly_documents(
+        partner_org_id=partner_org_id,
+        period_from=period_from,
+        period_to=period_to,
+        currency="RUB",
+    )
+    db.commit()
+    invoices = (
+        db.query(PartnerInvoice)
+        .filter(PartnerInvoice.partner_org_id == partner_org_id)
+        .order_by(PartnerInvoice.period_from.desc())
+        .all()
+    )
+    acts = (
+        db.query(PartnerAct)
+        .filter(PartnerAct.partner_org_id == partner_org_id)
+        .order_by(PartnerAct.period_from.desc())
+        .all()
+    )
+    items: list[PartnerDocSummary] = []
+    for item in invoices:
+        items.append(
+            PartnerDocSummary(
+                id=str(item.id),
+                doc_type="invoice",
+                period_from=item.period_from,
+                period_to=item.period_to,
+                total_amount=Decimal(item.total_amount),
+                currency=item.currency,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                created_at=item.created_at,
+                download_url=f"/api/core/partner/docs/{item.id}/download?type=invoice",
+            )
+        )
+    for item in acts:
+        items.append(
+            PartnerDocSummary(
+                id=str(item.id),
+                doc_type="act",
+                period_from=item.period_from,
+                period_to=item.period_to,
+                total_amount=Decimal(item.total_amount),
+                currency=item.currency,
+                status=item.status.value if hasattr(item.status, "value") else str(item.status),
+                created_at=item.created_at,
+                download_url=f"/api/core/partner/docs/{item.id}/download?type=act",
+            )
+        )
+    return PartnerDocsResponse(items=items)
+
+
+@router.get("/docs/{doc_id}/download")
+def download_partner_doc(
+    doc_id: str,
+    doc_type: str = Query(..., alias="type"),
+    principal: Principal = Depends(require_permission("partner:documents:list")),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    partner_org_id = _ensure_capability(db, principal, "PARTNER_FINANCE_VIEW")
+    doc = None
+    doc_type_normalized = doc_type.lower()
+    if doc_type_normalized == "invoice":
+        doc = db.query(PartnerInvoice).filter(PartnerInvoice.id == doc_id).one_or_none()
+    elif doc_type_normalized == "act":
+        doc = db.query(PartnerAct).filter(PartnerAct.id == doc_id).one_or_none()
+    else:
+        raise HTTPException(status_code=400, detail="invalid_doc_type")
+    if doc is None or str(doc.partner_org_id) != str(partner_org_id):
+        raise HTTPException(status_code=404, detail="doc_not_found")
+    object_key = doc.pdf_object_key or f"partner-docs/{doc_type_normalized}/{doc_id}.pdf"
+    storage = S3Storage(bucket=settings.NEFT_S3_BUCKET_DOCUMENTS or settings.NEFT_S3_BUCKET)
+    signed_url = storage.presign(object_key, expires=settings.S3_SIGNED_URL_TTL_SECONDS)
+    if not signed_url:
+        raise HTTPException(status_code=503, detail="download_unavailable")
+    return RedirectResponse(url=signed_url)
+
+
 @router.get("/payouts/preview", response_model=PartnerPayoutPreviewOut)
 def preview_partner_payout(
     principal: Principal = Depends(require_permission("partner:finance:view")),
@@ -525,14 +773,34 @@ def preview_partner_payout(
         details = legal_service.get_details(partner_id=partner_org_id)
         if details:
             warnings = legal_service.collect_warnings(profile=profile, details=details)
+    holds = [reason for reason in payout_reasons if "HOLD" in reason or "SCHEDULE" in reason]
+    penalties = [reason for reason in payout_reasons if "PENALTY" in reason or "SLA" in reason]
+    next_payout_date = None
+    schedule_days = {"WEEKLY": 7, "BIWEEKLY": 14, "MONTHLY": 30}
+    if policy and policy.payout_schedule:
+        cadence = schedule_days.get(str(policy.payout_schedule.value if hasattr(policy.payout_schedule, "value") else policy.payout_schedule))
+        if cadence:
+            last_request = (
+                db.query(PartnerPayoutRequest)
+                .filter(PartnerPayoutRequest.partner_org_id == partner_org_id)
+                .order_by(PartnerPayoutRequest.created_at.desc())
+                .first()
+            )
+            base = last_request.created_at if last_request else now
+            next_payout_date = base + timedelta(days=cadence)
     return PartnerPayoutPreviewOut(
         partner_org_id=partner_org_id,
         currency=account.currency,
         available_amount=Decimal(account.balance_available or 0),
+        available_to_withdraw=Decimal(account.balance_available or 0),
         min_payout_amount=Decimal(policy.min_payout_amount) if policy else None,
         payout_hold_days=int(policy.payout_hold_days) if policy else None,
         payout_schedule=policy.payout_schedule.value if policy else None,
         payout_block_reasons=payout_reasons,
+        holds=holds,
+        penalties=penalties,
+        block_reason=payout_reasons[0] if payout_reasons else None,
+        next_payout_date=next_payout_date,
         legal_status=legal_status,
         tax_context=tax_context.to_dict() if tax_context else None,
         warnings=warnings,
