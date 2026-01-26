@@ -130,6 +130,7 @@ from app.schemas.client_portal_v1 import (
     ContractSignRequest,
 )
 from app.schemas.billing_payment_intakes import (
+    ClientPaymentIntakeRequest,
     PaymentIntakeAttachmentIn,
     PaymentIntakeAttachmentInitResponse,
     PaymentIntakeCreateRequest,
@@ -5918,45 +5919,13 @@ def _validate_payment_intake_attachment(payload: PaymentIntakeAttachmentIn) -> N
         raise HTTPException(status_code=422, detail="invalid_file_size")
 
 
-@router.post("/invoices/{invoice_id}/payment-intakes/attachments/init", response_model=PaymentIntakeAttachmentInitResponse)
-def init_payment_intake_attachment(
-    invoice_id: int,
-    payload: PaymentIntakeAttachmentIn,
-    token: dict = Depends(client_portal_user),
-    db: Session = Depends(get_db),
-) -> PaymentIntakeAttachmentInitResponse:
-    _ensure_invoice_access(token)
-    org_id = _resolve_org_id(token)
-    invoice = get_invoice(db, invoice_id=invoice_id)
-    if not invoice or invoice["org_id"] != org_id:
-        raise HTTPException(status_code=404, detail="invoice_not_found")
-
-    _validate_payment_intake_attachment(payload)
-
-    storage = PaymentIntakeAttachmentStorage()
-    attachment_id = str(uuid4())
-    object_key = storage.build_object_key(
-        invoice_id=invoice_id,
-        intake_id=attachment_id,
-        file_name=payload.file_name,
-    )
-    upload_url = storage.presign_upload(
-        object_key=object_key,
-        content_type=payload.content_type,
-        expires=3600,
-    )
-    if not upload_url:
-        raise HTTPException(status_code=500, detail="upload_url_error")
-    return PaymentIntakeAttachmentInitResponse(upload_url=upload_url, object_key=object_key)
-
-
-@router.post("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeOut, status_code=201)
-def submit_payment_intake(
+def _submit_payment_intake_for_invoice(
+    *,
     invoice_id: int,
     payload: PaymentIntakeCreateRequest,
     request: Request,
-    token: dict = Depends(client_portal_user),
-    db: Session = Depends(get_db),
+    token: dict,
+    db: Session,
 ) -> PaymentIntakeOut:
     _ensure_invoice_access(token)
     org_id = _resolve_org_id(token)
@@ -6029,6 +5998,88 @@ def submit_payment_intake(
     db.commit()
 
     return _serialize_payment_intake(intake)
+
+
+@router.post("/invoices/{invoice_id}/payment-intakes/attachments/init", response_model=PaymentIntakeAttachmentInitResponse)
+def init_payment_intake_attachment(
+    invoice_id: int,
+    payload: PaymentIntakeAttachmentIn,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeAttachmentInitResponse:
+    _ensure_invoice_access(token)
+    org_id = _resolve_org_id(token)
+    invoice = get_invoice(db, invoice_id=invoice_id)
+    if not invoice or invoice["org_id"] != org_id:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+
+    _validate_payment_intake_attachment(payload)
+
+    storage = PaymentIntakeAttachmentStorage()
+    attachment_id = str(uuid4())
+    object_key = storage.build_object_key(
+        invoice_id=invoice_id,
+        intake_id=attachment_id,
+        file_name=payload.file_name,
+    )
+    upload_url = storage.presign_upload(
+        object_key=object_key,
+        content_type=payload.content_type,
+        expires=3600,
+    )
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="upload_url_error")
+    return PaymentIntakeAttachmentInitResponse(upload_url=upload_url, object_key=object_key)
+
+
+@router.post("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeOut, status_code=201)
+def submit_payment_intake(
+    invoice_id: int,
+    payload: PaymentIntakeCreateRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeOut:
+    return _submit_payment_intake_for_invoice(
+        invoice_id=invoice_id,
+        payload=payload,
+        request=request,
+        token=token,
+        db=db,
+    )
+
+
+@router.post("/payments/intake", response_model=PaymentIntakeOut, status_code=201)
+def submit_payment_intake_from_portal(
+    payload: ClientPaymentIntakeRequest,
+    request: Request,
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> PaymentIntakeOut:
+    invoice = get_invoice(db, invoice_id=payload.invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="invoice_not_found")
+    currency = invoice.get("currency") or "RUB"
+    comment_parts = [payload.method]
+    if payload.reference:
+        comment_parts.append(f"reference:{payload.reference}")
+    if payload.attachment:
+        comment_parts.append("attachment:provided")
+    comment = " | ".join(comment_parts)
+    mapped_payload = PaymentIntakeCreateRequest(
+        amount=payload.amount,
+        currency=currency,
+        bank_reference=payload.reference,
+        comment=comment,
+        proof=None,
+    )
+    return _submit_payment_intake_for_invoice(
+        invoice_id=payload.invoice_id,
+        payload=mapped_payload,
+        request=request,
+        token=token,
+        db=db,
+    )
 
 
 @router.get("/invoices/{invoice_id}/payment-intakes", response_model=PaymentIntakeListResponse)

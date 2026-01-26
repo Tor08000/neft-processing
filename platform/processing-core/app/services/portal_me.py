@@ -30,6 +30,8 @@ from app.schemas.portal_me import (
     PortalMeUser,
     PortalNavSection,
     PortalAccessState,
+    PortalMeBilling,
+    PortalMeBillingInvoice,
 )
 from app.models.partner_finance import PartnerLedgerEntry, PartnerLedgerEntryType
 from app.models.partner_legal import PartnerLegalStatus
@@ -51,6 +53,10 @@ def _table(db: Session, name: str) -> Table:
 def _table_exists(db: Session, name: str) -> bool:
     inspector = inspect(db.get_bind())
     return inspector.has_table(name, schema=DB_SCHEMA)
+
+
+def _column_exists(table: Table, name: str) -> bool:
+    return name in table.c
 
 
 def _normalize_roles(token: dict) -> list[str]:
@@ -201,6 +207,48 @@ def _resolve_client_contract_status(db: Session, *, client_id: str | None) -> st
     if not contract:
         return None
     return contract.status
+
+
+def _resolve_overdue_invoices(db: Session, *, org_id: int | None) -> list[PortalMeBillingInvoice]:
+    if org_id is None or not _table_exists(db, "billing_invoices"):
+        return []
+    billing_invoices = _table(db, "billing_invoices")
+    status_col = billing_invoices.c.status if _column_exists(billing_invoices, "status") else None
+    due_at_col = billing_invoices.c.due_at if _column_exists(billing_invoices, "due_at") else None
+    org_id_col = billing_invoices.c.org_id if _column_exists(billing_invoices, "org_id") else None
+    if org_id_col is None:
+        return []
+
+    now = datetime.now(timezone.utc)
+    query = select(billing_invoices).where(org_id_col == org_id)
+    if status_col is not None:
+        query = query.where(status_col.notin_(["PAID", "VOID"]))
+    if due_at_col is not None:
+        query = query.order_by(due_at_col.asc().nullslast())
+    rows = db.execute(query).mappings().all()
+    overdue_items: list[PortalMeBillingInvoice] = []
+    for row in rows:
+        status = row.get("status")
+        due_at = row.get("due_at")
+        is_overdue = bool(status in {"OVERDUE"} or (due_at and due_at <= now))
+        if not is_overdue:
+            continue
+        amount = row.get("total_amount")
+        if amount is None:
+            amount = row.get("amount_total")
+        number = row.get("invoice_number") or row.get("number") or str(row.get("id"))
+        overdue_items.append(
+            PortalMeBillingInvoice(
+                id=row.get("id"),
+                number=str(number) if number is not None else None,
+                amount=amount,
+                currency=row.get("currency"),
+                due_at=due_at,
+                download_url=f"/api/core/client/invoices/{row.get('id')}/download" if row.get("id") else None,
+                status=status,
+            )
+        )
+    return overdue_items
 
 
 def _resolve_onboarding_client_id(db: Session, token: dict) -> str | None:
@@ -426,6 +474,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         if access_state == PortalAccessState.ACTIVE and sla_penalties_count > 0:
             access_state = PortalAccessState.SLA_PENALTY
             access_reason = "sla_penalty"
+    billing_payload = None
+    if actor_type == "client" and access_state == PortalAccessState.OVERDUE:
+        overdue_invoices = _resolve_overdue_invoices(db, org_id=org_id_int)
+        billing_payload = PortalMeBilling(overdue_invoices=overdue_invoices, next_action="PAY_INVOICE")
     return PortalMeResponse(
         actor_type=actor_type,
         context=actor_type,
@@ -453,6 +505,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         partner=partner_payload,
         access_state=access_state,
         access_reason=access_reason,
+        billing=billing_payload,
     )
 
 

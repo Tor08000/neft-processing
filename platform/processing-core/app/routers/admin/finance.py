@@ -628,6 +628,23 @@ def approve_finance_payment_intake(
     )
 
 
+@router.post("/payment-intakes/{intake_id}/confirm", response_model=AdminPaymentIntakeActionResponse)
+def confirm_finance_payment_intake(
+    intake_id: int,
+    payload: WriteActionRequest,
+    request: Request,
+    token: dict = Depends(require_any_admin_roles(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+) -> AdminPaymentIntakeActionResponse:
+    return approve_finance_payment_intake(
+        intake_id=intake_id,
+        payload=payload,
+        request=request,
+        token=token,
+        db=db,
+    )
+
+
 @router.post("/payment-intakes/{intake_id}/reject", response_model=AdminPaymentIntakeActionResponse)
 def reject_finance_payment_intake(
     intake_id: int,

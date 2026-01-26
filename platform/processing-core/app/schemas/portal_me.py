@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -121,3 +122,19 @@ class PortalMeResponse(BaseModel):
     partner: PortalMePartner | None = None
     access_state: PortalAccessState
     access_reason: str | None = None
+    billing: "PortalMeBilling" | None = None
+
+
+class PortalMeBillingInvoice(BaseModel):
+    id: int | str
+    number: str | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    due_at: datetime | None = None
+    download_url: str | None = None
+    status: str | None = None
+
+
+class PortalMeBilling(BaseModel):
+    overdue_invoices: list[PortalMeBillingInvoice] = []
+    next_action: str | None = None

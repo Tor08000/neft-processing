@@ -6,6 +6,7 @@ import { AccessState, resolveAccessState } from "../access/accessState";
 import { AppErrorState, AppForbiddenState, AppLoadingState } from "./states";
 import { StatusPage } from "./StatusPage";
 import { ModuleUnavailablePage } from "../pages/ModuleUnavailablePage";
+import { BillingOverdueState } from "./BillingOverdueState";
 
 type AccessGateProps = {
   capability?: string;
@@ -336,6 +337,9 @@ export const AccessGate = ({
   }
 
   if (decision.state !== AccessState.ACTIVE) {
+    if (decision.state === AccessState.OVERDUE) {
+      return <BillingOverdueState billing={client?.billing} />;
+    }
     return <AccessStateView state={decision.state} title={title} reason={decision.reason} />;
   }
 
