@@ -32,8 +32,13 @@ export function ProtectedRoute() {
     return <div className="centered">Загружаем профиль...</div>;
   }
 
-  const onboardingEnabled = client?.features?.onboarding ?? true;
-  if (onboardingEnabled && client && client.org_status !== "ACTIVE" && location.pathname !== "/client/connect") {
+  const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? true;
+  if (
+    onboardingEnabled &&
+    client?.access_state &&
+    ["NEEDS_ONBOARDING", "NEEDS_PLAN", "NEEDS_CONTRACT"].includes(client.access_state) &&
+    location.pathname !== "/client/connect"
+  ) {
     return <Navigate to="/client/connect" replace />;
   }
 

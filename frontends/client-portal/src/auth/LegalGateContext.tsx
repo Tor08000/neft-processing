@@ -37,7 +37,8 @@ export const LegalGateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const onboardingEnabledEnv =
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "1" ||
     (import.meta.env.VITE_ONBOARDING_ENABLED ?? "false").toString().toLowerCase() === "true";
-  const onboardingEnabled = client?.features?.onboarding ?? onboardingEnabledEnv;
+  const onboardingEnabled =
+    client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? onboardingEnabledEnv;
 
   const resolveErrorMessage = (error: unknown) => {
     if (error instanceof UnauthorizedError) {

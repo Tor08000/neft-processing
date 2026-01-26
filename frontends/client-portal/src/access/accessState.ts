@@ -4,6 +4,7 @@ export enum AccessState {
   AUTH_REQUIRED = "AUTH_REQUIRED",
   NEEDS_ONBOARDING = "NEEDS_ONBOARDING",
   NEEDS_PLAN = "NEEDS_PLAN",
+  NEEDS_CONTRACT = "NEEDS_CONTRACT",
   ACTIVE = "ACTIVE",
   OVERDUE = "OVERDUE",
   SUSPENDED = "SUSPENDED",
@@ -22,6 +23,8 @@ export type AccessReason =
   | "org_not_active"
   | "legal_not_verified"
   | "subscription_missing"
+  | "contract_missing"
+  | "contract_not_signed"
   | "billing_overdue"
   | "billing_suspended"
   | "forbidden_role"

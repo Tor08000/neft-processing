@@ -346,10 +346,22 @@ def _load_contract_template() -> bytes:
 
 
 def _store_contract_pdf(client_id: str, contract_id: str, payload: bytes) -> str:
-    storage = S3Storage()
     key = f"client-onboarding/{client_id}/{contract_id}/contract_v1.pdf"
-    storage.put_object(key, payload, content_type="application/pdf")
-    return storage.get_url(key)
+    try:
+        storage = S3Storage()
+        return storage.put_bytes(key, payload, content_type="application/pdf")
+    except Exception:
+        return f"stub://{key}"
+
+
+def _load_contract_pdf(client_id: str, contract_id: str) -> bytes:
+    key = f"client-onboarding/{client_id}/{contract_id}/contract_v1.pdf"
+    try:
+        storage = S3Storage()
+        payload = storage.get_bytes(key)
+    except Exception:
+        payload = None
+    return payload or _load_contract_template()
 
 
 def _get_or_create_onboarding(db: Session, *, owner_id: str, client: Client) -> ClientOnboarding:
@@ -3561,6 +3573,30 @@ def get_current_contract(
     )
 
 
+@router.get("/contracts/{contract_id}", response_model=ContractInfo)
+def get_contract(
+    contract_id: str,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ContractInfo:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == contract_id, ClientOnboardingContract.client_id == str(client.id))
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+    return ContractInfo(
+        contract_id=str(contract.id),
+        status=contract.status,
+        pdf_url=contract.pdf_url,
+        version=int(contract.version or 1),
+    )
+
+
 @router.post("/contracts/generate", response_model=ContractInfo)
 def generate_contract(
     token: dict = Depends(client_auth.require_onboarding_user),
@@ -3642,6 +3678,65 @@ def sign_contract(
     contract.signed_at = now
     contract.signature_meta = signature_meta
 
+    client.status = "ACTIVE"
+    onboarding.step = "ACTIVATION"
+    onboarding.status = client.status
+    db.commit()
+
+    _audit_event(
+        db,
+        request=request,
+        token=token,
+        event_type="contract_sign",
+        entity_type="contract",
+        entity_id=str(contract.id),
+        before=None,
+        after={"status": contract.status},
+        action="sign_simple",
+    )
+
+    return ContractInfo(
+        contract_id=str(contract.id),
+        status=contract.status,
+        pdf_url=contract.pdf_url,
+        version=int(contract.version or 1),
+    )
+
+
+@router.post("/contracts/{contract_id}/sign", response_model=ContractInfo)
+def sign_contract_by_id(
+    contract_id: str,
+    payload: ContractSignRequest,
+    request: Request,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ContractInfo:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == contract_id, ClientOnboardingContract.client_id == str(client.id))
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+
+    payload_bytes = _load_contract_template()
+    now = datetime.now(timezone.utc)
+    signature_meta = {
+        "otp": payload.otp,
+        "ip": getattr(request.client, "host", None),
+        "user_agent": request.headers.get("user-agent"),
+        "timestamp": now.isoformat(),
+        "doc_hash": sha256(payload_bytes).hexdigest(),
+    }
+    contract.status = "SIGNED_SIMPLE"
+    contract.signed_at = now
+    contract.signature_meta = signature_meta
+
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client=client)
+    onboarding.contract_id = str(contract.id)
     client.status = "ACTIVE"
     onboarding.step = "ACTIVATION"
     onboarding.status = client.status
@@ -5982,6 +6077,83 @@ def list_client_docs(
     return ClientDocsListResponse(items=items)
 
 
+@router.get("/docs/contracts", response_model=ClientDocsListResponse)
+def list_contract_docs(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientDocsListResponse:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    contracts = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.client_id == str(client.id))
+        .order_by(ClientOnboardingContract.created_at.desc())
+        .all()
+    )
+    items = [
+        ClientDocSummary(
+            id=str(contract.id),
+            type="CONTRACT",
+            status=str(contract.status),
+            date=contract.created_at.date() if contract.created_at else date.today(),
+            download_url=f"/api/core/client/docs/contracts/{contract.id}/download",
+        )
+        for contract in contracts
+    ]
+    return ClientDocsListResponse(items=items)
+
+
+@router.get("/docs/contracts/{contract_id}/download")
+def download_contract_doc(
+    contract_id: str,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == contract_id, ClientOnboardingContract.client_id == str(client.id))
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+    payload = _load_contract_pdf(str(client.id), str(contract.id))
+    headers = {"Content-Disposition": f'attachment; filename="contract-{contract.id}.pdf"'}
+    return Response(content=payload, media_type="application/pdf", headers=headers)
+
+
+@router.get("/docs/invoices", response_model=ClientDocsListResponse)
+def list_invoice_docs(
+    token: dict = Depends(client_portal_user),
+    db: Session = Depends(get_db),
+) -> ClientDocsListResponse:
+    client_id = token.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=403, detail="missing_client_context")
+    assert_module_enabled(db, client_id=str(client_id), module_code="DOCS")
+    documents = (
+        db.query(Document)
+        .filter(Document.client_id == str(client_id))
+        .filter(Document.document_type.in_([DocumentType.INVOICE, DocumentType.SUBSCRIPTION_INVOICE]))
+        .order_by(Document.period_to.desc())
+        .all()
+    )
+    items = [
+        ClientDocSummary(
+            id=str(doc.id),
+            type=doc.document_type.value,
+            status=doc.status.value,
+            date=doc.period_to,
+            download_url=f"/api/core/client/docs/{doc.id}/download",
+        )
+        for doc in documents
+    ]
+    return ClientDocsListResponse(items=items)
+
+
 @router.get("/docs/{document_id}/download")
 def download_client_doc(
     document_id: str,
@@ -6084,3 +6256,11 @@ def list_client_plans(
     _ = token
     plans = list_plans(db, active_only=True)
     return [_build_plan_out(db, plan) for plan in plans]
+
+
+@router.get("/plans", response_model=list[SubscriptionPlanOut])
+def list_client_plans_alias(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> list[SubscriptionPlanOut]:
+    return list_client_plans(token=token, db=db)

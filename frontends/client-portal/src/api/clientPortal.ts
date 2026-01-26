@@ -50,12 +50,16 @@ export type PortalMeResponse = {
   roles?: string[] | null;
   memberships?: string[] | null;
   legal?: {
-    required: boolean;
+    required_count: number;
     accepted: boolean;
-    missing_docs: string[];
+    missing: string[];
+    required_enabled?: boolean | null;
   } | null;
   modules?: Record<string, unknown> | null;
-  features?: Record<string, unknown> | null;
+  features?: {
+    onboarding_enabled?: boolean;
+    legal_gate_enabled?: boolean;
+  } | null;
   gating?: {
     onboarding_enabled: boolean;
     legal_gate_enabled: boolean;
@@ -203,7 +207,7 @@ export const updateOrg = (user: AuthSession | null, payload: ClientOrgPayload) =
   request<ClientOrgResponse>("/client/org", { method: "PATCH", body: JSON.stringify(payload) }, withToken(user));
 
 export const fetchPlans = (user: AuthSession | null) =>
-  request<SubscriptionPlan[]>("/client/subscriptions/plans", { method: "GET" }, withToken(user));
+  request<SubscriptionPlan[]>("/client/plans", { method: "GET" }, withToken(user));
 
 export const selectSubscription = (user: AuthSession | null, payload: SubscriptionSelectPayload) =>
   request<ClientSubscriptionResponse>(
@@ -221,8 +225,12 @@ export const generateContract = (user: AuthSession | null) =>
 export const fetchCurrentContract = (user: AuthSession | null) =>
   request<ContractInfo>("/client/contracts/current", { method: "GET" }, withToken(user));
 
-export const signContract = (user: AuthSession | null, payload: ContractSignPayload) =>
-  request<ContractInfo>("/client/contracts/sign-simple", { method: "POST", body: JSON.stringify(payload) }, withToken(user));
+export const signContract = (user: AuthSession | null, contractId: string, payload: ContractSignPayload) =>
+  request<ContractInfo>(
+    `/client/contracts/${contractId}/sign`,
+    { method: "POST", body: JSON.stringify(payload) },
+    withToken(user),
+  );
 
 export const buildAuditEventsQuery = (filters: AuditEventsFilters = {}): string => {
   const search = new URLSearchParams();

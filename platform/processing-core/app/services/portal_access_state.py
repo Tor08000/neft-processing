@@ -22,6 +22,7 @@ def resolve_access_state(
     partner: PortalMePartner | None,
     entitlements_snapshot: dict[str, Any] | None,
     capabilities: list[str],
+    contract_status: str | None = None,
 ) -> tuple[PortalAccessState, str | None]:
     if actor_type == "admin":
         return PortalAccessState.ACTIVE, None
@@ -38,13 +39,24 @@ def resolve_access_state(
     if legal and legal.required_enabled and not legal.accepted:
         return PortalAccessState.LEGAL_PENDING, "legal_not_verified"
 
-    normalized_org_status = _normalize_status(org_status)
-    if not normalized_org_status or normalized_org_status != "ACTIVE":
-        return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
-
     if "CLIENT" in upper_roles:
+        normalized_org_status = _normalize_status(org_status)
+        if not normalized_org_status or normalized_org_status != "ACTIVE":
+            if org_status is None:
+                return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
+            if not subscription or not subscription.plan_code:
+                return PortalAccessState.NEEDS_PLAN, "subscription_missing"
+            if not contract_status:
+                return PortalAccessState.NEEDS_CONTRACT, "contract_missing"
+            if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
+                return PortalAccessState.NEEDS_CONTRACT, "contract_not_signed"
+            return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
         if not subscription or not subscription.plan_code:
             return PortalAccessState.NEEDS_PLAN, "subscription_missing"
+    else:
+        normalized_org_status = _normalize_status(org_status)
+        if not normalized_org_status or normalized_org_status != "ACTIVE":
+            return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
 
     if "PARTNER" in upper_roles:
         if partner and partner.status and _normalize_status(partner.status) != "ACTIVE":

@@ -158,6 +158,10 @@ async def register(payload: RegisterRequest) -> UserResponse:
             (new_user_id, payload.email, payload.full_name, password_hash),
         )
         row = await cur.fetchone()
+        await cur.execute(
+            "INSERT INTO user_roles (user_id, role_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (new_user_id, "CLIENT_OWNER"),
+        )
         await conn.commit()
 
     user = User.from_row(row)
@@ -168,6 +172,11 @@ async def register(payload: RegisterRequest) -> UserResponse:
         is_active=user.is_active,
         created_at=user.created_at,
     )
+
+
+@router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def signup(payload: RegisterRequest) -> UserResponse:
+    return await register(payload)
 
 
 @router.post("/login", response_model=TokenResponse)
