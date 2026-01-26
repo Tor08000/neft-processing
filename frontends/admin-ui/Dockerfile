@@ -14,12 +14,12 @@ ENV VITE_AUTH_API_BASE=$VITE_AUTH_API_BASE
 ENV VITE_AI_API_BASE=$VITE_AI_API_BASE
 ENV VITE_PUBLIC_BASE=$VITE_PUBLIC_BASE
 
+COPY frontends/shared/ /app/frontends/shared/
 COPY frontends/admin-ui/package*.json ./
 RUN npm ci
 RUN mkdir -p /app/frontends && ln -sf /app/frontends/admin-ui/node_modules /app/frontends/node_modules
 
 COPY frontends/admin-ui/ ./
-COPY frontends/shared/ /app/frontends/shared/
 RUN npm run build
 
 # ---------- Stage 2: nginx + статические файлы ----------
