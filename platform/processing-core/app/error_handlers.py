@@ -121,6 +121,7 @@ def add_exception_handlers(app: FastAPI):
             actor_type = _resolve_actor_type(request)
             logger.exception(
                 "Unhandled application error",
+                exc_info=exc,
                 extra={
                     "error_id": error_id,
                     "reason_code": reason_code,

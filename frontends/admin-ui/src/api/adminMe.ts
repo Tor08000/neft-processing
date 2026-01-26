@@ -61,7 +61,7 @@ const buildPermissions = (roles: string[]) => {
 };
 
 export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
-  const response = await fetch(buildUrl("/admin/me"), {
+  const response = await fetch(buildUrl("/v1/admin/me"), {
     method: "GET",
     headers: {
       Accept: "application/json",

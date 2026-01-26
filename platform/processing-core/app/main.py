@@ -28,6 +28,7 @@ from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.admin_auth_gateway import router as admin_auth_gateway_router
+from app.routers.admin_me_legacy import router as admin_me_legacy_router
 from app.routers.client_auth_gateway import router as client_auth_gateway_router
 from app.routers.partner_auth_gateway import router as partner_auth_gateway_router
 from app.routers.client_me import router as client_me_router
@@ -507,6 +508,7 @@ if payouts_router is not None:
     safe_include_router(core_prefixed_router, payouts_router, prefix="")
 
 safe_include_router(core_prefixed_router, admin_router)
+safe_include_router(core_prefixed_router, admin_me_legacy_router)
 safe_include_router(core_prefixed_router, admin_core_finance_router)
 safe_include_router(core_prefixed_router, admin_runtime_router)
 safe_include_router(core_prefixed_router, kpi_router)

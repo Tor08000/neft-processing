@@ -45,7 +45,7 @@
 - Global Audit Warning banner.
 
 #### Backend
-- `/admin/me`:
+- `/api/core/v1/admin/me`:
   - roles;
   - permissions.
 - RBAC middleware (admin).
