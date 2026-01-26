@@ -16,15 +16,25 @@ export async function fetchLegalPartners(
   params: { status?: string; search?: string; limit?: number; offset?: number } = {},
 ) {
   const suffix = buildQuery(params);
-  const response = await request<LegalPartnerListResponse | LegalPartnerDetail[]>(
+  const response = await request<
+    | LegalPartnerListResponse
+    | LegalPartnerDetail[]
+    | { items?: LegalPartnerDetail[]; total?: number; cursor?: string | null; data?: { items?: LegalPartnerDetail[]; total?: number; cursor?: string | null } }
+  >(
     `/admin/legal/partners${suffix}`,
     { method: "GET" },
     token,
   );
-  if (Array.isArray(response)) {
-    return { items: response };
-  }
-  return response;
+  const items = Array.isArray(response)
+    ? response
+    : response.items ?? response.data?.items ?? [];
+  const total = Array.isArray(response)
+    ? response.length
+    : response.total ?? response.data?.total ?? items.length ?? 0;
+  const cursor = Array.isArray(response)
+    ? null
+    : response.cursor ?? response.data?.cursor ?? null;
+  return { items, total, cursor };
 }
 
 export async function fetchLegalPartner(token: string, partnerId: string): Promise<LegalPartnerDetail> {
