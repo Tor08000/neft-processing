@@ -4,7 +4,9 @@
 За 60 секунд ответить на вопросы: «Платформа жива? где пожар? что блокирует деньги?» без write-операций.
 
 ## Endpoint
-`GET /api/core/admin/runtime/summary`
+`GET /api/core/v1/admin/runtime/summary`
+
+Legacy alias: `GET /api/core/admin/runtime/summary` → `308` redirect to canonical v1 endpoint.
 
 ## Пример ответа
 ```json
@@ -51,4 +53,4 @@
 ```cmd
 scripts\smoke_slice_2_admin_runtime.cmd
 ```
-Скрипт логинит admin, проверяет `/api/core/admin/runtime/summary`, печатает env/read_only и ключевые статусы.
+Скрипт логинит admin, проверяет `/api/core/v1/admin/runtime/summary`, печатает env/read_only и ключевые статусы.

@@ -22,7 +22,7 @@ call :fetch_head "admin SPA" "%GATEWAY_BASE%/admin/" || exit /b 1
 call :fetch_head "admin assets" "%GATEWAY_BASE%/admin/assets/" || exit /b 1
 
 call :fetch_json "admin v1/admin/me" "%GATEWAY_BASE%%CORE_BASE%/v1/admin/me" "-H \"Authorization: Bearer %admin_TOKEN%\"" "admin_me_slice2.json" || exit /b 1
-call :fetch_json "admin runtime summary" "%GATEWAY_BASE%%CORE_BASE%/admin/runtime/summary" "-H \"Authorization: Bearer %admin_TOKEN%\"" "admin_runtime_summary.json" || exit /b 1
+call :fetch_json "admin runtime summary" "%GATEWAY_BASE%%CORE_BASE%/v1/admin/runtime/summary" "-H \"Authorization: Bearer %admin_TOKEN%\"" "admin_runtime_summary.json" || exit /b 1
 
 call :print_runtime_summary "%TEMP%\admin_runtime_summary.json" || exit /b 1
 

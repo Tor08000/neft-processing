@@ -93,9 +93,10 @@ def _build_permissions(roles: list[str]) -> AdminPermissions:
 async def admin_me(token: dict = Depends(require_admin_user)) -> AdminMeResponse:
     roles = extract_admin_roles(token)
     user_id = token.get("user_id") or token.get("sub") or token.get("uid") or "unknown"
+    email = token.get("email") or token.get("sub") or token.get("user_id") or token.get("uid")
     admin_user = AdminUser(
         id=str(user_id),
-        email=token.get("email"),
+        email=email,
         roles=roles,
         issuer=token.get("iss"),
     )

@@ -24,7 +24,7 @@ Source of truth: **SSoT** payloads must drive UI behavior. Admin UI must rely so
 
 **A3. OPS Runtime Center — health aggregation**
 - Why: ответ «жива ли платформа?» ≤ 60 сек
-- API: `GET /api/core/admin/runtime/summary`
+- API: `GET /api/core/v1/admin/runtime/summary`
 - DoD: settlement/payout queues, MoR metrics, critical flags
 - Smoke: endpoint → 200 без DB writes
 
