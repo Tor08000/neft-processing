@@ -24,5 +24,8 @@ export const fetchPartnerSettlementDetails = (user: AuthSession | null, settleme
 export const confirmPartnerSettlement = (user: AuthSession | null, settlementRef: string) =>
   request(`/partner/settlements/${settlementRef}/confirm`, { method: "POST" }, withToken(user));
 
+export const verifyPartnerAuth = (user: AuthSession | null) =>
+  request("/partner/auth/verify", { method: "GET" }, withToken(user));
+
 export const fetchPortalMe = (user: AuthSession | null) =>
   request<PortalMeResponse>("/portal/me", { method: "GET" }, withToken(user));

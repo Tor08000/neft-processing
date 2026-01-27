@@ -21,13 +21,13 @@ export const AdminLoadingPage: React.FC = () => (
   <EmptyState title="Загрузка" description="Проверяем доступ к админ-порталу..." />
 );
 
-export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId }) => (
+export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId, errorId }) => (
   <EmptyState
-    title="401 — Не авторизован"
+    title="AUTH_REQUIRED"
     description={
       <>
-        Требуется повторный вход.
-        <RequestMeta requestId={requestId} />
+        Требуется повторный вход в админ-портал.
+        <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
@@ -38,13 +38,13 @@ export const AdminUnauthorizedPage: React.FC<AdminStatusProps> = ({ requestId })
   />
 );
 
-export const AdminForbiddenPage: React.FC<AdminStatusProps> = ({ requestId }) => (
+export const AdminForbiddenPage: React.FC<AdminStatusProps> = ({ requestId, errorId }) => (
   <EmptyState
-    title="403 — Доступ запрещён"
+    title="FORBIDDEN_ROLE"
     description={
       <>
         У вас нет прав доступа к этому разделу.
-        <RequestMeta requestId={requestId} />
+        <RequestMeta requestId={requestId} errorId={errorId} />
       </>
     }
     action={
@@ -62,6 +62,23 @@ export const AdminNotFoundPage: React.FC = () => (
     action={
       <Link className="ghost neft-btn-secondary" to="/">
         На главную
+      </Link>
+    }
+  />
+);
+
+export const AdminMisconfigPage: React.FC<AdminStatusProps> = ({ requestId, errorId }) => (
+  <EmptyState
+    title="MISCONFIG"
+    description={
+      <>
+        Проверьте настройки роутинга admin API (ожидали /api/core/v1/admin).
+        <RequestMeta requestId={requestId} errorId={errorId} />
+      </>
+    }
+    action={
+      <Link className="ghost neft-btn-secondary" to="/login">
+        Перейти к входу
       </Link>
     }
   />

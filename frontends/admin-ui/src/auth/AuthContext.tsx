@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { login as apiLogin, me } from "../api/auth";
+import { login as apiLogin } from "../api/auth";
+import { verifyAdminAuth } from "../api/adminAuth";
+import { AdminMeError, fetchAdminMe } from "../api/adminMe";
 import { ApiError, ForbiddenError, HtmlResponseError, UnauthorizedError, ValidationError } from "../api/http";
 import type { AuthSession, AuthUser } from "../types/auth";
 import { hasAdminRole } from "./roles";
@@ -44,22 +46,23 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const revive = useCallback(
     async (stored: AuthSession) => {
       try {
-        const profile = await me(stored.accessToken);
-        if (!hasAdminRole(profile.roles)) {
+        await verifyAdminAuth(stored.accessToken);
+        const adminProfile = await fetchAdminMe(stored.accessToken);
+        if (!hasAdminRole(adminProfile.admin_user.roles)) {
           setError("У вас нет прав доступа к админской панели");
           logout();
           return;
         }
         const normalized: AuthUser = {
-          id: profile.id,
-          email: profile.email,
-          roles: profile.roles,
-          subjectType: profile.subjectType,
+          id: adminProfile.admin_user.id,
+          email: adminProfile.admin_user.email ?? stored.email ?? "",
+          roles: adminProfile.admin_user.roles,
+          subjectType: "admin",
         };
         setUser(normalized);
-        setRoles(profile.roles);
+        setRoles(adminProfile.admin_user.roles);
         setAccessToken(stored.accessToken);
-        persist({ ...stored, roles: profile.roles, email: profile.email });
+        persist({ ...stored, roles: adminProfile.admin_user.roles, email: normalized.email || stored.email });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           logout();
@@ -68,7 +71,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         setIsLoading(false);
       }
     },
-    [logout],
+    [logout, persist],
   );
 
   useEffect(() => {
@@ -92,22 +95,23 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setError(null);
       try {
         const session = await apiLogin({ email, password });
-        const profile = await me(session.accessToken);
-        if (!hasAdminRole(profile.roles)) {
+        await verifyAdminAuth(session.accessToken);
+        const adminProfile = await fetchAdminMe(session.accessToken);
+        if (!hasAdminRole(adminProfile.admin_user.roles)) {
           setError("У вас нет прав доступа к админской панели");
           logout();
           return;
         }
         const normalized: AuthUser = {
-          id: profile.id,
-          email: profile.email,
-          roles: profile.roles,
-          subjectType: profile.subjectType,
+          id: adminProfile.admin_user.id,
+          email: adminProfile.admin_user.email ?? session.email ?? "",
+          roles: adminProfile.admin_user.roles,
+          subjectType: "admin",
         };
         setUser(normalized);
         setAccessToken(session.accessToken);
-        setRoles(profile.roles);
-        persist({ ...session, email: profile.email, roles: profile.roles });
+        setRoles(adminProfile.admin_user.roles);
+        persist({ ...session, email: normalized.email || session.email, roles: adminProfile.admin_user.roles });
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           setError("Неверный email или пароль");
@@ -120,6 +124,20 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         if (err instanceof ValidationError) {
           setError("Проверьте email и пароль");
           return;
+        }
+        if (err instanceof AdminMeError) {
+          if (err.status === 401) {
+            setError("Требуется повторный вход");
+            return;
+          }
+          if (err.status === 403) {
+            setError("У вас нет прав доступа к админской панели");
+            return;
+          }
+          if (err.status === 404 && import.meta.env.DEV) {
+            setError("API маршрут админ-портала не настроен");
+            return;
+          }
         }
         if (err instanceof HtmlResponseError) {
           console.error("Gateway returned HTML during login", {
