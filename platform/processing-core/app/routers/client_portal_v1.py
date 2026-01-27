@@ -3,13 +3,14 @@ from __future__ import annotations
 import csv
 import logging
 import math
+import os
 from typing import Any
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
@@ -391,7 +392,21 @@ def _resolve_owner_id(token: dict) -> str:
     return owner_id
 
 
-def _resolve_client(db: Session, token: dict) -> SafeClient | None:
+def _is_dev_env() -> bool:
+    return os.getenv("NEFT_ENV", "local").lower() in {"local", "dev", "development", "test"}
+
+
+def _is_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _resolve_client(db: Session, token: dict, *, allow_missing: bool = False) -> SafeClient | None:
     client_id = token.get("client_id")
     if not client_id:
         owner_id = str(token.get("user_id") or token.get("sub") or "").strip()
@@ -411,11 +426,55 @@ def _resolve_client(db: Session, token: dict) -> SafeClient | None:
         return build_safe_client(payload)
     payload = safe_get_client(db, str(client_id))
     if not payload:
+        if allow_missing:
+            return None
         raise HTTPException(
             status_code=404,
             detail={"error": "client_not_found", "reason_code": "CLIENT_NOT_FOUND"},
         )
     return build_safe_client(payload)
+
+
+def _ensure_client_membership(db: Session, *, client_id: str, token: dict) -> None:
+    user_id = str(token.get("user_id") or token.get("sub") or "").strip()
+    if not user_id or not _is_uuid(user_id):
+        return
+    email = token.get("email") or f"{user_id}@neft.local"
+    if _table_exists(db, "client_employees"):
+        employee = (
+            db.query(ClientEmployee)
+            .filter(ClientEmployee.id == user_id)
+            .one_or_none()
+        )
+        if employee is None:
+            employee = ClientEmployee(
+                id=user_id,
+                client_id=client_id,
+                email=email,
+                status=EmployeeStatus.ACTIVE,
+                timezone="UTC",
+            )
+            db.add(employee)
+        else:
+            employee.client_id = client_id
+            employee.email = email
+            employee.status = EmployeeStatus.ACTIVE
+    if _table_exists(db, "client_user_roles"):
+        role = (
+            db.query(ClientUserRole)
+            .filter(ClientUserRole.client_id == client_id, ClientUserRole.user_id == user_id)
+            .one_or_none()
+        )
+        if role is None:
+            db.add(
+                ClientUserRole(
+                    client_id=client_id,
+                    user_id=user_id,
+                    roles="CLIENT_OWNER",
+                )
+            )
+        else:
+            role.roles = "CLIENT_OWNER"
 
 
 def _plan_modules_map(db: Session, *, plan_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -3492,12 +3551,20 @@ def create_org(
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientOrgOut:
-    client = _resolve_client(db, token)
+    client = _resolve_client(db, token, allow_missing=True)
     engine = db.get_bind()
     columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
     clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
     if client is None:
-        client_id = str(uuid4())
+        token_client_id = str(token.get("client_id") or "").strip() or None
+        if token_client_id and not _is_dev_env():
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "client_context_missing", "reason_code": "CLIENT_CONTEXT_MISSING"},
+            )
+        if token_client_id and not _is_uuid(token_client_id):
+            raise HTTPException(status_code=400, detail="invalid_client_id")
+        client_id = token_client_id or str(uuid4())
         insert_payload = {
             "id": client_id,
             "name": payload.name,
@@ -3512,6 +3579,8 @@ def create_org(
             inn=payload.inn,
             status=insert_payload["status"],
         )
+        if _is_dev_env():
+            _ensure_client_membership(db, client_id=client_id, token=token)
     else:
         update_payload = {"name": payload.name, "inn": payload.inn}
         status = client.status or "ONBOARDING"

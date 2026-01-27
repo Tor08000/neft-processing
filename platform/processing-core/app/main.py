@@ -74,7 +74,7 @@ from app.routers.subscriptions_v1 import router as subscriptions_router
 from app.routers.explain_v2 import router as explain_v2_router
 from app.routers.cases import router as cases_router
 from app.routers.integrations.edo_sbis import router as edo_sbis_router
-from app.services.bootstrap import ensure_default_refs
+from app.services.bootstrap import ensure_default_refs, ensure_demo_client
 from app.services.accounting_export.metrics import metrics as accounting_export_metrics
 from app.services.billing_metrics import metrics as billing_metrics
 from app.services.payout_metrics import metrics as payout_metrics
@@ -228,6 +228,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db = get_sessionmaker()()
     try:
         ensure_default_refs(db)
+        ensure_demo_client(db)
     finally:
         db.close()
     register_shadow_hook()

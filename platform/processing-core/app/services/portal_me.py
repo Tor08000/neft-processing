@@ -474,6 +474,13 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
     )
 
+    missing_reason = None
+    if actor_type == "client":
+        if client_id and _is_uuid(client_id) and org_payload is None:
+            missing_reason = "client_missing"
+        elif org_id_int is not None and org_payload is None:
+            missing_reason = "org_missing"
+
     partner_payload = None
     partner_finance_state = None
     partner_legal_state = None
@@ -594,6 +601,9 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         contract_status=contract_status,
         onboarding_profile_complete=onboarding_profile_complete,
     )
+    if missing_reason:
+        access_state = PortalAccessState.NEEDS_ONBOARDING
+        access_reason = missing_reason
     if actor_type == "partner" and partner_payload:
         if partner_legal_state and partner_legal_state.required_enabled:
             if partner_legal_state.status == "PENDING":
