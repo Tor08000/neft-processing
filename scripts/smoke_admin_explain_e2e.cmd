@@ -32,7 +32,7 @@ call :curl_check "%CORE_URL%/v1/admin/me" "admin_me.json" "200"
 if errorlevel 1 goto fail
 
 call :log "[4/10] runtime summary"
-call :curl_check "%CORE_URL%/admin/runtime/summary" "admin_runtime.json" "200"
+call :curl_check "%CORE_URL%/v1/admin/runtime/summary" "admin_runtime.json" "200"
 if errorlevel 1 goto fail
 
 call :log "[5/10] finance payouts"

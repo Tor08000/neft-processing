@@ -9,7 +9,7 @@ from app.schemas.admin.runtime_summary import RuntimeSummaryResponse
 from app.services.admin_runtime import build_runtime_summary
 
 
-router = APIRouter(prefix="/admin/runtime", tags=["admin-runtime"], dependencies=[Depends(require_admin_user)])
+router = APIRouter(prefix="/v1/admin/runtime", tags=["admin-runtime"], dependencies=[Depends(require_admin_user)])
 
 
 @router.get("/summary", response_model=RuntimeSummaryResponse)

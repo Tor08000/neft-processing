@@ -24,6 +24,7 @@ from app.routers.achievements import router as achievements_router
 from app.routers.admin import router as admin_router
 from app.routers.admin_core_finance import router as admin_core_finance_router
 from app.routers.admin_runtime import router as admin_runtime_router
+from app.routers.admin_runtime_legacy import router as admin_runtime_legacy_router
 from app.routers.client import router as client_router
 from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
@@ -511,6 +512,7 @@ safe_include_router(core_prefixed_router, admin_router)
 safe_include_router(core_prefixed_router, admin_me_legacy_router)
 safe_include_router(core_prefixed_router, admin_core_finance_router)
 safe_include_router(core_prefixed_router, admin_runtime_router)
+safe_include_router(core_prefixed_router, admin_runtime_legacy_router)
 safe_include_router(core_prefixed_router, kpi_router)
 safe_include_router(core_prefixed_router, explain_v2_router)
 safe_include_router(core_prefixed_router, cases_router)

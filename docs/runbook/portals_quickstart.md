@@ -28,7 +28,7 @@ This script validates:
 - Login into all three portals
 - `/api/core/portal/me` (client + partner)
 - `/api/core/v1/admin/me`
-- `/api/core/admin/runtime/summary`
+- `/api/core/v1/admin/runtime/summary`
 - `/api/core/partner/ledger`
 - `/api/core/portal/client/dashboard`
 
