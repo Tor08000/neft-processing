@@ -145,6 +145,7 @@ export function PayoutsPage() {
                 <th>Дата</th>
                 <th>Сумма</th>
                 <th>Статус</th>
+                <th>Причина</th>
               </tr>
             </thead>
             <tbody>
@@ -155,6 +156,7 @@ export function PayoutsPage() {
                   <td>
                     <StatusBadge status={item.status} />
                   </td>
+                  <td>{item.blocked_reason ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

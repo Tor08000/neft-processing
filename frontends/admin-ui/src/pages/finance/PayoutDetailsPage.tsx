@@ -9,6 +9,7 @@ import {
   markPayoutPaid,
   rejectPayout,
 } from "../../api/finance";
+import { fetchAuditCorrelation } from "../../api/audit";
 import AdminWriteActionModal from "../../components/admin/AdminWriteActionModal";
 import BlockersPanel from "../../components/finance/BlockersPanel";
 import { Loader } from "../../components/Loader/Loader";
@@ -42,6 +43,7 @@ export const PayoutDetailsPage: React.FC = () => {
   const requestId = useMemo(() => (errorMessage ? extractRequestId(new Error(errorMessage)) : null), [errorMessage]);
 
   const partnerId = data?.partner_id ?? null;
+  const correlationId = data?.correlation_id ?? null;
   const { data: ledgerData } = useQuery({
     queryKey: ["partner-ledger", partnerId],
     queryFn: () => fetchPartnerLedger(partnerId as string),
@@ -51,6 +53,11 @@ export const PayoutDetailsPage: React.FC = () => {
     queryKey: ["partner-settlement", partnerId],
     queryFn: () => fetchPartnerSettlement(partnerId as string),
     enabled: Boolean(partnerId),
+  });
+  const { data: auditData } = useQuery({
+    queryKey: ["payout-audit", correlationId],
+    queryFn: () => fetchAuditCorrelation(accessToken ?? "", correlationId ?? ""),
+    enabled: Boolean(accessToken && correlationId),
   });
 
   const handleConfirm = async ({ reason, correlationId }: { reason: string; correlationId: string }) => {
@@ -123,6 +130,33 @@ export const PayoutDetailsPage: React.FC = () => {
       </div>
 
       <BlockersPanel blockers={data.blockers} title="Blockers" />
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Explain</h3>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div>Legal status: {data.legal_status ?? "—"}</div>
+          <div>Invoices overdue: {data.invoices_overdue ? "Yes" : "No"}</div>
+          <div>Settlement snapshot: {data.settlement_snapshot || settlementData ? "Present" : "Missing"}</div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <strong>Audit chain</strong>
+          {auditData?.items?.length || auditData?.events?.length ? (
+            <ul style={{ paddingLeft: 18, marginBottom: 0 }}>
+              {(auditData.items ?? auditData.events ?? []).slice(0, 6).map((event) => (
+                <li key={event.id ?? event.ts ?? JSON.stringify(event)}>
+                  {event.title ?? event.action ?? event.type ?? event.id ?? "event"}
+                  {event.ts ? ` · ${event.ts}` : ""}
+                  {event.reason ? ` · reason: ${event.reason}` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : correlationId ? (
+            <div className="muted">No audit events for correlation.</div>
+          ) : (
+            <div className="muted">No correlation id.</div>
+          )}
+        </div>
+      </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Block reason tree</h3>

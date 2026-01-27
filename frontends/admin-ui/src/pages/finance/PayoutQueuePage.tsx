@@ -15,26 +15,26 @@ export const PayoutQueuePage: React.FC = () => {
   const [offset, setOffset] = useState(0);
   const [status, setStatus] = useState("");
   const [blocked, setBlocked] = useState<"" | "yes" | "no">("");
-  const [reason, setReason] = useState("");
+  const [partner, setPartner] = useState("");
   const [debouncedFilters, setDebouncedFilters] = useState({
     status: "",
     blocked: "",
-    reason: "",
+    partner: "",
     offset: 0,
   });
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
-      setDebouncedFilters({ status, blocked, reason, offset });
+      setDebouncedFilters({ status, blocked, partner, offset });
     }, 400);
     return () => window.clearTimeout(handler);
-  }, [status, blocked, reason, offset]);
+  }, [status, blocked, partner, offset]);
 
   const filters = useMemo(
     () => ({
       status: debouncedFilters.status || undefined,
       blocked: debouncedFilters.blocked === "yes" ? true : debouncedFilters.blocked === "no" ? false : undefined,
-      reason: debouncedFilters.reason || undefined,
+      partner: debouncedFilters.partner || undefined,
       limit,
       offset: debouncedFilters.offset,
     }),
@@ -54,26 +54,13 @@ export const PayoutQueuePage: React.FC = () => {
   const columns: Column<PayoutQueueItem>[] = [
     { key: "payout_id", title: "Payout ID", render: (row) => row.payout_id },
     { key: "partner_org", title: "Partner", render: (row) => row.partner_org },
-    { key: "amount", title: "Amount", render: (row) => `${row.amount} ${row.currency}` },
-    { key: "status", title: "Status", render: (row) => row.status },
-    { key: "legal_status", title: "Legal", render: (row) => row.legal_status ?? "—" },
-    { key: "settlement_status", title: "Settlement", render: (row) => row.settlement_status ?? "—" },
     {
-      key: "blockers",
-      title: "Blockers",
-      render: (row) =>
-        row.blockers.length ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {row.blockers.map((item) => (
-              <span key={item} className="pill">
-                {item}
-              </span>
-            ))}
-          </div>
-        ) : (
-          "—"
-        ),
+      key: "net_amount",
+      title: "Net amount",
+      render: (row) => `${row.net_amount ?? row.amount} ${row.currency}`,
     },
+    { key: "status", title: "Status", render: (row) => row.status },
+    { key: "blocked_reason", title: "Blocked reason", render: (row) => row.blocked_reason ?? row.blockers?.join(", ") ?? "—" },
     {
       key: "correlation",
       title: "Correlation",
@@ -87,6 +74,7 @@ export const PayoutQueuePage: React.FC = () => {
           "—"
         ),
     },
+    { key: "created_at", title: "Created", render: (row) => row.created_at ?? "—" },
   ];
 
   return (
@@ -116,8 +104,8 @@ export const PayoutQueuePage: React.FC = () => {
             </select>
           </div>
           <div className="filter">
-            <span className="label">Reason</span>
-            <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="blocker reason" />
+            <span className="label">Partner</span>
+            <input value={partner} onChange={(event) => setPartner(event.target.value)} placeholder="partner id/name" />
           </div>
         </div>
       </div>

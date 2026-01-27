@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { fetchAuditCorrelation, fetchAuditFeed } from "../../api/audit";
 import type { AuditEvent } from "../../types/audit";
 import { useAuth } from "../../auth/AuthContext";
@@ -20,20 +20,37 @@ const renderTitle = (event: AuditEvent) =>
 
 export const AuditPage: React.FC = () => {
   const { accessToken } = useAuth();
+  const params = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("search") ?? "");
-  const [correlation, setCorrelation] = useState(searchParams.get("correlation_id") ?? "");
+  const [correlation, setCorrelation] = useState(
+    params.correlationId ?? searchParams.get("correlation_id") ?? "",
+  );
   const [activeFilters, setActiveFilters] = useState<string[]>(
     searchParams.get("type")?.split(",").filter(Boolean) ?? [],
   );
+  const [scope, setScope] = useState(searchParams.get("scope") ?? "");
+  const [actorType, setActorType] = useState(searchParams.get("actor_type") ?? "");
+  const [fromDate, setFromDate] = useState(searchParams.get("from") ?? "");
+  const [toDate, setToDate] = useState(searchParams.get("to") ?? "");
+
+  useEffect(() => {
+    if (params.correlationId && params.correlationId !== correlation) {
+      setCorrelation(params.correlationId);
+    }
+  }, [params.correlationId, correlation]);
 
   const filters = useMemo(
     () => ({
       type: activeFilters.length ? activeFilters.join(",") : undefined,
       search: query || undefined,
       correlation_id: correlation || undefined,
+      scope: scope || undefined,
+      actor_type: actorType || undefined,
+      from: fromDate || undefined,
+      to: toDate || undefined,
     }),
-    [activeFilters, query, correlation],
+    [activeFilters, query, correlation, scope, actorType, fromDate, toDate],
   );
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -61,6 +78,10 @@ export const AuditPage: React.FC = () => {
     if (query) next.set("search", query);
     if (correlation) next.set("correlation_id", correlation);
     if (activeFilters.length) next.set("type", activeFilters.join(","));
+    if (scope) next.set("scope", scope);
+    if (actorType) next.set("actor_type", actorType);
+    if (fromDate) next.set("from", fromDate);
+    if (toDate) next.set("to", toDate);
     setSearchParams(next);
     refetch();
   };
@@ -101,10 +122,24 @@ export const AuditPage: React.FC = () => {
           />
           <input
             type="text"
+            placeholder="Scope"
+            value={scope}
+            onChange={(event) => setScope(event.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Actor type"
+            value={actorType}
+            onChange={(event) => setActorType(event.target.value)}
+          />
+          <input
+            type="text"
             placeholder="Correlation ID"
             value={correlation}
             onChange={(event) => setCorrelation(event.target.value)}
           />
+          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           <button type="button" className="ghost" onClick={applyFilters}>
             Apply
           </button>

@@ -33,7 +33,7 @@ export async function fetchLegalPartners(
 ) {
   const suffix = buildQuery(params);
   const raw = await request<unknown>(
-    `/admin/legal/partners${suffix}`,
+    `/v1/admin/legal/partners${suffix}`,
     { method: "GET" },
     token,
   );
@@ -41,7 +41,7 @@ export async function fetchLegalPartners(
 }
 
 export async function fetchLegalPartner(token: string, partnerId: string): Promise<LegalPartnerDetail> {
-  return request<LegalPartnerDetail>(`/admin/legal/partners/${partnerId}`, { method: "GET" }, token);
+  return request<LegalPartnerDetail>(`/v1/admin/legal/partners/${partnerId}`, { method: "GET" }, token);
 }
 
 export async function updateLegalPartnerStatus(
@@ -50,7 +50,7 @@ export async function updateLegalPartnerStatus(
   payload: { status: string; reason: string; correlation_id: string },
 ) {
   return request<LegalPartnerDetail>(
-    `/admin/legal/partners/${partnerId}/status`,
+    `/v1/admin/legal/partners/${partnerId}/status`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );

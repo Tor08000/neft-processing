@@ -36,9 +36,12 @@ call :http_request "GET" "%CORE_PARTNER%/auth/verify" "%PARTNER_AUTH_HEADER%" ""
 set "PARTNER_ME_FILE=%TEMP%\partner_me.json"
 call :http_request "GET" "%CORE_PORTAL%/me" "%PARTNER_AUTH_HEADER%" "" "200" "%PARTNER_ME_FILE%" || goto :fail
 
-call :http_request "GET" "%CORE_PARTNER%/ledger?limit=5" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_ledger.json" || goto :fail
+set "PARTNER_LEDGER_FILE=%TEMP%\partner_ledger.json"
+call :http_request "GET" "%CORE_PARTNER%/ledger?limit=5" "%PARTNER_AUTH_HEADER%" "" "200" "%PARTNER_LEDGER_FILE%" || goto :fail
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PARTNER_LEDGER_FILE%')); items=data.get('items') or data.get('entries') or []; totals=data.get('totals') or {}; print(bool(items) or bool(totals))"`) do set "LEDGER_OK=%%t"
+if /i not "%LEDGER_OK%"=="True" goto :fail
 
-set "PAYOUT_REQUEST_FILE=%TEMP%\payout_request.json"
+set "PAYOUT_REQUEST_FILE=%TEMP%\partner_payout_request.json"
 set "PAYOUT_PAYLOAD={\"amount\":1000,\"currency\":\"RUB\"}"
 call :http_request "POST" "%CORE_PARTNER%/payouts/request" "%PARTNER_AUTH_HEADER%" "%PAYOUT_PAYLOAD%" "200,201" "%PAYOUT_REQUEST_FILE%" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PAYOUT_REQUEST_FILE%')); print(data.get('payout_request_id') or data.get('id') or '')"`) do set "PAYOUT_ID=%%t"
@@ -62,7 +65,7 @@ call :http_request "POST" "%CORE_ADMIN_FINANCE_URL%/payouts/%PAYOUT_ID%/approve"
 
 call :http_request "GET" "%CORE_PARTNER%/payouts/%PAYOUT_ID%" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_payout_detail.json" || goto :fail
 
-set "AUDIT_FILE=%TEMP%\audit.json"
+set "AUDIT_FILE=%TEMP%\admin_audit.json"
 call :http_request "GET" "%CORE_ADMIN_AUDIT_URL%?correlation_id=%CORRELATION_ID%" "%ADMIN_AUTH_HEADER%" "" "200" "%AUDIT_FILE%" || goto :fail
 
 echo E2E_PARTNER_MONEY: PASS

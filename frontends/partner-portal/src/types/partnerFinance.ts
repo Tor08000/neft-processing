@@ -20,6 +20,13 @@ export interface PartnerLedgerEntry {
 
 export interface PartnerLedgerListResponse {
   items: PartnerLedgerEntry[];
+  totals?: {
+    in?: number;
+    out?: number;
+    net?: number;
+  } | null;
+  next_cursor?: string | null;
+  total?: number | null;
 }
 
 export interface PartnerLedgerExplain {
@@ -43,6 +50,7 @@ export interface PartnerPayoutRequest {
   amount: number;
   currency: string;
   status: string;
+  blocked_reason?: string | null;
   correlation_id?: string | null;
   requested_by?: string | null;
   approved_by?: string | null;

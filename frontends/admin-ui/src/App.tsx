@@ -191,6 +191,14 @@ export function App() {
                       </AdminRBACGate>
                     }
                   />
+                  <Route
+                    path="/audit/:correlationId"
+                    element={
+                      <AdminRBACGate permission="superadmin">
+                        <AuditPage />
+                      </AdminRBACGate>
+                    }
+                  />
                   <Route path="*" element={<AdminNotFoundPage />} />
                 </Route>
               </Route>
