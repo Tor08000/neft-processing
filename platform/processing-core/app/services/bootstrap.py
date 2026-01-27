@@ -149,17 +149,18 @@ def _is_uuid(value: str | None) -> bool:
 
 def _filter_columns(table_name: str, db: Session, values: dict[str, object]) -> dict[str, object]:
     engine = db.get_bind()
-    rows = engine.execute(
-        text(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = :table
-            """
-        ),
-        {"schema": DB_SCHEMA, "table": table_name},
-    ).fetchall()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = :table
+                """
+            ),
+            {"schema": DB_SCHEMA, "table": table_name},
+        ).fetchall()
     columns = {row[0] for row in rows}
     return {key: value for key, value in values.items() if key in columns}
 

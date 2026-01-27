@@ -228,7 +228,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db = get_sessionmaker()()
     try:
         ensure_default_refs(db)
-        ensure_demo_client(db)
+        try:
+            ensure_demo_client(db)
+        except Exception:  # pragma: no cover - keep startup alive in dev
+            logger.exception("ensure_demo_client failed", extra={"service": SERVICE_NAME})
     finally:
         db.close()
     register_shadow_hook()
