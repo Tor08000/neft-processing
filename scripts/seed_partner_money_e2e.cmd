@@ -4,13 +4,13 @@ setlocal enabledelayedexpansion
 set "SCRIPT_NAME=seed_partner_money_e2e"
 
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
-if "%CORE_API_BASE%"=="" set "CORE_API_BASE=%BASE_URL%/api/core"
 if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/v1/auth"
-if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%CORE_API_BASE%/v1/admin"
-if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN_URL%/finance"
-if "%CORE_ADMIN_SETTLEMENT_URL%"=="" set "CORE_ADMIN_SETTLEMENT_URL=%CORE_ADMIN_URL%/settlement"
-if "%CORE_PARTNER_URL%"=="" set "CORE_PARTNER_URL=%CORE_API_BASE%/partner"
-if "%CORE_PORTAL_URL%"=="" set "CORE_PORTAL_URL=%CORE_API_BASE%/portal"
+if "%CORE_BASE%"=="" set "CORE_BASE=%BASE_URL%/api/core"
+if "%CORE_ADMIN%"=="" set "CORE_ADMIN=%CORE_BASE%/v1/admin"
+if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN%/finance"
+if "%CORE_ADMIN_SETTLEMENT_URL%"=="" set "CORE_ADMIN_SETTLEMENT_URL=%CORE_ADMIN%/settlement"
+if "%CORE_PARTNER%"=="" set "CORE_PARTNER=%CORE_BASE%/partner"
+if "%CORE_PORTAL%"=="" set "CORE_PORTAL=%CORE_BASE%/portal"
 
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
@@ -32,7 +32,7 @@ call :login "%ADMIN_EMAIL%" "%ADMIN_PASSWORD%" "admin" ADMIN_TOKEN "%ADMIN_LOGIN
 set "ADMIN_HEADER=Authorization: Bearer %ADMIN_TOKEN%"
 
 set "PARTNER_SEED_BODY={\"email\":\"%PARTNER_EMAIL%\",\"org_name\":\"%PARTNER_ORG_NAME%\",\"inn\":\"%PARTNER_INN%\"}"
-call :http_post "%CORE_ADMIN_URL%/seed/partner-money" "%ADMIN_HEADER%" "%PARTNER_SEED_BODY%" "200" "%TEMP%\\partner_seed.json" || goto :fail
+call :http_post "%CORE_ADMIN%/seed/partner-money" "%ADMIN_HEADER%" "%PARTNER_SEED_BODY%" "200,201" "%TEMP%\\partner_seed.json" || goto :fail
 
 for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\partner_seed.json').read_text(encoding='utf-8', errors='ignore') or '{}'); print(data.get('partner_org_id') or '')"`) do set "ORG_ID=%%t"
 if "%ORG_ID%"=="" (
@@ -40,19 +40,26 @@ if "%ORG_ID%"=="" (
   type "%TEMP%\\partner_seed.json"
   exit /b 1
 )
+for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\partner_seed.json').read_text(encoding='utf-8', errors='ignore') or '{}'); print(data.get('partner_email') or '')"`) do set "SEED_EMAIL=%%t"
+if "%SEED_EMAIL%"=="" (
+  echo [FAIL] No partner email returned.
+  type "%TEMP%\\partner_seed.json"
+  exit /b 1
+)
+set "PARTNER_EMAIL=%SEED_EMAIL%"
 
 call :login "%PARTNER_EMAIL%" "%PARTNER_PASSWORD%" "partner" PARTNER_TOKEN "%PARTNER_LOGIN_FILE%" "%PARTNER_TOKEN_FILE%" || goto :fail
 
 set "PARTNER_HEADER=Authorization: Bearer %PARTNER_TOKEN%"
 
 set "LEGAL_PROFILE_BODY={\"legal_type\":\"LEGAL_ENTITY\",\"country\":\"RU\",\"tax_residency\":\"RU\",\"tax_regime\":\"OSNO\",\"vat_applicable\":true,\"vat_rate\":20}"
-call :http_put "%CORE_PARTNER_URL%/legal/profile" "%PARTNER_HEADER%" "%LEGAL_PROFILE_BODY%" "200" "%TEMP%\\partner_legal_profile.json" || goto :fail
+call :http_put "%CORE_PARTNER%/legal/profile" "%PARTNER_HEADER%" "%LEGAL_PROFILE_BODY%" "200" "%TEMP%\\partner_legal_profile.json" || goto :fail
 
 set "LEGAL_DETAILS_BODY={\"legal_name\":\"Demo Partner LLC\",\"inn\":\"7701234567\",\"kpp\":\"770101001\",\"ogrn\":\"1027700132195\",\"bank_account\":\"40702810900000000001\",\"bank_bic\":\"044525225\",\"bank_name\":\"Demo Bank\"}"
-call :http_put "%CORE_PARTNER_URL%/legal/details" "%PARTNER_HEADER%" "%LEGAL_DETAILS_BODY%" "200" "%TEMP%\\partner_legal_details.json" || goto :fail
+call :http_put "%CORE_PARTNER%/legal/details" "%PARTNER_HEADER%" "%LEGAL_DETAILS_BODY%" "200" "%TEMP%\\partner_legal_details.json" || goto :fail
 
 set "LEGAL_STATUS_BODY={\"status\":\"%PARTNER_LEGAL_STATUS%\",\"comment\":\"Seeded by %SCRIPT_NAME%\"}"
-call :http_post "%CORE_ADMIN_URL%/partners/%ORG_ID%/legal-profile/status" "%ADMIN_HEADER%" "%LEGAL_STATUS_BODY%" "200" "%TEMP%\\partner_legal_status.json" || goto :fail
+call :http_post "%CORE_ADMIN%/partners/%ORG_ID%/legal-profile/status" "%ADMIN_HEADER%" "%LEGAL_STATUS_BODY%" "200" "%TEMP%\\partner_legal_status.json" || goto :fail
 
 set "PAYOUT_POLICY_BODY={\"currency\":\"RUB\",\"min_payout_amount\":%PARTNER_PAYOUT_THRESHOLD%,\"payout_hold_days\":0,\"payout_schedule\":\"WEEKLY\"}"
 call :http_post "%CORE_ADMIN_FINANCE_URL%/partners/%ORG_ID%/payout-policy" "%ADMIN_HEADER%" "%PAYOUT_POLICY_BODY%" "200" "%TEMP%\\partner_payout_policy.json" || goto :fail
@@ -136,7 +143,12 @@ if "%BODY%"=="" (
     for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "%HEADER%" -H "Content-Type: application/json" -d "%BODY%" "%URL%"`) do set "CODE=%%c"
   )
 )
-if "%CODE%"=="%EXPECTED%" exit /b 0
+set "EXPECTED_LIST=%EXPECTED:,= %"
+set "MATCHED="
+for %%e in (%EXPECTED_LIST%) do (
+  if "%%e"=="%CODE%" set "MATCHED=1"
+)
+if defined MATCHED exit /b 0
 echo [FAIL] %METHOD% %URL% expected %EXPECTED% got %CODE%
 if exist "%OUT%" type "%OUT%"
 exit /b 1

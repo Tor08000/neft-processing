@@ -50,6 +50,7 @@ class PartnerPayoutRequestIn(BaseModel):
 
 class PartnerPayoutRequestOut(BaseModel):
     id: str
+    payout_request_id: str | None = None
     partner_org_id: str
     amount: Decimal
     currency: str

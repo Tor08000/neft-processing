@@ -82,14 +82,16 @@ with psycopg.connect(dsn) as conn:
 PY
 
 echo "[entrypoint] auth-host running migrations"
-mapfile -t alembic_heads < <(alembic -c /app/alembic.ini heads)
+ALEMBIC_OPTS="${ALEMBIC_OPTS:-}"
+ALEMBIC_OPTS="${ALEMBIC_OPTS//-q/}"
+mapfile -t alembic_heads < <(alembic ${ALEMBIC_OPTS} -c /app/alembic.ini heads)
 if [ "${#alembic_heads[@]}" -gt 1 ]; then
     echo "[entrypoint] error: multiple alembic heads detected in auth-host:" >&2
     printf '[entrypoint]   %s\n' "${alembic_heads[@]}" >&2
     echo "[entrypoint] resolve by running: alembic merge -m \"merge heads\" <head1> <head2>" >&2
     exit 1
 fi
-alembic -c /app/alembic.ini upgrade head
+alembic ${ALEMBIC_OPTS} -c /app/alembic.ini upgrade head
 
 python - <<'PY'
 import os
