@@ -13,12 +13,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
-from sqlalchemy import Date, MetaData, String, Table, and_, cast, desc, func, or_, select
+from sqlalchemy import Date, MetaData, String, Table, and_, cast, desc, func, insert, inspect, or_, select, update
 from sqlalchemy.orm import Session, Query as SAQuery
 
 from app.db import get_db
 from app.db.schema import DB_SCHEMA
-from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.models.client_portal import (
@@ -180,6 +179,7 @@ from app.schemas.user_notification_preferences import (
     UserNotificationPreferencesResponse,
 )
 from app.services import client_auth
+from app.services.client_fetch import SafeClient, build_safe_client, safe_get_client
 from app.api.dependencies.client import client_portal_user
 from app.services.subscription_service import (
     DEFAULT_TENANT_ID,
@@ -365,16 +365,16 @@ def _load_contract_pdf(client_id: str, contract_id: str) -> bytes:
     return payload or _load_contract_template()
 
 
-def _get_or_create_onboarding(db: Session, *, owner_id: str, client: Client) -> ClientOnboarding:
+def _get_or_create_onboarding(db: Session, *, owner_id: str, client_id: str) -> ClientOnboarding:
     onboarding = (
         db.query(ClientOnboarding)
-        .filter(ClientOnboarding.client_id == str(client.id), ClientOnboarding.owner_user_id == owner_id)
+        .filter(ClientOnboarding.client_id == str(client_id), ClientOnboarding.owner_user_id == owner_id)
         .one_or_none()
     )
     if onboarding:
         return onboarding
     onboarding = ClientOnboarding(
-        client_id=str(client.id),
+        client_id=str(client_id),
         owner_user_id=owner_id,
         step="CONTRACT",
         status="DRAFT",
@@ -391,7 +391,7 @@ def _resolve_owner_id(token: dict) -> str:
     return owner_id
 
 
-def _resolve_client(db: Session, token: dict) -> Client | None:
+def _resolve_client(db: Session, token: dict) -> SafeClient | None:
     client_id = token.get("client_id")
     if not client_id:
         owner_id = str(token.get("user_id") or token.get("sub") or "").strip()
@@ -405,8 +405,17 @@ def _resolve_client(db: Session, token: dict) -> Client | None:
         )
         if not onboarding:
             return None
-        return db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
-    return db.query(Client).filter(Client.id == str(client_id)).one_or_none()
+        payload = safe_get_client(db, str(onboarding.client_id))
+        if not payload:
+            return None
+        return build_safe_client(payload)
+    payload = safe_get_client(db, str(client_id))
+    if not payload:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "client_not_found", "reason_code": "CLIENT_NOT_FOUND"},
+        )
+    return build_safe_client(payload)
 
 
 def _plan_modules_map(db: Session, *, plan_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
@@ -3484,17 +3493,46 @@ def create_org(
     db: Session = Depends(get_db),
 ) -> ClientOrgOut:
     client = _resolve_client(db, token)
+    engine = db.get_bind()
+    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
+    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
     if client is None:
-        client = Client(id=uuid4(), name=payload.name, inn=payload.inn, status="ONBOARDING")
-        db.add(client)
-        db.flush()
+        client_id = str(uuid4())
+        insert_payload = {
+            "id": client_id,
+            "name": payload.name,
+            "inn": payload.inn,
+            "status": "ONBOARDING",
+        }
+        insert_values = {key: value for key, value in insert_payload.items() if key in columns}
+        db.execute(insert(clients_table).values(**insert_values))
+        client = SafeClient(
+            id=client_id,
+            name=payload.name,
+            inn=payload.inn,
+            status=insert_payload["status"],
+        )
     else:
-        client.name = payload.name
-        client.inn = payload.inn
+        update_payload = {"name": payload.name, "inn": payload.inn}
+        status = client.status or "ONBOARDING"
         if client.status in {"ACTIVE", "SUSPENDED"}:
-            client.status = "ONBOARDING"
+            update_payload["status"] = "ONBOARDING"
+            status = "ONBOARDING"
+        update_values = {key: value for key, value in update_payload.items() if key in columns}
+        if update_values:
+            db.execute(
+                update(clients_table)
+                .where(clients_table.c.id == str(client.id))
+                .values(**update_values)
+            )
+        client = SafeClient(
+            id=str(client.id),
+            name=payload.name,
+            inn=payload.inn,
+            status=status,
+        )
 
-    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client=client)
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     onboarding.profile_json = {
         "org_type": payload.org_type,
         "name": payload.name,
@@ -3510,12 +3548,12 @@ def create_org(
     return ClientOrgOut(
         id=str(client.id),
         org_type=payload.org_type,
-        name=client.name,
-        inn=client.inn,
+        name=client.name or payload.name,
+        inn=client.inn or payload.inn,
         kpp=payload.kpp,
         ogrn=payload.ogrn,
         address=payload.address,
-        status=client.status,
+        status=client.status or "ONBOARDING",
     )
 
 
@@ -3538,19 +3576,34 @@ def update_org(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    client.name = payload.name
-    client.inn = payload.inn
+    engine = db.get_bind()
+    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
+    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
+    update_payload = {"name": payload.name, "inn": payload.inn}
+    update_values = {key: value for key, value in update_payload.items() if key in columns}
+    if update_values:
+        db.execute(
+            update(clients_table)
+            .where(clients_table.c.id == str(client.id))
+            .values(**update_values)
+        )
+    client = SafeClient(
+        id=str(client.id),
+        name=payload.name,
+        inn=payload.inn,
+        status=client.status,
+    )
     db.commit()
 
     return ClientOrgOut(
         id=str(client.id),
         org_type=payload.org_type,
-        name=client.name,
-        inn=client.inn,
+        name=client.name or payload.name,
+        inn=client.inn or payload.inn,
         kpp=payload.kpp,
         ogrn=payload.ogrn,
         address=payload.address,
-        status=client.status,
+        status=client.status or "ONBOARDING",
     )
 
 
@@ -3638,7 +3691,7 @@ def generate_contract(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client=client)
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     if onboarding.contract_id:
         existing = (
             db.query(ClientOnboardingContract)
@@ -3689,7 +3742,7 @@ def sign_contract(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client=client)
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     if not onboarding.contract_id:
         raise HTTPException(status_code=404, detail="contract_not_found")
 
@@ -3710,9 +3763,18 @@ def sign_contract(
     contract.signed_at = now
     contract.signature_meta = signature_meta
 
-    client.status = "ACTIVE"
+    client_status = "ACTIVE"
+    engine = db.get_bind()
+    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
+    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
+    if "status" in columns:
+        db.execute(
+            update(clients_table)
+            .where(clients_table.c.id == str(client.id))
+            .values(status=client_status)
+        )
     onboarding.step = "ACTIVATION"
-    onboarding.status = client.status
+    onboarding.status = client_status
     db.commit()
 
     _audit_event(
@@ -3767,11 +3829,20 @@ def sign_contract_by_id(
     contract.signed_at = now
     contract.signature_meta = signature_meta
 
-    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client=client)
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     onboarding.contract_id = str(contract.id)
-    client.status = "ACTIVE"
+    client_status = "ACTIVE"
+    engine = db.get_bind()
+    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
+    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
+    if "status" in columns:
+        db.execute(
+            update(clients_table)
+            .where(clients_table.c.id == str(client.id))
+            .values(status=client_status)
+        )
     onboarding.step = "ACTIVATION"
-    onboarding.status = client.status
+    onboarding.status = client_status
     db.commit()
 
     _audit_event(

@@ -1,5 +1,8 @@
 
-import json, logging, sys
+import json
+import logging
+import sys
+import traceback
 from typing import Any, Mapping
 
 class JsonFormatter(logging.Formatter):
@@ -16,6 +19,9 @@ class JsonFormatter(logging.Formatter):
         for attr in ("correlation_id", "user", "pathname", "lineno", "funcName"):
             if hasattr(record, attr):
                 base[attr] = getattr(record, attr)
+        if record.exc_info:
+            exception_lines = traceback.format_exception(*record.exc_info)
+            base["exception_lines"] = [line.rstrip("\n") for line in exception_lines]
         return json.dumps(base, ensure_ascii=False)
 
 def configure_logging():
