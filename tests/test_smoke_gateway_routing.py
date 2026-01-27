@@ -41,7 +41,7 @@ def _build_db_url() -> str | None:
 def test_gateway_health_endpoints() -> None:
     _assert_health("/health")
     _assert_health("/api/core/health")
-    _assert_health("/api/auth/health")
+    _assert_health("/api/v1/auth/health")
     _assert_health("/api/ai/api/v1/health")
 
 

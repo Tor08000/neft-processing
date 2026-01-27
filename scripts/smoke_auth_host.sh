@@ -18,7 +18,7 @@ NEFT_BOOTSTRAP_PARTNER_EMAIL="${NEFT_BOOTSTRAP_PARTNER_EMAIL:-partner@neft.local
 NEFT_BOOTSTRAP_PARTNER_PASSWORD="${NEFT_BOOTSTRAP_PARTNER_PASSWORD:-partner}"
 
 echo ">>> auth health"
-curl -sS -o /tmp/auth_health.json -w "%{http_code}" "${AUTH_BASE_URL}/api/auth/health" | {
+curl -sS -o /tmp/auth_health.json -w "%{http_code}" "${AUTH_BASE_URL}/api/v1/auth/health" | {
   read -r status
   if [ "${status}" != "200" ]; then
     echo "auth health failed (status=${status})" >&2

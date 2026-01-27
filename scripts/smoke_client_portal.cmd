@@ -46,7 +46,7 @@ if errorlevel 1 exit /b 1
 echo.
 
 echo ^>^>^> auth health
-curl -sS -o "%TEMP%\auth_health.json" -w "%%{http_code}" "%AUTH_BASE_URL%/api/auth/health" > "%TEMP%\auth_health.status"
+curl -sS -o "%TEMP%\auth_health.json" -w "%%{http_code}" "%AUTH_BASE_URL%/api/v1/auth/health" > "%TEMP%\auth_health.status"
 set /p AUTH_HEALTH_STATUS=<"%TEMP%\auth_health.status"
 if not "%AUTH_HEALTH_STATUS%"=="200" (
   echo auth health failed (status=%AUTH_HEALTH_STATUS%) 1>&2
