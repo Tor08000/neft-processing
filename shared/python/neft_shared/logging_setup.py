@@ -10,6 +10,28 @@ from typing import Optional
 
 
 def _json_formatter(record: logging.LogRecord) -> str:
+    standard_attrs = {
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+    }
     payload = {
         "level": record.levelname,
         "name": record.name,
@@ -20,8 +42,15 @@ def _json_formatter(record: logging.LogRecord) -> str:
         "line": record.lineno,
         "service": os.getenv("SERVICE_NAME", "neft"),
     }
-    if hasattr(record, "extra") and isinstance(record.extra, dict):
-        payload.update(record.extra)
+    extras = {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in standard_attrs and not key.startswith("_")
+    }
+    if extras:
+        payload.update(extras)
+    if record.exc_info:
+        payload["exception"] = Formatter().formatException(record.exc_info)
     return json.dumps(payload, ensure_ascii=False)
 
 
