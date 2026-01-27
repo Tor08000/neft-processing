@@ -11,4 +11,4 @@ class PartnerMoneySeedRequest(BaseModel):
 
 class PartnerMoneySeedResponse(BaseModel):
     partner_org_id: str
-    partner_user_email: str
+    partner_email: str

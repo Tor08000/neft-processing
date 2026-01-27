@@ -158,8 +158,10 @@ def _partner_payout_status(status_value: str) -> str:
 
 def _payout_request_out(payout: PartnerPayoutRequest) -> PartnerPayoutRequestOut:
     status_value = payout.status.value if hasattr(payout.status, "value") else str(payout.status)
+    payout_id = str(payout.id)
     return PartnerPayoutRequestOut(
-        id=str(payout.id),
+        id=payout_id,
+        payout_request_id=payout_id,
         partner_org_id=str(payout.partner_org_id),
         amount=Decimal(payout.amount),
         currency=payout.currency,

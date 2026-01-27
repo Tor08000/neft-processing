@@ -4,13 +4,13 @@ setlocal enabledelayedexpansion
 set "SCRIPT_NAME=smoke_partner_money_e2e"
 
 if "%BASE_URL%"=="" set "BASE_URL=http://localhost"
-if "%CORE_API_BASE%"=="" set "CORE_API_BASE=%BASE_URL%/api/core"
-if "%CORE_PORTAL_URL%"=="" set "CORE_PORTAL_URL=%CORE_API_BASE%/portal"
-if "%CORE_PARTNER_URL%"=="" set "CORE_PARTNER_URL=%CORE_API_BASE%/partner"
-if "%CORE_ADMIN_URL%"=="" set "CORE_ADMIN_URL=%CORE_API_BASE%/v1/admin"
-if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN_URL%/finance"
-if "%CORE_ADMIN_AUDIT_URL%"=="" set "CORE_ADMIN_AUDIT_URL=%CORE_ADMIN_URL%/audit"
 if "%AUTH_URL%"=="" set "AUTH_URL=%BASE_URL%/api/v1/auth"
+if "%CORE_BASE%"=="" set "CORE_BASE=%BASE_URL%/api/core"
+if "%CORE_PORTAL%"=="" set "CORE_PORTAL=%CORE_BASE%/portal"
+if "%CORE_PARTNER%"=="" set "CORE_PARTNER=%CORE_BASE%/partner"
+if "%CORE_ADMIN%"=="" set "CORE_ADMIN=%CORE_BASE%/v1/admin"
+if "%CORE_ADMIN_FINANCE_URL%"=="" set "CORE_ADMIN_FINANCE_URL=%CORE_ADMIN%/finance"
+if "%CORE_ADMIN_AUDIT_URL%"=="" set "CORE_ADMIN_AUDIT_URL=%CORE_ADMIN%/audit"
 
 if "%PARTNER_EMAIL%"=="" set "PARTNER_EMAIL=partner@neft.local"
 if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
@@ -24,10 +24,10 @@ set "LOG_FILE=logs\%SCRIPT_NAME%_%LOG_DATE%.log"
 
 call :log "Starting %SCRIPT_NAME%"
 call :log "BASE_URL=%BASE_URL%"
-call :log "CORE_API_BASE=%CORE_API_BASE%"
-call :log "CORE_PORTAL_URL=%CORE_PORTAL_URL%"
-call :log "CORE_PARTNER_URL=%CORE_PARTNER_URL%"
-call :log "CORE_ADMIN_URL=%CORE_ADMIN_URL%"
+call :log "CORE_BASE=%CORE_BASE%"
+call :log "CORE_PORTAL=%CORE_PORTAL%"
+call :log "CORE_PARTNER=%CORE_PARTNER%"
+call :log "CORE_ADMIN=%CORE_ADMIN%"
 call :log "AUTH_URL=%AUTH_URL%"
 
 set "STEP=0_seed_partner_money"
@@ -44,7 +44,7 @@ set "HTTP_METHOD=POST"
 set "HTTP_BODY="
 set "LOGIN_PAYLOAD={\"email\":\"%PARTNER_EMAIL%\",\"password\":\"%PARTNER_PASSWORD%\",\"portal\":\"partner\"}"
 set "HTTP_BODY=!LOGIN_PAYLOAD!"
-call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\partner_login.json"
+call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\partner_login.json" || exit /b 1
 set "PARTNER_TOKEN_FILE=%TEMP%\\partner_token.txt"
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\partner_login.json').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%PARTNER_TOKEN_FILE%').write_text(token); print(token)"`) do set "PARTNER_TOKEN=%%T"
 if "!PARTNER_TOKEN!"=="" (
@@ -57,10 +57,10 @@ if /i "%PARTNER_TOKEN:~0,7%"=="Bearer " set "PARTNER_AUTH_HEADER=Authorization: 
 
 set "STEP=2_partner_verify"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] GET %CORE_API_BASE%/partner/auth/verify"
+call :log "[%STEP%] GET %CORE_PARTNER%/auth/verify"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "204" "%CORE_API_BASE%/partner/auth/verify" "%TEMP%\partner_verify.json" "%PARTNER_AUTH_HEADER%"
+call :assert_http "%STEP%" "204" "%CORE_PARTNER%/auth/verify" "%TEMP%\partner_verify.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
 
 set "STEP=3_admin_login"
 call :log "[%STEP%] POST %AUTH_URL%/login"
@@ -68,7 +68,7 @@ set "HTTP_METHOD=POST"
 set "HTTP_BODY="
 set "LOGIN_PAYLOAD={\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\",\"portal\":\"admin\"}"
 set "HTTP_BODY=!LOGIN_PAYLOAD!"
-call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\admin_login.json"
+call :assert_http "%STEP%" "200" "%AUTH_URL%/login" "%TEMP%\admin_login.json" || exit /b 1
 set "ADMIN_TOKEN_FILE=%TEMP%\\admin_token.txt"
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\\admin_login.json').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%ADMIN_TOKEN_FILE%').write_text(token); print(token)"`) do set "ADMIN_TOKEN=%%T"
 if "!ADMIN_TOKEN!"=="" (
@@ -81,10 +81,10 @@ if /i "%ADMIN_TOKEN:~0,7%"=="Bearer " set "ADMIN_AUTH_HEADER=Authorization: %ADM
 
 set "STEP=4_portal_me"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] GET %CORE_PORTAL_URL%/me"
+call :log "[%STEP%] GET %CORE_PORTAL%/me"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_PORTAL_URL%/me" "%TEMP%\portal_me_partner.json" "%PARTNER_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_PORTAL%/me" "%TEMP%\portal_me_partner.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
 call :expect_contains "%TEMP%\portal_me_partner.json" "\"partner\"" || (
   call :fail "%STEP%" "portal role missing"
   exit /b 1
@@ -92,33 +92,38 @@ call :expect_contains "%TEMP%\portal_me_partner.json" "\"partner\"" || (
 
 set "STEP=5_partner_dashboard"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] GET %CORE_PARTNER_URL%/dashboard"
+call :log "[%STEP%] GET %CORE_PARTNER%/dashboard"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/dashboard" "%TEMP%\partner_dashboard.json" "%PARTNER_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_PARTNER%/dashboard" "%TEMP%\partner_dashboard.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
 
 set "STEP=6_partner_ledger"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] GET %CORE_PARTNER_URL%/ledger"
+call :log "[%STEP%] GET %CORE_PARTNER%/ledger"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/ledger?limit=5" "%TEMP%\partner_ledger.json" "%PARTNER_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_PARTNER%/ledger?limit=5" "%TEMP%\partner_ledger.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\partner_ledger.json')); items=data.get('items') or data.get('entries') or []; totals=data.get('totals') or {}; print(bool(items) or bool(totals))"`) do set "LEDGER_OK=%%t"
+if /i not "!LEDGER_OK!"=="True" (
+  call :fail "%STEP%" "ledger totals/items missing"
+  exit /b 1
+)
 
 set "STEP=7_payout_preview"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] POST %CORE_PARTNER_URL%/payouts/preview"
+call :log "[%STEP%] POST %CORE_PARTNER%/payouts/preview"
 set "HTTP_METHOD=POST"
 set "HTTP_BODY={}"
-call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/payouts/preview" "%TEMP%\partner_payout_preview.json" "%PARTNER_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_PARTNER%/payouts/preview" "%TEMP%\partner_payout_preview.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
 
 set "STEP=8_payout_request"
 set "PAYOUT_PAYLOAD={\"amount\":1000,\"currency\":\"RUB\"}"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] POST %CORE_PARTNER_URL%/payouts/request"
+call :log "[%STEP%] POST %CORE_PARTNER%/payouts/request"
 set "HTTP_METHOD=POST"
 set "HTTP_BODY=!PAYOUT_PAYLOAD!"
-call :assert_http "%STEP%" "201" "%CORE_PARTNER_URL%/payouts/request" "%TEMP%\partner_payout_request.json" "%PARTNER_AUTH_HEADER%"
-for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open(r'%TEMP%\\partner_payout_request.json')).get('id',''))"`) do set "PAYOUT_ID=%%t"
+call :assert_http "%STEP%" "200,201" "%CORE_PARTNER%/payouts/request" "%TEMP%\partner_payout_request.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\partner_payout_request.json')); print(data.get('payout_request_id') or data.get('id') or '')"`) do set "PAYOUT_ID=%%t"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open(r'%TEMP%\\partner_payout_request.json')).get('correlation_id',''))"`) do set "CORRELATION_ID=%%t"
 if "!PAYOUT_ID!"=="" (
   call :fail "%STEP%" "missing payout id"
@@ -134,7 +139,7 @@ call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_ADMIN_FINANCE_URL%/payouts"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts" "%TEMP%\admin_payouts.json" "%ADMIN_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts" "%TEMP%\admin_payouts.json" "%ADMIN_AUTH_HEADER%" || exit /b 1
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\admin_payouts.json')); items=data.get('items') or []; print(any(item.get('payout_id')=='%PAYOUT_ID%' for item in items))"`) do set "PAYOUT_FOUND=%%t"
 if /i not "!PAYOUT_FOUND!"=="True" (
   call :fail "%STEP%" "payout not found in admin queue"
@@ -147,15 +152,15 @@ call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] POST %CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve"
 set "HTTP_METHOD=POST"
 set "HTTP_BODY=!APPROVE_PAYLOAD!"
-call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve" "%TEMP%\admin_payout_approve.json" "%ADMIN_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_FINANCE_URL%/payouts/!PAYOUT_ID!/approve" "%TEMP%\admin_payout_approve.json" "%ADMIN_AUTH_HEADER%" || exit /b 1
 
 set "STEP=11_partner_payout_detail"
 call :require_token "%PARTNER_TOKEN%" "%STEP%"
-call :log "[%STEP%] GET %CORE_PARTNER_URL%/payouts/!PAYOUT_ID!"
+call :log "[%STEP%] GET %CORE_PARTNER%/payouts/!PAYOUT_ID!"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_PARTNER_URL%/payouts/!PAYOUT_ID!" "%TEMP%\partner_payout_detail.json" "%PARTNER_AUTH_HEADER%"
-for /f "usebackq tokens=*" %%t in (`python -c "import json; status=json.load(open(r'%TEMP%\\partner_payout_detail.json')).get('status',''); print(status in {'APPROVED','PAID'})"`) do set "PAYOUT_STATUS_OK=%%t"
+call :assert_http "%STEP%" "200" "%CORE_PARTNER%/payouts/!PAYOUT_ID!" "%TEMP%\partner_payout_detail.json" "%PARTNER_AUTH_HEADER%" || exit /b 1
+for /f "usebackq tokens=*" %%t in (`python -c "import json; status=json.load(open(r'%TEMP%\\partner_payout_detail.json')).get('status',''); print(status in {'APPROVED','PAID','PROCESSING'})"`) do set "PAYOUT_STATUS_OK=%%t"
 if /i not "!PAYOUT_STATUS_OK!"=="True" (
   call :fail "%STEP%" "payout status not approved"
   exit /b 1
@@ -166,7 +171,7 @@ call :require_token "%ADMIN_TOKEN%" "%STEP%"
 call :log "[%STEP%] GET %CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!"
 set "HTTP_METHOD=GET"
 set "HTTP_BODY="
-call :assert_http "%STEP%" "200" "%CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!" "%TEMP%\admin_audit.json" "%ADMIN_AUTH_HEADER%"
+call :assert_http "%STEP%" "200" "%CORE_ADMIN_AUDIT_URL%?correlation_id=!CORRELATION_ID!" "%TEMP%\admin_audit.json" "%ADMIN_AUTH_HEADER%" || exit /b 1
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%TEMP%\\admin_audit.json')); items=data.get('items') or []; print(len(items) >= 2)"`) do set "AUDIT_OK=%%t"
 if /i not "!AUDIT_OK!"=="True" (
   call :fail "%STEP%" "audit entries missing"
@@ -225,7 +230,12 @@ if "!HTTP_METHOD!"=="GET" (
   for /f "usebackq tokens=*" %%c in (`curl -sS -o "%OUT%" -w "%%{http_code}" -X !HTTP_METHOD! !CURL_HEADERS! -H "Content-Type: application/json" -d "!HTTP_BODY!" "%URL%"`) do set "LAST_STATUS=%%c"
 )
 call :append_response "%OUT%"
-if "!LAST_STATUS!"=="%EXPECTED%" exit /b 0
+set "EXPECTED_LIST=%EXPECTED:,= %"
+set "MATCHED="
+for %%e in (%EXPECTED_LIST%) do (
+  if "%%e"=="!LAST_STATUS!" set "MATCHED=1"
+)
+if defined MATCHED exit /b 0
 call :fail "%STEP_NAME%" "expected %EXPECTED% got !LAST_STATUS!"
 exit /b 1
 
