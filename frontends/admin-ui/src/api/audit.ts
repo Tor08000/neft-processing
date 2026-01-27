@@ -13,11 +13,21 @@ const buildQuery = (params: Record<string, string | number | boolean | undefined
 
 export async function fetchAuditFeed(
   token: string,
-  params: { type?: string; correlation_id?: string; search?: string; limit?: number; offset?: number } = {},
+  params: {
+    type?: string;
+    correlation_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+    scope?: string;
+    actor_type?: string;
+    from?: string;
+    to?: string;
+  } = {},
 ): Promise<AuditFeedResponse> {
   const suffix = buildQuery(params);
   const response = await request<AuditFeedResponse | AuditEvent[]>(
-    `/admin/audit${suffix}`,
+    `/v1/admin/audit${suffix}`,
     { method: "GET" },
     token,
   );
@@ -28,5 +38,5 @@ export async function fetchAuditFeed(
 }
 
 export async function fetchAuditCorrelation(token: string, correlationId: string): Promise<AuditCorrelationResponse> {
-  return request<AuditCorrelationResponse>(`/admin/audit/${correlationId}`, { method: "GET" }, token);
+  return request<AuditCorrelationResponse>(`/v1/admin/audit/${correlationId}`, { method: "GET" }, token);
 }

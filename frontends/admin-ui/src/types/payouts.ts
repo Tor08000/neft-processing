@@ -97,9 +97,11 @@ export interface PayoutQueueItem {
   partner_id?: string | null;
   partner_org: string;
   amount: number | string;
+  net_amount?: number | string | null;
   currency: string;
   status: string;
   blockers: string[];
+  blocked_reason?: string | null;
   created_at?: string | null;
   legal_status?: string | null;
   settlement_status?: string | null;
@@ -136,4 +138,6 @@ export interface PayoutDetail extends PayoutQueueItem {
   settlement_snapshot?: Record<string, unknown> | null;
   block_reason_tree?: Record<string, unknown> | string[] | null;
   correlation_chain?: string[] | null;
+  invoices_overdue?: boolean | null;
+  audit_events?: string[] | null;
 }

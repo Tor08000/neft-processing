@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchPortalMe } from "../api/portal";
+import { fetchPortalMe, verifyPartnerAuth } from "../api/portal";
 import type { PortalMeResponse } from "../api/types";
 import { ApiError, UnauthorizedError } from "../api/http";
 import { useAuth } from "./AuthContext";
@@ -39,6 +39,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setPortalState("LOADING");
     try {
+      await verifyPartnerAuth(user);
       const data = await fetchPortalMe(user);
       setPortal(data);
       setPortalState("READY");

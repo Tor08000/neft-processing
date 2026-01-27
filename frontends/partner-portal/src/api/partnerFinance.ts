@@ -13,8 +13,20 @@ import type {
 
 export const fetchPartnerBalance = (token: string) => request<PartnerBalance>("/partner/balance", {}, token, "core_root");
 
-export const fetchPartnerLedger = (token: string) =>
-  request<PartnerLedgerListResponse>("/partner/ledger", {}, token, "core_root");
+const buildQuery = (params: Record<string, string | number | undefined>) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    query.append(key, String(value));
+  });
+  const suffix = query.toString();
+  return suffix ? `?${suffix}` : "";
+};
+
+export const fetchPartnerLedger = (token: string, params: { limit?: number; cursor?: string } = {}) => {
+  const suffix = buildQuery(params);
+  return request<PartnerLedgerListResponse>(`/partner/ledger${suffix}`, {}, token, "core_root");
+};
 
 export const fetchPartnerLedgerExplain = (token: string, entryId: string) =>
   request<PartnerLedgerExplain>(`/partner/ledger/${entryId}/explain`, {}, token, "core_root");
@@ -30,8 +42,10 @@ export const requestPartnerPayout = (token: string, amount: number, currency: st
     "core_root",
   );
 
-export const fetchPartnerPayouts = (token: string) =>
-  request<PartnerPayoutListResponse>("/partner/payouts", {}, token, "core_root");
+export const fetchPartnerPayouts = (token: string, params: { limit?: number; cursor?: string } = {}) => {
+  const suffix = buildQuery(params);
+  return request<PartnerPayoutListResponse>(`/partner/payouts${suffix}`, {}, token, "core_root");
+};
 
 export const fetchPartnerPayoutPreview = (token: string) =>
   request<PartnerPayoutPreview>("/partner/payouts/preview", {}, token, "core_root");

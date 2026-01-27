@@ -117,12 +117,12 @@ export async function updateBonus(token: string, bonusId: number, payload: Parti
 
 export async function assignSubscription(token: string, clientId: string, payload: AssignSubscriptionPayload) {
   return request<ClientSubscription>(
-    `/admin/clients/${clientId}/subscription/assign`,
+    `/v1/admin/clients/${clientId}/subscription/assign`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
 }
 
 export async function getClientSubscription(token: string, clientId: string) {
-  return request<ClientSubscription>(`/admin/clients/${clientId}/subscription`, { method: "GET" }, token);
+  return request<ClientSubscription>(`/v1/admin/clients/${clientId}/subscription`, { method: "GET" }, token);
 }

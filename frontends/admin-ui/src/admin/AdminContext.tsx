@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { verifyAdminAuth } from "../api/adminAuth";
 import { fetchAdminMe, AdminMeError } from "../api/adminMe";
+import { ApiError, ForbiddenError, UnauthorizedError } from "../api/http";
 import type { AdminErrorPayload, AdminMeResponse } from "../types/admin";
 import { useAuth } from "../auth/AuthContext";
 import { hasAdminRole } from "../auth/roles";
@@ -32,7 +34,8 @@ export const AdminProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
     let cancelled = false;
     setIsLoading(true);
-    fetchAdminMe(accessToken)
+    verifyAdminAuth(accessToken)
+      .then(() => fetchAdminMe(accessToken))
       .then((data) => {
         if (cancelled) return;
         if (!hasAdminRole(data.admin_user.roles)) {
@@ -45,16 +48,24 @@ export const AdminProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err instanceof AdminMeError) {
+        if (err instanceof UnauthorizedError) {
+          setError({ error: "admin_unauthorized", message: "Unauthorized", status: 401 });
+          logout();
+        } else if (err instanceof ForbiddenError) {
+          setError({ error: "admin_forbidden", message: "Forbidden", status: 403 });
+        } else if (err instanceof AdminMeError) {
           const payload = err.payload ?? { error: "admin_error", message: err.message, status: err.status };
-          if (import.meta.env.DEV && err.status === 404) {
-            setError({ ...payload, message: "api route misconfigured", status: err.status });
-          } else {
-            setError(payload);
-          }
+          setError(payload);
           if (err.status === 401) {
             logout();
           }
+        } else if (err instanceof ApiError) {
+          setError({
+            error: err.errorCode ?? "admin_error",
+            message: err.message,
+            status: err.status,
+            request_id: err.requestId ?? err.correlationId,
+          });
         } else {
           setError({ error: "admin_error", message: "Admin bootstrap failed", status: 500 });
         }

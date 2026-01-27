@@ -20,6 +20,9 @@ export function PartnerFinancePage() {
   const { portal } = usePortal();
   const [balance, setBalance] = useState<PartnerBalance | null>(null);
   const [ledger, setLedger] = useState<PartnerLedgerEntry[]>([]);
+  const [ledgerTotals, setLedgerTotals] = useState<{ in?: number; out?: number; net?: number } | null>(null);
+  const [ledgerCursor, setLedgerCursor] = useState<string | null>(null);
+  const [ledgerLimit] = useState(20);
   const [exportJobs, setExportJobs] = useState<PartnerExportJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +46,17 @@ export function PartnerFinancePage() {
     let active = true;
     if (!user) return;
     setIsLoading(true);
-    Promise.all([fetchPartnerBalance(user.token), fetchPartnerLedger(user.token), fetchPartnerExportJobs(user.token)])
+    Promise.all([
+      fetchPartnerBalance(user.token),
+      fetchPartnerLedger(user.token, { limit: ledgerLimit }),
+      fetchPartnerExportJobs(user.token),
+    ])
       .then(([balanceResp, ledgerResp, exportResp]) => {
         if (!active) return;
         setBalance(balanceResp);
         setLedger(ledgerResp.items ?? []);
+        setLedgerTotals(ledgerResp.totals ?? null);
+        setLedgerCursor(ledgerResp.next_cursor ?? null);
         setExportJobs(exportResp.items ?? []);
       })
       .catch((err) => {
@@ -80,6 +89,18 @@ export function PartnerFinancePage() {
         direction: entry.direction,
         source_label: "Не удалось загрузить объяснение",
       });
+    }
+  };
+
+  const loadMoreLedger = async () => {
+    if (!user || !ledgerCursor) return;
+    try {
+      const next = await fetchPartnerLedger(user.token, { limit: ledgerLimit, cursor: ledgerCursor });
+      setLedger((prev) => [...prev, ...(next.items ?? [])]);
+      setLedgerCursor(next.next_cursor ?? null);
+    } catch (err) {
+      console.error(err);
+      setError("Не удалось загрузить следующую страницу ledger");
     }
   };
 
@@ -154,6 +175,29 @@ export function PartnerFinancePage() {
       </section>
       <section className="card">
         <div className="section-title">
+          <h2>Ledger totals</h2>
+        </div>
+        {ledgerTotals ? (
+          <div className="grid three">
+            <div className="metric-card">
+              <div className="muted">In</div>
+              <strong>{formatCurrency(ledgerTotals.in ?? null, currency)}</strong>
+            </div>
+            <div className="metric-card">
+              <div className="muted">Out</div>
+              <strong>{formatCurrency(ledgerTotals.out ?? null, currency)}</strong>
+            </div>
+            <div className="metric-card">
+              <div className="muted">Net</div>
+              <strong>{formatCurrency(ledgerTotals.net ?? null, currency)}</strong>
+            </div>
+          </div>
+        ) : (
+          <div className="muted">Нет totals</div>
+        )}
+      </section>
+      <section className="card">
+        <div className="section-title">
           <h2>Ledger</h2>
         </div>
         {isLoading ? (
@@ -166,38 +210,45 @@ export function PartnerFinancePage() {
             <span className="muted">Начисления и списания появятся после завершения заказов.</span>
           </div>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Тип</th>
-                <th>Сумма</th>
-                <th>Направление</th>
-                <th>Заказ</th>
-                <th>Источник</th>
-                <th>Explain</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ledger.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{formatDateTime(entry.created_at)}</td>
-                  <td>
-                    <StatusBadge status={entry.entry_type} />
-                  </td>
-                  <td>{formatCurrency(entry.amount ?? null, entry.currency)}</td>
-                  <td>{entry.direction}</td>
-                  <td className="mono">{entry.order_id ?? "—"}</td>
-                  <td>{resolveLedgerSource(entry)}</td>
-                  <td>
-                    <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
-                      Explain
-                    </button>
-                  </td>
+          <>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th>Сумма</th>
+                  <th>Направление</th>
+                  <th>Заказ</th>
+                  <th>Источник</th>
+                  <th>Explain</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ledger.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{formatDateTime(entry.created_at)}</td>
+                    <td>
+                      <StatusBadge status={entry.entry_type} />
+                    </td>
+                    <td>{formatCurrency(entry.amount ?? null, entry.currency)}</td>
+                    <td>{entry.direction}</td>
+                    <td className="mono">{entry.order_id ?? "—"}</td>
+                    <td>{resolveLedgerSource(entry)}</td>
+                    <td>
+                      <button type="button" className="secondary" onClick={() => handleExplain(entry)}>
+                        Explain
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {ledgerCursor ? (
+              <button type="button" className="ghost" onClick={loadMoreLedger} style={{ marginTop: 12 }}>
+                Загрузить ещё
+              </button>
+            ) : null}
+          </>
         )}
       </section>
 
