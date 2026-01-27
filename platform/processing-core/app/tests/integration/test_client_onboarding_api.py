@@ -80,3 +80,54 @@ def test_client_onboarding_flow(make_jwt):
         assert client.status == "ACTIVE"
     finally:
         session.close()
+
+
+@pytest.mark.integration
+def test_client_onboarding_profile_idempotent(make_jwt):
+    session = get_sessionmaker()()
+    try:
+        session.query(ClientOnboardingContract).delete()
+        session.query(ClientOnboarding).delete()
+        session.query(Client).delete()
+        session.query(FeatureFlag).filter(FeatureFlag.key.in_(["self_signup_enabled"])).delete()
+        session.commit()
+
+        session.add(FeatureFlag(key="self_signup_enabled", on=True))
+        session.commit()
+    finally:
+        session.close()
+
+    token = make_jwt(roles=("CLIENT_OWNER",), sub="user-456")
+    profile_payload = {
+        "name": "ООО ТЕСТ",
+        "inn": "7707083893",
+        "kpp": "770701001",
+        "ogrn": "1027700132195",
+        "address": "Москва",
+        "org_type": "LEGAL",
+    }
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as api_client:
+        first = api_client.post("/api/core/client/onboarding/profile", json=profile_payload)
+        assert first.status_code == 200
+        assert first.json() == {"step": "CONTRACT", "status": "DRAFT"}
+
+        second = api_client.post("/api/core/client/onboarding/profile", json=profile_payload)
+        assert second.status_code == 200
+        assert second.json() == {"step": "CONTRACT", "status": "DRAFT"}
+
+        missing = api_client.post("/api/core/client/onboarding/profile", json={})
+        assert missing.status_code == 422
+
+    session = get_sessionmaker()()
+    try:
+        onboardings = (
+            session.query(ClientOnboarding)
+            .filter(ClientOnboarding.owner_user_id == "user-456")
+            .all()
+        )
+        assert len(onboardings) == 1
+        client_id = onboardings[0].client_id
+        client = session.query(Client).filter(Client.id == client_id).one()
+        assert client.name == "ООО ТЕСТ"
+    finally:
+        session.close()

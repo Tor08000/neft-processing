@@ -6,9 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.db.schema import DB_SCHEMA
 from app.models.client import Client
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.schemas.client_onboarding import (
@@ -36,6 +38,31 @@ CONTRACT_TEMPLATE_PATH = (
 def _require_self_signup_enabled(db: Session) -> None:
     if not is_enabled(db, SELF_SIGNUP_FLAG, default=False):
         raise HTTPException(status_code=403, detail="self_signup_disabled")
+
+
+def _table_exists(db: Session, name: str) -> bool:
+    inspector = inspect(db.get_bind())
+    return inspector.has_table(name, schema=DB_SCHEMA)
+
+
+def _table_columns(db: Session, name: str) -> set[str]:
+    inspector = inspect(db.get_bind())
+    return {column["name"] for column in inspector.get_columns(name, schema=DB_SCHEMA)}
+
+
+def _require_onboarding_tables(db: Session, tables: list[str]) -> None:
+    missing = [table for table in tables if not _table_exists(db, table)]
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "type": "onboarding_context_missing",
+                    "reason_code": "ONBOARDING_CONTEXT_MISSING",
+                    "message": f"Missing onboarding tables: {', '.join(missing)}",
+                }
+            },
+        )
 
 
 def _get_owner_id(token: dict) -> str:
@@ -78,6 +105,7 @@ def onboarding_status(
     db: Session = Depends(get_db),
 ):
     _require_self_signup_enabled(db)
+    _require_onboarding_tables(db, ["client_onboarding"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     if not onboarding:
@@ -95,6 +123,7 @@ def onboarding_profile(
     db: Session = Depends(get_db),
 ):
     _require_self_signup_enabled(db)
+    _require_onboarding_tables(db, ["clients", "client_onboarding"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     client = None
@@ -103,19 +132,22 @@ def onboarding_profile(
     if client is None and token.get("client_id"):
         client = db.query(Client).filter(Client.id == str(token["client_id"])).one_or_none()
 
+    client_columns = _table_columns(db, "clients")
     if client is None:
-        client = Client(
-            id=uuid4(),
-            name=payload.name,
-            inn=payload.inn,
-            status="DRAFT",
-        )
+        client_payload = {
+            "id": uuid4(),
+            "name": payload.name,
+            "status": "DRAFT",
+        }
+        if "inn" in client_columns:
+            client_payload["inn"] = payload.inn
+        client = Client(**client_payload)
         db.add(client)
         db.flush()
 
     if payload.name:
         client.name = payload.name
-    if payload.inn is not None:
+    if payload.inn is not None and "inn" in client_columns:
         client.inn = payload.inn
 
     profile_data = payload.model_dump()
@@ -146,6 +178,7 @@ def onboarding_contract_generate(
     db: Session = Depends(get_db),
 ):
     _require_self_signup_enabled(db)
+    _require_onboarding_tables(db, ["client_onboarding", "client_onboarding_contracts"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     if not onboarding:
@@ -194,6 +227,7 @@ def onboarding_contract(
     db: Session = Depends(get_db),
 ):
     _require_self_signup_enabled(db)
+    _require_onboarding_tables(db, ["client_onboarding", "client_onboarding_contracts"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     if not onboarding or not onboarding.contract_id:
@@ -222,6 +256,7 @@ def onboarding_contract_sign(
     db: Session = Depends(get_db),
 ):
     _require_self_signup_enabled(db)
+    _require_onboarding_tables(db, ["clients", "client_onboarding", "client_onboarding_contracts"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
     if not onboarding or not onboarding.contract_id:
