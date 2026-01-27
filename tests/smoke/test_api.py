@@ -18,7 +18,7 @@ def test_core_health_via_gateway():
 
 
 def test_admin_auth_health_via_gateway():
-    response = http_get("/api/auth/health", expect_json=True)
+    response = http_get("/api/v1/auth/health", expect_json=True)
     data = read_json(response)
     assert response.status == 200
     assert data.get("status") == "ok"

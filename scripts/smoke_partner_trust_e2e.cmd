@@ -4,7 +4,7 @@ rem   BASE_URL (default http://localhost)
 rem   CORE_PARTNER_URL (default %BASE_URL%/api/core/partner)
 rem   CORE_CLIENT_URL (default %BASE_URL%/api/core/client)
 rem   CORE_ADMIN_URL (default %BASE_URL%/api/core/v1/admin)
-rem   AUTH_URL (default %BASE_URL%/api/auth)
+rem   AUTH_URL (default %BASE_URL%/api/v1/auth)
 rem   ADMIN_TOKEN (Bearer admin token)
 rem   PARTNER_EMAIL, PARTNER_PASSWORD
 rem   CLIENT_EMAIL, CLIENT_PASSWORD

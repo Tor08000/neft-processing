@@ -47,7 +47,7 @@ def test_gateway_core_health_contract() -> None:
 
 
 def test_gateway_auth_health_contract() -> None:
-    _assert_health("/api/auth/health")
+    _assert_health("/api/v1/auth/health")
 
 
 def test_gateway_ai_health_contract() -> None:

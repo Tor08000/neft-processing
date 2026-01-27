@@ -25,17 +25,17 @@ set "MAX_BODY_CHARS=1000"
 set "TOKEN="
 set "STATUS="
 
-curl -sS -o "%OPENAPI_FILE%" "%DIRECT_BASE%/api/auth/openapi.json"
+curl -sS -o "%OPENAPI_FILE%" "%DIRECT_BASE%/api/v1/auth/openapi.json"
 if errorlevel 1 (
     set "ERROR_MESSAGE=Failed to fetch OpenAPI spec."
-    set "ERROR_URL=%DIRECT_BASE%/api/auth/openapi.json"
+    set "ERROR_URL=%DIRECT_BASE%/api/v1/auth/openapi.json"
     set "ERROR_STATUS="
     goto :emit_error_json
 )
 for /f "usebackq delims=" %%U in (`python -c "import json; data=json.load(open(r'%OPENAPI_FILE%','r',encoding='utf-8')); paths=data.get('paths',{}); candidates=[p for p,m in paths.items() if isinstance(m,dict) and any(k.lower()=='post' for k in m.keys()) and ('login' in p.lower() or 'token' in p.lower())]; candidates=sorted(candidates); print(candidates[0] if candidates else '')"`) do set "LOGIN_PATH=%%U"
 if not defined LOGIN_PATH (
     set "ERROR_MESSAGE=Login endpoint not found in OpenAPI spec."
-    set "ERROR_URL=%DIRECT_BASE%/api/auth/openapi.json"
+    set "ERROR_URL=%DIRECT_BASE%/api/v1/auth/openapi.json"
     set "ERROR_STATUS="
     goto :emit_error_json
 )

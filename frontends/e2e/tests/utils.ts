@@ -4,7 +4,7 @@ import type { Page, Request, Response } from "playwright";
 export const CLIENT_BASE_URL = process.env.CLIENT_PORTAL_URL ?? "http://localhost/client/";
 export const PARTNER_BASE_URL = process.env.PARTNER_PORTAL_URL ?? "http://localhost/partner/";
 export const ADMIN_BASE_URL = process.env.ADMIN_PORTAL_URL ?? "http://localhost/admin/";
-export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/auth/login";
+export const ADMIN_AUTH_URL = process.env.ADMIN_AUTH_URL ?? "http://localhost/api/v1/auth/login";
 
 export type LoginState =
   | "LOGIN_READY"

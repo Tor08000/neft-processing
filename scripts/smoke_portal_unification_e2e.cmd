@@ -3,7 +3,7 @@ rem Preconditions (env vars):
 rem   BASE_URL (default http://localhost)
 rem   CORE_ADMIN_URL (default %BASE_URL%/api/core/v1/admin)
 rem   CORE_PORTAL_URL (default %BASE_URL%/api/core/portal)
-rem   AUTH_URL (default %BASE_URL%/api/auth)
+rem   AUTH_URL (default %BASE_URL%/api/v1/auth)
 rem   ADMIN_TOKEN (Bearer admin token)
 rem   CLIENT_EMAIL, CLIENT_PASSWORD (client portal credentials)
 rem Optional:
