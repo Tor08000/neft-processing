@@ -1,4 +1,4 @@
-import { CORE_API_BASE } from "./base";
+import { ADMIN_API_BASE, normalizeAdminPath } from "./base";
 import type { AdminErrorPayload, AdminMeResponse } from "../types/admin";
 
 type PortalMeResponse = {
@@ -23,7 +23,7 @@ export class AdminMeError extends Error {
   }
 }
 
-const buildUrl = (path: string) => `${CORE_API_BASE}${path}`;
+const buildUrl = (path: string) => `${ADMIN_API_BASE}${normalizeAdminPath(path)}`;
 
 const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
   try {

@@ -6,12 +6,11 @@ import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
-import { SELF_SIGNUP_ENABLED } from "../config/features";
 import { AppErrorState, AppLoadingState } from "../components/states";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
-  const { client, portalState, refresh, isLoading: isClientLoading } = useClient();
+  const { client, portalState, refresh } = useClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/vehicles", [searchParams]);
@@ -110,8 +109,7 @@ export function LoginPage() {
     return <AppErrorState message="Не удалось загрузить профиль клиента." onRetry={refresh} />;
   }
 
-  const showSelfSignup = SELF_SIGNUP_ENABLED && (!user || client?.org_status !== "ACTIVE");
-  const selfSignupLabel = user ? "Продолжить подключение" : "Подключиться / Стать клиентом";
+  const selfSignupLabel = "Зарегистрироваться / Подключиться";
 
   return (
     <div className="login-wrapper neft-page">
@@ -175,16 +173,13 @@ export function LoginPage() {
           {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
-        {showSelfSignup ? (
-          <button
-            type="button"
-            className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
-            onClick={() => navigate(user ? "/onboarding" : "/client/signup")}
-            disabled={isClientLoading}
-          >
-            {isClientLoading && user ? "Проверяем статус..." : selfSignupLabel}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
+          onClick={() => navigate("/client/signup")}
+        >
+          {selfSignupLabel}
+        </button>
       </form>
       <Toast toast={toast} />
     </div>

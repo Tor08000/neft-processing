@@ -1,4 +1,4 @@
-import { ADMIN_BASE_URL, CORE_API_BASE, joinUrl } from "./base";
+import { ADMIN_API_BASE, ADMIN_BASE_URL, joinUrl, normalizeAdminPath } from "./base";
 
 export const TOKEN_STORAGE_KEY = "neft_admin_auth";
 
@@ -32,8 +32,9 @@ function redirectToLogin() {
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
   const fallbackBase = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-  const base = CORE_API_BASE || fallbackBase;
-  const joined = joinUrl(base, path.startsWith("/") ? path : `/${path}`);
+  const base = ADMIN_API_BASE || fallbackBase;
+  const normalizedPath = normalizeAdminPath(path);
+  const joined = normalizedPath ? joinUrl(base, normalizedPath) : base;
   const url = new URL(joined, fallbackBase);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
