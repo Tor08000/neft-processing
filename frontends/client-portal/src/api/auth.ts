@@ -46,6 +46,8 @@ export interface RegisterPayload {
   password: string;
   consent_personal_data: boolean;
   consent_offer: boolean;
+  consent?: boolean;
+  portal?: string;
 }
 
 export interface RegisterResponse {
@@ -57,5 +59,11 @@ export interface RegisterResponse {
 }
 
 export async function register(payload: RegisterPayload): Promise<RegisterResponse> {
-  return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(payload) }, { base: "auth" });
+  const consentValue = payload.consent ?? (payload.consent_personal_data && payload.consent_offer);
+  const normalizedPayload = {
+    ...payload,
+    portal: payload.portal ?? "client",
+    ...(consentValue !== undefined ? { consent: consentValue } : {}),
+  };
+  return request<RegisterResponse>("/signup", { method: "POST", body: JSON.stringify(normalizedPayload) }, { base: "auth" });
 }

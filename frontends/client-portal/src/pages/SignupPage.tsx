@@ -2,10 +2,8 @@ import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { register } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
-import { SELF_SIGNUP_ENABLED } from "../config/features";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
-import { EmptyState } from "@shared/brand/components";
 
 const PHONE_REGEX = /^[+()\d\s-]{6,}$/;
 
@@ -35,20 +33,6 @@ export function SignupPage() {
 
   if (user) {
     return <Navigate to="/onboarding" replace />;
-  }
-
-  if (!SELF_SIGNUP_ENABLED) {
-    return (
-      <EmptyState
-        title="Модуль недоступен"
-        description="Самостоятельная регистрация временно отключена."
-        action={
-          <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate("/login")}>
-            Вернуться к входу
-          </button>
-        }
-      />
-    );
   }
 
   const handleRegister = async (event: FormEvent) => {

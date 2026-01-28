@@ -13,7 +13,7 @@ import { Table, type Column } from "../components/Table/Table";
 import { formatAmount, formatDate } from "../utils/format";
 import { PayoutBatchDetail, PayoutBatchSummary, PayoutExportFile } from "../types/payouts";
 import { getStoredToken } from "../api/client";
-import { CORE_API_BASE } from "../api/base";
+import { ADMIN_API_BASE, normalizeAdminPath } from "../api/base";
 
 export const PayoutBatchesPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -121,10 +121,11 @@ export const PayoutBatchesPage: React.FC = () => {
   const handleDownload = async (exportFile: PayoutExportFile) => {
     try {
       const token = getStoredToken();
-      const base = CORE_API_BASE.replace(/\/+$/, "");
+      const base = ADMIN_API_BASE.replace(/\/+$/, "");
+      const normalizedDownloadPath = normalizeAdminPath(exportFile.download_url);
       const downloadUrl = exportFile.download_url.startsWith("http")
         ? exportFile.download_url
-        : `${base}${exportFile.download_url}`;
+        : `${base}${normalizedDownloadPath}`;
       const response = await fetch(downloadUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });

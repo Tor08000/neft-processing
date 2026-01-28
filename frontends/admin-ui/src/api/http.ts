@@ -1,4 +1,4 @@
-import { AUTH_API_BASE, CORE_API_BASE } from "./base";
+import { ADMIN_API_BASE, AUTH_API_BASE, normalizeAdminPath } from "./base";
 
 type ApiBase = "core" | "auth";
 
@@ -127,8 +127,9 @@ export async function request<T>(
     ...(init.headers as HttpHeaders | undefined),
   };
 
-  const apiBase = base === "auth" ? AUTH_API_BASE : CORE_API_BASE;
-  const url = `${apiBase}${path}`;
+  const apiBase = base === "auth" ? AUTH_API_BASE : ADMIN_API_BASE;
+  const resolvedPath = base === "auth" ? path : normalizeAdminPath(path);
+  const url = `${apiBase}${resolvedPath}`;
   const response = await fetch(url, { ...init, headers });
   const correlationId = response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id");
   const contentType = response.headers.get("content-type") ?? "";

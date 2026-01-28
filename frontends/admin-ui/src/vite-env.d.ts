@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_CORE_API_BASE?: string;
   readonly VITE_AUTH_API_BASE?: string;
   readonly VITE_AI_API_BASE?: string;
+  readonly VITE_ADMIN_API_BASE?: string;
 }
 
 interface ImportMeta {
