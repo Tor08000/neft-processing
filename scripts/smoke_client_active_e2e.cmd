@@ -26,7 +26,7 @@ call :portal_me "NEEDS_ONBOARDING" || exit /b 1
 set "ORG_PAYLOAD={\"org_type\":\"LEGAL\",\"name\":\"Smoke Client\",\"inn\":\"7701234567\",\"kpp\":\"770101001\",\"ogrn\":\"1027700132195\",\"address\":\"Москва\"}"
 call :http_post "org create" "%GATEWAY_BASE%%CORE_BASE%/client/onboarding/profile" "%ORG_PAYLOAD%" "200" "%TMP_DIR%\client_active_org.json" || exit /b 1
 
-call :portal_me "NEEDS_PLAN" || exit /b 1
+call :portal_me "NEEDS_PLAN" "require_org" || exit /b 1
 
 call :http_get "plans" "%GATEWAY_BASE%%CORE_BASE%/client/plans" "200" "%TMP_DIR%\client_active_plans.json" || exit /b 1
 for /f "usebackq delims=" %%T in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_plans.json').read_text(encoding='utf-8', errors='ignore') or '[]'); print((data[0] if data else {}).get('code',''))"`) do set "PLAN_CODE=%%T"
@@ -85,8 +85,12 @@ exit /b 0
 
 :portal_me
 set "EXPECTED_STATE=%~1"
+set "REQUIRE_ORG=%~2"
 call :http_get "portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "200" "%TMP_DIR%\client_active_portal_me.json" || exit /b 1
 python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); state=data.get('access_state'); expected=r'%EXPECTED_STATE%'; print(f'[portal/me] access_state={state} expected={expected}'); raise SystemExit(0 if state==expected else 1)" || exit /b 1
+if /I "%REQUIRE_ORG%"=="require_org" (
+  python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); flags=data.get('flags') or {}; failed=flags.get('portal_me_failed'); org_status=data.get('org_status'); entitlements=data.get('entitlements_snapshot'); reason=data.get('access_reason'); print(f'[portal/me] portal_me_failed={failed} org_status={org_status} access_reason={reason}'); assert failed is not True; assert org_status; assert entitlements is not None; assert reason != 'portal_me_failed'" || exit /b 1
+)
 echo [PASS] portal/me %EXPECTED_STATE%
 exit /b 0
 
