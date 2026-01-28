@@ -109,7 +109,7 @@ export function LoginPage() {
     return <AppErrorState message="Не удалось загрузить профиль клиента." onRetry={refresh} />;
   }
 
-  const selfSignupLabel = "Зарегистрироваться / Подключиться";
+  const selfSignupLabel = "Зарегистрироваться";
 
   return (
     <div className="login-wrapper neft-page">
