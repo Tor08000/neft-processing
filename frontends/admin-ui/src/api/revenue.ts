@@ -2,7 +2,7 @@ import { request } from "./http";
 import { RevenueOverdueResponse, RevenueSummaryResponse } from "../types/revenue";
 
 export const fetchRevenueSummary = async (asOf: string, token?: string | null): Promise<RevenueSummaryResponse> => {
-  return request<RevenueSummaryResponse>(`/api/v1/admin/revenue/summary?as_of=${asOf}`, {}, token);
+  return request<RevenueSummaryResponse>(`/api/revenue/summary?as_of=${asOf}`, {}, token);
 };
 
 export type OverdueBucket = "all" | "0_7" | "8_30" | "31_90" | "90_plus";
@@ -17,5 +17,5 @@ export const fetchOverdueList = async (
     offset: String(params.offset),
     as_of: params.asOf,
   });
-  return request<RevenueOverdueResponse>(`/api/v1/admin/revenue/overdue?${query.toString()}`, {}, token);
+  return request<RevenueOverdueResponse>(`/api/revenue/overdue?${query.toString()}`, {}, token);
 };

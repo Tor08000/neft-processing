@@ -12,17 +12,17 @@ export type IntegrationRequestQuery = {
 };
 
 export async function fetchIntegrationRequests(params: IntegrationRequestQuery): Promise<any> {
-  return apiGet<any>("/api/core/v1/admin/integration/requests", params);
+  return apiGet<any>("/integration/requests", params);
 }
 
 export async function fetchPartnerStatuses(window_minutes = 15): Promise<any> {
-  return apiGet<any>("/api/core/v1/admin/integration/partners/status", { window_minutes });
+  return apiGet<any>("/integration/partners/status", { window_minutes });
 }
 
 export async function fetchAzsHeatmap(window_minutes = 15, partner_id?: string): Promise<any> {
-  return apiGet<any>("/api/core/v1/admin/integration/azs/heatmap", { window_minutes, partner_id });
+  return apiGet<any>("/integration/azs/heatmap", { window_minutes, partner_id });
 }
 
 export async function fetchRecentDeclines(params: { since?: string; partner_id?: string; reason_category?: string }): Promise<any> {
-  return apiGet<any>("/api/core/v1/admin/integration/declines/recent", params);
+  return apiGet<any>("/integration/declines/recent", params);
 }

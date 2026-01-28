@@ -123,7 +123,7 @@ export const fetchAdminCases = async (params: {
   cursor?: string | null;
 }): Promise<CaseListResponse> => {
   try {
-    return await apiGet("/v1/admin/cases", params);
+    return await apiGet("/cases", params);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -131,7 +131,7 @@ export const fetchAdminCases = async (params: {
 
 export const fetchAdminCaseDetails = async (caseId: string): Promise<CaseDetailsResponse> => {
   try {
-    return await apiGet(`/v1/admin/cases/${caseId}`);
+    return await apiGet(`/cases/${caseId}`);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -139,7 +139,7 @@ export const fetchAdminCaseDetails = async (caseId: string): Promise<CaseDetails
 
 export const closeAdminCase = async (caseId: string, payload: CaseClosePayload): Promise<CaseItem | void> => {
   try {
-    return await apiPost(`/v1/admin/cases/${caseId}/close`, payload);
+    return await apiPost(`/cases/${caseId}/close`, payload);
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -147,7 +147,7 @@ export const closeAdminCase = async (caseId: string, payload: CaseClosePayload):
 
 export const updateAdminCaseStatus = async (caseId: string, status: CaseStatus): Promise<CaseItem | void> => {
   try {
-    return await apiPost(`/v1/admin/cases/${caseId}/status`, { status });
+    return await apiPost(`/cases/${caseId}/status`, { status });
   } catch (error) {
     return ensureAvailability(error);
   }
@@ -283,7 +283,7 @@ export const listCaseEvents = async (
   params?: { cursor?: string | null; limit?: number },
 ): Promise<CaseEventsResponse> => {
   try {
-    const response = await apiGet(`/v1/admin/cases/${caseId}/events`, params);
+    const response = await apiGet(`/cases/${caseId}/events`, params);
     return normalizeEventsResponse(response);
   } catch (error) {
     if (isNotAvailableError(error)) {

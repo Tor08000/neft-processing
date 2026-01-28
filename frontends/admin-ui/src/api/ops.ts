@@ -7,16 +7,16 @@ import type {
   OpsSummaryResponse,
 } from "../types/ops";
 
-export const fetchOpsSummary = () => apiGet<OpsSummaryResponse>("/api/core/v1/admin/ops/summary");
+export const fetchOpsSummary = () => apiGet<OpsSummaryResponse>("/ops/summary");
 
 export const fetchOpsBlockedPayouts = (limit = 50) =>
-  apiGet<OpsBlockedPayoutsResponse>("/api/core/v1/admin/ops/payouts/blocked", { limit });
+  apiGet<OpsBlockedPayoutsResponse>("/ops/payouts/blocked", { limit });
 
 export const fetchOpsFailedExports = (limit = 50) =>
-  apiGet<OpsFailedExportsResponse>("/api/core/v1/admin/ops/exports/failed", { limit });
+  apiGet<OpsFailedExportsResponse>("/ops/exports/failed", { limit });
 
 export const fetchOpsFailedImports = (limit = 50) =>
-  apiGet<OpsFailedImportsResponse>("/api/core/v1/admin/ops/reconciliation/failed", { limit });
+  apiGet<OpsFailedImportsResponse>("/ops/reconciliation/failed", { limit });
 
 export const fetchOpsSupportBreaches = (limit = 50) =>
-  apiGet<OpsSupportBreachesResponse>("/api/core/v1/admin/ops/support/breaches", { limit });
+  apiGet<OpsSupportBreachesResponse>("/ops/support/breaches", { limit });

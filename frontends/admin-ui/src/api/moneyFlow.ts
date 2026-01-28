@@ -1,7 +1,7 @@
 import { request } from "./http";
 import type { MoneyExplainResponse, MoneyHealthResponse, MoneyReplayResponse } from "../types/money";
 
-const MONEY_BASE = "/v1/admin/money";
+const MONEY_BASE = "/money";
 
 function buildQuery(params?: Record<string, string | number | undefined | null>): string {
   if (!params) return "";

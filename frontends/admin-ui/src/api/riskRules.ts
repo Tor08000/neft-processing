@@ -7,28 +7,28 @@ import {
 } from "../types/riskRules";
 
 export async function fetchRiskRules(params?: RiskRulesQuery): Promise<RiskRuleListResponse> {
-  return apiGet("/api/core/v1/admin/risk/rules", params);
+  return apiGet("/risk/rules", params);
 }
 
 export async function fetchRiskRule(id: number | string): Promise<RiskRule> {
-  return apiGet(`/api/core/v1/admin/risk/rules/${id}`);
+  return apiGet(`/risk/rules/${id}`);
 }
 
 export async function createRiskRule(payload: RiskRulePayload): Promise<RiskRule> {
-  return apiPost("/api/core/v1/admin/risk/rules", payload);
+  return apiPost("/risk/rules", payload);
 }
 
 export async function updateRiskRule(
   id: number | string,
   payload: RiskRulePayload,
 ): Promise<RiskRule> {
-  return apiPut(`/api/core/v1/admin/risk/rules/${id}`);
+  return apiPut(`/risk/rules/${id}`);
 }
 
 export async function enableRiskRule(id: number | string): Promise<RiskRule> {
-  return apiPost(`/api/core/v1/admin/risk/rules/${id}/enable`);
+  return apiPost(`/risk/rules/${id}/enable`);
 }
 
 export async function disableRiskRule(id: number | string): Promise<RiskRule> {
-  return apiPost(`/api/core/v1/admin/risk/rules/${id}/disable`);
+  return apiPost(`/risk/rules/${id}/disable`);
 }

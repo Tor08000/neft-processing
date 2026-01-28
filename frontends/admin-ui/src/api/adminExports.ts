@@ -33,21 +33,21 @@ export type CaseExportCreatePayload = {
 };
 
 export const createCaseExport = async (payload: CaseExportCreatePayload): Promise<CaseExportItem> => {
-  return apiPost("/v1/admin/exports", payload);
+  return apiPost("/exports", payload);
 };
 
 export const fetchCaseExport = async (exportId: string): Promise<CaseExportItem> => {
-  return apiGet(`/v1/admin/exports/${exportId}`);
+  return apiGet(`/exports/${exportId}`);
 };
 
 export const downloadCaseExport = async (
   exportId: string,
 ): Promise<Required<Pick<CaseExportDownload, "url" | "expires_in">> & { content_sha256: string }> => {
-  return apiPost(`/v1/admin/exports/${exportId}/download`);
+  return apiPost(`/exports/${exportId}/download`);
 };
 
 export const listCaseExports = async (caseId: string): Promise<{ items: CaseExportItem[] }> => {
-  return apiGet(`/v1/admin/cases/${caseId}/exports`);
+  return apiGet(`/cases/${caseId}/exports`);
 };
 
 export type CaseExportVerifyResult = {
@@ -59,5 +59,5 @@ export type CaseExportVerifyResult = {
 };
 
 export const verifyCaseExport = async (exportId: string): Promise<CaseExportVerifyResult> => {
-  return apiPost(`/v1/admin/exports/${exportId}/verify`);
+  return apiPost(`/exports/${exportId}/verify`);
 };

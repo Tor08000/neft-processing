@@ -48,7 +48,7 @@ export type SandboxResponse = {
 };
 
 export async function fetchRuleSetVersions(scope?: string): Promise<RuleSetVersion[]> {
-  return apiGet("/api/core/v1/admin/rules/versions", scope ? { scope } : undefined);
+  return apiGet("/rules/versions", scope ? { scope } : undefined);
 }
 
 export async function evaluateRulesSandbox(payload: SandboxRequest): Promise<SandboxResponse> {

@@ -24,5 +24,5 @@ export type DecisionMemoryListResponse = {
 };
 
 export const listDecisionMemory = async (caseId: string): Promise<DecisionMemoryListResponse> => {
-  return apiGet(`/v1/admin/cases/${caseId}/decisions`);
+  return apiGet(`/cases/${caseId}/decisions`);
 };

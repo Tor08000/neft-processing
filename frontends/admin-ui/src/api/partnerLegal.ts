@@ -25,7 +25,7 @@ export type PartnerLegalPack = {
 };
 
 export async function fetchPartnerLegalProfile(token: string, partnerId: string) {
-  return request<PartnerLegalProfileAdmin>(`/v1/admin/partners/${partnerId}/legal-profile`, { method: "GET" }, token);
+  return request<PartnerLegalProfileAdmin>(`/partners/${partnerId}/legal-profile`, { method: "GET" }, token);
 }
 
 export async function updatePartnerLegalStatus(
@@ -34,7 +34,7 @@ export async function updatePartnerLegalStatus(
   payload: { status: string; reason: string; correlation_id: string; comment?: string | null },
 ) {
   return request<PartnerLegalProfileAdmin>(
-    `/v1/admin/partners/${partnerId}/legal-profile/status`,
+    `/partners/${partnerId}/legal-profile/status`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
@@ -42,7 +42,7 @@ export async function updatePartnerLegalStatus(
 
 export async function generatePartnerLegalPack(token: string, partnerId: string, format = "ZIP") {
   return request<PartnerLegalPack>(
-    `/v1/admin/partners/${partnerId}/legal-pack`,
+    `/partners/${partnerId}/legal-pack`,
     { method: "POST", body: JSON.stringify({ format }) },
     token,
   );
@@ -50,7 +50,7 @@ export async function generatePartnerLegalPack(token: string, partnerId: string,
 
 export async function fetchPartnerLegalPackHistory(token: string, partnerId: string) {
   const response = await request<{ items: PartnerLegalPack[] }>(
-    `/v1/admin/partners/${partnerId}/legal-pack/history`,
+    `/partners/${partnerId}/legal-pack/history`,
     { method: "GET" },
     token,
   );

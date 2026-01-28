@@ -18,7 +18,7 @@ export const fetchExplainActions = async (
 };
 
 export const evaluateWhatIf = async (payload: WhatIfEvaluateRequest): Promise<WhatIfResponse> => {
-  return apiPost("/v1/admin/what-if/evaluate", payload);
+  return apiPost("/what-if/evaluate", payload);
 };
 
 export const fetchExplainDiff = async (params: {
