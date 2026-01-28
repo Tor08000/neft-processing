@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -45,6 +46,8 @@ from app.services.partner_finance_service import PartnerFinanceService
 from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 from app.services.portal_access_state import resolve_access_state
 from app.services.subscription_service import DEFAULT_TENANT_ID, get_client_subscription
+
+logger = logging.getLogger(__name__)
 
 
 def _table(db: Session, name: str) -> Table:
@@ -162,14 +165,24 @@ def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
     payload = dict(record)
     return PortalMeOrg(
         id=str(payload.get("id")),
+        org_type=payload.get("org_type") or payload.get("type"),
         name=payload.get("name"),
         inn=payload.get("inn"),
+        kpp=payload.get("kpp"),
+        ogrn=payload.get("ogrn"),
+        address=payload.get("address"),
         status=payload.get("status"),
         timezone=payload.get("timezone"),
     )
 
 
-def _load_org_fallback(db: Session, *, client_id: str | None, partner_id: str | None) -> PortalMeOrg | None:
+def _load_org_fallback(
+    db: Session,
+    *,
+    client_id: str | None,
+    partner_id: str | None,
+    onboarding_profile: dict[str, Any] | None,
+) -> PortalMeOrg | None:
     if client_id:
         if not _is_uuid(client_id):
             return None
@@ -186,18 +199,44 @@ def _load_org_fallback(db: Session, *, client_id: str | None, partner_id: str | 
                     crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
                 except Exception:
                     crm_client = None
+            profile = onboarding_profile or {}
             return PortalMeOrg(
                 id=str(client.id),
+                org_type=profile.get("org_type"),
                 name=client.name,
                 inn=client.inn,
+                kpp=profile.get("kpp"),
+                ogrn=profile.get("ogrn"),
+                address=profile.get("address"),
                 status=str(client.status),
                 timezone=crm_client.timezone if crm_client else None,
             )
     if partner_id:
         partner = db.query(Partner).filter(Partner.id == str(partner_id)).one_or_none()
         if partner:
-            return PortalMeOrg(id=str(partner.id), name=partner.name, status=str(partner.status))
+            return PortalMeOrg(
+                id=str(partner.id),
+                name=partner.name,
+                status=str(partner.status),
+            )
     return None
+
+
+def _empty_entitlements_snapshot(*, org_id: str | int | None) -> dict[str, Any]:
+    computed_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "org_id": org_id,
+        "subscription": None,
+        "org_roles": [],
+        "features": {},
+        "modules": {},
+        "limits": {},
+        "capabilities": [],
+        "computed": {
+            "hash": "",
+            "computed_at": computed_at,
+        },
+    }
 
 
 def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
@@ -393,6 +432,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         try:
             snapshot = get_org_entitlements_snapshot(db, org_id=org_id_int)
         except Exception:
+            logger.exception("portal_me_entitlements_failed", extra={"org_id": org_id_int})
             snapshot = None
         if snapshot:
             entitlements_snapshot = snapshot.entitlements
@@ -421,18 +461,24 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         existing=subscription_payload,
     )
 
-    org_payload = None
-    if org_id_int is not None:
-        org_payload = _load_org_from_orgs(db, org_id=org_id_int)
-    if org_payload is None:
-        org_payload = _load_org_fallback(db, client_id=client_id, partner_id=partner_id)
-
     owner_user_id = token.get("user_id") or token.get("sub")
     onboarding, onboarding_profile_complete = _resolve_onboarding_profile(
         db,
         client_id=str(client_id) if client_id else None,
         owner_id=str(owner_user_id) if owner_user_id else None,
     )
+    onboarding_profile = onboarding.profile_json if onboarding and onboarding.profile_json else None
+
+    org_payload = None
+    if org_id_int is not None:
+        org_payload = _load_org_from_orgs(db, org_id=org_id_int)
+    if org_payload is None:
+        org_payload = _load_org_fallback(
+            db,
+            client_id=client_id,
+            partner_id=partner_id,
+            onboarding_profile=onboarding_profile,
+        )
     contract_status = None
     if onboarding and onboarding.contract_id and _table_exists(db, "client_onboarding_contracts"):
         try:
@@ -446,6 +492,18 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         contract_status = contract.status if contract else None
     if contract_status is None:
         contract_status = _resolve_client_contract_status(db, client_id=client_id)
+    if entitlements_snapshot is None:
+        org_id_value = None
+        if org_payload and org_payload.id:
+            org_id_value = org_payload.id
+        elif org_id_raw:
+            org_id_value = str(org_id_raw)
+        elif client_id:
+            org_id_value = str(client_id)
+        elif partner_id:
+            org_id_value = str(partner_id)
+        entitlements_snapshot = _empty_entitlements_snapshot(org_id=org_id_value)
+
     employee_timezone = None
     user_id = token.get("user_id") or token.get("sub")
     if user_id and client_id and _is_uuid(user_id) and _table_exists(db, "client_employees"):

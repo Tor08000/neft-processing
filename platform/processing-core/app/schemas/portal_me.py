@@ -17,8 +17,12 @@ class PortalMeUser(BaseModel):
 
 class PortalMeOrg(BaseModel):
     id: str
+    org_type: str | None = None
     name: str | None = None
     inn: str | None = None
+    kpp: str | None = None
+    ogrn: str | None = None
+    address: str | None = None
     status: str | None = None
     timezone: str | None = None
 

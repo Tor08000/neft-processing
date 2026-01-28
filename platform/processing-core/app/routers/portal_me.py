@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -40,16 +41,25 @@ def get_portal_me(
             roles=[],
             memberships=[],
             scopes=None,
-            flags={"portal_me_failed": True},
+            flags={"portal_me_failed": False},
             legal=None,
             features=PortalMeFeatures(onboarding_enabled=True, legal_gate_enabled=True),
             gating=PortalMeGating(onboarding_enabled=True, legal_gate_enabled=True),
             subscription=None,
-            entitlements_snapshot=None,
+            entitlements_snapshot={
+                "org_id": None,
+                "subscription": None,
+                "org_roles": [],
+                "features": {},
+                "modules": {},
+                "limits": {},
+                "capabilities": [],
+                "computed": {"hash": "", "computed_at": datetime.now(timezone.utc).isoformat()},
+            },
             capabilities=[],
             nav_sections=None,
             partner=None,
-            access_state=PortalAccessState.NEEDS_ONBOARDING,
-            access_reason="portal_me_failed",
+            access_state=PortalAccessState.TECH_ERROR,
+            access_reason="tech_error",
             billing=None,
         )
