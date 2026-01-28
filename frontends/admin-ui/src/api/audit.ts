@@ -27,7 +27,7 @@ export async function fetchAuditFeed(
 ): Promise<AuditFeedResponse> {
   const suffix = buildQuery(params);
   const response = await request<AuditFeedResponse | AuditEvent[]>(
-    `/v1/admin/audit${suffix}`,
+    `/audit${suffix}`,
     { method: "GET" },
     token,
   );
@@ -38,5 +38,5 @@ export async function fetchAuditFeed(
 }
 
 export async function fetchAuditCorrelation(token: string, correlationId: string): Promise<AuditCorrelationResponse> {
-  return request<AuditCorrelationResponse>(`/v1/admin/audit/${correlationId}`, { method: "GET" }, token);
+  return request<AuditCorrelationResponse>(`/audit/${correlationId}`, { method: "GET" }, token);
 }

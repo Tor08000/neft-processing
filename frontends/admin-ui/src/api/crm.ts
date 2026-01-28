@@ -1,7 +1,7 @@
 import { request } from "./http";
 import type { CrmClient, CrmContract, CrmListResponse, CrmProfile, CrmSubscription, CrmTariff } from "../types/crm";
 
-const CRM_BASE = "/v1/admin/crm";
+const CRM_BASE = "/crm";
 
 function buildQuery(params?: Record<string, string | number | undefined | null>): string {
   if (!params) return "";

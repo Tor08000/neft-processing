@@ -71,9 +71,7 @@ const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): str
 export const CORE_API_BASE = buildBase(import.meta.env.VITE_CORE_API_BASE, "api/core");
 export const AUTH_API_BASE = buildBase(import.meta.env.VITE_AUTH_API_BASE, "api/v1/auth");
 export const AI_API_BASE = buildBase(import.meta.env.VITE_AI_API_BASE, "api/ai");
-export const ADMIN_API_BASE = import.meta.env.VITE_ADMIN_API_BASE?.trim()
-  ? normalizeApiBase(import.meta.env.VITE_ADMIN_API_BASE)
-  : joinUrl(CORE_API_BASE, "v1/admin");
+export const ADMIN_API_BASE = "/api/core/v1/admin";
 export const ADMIN_BASE_URL = (import.meta.env.BASE_URL ?? "/admin/").replace(/\/+$/, "") || "/";
 export const API_BASE_URL = API_BASE;
 

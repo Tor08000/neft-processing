@@ -52,7 +52,7 @@ describe("api client caching and auth", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/core/v1/admin/operations"),
+      expect.stringContaining("/operations"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer initial-token" }),
       }),
@@ -68,7 +68,7 @@ describe("api client caching and auth", () => {
     });
 
     expect(fetchMock).toHaveBeenLastCalledWith(
-      expect.stringContaining("/api/core/v1/admin/operations"),
+      expect.stringContaining("/operations"),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer new-token" }),
       }),

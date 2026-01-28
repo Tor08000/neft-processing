@@ -32,13 +32,13 @@ export interface StatementResponse {
 }
 
 export function fetchAccounts(params?: { client_id?: string; status?: string; limit?: number; offset?: number }) {
-  return apiGet<AccountsPage>("/api/core/v1/admin/accounts", params);
+  return apiGet<AccountsPage>("/accounts", params);
 }
 
 export function fetchClientBalances(clientId: string) {
-  return apiGet<AccountBalance[]>(`/api/core/v1/admin/clients/${clientId}/balances`);
+  return apiGet<AccountBalance[]>(`/clients/${clientId}/balances`);
 }
 
 export function fetchAccountStatement(accountId: number, params?: { start_date?: string; end_date?: string }) {
-  return apiGet<StatementResponse>(`/api/core/v1/admin/accounts/${accountId}/statement`, params);
+  return apiGet<StatementResponse>(`/accounts/${accountId}/statement`, params);
 }

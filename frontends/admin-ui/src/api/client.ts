@@ -32,10 +32,12 @@ function redirectToLogin() {
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
   const fallbackBase = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const trimmedPath = path.trim();
+  const isAbsoluteApiPath = /^https?:\/\//i.test(trimmedPath) || trimmedPath.startsWith("/api/");
   const base = ADMIN_API_BASE || fallbackBase;
-  const normalizedPath = normalizeAdminPath(path);
+  const normalizedPath = normalizeAdminPath(trimmedPath);
   const joined = normalizedPath ? joinUrl(base, normalizedPath) : base;
-  const url = new URL(joined, fallbackBase);
+  const url = isAbsoluteApiPath ? new URL(trimmedPath, fallbackBase) : new URL(joined, fallbackBase);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {

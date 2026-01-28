@@ -6,8 +6,8 @@ import type {
   ErpStubExportType,
 } from "../types/stubs";
 
-const BANK_STUB_BASE = "/api/core/v1/admin/bank_stub";
-const ERP_STUB_BASE = "/api/core/v1/admin/erp_stub";
+const BANK_STUB_BASE = "/bank_stub";
+const ERP_STUB_BASE = "/erp_stub";
 
 export async function createBankStubPayment(payload: {
   invoice_id: string;

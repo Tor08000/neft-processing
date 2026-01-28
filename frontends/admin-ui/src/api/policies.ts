@@ -76,11 +76,11 @@ export async function listPolicies(
   if (params.limit) query.set("limit", String(params.limit));
   if (params.offset) query.set("offset", String(params.offset));
   const suffix = query.toString();
-  return request<PolicyIndexResponse>(`/v1/admin/policies${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
+  return request<PolicyIndexResponse>(`/policies${suffix ? `?${suffix}` : ""}`, { method: "GET" }, { token });
 }
 
 export async function fetchPolicyDetail(token: string, type: PolicyType, id: string): Promise<PolicyDetailResponse> {
-  return request<PolicyDetailResponse>(`/v1/admin/policies/${type}/${id}`, { method: "GET" }, { token });
+  return request<PolicyDetailResponse>(`/policies/${type}/${id}`, { method: "GET" }, { token });
 }
 
 export async function fetchPolicyExecutions(
@@ -88,13 +88,13 @@ export async function fetchPolicyExecutions(
   type: PolicyType,
   id: string,
 ): Promise<PolicyExecutionResponse> {
-  return request<PolicyExecutionResponse>(`/v1/admin/policies/${type}/${id}/executions`, { method: "GET" }, { token });
+  return request<PolicyExecutionResponse>(`/policies/${type}/${id}/executions`, { method: "GET" }, { token });
 }
 
 export async function enablePolicy(token: string, type: PolicyType, id: string): Promise<PolicyHeader> {
-  return request<PolicyHeader>(`/v1/admin/policies/${type}/${id}/enable`, { method: "POST" }, { token });
+  return request<PolicyHeader>(`/policies/${type}/${id}/enable`, { method: "POST" }, { token });
 }
 
 export async function disablePolicy(token: string, type: PolicyType, id: string): Promise<PolicyHeader> {
-  return request<PolicyHeader>(`/v1/admin/policies/${type}/${id}/disable`, { method: "POST" }, { token });
+  return request<PolicyHeader>(`/policies/${type}/${id}/disable`, { method: "POST" }, { token });
 }

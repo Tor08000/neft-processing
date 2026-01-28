@@ -10,7 +10,7 @@ import type {
 } from "../types/commercial";
 
 export async function getCommercialState(token: string, orgId: number): Promise<CommercialOrgState> {
-  return request<CommercialOrgState>(`/v1/admin/commercial/orgs/${orgId}`, { method: "GET" }, token);
+  return request<CommercialOrgState>(`/commercial/orgs/${orgId}`, { method: "GET" }, token);
 }
 
 export async function getCommercialEntitlements(
@@ -18,7 +18,7 @@ export async function getCommercialEntitlements(
   orgId: number,
 ): Promise<CommercialEntitlementsSnapshotsResponse> {
   return request<CommercialEntitlementsSnapshotsResponse>(
-    `/v1/admin/commercial/orgs/${orgId}/entitlements`,
+    `/commercial/orgs/${orgId}/entitlements`,
     { method: "GET" },
     token,
   );
@@ -30,7 +30,7 @@ export async function changeCommercialPlan(
   payload: CommercialPlanChangePayload,
 ): Promise<CommercialOrgState> {
   return request<CommercialOrgState>(
-    `/v1/admin/commercial/orgs/${orgId}/plan`,
+    `/commercial/orgs/${orgId}/plan`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
@@ -42,7 +42,7 @@ export async function enableCommercialAddon(
   payload: CommercialAddonEnablePayload,
 ): Promise<CommercialOrgState> {
   return request<CommercialOrgState>(
-    `/v1/admin/commercial/orgs/${orgId}/addons/enable`,
+    `/commercial/orgs/${orgId}/addons/enable`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
@@ -54,7 +54,7 @@ export async function disableCommercialAddon(
   payload: CommercialAddonDisablePayload,
 ): Promise<CommercialOrgState> {
   return request<CommercialOrgState>(
-    `/v1/admin/commercial/orgs/${orgId}/addons/disable`,
+    `/commercial/orgs/${orgId}/addons/disable`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
@@ -66,7 +66,7 @@ export async function upsertCommercialOverride(
   payload: CommercialOverrideUpsertPayload,
 ): Promise<CommercialOrgState> {
   return request<CommercialOrgState>(
-    `/v1/admin/commercial/orgs/${orgId}/overrides`,
+    `/commercial/orgs/${orgId}/overrides`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );
@@ -80,7 +80,7 @@ export async function removeCommercialOverride(
 ): Promise<CommercialOrgState> {
   const query = new URLSearchParams({ reason });
   return request<CommercialOrgState>(
-    `/v1/admin/commercial/orgs/${orgId}/overrides/${encodeURIComponent(featureKey)}?${query.toString()}`,
+    `/commercial/orgs/${orgId}/overrides/${encodeURIComponent(featureKey)}?${query.toString()}`,
     { method: "DELETE" },
     token,
   );
@@ -92,7 +92,7 @@ export async function recomputeCommercialEntitlements(
   payload: CommercialRecomputePayload,
 ): Promise<{ hash: string; computed_at: string; version: number }> {
   return request<{ hash: string; computed_at: string; version: number }>(
-    `/v1/admin/commercial/orgs/${orgId}/entitlements/recompute`,
+    `/commercial/orgs/${orgId}/entitlements/recompute`,
     { method: "POST", body: JSON.stringify(payload) },
     token,
   );

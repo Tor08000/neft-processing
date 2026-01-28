@@ -27,30 +27,30 @@ export async function fetchBillingSummary(params: {
   merchant_id?: string;
   product_type?: string;
 }): Promise<BillingSummaryItem[]> {
-  return apiGet("/api/core/v1/admin/billing/summary", params);
+  return apiGet("/billing/summary", params);
 }
 
 export async function finalizeBillingSummary(id: string): Promise<BillingSummaryItem> {
-  return apiPost(`/api/core/v1/admin/billing/summary/${id}/finalize`);
+  return apiPost(`/billing/summary/${id}/finalize`);
 }
 
 export async function fetchTariffs(params?: { limit?: number; offset?: number }) {
   return apiGet<{ items: TariffPlan[]; total: number; limit: number; offset: number }>(
-    "/api/core/v1/admin/billing/tariffs",
+    "/billing/tariffs",
     params,
   );
 }
 
 export async function fetchTariff(tariffId: string): Promise<TariffPlan> {
-  return apiGet(`/api/core/v1/admin/billing/tariffs/${tariffId}`);
+  return apiGet(`/billing/tariffs/${tariffId}`);
 }
 
 export async function fetchTariffPrices(tariffId: string): Promise<{ items: TariffPrice[] }> {
-  return apiGet(`/api/core/v1/admin/billing/tariffs/${tariffId}/prices`);
+  return apiGet(`/billing/tariffs/${tariffId}/prices`);
 }
 
 export async function upsertTariffPrice(tariffId: string, payload: Partial<TariffPrice>) {
-  return apiPost<TariffPrice>(`/api/core/v1/admin/billing/tariffs/${tariffId}/prices`, payload);
+  return apiPost<TariffPrice>(`/billing/tariffs/${tariffId}/prices`, payload);
 }
 
 export async function fetchInvoices(params?: {
@@ -60,26 +60,26 @@ export async function fetchInvoices(params?: {
   status?: InvoiceStatus;
 }) {
   return apiGet<{ items: Invoice[]; total: number; limit: number; offset: number }>(
-    "/api/core/v1/admin/billing/invoices",
+    "/billing/invoices",
     params,
   );
 }
 
 export async function fetchInvoice(invoiceId: string): Promise<Invoice> {
-  return apiGet(`/api/core/v1/admin/billing/invoices/${invoiceId}`);
+  return apiGet(`/billing/invoices/${invoiceId}`);
 }
 
 export async function generateInvoices(payload: { period_from: string; period_to: string }) {
-  return apiPost<{ created_ids: string[] }>("/api/core/v1/admin/billing/invoices/generate", payload);
+  return apiPost<{ created_ids: string[] }>("/billing/invoices/generate", payload);
 }
 
 export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStatus) {
-  return apiPost<Invoice>(`/api/core/v1/admin/billing/invoices/${invoiceId}/status`, { status });
+  return apiPost<Invoice>(`/billing/invoices/${invoiceId}/status`, { status });
 }
 
-const BILLING_FLOW_BASE = "/v1/admin/billing/flows";
-const RECONCILIATION_LINKS_BASE = "/v1/admin/reconciliation/links";
-const BILLING_PAYMENT_INTAKES_BASE = "/api/core/v1/admin/billing/payment-intakes";
+const BILLING_FLOW_BASE = "/billing/flows";
+const RECONCILIATION_LINKS_BASE = "/reconciliation/links";
+const BILLING_PAYMENT_INTAKES_BASE = "/billing/payment-intakes";
 
 const isNotAvailableMessage = (message?: string) => Boolean(message && /HTTP (404|501)\b/.test(message));
 
