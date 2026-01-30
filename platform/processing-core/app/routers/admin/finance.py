@@ -88,6 +88,13 @@ def _get_column(table: Table, name: str):
     return table.c[name] if name in table.c else None
 
 
+def _first_column(*columns):
+    for column in columns:
+        if column is not None:
+            return column
+    return None
+
+
 def _correlation_id(request: Request | None) -> str | None:
     if not request:
         return None

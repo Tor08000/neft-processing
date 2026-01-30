@@ -196,18 +196,6 @@ export function OnboardingPage() {
       setError("Заполните обязательные поля");
       return;
     }
-    if (clientType === "LEGAL" && !kpp) {
-      setError("КПП обязателен для юридических лиц");
-      return;
-    }
-    if (clientType === "LEGAL" && !ogrn) {
-      setError("ОГРН обязателен для юридических лиц");
-      return;
-    }
-    if (clientType === "IP" && !ogrnip) {
-      setError("ОГРНИП обязателен для ИП");
-      return;
-    }
     setIsLoading(true);
     try {
       await createOrg(user, {
