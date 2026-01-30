@@ -138,6 +138,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
             setError("API маршрут админ-портала не настроен");
             return;
           }
+          if (err.status === 404) {
+            setError("Маршрут портала недоступен");
+            return;
+          }
+          if (err.status === 502 || err.status === 503 || err.status === 504) {
+            setError("Сервис временно недоступен");
+            return;
+          }
+          if (err.status >= 500) {
+            setError("Техническая ошибка");
+            return;
+          }
         }
         if (err instanceof HtmlResponseError) {
           console.error("Gateway returned HTML during login", {
@@ -149,16 +161,30 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           setError("Gateway returned HTML (wrong endpoint or SPA fallback)");
           return;
         }
-        if (err instanceof ApiError && err.status >= 500) {
-          setError("Сервис временно недоступен");
-          return;
+        if (err instanceof ApiError) {
+          if (err.status === 404 && import.meta.env.DEV) {
+            setError("API маршрут админ-портала не настроен");
+            return;
+          }
+          if (err.status === 404) {
+            setError("Маршрут портала недоступен");
+            return;
+          }
+          if (err.status === 502 || err.status === 503 || err.status === 504) {
+            setError("Сервис временно недоступен");
+            return;
+          }
+          if (err.status >= 500) {
+            setError("Техническая ошибка");
+            return;
+          }
         }
         if (err instanceof TypeError) {
           setError("Сервис временно недоступен");
           return;
         }
         console.error("Ошибка авторизации", err);
-        setError("Сервис временно недоступен");
+        setError("Техническая ошибка");
       }
     },
     [logout, persist],

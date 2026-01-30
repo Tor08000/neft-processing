@@ -192,20 +192,8 @@ export function OnboardingPage() {
     event.preventDefault();
     setError(null);
     if (!user) return;
-    if (!companyName || !inn || !legalAddress || !contactName || !contactPhone || !contactEmail) {
+    if (!companyName || !inn) {
       setError("Заполните обязательные поля");
-      return;
-    }
-    if (clientType === "LEGAL" && !kpp) {
-      setError("КПП обязателен для юридических лиц");
-      return;
-    }
-    if (clientType === "LEGAL" && !ogrn) {
-      setError("ОГРН обязателен для юридических лиц");
-      return;
-    }
-    if (clientType === "IP" && !ogrnip) {
-      setError("ОГРНИП обязателен для ИП");
       return;
     }
     setIsLoading(true);

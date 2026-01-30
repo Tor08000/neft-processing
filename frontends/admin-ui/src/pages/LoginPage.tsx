@@ -31,8 +31,9 @@ export const LoginPage: React.FC = () => {
       await login(email, password);
     } catch (err) {
       console.error("Ошибка входа", err);
-      setLocalError("Сервис временно недоступен");
-      showToast("error", "Сервис временно недоступен");
+      const message = err instanceof TypeError ? "Сервис временно недоступен" : "Техническая ошибка";
+      setLocalError(message);
+      showToast("error", message);
     } finally {
       setSubmitting(false);
     }

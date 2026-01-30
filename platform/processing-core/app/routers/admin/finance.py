@@ -88,6 +88,13 @@ def _get_column(table: Table, name: str):
     return table.c[name] if name in table.c else None
 
 
+def _first_column(*columns):
+    for column in columns:
+        if column is not None:
+            return column
+    return None
+
+
 def _correlation_id(request: Request | None) -> str | None:
     if not request:
         return None
@@ -301,14 +308,15 @@ def finance_overview(
 
     if _tables_ready(db, ["billing_invoices"]):
         invoices = _table(db, "billing_invoices")
-        org_col = _get_column(invoices, "org_id") or _get_column(invoices, "client_id")
+        org_col = _first_column(_get_column(invoices, "org_id"), _get_column(invoices, "client_id"))
         status_col = _get_column(invoices, "status")
         due_col = _get_column(invoices, "due_at")
-        issued_col = _get_column(invoices, "issued_at") or _get_column(invoices, "created_at")
+        issued_col = _first_column(_get_column(invoices, "issued_at"), _get_column(invoices, "created_at"))
         paid_col = _get_column(invoices, "paid_at")
-        amount_col = _get_column(invoices, "amount_due") or _get_column(invoices, "amount_total") or _get_column(
-            invoices,
-            "total_amount",
+        amount_col = _first_column(
+            _get_column(invoices, "amount_due"),
+            _get_column(invoices, "amount_total"),
+            _get_column(invoices, "total_amount"),
         )
 
         if org_col is not None and status_col is not None:
@@ -400,10 +408,10 @@ def list_invoices(
     invoices = _table(db, "billing_invoices")
     query = select(invoices)
     status_col = _get_column(invoices, "status")
-    org_col = _get_column(invoices, "org_id") or _get_column(invoices, "client_id")
+    org_col = _first_column(_get_column(invoices, "org_id"), _get_column(invoices, "client_id"))
     period_start_col = _get_column(invoices, "period_start")
     period_end_col = _get_column(invoices, "period_end")
-    issued_col = _get_column(invoices, "issued_at") or _get_column(invoices, "created_at")
+    issued_col = _first_column(_get_column(invoices, "issued_at"), _get_column(invoices, "created_at"))
 
     if status and status_col is not None:
         query = query.where(status_col == status)
@@ -419,7 +427,11 @@ def list_invoices(
         query = query.where(issued_col <= datetime.combine(date_to, datetime.max.time()))
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar() or 0
-    order_col = _get_column(invoices, "created_at") or _get_column(invoices, "issued_at") or invoices.c.id
+    order_col = _first_column(
+        _get_column(invoices, "created_at"),
+        _get_column(invoices, "issued_at"),
+        invoices.c.id,
+    )
     rows = db.execute(query.order_by(order_col.desc()).offset(offset).limit(limit)).mappings().all()
     items = [_serialize_invoice(dict(row)) for row in rows]
     return AdminInvoiceListResponse(items=items, total=total, limit=limit, offset=offset)

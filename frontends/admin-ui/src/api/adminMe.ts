@@ -36,7 +36,11 @@ const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
 const buildPermissions = (roles: string[]) => {
   const roleSet = new Set(roles.map((role) => role.toUpperCase()));
   const superadminEnabled =
-    roleSet.has("NEFT_SUPERADMIN") || roleSet.has("NEFT_ADMIN") || roleSet.has("ADMIN") || roleSet.has("SUPERADMIN");
+    roleSet.has("NEFT_SUPERADMIN") ||
+    roleSet.has("NEFT_ADMIN") ||
+    roleSet.has("ADMIN") ||
+    roleSet.has("SUPERADMIN") ||
+    roleSet.has("PLATFORM_ADMIN");
   const supportEnabled = roleSet.has("NEFT_SUPPORT") || roleSet.has("SUPPORT");
   const ops = { read: roleSet.has("NEFT_OPS") || supportEnabled, write: false };
   const finance = { read: roleSet.has("NEFT_FINANCE") || supportEnabled, write: roleSet.has("NEFT_FINANCE") };

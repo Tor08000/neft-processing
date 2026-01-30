@@ -27,6 +27,7 @@ from app.routers.admin import (
     integrations,
     logistics,
     legal_graph,
+    legal_partners,
     limits,
     ledger,
     merchants,
@@ -107,6 +108,7 @@ router.include_router(decision_memory.router)
 router.include_router(cases.router)
 router.include_router(legal_integrations.router)
 router.include_router(legal_graph.router)
+router.include_router(legal_partners.router)
 router.include_router(crm.router)
 router.include_router(fraud.router)
 router.include_router(money_flow.router)
