@@ -3,12 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.admin import require_admin_user
 from app.db import get_db
 from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.legal_document import LegalDocument, LegalDocumentStatus
+from app.models.partner import Partner
+from app.models.partner_legal import PartnerLegalProfile, PartnerLegalStatus
+from app.schemas.admin.legal_partners import (
+    LegalPartnerDetail,
+    LegalPartnerListResponse,
+    LegalPartnerStatusUpdate,
+    LegalPartnerSummary,
+)
 from app.schemas.legal import (
     LegalAcceptanceListResponse,
     LegalAcceptanceResponse,
@@ -19,12 +28,13 @@ from app.schemas.legal import (
 )
 from app.services.audit_service import request_context_from_request
 from app.services.legal import LegalService
+from app.services.partner_legal_service import PartnerLegalError, PartnerLegalService
 
 
 router = APIRouter(prefix="/legal", tags=["admin-legal"])
 
 
-_ALLOWED_LEGAL_ROLES = {"SUPERADMIN", "PLATFORM_ADMIN", "LEGAL_ADMIN"}
+_ALLOWED_LEGAL_ROLES = {"SUPERADMIN", "PLATFORM_ADMIN", "LEGAL_ADMIN", "ADMIN"}
 
 
 def _ensure_legal_admin(token: dict) -> None:
@@ -144,6 +154,136 @@ def list_acceptances(
         query = query.filter(LegalAcceptance.accepted_at <= date_to)
     acceptances = query.order_by(LegalAcceptance.accepted_at.desc()).all()
     return LegalAcceptanceListResponse(items=[_acceptance_response(item) for item in acceptances])
+
+
+@router.get("/partners", response_model=LegalPartnerListResponse)
+def list_legal_partners(
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> LegalPartnerListResponse:
+    _ensure_legal_admin(token)
+    query = db.query(Partner, PartnerLegalProfile).outerjoin(
+        PartnerLegalProfile, PartnerLegalProfile.partner_id == Partner.id
+    )
+    if status:
+        try:
+            status_enum = PartnerLegalStatus(status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid_status") from exc
+        query = query.filter(PartnerLegalProfile.legal_status == status_enum)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(Partner.id.ilike(like), Partner.name.ilike(like)))
+    total = query.count()
+    rows = query.order_by(Partner.created_at.desc()).offset(offset).limit(limit).all()
+    items: list[LegalPartnerSummary] = []
+    for partner, profile in rows:
+        legal_status = None
+        updated_at = partner.created_at
+        payout_blocked = None
+        if profile:
+            legal_status = profile.legal_status.value if hasattr(profile.legal_status, "value") else str(profile.legal_status)
+            updated_at = profile.updated_at or updated_at
+            payout_blocked = legal_status != PartnerLegalStatus.VERIFIED.value
+        items.append(
+            LegalPartnerSummary(
+                partner_id=str(partner.id),
+                partner_name=partner.name,
+                legal_status=legal_status,
+                payout_blocked=payout_blocked,
+                updated_at=updated_at,
+            )
+        )
+    return LegalPartnerListResponse(items=items, total=total, limit=limit, offset=offset, cursor=None)
+
+
+@router.get("/partners/{partner_id}", response_model=LegalPartnerDetail)
+def get_legal_partner(
+    partner_id: str,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> LegalPartnerDetail:
+    _ensure_legal_admin(token)
+    partner = db.query(Partner).filter(Partner.id == partner_id).one_or_none()
+    if not partner:
+        raise HTTPException(status_code=404, detail="partner_not_found")
+    service = PartnerLegalService(db, request_ctx=request_context_from_request(None, token=token))
+    profile = service.get_profile(partner_id=partner_id)
+    details = service.get_details(partner_id=partner_id)
+    tax_context = service.build_tax_context(profile=profile)
+    legal_status = profile.legal_status.value if profile and hasattr(profile.legal_status, "value") else (
+        str(profile.legal_status) if profile else None
+    )
+    payout_blocks: list[str] = []
+    if legal_status and legal_status != PartnerLegalStatus.VERIFIED.value:
+        payout_blocks.append("legal_status_not_verified")
+    profile_payload = None
+    if profile or details:
+        profile_payload = {
+            "legal_type": profile.legal_type.value if profile and hasattr(profile.legal_type, "value") else None,
+            "country": profile.country if profile else None,
+            "tax_residency": profile.tax_residency if profile else None,
+            "tax_regime": profile.tax_regime.value if profile and profile.tax_regime else None,
+            "vat_applicable": bool(profile.vat_applicable) if profile else None,
+            "vat_rate": float(profile.vat_rate) if profile and profile.vat_rate is not None else None,
+            "legal_status": legal_status,
+            "details": {
+                "legal_name": details.legal_name,
+                "inn": details.inn,
+                "kpp": details.kpp,
+                "ogrn": details.ogrn,
+                "passport": details.passport,
+                "bank_account": details.bank_account,
+                "bank_bic": details.bank_bic,
+                "bank_name": details.bank_name,
+                "created_at": details.created_at,
+                "updated_at": details.updated_at,
+            }
+            if details
+            else None,
+            "tax_context": tax_context.to_dict() if tax_context else None,
+            "created_at": profile.created_at if profile else None,
+            "updated_at": profile.updated_at if profile else None,
+        }
+    return LegalPartnerDetail(
+        partner_id=str(partner.id),
+        partner_name=partner.name,
+        legal_status=legal_status,
+        payout_blocks=payout_blocks,
+        documents=[],
+        profile=profile_payload,
+        raw=None,
+    )
+
+
+@router.post("/partners/{partner_id}/status", response_model=LegalPartnerDetail)
+def update_legal_partner_status(
+    partner_id: str,
+    payload: LegalPartnerStatusUpdate,
+    request: Request,
+    token: dict = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> LegalPartnerDetail:
+    _ensure_legal_admin(token)
+    service = PartnerLegalService(db, request_ctx=request_context_from_request(request, token=token))
+    try:
+        status_enum = PartnerLegalStatus(payload.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_status") from exc
+    try:
+        service.update_status(
+            partner_id=partner_id,
+            status=status_enum,
+            comment=payload.reason,
+        )
+    except PartnerLegalError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    db.commit()
+    return get_legal_partner(partner_id=partner_id, token=token, db=db)
 
 
 def _document_response(document: LegalDocument) -> LegalDocumentResponse:

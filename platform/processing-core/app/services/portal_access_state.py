@@ -43,19 +43,15 @@ def resolve_access_state(
     if "CLIENT" in upper_roles:
         if onboarding_profile_complete is False:
             return PortalAccessState.NEEDS_ONBOARDING, "profile_missing"
-        normalized_org_status = _normalize_status(org_status)
-        if not normalized_org_status or normalized_org_status != "ACTIVE":
-            if org_status is None:
-                return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
-            if not subscription or not subscription.plan_code:
-                return PortalAccessState.NEEDS_PLAN, "subscription_missing"
-            if not contract_status:
-                return PortalAccessState.NEEDS_CONTRACT, "contract_missing"
-            if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
-                return PortalAccessState.NEEDS_CONTRACT, "contract_not_signed"
-            return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
         if not subscription or not subscription.plan_code:
             return PortalAccessState.NEEDS_PLAN, "subscription_missing"
+        if not contract_status:
+            return PortalAccessState.NEEDS_CONTRACT, "contract_missing"
+        if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
+            return PortalAccessState.NEEDS_CONTRACT, "contract_not_signed"
+        normalized_org_status = _normalize_status(org_status)
+        if not normalized_org_status or normalized_org_status != "ACTIVE":
+            return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
     else:
         normalized_org_status = _normalize_status(org_status)
         if not normalized_org_status or normalized_org_status != "ACTIVE":

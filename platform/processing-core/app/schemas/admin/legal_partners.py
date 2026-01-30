@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class LegalPartnerSummary(BaseModel):
@@ -16,6 +16,8 @@ class LegalPartnerSummary(BaseModel):
 class LegalPartnerListResponse(BaseModel):
     items: list[LegalPartnerSummary]
     total: int
+    limit: int | None = None
+    offset: int | None = None
     cursor: str | None = None
 
 
@@ -39,7 +41,7 @@ class LegalPartnerDetail(BaseModel):
 
 class LegalPartnerStatusUpdate(BaseModel):
     status: str
-    reason: str = Field(..., min_length=1)
+    reason: str
     correlation_id: str | None = None
 
 

@@ -192,7 +192,7 @@ export function OnboardingPage() {
     event.preventDefault();
     setError(null);
     if (!user) return;
-    if (!companyName || !inn) {
+    if (!companyName || !inn || !legalAddress) {
       setError("Заполните обязательные поля");
       return;
     }
@@ -341,19 +341,19 @@ export function OnboardingPage() {
             <div className="onboarding-section">
               <h3>Контактное лицо</h3>
               <label>
-                ФИО
+                ФИО (необязательно)
                 <input className="neft-input" value={contactName} onChange={(e) => setContactName(e.target.value)} />
               </label>
               <label>
-                Должность
+                Должность (необязательно)
                 <input className="neft-input" value={contactRole} onChange={(e) => setContactRole(e.target.value)} />
               </label>
               <label>
-                Телефон
+                Телефон (необязательно)
                 <input className="neft-input" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
               </label>
               <label>
-                Email
+                Email (необязательно)
                 <input className="neft-input" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
               </label>
             </div>

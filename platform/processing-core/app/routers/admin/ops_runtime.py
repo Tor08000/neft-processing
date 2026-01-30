@@ -28,7 +28,7 @@ router = APIRouter(prefix="/ops", tags=["ops-runtime"])
 @router.get("/health", response_model=OpsHealthResponse)
 def ops_health(
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsHealthResponse:
     return build_ops_health()
@@ -38,7 +38,7 @@ def ops_health(
 def ops_summary(
     db: Session = Depends(get_db),
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsSummaryResponse:
     return build_ops_summary(db)
@@ -49,7 +49,7 @@ def ops_blocked_payouts(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsBlockedPayoutsResponse:
     items = list_blocked_payouts(db, limit=limit)
@@ -61,7 +61,7 @@ def ops_failed_exports(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsFailedExportsResponse:
     items = list_failed_exports(db, limit=limit)
@@ -73,7 +73,7 @@ def ops_failed_reconciliation(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsFailedImportsResponse:
     items = list_failed_imports(db, limit=limit)
@@ -85,7 +85,7 @@ def ops_support_breaches(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _token: dict = Depends(
-        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
+        require_any_admin_roles(["NEFT_OPS", "NEFT_SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"])
     ),
 ) -> OpsSupportBreachesResponse:
     items = list_support_breaches(db, limit=limit)
