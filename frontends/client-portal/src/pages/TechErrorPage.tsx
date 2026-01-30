@@ -9,11 +9,11 @@ export function TechErrorPage() {
   return (
     <AppErrorState
       message={
-        <>
+        <div>
           Техническая ошибка. Попробуйте снова позже.
-          {errorId ? <div>Error ID: {errorId}</div> : null}
-          {requestId ? <div>Request ID: {requestId}</div> : null}
-        </>
+          {errorId ? <div>Error ID: {String(errorId)}</div> : null}
+          {requestId ? <div>Request ID: {String(requestId)}</div> : null}
+        </div>
       }
       onRetry={refresh}
     />
