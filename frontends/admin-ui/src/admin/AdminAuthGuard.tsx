@@ -27,7 +27,8 @@ export const AdminAuthGuard: React.FC = () => {
     if (import.meta.env.DEV && status === 404) {
       return <AdminMisconfigPage requestId={error?.request_id ?? undefined} errorId={error?.error ?? undefined} />;
     }
-    const message = status && status >= 500 ? "Service unavailable" : undefined;
+    const isServiceUnavailable = error?.error === "admin_network" || status === 502 || status === 503;
+    const message = isServiceUnavailable ? "Service unavailable" : undefined;
     return (
       <AdminTechErrorPage
         requestId={error?.request_id ?? undefined}

@@ -66,6 +66,8 @@ export const AdminProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             status: err.status,
             request_id: err.requestId ?? err.correlationId,
           });
+        } else if (err instanceof TypeError) {
+          setError({ error: "admin_network", message: "Network error", status: 0 });
         } else {
           setError({ error: "admin_error", message: "Admin bootstrap failed", status: 500 });
         }

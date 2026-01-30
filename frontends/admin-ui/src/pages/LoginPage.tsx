@@ -17,6 +17,7 @@ export const LoginPage: React.FC = () => {
   const { toast, showToast } = useToast();
   const emailRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
+  const showGatewayHint = typeof window !== "undefined" && window.location.port === "4173";
 
   if (accessToken) {
     return <Navigate to="/" replace />;
@@ -61,6 +62,15 @@ export const LoginPage: React.FC = () => {
         </div>
         <h1>NEFT Platform</h1>
         <p className="muted">Войдите под учётными данными администратора платформы.</p>
+        {showGatewayHint ? (
+          <div className="muted small">
+            Откройте админ-портал через{" "}
+            <a className="neft-link" href="http://localhost/admin">
+              http://localhost/admin
+            </a>
+            .
+          </div>
+        ) : null}
         <div className="login-demo muted small">
           <CopyChip label="Demo" value="admin@example.com" onCopy={() => showToast("success", "Скопировано")} />
           <CopyChip label="Demo" value="admin" onCopy={() => showToast("success", "Скопировано")} />
