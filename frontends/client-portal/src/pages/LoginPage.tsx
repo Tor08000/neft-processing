@@ -180,6 +180,13 @@ export function LoginPage() {
         >
           {selfSignupLabel}
         </button>
+        <button
+          type="button"
+          className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
+          disabled
+        >
+          Забыли пароль
+        </button>
       </form>
       <Toast toast={toast} />
     </div>

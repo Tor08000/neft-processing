@@ -75,7 +75,8 @@ for /f "usebackq tokens=*" %%t in (`python -c "import uuid; print(uuid.uuid4())"
 set "SETTLEMENT_BODY={\"partner_id\":\"%ORG_ID%\",\"currency\":\"RUB\",\"period_start\":\"%SETTLE_START%\",\"period_end\":\"%SETTLE_END%\",\"idempotency_key\":\"seed-%SETTLE_KEY%\"}"
 call :http_post "%CORE_ADMIN_SETTLEMENT_URL%/periods/calculate" "%ADMIN_HEADER%" "%SETTLEMENT_BODY%" "200" "%TEMP%\partner_settlement.json" || goto :fail
 
-echo [PASS] partner_email=%PARTNER_EMAIL% partner_org_id=%ORG_ID%
+echo [PASS] partner_org_id=%ORG_ID%
+echo [PASS] partner_email=%PARTNER_EMAIL%
 exit /b 0
 
 :login
