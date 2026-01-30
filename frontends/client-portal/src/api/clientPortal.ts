@@ -49,6 +49,7 @@ export type PortalMeResponse = {
   user_roles: string[];
   roles?: string[] | null;
   memberships?: string[] | null;
+  flags?: Record<string, unknown> | null;
   legal?: {
     required_count: number;
     accepted: boolean;

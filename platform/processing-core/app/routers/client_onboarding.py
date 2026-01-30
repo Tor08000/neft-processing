@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import inspect
@@ -134,11 +134,17 @@ def onboarding_profile(
 
     client_columns = _table_columns(db, "clients")
     if client is None:
+        token_client_id = token.get("client_id")
         client_payload = {
             "id": uuid4(),
             "name": payload.name,
-            "status": "DRAFT",
+            "status": "ONBOARDING",
         }
+        if token_client_id:
+            try:
+                client_payload["id"] = UUID(str(token_client_id))
+            except (TypeError, ValueError):
+                pass
         if "inn" in client_columns:
             client_payload["inn"] = payload.inn
         client = Client(**client_payload)
@@ -149,6 +155,8 @@ def onboarding_profile(
         client.name = payload.name
     if payload.inn is not None and "inn" in client_columns:
         client.inn = payload.inn
+    if client.status and client.status != "ACTIVE":
+        client.status = "ONBOARDING"
 
     profile_data = payload.model_dump()
 

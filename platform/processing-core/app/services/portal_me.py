@@ -198,7 +198,8 @@ def _load_org_fallback(
         if not _table_exists(db, "clients"):
             return None
         try:
-            client = db.get(Client, client_id)
+            client_uuid = UUID(str(client_id))
+            client = db.get(Client, client_uuid)
         except Exception:
             client = None
         if client:
@@ -488,6 +489,14 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
             partner_id=partner_id,
             onboarding_profile=onboarding_profile,
         )
+    if (
+        entitlements_snapshot is not None
+        and isinstance(entitlements_snapshot, dict)
+        and org_payload
+        and org_payload.id
+        and not entitlements_snapshot.get("org_id")
+    ):
+        entitlements_snapshot = {**entitlements_snapshot, "org_id": org_payload.id}
     contract_status = None
     if onboarding and onboarding.contract_id and _table_exists(db, "client_onboarding_contracts"):
         try:
@@ -544,9 +553,9 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     missing_reason = None
     if actor_type == "client":
         if client_id and _is_uuid(client_id) and org_payload is None:
-            missing_reason = "client_missing"
+            missing_reason = "org_not_created"
         elif org_id_int is not None and org_payload is None:
-            missing_reason = "org_missing"
+            missing_reason = "org_not_created"
 
     partner_payload = None
     partner_finance_state = None

@@ -79,6 +79,8 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { ExportsPage } from "./pages/ExportsPage";
 import { ServiceSloPage } from "./pages/ServiceSloPage";
 import { BillingOverduePage } from "./pages/BillingOverduePage";
+import { ServiceUnavailablePage } from "./pages/ServiceUnavailablePage";
+import { TechErrorPage } from "./pages/TechErrorPage";
 
 interface AppProps {
   initialSession?: AuthSession | null;
@@ -91,19 +93,25 @@ function IndexRedirect() {
     const onboardingEnabled = client?.gating?.onboarding_enabled ?? client?.features?.onboarding_enabled ?? true;
     if (onboardingEnabled && client?.access_state) {
       if (client.access_state === "NEEDS_ONBOARDING") {
-        return <Navigate to="/onboarding" replace />;
+        return <Navigate to="/client/onboarding" replace />;
       }
       if (client.access_state === "NEEDS_PLAN") {
-        return <Navigate to="/onboarding/plan" replace />;
+        return <Navigate to="/client/onboarding/plan" replace />;
       }
       if (client.access_state === "NEEDS_CONTRACT") {
-        return <Navigate to="/onboarding/contract" replace />;
+        return <Navigate to="/client/onboarding/contract" replace />;
       }
       if (client.access_state === "OVERDUE") {
-        return <Navigate to="/billing/overdue" replace />;
+        return <Navigate to="/client/billing/overdue" replace />;
+      }
+      if (client.access_state === "SERVICE_UNAVAILABLE") {
+        return <Navigate to="/client/service-unavailable" replace />;
+      }
+      if (client.access_state === "TECH_ERROR") {
+        return <Navigate to="/client/tech-error" replace />;
       }
     }
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/client/dashboard" replace />;
   }
   return <Navigate to="/login" replace />;
 }
@@ -127,8 +135,14 @@ export function App({ initialSession = null }: AppProps) {
             <Route path="/client/signup" element={<SignupPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route element={<ProtectedRoute />}>
+              <Route path="/client/dashboard" element={<Navigate to="/dashboard" replace />} />
               <Route path="/client/connect" element={<Navigate to="/onboarding" replace />} />
               <Route path="/client/onboarding" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/client/onboarding/plan" element={<Navigate to="/onboarding/plan" replace />} />
+              <Route path="/client/onboarding/contract" element={<Navigate to="/onboarding/contract" replace />} />
+              <Route path="/client/billing/overdue" element={<Navigate to="/billing/overdue" replace />} />
+              <Route path="/client/service-unavailable" element={<ServiceUnavailablePage />} />
+              <Route path="/client/tech-error" element={<TechErrorPage />} />
               <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/onboarding/plan" element={<OnboardingPage />} />
               <Route path="/onboarding/contract" element={<OnboardingPage />} />

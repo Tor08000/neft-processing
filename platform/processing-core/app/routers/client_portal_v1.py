@@ -3751,6 +3751,27 @@ def get_contract(
     )
 
 
+@router.get("/contracts/{contract_id}/download")
+def download_contract(
+    contract_id: str,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    contract = (
+        db.query(ClientOnboardingContract)
+        .filter(ClientOnboardingContract.id == contract_id, ClientOnboardingContract.client_id == str(client.id))
+        .one_or_none()
+    )
+    if not contract:
+        raise HTTPException(status_code=404, detail="contract_not_found")
+    payload = _load_contract_pdf(str(client.id), str(contract.id))
+    headers = {"Content-Disposition": f'attachment; filename="contract-{contract.id}.pdf"'}
+    return Response(content=payload, media_type="application/pdf", headers=headers)
+
+
 @router.post("/contracts/generate", response_model=ContractInfo)
 def generate_contract(
     token: dict = Depends(client_auth.require_onboarding_user),
@@ -6472,6 +6493,15 @@ def select_subscription(
 
 @router.post("/subscription", response_model=ClientSubscriptionOut)
 def select_subscription_alias(
+    payload: ClientSubscriptionSelectRequest,
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientSubscriptionOut:
+    return select_subscription(payload=payload, token=token, db=db)
+
+
+@router.post("/subscription/plan", response_model=ClientSubscriptionOut)
+def select_subscription_plan_alias(
     payload: ClientSubscriptionSelectRequest,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),

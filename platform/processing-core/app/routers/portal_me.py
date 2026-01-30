@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.security.rbac.principal import Principal, get_principal
@@ -19,12 +21,17 @@ logger = logging.getLogger(__name__)
 def get_portal_me(
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
+    request: Request = None,
 ) -> PortalMeResponse:
     try:
         return build_portal_me(db, token=principal.raw_claims)
     except Exception:
         logger.exception("portal_me_failed", extra={"actor": principal.raw_claims.get("sub")})
         token = principal.raw_claims or {}
+        request_id = None
+        if request is not None:
+            request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
+        error_id = uuid4().hex
         return PortalMeResponse(
             actor_type="client",
             context="client",
@@ -41,7 +48,12 @@ def get_portal_me(
             roles=[],
             memberships=[],
             scopes=None,
-            flags={"portal_me_failed": False},
+            flags={
+                "portal_me_failed": True,
+                "error_id": error_id,
+                "request_id": request_id,
+                "reason_code": "portal_me_failed",
+            },
             legal=None,
             features=PortalMeFeatures(onboarding_enabled=True, legal_gate_enabled=True),
             gating=PortalMeGating(onboarding_enabled=True, legal_gate_enabled=True),
@@ -60,6 +72,6 @@ def get_portal_me(
             nav_sections=None,
             partner=None,
             access_state=PortalAccessState.TECH_ERROR,
-            access_reason="tech_error",
+            access_reason="portal_me_failed",
             billing=None,
         )

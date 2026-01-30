@@ -13,7 +13,7 @@ export function LoginPage() {
   const { client, portalState, refresh } = useClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/vehicles", [searchParams]);
+  const returnUrl = useMemo(() => searchParams.get("returnUrl") || "/client/dashboard", [searchParams]);
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,13 +27,17 @@ export function LoginPage() {
   const redirectTarget = useMemo(() => {
     switch (accessState) {
       case "NEEDS_ONBOARDING":
-        return "/onboarding";
+        return "/client/onboarding";
       case "NEEDS_PLAN":
-        return "/onboarding/plan";
+        return "/client/onboarding/plan";
       case "NEEDS_CONTRACT":
-        return "/onboarding/contract";
+        return "/client/onboarding/contract";
       case "OVERDUE":
-        return "/billing/overdue";
+        return "/client/billing/overdue";
+      case "SERVICE_UNAVAILABLE":
+        return "/client/service-unavailable";
+      case "TECH_ERROR":
+        return "/client/tech-error";
       case "ACTIVE":
         return returnUrl;
       default:
