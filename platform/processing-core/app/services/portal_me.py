@@ -87,10 +87,19 @@ def _is_uuid(value: str | None) -> bool:
 
 
 def _resolve_actor_type(token: dict, org_roles: list[str]) -> str:
-    if token.get("client_id") or token.get("subject_type") == "client_user" or "CLIENT" in org_roles:
+    normalized_org_roles = {str(role).upper() for role in org_roles if role}
+    token_roles = {str(role).upper() for role in _normalize_roles(token)}
+
+    if token.get("client_id") or token.get("subject_type") == "client_user" or "CLIENT" in normalized_org_roles:
         return "client"
-    if token.get("partner_id") or "PARTNER" in org_roles:
+    if token.get("partner_id") or "PARTNER" in normalized_org_roles:
         return "partner"
+
+    if any(role.startswith("CLIENT") for role in token_roles):
+        return "client"
+    if any(role.startswith("PARTNER") for role in token_roles):
+        return "partner"
+
     return "admin"
 
 

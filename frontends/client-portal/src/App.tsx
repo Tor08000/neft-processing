@@ -123,6 +123,7 @@ export function App({ initialSession = null }: AppProps) {
         <LegalGateProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/client/login" element={<LoginPage />} />
             <Route path="/client/signup" element={<SignupPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
             <Route element={<ProtectedRoute />}>

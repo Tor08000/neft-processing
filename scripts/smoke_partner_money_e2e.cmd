@@ -18,8 +18,7 @@ if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
-call "%~dp0seed_partner_money_e2e.cmd" >nul 2>nul
-if errorlevel 1 goto :fail
+call "%~dp0seed_partner_money_e2e.cmd" || goto :fail
 
 set "PARTNER_LOGIN_FILE=%TEMP%\partner_login.json"
 set "PARTNER_TOKEN_FILE=%TEMP%\partner_token.txt"
