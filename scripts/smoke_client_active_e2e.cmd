@@ -89,7 +89,7 @@ set "REQUIRE_ORG=%~2"
 call :http_get "portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "200" "%TMP_DIR%\client_active_portal_me.json" || exit /b 1
 python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); state=data.get('access_state'); expected=r'%EXPECTED_STATE%'; print(f'[portal/me] access_state={state} expected={expected}'); raise SystemExit(0 if state==expected else 1)" || exit /b 1
 if /I "%REQUIRE_ORG%"=="require_org" (
-  python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); flags=data.get('flags') or {}; failed=flags.get('portal_me_failed'); org=data.get('org'); org_status=data.get('org_status'); entitlements=data.get('entitlements_snapshot'); reason=data.get('access_reason'); print(f'[portal/me] portal_me_failed={failed} org_status={org_status} access_reason={reason}'); assert failed is not True; assert org is not None; assert org_status; assert entitlements is not None; assert reason not in ('portal_me_failed', 'profile_missing')" || exit /b 1
+  python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); flags=data.get('flags') or {}; failed=flags.get('portal_me_failed'); org=data.get('org'); org_status=data.get('org_status'); entitlements=data.get('entitlements_snapshot') or {}; entitlements_org_id=entitlements.get('org_id'); reason=data.get('access_reason'); print(f'[portal/me] portal_me_failed={failed} org_status={org_status} access_reason={reason} entitlements_org_id={entitlements_org_id}'); assert failed is not True; assert org is not None; assert org_status; assert entitlements_org_id; assert reason not in ('portal_me_failed', 'profile_missing', 'org_not_active')" || exit /b 1
 )
 echo [PASS] portal/me %EXPECTED_STATE%
 exit /b 0
@@ -101,6 +101,10 @@ set "EXPECTED=%~3"
 set "OUT_FILE=%~4"
 set "STATUS_FILE=%TMP_DIR%\client_active_status_%RANDOM%.txt"
 curl -sS -o "%OUT_FILE%" -w "%%{http_code}" -H "Authorization: Bearer %CLIENT_TOKEN%" "%URL%" > "%STATUS_FILE%"
+for %%F in ("%OUT_FILE%") do if %%~zF==0 (
+  echo [FAIL] %LABEL% empty response
+  exit /b 1
+)
 set /p STATUS=<"%STATUS_FILE%"
 if not "%STATUS%"=="%EXPECTED%" (
   echo [FAIL] %LABEL% HTTP %STATUS%
@@ -117,10 +121,20 @@ set "PAYLOAD=%~3"
 set "EXPECTED=%~4"
 set "OUT_FILE=%~5"
 set "STATUS_FILE=%TMP_DIR%\client_active_status_%RANDOM%.txt"
+set "PAYLOAD_FILE=%TMP_DIR%\client_active_payload_%RANDOM%.json"
+> "%PAYLOAD_FILE%" echo %PAYLOAD%
+for %%F in ("%PAYLOAD_FILE%") do if %%~zF==0 (
+  echo [FAIL] %LABEL% empty request payload
+  exit /b 1
+)
 if "%CLIENT_TOKEN%"=="" (
-  curl -sS -o "%OUT_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -X POST "%URL%" -d "%PAYLOAD%" > "%STATUS_FILE%"
+  curl -sS -o "%OUT_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -X POST "%URL%" -d @"%PAYLOAD_FILE%" > "%STATUS_FILE%"
 ) else (
-  curl -sS -o "%OUT_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -H "Authorization: Bearer %CLIENT_TOKEN%" -X POST "%URL%" -d "%PAYLOAD%" > "%STATUS_FILE%"
+  curl -sS -o "%OUT_FILE%" -w "%%{http_code}" -H "Content-Type: application/json" -H "Authorization: Bearer %CLIENT_TOKEN%" -X POST "%URL%" -d @"%PAYLOAD_FILE%" > "%STATUS_FILE%"
+)
+for %%F in ("%OUT_FILE%") do if %%~zF==0 (
+  echo [FAIL] %LABEL% empty response
+  exit /b 1
 )
 set /p STATUS=<"%STATUS_FILE%"
 if not "%STATUS%"=="%EXPECTED%" (

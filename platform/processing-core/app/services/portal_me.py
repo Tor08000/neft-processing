@@ -238,6 +238,7 @@ def _map_client_to_portal_org(
     client: Client,
     onboarding_profile: dict[str, Any] | None,
     onboarding_org_type: str | None,
+    onboarding_status: str | None,
 ) -> PortalMeOrg:
     profile = onboarding_profile or {}
     org_type = profile.get("org_type") or onboarding_org_type
@@ -249,6 +250,9 @@ def _map_client_to_portal_org(
             crm_client = None
     name = client.name or profile.get("name")
     inn = client.inn or profile.get("inn")
+    status = str(client.status) if client.status is not None else None
+    if onboarding_profile is not None or onboarding_org_type is not None or onboarding_status is not None:
+        status = "ONBOARDING"
     return PortalMeOrg(
         id=str(client.id),
         org_type=org_type,
@@ -257,7 +261,7 @@ def _map_client_to_portal_org(
         kpp=profile.get("kpp"),
         ogrn=profile.get("ogrn"),
         address=profile.get("address"),
-        status=str(client.status) if client.status is not None else None,
+        status=status,
         timezone=crm_client.timezone if crm_client else None,
     )
 
@@ -496,17 +500,15 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     org_id_raw = None
     if actor_type == "client":
-        org_id_raw = token.get("org_id") or client_id
+        if not client_id:
+            client_id = _resolve_onboarding_client_id(db, token)
+        org_id_raw = client_id
     else:
         org_id_raw = _resolve_org_id(token)
-    if not org_id_raw:
-        entitlements_org_id = _extract_entitlements_org_id(token)
-        if entitlements_org_id is not None:
-            org_id_raw = str(entitlements_org_id)
-    if actor_type == "client" and not client_id:
-        client_id = _resolve_onboarding_client_id(db, token)
-        if client_id and not org_id_raw:
-            org_id_raw = client_id
+        if not org_id_raw:
+            entitlements_org_id = _extract_entitlements_org_id(token)
+            if entitlements_org_id is not None:
+                org_id_raw = str(entitlements_org_id)
     if not client_id and org_id_raw and _is_uuid(str(org_id_raw)):
         client_id = str(org_id_raw)
 
@@ -597,6 +599,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                 client=client_record,
                 onboarding_profile=onboarding_profile,
                 onboarding_org_type=onboarding.client_type if onboarding else None,
+                onboarding_status=onboarding.status if onboarding else None,
             )
     else:
         try:
@@ -615,9 +618,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     if entitlements_snapshot is not None and isinstance(entitlements_snapshot, dict):
         if actor_type == "client":
+            entitlements_org_id = client_id or (org_payload.id if org_payload else None)
             entitlements_snapshot = {
                 **entitlements_snapshot,
-                "org_id": org_payload.id if org_payload else None,
+                "org_id": entitlements_org_id,
             }
         elif org_payload and org_payload.id and not entitlements_snapshot.get("org_id"):
             entitlements_snapshot = {**entitlements_snapshot, "org_id": org_payload.id}
@@ -639,7 +643,9 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         contract_status = None
     if entitlements_snapshot is None:
         org_id_value = None
-        if org_payload and org_payload.id:
+        if actor_type == "client" and client_id:
+            org_id_value = str(client_id)
+        elif org_payload and org_payload.id:
             org_id_value = org_payload.id
         elif actor_type != "client" and org_id_raw:
             org_id_value = str(org_id_raw)
