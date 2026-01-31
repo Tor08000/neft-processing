@@ -222,42 +222,51 @@ def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
         return None
 
 
+def _load_client_record(db: Session, *, client_id: str | None) -> Client | None:
+    if not client_id or not _is_uuid(client_id) or not _table_exists(db, "clients"):
+        return None
+    try:
+        client_uuid = UUID(str(client_id))
+        return db.get(Client, client_uuid)
+    except Exception:
+        return None
+
+
+def _map_client_to_portal_org(
+    db: Session,
+    *,
+    client: Client,
+    onboarding_profile: dict[str, Any] | None,
+    onboarding_org_type: str | None,
+) -> PortalMeOrg:
+    profile = onboarding_profile or {}
+    org_type = profile.get("org_type") or onboarding_org_type
+    crm_client = None
+    if _table_exists(db, "crm_clients"):
+        try:
+            crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
+        except Exception:
+            crm_client = None
+    name = client.name or profile.get("name")
+    inn = client.inn or profile.get("inn")
+    return PortalMeOrg(
+        id=str(client.id),
+        org_type=org_type,
+        name=name,
+        inn=inn,
+        kpp=profile.get("kpp"),
+        ogrn=profile.get("ogrn"),
+        address=profile.get("address"),
+        status=str(client.status) if client.status is not None else None,
+        timezone=crm_client.timezone if crm_client else None,
+    )
+
+
 def _load_org_fallback(
     db: Session,
     *,
-    client_id: str | None,
     partner_id: str | None,
-    onboarding_profile: dict[str, Any] | None,
 ) -> PortalMeOrg | None:
-    if client_id:
-        if not _is_uuid(client_id):
-            return None
-        if not _table_exists(db, "clients"):
-            return None
-        try:
-            client_uuid = UUID(str(client_id))
-            client = db.get(Client, client_uuid)
-        except Exception:
-            client = None
-        if client:
-            crm_client = None
-            if _table_exists(db, "crm_clients"):
-                try:
-                    crm_client = db.query(CRMClient).filter(CRMClient.id == str(client.id)).one_or_none()
-                except Exception:
-                    crm_client = None
-            profile = onboarding_profile or {}
-            return PortalMeOrg(
-                id=str(client.id),
-                org_type=profile.get("org_type"),
-                name=client.name,
-                inn=client.inn,
-                kpp=profile.get("kpp"),
-                ogrn=profile.get("ogrn"),
-                address=profile.get("address"),
-                status=str(client.status),
-                timezone=crm_client.timezone if crm_client else None,
-            )
     if partner_id:
         partner = db.query(Partner).filter(Partner.id == str(partner_id)).one_or_none()
         if partner:
@@ -436,11 +445,11 @@ def _resolve_onboarding_profile(
     *,
     client_id: str | None,
     owner_id: str | None,
-) -> tuple[ClientOnboarding | None, bool]:
+) -> tuple[ClientOnboarding | None, dict[str, Any] | None]:
     if not client_id or not owner_id:
-        return None, False
+        return None, None
     if not _table_exists(db, "client_onboarding"):
-        return None, False
+        return None, None
     try:
         onboarding = (
             db.query(ClientOnboarding)
@@ -450,43 +459,68 @@ def _resolve_onboarding_profile(
             .first()
         )
     except Exception:
-        return None, False
+        return None, None
     if not onboarding:
-        return None, False
-    return onboarding, bool(onboarding.profile_json)
+        return None, None
+    profile = onboarding.profile_json if onboarding.profile_json else None
+    return onboarding, profile
+
+
+def _is_client_profile_complete(
+    *,
+    client: Client | None,
+    onboarding_profile: dict[str, Any] | None,
+    onboarding: ClientOnboarding | None,
+) -> bool | None:
+    if not client:
+        return False
+    name = (client.name or "").strip()
+    inn = (client.inn or "").strip()
+    org_type = None
+    if onboarding_profile:
+        org_type = onboarding_profile.get("org_type")
+    if not org_type and onboarding and onboarding.client_type:
+        org_type = onboarding.client_type
+    org_type = str(org_type).strip() if org_type else ""
+    return bool(name and inn and org_type)
 
 
 def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     portal_me_failed = False
-    org_id_raw = _resolve_org_id(token)
     client_id = token.get("client_id")
     partner_id = token.get("partner_id")
-    if not org_id_raw and client_id:
-        org_id_raw = client_id
+    org_roles: list[str] = []
+    capabilities: list[str] = []
+    subscription_payload = None
+    actor_type = _resolve_actor_type(token, org_roles)
+
+    org_id_raw = None
+    if actor_type == "client":
+        org_id_raw = token.get("org_id") or client_id
+    else:
+        org_id_raw = _resolve_org_id(token)
     if not org_id_raw:
         entitlements_org_id = _extract_entitlements_org_id(token)
         if entitlements_org_id is not None:
             org_id_raw = str(entitlements_org_id)
-    if not client_id:
+    if actor_type == "client" and not client_id:
         client_id = _resolve_onboarding_client_id(db, token)
         if client_id and not org_id_raw:
             org_id_raw = client_id
     if not client_id and org_id_raw and _is_uuid(str(org_id_raw)):
         client_id = str(org_id_raw)
+
     org_id_int = None
     if org_id_raw is not None:
         try:
             org_id_int = int(org_id_raw)
         except (TypeError, ValueError):
             org_id_int = None
-    if org_id_int is None and client_id:
+    if actor_type != "client" and org_id_int is None and client_id:
         org_id_int = _resolve_org_id_from_client(db, client_id=client_id)
 
     entitlements_snapshot = None
-    org_roles: list[str] = []
-    capabilities: list[str] = []
-    subscription_payload = None
-    if org_id_int is not None:
+    if actor_type != "client" and org_id_int is not None:
         try:
             snapshot = get_org_entitlements_snapshot(db, org_id=org_id_int)
         except Exception:
@@ -506,12 +540,24 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                     slo_tier=subscription.get("slo_tier"),
                     addons=subscription.get("addons"),
                 )
-
-    if not org_roles:
-        if client_id:
-            org_roles.append("CLIENT")
-        if partner_id:
-            org_roles.append("PARTNER")
+    elif actor_type == "client":
+        snapshot_payload = token.get("entitlements_snapshot") or token.get("entitlements") or token.get(
+            "entitlements_payload"
+        )
+        if isinstance(snapshot_payload, dict):
+            entitlements_snapshot = dict(snapshot_payload)
+            org_roles = entitlements_snapshot.get("org_roles") or []
+            capabilities = entitlements_snapshot.get("capabilities") or []
+            subscription = entitlements_snapshot.get("subscription") or None
+            if subscription and "CLIENT" in org_roles:
+                subscription_payload = PortalMeSubscription(
+                    plan_code=subscription.get("plan_code"),
+                    status=subscription.get("status"),
+                    billing_cycle=subscription.get("billing_cycle"),
+                    support_plan=subscription.get("support_plan"),
+                    slo_tier=subscription.get("slo_tier"),
+                    addons=subscription.get("addons"),
+                )
 
     try:
         subscription_payload = _resolve_client_subscription(
@@ -524,41 +570,57 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     owner_user_id = token.get("user_id") or token.get("sub")
     try:
-        onboarding, onboarding_profile_complete = _resolve_onboarding_profile(
+        onboarding, onboarding_profile = _resolve_onboarding_profile(
             db,
             client_id=str(client_id) if client_id else None,
             owner_id=str(owner_user_id) if owner_user_id else None,
         )
-        onboarding_profile = onboarding.profile_json if onboarding and onboarding.profile_json else None
     except Exception:
         onboarding = None
-        onboarding_profile_complete = False
         onboarding_profile = None
+    onboarding_profile_complete = None
+    if actor_type == "client":
+        client_record = _load_client_record(db, client_id=str(client_id) if client_id else None)
+        onboarding_profile_complete = _is_client_profile_complete(
+            client=client_record,
+            onboarding_profile=onboarding_profile,
+            onboarding=onboarding,
+        )
+    else:
+        client_record = None
 
     org_payload = None
-    try:
-        if org_id_int is not None:
-            org_payload = _load_org_from_orgs(db, org_id=org_id_int)
-    except Exception:
-        org_payload = None
-    if org_payload is None:
-        try:
-            org_payload = _load_org_fallback(
+    if actor_type == "client":
+        if client_record:
+            org_payload = _map_client_to_portal_org(
                 db,
-                client_id=client_id,
-                partner_id=partner_id,
+                client=client_record,
                 onboarding_profile=onboarding_profile,
+                onboarding_org_type=onboarding.client_type if onboarding else None,
             )
+    else:
+        try:
+            if org_id_int is not None:
+                org_payload = _load_org_from_orgs(db, org_id=org_id_int)
         except Exception:
             org_payload = None
-    if (
-        entitlements_snapshot is not None
-        and isinstance(entitlements_snapshot, dict)
-        and org_payload
-        and org_payload.id
-        and not entitlements_snapshot.get("org_id")
-    ):
-        entitlements_snapshot = {**entitlements_snapshot, "org_id": org_payload.id}
+        if org_payload is None:
+            try:
+                org_payload = _load_org_fallback(
+                    db,
+                    partner_id=partner_id,
+                )
+            except Exception:
+                org_payload = None
+
+    if entitlements_snapshot is not None and isinstance(entitlements_snapshot, dict):
+        if actor_type == "client":
+            entitlements_snapshot = {
+                **entitlements_snapshot,
+                "org_id": org_payload.id if org_payload else None,
+            }
+        elif org_payload and org_payload.id and not entitlements_snapshot.get("org_id"):
+            entitlements_snapshot = {**entitlements_snapshot, "org_id": org_payload.id}
     contract_status = None
     try:
         if onboarding and onboarding.contract_id and _table_exists(db, "client_onboarding_contracts"):
@@ -579,13 +641,23 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         org_id_value = None
         if org_payload and org_payload.id:
             org_id_value = org_payload.id
-        elif org_id_raw:
+        elif actor_type != "client" and org_id_raw:
             org_id_value = str(org_id_raw)
-        elif client_id:
-            org_id_value = str(client_id)
-        elif partner_id:
-            org_id_value = str(partner_id)
         entitlements_snapshot = _empty_entitlements_snapshot(org_id=org_id_value)
+
+    if actor_type == "client":
+        if org_payload:
+            normalized_roles = {str(role).upper() for role in org_roles if role}
+            if "CLIENT" not in normalized_roles:
+                normalized_roles.add("CLIENT")
+            org_roles = sorted(normalized_roles)
+        else:
+            org_roles = []
+    elif not org_roles:
+        if client_id:
+            org_roles.append("CLIENT")
+        if partner_id:
+            org_roles.append("PARTNER")
 
     employee_timezone = None
     user_id = token.get("user_id") or token.get("sub")

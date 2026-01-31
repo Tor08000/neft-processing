@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useClient } from "../auth/ClientContext";
 import { CopyChip } from "../components/common/CopyChip";
@@ -173,13 +173,9 @@ export function LoginPage() {
           {isSubmitting ? <span className="neft-spinner" aria-hidden /> : null}
           {isSubmitting ? "Входим..." : "Войти"}
         </button>
-        <button
-          type="button"
-          className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
-          onClick={() => navigate("/client/signup")}
-        >
+        <Link to="/client/signup" className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action">
           {selfSignupLabel}
-        </button>
+        </Link>
         <button
           type="button"
           className="neft-button neft-btn-secondary neft-btn-outline login-secondary-action"
