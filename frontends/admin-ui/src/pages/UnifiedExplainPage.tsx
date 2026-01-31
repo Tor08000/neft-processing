@@ -134,11 +134,7 @@ export const UnifiedExplainPage = () => {
       if (snapshotParam) {
         params.set("snapshot", snapshotParam);
       }
-      const data = await request<Record<string, unknown>>(
-        `/api/v1/admin/explain?${params.toString()}`,
-        {},
-        accessToken,
-      );
+      const data = await request<Record<string, unknown>>(`/explain?${params.toString()}`, {}, accessToken);
       setPayload(data as UnifiedExplainPayload);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось загрузить explain";

@@ -6,7 +6,6 @@ import { CopyChip } from "../components/common/CopyChip";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 import { AppLogo } from "@shared/brand/components";
-import { AppErrorState, AppLoadingState } from "../components/states";
 
 export function LoginPage() {
   const { login, error, user } = useAuth();
@@ -78,40 +77,22 @@ export function LoginPage() {
     }
   }, [error, fieldError]);
 
-  if (user && portalState === "LOADING") {
-    return <AppLoadingState label="Проверяем доступ..." />;
-  }
-
-  if (user && portalState === "SERVICE_UNAVAILABLE") {
-    return (
-      <AppErrorState
-        message="Сервис временно недоступен. Попробуйте позже."
-        onRetry={refresh}
-      />
-    );
-  }
-
-  if (user && portalState === "NETWORK_DOWN") {
-    return (
-      <AppErrorState
-        message="Нет соединения с сервером. Проверьте подключение к интернету."
-        onRetry={refresh}
-      />
-    );
-  }
-
-  if (user && portalState === "API_MISCONFIGURED") {
-    return (
-      <AppErrorState
-        message="Маршрут портала недоступен. Проверьте настройки API."
-        onRetry={refresh}
-      />
-    );
-  }
-
-  if (user && portalState === "ERROR_FATAL") {
-    return <AppErrorState message="Не удалось загрузить профиль клиента." onRetry={refresh} />;
-  }
+  const portalStateMessage = useMemo(() => {
+    switch (portalState) {
+      case "LOADING":
+        return "Проверяем доступ...";
+      case "SERVICE_UNAVAILABLE":
+        return "Сервис временно недоступен. Попробуйте позже.";
+      case "NETWORK_DOWN":
+        return "Нет соединения с сервером. Проверьте подключение к интернету.";
+      case "API_MISCONFIGURED":
+        return "Маршрут портала недоступен. Проверьте настройки API.";
+      case "ERROR_FATAL":
+        return "Не удалось загрузить профиль клиента.";
+      default:
+        return null;
+    }
+  }, [portalState]);
 
   const selfSignupLabel = "Регистрация";
 
@@ -127,6 +108,21 @@ export function LoginPage() {
           <CopyChip label="Demo" value="client@neft.local" onCopy={() => showToast("success", "Скопировано")} />
           <CopyChip label="Demo" value="client" onCopy={() => showToast("success", "Скопировано")} />
         </div>
+        {portalStateMessage ? (
+          <div className="error" role="alert" tabIndex={-1} ref={errorRef}>
+            {portalStateMessage}
+            {portalState !== "LOADING" ? (
+              <button
+                type="button"
+                className="ghost neft-btn-secondary"
+                onClick={refresh}
+                disabled={isSubmitting}
+              >
+                Повторить
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {error ? (
           <div className="error" role="alert" tabIndex={-1} ref={errorRef}>
             {error}

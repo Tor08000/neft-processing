@@ -50,11 +50,11 @@ def resolve_access_state(
         if _normalize_status(contract_status) not in {"SIGNED", "SIGNED_SIMPLE", "SIGNED_PEP"}:
             return PortalAccessState.NEEDS_CONTRACT, "contract_not_signed"
         normalized_org_status = _normalize_status(org_status)
-        if not normalized_org_status or normalized_org_status != "ACTIVE":
+        if not normalized_org_status or normalized_org_status not in {"ACTIVE", "ONBOARDING"}:
             return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
     else:
         normalized_org_status = _normalize_status(org_status)
-        if not normalized_org_status or normalized_org_status != "ACTIVE":
+        if not normalized_org_status or normalized_org_status not in {"ACTIVE", "ONBOARDING"}:
             return PortalAccessState.NEEDS_ONBOARDING, "org_not_active"
 
     if "PARTNER" in upper_roles:

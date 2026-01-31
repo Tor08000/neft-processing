@@ -69,6 +69,15 @@ class UserResponse(BaseModel):
         return _normalize_email(v)
 
 
+class SignupResponse(UserResponse):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    subject_type: str = Field(default="client_user", description="Тип субъекта в токене")
+    client_id: str | None = Field(default=None, description="Организация клиента")
+    roles: list[str] = Field(default_factory=list)
+
+
 class AuthMeResponse(BaseModel):
     email: str
     roles: list[str]

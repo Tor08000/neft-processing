@@ -22,6 +22,7 @@ import { useToast } from "../../components/Toast/useToast";
 import { StatusBadge } from "../../components/StatusBadge/StatusBadge";
 import type { CrmClient, CrmContract, CrmProfile, CrmSubscription } from "../../types/crm";
 import { describeError, formatError } from "../../utils/apiErrors";
+import { ADMIN_API_BASE } from "../../api/base";
 
 export const ClientDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -127,15 +128,15 @@ export const ClientDetailsPage: React.FC = () => {
     ? [
         {
           label: "Driver behavior (7d)",
-          href: `/api/v1/admin/fleet-intelligence/drivers?client_id=${client.client_id}&window_days=7`,
+          href: `${ADMIN_API_BASE}/fleet-intelligence/drivers?client_id=${client.client_id}&window_days=7`,
         },
         {
           label: "Vehicle efficiency (7d)",
-          href: `/api/v1/admin/fleet-intelligence/vehicles?client_id=${client.client_id}&window_days=7`,
+          href: `${ADMIN_API_BASE}/fleet-intelligence/vehicles?client_id=${client.client_id}&window_days=7`,
         },
         {
           label: "Station trust (7d)",
-          href: `/api/v1/admin/fleet-intelligence/stations?tenant_id=${client.tenant_id ?? 0}&window_days=7`,
+          href: `${ADMIN_API_BASE}/fleet-intelligence/stations?tenant_id=${client.tenant_id ?? 0}&window_days=7`,
         },
       ]
     : [];

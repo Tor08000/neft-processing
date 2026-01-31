@@ -111,7 +111,7 @@ export const EscalationsPage: React.FC = () => {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const data = await request<EscalationResponse>(`/api/v1/admin/ops/escalations?${query}`, {}, accessToken);
+      const data = await request<EscalationResponse>(`/ops/escalations?${query}`, {}, accessToken);
       setItems(data.items);
       setSelectedId((prev) => {
         if (prev && data.items.some((item) => item.id === prev)) {
@@ -138,7 +138,7 @@ export const EscalationsPage: React.FC = () => {
     if (!accessToken) return;
     try {
       await request(
-        `/api/v1/admin/ops/escalations/${id}/${action}`,
+        `/ops/escalations/${id}/${action}`,
         {
           method: "POST",
           body: JSON.stringify({ reason_code: payload.reasonCode, reason_text: payload.reasonText }),

@@ -18,8 +18,8 @@ from app.schemas.auth import (
     HealthResponse,
     LoginRequest,
     RegisterRequest,
+    SignupResponse,
     TokenResponse,
-    UserResponse,
 )
 from app.security import (
     create_access_token,
@@ -185,8 +185,8 @@ async def jwks_legacy() -> RedirectResponse:
     return RedirectResponse(url="/api/v1/auth/.well-known/jwks.json", status_code=status.HTTP_308_PERMANENT_REDIRECT)
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest) -> UserResponse:
+@router.post("/register", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: RegisterRequest) -> SignupResponse:
     admin_email, _ = _admin_credentials()
     admin_email = admin_email.strip().lower() if admin_email else ""
 
@@ -232,17 +232,40 @@ async def register(payload: RegisterRequest) -> UserResponse:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="signup_failed")
 
     user = User.from_row(row)
-    return UserResponse(
+    roles = await _get_roles_for_user(str(new_user_id))
+    settings = get_settings()
+    expires_in = settings.access_token_expires_min * 60
+    issuer, audience = _portal_token_config("client")
+    try:
+        token = create_access_token(
+            user.email,
+            roles=roles,
+            subject_type="client_user",
+            client_id=client_id,
+            user_id=str(new_user_id),
+            issuer=issuer,
+            audience=audience,
+        )
+    except InvalidRSAKeyError:
+        logger.error("RSA keys unavailable during signup", extra={"email": payload.email})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="rsa_keys_unavailable")
+    return SignupResponse(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         is_active=user.is_active,
         created_at=user.created_at,
+        access_token=token,
+        token_type="bearer",
+        expires_in=expires_in,
+        subject_type="client_user",
+        client_id=client_id,
+        roles=roles,
     )
 
 
-@router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def signup(payload: RegisterRequest) -> UserResponse:
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
+async def signup(payload: RegisterRequest) -> SignupResponse:
     return await register(payload)
 
 

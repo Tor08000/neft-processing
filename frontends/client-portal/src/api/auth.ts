@@ -56,6 +56,12 @@ export interface RegisterResponse {
   full_name?: string | null;
   is_active: boolean;
   created_at?: string | null;
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  subject_type?: string;
+  client_id?: string | null;
+  roles?: string[];
 }
 
 export async function register(payload: RegisterPayload): Promise<RegisterResponse> {
