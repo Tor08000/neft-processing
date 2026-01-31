@@ -16,7 +16,7 @@ def test_access_state_needs_onboarding_when_org_missing():
         capabilities=[],
     )
     assert state == PortalAccessState.NEEDS_ONBOARDING
-    assert reason == "org_not_active"
+    assert reason == "org_pending"
 
 
 def test_access_state_needs_plan_when_subscription_missing():
