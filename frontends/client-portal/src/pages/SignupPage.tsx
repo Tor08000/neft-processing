@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { register } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
+import type { AuthSession } from "../api/types";
 import { Toast } from "../components/Toast/Toast";
 import { useToast } from "../components/Toast/useToast";
 
@@ -20,7 +21,7 @@ function resolveContactPayload(value: string): { email?: string; phone?: string 
 
 export function SignupPage() {
   const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const { user, activateSession } = useAuth();
   const { toast, showToast } = useToast();
   const [contact, setContact] = useState("");
   const [password, setPassword] = useState("");
@@ -52,18 +53,33 @@ export function SignupPage() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await register({
+      const registerResponse = await register({
         email: contactPayload.email,
         password,
         consent_personal_data: consentPersonal,
         consent_offer: consentOffer,
       });
-      await login(contactPayload.email, password);
-      navigate("/onboarding", { replace: true });
+      if (registerResponse.access_token) {
+        const session: AuthSession = {
+          token: registerResponse.access_token,
+          email: registerResponse.email ?? contactPayload.email,
+          roles: registerResponse.roles ?? [],
+          subjectType: registerResponse.subject_type ?? "client_user",
+          clientId: registerResponse.client_id ?? undefined,
+          expiresAt: Date.now() + (registerResponse.expires_in ?? 3600) * 1000,
+        };
+        await activateSession(session);
+        navigate("/client/onboarding", { replace: true });
+      } else {
+        showToast("success", "Регистрация завершена. Войдите в аккаунт.");
+        navigate("/client/login", { replace: true });
+      }
     } catch (err) {
       console.error("Ошибка регистрации", err);
-      setError("Не удалось зарегистрироваться");
-      showToast("error", "Не удалось зарегистрироваться");
+      if (err instanceof Error) {
+        setError("Не удалось зарегистрироваться");
+        showToast("error", "Не удалось зарегистрироваться");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -121,7 +137,12 @@ export function SignupPage() {
             {isSubmitting ? "Регистрируем..." : "Зарегистрироваться"}
           </button>
         </>
-        <button type="button" className="ghost neft-btn-secondary" onClick={() => navigate("/login")} disabled={isSubmitting}>
+        <button
+          type="button"
+          className="ghost neft-btn-secondary"
+          onClick={() => navigate("/client/login")}
+          disabled={isSubmitting}
+        >
           Вернуться к входу
         </button>
       </form>
