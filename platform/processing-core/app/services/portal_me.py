@@ -79,6 +79,37 @@ def _resolve_org_id(token: dict) -> str | None:
     return token.get("org_id") or token.get("client_id") or token.get("partner_id")
 
 
+def _extract_entitlements_org_id(token: dict) -> str | int | None:
+    entitlements = token.get("entitlements_snapshot") or token.get("entitlements") or token.get("entitlements_payload")
+    if isinstance(entitlements, dict):
+        return entitlements.get("org_id")
+    return None
+
+
+def _resolve_org_id_from_client(db: Session, *, client_id: str | None) -> int | None:
+    if not client_id or not _table_exists(db, "orgs"):
+        return None
+    try:
+        orgs = _table(db, "orgs")
+    except Exception:
+        return None
+    client_col = orgs.c.client_id if _column_exists(orgs, "client_id") else None
+    if client_col is None and _column_exists(orgs, "client_uuid"):
+        client_col = orgs.c.client_uuid
+    if client_col is None or not _column_exists(orgs, "id"):
+        return None
+    try:
+        record = db.execute(select(orgs.c.id).where(client_col == client_id)).scalar()
+    except Exception:
+        return None
+    if record is None:
+        return None
+    try:
+        return int(record)
+    except (TypeError, ValueError):
+        return None
+
+
 def _is_uuid(value: str | None) -> bool:
     if not value:
         return False
@@ -430,16 +461,26 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     org_id_raw = _resolve_org_id(token)
     client_id = token.get("client_id")
     partner_id = token.get("partner_id")
+    if not org_id_raw and client_id:
+        org_id_raw = client_id
+    if not org_id_raw:
+        entitlements_org_id = _extract_entitlements_org_id(token)
+        if entitlements_org_id is not None:
+            org_id_raw = str(entitlements_org_id)
     if not client_id:
         client_id = _resolve_onboarding_client_id(db, token)
         if client_id and not org_id_raw:
             org_id_raw = client_id
+    if not client_id and org_id_raw and _is_uuid(str(org_id_raw)):
+        client_id = str(org_id_raw)
     org_id_int = None
     if org_id_raw is not None:
         try:
             org_id_int = int(org_id_raw)
         except (TypeError, ValueError):
             org_id_int = None
+    if org_id_int is None and client_id:
+        org_id_int = _resolve_org_id_from_client(db, client_id=client_id)
 
     entitlements_snapshot = None
     org_roles: list[str] = []
@@ -573,13 +614,6 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         legal_gate_enabled=settings.LEGAL_GATE_ENABLED,
     )
 
-    missing_reason = None
-    if actor_type == "client":
-        if client_id and _is_uuid(client_id) and org_payload is None:
-            missing_reason = "org_not_created"
-        elif org_id_int is not None and org_payload is None:
-            missing_reason = "org_not_created"
-
     partner_payload = None
     partner_finance_state = None
     partner_legal_state = None
@@ -700,9 +734,6 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         contract_status=contract_status,
         onboarding_profile_complete=onboarding_profile_complete,
     )
-    if missing_reason:
-        access_state = PortalAccessState.NEEDS_ONBOARDING
-        access_reason = missing_reason
     if actor_type == "partner" and partner_payload:
         if partner_legal_state and partner_legal_state.required_enabled:
             if partner_legal_state.status == "PENDING":

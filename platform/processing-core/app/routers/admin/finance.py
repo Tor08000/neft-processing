@@ -64,6 +64,7 @@ from app.services.s3_storage import S3Storage
 from app.services.subscription_billing import update_invoice_status
 from app.services.invoice_state_machine import InvalidTransitionError, InvoiceInvariantError
 from app.services.job_locks import make_stable_key
+from app.db.schema import DB_SCHEMA
 
 router = APIRouter(prefix="/finance", tags=["admin"])
 
@@ -71,7 +72,7 @@ WRITE_ROLES = ["NEFT_FINANCE", "NEFT_SUPERADMIN", "NEFT_ADMIN", "ADMIN"]
 
 
 def _table(db: Session, name: str) -> Table:
-    return Table(name, MetaData(), autoload_with=db.get_bind())
+    return Table(name, MetaData(), autoload_with=db.get_bind(), schema=DB_SCHEMA)
 
 
 def _tables_ready(db: Session, table_names: list[str]) -> bool:
@@ -79,7 +80,7 @@ def _tables_ready(db: Session, table_names: list[str]) -> bool:
         from sqlalchemy import inspect
 
         inspector = inspect(db.get_bind())
-        return all(inspector.has_table(name) for name in table_names)
+        return all(inspector.has_table(name, schema=DB_SCHEMA) for name in table_names)
     except Exception:
         return False
 
@@ -309,80 +310,92 @@ def finance_overview(
     payment_pending = 0
     reconciliation_unmatched = 0
 
-    if _tables_ready(db, ["billing_invoices"]):
-        invoices = _table(db, "billing_invoices")
-        org_col = _get_column(invoices, "org_id")
-        if org_col is None:
-            org_col = _get_column(invoices, "client_id")
-        status_col = _get_column(invoices, "status")
-        due_col = _get_column(invoices, "due_at")
-        issued_col = _get_column(invoices, "issued_at")
-        if issued_col is None:
-            issued_col = _get_column(invoices, "created_at")
-        paid_col = _get_column(invoices, "paid_at")
-        amount_col = _get_column(invoices, "amount_due")
-        if amount_col is None:
-            amount_col = _get_column(invoices, "amount_total")
-        if amount_col is None:
-            amount_col = _get_column(invoices, "total_amount")
+    try:
+        if _tables_ready(db, ["billing_invoices"]):
+            invoices = _table(db, "billing_invoices")
+            org_col = _get_column(invoices, "org_id")
+            if org_col is None:
+                org_col = _get_column(invoices, "client_id")
+            status_col = _get_column(invoices, "status")
+            issued_col = _get_column(invoices, "issued_at")
+            if issued_col is None:
+                issued_col = _get_column(invoices, "created_at")
+            paid_col = _get_column(invoices, "paid_at")
+            amount_col = _get_column(invoices, "amount_due")
+            if amount_col is None:
+                amount_col = _get_column(invoices, "amount_total")
+            if amount_col is None:
+                amount_col = _get_column(invoices, "total_amount")
 
-        if org_col is not None and status_col is not None:
-            overdue_orgs = (
-                db.execute(
-                    select(func.count(func.distinct(org_col))).where(status_col == "OVERDUE")
-                ).scalar()
-                or 0
-            )
-        if amount_col is not None and status_col is not None:
-            overdue_amount = Decimal(
-                str(
-                    db.execute(select(func.coalesce(func.sum(amount_col), 0)).where(status_col == "OVERDUE")).scalar()
+            if org_col is not None and status_col is not None:
+                overdue_orgs = (
+                    db.execute(select(func.count(func.distinct(org_col))).where(status_col == "OVERDUE")).scalar()
                     or 0
                 )
-            )
-        if issued_col is not None:
-            invoices_issued = (
-                db.execute(select(func.count()).where(issued_col >= since)).scalar() or 0
-            )
-        if paid_col is not None:
-            invoices_paid = (
-                db.execute(select(func.count()).where(paid_col >= since)).scalar() or 0
-            )
+            if amount_col is not None and status_col is not None:
+                overdue_amount = Decimal(
+                    str(
+                        db.execute(select(func.coalesce(func.sum(amount_col), 0)).where(status_col == "OVERDUE"))
+                        .scalar()
+                        or 0
+                    )
+                )
+            if issued_col is not None:
+                invoices_issued = db.execute(select(func.count()).where(issued_col >= since)).scalar() or 0
+            if paid_col is not None:
+                invoices_paid = db.execute(select(func.count()).where(paid_col >= since)).scalar() or 0
+    except Exception:
+        overdue_orgs = 0
+        overdue_amount = Decimal("0")
+        invoices_issued = 0
+        invoices_paid = 0
 
-    if _tables_ready(db, ["billing_payment_intakes"]):
-        intakes = _table(db, "billing_payment_intakes")
-        status_col = _get_column(intakes, "status")
-        if status_col is not None:
-            payment_pending = (
+    try:
+        if _tables_ready(db, ["billing_payment_intakes"]):
+            intakes = _table(db, "billing_payment_intakes")
+            status_col = _get_column(intakes, "status")
+            if status_col is not None:
+                payment_pending = (
+                    db.execute(select(func.count()).where(status_col.in_(["SUBMITTED", "UNDER_REVIEW"]))).scalar()
+                    or 0
+                )
+    except Exception:
+        payment_pending = 0
+
+    try:
+        if _tables_ready(db, ["reconciliation_discrepancies"]):
+            reconciliation_unmatched = (
                 db.execute(
-                    select(func.count()).where(status_col.in_(["SUBMITTED", "UNDER_REVIEW"]))
+                    select(func.count()).where(
+                        ReconciliationDiscrepancy.status == ReconciliationDiscrepancyStatus.OPEN,
+                        ReconciliationDiscrepancy.created_at >= since,
+                    )
                 ).scalar()
                 or 0
             )
+    except Exception:
+        reconciliation_unmatched = 0
 
-    reconciliation_unmatched = (
-        db.execute(
-            select(func.count()).where(
-                ReconciliationDiscrepancy.status == ReconciliationDiscrepancyStatus.OPEN,
-                ReconciliationDiscrepancy.created_at >= since,
+    payout_queue_pending = 0
+    payout_blocked_top_reasons: list[FinanceOverviewBlockedReason] = []
+    try:
+        if _tables_ready(db, ["partner_payout_requests"]):
+            pending_payouts = db.query(PartnerPayoutRequest).filter(
+                PartnerPayoutRequest.status == PartnerPayoutRequestStatus.REQUESTED
             )
-        ).scalar()
-        or 0
-    )
-
-    pending_payouts = db.query(PartnerPayoutRequest).filter(
-        PartnerPayoutRequest.status == PartnerPayoutRequestStatus.REQUESTED
-    )
-    payout_queue_pending = pending_payouts.count()
-    reason_counts: dict[str, int] = {}
-    service = PartnerFinanceService(db, request_ctx=request_context_from_request(None))
-    for payout in pending_payouts.limit(200).all():
-        for reason in _payout_blockers(service, payout):
-            reason_counts[reason] = reason_counts.get(reason, 0) + 1
-    payout_blocked_top_reasons = [
-        FinanceOverviewBlockedReason(reason=key, count=value)
-        for key, value in sorted(reason_counts.items(), key=lambda item: item[1], reverse=True)[:5]
-    ]
+            payout_queue_pending = pending_payouts.count()
+            reason_counts: dict[str, int] = {}
+            service = PartnerFinanceService(db, request_ctx=request_context_from_request(None))
+            for payout in pending_payouts.limit(200).all():
+                for reason in _payout_blockers(service, payout):
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            payout_blocked_top_reasons = [
+                FinanceOverviewBlockedReason(reason=key, count=value)
+                for key, value in sorted(reason_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+            ]
+    except Exception:
+        payout_queue_pending = 0
+        payout_blocked_top_reasons = []
 
     return FinanceOverviewResponse(
         window="7d" if window == "7d" else "24h",
