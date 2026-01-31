@@ -45,6 +45,8 @@ def require_any_admin_roles(roles: list[str]):
 
     def _dependency(token: dict = Depends(require_admin_user)) -> dict:
         roles_set = _normalize_roles(extract_admin_roles(token))
+        if roles_set.intersection({"SUPERADMIN", "PLATFORM_ADMIN", "ADMIN", "NEFT_SUPERADMIN", "NEFT_ADMIN"}):
+            return token
         if not roles_set.intersection(required_roles):
             raise HTTPException(
                 status_code=403,

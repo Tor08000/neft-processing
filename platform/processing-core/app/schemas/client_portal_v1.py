@@ -13,7 +13,7 @@ class ClientOrgIn(BaseModel):
 
     org_type: str = Field(..., description="LEGAL/IP/INDIVIDUAL")
     name: str = Field(..., min_length=1)
-    inn: str | None = None
+    inn: str = Field(..., min_length=1)
     kpp: str | None = None
     ogrn: str | None = None
     address: str | None = None

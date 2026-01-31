@@ -104,7 +104,7 @@ export const KpiPage: React.FC = () => {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const data = await request<OpsKpiResponse>(`/api/v1/admin/ops/kpi?${query}`, {}, accessToken);
+      const data = await request<OpsKpiResponse>(`/ops/kpi?${query}`, {}, accessToken);
       setPayload(data);
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Не удалось загрузить KPI");
