@@ -85,7 +85,10 @@ def _tables_ready(db: Session, table_names: list[str]) -> bool:
 
 
 def _get_column(table: Table, name: str):
-    return table.c[name] if name in table.c else None
+    try:
+        return table.c.get(name)
+    except Exception:
+        return None
 
 
 def _first_column(*columns):

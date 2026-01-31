@@ -55,8 +55,11 @@ def _table(db: Session, name: str) -> Table:
 
 
 def _table_exists(db: Session, name: str) -> bool:
-    inspector = inspect(db.get_bind())
-    return inspector.has_table(name, schema=DB_SCHEMA)
+    try:
+        inspector = inspect(db.get_bind())
+        return inspector.has_table(name, schema=DB_SCHEMA)
+    except Exception:
+        return False
 
 
 def _column_exists(table: Table, name: str) -> bool:
@@ -167,22 +170,25 @@ def _resolve_legal_status(db: Session, token: dict) -> PortalMeLegal:
 def _load_org_from_orgs(db: Session, *, org_id: int) -> PortalMeOrg | None:
     if not _table_exists(db, "orgs"):
         return None
-    orgs = _table(db, "orgs")
-    record = db.execute(select(orgs).where(orgs.c.id == org_id)).mappings().first()
-    if not record:
+    try:
+        orgs = _table(db, "orgs")
+        record = db.execute(select(orgs).where(orgs.c.id == org_id)).mappings().first()
+        if not record:
+            return None
+        payload = dict(record)
+        return PortalMeOrg(
+            id=str(payload.get("id")),
+            org_type=payload.get("org_type") or payload.get("type"),
+            name=payload.get("name"),
+            inn=payload.get("inn"),
+            kpp=payload.get("kpp"),
+            ogrn=payload.get("ogrn"),
+            address=payload.get("address"),
+            status=payload.get("status"),
+            timezone=payload.get("timezone"),
+        )
+    except Exception:
         return None
-    payload = dict(record)
-    return PortalMeOrg(
-        id=str(payload.get("id")),
-        org_type=payload.get("org_type") or payload.get("type"),
-        name=payload.get("name"),
-        inn=payload.get("inn"),
-        kpp=payload.get("kpp"),
-        ogrn=payload.get("ogrn"),
-        address=payload.get("address"),
-        status=payload.get("status"),
-        timezone=payload.get("timezone"),
-    )
 
 
 def _load_org_fallback(
@@ -420,6 +426,7 @@ def _resolve_onboarding_profile(
 
 
 def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
+    portal_me_failed = False
     org_id_raw = _resolve_org_id(token)
     client_id = token.get("client_id")
     partner_id = token.get("partner_id")
@@ -465,30 +472,44 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         if partner_id:
             org_roles.append("PARTNER")
 
-    subscription_payload = _resolve_client_subscription(
-        db,
-        client_id=client_id,
-        existing=subscription_payload,
-    )
-
-    owner_user_id = token.get("user_id") or token.get("sub")
-    onboarding, onboarding_profile_complete = _resolve_onboarding_profile(
-        db,
-        client_id=str(client_id) if client_id else None,
-        owner_id=str(owner_user_id) if owner_user_id else None,
-    )
-    onboarding_profile = onboarding.profile_json if onboarding and onboarding.profile_json else None
-
-    org_payload = None
-    if org_id_int is not None:
-        org_payload = _load_org_from_orgs(db, org_id=org_id_int)
-    if org_payload is None:
-        org_payload = _load_org_fallback(
+    try:
+        subscription_payload = _resolve_client_subscription(
             db,
             client_id=client_id,
-            partner_id=partner_id,
-            onboarding_profile=onboarding_profile,
+            existing=subscription_payload,
         )
+    except Exception:
+        subscription_payload = subscription_payload
+
+    owner_user_id = token.get("user_id") or token.get("sub")
+    try:
+        onboarding, onboarding_profile_complete = _resolve_onboarding_profile(
+            db,
+            client_id=str(client_id) if client_id else None,
+            owner_id=str(owner_user_id) if owner_user_id else None,
+        )
+        onboarding_profile = onboarding.profile_json if onboarding and onboarding.profile_json else None
+    except Exception:
+        onboarding = None
+        onboarding_profile_complete = False
+        onboarding_profile = None
+
+    org_payload = None
+    try:
+        if org_id_int is not None:
+            org_payload = _load_org_from_orgs(db, org_id=org_id_int)
+    except Exception:
+        org_payload = None
+    if org_payload is None:
+        try:
+            org_payload = _load_org_fallback(
+                db,
+                client_id=client_id,
+                partner_id=partner_id,
+                onboarding_profile=onboarding_profile,
+            )
+        except Exception:
+            org_payload = None
     if (
         entitlements_snapshot is not None
         and isinstance(entitlements_snapshot, dict)
@@ -498,18 +519,21 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     ):
         entitlements_snapshot = {**entitlements_snapshot, "org_id": org_payload.id}
     contract_status = None
-    if onboarding and onboarding.contract_id and _table_exists(db, "client_onboarding_contracts"):
-        try:
-            contract = (
-                db.query(ClientOnboardingContract)
-                .filter(ClientOnboardingContract.id == onboarding.contract_id)
-                .one_or_none()
-            )
-        except Exception:
-            contract = None
-        contract_status = contract.status if contract else None
-    if contract_status is None:
-        contract_status = _resolve_client_contract_status(db, client_id=client_id)
+    try:
+        if onboarding and onboarding.contract_id and _table_exists(db, "client_onboarding_contracts"):
+            try:
+                contract = (
+                    db.query(ClientOnboardingContract)
+                    .filter(ClientOnboardingContract.id == onboarding.contract_id)
+                    .one_or_none()
+                )
+            except Exception:
+                contract = None
+            contract_status = contract.status if contract else None
+        if contract_status is None:
+            contract_status = _resolve_client_contract_status(db, client_id=client_id)
+    except Exception:
+        contract_status = None
     if entitlements_snapshot is None:
         org_id_value = None
         if org_payload and org_payload.id:
@@ -539,7 +563,6 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     nav_sections = _resolve_nav_sections(capabilities)
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)
-    flags = {"accepted_legal": _resolve_legal_flag(db, token)}
     legal = _resolve_legal_status(db, token)
     features = PortalMeFeatures(
         onboarding_enabled=settings.CORE_ONBOARDING_ENABLED,
@@ -698,6 +721,7 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
     if actor_type == "client" and access_state == PortalAccessState.OVERDUE:
         overdue_invoices = _resolve_overdue_invoices(db, org_id=org_id_int)
         billing_payload = PortalMeBilling(overdue_invoices=overdue_invoices, next_action="PAY_INVOICE")
+    flags = {"accepted_legal": _resolve_legal_flag(db, token), "portal_me_failed": portal_me_failed}
     return PortalMeResponse(
         actor_type=actor_type,
         context=actor_type,
