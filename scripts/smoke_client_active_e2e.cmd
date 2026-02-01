@@ -10,6 +10,11 @@ set "SMOKE_PASSWORD=ClientActive123!"
 set "OTP_CODE=0000"
 
 set "TMP_DIR=%TEMP%"
+set "ORG_NAME=Smoke Client"
+set "ORG_INN=7701234567"
+set "ORG_KPP=770101001"
+set "ORG_OGRN=1027700132195"
+set "ORG_ADDRESS=Москва"
 
 call :http_post "signup" "%GATEWAY_BASE%%AUTH_BASE%/signup" "{\"email\":\"%SMOKE_EMAIL%\",\"password\":\"%SMOKE_PASSWORD%\",\"full_name\":\"Client Active Smoke\",\"consent_personal_data\":true,\"consent_offer\":true}" "201" "%TMP_DIR%\client_active_signup.json" || exit /b 1
 
@@ -23,7 +28,7 @@ if "%CLIENT_TOKEN%"=="" (
 
 call :portal_me "NEEDS_ONBOARDING" || exit /b 1
 
-set "ORG_PAYLOAD={\"org_type\":\"LEGAL\",\"name\":\"Smoke Client\",\"inn\":\"7701234567\",\"kpp\":\"770101001\",\"ogrn\":\"1027700132195\",\"address\":\"Москва\"}"
+set "ORG_PAYLOAD={\"org_type\":\"LEGAL\",\"name\":\"%ORG_NAME%\",\"inn\":\"%ORG_INN%\",\"kpp\":\"%ORG_KPP%\",\"ogrn\":\"%ORG_OGRN%\",\"address\":\"%ORG_ADDRESS%\"}"
 call :http_post "org create" "%GATEWAY_BASE%%CORE_BASE%/client/onboarding/profile" "%ORG_PAYLOAD%" "200" "%TMP_DIR%\client_active_org.json" || exit /b 1
 
 call :portal_me "NEEDS_PLAN" "require_org" || exit /b 1
@@ -89,7 +94,7 @@ set "REQUIRE_ORG=%~2"
 call :http_get "portal/me" "%GATEWAY_BASE%%CORE_BASE%/portal/me" "200" "%TMP_DIR%\client_active_portal_me.json" || exit /b 1
 python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); state=data.get('access_state'); expected=r'%EXPECTED_STATE%'; print(f'[portal/me] access_state={state} expected={expected}'); raise SystemExit(0 if state==expected else 1)" || exit /b 1
 if /I "%REQUIRE_ORG%"=="require_org" (
-  python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); flags=data.get('flags') or {}; failed=flags.get('portal_me_failed'); org=data.get('org'); org_status=data.get('org_status'); entitlements=data.get('entitlements_snapshot') or {}; entitlements_org_id=entitlements.get('org_id'); reason=data.get('access_reason'); print(f'[portal/me] portal_me_failed={failed} org_status={org_status} access_reason={reason} entitlements_org_id={entitlements_org_id}'); assert failed is not True; assert org is not None; assert org_status; assert entitlements_org_id; assert reason not in ('portal_me_failed', 'profile_missing', 'org_not_active')" || exit /b 1
+  python -c "import json, os; from pathlib import Path; data=json.loads(Path(r'%TMP_DIR%\\client_active_portal_me.json').read_text(encoding='utf-8', errors='ignore') or '{}'); flags=data.get('flags') or {}; failed=flags.get('portal_me_failed'); org=data.get('org') or {}; org_status=data.get('org_status'); entitlements=data.get('entitlements_snapshot') or {}; entitlements_org_id=str(entitlements.get('org_id') or ''); reason=data.get('access_reason'); roles=[str(r).upper() for r in (data.get('org_roles') or [])]; user_roles=[str(r).upper() for r in (data.get('user_roles') or [])]; memberships=[str(r).upper() for r in (data.get('memberships') or [])]; print(f'[portal/me] portal_me_failed={failed} org_status={org_status} access_reason={reason} entitlements_org_id={entitlements_org_id}'); assert failed is not True; assert org; assert org_status; assert entitlements_org_id; assert reason not in ('portal_me_failed', 'profile_missing', 'org_not_active'); assert org.get('status') == 'ONBOARDING'; assert org_status == 'ONBOARDING'; assert org.get('name') == os.environ.get('ORG_NAME'); assert org.get('inn') == os.environ.get('ORG_INN'); assert str(org.get('id')) == entitlements_org_id; assert 'CLIENT' in roles; assert 'CLIENT_OWNER' in user_roles; assert 'CLIENT' in memberships" || exit /b 1
 )
 echo [PASS] portal/me %EXPECTED_STATE%
 exit /b 0

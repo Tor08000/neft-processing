@@ -11,12 +11,13 @@ class OnboardingStatusResponse(BaseModel):
 
 class OnboardingProfileRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
-    inn: str | None = Field(default=None, max_length=32)
+    inn: str = Field(..., min_length=1, max_length=32)
     kpp: str | None = Field(default=None, max_length=32)
     ogrn: str | None = Field(default=None, max_length=32)
     address: str | None = Field(default=None, max_length=512)
     contacts: dict | None = None
     client_type: str | None = Field(default=None, max_length=32)
+    org_type: str | None = Field(default=None, max_length=32)
 
     model_config = ConfigDict(extra="allow")
 
