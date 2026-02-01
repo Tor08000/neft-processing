@@ -22,8 +22,9 @@ call "%~dp0seed_partner_money_e2e.cmd" || goto :fail
 
 set "PARTNER_LOGIN_FILE=%TEMP%\partner_login.json"
 set "PARTNER_TOKEN_FILE=%TEMP%\partner_token.txt"
-set "PARTNER_LOGIN_BODY={\"email\":\"%PARTNER_EMAIL%\",\"password\":\"%PARTNER_PASSWORD%\",\"portal\":\"partner\"}"
-call :http_request "POST" "%AUTH_URL%/login" "" "%PARTNER_LOGIN_BODY%" "200" "%PARTNER_LOGIN_FILE%" || goto :fail
+set "PARTNER_LOGIN_BODY_FILE=%TEMP%\partner_login_body_%RANDOM%.json"
+python -c "import json; from pathlib import Path; Path(r'%PARTNER_LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%PARTNER_EMAIL%','password': r'%PARTNER_PASSWORD%','portal':'partner'}), encoding='utf-8')"
+call :http_request "POST" "%AUTH_URL%/login" "" "%PARTNER_LOGIN_BODY_FILE%" "200" "%PARTNER_LOGIN_FILE%" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%PARTNER_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%PARTNER_TOKEN_FILE%').write_text(token); print(token)"`) do set "PARTNER_TOKEN=%%t"
 if "%PARTNER_TOKEN%"=="" goto :fail
 
@@ -41,8 +42,9 @@ for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(
 if /i not "%LEDGER_OK%"=="True" goto :fail
 
 set "PAYOUT_REQUEST_FILE=%TEMP%\partner_payout_request.json"
-set "PAYOUT_PAYLOAD={\"amount\":1000,\"currency\":\"RUB\"}"
-call :http_request "POST" "%CORE_PARTNER%/payouts/request" "%PARTNER_AUTH_HEADER%" "%PAYOUT_PAYLOAD%" "200,201" "%PAYOUT_REQUEST_FILE%" || goto :fail
+set "PAYOUT_PAYLOAD_FILE=%TEMP%\partner_payout_payload_%RANDOM%.json"
+python -c "import json; from pathlib import Path; Path(r'%PAYOUT_PAYLOAD_FILE%').write_text(json.dumps({'amount': 1000, 'currency': 'RUB'}), encoding='utf-8')"
+call :http_request "POST" "%CORE_PARTNER%/payouts/request" "%PARTNER_AUTH_HEADER%" "%PAYOUT_PAYLOAD_FILE%" "200,201" "%PAYOUT_REQUEST_FILE%" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PAYOUT_REQUEST_FILE%')); print(data.get('payout_request_id') or data.get('id') or '')"`) do set "PAYOUT_ID=%%t"
 for /f "usebackq tokens=*" %%t in (`python -c "import json; print(json.load(open(r'%PAYOUT_REQUEST_FILE%')).get('correlation_id',''))"`) do set "CORRELATION_ID=%%t"
 if "%PAYOUT_ID%"=="" goto :fail
@@ -50,8 +52,9 @@ if "%CORRELATION_ID%"=="" goto :fail
 
 set "ADMIN_LOGIN_FILE=%TEMP%\admin_login.json"
 set "ADMIN_TOKEN_FILE=%TEMP%\admin_token.txt"
-set "ADMIN_LOGIN_BODY={\"email\":\"%ADMIN_EMAIL%\",\"password\":\"%ADMIN_PASSWORD%\",\"portal\":\"admin\"}"
-call :http_request "POST" "%AUTH_URL%/login" "" "%ADMIN_LOGIN_BODY%" "200" "%ADMIN_LOGIN_FILE%" || goto :fail
+set "ADMIN_LOGIN_BODY_FILE=%TEMP%\admin_login_body_%RANDOM%.json"
+python -c "import json; from pathlib import Path; Path(r'%ADMIN_LOGIN_BODY_FILE%').write_text(json.dumps({'email': r'%ADMIN_EMAIL%','password': r'%ADMIN_PASSWORD%','portal':'admin'}), encoding='utf-8')"
+call :http_request "POST" "%AUTH_URL%/login" "" "%ADMIN_LOGIN_BODY_FILE%" "200" "%ADMIN_LOGIN_FILE%" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%ADMIN_LOGIN_FILE%').read_text(encoding='utf-8', errors='ignore') or '{}'); token=data.get('access_token',''); Path(r'%ADMIN_TOKEN_FILE%').write_text(token); print(token)"`) do set "ADMIN_TOKEN=%%t"
 if "%ADMIN_TOKEN%"=="" goto :fail
 
@@ -59,8 +62,9 @@ set "ADMIN_AUTH_HEADER=Authorization: Bearer %ADMIN_TOKEN%"
 if /i "%ADMIN_TOKEN:~0,7%"=="Bearer " set "ADMIN_AUTH_HEADER=Authorization: %ADMIN_TOKEN%"
 
 set "ADMIN_APPROVE_FILE=%TEMP%\admin_approve.json"
-set "APPROVE_PAYLOAD={\"reason\":\"Smoke approval\",\"correlation_id\":\"%CORRELATION_ID%\"}"
-call :http_request "POST" "%CORE_ADMIN_FINANCE_URL%/payouts/%PAYOUT_ID%/approve" "%ADMIN_AUTH_HEADER%" "%APPROVE_PAYLOAD%" "200" "%ADMIN_APPROVE_FILE%" || goto :fail
+set "APPROVE_PAYLOAD_FILE=%TEMP%\admin_approve_payload_%RANDOM%.json"
+python -c "import json; from pathlib import Path; Path(r'%APPROVE_PAYLOAD_FILE%').write_text(json.dumps({'reason': 'Smoke approval', 'correlation_id': r'%CORRELATION_ID%'}), encoding='utf-8')"
+call :http_request "POST" "%CORE_ADMIN_FINANCE_URL%/payouts/%PAYOUT_ID%/approve" "%ADMIN_AUTH_HEADER%" "%APPROVE_PAYLOAD_FILE%" "200" "%ADMIN_APPROVE_FILE%" || goto :fail
 
 call :http_request "GET" "%CORE_PARTNER%/payouts/%PAYOUT_ID%" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_payout_detail.json" || goto :fail
 
@@ -78,12 +82,12 @@ exit /b 1
 set "METHOD=%~1"
 set "URL=%~2"
 set "HEADER=%~3"
-set "BODY=%~4"
+set "BODY_FILE=%~4"
 set "EXPECTED=%~5"
 set "OUT=%~6"
 set "CODE="
 if "%OUT%"=="" set "OUT=%TEMP%\%SCRIPT_NAME%_resp_%RANDOM%.json"
-if "%BODY%"=="" (
+if "%BODY_FILE%"=="" (
   if "%HEADER%"=="" (
     for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% "%URL%" 2^>nul`) do set "CODE=%%c"
   ) else (
@@ -91,9 +95,9 @@ if "%BODY%"=="" (
   )
 ) else (
   if "%HEADER%"=="" (
-    for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "Content-Type: application/json" -d "%BODY%" "%URL%" 2^>nul`) do set "CODE=%%c"
+    for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "Content-Type: application/json" -d "@%BODY_FILE%" "%URL%" 2^>nul`) do set "CODE=%%c"
   ) else (
-    for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "%HEADER%" -H "Content-Type: application/json" -d "%BODY%" "%URL%" 2^>nul`) do set "CODE=%%c"
+    for /f "usebackq tokens=*" %%c in (`curl -s -S -o "%OUT%" -w "%%{http_code}" -X %METHOD% -H "%HEADER%" -H "Content-Type: application/json" -d "@%BODY_FILE%" "%URL%" 2^>nul`) do set "CODE=%%c"
   )
 )
 if "%CODE%"=="" exit /b 1

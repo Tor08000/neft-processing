@@ -1,7 +1,8 @@
+import { ADMIN_API_BASE } from "./base";
 import { ApiError, ForbiddenError, UnauthorizedError } from "./http";
 
 export async function verifyAdminAuth(token: string): Promise<void> {
-  const response = await fetch("/api/core/admin/auth/verify", {
+  const response = await fetch(`${ADMIN_API_BASE}/auth/verify`, {
     method: "GET",
     headers: {
       Accept: "application/json",
