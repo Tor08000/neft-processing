@@ -15,6 +15,7 @@ from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContr
 from app.models.crm import CRMClient
 from app.models.partner import Partner
 from app.models.fleet import ClientEmployee
+from app.models.client_portal import ClientUserRole
 from app.models.legal_acceptance import LegalAcceptance, LegalSubjectType
 from app.models.subscriptions_v1 import SubscriptionPlan
 from app.schemas.portal_me import (
@@ -411,6 +412,29 @@ def _resolve_onboarding_client_id(db: Session, token: dict) -> str | None:
     return str(onboarding.client_id)
 
 
+def _resolve_client_user_roles(
+    db: Session,
+    *,
+    client_id: str | None,
+    user_id: str | None,
+) -> list[str]:
+    if not client_id or not user_id or not _table_exists(db, "client_user_roles"):
+        return []
+    try:
+        role_row = (
+            db.query(ClientUserRole)
+            .filter(ClientUserRole.client_id == str(client_id), ClientUserRole.user_id == str(user_id))
+            .one_or_none()
+        )
+    except Exception:
+        return []
+    if not role_row or not role_row.roles:
+        return []
+    raw_roles = str(role_row.roles)
+    roles = [item.strip().upper() for item in raw_roles.replace(";", ",").split(",") if item.strip()]
+    return roles
+
+
 def _resolve_client_subscription(
     db: Session,
     *,
@@ -500,6 +524,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
 
     org_id_raw = None
     if actor_type == "client":
+        if not client_id:
+            candidate_id = token.get("org_id") or _extract_entitlements_org_id(token)
+            if candidate_id and _is_uuid(str(candidate_id)):
+                client_id = str(candidate_id)
         if not client_id:
             client_id = _resolve_onboarding_client_id(db, token)
         org_id_raw = client_id
@@ -652,13 +680,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         entitlements_snapshot = _empty_entitlements_snapshot(org_id=org_id_value)
 
     if actor_type == "client":
-        if org_payload:
-            normalized_roles = {str(role).upper() for role in org_roles if role}
-            if "CLIENT" not in normalized_roles:
-                normalized_roles.add("CLIENT")
-            org_roles = sorted(normalized_roles)
-        else:
-            org_roles = []
+        normalized_roles = {str(role).upper() for role in org_roles if role}
+        if client_id:
+            normalized_roles.add("CLIENT")
+        org_roles = sorted(normalized_roles)
     elif not org_roles:
         if client_id:
             org_roles.append("CLIENT")
@@ -679,6 +704,28 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         employee_timezone = employee.timezone if employee else None
 
     user_roles = _normalize_roles(token)
+    if actor_type == "client":
+        db_roles = _resolve_client_user_roles(db, client_id=str(client_id) if client_id else None, user_id=user_id)
+        if db_roles:
+            user_roles = sorted({*user_roles, *db_roles})
+        if "CLIENT_OWNER" not in {str(role).upper() for role in user_roles if role}:
+            user_roles.append("CLIENT_OWNER")
+            user_roles = sorted({str(role) for role in user_roles if role})
+
+    if actor_type == "partner":
+        required_caps = {
+            "partner_dashboard_read",
+            "partner_ledger_read",
+            "partner_payout_request",
+            "partner_docs_read",
+        }
+        if required_caps:
+            capabilities = sorted({*capabilities, *required_caps})
+            if isinstance(entitlements_snapshot, dict):
+                entitlements_snapshot = {
+                    **entitlements_snapshot,
+                    "capabilities": sorted({*(entitlements_snapshot.get("capabilities") or []), *required_caps}),
+                }
     nav_sections = _resolve_nav_sections(capabilities)
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)

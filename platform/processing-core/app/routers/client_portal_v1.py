@@ -3579,8 +3579,7 @@ def create_org(
             inn=payload.inn,
             status=insert_payload["status"],
         )
-        if _is_dev_env():
-            _ensure_client_membership(db, client_id=client_id, token=token)
+        _ensure_client_membership(db, client_id=client_id, token=token)
     else:
         update_payload = {"name": payload.name, "inn": payload.inn, "status": "ONBOARDING"}
         status = "ONBOARDING"
@@ -3597,6 +3596,7 @@ def create_org(
             inn=payload.inn,
             status=status,
         )
+        _ensure_client_membership(db, client_id=str(client.id), token=token)
 
     onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     onboarding.profile_json = {
@@ -3670,6 +3670,43 @@ def update_org(
         ogrn=payload.ogrn,
         address=payload.address,
         status=client.status or "ONBOARDING",
+    )
+
+
+@router.post("/onboarding/activate", response_model=ClientOrgOut)
+def activate_onboarding(
+    token: dict = Depends(client_auth.require_onboarding_user),
+    db: Session = Depends(get_db),
+) -> ClientOrgOut:
+    client = _resolve_client(db, token)
+    if client is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+
+    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
+    profile = onboarding.profile_json or {}
+    onboarding.step = "ACTIVE"
+    onboarding.status = "ACTIVE"
+
+    engine = db.get_bind()
+    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
+    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
+    if "status" in columns:
+        db.execute(
+            update(clients_table)
+            .where(clients_table.c.id == str(client.id))
+            .values(status="ACTIVE")
+        )
+    db.commit()
+
+    return ClientOrgOut(
+        id=str(client.id),
+        org_type=profile.get("org_type") or onboarding.client_type,
+        name=client.name or profile.get("name") or "",
+        inn=client.inn or profile.get("inn"),
+        kpp=profile.get("kpp"),
+        ogrn=profile.get("ogrn"),
+        address=profile.get("address"),
+        status="ACTIVE",
     )
 
 

@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { register } from "../api/auth";
+import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import type { AuthSession } from "../api/types";
 import { Toast } from "../components/Toast/Toast";
@@ -29,6 +30,7 @@ export function SignupPage() {
   const [consentOffer, setConsentOffer] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"SERVICE_UNAVAILABLE" | "TECH_ERROR" | null>(null);
 
   const contactPayload = useMemo(() => resolveContactPayload(contact), [contact]);
 
@@ -36,8 +38,7 @@ export function SignupPage() {
     return <Navigate to="/onboarding" replace />;
   }
 
-  const handleRegister = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitRegistration = async () => {
     if (!contactPayload) {
       setError("Введите корректный email или телефон");
       return;
@@ -52,6 +53,7 @@ export function SignupPage() {
     }
     setIsSubmitting(true);
     setError(null);
+    setErrorKind(null);
     try {
       const registerResponse = await register({
         email: contactPayload.email,
@@ -76,7 +78,16 @@ export function SignupPage() {
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
+        if (err.status === 502 || err.status === 503) {
+          setErrorKind("SERVICE_UNAVAILABLE");
+          setError("SERVICE_UNAVAILABLE: сервис временно недоступен");
+        } else {
+          setErrorKind("TECH_ERROR");
+          setError("TECH_ERROR: произошла ошибка регистрации");
+        }
+        showToast("error", "Сервис временно недоступен");
+      } else if (err instanceof Error) {
         setError("Не удалось зарегистрироваться");
         showToast("error", "Не удалось зарегистрироваться");
       }
@@ -85,11 +96,30 @@ export function SignupPage() {
     }
   };
 
+  const handleRegister = async (event: FormEvent) => {
+    event.preventDefault();
+    await submitRegistration();
+  };
+
   return (
     <div className="login-wrapper neft-page">
       <form className="card login-card neft-card" onSubmit={handleRegister}>
         <h1>Регистрация клиента</h1>
-        {error ? <div className="error">{error}</div> : null}
+        {error ? (
+          <div className="error" role="alert">
+            <div>{error}</div>
+            {errorKind ? (
+              <button
+                type="button"
+                className="ghost neft-btn-secondary"
+                onClick={() => submitRegistration()}
+                disabled={isSubmitting}
+              >
+                Повторить
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <>
           <label htmlFor="signup-contact">
             Email
