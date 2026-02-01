@@ -54,6 +54,14 @@ def _filter_columns(table: Table, values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if key in table.c}
 
 
+def _is_empty_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    return False
+
+
 _COLUMNS_CACHE: dict[tuple[str, str], set[str]] = {}
 
 
@@ -111,19 +119,32 @@ def _ensure_client(conn, config: DemoSeedConfig, *, has_client_email: bool) -> s
         return "skipped_missing_table"
     clients = _table(conn, "clients")
     existing = conn.execute(select(clients).where(clients.c.id == config.client_id)).mappings().first()
+    if existing:
+        update_values: dict[str, Any] = {}
+        if _is_empty_value(existing.get("name")):
+            update_values["name"] = "Demo Client"
+        if _is_empty_value(existing.get("full_name")):
+            update_values["full_name"] = "Demo Client"
+        if _is_empty_value(existing.get("status")):
+            update_values["status"] = "ACTIVE"
+        if _is_empty_value(existing.get("external_id")):
+            update_values["external_id"] = config.org_name
+        if has_client_email and _is_empty_value(existing.get("email")):
+            update_values["email"] = config.email
+        update_values = _filter_columns(clients, update_values)
+        if update_values:
+            conn.execute(update(clients).where(clients.c.id == config.client_id).values(**update_values))
+        return "updated"
     values = {
         "id": config.client_id,
-        "name": existing["name"] if existing and existing.get("name") else "Demo Client",
+        "name": "Demo Client",
         "external_id": config.org_name,
-        "full_name": existing["full_name"] if existing and existing.get("full_name") else "Demo Client",
-        "status": existing["status"] if existing and existing.get("status") else "ACTIVE",
+        "full_name": "Demo Client",
+        "status": "ACTIVE",
     }
     if has_client_email:
-        values["email"] = existing.get("email") if existing and existing.get("email") else config.email
+        values["email"] = config.email
     values = _filter_columns(clients, values)
-    if existing:
-        conn.execute(update(clients).where(clients.c.id == config.client_id).values(**values))
-        return "updated"
     conn.execute(insert(clients).values(**values))
     return "created"
 

@@ -165,6 +165,14 @@ def _filter_columns(table_name: str, db: Session, values: dict[str, object]) -> 
     return {key: value for key, value in values.items() if key in columns}
 
 
+def _is_empty_value(value: object | None) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    return False
+
+
 def ensure_demo_client(db: Session | None = None) -> None:
     logger = logging.getLogger(__name__)
     if not _is_dev_env():
@@ -197,7 +205,7 @@ def ensure_demo_client(db: Session | None = None) -> None:
             clients = conn.execute(
                 text(
                     f"""
-                    SELECT id, name, status
+                    SELECT *
                     FROM {DB_SCHEMA}.clients
                     WHERE id = :client_id
                     """
@@ -205,22 +213,32 @@ def ensure_demo_client(db: Session | None = None) -> None:
                 {"client_id": client_id},
             ).mappings().first()
             name = os.getenv("NEFT_DEMO_CLIENT_NAME") or os.getenv("NEFT_DEMO_ORG_NAME") or "Demo Client"
-            values = {
-                "id": client_id,
-                "name": clients.get("name") if clients and clients.get("name") else name,
-                "external_id": os.getenv("NEFT_DEMO_ORG_NAME", "demo-client"),
-                "full_name": clients.get("name") if clients and clients.get("name") else name,
-                "status": clients.get("status") if clients and clients.get("status") else "ACTIVE",
-            }
-            values = _filter_columns("clients", db, values)
             if clients:
-                assignments = ", ".join(f"{key} = :{key}" for key in values if key != "id")
+                update_values = {"id": client_id}
+                if _is_empty_value(clients.get("name")):
+                    update_values["name"] = name
+                if _is_empty_value(clients.get("full_name")):
+                    update_values["full_name"] = name
+                if _is_empty_value(clients.get("status")):
+                    update_values["status"] = "ACTIVE"
+                if _is_empty_value(clients.get("external_id")):
+                    update_values["external_id"] = os.getenv("NEFT_DEMO_ORG_NAME", "demo-client")
+                update_values = _filter_columns("clients", db, update_values)
+                assignments = ", ".join(f"{key} = :{key}" for key in update_values if key != "id")
                 if assignments:
                     conn.execute(
                         text(f"UPDATE {DB_SCHEMA}.clients SET {assignments} WHERE id = :id"),
-                        values,
+                        update_values,
                     )
             else:
+                values = {
+                    "id": client_id,
+                    "name": name,
+                    "external_id": os.getenv("NEFT_DEMO_ORG_NAME", "demo-client"),
+                    "full_name": name,
+                    "status": "ACTIVE",
+                }
+                values = _filter_columns("clients", db, values)
                 columns = ", ".join(values.keys())
                 placeholders = ", ".join(f":{key}" for key in values)
                 conn.execute(

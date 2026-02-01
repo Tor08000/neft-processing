@@ -126,25 +126,28 @@ def onboarding_profile(
     _require_onboarding_tables(db, ["clients", "client_onboarding"])
     owner_id = _get_owner_id(token)
     onboarding = _get_onboarding(db, token=token, owner_id=owner_id)
+    token_client_id = str(token.get("client_id") or "").strip() or None
+    if token_client_id:
+        try:
+            UUID(token_client_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="invalid_client_id")
+
     client = None
-    if onboarding:
+    if token_client_id:
+        client = db.query(Client).filter(Client.id == token_client_id).one_or_none()
+    elif onboarding:
         client = db.query(Client).filter(Client.id == onboarding.client_id).one_or_none()
-    if client is None and token.get("client_id"):
-        client = db.query(Client).filter(Client.id == str(token["client_id"])).one_or_none()
 
     client_columns = _table_columns(db, "clients")
     if client is None:
-        token_client_id = token.get("client_id")
         client_payload = {
             "id": uuid4(),
             "name": payload.name,
             "status": "ONBOARDING",
         }
         if token_client_id:
-            try:
-                client_payload["id"] = UUID(str(token_client_id))
-            except (TypeError, ValueError):
-                pass
+            client_payload["id"] = UUID(token_client_id)
         if "inn" in client_columns:
             client_payload["inn"] = payload.inn
         client = Client(**client_payload)
@@ -153,12 +156,17 @@ def onboarding_profile(
 
     if payload.name:
         client.name = payload.name
-    if payload.inn is not None and "inn" in client_columns:
+    if "inn" in client_columns:
         client.inn = payload.inn
-    if client.status and client.status != "ACTIVE":
+    if "status" in client_columns and client.status != "ONBOARDING":
         client.status = "ONBOARDING"
 
     profile_data = payload.model_dump()
+    if payload.model_extra:
+        profile_data.update(payload.model_extra)
+    org_type = payload.client_type or payload.org_type or profile_data.get("org_type") or profile_data.get("client_type")
+    if org_type and "org_type" not in profile_data:
+        profile_data["org_type"] = org_type
 
     if onboarding is None:
         onboarding = ClientOnboarding(
@@ -166,7 +174,7 @@ def onboarding_profile(
             owner_user_id=owner_id,
             step="CONTRACT",
             status="DRAFT",
-            client_type=payload.client_type,
+            client_type=org_type,
             profile_json=profile_data,
         )
         db.add(onboarding)
@@ -174,7 +182,7 @@ def onboarding_profile(
         onboarding.step = "CONTRACT"
         onboarding.status = "DRAFT"
         onboarding.profile_json = profile_data
-        onboarding.client_type = payload.client_type or onboarding.client_type
+        onboarding.client_type = org_type or onboarding.client_type
 
     db.commit()
     return OnboardingProfileResponse(step="CONTRACT", status="DRAFT")

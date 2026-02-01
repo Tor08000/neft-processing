@@ -3552,19 +3552,19 @@ def create_org(
     db: Session = Depends(get_db),
 ) -> ClientOrgOut:
     client = _resolve_client(db, token, allow_missing=True)
+    token_client_id = str(token.get("client_id") or "").strip() or None
+    if token_client_id and not _is_uuid(token_client_id):
+        raise HTTPException(status_code=400, detail="invalid_client_id")
     engine = db.get_bind()
     columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
     clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
     if client is None:
-        token_client_id = str(token.get("client_id") or "").strip() or None
-        if token_client_id and not _is_dev_env():
-            raise HTTPException(
-                status_code=409,
-                detail={"error": "client_context_missing", "reason_code": "CLIENT_CONTEXT_MISSING"},
-            )
-        if token_client_id and not _is_uuid(token_client_id):
-            raise HTTPException(status_code=400, detail="invalid_client_id")
-        client_id = token_client_id or str(uuid4())
+        if not token_client_id:
+            if not _is_dev_env():
+                raise HTTPException(status_code=403, detail="missing_client_id")
+            client_id = str(uuid4())
+        else:
+            client_id = token_client_id
         insert_payload = {
             "id": client_id,
             "name": payload.name,
@@ -3582,11 +3582,8 @@ def create_org(
         if _is_dev_env():
             _ensure_client_membership(db, client_id=client_id, token=token)
     else:
-        update_payload = {"name": payload.name, "inn": payload.inn}
-        status = client.status or "ONBOARDING"
-        if client.status in {"ACTIVE", "SUSPENDED"}:
-            update_payload["status"] = "ONBOARDING"
-            status = "ONBOARDING"
+        update_payload = {"name": payload.name, "inn": payload.inn, "status": "ONBOARDING"}
+        status = "ONBOARDING"
         update_values = {key: value for key, value in update_payload.items() if key in columns}
         if update_values:
             db.execute(
