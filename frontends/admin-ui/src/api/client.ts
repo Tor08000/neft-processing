@@ -1,4 +1,5 @@
 import { ADMIN_API_BASE, ADMIN_BASE_URL, joinUrl, normalizeAdminPath } from "./base";
+import { ApiError } from "./http";
 
 export const TOKEN_STORAGE_KEY = "neft_admin_auth";
 
@@ -81,7 +82,9 @@ class ApiClient {
         detail = await res.text();
       }
       const message = typeof detail === "string" ? detail : JSON.stringify(detail);
-      throw new Error(`HTTP ${res.status}: ${message}`);
+      const payload = detail && typeof detail === "object" ? (detail as { error?: string }) : null;
+      const requestId = res.headers.get("x-request-id") ?? res.headers.get("x-correlation-id");
+      throw new ApiError(message, res.status, requestId, null, payload?.error ?? null);
     }
     if (res.status === 204) {
       return undefined as T;

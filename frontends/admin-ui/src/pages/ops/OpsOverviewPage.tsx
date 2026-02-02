@@ -10,6 +10,8 @@ import OpsExportsPanel from "./OpsExportsPanel";
 import OpsSupportPanel from "./OpsSupportPanel";
 import { formatDateTime } from "../../utils/format";
 import { extractRequestId } from "./opsUtils";
+import { ApiError } from "../../api/http";
+import { AdminMisconfigPage } from "../admin/AdminStatusPages";
 
 export const OpsOverviewPage: React.FC = () => {
   const [summary, setSummary] = useState<OpsSummaryResponse | null>(null);
@@ -33,6 +35,10 @@ export const OpsOverviewPage: React.FC = () => {
 
   if (loading) {
     return <div>Loading ops summary…</div>;
+  }
+
+  if (error instanceof ApiError && error.status === 404) {
+    return <AdminMisconfigPage requestId={error.requestId ?? undefined} errorId={error.errorCode ?? undefined} />;
   }
 
   if (!summary) {

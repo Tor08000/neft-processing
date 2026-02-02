@@ -7,6 +7,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { Loader } from "../../components/Loader/Loader";
 import { CopyButton } from "../../components/CopyButton/CopyButton";
 import { JsonViewer } from "../../components/common/JsonViewer";
+import { ApiError } from "../../api/http";
+import { AdminMisconfigPage } from "./AdminStatusPages";
 
 const FILTERS = [
   { key: "money", label: "money" },
@@ -53,7 +55,13 @@ export const AuditPage: React.FC = () => {
     [activeFilters, query, correlation, scope, actorType, fromDate, toDate],
   );
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error: feedError,
+    refetch,
+  } = useQuery({
     queryKey: ["audit-feed", filters],
     queryFn: () => fetchAuditFeed(accessToken ?? "", filters),
     enabled: Boolean(accessToken),
@@ -87,6 +95,10 @@ export const AuditPage: React.FC = () => {
   };
 
   const chainEvents = chainData?.items ?? chainData?.events ?? [];
+
+  if (feedError instanceof ApiError && feedError.status === 404) {
+    return <AdminMisconfigPage requestId={feedError.requestId ?? undefined} errorId={feedError.errorCode ?? undefined} />;
+  }
 
   return (
     <div className="stack">
