@@ -39,6 +39,7 @@ from app.routers.portal_me import router as portal_me_router
 from app.routers.partner_me import router as partner_me_router
 from app.routers.partner_core import router as partner_core_router
 from app.routers.partner_finance import router as partner_finance_router
+from app.routers.partner_finance_legacy import router as partner_finance_legacy_router
 from app.routers.partner_legal import router as partner_legal_router
 from app.routers.document_templates import router as document_templates_router
 from app.routers.legal_gate import router as legal_gate_router
@@ -427,12 +428,12 @@ if INCLUDE_CORE_PREFIX_ROUTES:
 safe_include_router(app, portal_client_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, portal_client_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, portal_partner_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, portal_partner_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, partner_core_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
     safe_include_router(app, partner_core_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_finance_legacy_router, prefix=LEGACY_API_PREFIX)
 safe_include_router(app, partner_finance_router, prefix=LEGACY_API_PREFIX)
 safe_include_router(app, partner_legal_router, prefix=LEGACY_API_PREFIX)
 if INCLUDE_CUSTOM_CORE_PREFIX:
@@ -555,8 +556,8 @@ safe_include_router(core_prefixed_router, client_vehicles_router)
 safe_include_router(core_prefixed_router, client_documents_router)
 safe_include_router(core_prefixed_router, document_templates_router)
 safe_include_router(core_prefixed_router, client_service_completion_proofs_router)
-safe_include_router(core_prefixed_router, portal_partner_router)
 safe_include_router(core_prefixed_router, partner_core_router)
+safe_include_router(core_prefixed_router, partner_finance_legacy_router)
 safe_include_router(core_prefixed_router, partner_finance_router)
 safe_include_router(core_prefixed_router, partner_legal_router)
 safe_include_router(core_prefixed_router, partner_marketplace_router)
