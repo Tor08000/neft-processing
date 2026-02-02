@@ -654,6 +654,10 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                 status="ONBOARDING",
                 timezone=onboarding_profile.get("timezone"),
             )
+        if org_payload is None and client_id:
+            org_id_candidate = _resolve_org_id_from_client(db, client_id=str(client_id))
+            if org_id_candidate is not None:
+                org_payload = _load_org_from_orgs(db, org_id=org_id_candidate)
     else:
         try:
             if org_id_int is not None:
