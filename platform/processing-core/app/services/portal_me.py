@@ -364,7 +364,10 @@ def _resolve_client_contract_status(db: Session, *, client_id: str | None) -> st
 def _resolve_overdue_invoices(db: Session, *, org_id: int | None) -> list[PortalMeBillingInvoice]:
     if org_id is None or not _table_exists(db, "billing_invoices"):
         return []
-    billing_invoices = _table(db, "billing_invoices")
+    try:
+        billing_invoices = _table(db, "billing_invoices")
+    except Exception:
+        return []
     status_col = billing_invoices.c.status if _column_exists(billing_invoices, "status") else None
     due_at_col = billing_invoices.c.due_at if _column_exists(billing_invoices, "due_at") else None
     org_id_col = billing_invoices.c.org_id if _column_exists(billing_invoices, "org_id") else None
@@ -377,7 +380,10 @@ def _resolve_overdue_invoices(db: Session, *, org_id: int | None) -> list[Portal
         query = query.where(status_col.notin_(["PAID", "VOID"]))
     if due_at_col is not None:
         query = query.order_by(due_at_col.asc().nullslast())
-    rows = db.execute(query).mappings().all()
+    try:
+        rows = db.execute(query).mappings().all()
+    except Exception:
+        return []
     overdue_items: list[PortalMeBillingInvoice] = []
     for row in rows:
         status = row.get("status")

@@ -177,6 +177,18 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
         public_key, missing_kid, kid_not_found = _resolve_public_key(token)
     except HTTPException:
         raise
+    except Exception as exc:
+        _log_rejection(token, reason="key_resolution_failed", exc=exc)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": {
+                    "type": "token_rejected",
+                    "reason_code": "TOKEN_REJECTED",
+                    "message": "Invalid token",
+                }
+            },
+        ) from exc
 
     try:
         payload = _decode_token(token, public_key)
@@ -214,6 +226,19 @@ def verify_client_token(token: str = Depends(_get_bearer_token)) -> dict:
                     }
                 },
             )
+    except Exception as exc:
+        _reject_wrong_portal(token)
+        _log_rejection(token, reason="decode_failed", exc=exc)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": {
+                    "type": "token_rejected",
+                    "reason_code": "TOKEN_REJECTED",
+                    "message": "Invalid token",
+                }
+            },
+        ) from exc
 
     _reject_wrong_portal(token, claims=payload)
 
@@ -240,6 +265,18 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
         public_key, missing_kid, kid_not_found = _resolve_public_key(token)
     except HTTPException:
         raise
+    except Exception as exc:
+        _log_rejection(token, reason="key_resolution_failed", exc=exc)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": {
+                    "type": "token_rejected",
+                    "reason_code": "TOKEN_REJECTED",
+                    "message": "Invalid token",
+                }
+            },
+        ) from exc
 
     try:
         payload = _decode_token(token, public_key)
@@ -277,6 +314,19 @@ def verify_onboarding_token(token: str = Depends(_get_bearer_token)) -> dict:
                     }
                 },
             )
+    except Exception as exc:
+        _reject_wrong_portal(token)
+        _log_rejection(token, reason="decode_failed", exc=exc)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": {
+                    "type": "token_rejected",
+                    "reason_code": "TOKEN_REJECTED",
+                    "message": "Invalid token",
+                }
+            },
+        ) from exc
 
     _reject_wrong_portal(token, claims=payload)
 
