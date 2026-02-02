@@ -9,6 +9,7 @@ import type { RuntimeHealthSummary, RuntimeSummary } from "../../types/runtime";
 import {
   AdminForbiddenPage,
   AdminLoadingPage,
+  AdminMisconfigPage,
   AdminServiceUnavailablePage,
   AdminTechErrorPage,
   AdminUnauthorizedPage,
@@ -59,6 +60,9 @@ const resolveErrorScreen = (error: unknown) => {
     return <AdminForbiddenPage />;
   }
   if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return <AdminMisconfigPage requestId={error.requestId ?? undefined} errorId={error.errorCode ?? undefined} />;
+    }
     if (error.status === 502 || error.status === 503) {
       return <AdminServiceUnavailablePage requestId={error.requestId ?? undefined} />;
     }

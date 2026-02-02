@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { fetchFinanceOverview } from "../../api/finance";
 import type { FinanceOverview } from "../../types/finance";
 import { extractRequestId } from "../ops/opsUtils";
+import { ApiError } from "../../api/http";
+import { AdminMisconfigPage } from "../admin/AdminStatusPages";
 
 const KPI_STYLE: React.CSSProperties = {
   display: "grid",
@@ -32,6 +34,10 @@ export const FinanceOverviewPage: React.FC = () => {
 
   if (loading) {
     return <div>Loading finance overview…</div>;
+  }
+
+  if (error instanceof ApiError && error.status === 404) {
+    return <AdminMisconfigPage requestId={error.requestId ?? undefined} errorId={error.errorCode ?? undefined} />;
   }
 
   if (!overview) {

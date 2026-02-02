@@ -10,6 +10,8 @@ import AdminWriteActionModal from "../../components/admin/AdminWriteActionModal"
 import { useAdmin } from "../../admin/AdminContext";
 import { useAuth } from "../../auth/AuthContext";
 import { JsonViewer } from "../../components/common/JsonViewer";
+import { ApiError } from "../../api/http";
+import { AdminMisconfigPage } from "../admin/AdminStatusPages";
 
 type StatusAction = { status: string } | null;
 
@@ -45,7 +47,13 @@ export const LegalPartnersPage: React.FC = () => {
     [statusFilter, search, limit, offset],
   );
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ["legal-partners", filters],
     queryFn: () => fetchLegalPartners(accessToken ?? "", filters),
     enabled: Boolean(accessToken),
@@ -58,6 +66,10 @@ export const LegalPartnersPage: React.FC = () => {
     queryFn: () => fetchLegalPartner(accessToken ?? "", selectedPartner ?? ""),
     enabled: Boolean(accessToken && selectedPartner),
   });
+
+  if (listError instanceof ApiError && listError.status === 404) {
+    return <AdminMisconfigPage requestId={listError.requestId ?? undefined} errorId={listError.errorCode ?? undefined} />;
+  }
 
   const total = data?.total ?? 0;
   const items = data?.items ?? [];
