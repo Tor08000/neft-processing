@@ -442,41 +442,47 @@ def _ensure_client_membership(db: Session, *, client_id: str, token: dict) -> No
     if not user_id or not _is_uuid(user_id):
         return
     email = token.get("email") or f"{user_id}@neft.local"
-    if _table_exists(db, "client_employees"):
-        employee = (
-            db.query(ClientEmployee)
-            .filter(ClientEmployee.id == user_id)
-            .one_or_none()
-        )
-        if employee is None:
-            employee = ClientEmployee(
-                id=user_id,
-                client_id=client_id,
-                email=email,
-                status=EmployeeStatus.ACTIVE,
-                timezone="UTC",
+    try:
+        if _table_exists(db, "client_employees"):
+            employee = (
+                db.query(ClientEmployee)
+                .filter(cast(ClientEmployee.id, String) == user_id)
+                .one_or_none()
             )
-            db.add(employee)
-        else:
-            employee.client_id = client_id
-            employee.email = email
-            employee.status = EmployeeStatus.ACTIVE
-    if _table_exists(db, "client_user_roles"):
-        role = (
-            db.query(ClientUserRole)
-            .filter(ClientUserRole.client_id == client_id, ClientUserRole.user_id == user_id)
-            .one_or_none()
-        )
-        if role is None:
-            db.add(
-                ClientUserRole(
+            if employee is None:
+                employee = ClientEmployee(
+                    id=user_id,
                     client_id=client_id,
-                    user_id=user_id,
-                    roles="CLIENT_OWNER",
+                    email=email,
+                    status=EmployeeStatus.ACTIVE,
+                    timezone="UTC",
                 )
+                db.add(employee)
+            else:
+                employee.client_id = client_id
+                employee.email = email
+                employee.status = EmployeeStatus.ACTIVE
+        if _table_exists(db, "client_user_roles"):
+            role = (
+                db.query(ClientUserRole)
+                .filter(ClientUserRole.client_id == client_id, ClientUserRole.user_id == user_id)
+                .one_or_none()
             )
-        else:
-            role.roles = "CLIENT_OWNER"
+            if role is None:
+                db.add(
+                    ClientUserRole(
+                        client_id=client_id,
+                        user_id=user_id,
+                        roles="CLIENT_OWNER",
+                    )
+                )
+            else:
+                role.roles = "CLIENT_OWNER"
+    except Exception:
+        logger.exception(
+            "client_membership_ensure_failed",
+            extra={"client_id": client_id, "user_id": user_id},
+        )
 
 
 def _plan_modules_map(db: Session, *, plan_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
