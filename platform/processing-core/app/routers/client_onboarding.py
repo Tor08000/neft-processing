@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import inspect
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -41,13 +42,19 @@ def _require_self_signup_enabled(db: Session) -> None:
 
 
 def _table_exists(db: Session, name: str) -> bool:
-    inspector = inspect(db.get_bind())
-    return inspector.has_table(name, schema=DB_SCHEMA)
+    try:
+        inspector = inspect(db.get_bind())
+        return inspector.has_table(name, schema=DB_SCHEMA)
+    except Exception:
+        return False
 
 
 def _table_columns(db: Session, name: str) -> set[str]:
-    inspector = inspect(db.get_bind())
-    return {column["name"] for column in inspector.get_columns(name, schema=DB_SCHEMA)}
+    try:
+        inspector = inspect(db.get_bind())
+        return {column["name"] for column in inspector.get_columns(name, schema=DB_SCHEMA)}
+    except Exception:
+        return set()
 
 
 def _require_onboarding_tables(db: Session, tables: list[str]) -> None:
@@ -152,7 +159,11 @@ def onboarding_profile(
             client_payload["inn"] = payload.inn
         client = Client(**client_payload)
         db.add(client)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="onboarding_profile_conflict") from exc
 
     if payload.name:
         client.name = payload.name
@@ -184,7 +195,14 @@ def onboarding_profile(
         onboarding.profile_json = profile_data
         onboarding.client_type = org_type or onboarding.client_type
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="onboarding_profile_conflict") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="onboarding_profile_unavailable") from exc
     return OnboardingProfileResponse(step="CONTRACT", status="DRAFT")
 
 
