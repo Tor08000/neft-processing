@@ -152,6 +152,7 @@ def add_exception_handlers(app: FastAPI):
                     },
                     "meta": {
                         "correlation_id": getattr(request.state, "correlation_id", None),
+                        "request_id": request.headers.get("x-request-id"),
                         "path": str(request.url.path),
                     },
                 },

@@ -15,10 +15,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, RedirectResponse
 from sqlalchemy import Date, MetaData, String, Table, and_, cast, desc, func, insert, inspect, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, Query as SAQuery
 
 from app.db import get_db
 from app.db.schema import DB_SCHEMA
+from app.models.client import Client
 from app.models.crm import CRMClient
 from app.models.client_onboarding import ClientOnboarding, ClientOnboardingContract
 from app.models.client_portal import (
@@ -620,7 +622,7 @@ def _ensure_analytics_access(token: dict) -> None:
 def _enforce_analytics_drill_access(
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict,
 ) -> None:
     decision = evaluate_entitlement(
@@ -1078,7 +1080,7 @@ def _ensure_export_job_access(token: dict, report_type: ExportJobReportType) -> 
 def _enforce_export_entitlements(
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict,
     export_format: ExportJobFormat,
     action_kind: BillingActionKind,
@@ -1103,7 +1105,7 @@ def _enforce_export_entitlements(
 def _enforce_portal_write_access(
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict,
 ) -> None:
     enforce_entitlement(
@@ -1118,7 +1120,7 @@ def _enforce_portal_write_access(
 def _allow_helpdesk_outbound(
     *,
     db: Session,
-    request: Request | None,
+    request: Request,
     token: dict,
     feature_key: str,
 ) -> bool:
@@ -2493,7 +2495,7 @@ def _ensure_driver_user(db: Session, *, client_id: str, user_id: str) -> None:
 def _audit_event(
     db: Session,
     *,
-    request: Request | None,
+    request: Request,
     token: dict,
     event_type: str,
     entity_type: str,
@@ -3548,58 +3550,29 @@ def download_support_ticket_attachment(
 @router.post("/org", response_model=ClientOrgOut)
 def create_org(
     payload: ClientOrgIn,
+    request: Request,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientOrgOut:
-    client = _resolve_client(db, token, allow_missing=True)
-    token_client_id = str(token.get("client_id") or "").strip() or None
-    if token_client_id and not _is_uuid(token_client_id):
-        raise HTTPException(status_code=400, detail="invalid_client_id")
-    engine = db.get_bind()
-    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
-    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    if client is None:
-        if not token_client_id:
-            if not _is_dev_env():
-                raise HTTPException(status_code=403, detail="missing_client_id")
-            client_id = str(uuid4())
-        else:
-            client_id = token_client_id
-        insert_payload = {
-            "id": client_id,
-            "name": payload.name,
-            "inn": payload.inn,
-            "status": "ONBOARDING",
-        }
-        insert_values = {key: value for key, value in insert_payload.items() if key in columns}
-        db.execute(insert(clients_table).values(**insert_values))
-        client = SafeClient(
-            id=client_id,
-            name=payload.name,
-            inn=payload.inn,
-            status=insert_payload["status"],
-        )
-        _ensure_client_membership(db, client_id=client_id, token=token)
-    else:
-        update_payload = {"name": payload.name, "inn": payload.inn, "status": "ONBOARDING"}
-        status = "ONBOARDING"
-        update_values = {key: value for key, value in update_payload.items() if key in columns}
-        if update_values:
-            db.execute(
-                update(clients_table)
-                .where(clients_table.c.id == str(client.id))
-                .values(**update_values)
-            )
-        client = SafeClient(
-            id=str(client.id),
-            name=payload.name,
-            inn=payload.inn,
-            status=status,
-        )
-        _ensure_client_membership(db, client_id=str(client.id), token=token)
+    def _resolve_integrity_reason(error: IntegrityError) -> str:
+        constraint = ""
+        orig = getattr(error, "orig", None)
+        diag = getattr(orig, "diag", None)
+        if diag is not None:
+            constraint = str(getattr(diag, "constraint_name", "") or "")
+        message = f"{constraint} {orig or error}".lower()
+        if "client_user_roles" in message or "client_employees" in message:
+            return "MEMBERSHIP_CONFLICT"
+        if "inn" in message:
+            return "INN_CONFLICT"
+        if "clients" in message and "duplicate key" in message:
+            return "CLIENT_ALREADY_EXISTS"
+        return "INTEGRITY_ERROR"
 
-    onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
-    onboarding.profile_json = {
+    request_id = None
+    if request is not None:
+        request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
+    payload_log = {
         "org_type": payload.org_type,
         "name": payload.name,
         "inn": payload.inn,
@@ -3607,9 +3580,140 @@ def create_org(
         "ogrn": payload.ogrn,
         "address": payload.address,
     }
-    onboarding.step = "PLAN"
-    onboarding.status = "DRAFT"
-    db.commit()
+    logger.info(
+        "onboarding_profile_received",
+        extra={"request_id": request_id, "payload": payload_log, "actor": token.get("sub")},
+    )
+    client = _resolve_client(db, token, allow_missing=True)
+    token_client_id = str(token.get("client_id") or "").strip() or None
+    if token_client_id and not _is_uuid(token_client_id):
+        raise HTTPException(status_code=400, detail="invalid_client_id")
+    try:
+        if payload.inn:
+            logger.info(
+                "onboarding_profile_lookup_inn",
+                extra={"request_id": request_id, "inn": payload.inn},
+            )
+            inn_query = db.query(Client.id).filter(Client.inn == payload.inn)
+            if client is not None:
+                inn_query = inn_query.filter(Client.id != str(client.id))
+            existing_inn_id = inn_query.scalar()
+            if existing_inn_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "inn_conflict",
+                        "reason_code": "INN_CONFLICT",
+                        "inn": payload.inn,
+                    },
+                )
+
+        if client is None:
+            if not token_client_id:
+                if not _is_dev_env():
+                    raise HTTPException(status_code=404, detail="client_not_found")
+                client_id = str(uuid4())
+            else:
+                client_id = token_client_id
+            logger.info(
+                "onboarding_profile_create_org",
+                extra={"request_id": request_id, "client_id": client_id, "action": "insert"},
+            )
+            client_record = Client(
+                id=client_id,
+                name=payload.name,
+                inn=payload.inn,
+                status="ONBOARDING",
+            )
+            db.add(client_record)
+            db.flush()
+            client = SafeClient(
+                id=str(client_record.id),
+                name=client_record.name,
+                inn=client_record.inn,
+                status=client_record.status,
+            )
+            _ensure_client_membership(db, client_id=client_id, token=token)
+        else:
+            client_record = db.get(Client, UUID(str(client.id)))
+            if client_record is None:
+                raise HTTPException(status_code=404, detail="client_not_found")
+            logger.info(
+                "onboarding_profile_create_org",
+                extra={"request_id": request_id, "client_id": str(client.id), "action": "update"},
+            )
+            client_record.name = payload.name
+            client_record.inn = payload.inn
+            client_record.status = "ONBOARDING"
+            db.flush()
+            client = SafeClient(
+                id=str(client_record.id),
+                name=client_record.name,
+                inn=client_record.inn,
+                status=client_record.status,
+            )
+            _ensure_client_membership(db, client_id=str(client.id), token=token)
+
+        logger.info(
+            "onboarding_profile_create_profile",
+            extra={"request_id": request_id, "client_id": str(client.id)},
+        )
+        onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
+        onboarding.profile_json = {
+            "org_type": payload.org_type,
+            "name": payload.name,
+            "inn": payload.inn,
+            "kpp": payload.kpp,
+            "ogrn": payload.ogrn,
+            "address": payload.address,
+        }
+        onboarding.step = "PLAN"
+        onboarding.status = "DRAFT"
+        logger.info(
+            "onboarding_profile_commit",
+            extra={"request_id": request_id, "client_id": str(client.id)},
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        error_id = uuid4().hex
+        reason_code = _resolve_integrity_reason(exc)
+        logger.exception(
+            "onboarding_profile_integrity_error",
+            extra={
+                "request_id": request_id,
+                "error_id": error_id,
+                "reason_code": reason_code,
+                "error": str(exc),
+            },
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "integrity_error", "reason_code": reason_code, "error_id": error_id},
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        error_id = uuid4().hex
+        logger.exception(
+            "onboarding_profile_failed",
+            extra={
+                "request_id": request_id,
+                "error_id": error_id,
+                "error_class": exc.__class__.__name__,
+                "error": str(exc),
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "reason_code": "internal_error",
+                "error_id": error_id,
+            },
+        ) from exc
 
     return ClientOrgOut(
         id=str(client.id),
@@ -3626,10 +3730,11 @@ def create_org(
 @router.post("/onboarding/profile", response_model=ClientOrgOut)
 def create_onboarding_profile(
     payload: ClientOrgIn,
+    request: Request,
     token: dict = Depends(client_auth.require_onboarding_user),
     db: Session = Depends(get_db),
 ) -> ClientOrgOut:
-    return create_org(payload=payload, token=token, db=db)
+    return create_org(payload=payload, token=token, db=db, request=request)
 
 
 @router.patch("/org", response_model=ClientOrgOut)
@@ -3642,22 +3747,17 @@ def update_org(
     if client is None:
         raise HTTPException(status_code=404, detail="org_not_found")
 
-    engine = db.get_bind()
-    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
-    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    update_payload = {"name": payload.name, "inn": payload.inn}
-    update_values = {key: value for key, value in update_payload.items() if key in columns}
-    if update_values:
-        db.execute(
-            update(clients_table)
-            .where(clients_table.c.id == str(client.id))
-            .values(**update_values)
-        )
+    client_record = db.get(Client, UUID(str(client.id)))
+    if client_record is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    client_record.name = payload.name
+    client_record.inn = payload.inn
+    db.flush()
     client = SafeClient(
-        id=str(client.id),
-        name=payload.name,
-        inn=payload.inn,
-        status=client.status,
+        id=str(client_record.id),
+        name=client_record.name,
+        inn=client_record.inn,
+        status=client_record.status,
     )
     db.commit()
 
@@ -3687,15 +3787,10 @@ def activate_onboarding(
     onboarding.step = "ACTIVE"
     onboarding.status = "ACTIVE"
 
-    engine = db.get_bind()
-    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
-    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    if "status" in columns:
-        db.execute(
-            update(clients_table)
-            .where(clients_table.c.id == str(client.id))
-            .values(status="ACTIVE")
-        )
+    client_record = db.get(Client, UUID(str(client.id)))
+    if client_record is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    client_record.status = "ACTIVE"
     db.commit()
 
     return ClientOrgOut(
@@ -3888,15 +3983,10 @@ def sign_contract(
     contract.signature_meta = signature_meta
 
     client_status = "ACTIVE"
-    engine = db.get_bind()
-    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
-    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    if "status" in columns:
-        db.execute(
-            update(clients_table)
-            .where(clients_table.c.id == str(client.id))
-            .values(status=client_status)
-        )
+    client_record = db.get(Client, UUID(str(client.id)))
+    if client_record is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    client_record.status = client_status
     onboarding.step = "ACTIVATION"
     onboarding.status = client_status
     db.commit()
@@ -3956,15 +4046,10 @@ def sign_contract_by_id(
     onboarding = _get_or_create_onboarding(db, owner_id=_resolve_owner_id(token), client_id=str(client.id))
     onboarding.contract_id = str(contract.id)
     client_status = "ACTIVE"
-    engine = db.get_bind()
-    columns = {column["name"] for column in inspect(engine).get_columns("clients", schema=DB_SCHEMA)}
-    clients_table = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    if "status" in columns:
-        db.execute(
-            update(clients_table)
-            .where(clients_table.c.id == str(client.id))
-            .values(status=client_status)
-        )
+    client_record = db.get(Client, UUID(str(client.id)))
+    if client_record is None:
+        raise HTTPException(status_code=404, detail="org_not_found")
+    client_record.status = client_status
     onboarding.step = "ACTIVATION"
     onboarding.status = client_status
     db.commit()

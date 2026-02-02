@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import os
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.orm import Session
@@ -311,6 +311,48 @@ def _empty_entitlements_snapshot(*, org_id: str | int | None) -> dict[str, Any]:
     }
 
 
+def _portal_me_error_response(
+    *,
+    token: dict,
+    request_id: str | None,
+    error_id: str,
+) -> PortalMeResponse:
+    return PortalMeResponse(
+        actor_type="client",
+        context="client",
+        user=PortalMeUser(
+            id=str(token.get("user_id") or token.get("sub") or ""),
+            email=token.get("email") or token.get("sub"),
+            subject_type=token.get("subject_type"),
+            timezone="UTC",
+        ),
+        org=None,
+        org_status=None,
+        org_roles=[],
+        user_roles=[],
+        roles=[],
+        memberships=[],
+        scopes=None,
+        flags={
+            "portal_me_failed": True,
+            "error_id": error_id,
+            "request_id": request_id,
+            "reason_code": "portal_me_failed",
+        },
+        legal=None,
+        features=PortalMeFeatures(onboarding_enabled=True, legal_gate_enabled=True),
+        gating=PortalMeGating(onboarding_enabled=True, legal_gate_enabled=True),
+        subscription=None,
+        entitlements_snapshot=_empty_entitlements_snapshot(org_id=None),
+        capabilities=[],
+        nav_sections=None,
+        partner=None,
+        access_state=PortalAccessState.TECH_ERROR,
+        access_reason="portal_me_failed",
+        billing=None,
+    )
+
+
 def _resolve_nav_sections(capabilities: list[str]) -> list[PortalNavSection]:
     sections: list[PortalNavSection] = []
     client_caps = {"CLIENT_CORE", "CLIENT_BILLING", "CLIENT_ANALYTICS"}
@@ -532,7 +574,7 @@ def _is_client_profile_complete(
     return bool(name and inn and org_type)
 
 
-def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
+def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
     portal_me_failed = False
     client_id = token.get("client_id")
     partner_id = token.get("partner_id")
@@ -941,6 +983,32 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
         access_reason=access_reason,
         billing=billing_payload,
     )
+
+
+def build_portal_me(
+    db: Session,
+    *,
+    token: dict,
+    request_id: str | None = None,
+) -> PortalMeResponse:
+    safe_token = token if isinstance(token, dict) else {}
+    if not isinstance(token, dict):
+        logger.warning("portal_me_invalid_token", extra={"token_type": str(type(token))})
+    try:
+        return _build_portal_me_payload(db, token=safe_token)
+    except Exception as exc:
+        error_id = uuid4().hex
+        logger.exception(
+            "portal_me_failed",
+            extra={
+                "actor": safe_token.get("sub"),
+                "error_id": error_id,
+                "request_id": request_id,
+                "error_class": exc.__class__.__name__,
+                "error": str(exc),
+            },
+        )
+        return _portal_me_error_response(token=safe_token, request_id=request_id, error_id=error_id)
 
 
 __all__ = ["build_portal_me"]

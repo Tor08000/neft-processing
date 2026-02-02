@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
-from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.orm import Session
 
-from app.db.schema import DB_SCHEMA
+from app.models.client import Client
 
 
 @dataclass(slots=True)
@@ -21,21 +21,23 @@ class SafeClient:
 
 
 def safe_get_client(db: Session, client_id: str) -> dict[str, Any] | None:
-    engine = db.get_bind()
-    inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("clients", schema=DB_SCHEMA)}
-    if "id" not in columns:
+    if not client_id:
         return None
-    clients = Table("clients", MetaData(), schema=DB_SCHEMA, autoload_with=engine)
-    select_columns = [clients.c.id]
-    for name in ("name", "external_id", "inn", "status", "created_at"):
-        if name in columns:
-            select_columns.append(clients.c[name])
-    stmt = select(*select_columns).where(clients.c.id == str(client_id))
-    row = db.execute(stmt).mappings().one_or_none()
-    if not row:
+    try:
+        client_uuid = UUID(str(client_id))
+    except (TypeError, ValueError):
         return None
-    return dict(row)
+    client = db.get(Client, client_uuid)
+    if client is None:
+        return None
+    return {
+        "id": str(client.id),
+        "name": client.name,
+        "external_id": client.external_id,
+        "inn": client.inn,
+        "status": client.status,
+        "created_at": client.created_at,
+    }
 
 
 def build_safe_client(payload: dict[str, Any]) -> SafeClient:
