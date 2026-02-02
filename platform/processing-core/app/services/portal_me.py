@@ -7,7 +7,7 @@ import os
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import MetaData, Table, inspect, select
+from sqlalchemy import MetaData, String, Table, cast, inspect, select
 from sqlalchemy.orm import Session
 
 from app.db.schema import DB_SCHEMA
@@ -559,6 +559,8 @@ def _is_client_profile_complete(
     onboarding_profile: dict[str, Any] | None,
     onboarding: ClientOnboarding | None,
 ) -> bool | None:
+    if client is None:
+        return False
     name = (client.name or "").strip()
     inn = (client.inn or "").strip()
     if not name and onboarding_profile:
@@ -773,7 +775,7 @@ def _build_portal_me_payload(db: Session, *, token: dict) -> PortalMeResponse:
         try:
             employee = (
                 db.query(ClientEmployee)
-                .filter(ClientEmployee.id == str(user_id), ClientEmployee.client_id == str(client_id))
+                .filter(cast(ClientEmployee.id, String) == str(user_id), ClientEmployee.client_id == str(client_id))
                 .one_or_none()
             )
         except Exception:
