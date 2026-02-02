@@ -22,6 +22,7 @@ if "%PARTNER_INN%"=="" set "PARTNER_INN=7700000000"
 if "%PARTNER_LEGAL_STATUS%"=="" set "PARTNER_LEGAL_STATUS=VERIFIED"
 if "%PARTNER_LEDGER_AMOUNT%"=="" set "PARTNER_LEDGER_AMOUNT=12000"
 if "%PARTNER_PAYOUT_THRESHOLD%"=="" set "PARTNER_PAYOUT_THRESHOLD=1000"
+if "%PARTNER_PAYOUT_REQUEST_AMOUNT%"=="" set "PARTNER_PAYOUT_REQUEST_AMOUNT=1000"
 
 set "ADMIN_LOGIN_FILE=%TEMP%\admin_login.json"
 set "SEED_FILE=%TEMP%\seed_partner_money.json"
@@ -69,6 +70,24 @@ call :http_post "%CORE_ADMIN_FINANCE_URL%/partners/%ORG_ID%/payout-policy" "%ADM
 set "LEDGER_BODY={\"amount\":%PARTNER_LEDGER_AMOUNT%,\"currency\":\"RUB\",\"entry_type\":\"EARNED\",\"direction\":\"CREDIT\",\"description\":\"Seeded earning\"}"
 call :http_post "%CORE_ADMIN_FINANCE_URL%/partners/%ORG_ID%/ledger/seed" "%ADMIN_HEADER%" "%LEDGER_BODY%" "201" "%TEMP%\partner_ledger_seed.json" || goto :fail
 
+set "PAYOUT_PREVIEW_BODY={\"amount\":%PARTNER_PAYOUT_REQUEST_AMOUNT%,\"currency\":\"RUB\"}"
+call :http_post "%CORE_PARTNER%/payouts/preview" "%PARTNER_HEADER%" "%PAYOUT_PREVIEW_BODY%" "200" "%TEMP%\partner_payout_preview.json" || goto :fail
+
+set "PAYOUT_REQUEST_BODY={\"amount\":%PARTNER_PAYOUT_REQUEST_AMOUNT%,\"currency\":\"RUB\"}"
+call :http_post "%CORE_PARTNER%/payouts/request" "%PARTNER_HEADER%" "%PAYOUT_REQUEST_BODY%" "200,201" "%TEMP%\partner_payout_request.json" || goto :fail
+for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\partner_payout_request.json').read_text(encoding='utf-8', errors='ignore') or '{}'); print(data.get('payout_request_id') or data.get('id') or '')"`) do set "PAYOUT_REQUEST_ID=%%t"
+for /f "usebackq tokens=*" %%t in (`python -c "import json; from pathlib import Path; data=json.loads(Path(r'%TEMP%\partner_payout_request.json').read_text(encoding='utf-8', errors='ignore') or '{}'); status=str(data.get('status') or '').upper(); print(status)"`) do set "PAYOUT_STATUS=%%t"
+if "%PAYOUT_REQUEST_ID%"=="" (
+  echo [FAIL] No payout request id returned.
+  if exist "%TEMP%\partner_payout_request.json" type "%TEMP%\partner_payout_request.json"
+  exit /b 1
+)
+if /i not "%PAYOUT_STATUS%"=="PENDING" (
+  echo [FAIL] Payout request status is not PENDING.
+  if exist "%TEMP%\partner_payout_request.json" type "%TEMP%\partner_payout_request.json"
+  exit /b 1
+)
+
 for /f "usebackq tokens=*" %%t in (`python -c "from datetime import datetime, timedelta, timezone; dt=datetime.now(timezone.utc); start=(dt - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0); print(start.isoformat())"`) do set "SETTLE_START=%%t"
 for /f "usebackq tokens=*" %%t in (`python -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())"`) do set "SETTLE_END=%%t"
 for /f "usebackq tokens=*" %%t in (`python -c "import uuid; print(uuid.uuid4())"`) do set "SETTLE_KEY=%%t"
@@ -77,6 +96,8 @@ call :http_post "%CORE_ADMIN_SETTLEMENT_URL%/periods/calculate" "%ADMIN_HEADER%"
 
 echo [PASS] partner_org_id=%ORG_ID%
 echo [PASS] partner_email=%PARTNER_EMAIL%
+echo [PASS] payout_request_id=%PAYOUT_REQUEST_ID%
+echo [PASS] payout_status=%PAYOUT_STATUS%
 exit /b 0
 
 :login

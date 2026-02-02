@@ -18,7 +18,7 @@ if "%PARTNER_PASSWORD%"=="" set "PARTNER_PASSWORD=partner"
 if "%ADMIN_EMAIL%"=="" set "ADMIN_EMAIL=admin@example.com"
 if "%ADMIN_PASSWORD%"=="" set "ADMIN_PASSWORD=admin"
 
-call "%~dp0seed_partner_money_e2e.cmd" || goto :fail
+call "%~dp0seed_partner_money_e2e.cmd" >nul 2>nul || goto :fail
 
 set "PARTNER_LOGIN_FILE=%TEMP%\partner_login.json"
 set "PARTNER_TOKEN_FILE=%TEMP%\partner_token.txt"
@@ -35,11 +35,18 @@ call :http_request "GET" "%CORE_PARTNER%/auth/verify" "%PARTNER_AUTH_HEADER%" ""
 
 set "PARTNER_ME_FILE=%TEMP%\partner_me.json"
 call :http_request "GET" "%CORE_PORTAL%/me" "%PARTNER_AUTH_HEADER%" "" "200" "%PARTNER_ME_FILE%" || goto :fail
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PARTNER_ME_FILE%')); print(str((data.get('actor_type') or '')).lower())"`) do set "ACTOR_TYPE=%%t"
+if /i not "%ACTOR_TYPE%"=="partner" goto :fail
 
 set "PARTNER_LEDGER_FILE=%TEMP%\partner_ledger.json"
 call :http_request "GET" "%CORE_PARTNER%/ledger?limit=5" "%PARTNER_AUTH_HEADER%" "" "200" "%PARTNER_LEDGER_FILE%" || goto :fail
 for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PARTNER_LEDGER_FILE%')); items=data.get('items') or data.get('entries') or []; totals=data.get('totals') or {}; print(bool(items) or bool(totals))"`) do set "LEDGER_OK=%%t"
 if /i not "%LEDGER_OK%"=="True" goto :fail
+
+set "PAYOUT_PREVIEW_FILE=%TEMP%\partner_payout_preview.json"
+set "PAYOUT_PREVIEW_PAYLOAD_FILE=%TEMP%\partner_payout_preview_payload_%RANDOM%.json"
+python -c "import json; from pathlib import Path; Path(r'%PAYOUT_PREVIEW_PAYLOAD_FILE%').write_text(json.dumps({'amount': 1000, 'currency': 'RUB'}), encoding='utf-8')"
+call :http_request "POST" "%CORE_PARTNER%/payouts/preview" "%PARTNER_AUTH_HEADER%" "%PAYOUT_PREVIEW_PAYLOAD_FILE%" "200" "%PAYOUT_PREVIEW_FILE%" || goto :fail
 
 set "PAYOUT_REQUEST_FILE=%TEMP%\partner_payout_request.json"
 set "PAYOUT_PAYLOAD_FILE=%TEMP%\partner_payout_payload_%RANDOM%.json"
@@ -66,10 +73,15 @@ set "APPROVE_PAYLOAD_FILE=%TEMP%\admin_approve_payload_%RANDOM%.json"
 python -c "import json; from pathlib import Path; Path(r'%APPROVE_PAYLOAD_FILE%').write_text(json.dumps({'reason': 'Smoke approval', 'correlation_id': r'%CORRELATION_ID%'}), encoding='utf-8')"
 call :http_request "POST" "%CORE_ADMIN_FINANCE_URL%/payouts/%PAYOUT_ID%/approve" "%ADMIN_AUTH_HEADER%" "%APPROVE_PAYLOAD_FILE%" "200" "%ADMIN_APPROVE_FILE%" || goto :fail
 
-call :http_request "GET" "%CORE_PARTNER%/payouts/%PAYOUT_ID%" "%PARTNER_AUTH_HEADER%" "" "200" "%TEMP%\partner_payout_detail.json" || goto :fail
+set "PAYOUT_DETAIL_FILE=%TEMP%\partner_payout_detail.json"
+call :http_request "GET" "%CORE_PARTNER%/payouts/%PAYOUT_ID%" "%PARTNER_AUTH_HEADER%" "" "200" "%PAYOUT_DETAIL_FILE%" || goto :fail
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%PAYOUT_DETAIL_FILE%')); status=str(data.get('status') or '').upper(); print(status)"`) do set "PAYOUT_STATUS=%%t"
+if /i not "%PAYOUT_STATUS%"=="APPROVED" if /i not "%PAYOUT_STATUS%"=="PAID" goto :fail
 
 set "AUDIT_FILE=%TEMP%\admin_audit.json"
 call :http_request "GET" "%CORE_ADMIN_AUDIT_URL%?correlation_id=%CORRELATION_ID%" "%ADMIN_AUTH_HEADER%" "" "200" "%AUDIT_FILE%" || goto :fail
+for /f "usebackq tokens=*" %%t in (`python -c "import json; data=json.load(open(r'%AUDIT_FILE%')); items=data.get('items') or data.get('events') or []; print(bool(items))"`) do set "AUDIT_OK=%%t"
+if /i not "%AUDIT_OK%"=="True" goto :fail
 
 echo E2E_PARTNER_MONEY: PASS
 exit /b 0
