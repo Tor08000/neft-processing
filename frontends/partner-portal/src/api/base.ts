@@ -31,9 +31,28 @@ const extractPathname = (value: string): string => {
   return value;
 };
 
+const isDev = import.meta.env.DEV;
+const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+
+const resolveGatewayBase = (raw: string): string => {
+  const trimmed = normalizeBase(raw);
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    const url = new URL(trimmed);
+    if (!isDev && browserOrigin) {
+      return normalizeApiBase(`${browserOrigin}${url.pathname || "/"}`);
+    }
+    return normalizeApiBase(trimmed);
+  }
+  return normalizeApiBase(trimmed);
+};
+
 const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
-const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : "/api";
-const API_BASE = normalizeApiBase(rawApiBase);
+const defaultApiBase = browserOrigin ? `${browserOrigin}/api` : "/api";
+const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : defaultApiBase;
+const API_BASE = resolveGatewayBase(rawApiBase);
 const partnerBase = normalizeBase(import.meta.env.BASE_URL ?? "/partner/");
 
 export const joinUrl = (base: string, path: string): string => {
@@ -64,7 +83,7 @@ export const joinUrl = (base: string, path: string): string => {
 
 const buildBase = (legacyPrefix: string | undefined, defaultSuffix: string): string => {
   if (legacyPrefix && legacyPrefix.trim() !== "") {
-    return normalizeApiBase(legacyPrefix);
+    return resolveGatewayBase(legacyPrefix);
   }
   return joinUrl(API_BASE, defaultSuffix);
 };

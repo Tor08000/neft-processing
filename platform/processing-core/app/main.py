@@ -481,6 +481,17 @@ safe_include_router(app, internal_telegram_router)
 safe_include_router(app, commercial_layer_router)
 safe_include_router(app, edo_sbis_router)
 
+# -----------------------------------------------------------------------------
+# GATEWAY PREFIX STRIP ALIASES (for /api/core/* -> /)
+# -----------------------------------------------------------------------------
+safe_include_router(app, admin_router, include_in_schema=False)
+safe_include_router(app, admin_runtime_router, include_in_schema=False)
+safe_include_router(app, admin_auth_gateway_router, include_in_schema=False)
+safe_include_router(app, admin_auth_gateway_v1_router, include_in_schema=False)
+safe_include_router(app, client_auth_gateway_router, include_in_schema=False)
+safe_include_router(app, partner_auth_gateway_router, include_in_schema=False)
+safe_include_router(app, portal_me_router, include_in_schema=False)
+
 # Префиксированный роутер для нового gateway namespace /api/core/*
 core_prefixed_router = APIRouter(prefix="/api/core")
 safe_include_router(core_prefixed_router, api_router, prefix="/api/v1")
