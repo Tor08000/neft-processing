@@ -7,11 +7,11 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
@@ -31,6 +31,7 @@ from app.routers.client_fleet import router as fleet_router
 from app.routers.client_documents import router as client_documents_router
 from app.routers.admin_auth_gateway import router as admin_auth_gateway_router, v1_router as admin_auth_gateway_v1_router
 from app.routers.admin_me_legacy import router as admin_me_legacy_router
+from app.routers.admin.me import AdminMeResponse, admin_me
 from app.routers.client_auth_gateway import router as client_auth_gateway_router
 from app.routers.partner_auth_gateway import router as partner_auth_gateway_router
 from app.routers.client_me import router as client_me_router
@@ -401,10 +402,11 @@ if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, admin_auth_gateway_v1_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, partner_auth_gateway_router, prefix=API_PREFIX_CORE)
-safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
+if INCLUDE_CORE_PREFIX_ROUTES:
+    safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, admin_auth_gateway_v1_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, partner_auth_gateway_router, prefix=API_PREFIX_CORE)
+    safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_me_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, partner_me_router, prefix=API_PREFIX_CORE)
@@ -1400,6 +1402,37 @@ core_prefixed_router.add_api_route(
 safe_include_router(app, core_prefixed_router)
 
 
+def _has_route(app: FastAPI, path: str, method: str) -> bool:
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        methods = route.methods or set()
+        if method in methods and route.path == path:
+            return True
+    return False
+
+
+def _admin_me_legacy_redirect(request: Request) -> RedirectResponse:
+    target_url = str(request.url.replace(path="/api/core/v1/admin/me"))
+    return RedirectResponse(url=target_url, status_code=308)
+
+
+def _ensure_admin_me_routes(app: FastAPI) -> None:
+    if not _has_route(app, "/api/core/v1/admin/me", "GET"):
+        app.add_api_route(
+            "/api/core/v1/admin/me",
+            admin_me,
+            response_model=AdminMeResponse,
+            methods=["GET"],
+        )
+    if not _has_route(app, "/api/core/admin/me", "GET"):
+        app.add_api_route(
+            "/api/core/admin/me",
+            _admin_me_legacy_redirect,
+            methods=["GET"],
+        )
+
+
 def _enforce_unique_routes(fastapi_app: FastAPI) -> None:
     duplicates: dict[tuple[str, str], list[APIRoute]] = defaultdict(list)
     seen: dict[tuple[str, str], APIRoute] = {}
@@ -1437,6 +1470,8 @@ if API_PREFIX_CORE != CORE_API_PREFIX:
         response_model_exclude_none=True,
         methods=["GET"],
     )
+
+_ensure_admin_me_routes(app)
 
 if os.getenv("NEFT_STRICT_ROUTES", "").lower() in {"1", "true", "yes"}:
     _enforce_unique_routes(app)
