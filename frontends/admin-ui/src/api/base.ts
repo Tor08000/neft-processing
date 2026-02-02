@@ -24,6 +24,9 @@ const normalizeApiBase = (raw: string): string => {
   return normalizeApiPath(trimmed).replace(/\/+$/, "");
 };
 
+const isDev = import.meta.env.DEV;
+const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+
 const resolveGatewayBase = (raw: string): string => {
   const trimmed = normalizeBase(raw);
   if (!trimmed) {
@@ -31,7 +34,10 @@ const resolveGatewayBase = (raw: string): string => {
   }
   if (/^https?:\/\//i.test(trimmed)) {
     const url = new URL(trimmed);
-    return normalizeApiBase(url.pathname || "/");
+    if (!isDev && browserOrigin) {
+      return normalizeApiBase(`${browserOrigin}${url.pathname || "/"}`);
+    }
+    return normalizeApiBase(trimmed);
   }
   return normalizeApiBase(trimmed);
 };
@@ -44,7 +50,8 @@ const extractPathname = (value: string): string => {
 };
 
 const rawApiBaseEnv = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_API_BASE_URL;
-const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : "/api";
+const defaultApiBase = browserOrigin ? `${browserOrigin}/api` : "/api";
+const rawApiBase = rawApiBaseEnv && rawApiBaseEnv.trim() !== "" ? rawApiBaseEnv : defaultApiBase;
 const API_BASE = resolveGatewayBase(rawApiBase);
 
 export const joinUrl = (base: string, path: string): string => {
