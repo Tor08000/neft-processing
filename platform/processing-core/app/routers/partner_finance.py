@@ -208,7 +208,7 @@ def get_partner_balance(
     )
 
 
-@router.get("/dashboard", response_model=PartnerDashboardSummary)
+@router.get("/finance/dashboard", response_model=PartnerDashboardSummary)
 def get_partner_dashboard(
     principal: Principal = Depends(require_permission("partner:dashboard:view")),
     db: Session = Depends(get_db),
