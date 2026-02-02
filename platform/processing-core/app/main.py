@@ -402,8 +402,8 @@ if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_auth_gateway_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, admin_auth_gateway_router, prefix=API_PREFIX_CORE)
 safe_include_router(app, admin_auth_gateway_v1_router, prefix=API_PREFIX_CORE)
-    safe_include_router(app, partner_auth_gateway_router, prefix=API_PREFIX_CORE)
-    safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, partner_auth_gateway_router, prefix=API_PREFIX_CORE)
+safe_include_router(app, portal_me_router, prefix=API_PREFIX_CORE)
 if INCLUDE_CORE_PREFIX_ROUTES:
     safe_include_router(app, client_me_router, prefix=API_PREFIX_CORE)
     safe_include_router(app, partner_me_router, prefix=API_PREFIX_CORE)

@@ -73,8 +73,8 @@ export function SignupPage() {
         await activateSession(session);
         navigate("/client/onboarding", { replace: true });
       } else {
-        showToast("success", "Регистрация завершена. Войдите в аккаунт.");
-        navigate("/client/login", { replace: true });
+        showToast("success", "Аккаунт создан — войдите.");
+        navigate("/client/login?signup=success", { replace: true });
       }
     } catch (err) {
       console.error("Ошибка регистрации", err);

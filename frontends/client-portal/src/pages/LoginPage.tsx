@@ -16,6 +16,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("client@neft.local");
   const [password, setPassword] = useState("client");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signupNotice, setSignupNotice] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const { toast, showToast } = useToast();
@@ -70,6 +71,14 @@ export function LoginPage() {
   useEffect(() => {
     emailRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (signupNotice) return;
+    if (searchParams.get("signup") === "success") {
+      setSignupNotice("Аккаунт создан — войдите.");
+      showToast("success", "Аккаунт создан — войдите.");
+    }
+  }, [searchParams, showToast, signupNotice]);
 
   useEffect(() => {
     if (error || fieldError) {
@@ -131,6 +140,11 @@ export function LoginPage() {
         {fieldError ? (
           <div className="error" role="alert" tabIndex={-1} ref={errorRef}>
             {fieldError}
+          </div>
+        ) : null}
+        {signupNotice ? (
+          <div className="success" role="status" tabIndex={-1} ref={errorRef}>
+            {signupNotice}
           </div>
         ) : null}
         <label htmlFor="client-email">
