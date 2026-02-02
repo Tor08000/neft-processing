@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+import os
 from typing import Any
 from uuid import UUID
 
@@ -78,6 +79,16 @@ def _normalize_roles(token: dict) -> list[str]:
 
 def _resolve_org_id(token: dict) -> str | None:
     return token.get("org_id") or token.get("client_id") or token.get("partner_id")
+
+
+def _is_demo_partner(org_id: int | None) -> bool:
+    if org_id is None:
+        return False
+    demo_org_id = os.getenv("NEFT_DEMO_ORG_ID") or os.getenv("DEMO_ORG_ID") or "1"
+    try:
+        return int(demo_org_id) == int(org_id)
+    except (TypeError, ValueError):
+        return False
 
 
 def _extract_entitlements_org_id(token: dict) -> str | int | None:
@@ -500,10 +511,12 @@ def _is_client_profile_complete(
     onboarding_profile: dict[str, Any] | None,
     onboarding: ClientOnboarding | None,
 ) -> bool | None:
-    if not client:
-        return False
     name = (client.name or "").strip()
     inn = (client.inn or "").strip()
+    if not name and onboarding_profile:
+        name = str(onboarding_profile.get("name") or "").strip()
+    if not inn and onboarding_profile:
+        inn = str(onboarding_profile.get("inn") or "").strip()
     org_type = None
     if onboarding_profile:
         org_type = onboarding_profile.get("org_type")
@@ -629,6 +642,18 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
                 onboarding_org_type=onboarding.client_type if onboarding else None,
                 onboarding_status=onboarding.status if onboarding else None,
             )
+        elif client_id and onboarding_profile is not None:
+            org_payload = PortalMeOrg(
+                id=str(client_id),
+                org_type=onboarding_profile.get("org_type") or (onboarding.client_type if onboarding else None),
+                name=onboarding_profile.get("name"),
+                inn=onboarding_profile.get("inn"),
+                kpp=onboarding_profile.get("kpp"),
+                ogrn=onboarding_profile.get("ogrn"),
+                address=onboarding_profile.get("address"),
+                status="ONBOARDING",
+                timezone=onboarding_profile.get("timezone"),
+            )
     else:
         try:
             if org_id_int is not None:
@@ -712,20 +737,19 @@ def build_portal_me(db: Session, *, token: dict) -> PortalMeResponse:
             user_roles.append("CLIENT_OWNER")
             user_roles = sorted({str(role) for role in user_roles if role})
 
-    if actor_type == "partner":
+    if actor_type == "partner" and _is_demo_partner(org_id_int):
         required_caps = {
             "partner_dashboard_read",
             "partner_ledger_read",
             "partner_payout_request",
             "partner_docs_read",
         }
-        if required_caps:
-            capabilities = sorted({*capabilities, *required_caps})
-            if isinstance(entitlements_snapshot, dict):
-                entitlements_snapshot = {
-                    **entitlements_snapshot,
-                    "capabilities": sorted({*(entitlements_snapshot.get("capabilities") or []), *required_caps}),
-                }
+        capabilities = sorted({*capabilities, *required_caps})
+        if isinstance(entitlements_snapshot, dict):
+            entitlements_snapshot = {
+                **entitlements_snapshot,
+                "capabilities": sorted({*(entitlements_snapshot.get("capabilities") or []), *required_caps}),
+            }
     nav_sections = _resolve_nav_sections(capabilities)
     scopes = parse_scopes(token)
     actor_type = _resolve_actor_type(token, org_roles)
