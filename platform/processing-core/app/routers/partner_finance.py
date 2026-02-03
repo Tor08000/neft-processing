@@ -72,6 +72,14 @@ router = APIRouter(prefix="/partner", tags=["partner-finance"])
 settings = get_settings()
 
 
+@router.get("/finance-dashboard", include_in_schema=False)
+def finance_dashboard_legacy_redirect(request: Request) -> RedirectResponse:
+    target_url = request.url.replace(
+        path=str(request.url.path).replace("/partner/finance-dashboard", "/partner/finance/dashboard")
+    )
+    return RedirectResponse(url=str(target_url), status_code=308)
+
+
 def _resolve_org_id(principal: Principal) -> str:
     raw = principal.raw_claims.get("org_id") or principal.raw_claims.get("partner_id")
     if raw is None:
@@ -208,7 +216,7 @@ def get_partner_balance(
     )
 
 
-@router.get("/dashboard", response_model=PartnerDashboardSummary)
+@router.get("/finance/dashboard", response_model=PartnerDashboardSummary)
 def get_partner_dashboard(
     principal: Principal = Depends(require_permission("partner:dashboard:view")),
     db: Session = Depends(get_db),
