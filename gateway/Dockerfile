@@ -3,7 +3,7 @@ FROM nginx:1.27-alpine
 RUN apk add --no-cache curl
 
 # Copy gateway configuration
-COPY gateway/nginx.conf /etc/nginx/conf.d/default.conf
+COPY gateway/default.conf /etc/nginx/conf.d/default.conf
 
 # Ensure log output is sent to stdout/stderr and prepare dedicated OTEL-friendly paths
 RUN mkdir -p /var/log/nginx/otel \
