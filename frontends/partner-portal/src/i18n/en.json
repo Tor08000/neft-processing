@@ -75,6 +75,8 @@
   "errors": {
     "actionFailedTitle": "Action failed",
     "actionFailedDescription": "Please try again later.",
+    "unavailableTitle": "Data temporarily unavailable",
+    "unavailableDescription": "Please refresh the page or try again later.",
     "retry": "Retry",
     "errorCode": "Error code: {code}",
     "requestId": "Request ID: {id}",
@@ -690,12 +692,12 @@
       }
     },
     "notifications": {
-      "accepted": "Order accepted. Correlation ID: {id}",
-      "rejected": "Order rejected. Correlation ID: {id}",
-      "started": "Order started. Correlation ID: {id}",
-      "progressed": "Progress updated. Correlation ID: {id}",
-      "completed": "Order completed. Correlation ID: {id}",
-      "failed": "Order failed. Correlation ID: {id}"
+      "accepted": "Order accepted.",
+      "rejected": "Order rejected.",
+      "started": "Order started.",
+      "progressed": "Progress updated.",
+      "completed": "Order completed.",
+      "failed": "Order failed."
     },
     "errors": {
       "loadTitle": "Unable to load order",

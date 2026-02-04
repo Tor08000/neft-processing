@@ -11,10 +11,10 @@ import { canManageRefunds, canReadRefunds } from "../utils/roles";
 
 const describeError = (err: unknown, fallback: string) => {
   if (err instanceof ApiError) {
-    return { message: `HTTP ${err.status}: ${err.message}`, correlationId: err.correlationId };
+    return { message: fallback, correlationId: null };
   }
   if (err instanceof Error) {
-    return { message: err.message, correlationId: null };
+    return { message: fallback, correlationId: null };
   }
   return { message: fallback, correlationId: null };
 };
@@ -68,13 +68,13 @@ export function RefundDetailsPage() {
       if (actionModal === "approve") {
         const amount = approveAmount ? Number(approveAmount) : undefined;
         const result = await approveRefund(user.token, refund.id, { amount, note: approveNote || undefined });
-        setActionMessage(`Возврат одобрен. Correlation ID: ${result.correlationId ?? "—"}`);
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage("Возврат одобрен.");
+        setActionCorrelationId(null);
       }
       if (actionModal === "deny") {
         const result = await denyRefund(user.token, refund.id, denyReason);
-        setActionMessage(`Возврат отклонён. Correlation ID: ${result.correlationId ?? "—"}`);
-        setActionCorrelationId(result.correlationId ?? null);
+        setActionMessage("Возврат отклонён.");
+        setActionCorrelationId(null);
       }
       setActionModal(null);
       setDenyReason("");
@@ -214,7 +214,6 @@ export function RefundDetailsPage() {
         {actionError ? (
           <div className="notice error">
             {actionError}
-            {actionCorrelationId ? <div className="muted small">Correlation ID: {actionCorrelationId}</div> : null}
           </div>
         ) : null}
       </section>

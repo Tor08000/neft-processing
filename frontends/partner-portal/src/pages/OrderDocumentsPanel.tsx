@@ -29,7 +29,6 @@ export function OrderDocumentsPanel({
   const [edoEvents, setEdoEvents] = useState<MarketplaceEdoEvent[]>([]);
   const [edoLoading, setEdoLoading] = useState(false);
   const [edoError, setEdoError] = useState<string | null>(null);
-  const [edoCorrelationId, setEdoCorrelationId] = useState<string | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<MarketplaceDocumentDetails | null>(null);
 
   const handleRequestSign = async (documentId: string) => {
@@ -38,7 +37,7 @@ export function OrderDocumentsPanel({
     setActionMessage(null);
     try {
       const result = await requestDocumentSignature(user.token, documentId);
-      setActionMessage(`Запрос на подпись отправлен. Correlation ID: ${result.correlationId ?? "—"}`);
+      setActionMessage("Запрос на подпись отправлен.");
       onRefresh();
     } catch (err) {
       console.error(err);
@@ -52,7 +51,7 @@ export function OrderDocumentsPanel({
     setActionMessage(null);
     try {
       const result = await dispatchDocumentEdo(user.token, documentId);
-      setActionMessage(`ЭДО отправлено. Correlation ID: ${result.correlationId ?? "—"}`);
+      setActionMessage("ЭДО отправлено.");
       onRefresh();
     } catch (err) {
       console.error(err);
@@ -65,17 +64,12 @@ export function OrderDocumentsPanel({
     setSelectedDocument(document);
     setEdoLoading(true);
     setEdoError(null);
-    setEdoCorrelationId(null);
     try {
       const events = await fetchDocumentEdoEvents(user.token, document.id);
       setEdoEvents(events);
     } catch (err) {
       console.error(err);
-      const message = err instanceof Error ? err.message : "Не удалось загрузить события ЭДО";
-      setEdoError(message);
-      if (err && typeof err === "object" && "correlationId" in err) {
-        setEdoCorrelationId((err as { correlationId?: string | null }).correlationId ?? null);
-      }
+      setEdoError("Не удалось загрузить события ЭДО");
     } finally {
       setEdoLoading(false);
     }
@@ -85,7 +79,6 @@ export function OrderDocumentsPanel({
     setSelectedDocument(null);
     setEdoEvents([]);
     setEdoError(null);
-    setEdoCorrelationId(null);
   };
 
   if (isLoading) {
@@ -185,7 +178,6 @@ export function OrderDocumentsPanel({
               <ErrorState
                 title="Не удалось загрузить ЭДО события"
                 description={edoError}
-                correlationId={edoCorrelationId}
                 action={
                   <button type="button" className="secondary" onClick={() => handleOpenEdoEvents(selectedDocument)}>
                     Повторить

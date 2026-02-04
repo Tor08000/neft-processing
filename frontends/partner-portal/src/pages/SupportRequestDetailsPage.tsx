@@ -98,10 +98,6 @@ export function SupportRequestDetailsPage() {
             <div className="label">Обновлено</div>
             <div>{formatDateTime(supportRequest.updated_at)}</div>
           </div>
-          <div>
-            <div className="label">Correlation ID</div>
-            <div>{supportRequest.correlation_id ?? "—"}</div>
-          </div>
         </div>
         <div className="card__section">
           <h3>{t("supportRequests.fields.description")}</h3>

@@ -67,8 +67,8 @@ export function RefundsPage() {
         console.error(err);
         if (!active) return;
         if (err instanceof ApiError) {
-          setError(`HTTP ${err.status}: ${err.message}`);
-          setCorrelationId(err.correlationId);
+          setError("Не удалось загрузить возвраты");
+          setCorrelationId(null);
         } else {
           setError("Не удалось загрузить возвраты");
         }

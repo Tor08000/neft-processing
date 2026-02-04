@@ -12,7 +12,6 @@ import { PartnerErrorState } from "../components/PartnerErrorState";
 import { isDemoPartner } from "@shared/demo/demo";
 import { ApiError } from "../api/http";
 import { DemoEmptyState } from "../components/DemoEmptyState";
-import { demoActs, demoInvoices } from "../demo/partnerDemoData";
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -45,9 +44,9 @@ export function DocumentsPage() {
       .catch((err) => {
         console.error(err);
         if (!active) return;
-        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
-          setInvoices(demoInvoices);
-          setActs(demoActs);
+        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
+          setInvoices([]);
+          setActs([]);
           setIsDemoFallback(true);
           setError(null);
           return;
@@ -66,7 +65,7 @@ export function DocumentsPage() {
     if (items.length === 0) {
       return isDemoFallback ? (
         <DemoEmptyState
-          description="В демо-режиме документы доступны только в виде примеров."
+          description="Документы появятся в рабочем контуре"
           primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
           secondaryAction={{ label: "Связаться", to: "/support/requests" }}
         />

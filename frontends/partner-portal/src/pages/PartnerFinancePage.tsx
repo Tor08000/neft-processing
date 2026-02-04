@@ -19,7 +19,7 @@ import { PartnerErrorState } from "../components/PartnerErrorState";
 import { isDemoPartner } from "@shared/demo/demo";
 import { DemoEmptyState } from "../components/DemoEmptyState";
 import { ApiError } from "../api/http";
-import { demoBalance, demoExportJobs, demoLedger, demoLedgerTotals } from "../demo/partnerDemoData";
+import { demoBalance } from "../demo/partnerDemoData";
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
@@ -72,12 +72,12 @@ export function PartnerFinancePage() {
       .catch((err) => {
         console.error(err);
         if (!active) return;
-        if (err instanceof ApiError && err.status === 404 && isDemoPartnerAccount) {
+        if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setBalance(demoBalance);
-          setLedger(demoLedger);
-          setLedgerTotals(demoLedgerTotals);
+          setLedger([]);
+          setLedgerTotals(null);
           setLedgerCursor(null);
-          setExportJobs(demoExportJobs);
+          setExportJobs([]);
           setIsDemoFallback(true);
           setError(null);
           return;
@@ -213,10 +213,10 @@ export function PartnerFinancePage() {
             </div>
           </div>
         ) : isDemoFallback ? (
-          <DemoEmptyState
-            description="В демо-режиме доступны только примерные итоги по счету."
+          <EmptyState
+            title="Нет итогов"
+            description="Итоги появятся после операций по счету."
             primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-            secondaryAction={{ label: "Связаться", to: "/support/requests" }}
           />
         ) : (
           <EmptyState
@@ -236,10 +236,10 @@ export function PartnerFinancePage() {
           <PartnerErrorState error={error} description="Не удалось загрузить движения по счету" />
         ) : ledger.length === 0 ? (
           isDemoFallback ? (
-            <DemoEmptyState
-              description="В демо-режиме история операций недоступна."
+            <EmptyState
+              title="Нет движений"
+              description="История операций появится после перехода в рабочий контур."
               primaryAction={{ label: "Обновить", onClick: () => window.location.reload() }}
-              secondaryAction={{ label: "Связаться", to: "/support/requests" }}
             />
           ) : (
             <EmptyState

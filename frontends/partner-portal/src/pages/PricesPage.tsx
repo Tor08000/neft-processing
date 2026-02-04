@@ -294,7 +294,6 @@ export function PricesPage() {
         <section className="card">
           <div className="notice">
             <strong>{actionMessage}</strong>
-            {actionCorrelation ? <div className="muted">{t("errors.correlationId", { id: actionCorrelation })}</div> : null}
           </div>
         </section>
       ) : null}

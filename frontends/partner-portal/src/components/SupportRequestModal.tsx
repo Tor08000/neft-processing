@@ -84,10 +84,6 @@ export function SupportRequestModal({
           <div className="stack">
             <div className="notice">
               <strong>{t("supportRequests.modal.createdTitle")}</strong>
-              <div className="muted small">{t("supportRequests.modal.requestId", { id: result.id })}</div>
-              {result.correlation_id ? (
-                <div className="muted small">{t("errors.correlationId", { id: result.correlation_id })}</div>
-              ) : null}
             </div>
             <Link className="link-button" to={`/support/requests/${result.id}`} onClick={onClose}>
               {t("supportRequests.modal.openRequest")}
