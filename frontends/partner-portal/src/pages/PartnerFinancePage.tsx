@@ -19,7 +19,7 @@ import { PartnerErrorState } from "../components/PartnerErrorState";
 import { isDemoPartner } from "@shared/demo/demo";
 import { DemoEmptyState } from "../components/DemoEmptyState";
 import { ApiError } from "../api/http";
-import { demoBalance } from "../demo/partnerDemoData";
+import { demoBalance, demoExportJobs, demoLedger, demoLedgerTotals } from "../demo/partnerDemoData";
 
 export function PartnerFinancePage() {
   const { user } = useAuth();
@@ -54,6 +54,17 @@ export function PartnerFinancePage() {
   useEffect(() => {
     let active = true;
     if (!user) return;
+    if (isDemoPartnerAccount) {
+      setBalance(demoBalance);
+      setLedger(demoLedger);
+      setLedgerTotals(demoLedgerTotals);
+      setLedgerCursor(null);
+      setExportJobs(demoExportJobs);
+      setIsDemoFallback(true);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     Promise.all([
       fetchPartnerBalance(user.token),
@@ -74,10 +85,10 @@ export function PartnerFinancePage() {
         if (!active) return;
         if (err instanceof ApiError && isDemoPartnerAccount && (err.status === 403 || err.status === 404)) {
           setBalance(demoBalance);
-          setLedger([]);
-          setLedgerTotals(null);
+          setLedger(demoLedger);
+          setLedgerTotals(demoLedgerTotals);
           setLedgerCursor(null);
-          setExportJobs([]);
+          setExportJobs(demoExportJobs);
           setIsDemoFallback(true);
           setError(null);
           return;
@@ -175,7 +186,7 @@ export function PartnerFinancePage() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} description="Не удалось загрузить финансы партнёра" />
+          <PartnerErrorState error={error} />
         ) : (
           <div className="grid three">
             <div className="metric-card">
@@ -233,7 +244,7 @@ export function PartnerFinancePage() {
         {isLoading ? (
           <LoadingState />
         ) : error ? (
-          <PartnerErrorState error={error} description="Не удалось загрузить движения по счету" />
+          <PartnerErrorState error={error} />
         ) : ledger.length === 0 ? (
           isDemoFallback ? (
             <EmptyState
@@ -250,17 +261,7 @@ export function PartnerFinancePage() {
           )
         ) : (
           <>
-            {loadMoreError ? (
-              <PartnerErrorState
-                error={loadMoreError}
-                description="Не удалось загрузить следующую страницу ledger"
-                action={
-                  <button type="button" className="secondary" onClick={loadMoreLedger}>
-                    Повторить
-                  </button>
-                }
-              />
-            ) : null}
+            {loadMoreError ? <PartnerErrorState error={loadMoreError} /> : null}
             <table className="data-table">
               <thead>
                 <tr>

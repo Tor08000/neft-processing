@@ -164,16 +164,7 @@ export function PriceAnalyticsPage() {
 
   if (error) {
     return (
-      <PartnerErrorState
-        error={error}
-        title={t("errors.unavailableTitle")}
-        description={t("errors.unavailableDescription")}
-        action={
-          <button type="button" onClick={() => window.location.reload()}>
-            {t("errors.retry")}
-          </button>
-        }
-      />
+      <PartnerErrorState error={error} />
     );
   }
 

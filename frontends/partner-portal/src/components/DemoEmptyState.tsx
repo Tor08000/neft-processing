@@ -16,8 +16,8 @@ type DemoEmptyStateProps = {
 };
 
 export function DemoEmptyState({
-  title = "Раздел доступен в рабочем контуре",
-  description = "В демо-режиме данные ограничены. В рабочем контуре здесь отображаются реальные показатели и документы.",
+  title = "Данных пока нет",
+  description = "В демо-режиме показан примерный набор данных.",
   primaryAction,
   secondaryAction,
 }: DemoEmptyStateProps) {

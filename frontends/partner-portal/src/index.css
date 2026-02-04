@@ -31,6 +31,40 @@ button:disabled {
   box-shadow: var(--neft-shadow-sm);
 }
 
+.page-section {
+  margin-bottom: 24px;
+}
+
+.page-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-section__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.table-wrapper {
+  margin-top: 16px;
+}
+
+.pagination-wrapper {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-section {
+  margin-top: 24px;
+}
+
 .grid {
   display: grid;
   gap: 1rem;

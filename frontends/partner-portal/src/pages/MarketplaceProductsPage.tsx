@@ -310,15 +310,7 @@ export function MarketplaceProductsPage() {
             <div className="skeleton-line" />
           </div>
         ) : error ? (
-          <PartnerErrorState
-            error={error}
-            description={t("marketplace.products.loadError")}
-            action={
-              <button className="secondary" type="button" onClick={loadProducts}>
-                {t("errors.retry")}
-              </button>
-            }
-          />
+          <PartnerErrorState error={error} />
         ) : items.length ? (
           <table className="data-table">
             <thead>

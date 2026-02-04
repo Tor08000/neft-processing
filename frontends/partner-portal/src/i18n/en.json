@@ -53,6 +53,7 @@
     "addService": "Add service",
     "upload": "Upload",
     "refresh": "Refresh",
+    "contact": "Contact support",
     "copy": "Copy",
     "delete": "Delete",
     "close": "Close",
@@ -77,6 +78,7 @@
     "actionFailedDescription": "Please try again later.",
     "unavailableTitle": "Data temporarily unavailable",
     "unavailableDescription": "Please refresh the page or try again later.",
+    "unavailableDemoDescription": "Available in the production environment.",
     "retry": "Retry",
     "errorCode": "Error code: {code}",
     "requestId": "Request ID: {id}",
@@ -612,7 +614,7 @@
     },
     "errors": {
       "loadFailed": "Unable to load orders",
-      "apiError": "HTTP {status}: {message}"
+      "apiError": "Unable to load orders"
     },
     "kpis": {
       "today": "Orders today",
