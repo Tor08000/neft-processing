@@ -8,23 +8,23 @@ const Sample = () => {
 };
 
 describe("i18n", () => {
-  it("renders russian translations", () => {
+  it("renders russian translations", async () => {
     render(
       <I18nProvider locale="ru">
         <Sample />
       </I18nProvider>,
     );
 
-    expect(screen.getByText("Заказов пока нет")).toBeInTheDocument();
+    expect(await screen.findByText("Заказов пока нет")).toBeInTheDocument();
   });
 
-  it("renders english translations", () => {
+  it("renders english translations", async () => {
     render(
       <I18nProvider locale="en">
         <Sample />
       </I18nProvider>,
     );
 
-    expect(screen.getByText("No orders yet")).toBeInTheDocument();
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
   });
 });
