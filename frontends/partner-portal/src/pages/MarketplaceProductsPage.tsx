@@ -270,12 +270,14 @@ export function MarketplaceProductsPage() {
             <h2>{t("marketplace.products.title")}</h2>
             <p className="muted">{t("marketplace.products.subtitle")}</p>
           </div>
-          <button className="ghost" type="button" onClick={loadProducts}>
-            {t("actions.refresh")}
-          </button>
+          <div className="neft-actions">
+            <button className="ghost" type="button" onClick={loadProducts}>
+              {t("actions.refresh")}
+            </button>
+          </div>
         </div>
-        <div className="filters">
-          <label>
+        <div className="filters neft-filters">
+          <label className="filter neft-filter">
             <span className="label">{t("marketplace.products.filters.status")}</span>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as MarketplaceProductStatus | "")}>
               <option value="">{t("common.all")}</option>
@@ -284,7 +286,7 @@ export function MarketplaceProductsPage() {
               <option value="ARCHIVED">{t("marketplace.products.statuses.ARCHIVED")}</option>
             </select>
           </label>
-          <label>
+          <label className="filter neft-filter">
             <span className="label">{t("marketplace.products.filters.type")}</span>
             <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as MarketplaceProductType | "")}>
               <option value="">{t("common.all")}</option>
@@ -292,7 +294,7 @@ export function MarketplaceProductsPage() {
               <option value="PRODUCT">{t("marketplace.products.types.PRODUCT")}</option>
             </select>
           </label>
-          <label>
+          <label className="filter neft-filter">
             <span className="label">{t("marketplace.products.filters.search")}</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("marketplace.products.filters.searchPlaceholder")} />
           </label>
