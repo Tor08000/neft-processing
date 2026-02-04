@@ -395,11 +395,11 @@ export function OrdersPage() {
             </div>
             <div className="pagination pagination-wrapper">
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page <= 1}>
-                {t("common.back")}
+                {t("ordersPage.pagination.prev")}
               </button>
-              <div className="muted">{t("ordersPage.pagination", { current: page, total: totalPages })}</div>
+              <div className="muted">{t("ordersPage.pagination.page", { current: page, total: totalPages })}</div>
               <button type="button" className="secondary" onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))} disabled={page >= totalPages}>
-                {t("common.next")}
+                {t("ordersPage.pagination.next")}
               </button>
             </div>
           </div>
