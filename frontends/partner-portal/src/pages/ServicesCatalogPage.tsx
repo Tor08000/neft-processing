@@ -353,8 +353,8 @@ export function ServicesCatalogPage() {
             </button>
           ) : null}
         </div>
-        <div className="filters">
-          <label className="filter">
+        <div className="filters neft-filters">
+          <label className="filter neft-filter">
             {t("servicesCatalogPage.filters.search")}
             <input
               type="search"
@@ -366,7 +366,7 @@ export function ServicesCatalogPage() {
               }}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("servicesCatalogPage.filters.kind")}
             <select
               value={filters.kind}
@@ -380,7 +380,7 @@ export function ServicesCatalogPage() {
               <option value="PRODUCT">{t("servicesCatalogPage.filters.kindOptions.product")}</option>
             </select>
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("servicesCatalogPage.filters.status")}
             <select
               value={filters.status}
@@ -396,7 +396,7 @@ export function ServicesCatalogPage() {
               <option value="ARCHIVED">{t("servicesCatalogPage.filters.statusOptions.archived")}</option>
             </select>
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("servicesCatalogPage.filters.category")}
             <input
               type="text"
@@ -459,7 +459,7 @@ export function ServicesCatalogPage() {
           />
         ) : (
           <>
-            <table className="data-table">
+            <table className="data-table neft-table-spacing">
               <thead>
                 <tr>
                   <th>{t("servicesCatalogPage.table.title")}</th>
@@ -536,7 +536,7 @@ export function ServicesCatalogPage() {
           />
         ) : (
           <div className="stack">
-            <div className="form-grid">
+            <div className="form-grid neft-import-grid">
               <label className="form-field">
                 {t("servicesCatalogPage.import.csvFile")}
                 <input

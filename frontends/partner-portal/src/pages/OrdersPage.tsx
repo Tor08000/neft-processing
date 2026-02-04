@@ -233,12 +233,14 @@ export function OrdersPage() {
       <section className="card">
         <div className="section-title">
           <h2>{t("ordersPage.title")}</h2>
-          <button type="button" className="secondary" onClick={handleSaveFilters}>
-            {t("ordersPage.actions.saveFilters")}
-          </button>
+          <div className="neft-actions">
+            <button type="button" className="secondary" onClick={handleSaveFilters}>
+              {t("ordersPage.actions.saveFilters")}
+            </button>
+          </div>
         </div>
-        <div className="filters">
-          <label className="filter">
+        <div className="filters neft-filters">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.period")}
             <select value={periodPreset} onChange={(event) => handlePresetChange(event.target.value as PeriodPreset)}>
               <option value="today">{t("ordersPage.filters.presets.today")}</option>
@@ -247,7 +249,7 @@ export function OrdersPage() {
               <option value="custom">{t("ordersPage.filters.presets.custom")}</option>
             </select>
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.from")}
             <input
               type="date"
@@ -255,7 +257,7 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("from", event.target.value)}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.to")}
             <input
               type="date"
@@ -263,7 +265,7 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("to", event.target.value)}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.status")}
             <select value={filters.status ?? ""} onChange={(event) => handleFilterChange("status", event.target.value)}>
               {statusOptions.map((status) => (
@@ -273,7 +275,7 @@ export function OrdersPage() {
               ))}
             </select>
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.search")}
             <input
               type="search"
@@ -282,7 +284,7 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("q", event.target.value)}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.station")}
             <input
               type="text"
@@ -291,7 +293,7 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("station_id", event.target.value)}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.service")}
             <input
               type="text"
@@ -300,7 +302,7 @@ export function OrdersPage() {
               onChange={(event) => handleFilterChange("service_id", event.target.value)}
             />
           </label>
-          <label className="filter">
+          <label className="filter neft-filter">
             {t("ordersPage.filters.slaRisk")}
             <select
               value={filters.sla_risk ?? ""}

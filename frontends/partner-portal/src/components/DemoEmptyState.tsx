@@ -27,6 +27,7 @@ export function DemoEmptyState({
       description={description}
       primaryAction={primaryAction}
       secondaryAction={secondaryAction}
+      actionsClassName="neft-empty-actions"
     />
   );
 }
