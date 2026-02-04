@@ -3,7 +3,8 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { I18nProvider } from "./i18n";
+import { I18nextProvider } from "react-i18next";
+import i18n from "./i18n";
 import "./index.css";
 import "@shared/brand/brand.css";
 import { normalizeBase } from "@shared/lib/path";
@@ -14,11 +15,11 @@ document.documentElement.setAttribute("data-theme", "dark");
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter basename={base}>
-      <I18nProvider>
+      <I18nextProvider i18n={i18n}>
         <ErrorBoundary>
           <App />
         </ErrorBoundary>
-      </I18nProvider>
+      </I18nextProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

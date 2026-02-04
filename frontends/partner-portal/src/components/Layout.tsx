@@ -12,14 +12,14 @@ import { useAuth } from "../auth/AuthContext";
 import { isDemoPartner } from "@shared/demo/demo";
 import { useLegalGate } from "../auth/LegalGateContext";
 import { usePortal } from "../auth/PortalContext";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { BrandHeader, BrandSidebar, PageShell } from "@shared/brand/components";
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { portal } = usePortal();
   const { isBlocked, isFeatureDisabled } = useLegalGate();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const location = useLocation();
   const capabilities = new Set((portal?.capabilities ?? []).map((cap) => cap.toUpperCase()));
   const modulesPayload = portal?.entitlements_snapshot?.modules as Record<string, { enabled?: boolean }> | undefined;

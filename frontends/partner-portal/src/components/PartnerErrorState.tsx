@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { isDemoPartner } from "@shared/demo/demo";
 
 type PartnerErrorStateProps = {
@@ -14,7 +14,7 @@ type PartnerErrorStateProps = {
 };
 
 export function PartnerErrorState({ title, description, error, action, isDemo }: PartnerErrorStateProps) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isDemoPartnerAccount = useMemo(
     () => (typeof isDemo === "boolean" ? isDemo : isDemoPartner(user?.email ?? null)),

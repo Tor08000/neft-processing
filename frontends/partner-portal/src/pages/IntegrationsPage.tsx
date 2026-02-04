@@ -37,7 +37,8 @@ import type {
   WebhookSubscription,
   WebhookTestResult,
 } from "../types/webhooks";
-import { translate, useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 
 type ApiErrorState = {
   message: string;
@@ -55,13 +56,13 @@ const normalizeError = (err: unknown, fallback: string): ApiErrorState => {
 const formatErrorDescription = (error: ApiErrorState): string => {
   const parts = [error.message];
   if (error.status) {
-    parts.push(translate("errors.errorCode", { code: error.status }));
+    parts.push(i18n.t("errors.errorCode", { code: error.status }));
   }
   return parts.join(" · ");
 };
 
 const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return translate("common.notAvailable");
+  if (!value) return i18n.t("common.notAvailable");
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
 };
@@ -86,7 +87,7 @@ const parseFilters = (raw: string): Record<string, unknown> | null => {
 
 export function IntegrationsPage() {
   const { user, hasPartnerRole } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const isOwner = Boolean(user?.roles.includes("PARTNER_OWNER"));
   const deliveriesRef = useRef<HTMLDivElement | null>(null);
 

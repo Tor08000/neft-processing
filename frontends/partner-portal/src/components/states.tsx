@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { PartnerErrorState } from "./PartnerErrorState";
 
 interface StateProps {
@@ -32,7 +32,7 @@ export function EmptyState({
   description?: string;
   action?: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   return (
     <StateContainer
       title={title ?? t("states.emptyTitle")}
@@ -65,7 +65,7 @@ export function ForbiddenState({
   description?: string;
   action?: ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   return (
     <StateContainer
       title={title ?? t("states.forbiddenTitle")}
@@ -77,6 +77,6 @@ export function ForbiddenState({
 }
 
 function LoadingStateContent({ label }: { label?: string }) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   return <StateContainer title={label ?? t("common.loading")} fullHeight />;
 }

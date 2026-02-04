@@ -7,14 +7,14 @@ import { ErrorState, LoadingState } from "../components/states";
 import type { SupportRequestItem } from "../types/support";
 import { formatDateTime } from "../utils/format";
 import { supportStatusLabel, supportStatusTone, supportSubjectLabel } from "../utils/support";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 const STATUS_OPTIONS = ["OPEN", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"];
 const SUBJECT_OPTIONS = ["ORDER", "DOCUMENT", "PAYOUT", "SETTLEMENT", "INTEGRATION", "OTHER"];
 
 export function SupportRequestsPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [items, setItems] = useState<SupportRequestItem[]>([]);
   const [status, setStatus] = useState("");
   const [subjectType, setSubjectType] = useState("");

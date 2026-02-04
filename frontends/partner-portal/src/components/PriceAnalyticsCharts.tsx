@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { PriceAnalyticsSeriesPoint } from "../types/prices";
 import { formatCurrency, formatDate, formatNumber } from "../utils/format";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 type MetricKey = "orders" | "revenue";
 
@@ -15,7 +15,7 @@ const buildPath = (points: { x: number; y: number }[]) => {
 };
 
 export function PriceAnalyticsCharts({ series }: PriceAnalyticsChartsProps) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [metric, setMetric] = useState<MetricKey>("orders");
 
   const chartData = useMemo(() => {

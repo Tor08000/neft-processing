@@ -1,4 +1,4 @@
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 interface StatusBadgeProps {
   status: string | null | undefined;
@@ -75,7 +75,7 @@ const statusLabelMap: Record<string, string> = {
 };
 
 export function StatusBadge({ status, tone }: StatusBadgeProps) {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const normalized = status ?? t("common.notAvailable");
   const key = status ? statusLabelMap[String(status).toUpperCase()] : null;
   const label = key ? t(key) : normalized;

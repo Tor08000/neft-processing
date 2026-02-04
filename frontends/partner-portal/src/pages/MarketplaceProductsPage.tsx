@@ -11,7 +11,7 @@ import { ApiError } from "../api/http";
 import { useAuth } from "../auth/AuthContext";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatNumber } from "../utils/format";
-import { useI18n } from "../i18n";
+import { useTranslation } from "react-i18next";
 import { EmptyState } from "@shared/ui/EmptyState";
 import { PartnerErrorState } from "../components/PartnerErrorState";
 import { demoMarketplaceProducts } from "../demo/partnerDemoData";
@@ -127,7 +127,7 @@ const buildPriceConfig = (form: FormState): { config?: MarketplacePriceConfig; e
 
 export function MarketplaceProductsPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [items, setItems] = useState<MarketplaceProductSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
